@@ -1,0 +1,117 @@
+---
+title: Noma Agent Patch Protocol (draft)
+version: 0.1-draft
+---
+
+# Agent Patch Protocol
+
+::summary
+A small set of structured operations agents use to edit Noma documents at the block level. Designed to be safe, minimal, and round-trippable.
+::
+
+## Why a patch protocol
+
+Agents that edit documents by full-file rewrite are unsafe: they re-emit unrelated blocks, introduce drift, and lose stable references. The patch protocol replaces full-file rewrites with addressable, reviewable operations.
+
+::claim{id="claim-block-edits-safer" confidence=0.85}
+Block-level patch operations are strictly safer than full-file agent rewrites: they are smaller, easier to review, and they preserve identifiers across edits.
+::
+
+## Operations
+
+### replace_block
+
+Replaces the body of a block, keeping its id, name, and attributes.
+
+```json
+{
+  "op": "replace_block",
+  "id": "asml-euv-moat",
+  "content": "ASML has a durable moat because EUV lithography requires unmatched optical, mechanical, and supply-chain capabilities."
+}
+```
+
+### add_child
+
+Inserts a new block as the last child of an existing parent.
+
+```json
+{
+  "op": "add_child",
+  "parent": "risks",
+  "block": {
+    "type": "directive",
+    "name": "risk",
+    "id": "risk-china-restrictions",
+    "attrs": { "severity": "high" },
+    "body": "Further export restrictions could reduce ASML's China revenue."
+  }
+}
+```
+
+### remove_block
+
+Removes a block by id.
+
+```json
+{ "op": "remove_block", "id": "stale-claim-2024" }
+```
+
+### set_attr
+
+Updates one attribute on an addressed block.
+
+```json
+{
+  "op": "set_attr",
+  "id": "asml-euv-moat",
+  "key": "confidence",
+  "value": 0.78
+}
+```
+
+### move_block
+
+Moves a block under a new parent, optionally before an anchor sibling.
+
+```json
+{
+  "op": "move_block",
+  "id": "risk-cyclicality",
+  "to_parent": "appendix-risks",
+  "before": "risk-china-restrictions"
+}
+```
+
+## Validation contract
+
+Every patch must:
+
+1. Resolve all referenced IDs (`id`, `parent`, `before`, `for`) against the **current** document.
+2. Preserve schema invariants: `evidence` blocks must keep their `for=` attribute, `plot` blocks must keep `data=` or `dataset=`.
+3. Pass the standard validator after application.
+
+::callout{tone="warning"}
+A patch that fails validation is rejected as a unit — partial application is forbidden. Multi-block edits must be expressed as an ordered list of operations and applied transactionally.
+::
+
+## Provenance
+
+Every applied patch should attach a `provenance` block annotation:
+
+```noma
+::provenance{by="claude-opus-4.7" at="2026-05-09T14:32:00Z" patch="patch-abc123"}
+::
+```
+
+This makes agent edits auditable in the source itself, not in a separate ledger.
+
+## Open questions
+
+::open_question{id="oq-conflict-resolution"}
+What is the right merge strategy when two agents propose patches that touch the same block ID concurrently? Options: last-writer-wins, three-way merge with a designated reviewer, or a CRDT-style block log.
+::
+
+::open_question{id="oq-patch-format"}
+Should patches be expressed as JSON (current draft), as a Noma directive block (`::patch ... ::`), or both?
+::

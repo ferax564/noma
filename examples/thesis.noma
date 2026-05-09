@@ -1,0 +1,67 @@
+---
+title: ASML Investment Thesis
+author: ferax564
+date: 2026-05-09
+tags: [semiconductors, equipment, moat]
+---
+
+# ASML Investment Thesis
+
+::summary
+ASML remains one of the most strategically important companies in the semiconductor supply chain. This document captures the investment thesis as a set of structured claims, evidence, and risks that an agent can revisit each quarter.
+::
+
+## Thesis at a glance
+
+::grid{columns=2}
+:::card{title="Bull Case" icon="up"}
+EUV demand stays structurally high as foundries push to 2 nm and below. ASML retains a *de facto* monopoly on leading-edge lithography for the rest of the decade.
+:::
+
+:::card{title="Bear Case" icon="down"}
+Export restrictions, semiconductor cyclicality, and chipmaker capex pauses could compress orders for two to four quarters at a time.
+:::
+::
+
+## Claims
+
+::claim{id="asml-euv-moat" confidence=0.82}
+ASML has a durable moat because it is the only supplier of EUV lithography systems at scale.
+::
+
+::evidence{for="asml-euv-moat" source="annual-report-2025"}
+ASML continues to report strong demand for EUV systems from the leading-edge customers (TSMC, Samsung, Intel). High-NA EUV machines (EXE:5000) are sold out for 2026 and 2027 deliveries.
+::
+
+::claim{id="asml-china-exposure" confidence=0.6}
+China revenue exposure is a tail risk, not a structural threat — most China demand is for trailing-edge DUV, which is already partially substitutable.
+::
+
+::counterevidence{for="asml-china-exposure" source="us-export-controls-2025"}
+The 2025 update to US export controls may extend to deep-ultraviolet (DUV) immersion systems, which would meaningfully reduce ASML's serviceable China market.
+::
+
+## Risks
+
+::risk{id="risk-china-restrictions" severity="high"}
+Further US/EU export restrictions could reduce ASML's China revenue by a high single-digit to low double-digit percentage of total sales.
+::
+
+::risk{id="risk-cyclicality" severity="medium"}
+Semiconductor capex is cyclical. A WFE downturn could compress ASML's near-term order book even as the long-term thesis holds.
+::
+
+## Revenue
+
+::plot{id="revenue-chart" type="line" data="./data/asml_revenue.csv" x="year" y="revenue" title="ASML Revenue 2018–2025"}
+::
+
+## Quarterly review
+
+::agent_task{id="quarterly-review-task"}
+Every quarter, re-evaluate gross margin, order backlog, China exposure, and EUV demand. Update the `confidence` attribute on each claim if material changes are observed. Add a fresh `evidence` block citing the source document.
+::
+
+## Notes
+
+> The thesis is intentionally short. The point of Noma is that the *structure* — not the prose volume — is what makes a thesis useful to revisit and to feed into an LLM at review time.

@@ -1,0 +1,49 @@
+{
+  "name": "@noma/cli",
+  "version": "0.1.0",
+  "description": "Noma — readable document format for humans and agents",
+  "type": "module",
+  "bin": {
+    "noma": "./bin/noma.mjs"
+  },
+  "scripts": {
+    "noma": "tsx src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "render:examples": "tsx src/cli.ts render examples/thesis.noma --to html --out dist/thesis.html && tsx src/cli.ts render examples/landing.noma --to html --out dist/landing.html",
+    "render:pdf": "tsx scripts/render-pdf.ts dist/thesis.html dist/thesis.pdf",
+    "demo": "npm run render:examples && npm run render:pdf"
+  },
+  "files": [
+    "src",
+    "bin",
+    "themes",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "noma",
+    "document",
+    "format",
+    "markdown",
+    "ast",
+    "agents",
+    "llm",
+    "publishing"
+  ],
+  "author": "ferax564",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "puppeteer": "^23.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

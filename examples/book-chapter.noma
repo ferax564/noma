@@ -1,0 +1,55 @@
+---
+title: Chapter 1 — The Document Operating Format
+book: agentic-documents
+chapter: 1
+---
+
+# The Document Operating Format
+
+::summary
+Why we need a new document format for the AI era — and why it should be plain text.
+::
+
+For thirty years, the dominant document formats have optimized for one of two things: *humans typing prose* (Markdown, RTF, DOCX) or *machines rendering layout* (HTML, PDF, LaTeX). Noma optimizes for a third constraint that did not exist in 1995: **agents that read and edit our documents alongside us**.
+
+## Why now
+
+Three things changed at once:
+
+1. Language models became fluent enough to operate on document structure, not just prose.
+2. Agents shipped — programs that take multi-step actions inside our editing environments.
+3. The volume of *living documents* (docs, theses, runbooks, books-as-software) grew faster than humans could maintain alone.
+
+::claim{id="claim-living-docs" confidence=0.9}
+The center of gravity for technical writing is shifting from static publication to continuously edited "living documents," where the cost of staleness exceeds the cost of authoring.
+::
+
+::evidence{for="claim-living-docs" source="industry-observation-2026"}
+Most teams now edit their architecture docs, ADRs, and runbooks more often than they ship code. The dominant editor is the AI agent, not the human.
+::
+
+## What Markdown can't do
+
+Markdown is excellent for prose. It is poor at:
+
+- expressing the *type* of a paragraph (is it a claim, a decision, a warning?)
+- carrying machine-readable confidence, provenance, or citations
+- giving agents a stable handle to edit a specific block
+- mixing layout (grids, cards, callouts) with content
+- rendering to multiple targets without an adapter per renderer
+
+::callout{tone="tip"}
+The fix is not "more Markdown extensions." The fix is to admit that documents have *structure*, and to make that structure first-class.
+::
+
+## What Noma adds
+
+Three primitives:
+
+1. **Typed blocks.** Every important fragment knows its kind: `claim`, `evidence`, `risk`, `decision`, `plot`, `agent_task`.
+2. **Stable IDs.** Each block can be referenced by a slug that survives re-parses and edits.
+3. **Multi-target rendering.** A single source compiles to HTML, PDF, JSON, and deterministic LLM context.
+
+The rest of this chapter walks through each, with code samples a reader can run on their own machine in under five minutes.
+
+> The shape of the document should match the shape of the work.

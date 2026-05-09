@@ -1,0 +1,86 @@
+---
+title: Noma — Architecture
+audience: contributors
+---
+
+# Architecture
+
+::summary
+The whole codebase fits in one mental model: source → parser → AST → renderer. There are no plugins, no parser combinators, no build pipelines. This is intentional.
+::
+
+## Pipeline
+
+```
+.noma source
+   │
+   ▼  parser.ts
+typed AST  ─────────►  validator.ts  ─►  diagnostics
+   │
+   ▼  renderer-html.ts / renderer-llm.ts / renderer-json.ts
+HTML / LLM context / JSON
+   │
+   ▼  scripts/render-pdf.ts
+PDF
+```
+
+Each arrow is a pure function. The parser does not validate. The renderers do not parse. The validator does not render.
+
+## Modules
+
+::grid{columns=2}
+:::card{title="src/ast.ts"}
+The discriminated `Node` union. Every other module imports types from here. Adding a node variant breaks every renderer's exhaustive switch — that is the desired safety property.
+:::
+
+:::card{title="src/parser.ts"}
+Hand-written line-based recursive descent. ~250 lines. Parses frontmatter, headings, fenced code, lists, quotes, thematic breaks, and arbitrary-depth directive blocks via colon-counting.
+:::
+
+:::card{title="src/inline.ts"}
+Tiny inline markup parser. Two entry points: `inlineToHtml` and `inlineToPlain`. Each renderer chooses which to call.
+:::
+
+:::card{title="src/renderer-html.ts"}
+AST → semantic HTML. Special-cases the typed blocks (claim, evidence, grid, card, plot, agent_task, ...) and falls through to a generic wrapper for unknown directive names.
+:::
+
+:::card{title="src/renderer-llm.ts"}
+AST → deterministic plain text with `[TAG attr=value]` markers. Designed to maximize signal density inside LLM context windows.
+:::
+
+:::card{title="src/validator.ts"}
+AST → diagnostics list. Detects duplicate IDs, broken references, plots without data, figures without alt text. Optional schema rules (e.g., claims-need-evidence) are flag-gated.
+:::
+
+:::card{title="src/cli.ts"}
+The `noma parse|render|check|export` command-line entry. Glue, no logic.
+:::
+
+:::card{title="themes/default.css"}
+The HTML renderer is theme-agnostic — it only emits semantic class names. The default theme is a single CSS file with custom properties for easy reskinning.
+:::
+::
+
+## Why no plugin system (yet)
+
+::claim{id="claim-no-plugins-mvp" confidence=0.7}
+A plugin system at v0.1 would harden block semantics before we know which blocks matter. Better to evolve the core typed-block set in lockstep with the renderer until the shape of "real" Noma documents is clear.
+::
+
+A plugin API will arrive once three things are true: the AST is stable, two or more independent block packs exist in the wild, and at least one community-contributed renderer ships externally.
+
+## Performance
+
+::result{id="perf-baseline-may-2026"}
+On a 1,000-block document the parser runs in roughly 30 ms on a 2024 MacBook Air, and the HTML renderer in roughly 15 ms. No optimization work has been done yet.
+::
+
+The parser is hand-written precisely so optimization stays straightforward — if Noma ever needs to render a million-block book in under a second, the path is to port `parser.ts` to a streaming variant or to Rust, without touching the AST or any renderer.
+
+## Conventions
+
+- **One module, one file.** No `utils/` dumping ground.
+- **No comments unless the *why* is non-obvious.** Identifiers carry the *what*.
+- **TypeScript strict mode.** `noUncheckedIndexedAccess` is on — array access returns `T | undefined`.
+- **No build step in development.** `tsx` runs TypeScript directly. `npm run build` exists for the published npm package.

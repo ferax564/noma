@@ -1,0 +1,53 @@
+---
+title: Noma — readable documents for humans and agents
+layout: landing
+---
+
+::hero
+# Documents you can read. Documents agents can edit.
+
+Noma is a plain-text format for books, docs, research, dashboards, and webpages. Readable like Markdown, structured like data, renderable like HTML.
+
+:::button{href="https://github.com/ferax564/noma"}
+View on GitHub
+:::
+::
+
+## What you get
+
+::grid{columns=3}
+:::card{title="Block-stable IDs" icon="anchor"}
+Every important block has a stable ID. Agents edit specific blocks instead of rewriting whole files. No more diff churn.
+:::
+
+:::card{title="Typed semantics" icon="brain"}
+Claims, evidence, risks, decisions, plots, datasets, agent tasks. Documents that know what their parts mean.
+:::
+
+:::card{title="Multi-format render" icon="layers"}
+One source. HTML for the web, PDF for print, JSON for tools, deterministic LLM context for agents.
+:::
+::
+
+## Compare
+
+::tabs
+:::card{title="Markdown"}
+Great for prose. Weak for grids, cards, claims, plots, citations, and stable agent edits.
+:::
+
+:::card{title="HTML / MDX"}
+Powerful but unreadable in source form. Hostile to non-developers.
+:::
+
+:::card{title="Noma"}
+Reads like Markdown. Renders like HTML. Edits like data. Compiles to PDF and books.
+:::
+::
+
+## Roadmap
+
+::callout{tone="note"}
+**v0.1 today** — parser, AST, HTML + LLM + JSON renderers, validator, CLI.
+**Next** — PDF via Typst, VS Code extension, book manifests, agent patch protocol.
+::

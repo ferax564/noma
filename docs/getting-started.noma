@@ -1,0 +1,90 @@
+---
+title: Getting Started with Noma
+audience: new contributors
+---
+
+# Getting Started
+
+::summary
+Five minutes to your first rendered Noma document.
+::
+
+## Install
+
+Clone the repo and install dependencies:
+
+```bash
+git clone https://github.com/ferax564/noma.git
+cd noma
+npm install
+```
+
+## Render an example
+
+The repo ships three working examples in `examples/`:
+
+```bash
+npm run noma -- render examples/thesis.noma --to html --out dist/thesis.html
+npm run noma -- render examples/landing.noma --to html --out dist/landing.html
+npm run noma -- render examples/book-chapter.noma --to html --out dist/chapter.html
+```
+
+Open any of the produced files in a browser — they are fully self-contained and include the default theme inline.
+
+## Render to LLM context
+
+```bash
+npm run noma -- render examples/thesis.noma --to llm
+```
+
+The output is deterministic plain text designed for LLM input: typed blocks become `[CLAIM]`, `[EVIDENCE]`, `[RISK]` tags with attributes preserved.
+
+## Validate
+
+```bash
+npm run noma -- check examples/thesis.noma
+```
+
+The validator catches duplicate IDs, broken references, plots without data, and figures without alt text.
+
+## Render to PDF
+
+The PDF pipeline shells out to Chromium via Puppeteer:
+
+```bash
+npm run demo
+```
+
+This renders all examples to HTML and produces `dist/thesis.pdf`. On first run, Puppeteer downloads a Chromium build (~150 MB).
+
+## Write your own
+
+Create `mydoc.noma`:
+
+```noma
+---
+title: My First Noma Document
+---
+
+# Hello, Noma
+
+::callout{tone="tip"}
+Plain text in. Structured documents out.
+::
+
+::claim{id="my-first-claim" confidence=0.7}
+Documents that know their own structure are more useful than documents that don't.
+::
+```
+
+Then render:
+
+```bash
+npm run noma -- render mydoc.noma --to html --out dist/mydoc.html
+```
+
+## Where to next
+
+- Read [docs/spec.noma](spec.noma) for the full format specification.
+- Read [PLAN.md](../PLAN.md) for the long-term vision.
+- Read `CLAUDE.md` if you are an agent contributing to this repo.

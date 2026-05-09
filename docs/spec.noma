@@ -1,0 +1,192 @@
+---
+title: Noma — Format Specification (v0.1 draft)
+version: 0.1
+status: draft
+---
+
+# Noma Format Specification
+
+::summary
+This document defines the **Noma** plain-text document format at version 0.1. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+::
+
+## Conventions
+
+- All Noma files use UTF-8 encoding and the `.noma` extension.
+- Lines are terminated by `\n`. Parsers must accept `\r\n` and normalize on read.
+- Whitespace at the start and end of lines inside text content is preserved; whitespace around block fences is not significant.
+
+## File structure
+
+A Noma file consists of an optional **frontmatter** section followed by a **body**.
+
+```
+---
+key: value
+---
+
+(body)
+```
+
+The frontmatter is YAML. It is exposed on the document AST as `meta`. If the opening `---` line is missing, the file has no frontmatter.
+
+## Block syntax
+
+### Headings
+
+```
+# Heading 1
+## Heading 2
+### Heading 3
+```
+
+Headings auto-create `section` nodes. Each section has an `id` derived by slugifying the title. Sections nest by level: `# A` is a parent of `## B` and `## B'` until the next `# C`.
+
+### Directive blocks
+
+The core construct in Noma is the **directive block**. A directive opens with two or more colons followed by a name and an optional attribute list, and closes with a matching colon run on its own line.
+
+```noma
+::name{attrs}
+content
+::
+```
+
+Children are written with **strictly more colons** than the parent:
+
+```noma
+::grid{columns=2}
+:::card{title="Bull"}
+text
+:::
+
+:::card{title="Bear"}
+text
+:::
+::
+```
+
+A `::: ` opener inside a `:: ` parent creates a child block. The closer must use the **same** colon count as its opener.
+
+### Paragraphs and inline markup
+
+Plain text outside any directive becomes a `paragraph` node. Inline markup is a small subset of Markdown: `**bold**`, `*em*`, `` `code` ``, `[label](url)`, and the Noma extension `[[block-id]]` for cross-references.
+
+### Code, lists, quotes, rules
+
+Standard Markdown: triple-backtick fenced code, `- ` bulleted lists, `1. ` ordered lists, `> ` block quotes, `---` thematic breaks.
+
+## Attribute grammar
+
+Attribute lists appear after a directive name in curly braces:
+
+```
+{key="quoted value" key=bare key=0.82 flag}
+```
+
+| Form              | Type      | Example          |
+|-------------------|-----------|------------------|
+| `key="text"`      | string    | `id="claim-1"`   |
+| `key=word`        | string    | `tone=warning`   |
+| `key=42`          | number    | `columns=3`      |
+| `key=0.82`        | number    | `confidence=0.82` |
+| `flag`            | boolean   | `done`           |
+| `key=true|false`  | boolean   | `pinned=true`    |
+
+The attribute named `id` is special: it is promoted to the AST node's stable identifier and used by validators and the agent patch protocol.
+
+## Core block types
+
+### Document blocks
+
+```
+section, paragraph, list, list_item, quote, code, thematic_break
+```
+
+### Layout blocks
+
+```
+hero, grid, card, callout, columns, tabs, accordion, sidebar, button
+```
+
+### Research and reasoning
+
+```
+claim, evidence, counterevidence, assumption, risk, hypothesis, result, limitation, open_question, decision, adr
+```
+
+### Data and computation
+
+```
+dataset, plot, metric, code_cell, output
+```
+
+### Agent collaboration
+
+```
+agent_task, todo, review, comment, change_request, provenance, confidence, citation
+```
+
+::callout{tone="note"}
+v0.1 ships a working renderer for every layout, research, and agent block listed here. Data blocks render as placeholders — full plotting and dataset evaluation arrive in v0.2.
+::
+
+## AST shape
+
+Every node satisfies `Node` from `src/ast.ts`. The discriminated union has the following variants:
+
+```
+document     — root, holds meta + children
+section      — id, level, title, children
+paragraph    — content (string with inline markup)
+code         — lang, content
+list         — ordered, items[]
+list_item    — content
+quote        — content
+thematic_break
+directive    — name, attrs, children, body?
+```
+
+Renderers exhaustively switch on `type`. Adding a new variant is a typed change: every renderer fails to compile until the new case is handled.
+
+## Validator rules
+
+The default validator detects:
+
+- duplicate IDs
+- references (`for=`, `[[id]]`) pointing to unknown IDs
+- `evidence` and `counterevidence` with no `for=` attribute
+- `figure` blocks with neither `alt` nor `caption`
+- `plot` blocks with no `data=` or `dataset=`
+
+Optional rules:
+
+- `requireEvidenceForClaims` — every `claim` with an `id` must be referenced by at least one `evidence` block.
+
+## Render targets (v0.1)
+
+| Target | Status     | Notes                                          |
+|--------|------------|------------------------------------------------|
+| `html` | ✅ stable  | Self-contained, semantic, with print stylesheet|
+| `llm`  | ✅ stable  | Deterministic, LLM-friendly text               |
+| `json` | ✅ stable  | Full AST                                       |
+| `pdf`  | ⚙ via puppeteer (HTML → Chromium print)        |
+| `epub` | ⏳ planned |                                                |
+| `slides` | ⏳ planned |                                                |
+
+## Compatibility promises (v0.1)
+
+- The directive **opener/closer** syntax is stable and will not change in 0.x.
+- Attribute grammar is stable.
+- Auto-generated heading IDs (slugify rules) are stable.
+- The AST is *not* stable across 0.x — new fields may be added on existing variants. Renderers and validators inside this repo move in lockstep.
+
+## Future work
+
+::open_question{id="oq-pdf-engine"}
+Should the long-term canonical PDF engine be Typst (richer typography, native LaTeX-class control) or Chromium (more accessible, simpler installation)?
+::
+
+::open_question{id="oq-agent-protocol"}
+What is the smallest set of agent patch operations needed to cover real editing workflows? Current candidates: `replace_block`, `add_child`, `remove_block`, `set_attr`, `move_block`.
+::
