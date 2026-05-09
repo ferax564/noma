@@ -1278,18 +1278,41 @@ that prove the three-layer model end-to-end:
 - ✅ Public landing page live at <https://ferax564.github.io/noma/>,
   deployed by GitHub Actions on every push to `main`.
 
-### 24.3 Still ahead (priority for next milestone)
+### 24.3 v0.2.0 — agent-editable artifacts (2026-05-09)
 
-These remain the gating items before claiming v0.2:
+The format crossed the line from "renderable plain text" to "block-level
+agent-editable document operating system". Six §23 items shipped:
 
-- ⏳ §23.11 — agent patch protocol (replace_block / add_block /
-  update_attribute) actually wired into the CLI as `noma patch`.
-- ⏳ §23.12 — claims-without-evidence and stale-citation validation
-  promoted from optional to default.
-- ⏳ §23.13 — theme variant system (`{variant="important"}`) and at
-  least one alternate theme.
-- ⏳ §23.14 — `::html` / `::svg` escape hatches with validator-enforced
-  artifact-mode-only restrictions.
-- ⏳ Real chart rendering for `::plot` (currently a placeholder SVG).
-- ⏳ Book manifest (`noma.yml`) + multi-file project rendering.
+- ✅ §23.11 — `noma patch` CLI with five ops (`replace_block`,
+  `add_block`, `delete_block`, `update_attribute`, `rename_id`).
+  `rename_id` retargets `for=`, `parent=`, and `[[wikilink]]`
+  references. Backed by a new AST → `.noma` source printer; every
+  example/doc roundtrips losslessly.
+- ✅ §23.12 — five new default validator rules:
+  `claim-without-evidence` (promoted from optional),
+  `risk-without-owner`, `decision-without-status`,
+  `agent-task-without-scope`, `stale-citation`. Per-block opt-out via
+  the `noverify` flag attribute.
+- ✅ §23.13 — `{variant="..."}` lands as `data-variant` on cards,
+  callouts, and research blocks. Alternate `themes/dark.css` ships
+  with the CLI flag `--theme dark`.
+- ✅ §23.14 — `::html` / `::svg` / `::script{runtime="browser"}`
+  escape hatches. LLM renderer always strips them; validator warns
+  on every untrusted use; `--no-unsafe` blocks them globally.
+- ✅ Real `::plot` rendering — inline-data line and bar charts as
+  self-contained SVG. Demos (thesis revenue, vertical-AI funding) now
+  show real numbers.
+- ✅ §8 — book manifest (`book.noma.yml`) + multi-file rendering.
+  CLI auto-detects manifest extension; chapters concatenate into one
+  `DocumentNode` so every renderer works on books unchanged. Demo
+  book at `examples/book/` (3 chapters).
+
+### 24.4 Still ahead
+
 - ⏳ VS Code syntax highlighting extension.
+- ⏳ External CSV evaluation for `::plot data="./series.csv"` (today
+  the CSV path falls through to the placeholder).
+- ⏳ Trusted-publishing context (auto-set `--no-unsafe` based on
+  manifest config).
+- ⏳ Per-chapter rendering for books (currently single concatenated
+  output only).

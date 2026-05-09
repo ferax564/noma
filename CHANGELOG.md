@@ -6,6 +6,11 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-09
+
+Six §23 / §8 items shipped, taking Noma from "renderable plain text" to
+"block-level agent-editable document operating system".
+
 ### Added
 
 - **AST source printer** (`src/renderer-noma.ts`) — AST → `.noma`

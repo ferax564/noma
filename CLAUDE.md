@@ -17,25 +17,30 @@ Source files use the `.noma` extension. The full vision lives in `PLAN.md` — r
 src/                       TypeScript source for parser, AST, renderers, validator, CLI
   ast.ts                   Typed AST node definitions (single source of truth)
   parser.ts                .noma → AST (hand-written recursive descent)
-  renderer-html.ts         AST → semantic HTML
-  renderer-llm.ts          AST → deterministic LLM context
+  renderer-html.ts         AST → semantic HTML (incl. real plot SVGs, escape hatches)
+  renderer-llm.ts          AST → deterministic LLM context (escape-hatch bodies stripped)
   renderer-json.ts         AST → JSON
-  validator.ts             AST → diagnostics (duplicate IDs, broken refs, etc.)
+  renderer-noma.ts         AST → .noma source (roundtrip-safe; backs `noma patch`)
+  validator.ts             AST → diagnostics (10 default rules, `noverify` opt-out)
   inline.ts                Inline markdown (bold, em, code, links) → HTML/plain
-  cli.ts                   `noma parse|render|check|export`
+  patch.ts                 Block-level patch ops (replace/add/delete/update_attr/rename_id)
+  book.ts                  YAML manifest loader; concatenates chapters → DocumentNode
+  cli.ts                   `noma parse|render|check|export|patch`
 bin/noma.mjs               Node CLI shim
-themes/default.css         HTML theme (also handles tables, export buttons, controls)
+themes/default.css         Default HTML theme (tables, export buttons, controls, variants)
+themes/dark.css            Alternate dark theme — `noma render --theme dark`
 examples/                  Demo .noma files
-  thesis.noma              Original ASML investment-thesis demo
+  thesis.noma              Original ASML investment-thesis demo (with real revenue plot)
   landing.noma             Original landing-page demo
-  book-chapter.noma        Original book-chapter demo
+  book-chapter.noma        Original single-chapter demo
   agent-plan.noma          Demo 1 — Q3 roadmap decision artifact
   tech-doc.noma            Demo 2 — CLI reference page
-  research-thesis.noma     Demo 3 — vertical-AI investment thesis
+  research-thesis.noma     Demo 3 — vertical-AI investment thesis (with real bar/line plots)
   index.noma               Noma-rendered gallery (kept around as dist/_index-noma.html)
+  book/                    Multi-file demo book — book.noma.yml + 3 chapters
 docs/                      Project docs, all written in .noma
   direction.noma           Canonical positioning (mirrors PLAN.md §23)
-  spec.noma                Block-type and AST reference
+  spec.noma                Block-type and AST reference (incl. variants, book manifests, escape hatches)
   architecture.noma        Parser/renderer/validator design
   agent-protocol.noma      Block-level patch operation schema
   getting-started.noma     User-facing walkthrough
@@ -44,7 +49,7 @@ site/                      Hand-crafted HTML landing page (NOT a .noma file)
 scripts/                   Build/render helpers
   render-pdf.ts            Single HTML → PDF via Puppeteer
   render-demo-pdfs.ts      All three demos → PDF (single browser instance)
-test/parser.test.ts        node:test suite
+test/                      node:test suites — parser, roundtrip, patch, validator, plot, book, escape-hatch
 .github/workflows/         CI
   pages.yml                Typecheck + tests + build:site → GitHub Pages
 dist/                      Build output (gitignored). GH Pages deploys this.
@@ -137,7 +142,13 @@ npm install
 npm run noma -- parse examples/agent-plan.noma
 npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
 npm run noma -- render examples/agent-plan.noma --to llm
+npm run noma -- render examples/agent-plan.noma --to noma          # AST → .noma source
+npm run noma -- render examples/research-thesis.noma --to html --theme dark
+npm run noma -- render examples/book/book.noma.yml --to html       # multi-file book
 npm run noma -- check examples/research-thesis.noma
+
+# block-level patch (rewrites only the addressed block)
+npm run noma -- patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.95}' --inplace
 
 # render all examples and docs (HTML + LLM + JSON)
 npm run render:examples
@@ -146,7 +157,7 @@ npm run render:docs
 # generate PDFs for the three demos (requires Puppeteer Chrome installed)
 npm run render:pdf:demos
 
-# full site build — examples + docs + landing copy + PDFs
+# full site build — examples + docs + book + dark-theme demo + landing + PDFs
 npm run build:site
 ```
 
