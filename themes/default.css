@@ -140,6 +140,43 @@ aside.noma-counterevidence .noma-tag { color: var(--noma-risk); background: var(
 aside.noma-risk           { border-left: 3px solid var(--noma-risk); }
 aside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }
 aside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }
+aside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }
+aside.noma-open_question { border-left: 3px solid #8b6c1a; }
+aside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }
+aside.noma-assumption { border-left: 3px solid #5a6071; }
+aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
+
+/* Export buttons (artifact-side action surface) */
+.noma-export-button {
+  display: inline-block;
+  background: var(--noma-fg);
+  color: var(--noma-bg);
+  border: 0;
+  padding: 0.55em 1.1em;
+  margin: 0.3em 0.4em 0.3em 0;
+  border-radius: 999px;
+  font-family: var(--noma-font-sans);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.noma-export-button:hover { background: var(--noma-accent); color: white; }
+.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }
+.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }
+.noma-export-button[data-format="json"] { background: var(--noma-muted); }
+
+/* Controls (interactive artifact blocks) */
+.noma-control {
+  margin: 1em 0;
+  padding: 0.8em 1em;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-radius: var(--noma-radius);
+  font-family: var(--noma-font-sans);
+  font-size: 0.9rem;
+}
+.noma-control input { margin-left: 0.6em; }
 
 .noma-confidence {
   flex: 1;
@@ -278,6 +315,38 @@ details.noma-dataset pre {
   font-size: 0.9rem;
   margin-bottom: 0.4em;
 }
+
+/* Tables */
+table.noma-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.6em 0;
+  font-family: var(--noma-font-sans);
+  font-size: 0.92rem;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-radius: var(--noma-radius);
+  overflow: hidden;
+  box-shadow: var(--noma-shadow);
+}
+table.noma-table thead {
+  background: var(--noma-code-bg);
+}
+table.noma-table th {
+  text-align: left;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.7em 1em;
+  border-bottom: 1px solid var(--noma-rule);
+  color: var(--noma-fg);
+}
+table.noma-table td {
+  padding: 0.6em 1em;
+  border-bottom: 1px solid var(--noma-rule);
+  vertical-align: top;
+}
+table.noma-table tbody tr:last-child td { border-bottom: 0; }
+table.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }
 
 /* Print */
 @media print {

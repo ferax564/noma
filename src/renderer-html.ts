@@ -64,6 +64,28 @@ function renderNode(node: Node): string {
       return `<blockquote>${inlineToHtml(node.content)}</blockquote>`;
     case "thematic_break":
       return `<hr />`;
+    case "table": {
+      const head = node.header
+        .map((cell, idx) => {
+          const align = node.align[idx];
+          const styleAttr = align ? ` style="text-align: ${align}"` : "";
+          return `<th${styleAttr}>${inlineToHtml(cell)}</th>`;
+        })
+        .join("");
+      const body = node.rows
+        .map((row) => {
+          const cells = row
+            .map((cell, idx) => {
+              const align = node.align[idx];
+              const styleAttr = align ? ` style="text-align: ${align}"` : "";
+              return `<td${styleAttr}>${inlineToHtml(cell)}</td>`;
+            })
+            .join("");
+          return `<tr>${cells}</tr>`;
+        })
+        .join("\n");
+      return `<table class="noma-table">\n<thead><tr>${head}</tr></thead>\n<tbody>\n${body}\n</tbody>\n</table>`;
+    }
     case "directive":
       return renderDirective(node);
     default: {
@@ -114,6 +136,27 @@ function renderDirective(node: DirectiveNode): string {
     case "decision":
     case "adr":
       return renderResearchBlock(node);
+
+    case "export_button": {
+      const format = node.attrs.format ? String(node.attrs.format) : "text";
+      const target = node.attrs.target ? String(node.attrs.target) : "";
+      const label =
+        (node.attrs.Label && String(node.attrs.Label)) ||
+        (node.attrs.label && String(node.attrs.label)) ||
+        node.body?.trim() ||
+        `Copy as ${format}`;
+      const cleanLabel = label.replace(/^Label:\s*/, "");
+      return `<button type="button" class="noma-export-button" data-format="${escapeAttr(format)}" data-target="${escapeAttr(target)}"${idAttr}>${escapeHtml(cleanLabel)}</button>`;
+    }
+
+    case "control": {
+      const ctype = node.attrs.type ? String(node.attrs.type) : "text";
+      const min = node.attrs.min ?? "";
+      const max = node.attrs.max ?? "";
+      const def = node.attrs.default ?? "";
+      const label = node.body ?? "";
+      return `<div class="noma-control"${idAttr}><label>${escapeHtml(label)}<input type="${escapeAttr(ctype)}" min="${escapeAttr(String(min))}" max="${escapeAttr(String(max))}" value="${escapeAttr(String(def))}" /></label></div>`;
+    }
 
     case "grid": {
       const cols = Number(node.attrs.columns ?? 2);

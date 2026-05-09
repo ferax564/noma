@@ -65,6 +65,18 @@ export interface ThematicBreakNode extends NodeBase {
   type: "thematic_break";
 }
 
+export type TableAlign = "left" | "center" | "right" | null;
+
+export interface TableNode extends NodeBase {
+  type: "table";
+  /** Header cells (one row). Inline markdown is preserved as plain strings. */
+  header: string[];
+  /** Per-column alignment from the separator row (`:---`, `:---:`, `---:`). */
+  align: TableAlign[];
+  /** Body rows, each with one entry per column. */
+  rows: string[][];
+}
+
 /**
  * Generic block directive — covers every typed semantic block (claim, evidence,
  * grid, card, plot, dataset, agent_task, ...). Renderers dispatch on `name`.
@@ -88,6 +100,7 @@ export type Node =
   | ListItemNode
   | QuoteNode
   | ThematicBreakNode
+  | TableNode
   | DirectiveNode;
 
 export type BlockNode = Exclude<Node, ListItemNode>;

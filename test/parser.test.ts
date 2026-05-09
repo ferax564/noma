@@ -4,7 +4,7 @@ import { parse } from "../src/parser.js";
 import { renderHtml } from "../src/renderer-html.js";
 import { renderLlm } from "../src/renderer-llm.js";
 import { validate } from "../src/validator.js";
-import type { DirectiveNode, SectionNode } from "../src/ast.js";
+import type { DirectiveNode, SectionNode, TableNode } from "../src/ast.js";
 
 test("frontmatter parsed into meta", () => {
   const doc = parse(`---\ntitle: Hello\nauthor: ferax564\n---\n\n# Body\n`);
@@ -76,6 +76,28 @@ test("validator catches plot without data", () => {
   const doc = parse(`::plot{title="x"}\n::\n`);
   const diagnostics = validate(doc);
   assert.ok(diagnostics.some((d) => d.code === "plot-missing-data"));
+});
+
+test("github-style tables parse and render", () => {
+  const src = `# T\n\n| A | B | C |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |\n| **a** | b | c |\n`;
+  const doc = parse(src);
+  const section = doc.children[0] as SectionNode;
+  const table = section.children[0] as TableNode;
+  assert.equal(table.type, "table");
+  assert.deepEqual(table.header, ["A", "B", "C"]);
+  assert.deepEqual(table.align, ["left", "center", "right"]);
+  assert.equal(table.rows.length, 2);
+  assert.equal(table.rows[1]?.[0], "**a**");
+
+  const html = renderHtml(doc);
+  assert.match(html, /<table class="noma-table">/);
+  assert.match(html, /<th style="text-align: center">B<\/th>/);
+  assert.match(html, /<td style="text-align: right">3<\/td>/);
+  assert.match(html, /<strong>a<\/strong>/);
+
+  const llm = renderLlm(doc);
+  assert.match(llm, /\| A\s+\| B\s+\| C\s+\|/);
+  assert.match(llm, /\| 1\s+\| 2\s+\| 3\s+\|/);
 });
 
 test("standalone HTML wraps with theme", () => {

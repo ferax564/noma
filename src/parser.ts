@@ -11,6 +11,8 @@ import type {
   ParagraphNode,
   QuoteNode,
   SectionNode,
+  TableAlign,
+  TableNode,
   ThematicBreakNode,
 } from "./ast.js";
 
@@ -28,6 +30,8 @@ const LIST_RE = /^([-*])\s+(.+)$/;
 const ORDERED_LIST_RE = /^(\d+)\.\s+(.+)$/;
 const QUOTE_RE = /^>\s?(.*)$/;
 const THEMATIC_BREAK_RE = /^(?:-{3,}|\*{3,}|_{3,})\s*$/;
+const TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
+const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/;
 
 const matchOnce = (re: RegExp, s: string): RegExpMatchArray | null => s.match(re);
 
@@ -139,6 +143,19 @@ function parseBlocks(
       continue;
     }
 
+    if (
+      TABLE_ROW_RE.test(line) &&
+      i + 1 < to &&
+      TABLE_SEPARATOR_RE.test(lines[i + 1] ?? "")
+    ) {
+      const result = parseTable(lines, i, to);
+      if (result) {
+        out.push(result.node);
+        i = result.next;
+        continue;
+      }
+    }
+
     if (THEMATIC_BREAK_RE.test(line)) {
       out.push({
         type: "thematic_break",
@@ -193,6 +210,7 @@ function parseBlocks(
     const startLine = i;
     while (i < to) {
       const cur = lines[i] ?? "";
+      const next = lines[i + 1] ?? "";
       if (
         cur.trim() === "" ||
         HEADING_RE.test(cur) ||
@@ -202,7 +220,8 @@ function parseBlocks(
         THEMATIC_BREAK_RE.test(cur) ||
         QUOTE_RE.test(cur) ||
         LIST_RE.test(cur) ||
-        ORDERED_LIST_RE.test(cur)
+        ORDERED_LIST_RE.test(cur) ||
+        (TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next))
       ) {
         break;
       }
@@ -251,6 +270,53 @@ function parseDirective(
   }
 
   return { node, next: close === -1 ? to : close + 1 };
+}
+
+function splitRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return trimmed.split("|").map((c) => c.trim());
+}
+
+function parseTable(
+  lines: string[],
+  i: number,
+  to: number,
+): { node: TableNode; next: number } | null {
+  const headerLine = lines[i] ?? "";
+  const sepLine = lines[i + 1] ?? "";
+  const header = splitRow(headerLine);
+  const sepCells = splitRow(sepLine);
+  if (sepCells.length !== header.length) return null;
+
+  const align: TableAlign[] = sepCells.map((c) => {
+    const left = c.startsWith(":");
+    const right = c.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return null;
+  });
+
+  const rows: string[][] = [];
+  let j = i + 2;
+  while (j < to && TABLE_ROW_RE.test(lines[j] ?? "")) {
+    const cells = splitRow(lines[j] ?? "");
+    while (cells.length < header.length) cells.push("");
+    if (cells.length > header.length) cells.length = header.length;
+    rows.push(cells);
+    j++;
+  }
+
+  return {
+    node: {
+      type: "table",
+      header,
+      align,
+      rows,
+      pos: { line: i + 1, column: 1 },
+    },
+    next: j,
+  };
 }
 
 function parseAttrs(raw: string): Attrs {

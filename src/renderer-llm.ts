@@ -47,6 +47,35 @@ function emit(node: Node, out: string[], depth: number): void {
       out.push("---");
       out.push("");
       return;
+    case "table": {
+      const widths = node.header.map((h, i) =>
+        Math.max(
+          h.length,
+          ...node.rows.map((r) => (r[i] ?? "").length),
+          3,
+        ),
+      );
+      const fmt = (cells: string[]) =>
+        "| " +
+        cells.map((c, i) => c.padEnd(widths[i] ?? c.length)).join(" | ") +
+        " |";
+      out.push(fmt(node.header));
+      out.push(
+        "| " +
+          widths.map((w, i) => {
+            const a = node.align[i];
+            const dashes = "-".repeat(Math.max(3, w));
+            if (a === "center") return `:${dashes.slice(0, -2)}-:`;
+            if (a === "right") return `${dashes.slice(0, -1)}:`;
+            if (a === "left") return `:${dashes.slice(0, -1)}`;
+            return dashes;
+          }).join(" | ") +
+          " |",
+      );
+      for (const row of node.rows) out.push(fmt(row));
+      out.push("");
+      return;
+    }
     case "directive":
       emitDirective(node, out, depth);
       return;
