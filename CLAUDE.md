@@ -14,21 +14,42 @@ Source files use the `.noma` extension. The full vision lives in `PLAN.md` — r
 ## Repo Layout
 
 ```
-src/                 TypeScript source for parser, AST, renderers, validator, CLI
-  ast.ts             Typed AST node definitions (single source of truth)
-  parser.ts          .noma → AST
-  renderer-html.ts   AST → semantic HTML
-  renderer-llm.ts    AST → deterministic LLM context
-  renderer-json.ts   AST → JSON
-  validator.ts       AST → diagnostics (duplicate IDs, broken refs, etc.)
-  cli.ts             `noma parse|render|check|export`
-bin/noma.mjs         Node CLI shim
-themes/default.css   HTML theme
-examples/            Demo .noma files (thesis, landing, mini-book chapter)
-docs/                Project docs, all written in .noma
-scripts/             Build/render helpers (puppeteer PDF, etc.)
-test/                Tests using node:test
-PLAN.md              Full product vision (do NOT delete)
+src/                       TypeScript source for parser, AST, renderers, validator, CLI
+  ast.ts                   Typed AST node definitions (single source of truth)
+  parser.ts                .noma → AST (hand-written recursive descent)
+  renderer-html.ts         AST → semantic HTML
+  renderer-llm.ts          AST → deterministic LLM context
+  renderer-json.ts         AST → JSON
+  validator.ts             AST → diagnostics (duplicate IDs, broken refs, etc.)
+  inline.ts                Inline markdown (bold, em, code, links) → HTML/plain
+  cli.ts                   `noma parse|render|check|export`
+bin/noma.mjs               Node CLI shim
+themes/default.css         HTML theme (also handles tables, export buttons, controls)
+examples/                  Demo .noma files
+  thesis.noma              Original ASML investment-thesis demo
+  landing.noma             Original landing-page demo
+  book-chapter.noma        Original book-chapter demo
+  agent-plan.noma          Demo 1 — Q3 roadmap decision artifact
+  tech-doc.noma            Demo 2 — CLI reference page
+  research-thesis.noma     Demo 3 — vertical-AI investment thesis
+  index.noma               Noma-rendered gallery (kept around as dist/_index-noma.html)
+docs/                      Project docs, all written in .noma
+  direction.noma           Canonical positioning (mirrors PLAN.md §23)
+  spec.noma                Block-type and AST reference
+  architecture.noma        Parser/renderer/validator design
+  agent-protocol.noma      Block-level patch operation schema
+  getting-started.noma     User-facing walkthrough
+site/                      Hand-crafted HTML landing page (NOT a .noma file)
+  index.html               Bespoke layout — copied to dist/index.html in build
+scripts/                   Build/render helpers
+  render-pdf.ts            Single HTML → PDF via Puppeteer
+  render-demo-pdfs.ts      All three demos → PDF (single browser instance)
+test/parser.test.ts        node:test suite
+.github/workflows/         CI
+  pages.yml                Typecheck + tests + build:site → GitHub Pages
+dist/                      Build output (gitignored). GH Pages deploys this.
+PLAN.md                    Full product vision (do NOT delete). §23 = revised direction. §24 = shipped tracker.
+CHANGELOG.md               Keep-a-Changelog format. Add to [Unreleased] as you ship.
 ```
 
 ## Block Syntax — Quick Reference
@@ -76,6 +97,19 @@ Attribute parsing supports:
 
 Inline content is **not** fully parsed at parser time — it is stored as a string and parsed lazily by renderers. This keeps the AST small and lets different renderers handle inline markup their own way (HTML escapes, LLM strips formatting).
 
+**GitHub-style tables** are detected by a pipe-row + separator-row pair (`| col | col |\n|---|---|`). Per-column alignment comes from the separator (`:---` left, `:---:` center, `---:` right). Inline markdown inside cells is preserved (rendered by the HTML renderer, stripped by LLM). The paragraph buffer also breaks on table starts — without this, an inline table after prose would get pulled into the paragraph.
+
+## Current AST Variants
+
+```
+document, section, paragraph, code, list, list_item, quote,
+thematic_break, table, directive
+```
+
+`directive` is the open-ended one — every typed semantic block (claim, evidence, grid, card, plot, dataset, agent_task, export_button, control, …) flows through `DirectiveNode` with a `name`. Renderers dispatch on `name`. Adding a *new directive name* needs no AST change — just a renderer case (or fall through to the generic `<div class="noma-block-{name}">`).
+
+Adding a *new node variant* (like `table`) is the heavier path: AST union update + parser case + renderer cases + tests.
+
 ## Adding a New Block Type — Checklist
 
 1. Add the node interface to `src/ast.ts` and extend the `Node` union.
@@ -100,12 +134,27 @@ Per `PLAN.md` § 17 — these are out of scope for the MVP. Don't be tempted:
 
 ```bash
 npm install
-npm run noma -- parse examples/thesis.noma
-npm run noma -- render examples/thesis.noma --to html --out dist/thesis.html
-npm run noma -- render examples/thesis.noma --to llm
-npm run noma -- check examples/thesis.noma
-npm run demo                 # full pipeline: HTML + PDF
+npm run noma -- parse examples/agent-plan.noma
+npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
+npm run noma -- render examples/agent-plan.noma --to llm
+npm run noma -- check examples/research-thesis.noma
+
+# render all examples and docs (HTML + LLM + JSON)
+npm run render:examples
+npm run render:docs
+
+# generate PDFs for the three demos (requires Puppeteer Chrome installed)
+npm run render:pdf:demos
+
+# full site build — examples + docs + landing copy + PDFs
+npm run build:site
 ```
+
+## GitHub Pages
+
+`.github/workflows/pages.yml` runs `tsc --noEmit && npm test && npm run build:site` on every push to `main` and publishes `dist/` to <https://ferax564.github.io/noma/>. The workflow installs Chrome via `npx puppeteer browsers install chrome` so PDFs build on the runner.
+
+The landing page at `dist/index.html` comes from the hand-crafted `site/index.html`, **not** from the .noma renderer. Marketing-style layout is the right place to use HTML directly — see `docs/direction.noma` for why escape hatches are allowed for artifacts of this kind. Demo and doc pages remain fully Noma-driven.
 
 ## Verification Before Shipping
 
@@ -113,7 +162,14 @@ Before claiming a feature done, run **all** of:
 ```bash
 npx tsc --noEmit
 npm test
-npm run render:examples
+npm run build:site
 ```
 
-If any fail, the feature is not done. No partial-success claims.
+If any fail, the feature is not done. No partial-success claims. The CI workflow runs the same gates, so a green local run should mean a green deploy.
+
+## Documentation Conventions
+
+- Add user-facing changes to `CHANGELOG.md` under `[Unreleased]`. Promote to a real version on tag.
+- When a §23 item ships, move it to PLAN.md §24 (the "shipped" tracker).
+- Keep `docs/direction.noma` in lockstep with PLAN.md §23 — they say the same thing in different forms.
+- Updates to block syntax must update `docs/spec.noma`.

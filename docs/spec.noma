@@ -76,6 +76,21 @@ Plain text outside any directive becomes a `paragraph` node. Inline markup is a 
 
 Standard Markdown: triple-backtick fenced code, `- ` bulleted lists, `1. ` ordered lists, `> ` block quotes, `---` thematic breaks.
 
+### Tables
+
+GitHub-style pipe tables. The parser detects a row of pipe-separated cells immediately followed by a separator row.
+
+```
+| Column A | Column B | Column C |
+| :------- | :------: | -------: |
+| left     | center   | right    |
+| **bold** | `code`   | [link](#)|
+```
+
+The separator row sets per-column alignment: `:---` left, `:---:` center, `---:` right, `---` default. Inline markdown inside cells is preserved — bold, italic, code, and links all render.
+
+The HTML renderer emits a real `<table class="noma-table">` with `text-align` styles per cell. The LLM renderer keeps the pipe format aligned to column widths so the output stays readable in agent context.
+
 ## Attribute grammar
 
 Attribute lists appear after a directive name in curly braces:
@@ -109,6 +124,16 @@ section, paragraph, list, list_item, quote, code, thematic_break
 hero, grid, card, callout, columns, tabs, accordion, sidebar, button
 ```
 
+### Artifact-action blocks
+
+```
+export_button, control
+```
+
+`::export_button{format="prompt|markdown|json|llm" target="..."}` renders as a real `<button>` with format-keyed colors. The body (or `Label:` line) becomes the button label. Agents and end-users use these to round-trip artifact state back into a prompt or to download the underlying source.
+
+`::control{type="slider|number|text" min=... max=... default=...}` renders a labeled input. First-class support for the interactive-artifact direction described in PLAN.md §23.9.
+
 ### Research and reasoning
 
 ```
@@ -136,18 +161,19 @@ v0.1 ships a working renderer for every layout, research, and agent block listed
 Every node satisfies `Node` from `src/ast.ts`. The discriminated union has the following variants:
 
 ```
-document     — root, holds meta + children
-section      — id, level, title, children
-paragraph    — content (string with inline markup)
-code         — lang, content
-list         — ordered, items[]
-list_item    — content
-quote        — content
+document       — root, holds meta + children
+section        — id, level, title, children
+paragraph      — content (string with inline markup)
+code           — lang, content
+list           — ordered, items[]
+list_item      — content
+quote          — content
 thematic_break
-directive    — name, attrs, children, body?
+table          — header[], align[] (left|center|right|null), rows[][]
+directive      — name, attrs, children, body?
 ```
 
-Renderers exhaustively switch on `type`. Adding a new variant is a typed change: every renderer fails to compile until the new case is handled.
+Renderers exhaustively switch on `type`. Adding a new variant is a typed change: every renderer fails to compile until the new case is handled. Adding a new *directive name* (e.g., `export_button`, `control`) needs no AST change — only a renderer case.
 
 ## Validator rules
 
@@ -165,14 +191,14 @@ Optional rules:
 
 ## Render targets (v0.1)
 
-| Target | Status     | Notes                                          |
-|--------|------------|------------------------------------------------|
-| `html` | ✅ stable  | Self-contained, semantic, with print stylesheet|
-| `llm`  | ✅ stable  | Deterministic, LLM-friendly text               |
-| `json` | ✅ stable  | Full AST                                       |
-| `pdf`  | ⚙ via puppeteer (HTML → Chromium print)        |
-| `epub` | ⏳ planned |                                                |
-| `slides` | ⏳ planned |                                                |
+| Target   | Status     | Notes                                                   |
+|----------|------------|---------------------------------------------------------|
+| `html`   | stable     | Self-contained, semantic, with print stylesheet         |
+| `llm`    | stable     | Deterministic, LLM-friendly text                        |
+| `json`   | stable     | Full AST                                                |
+| `pdf`    | shipped    | Puppeteer (HTML → Chromium print). See `npm run render:pdf:demos` |
+| `epub`   | planned    |                                                         |
+| `slides` | planned    |                                                         |
 
 ## Compatibility promises (v0.1)
 

@@ -1236,3 +1236,60 @@ Launch line:
 > agent-editable documents. It keeps the source readable like Markdown, renders
 > artifacts as richly as HTML, and gives agents a stable structure for safe
 > collaboration.**
+
+## 24. Shipped Tracker
+
+This section closes the loop between the plan and the code. As §23 items
+ship, they move here with a one-line note on what landed. Use `git log` for
+commits; this section is for the bird's-eye picture.
+
+### 24.1 v0.1.0 — initial release (2026-05-09)
+
+Covers §17 "Must have" entirely:
+
+- ✅ `.noma` parser, typed AST, CLI, HTML / LLM / JSON renderers.
+- ✅ Validator (duplicate IDs, broken refs, plot/figure rules).
+- ✅ ~15 working block types (claim/evidence/risk/decision/grid/card/
+  callout/plot/dataset/agent_task/figure/citation/hero/button/quote).
+- ✅ Three example documents (thesis, landing, book chapter).
+- ✅ Four docs in Noma (spec, getting started, agent protocol, architecture).
+- ✅ Puppeteer-based PDF script for one document.
+
+### 24.2 Post-MVP refinement (2026-05-09)
+
+The §23 revised direction landed alongside three production-grade demos
+that prove the three-layer model end-to-end:
+
+- ✅ §23.1–23.3 — three-layer model and revised positioning written down
+  in `docs/direction.noma` and PLAN.md §23.
+- ✅ §23.7 pillar 2 — `::export_button{format=...}` directive renders as
+  a real `<button>` (format-keyed colors). Pillar 4 — first interactive
+  block with `::control{type=slider ...}`.
+- ✅ §23.8 — artifact-first rendering: three demos (`agent-plan`,
+  `tech-doc`, `research-thesis`) shipped as `.noma` source plus rendered
+  HTML, PDF, LLM, JSON.
+- ✅ §23.10 — copy/export buttons land in the agent-plan and
+  research-thesis demos.
+- ✅ §23.15 — three required demos all ship, all render to all four
+  targets, all link from the landing page.
+- ✅ Markdown-compatible prose pillar (§23.7 #1) — extended to
+  GitHub-style tables (`TableNode` AST variant; HTML `<table>` with
+  per-column alignment; LLM keeps pipe format).
+- ✅ Public landing page live at <https://ferax564.github.io/noma/>,
+  deployed by GitHub Actions on every push to `main`.
+
+### 24.3 Still ahead (priority for next milestone)
+
+These remain the gating items before claiming v0.2:
+
+- ⏳ §23.11 — agent patch protocol (replace_block / add_block /
+  update_attribute) actually wired into the CLI as `noma patch`.
+- ⏳ §23.12 — claims-without-evidence and stale-citation validation
+  promoted from optional to default.
+- ⏳ §23.13 — theme variant system (`{variant="important"}`) and at
+  least one alternate theme.
+- ⏳ §23.14 — `::html` / `::svg` escape hatches with validator-enforced
+  artifact-mode-only restrictions.
+- ⏳ Real chart rendering for `::plot` (currently a placeholder SVG).
+- ⏳ Book manifest (`noma.yml`) + multi-file project rendering.
+- ⏳ VS Code syntax highlighting extension.

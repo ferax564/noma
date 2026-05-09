@@ -1,6 +1,6 @@
 # Noma
 
-> A readable document format for humans and agents.
+> **Readable source for beautiful agent artifacts.**
 
 Noma is a plain-text format for books, docs, research, dashboards, and webpages. It is:
 
@@ -14,9 +14,13 @@ Noma is a plain-text format for books, docs, research, dashboards, and webpages.
 .noma  →  typed AST  →  HTML / PDF / JSON / LLM context
 ```
 
+**Live site:** <https://ferax564.github.io/noma/> — landing page, demo gallery, rendered HTML/PDF/LLM/JSON for every example, full docs.
+
 ## Why
 
-Markdown is excellent for prose, weak for grids, cards, claims, plots, citations, and stable agent edits. HTML is the opposite. Noma sits between them: a small directive syntax that compiles to clean semantic HTML, prints cleanly to PDF, and exports a deterministic LLM-friendly form.
+Markdown is excellent for prose, weak for grids, cards, claims, plots, citations, and stable agent edits. HTML is the opposite — great as a render target, unpleasant as long-term source. Noma sits between them: a small directive syntax that compiles to clean semantic HTML, prints cleanly to PDF, exports a deterministic LLM-friendly form, and gives agents stable block IDs they can patch without rewriting whole files.
+
+See [`docs/direction.noma`](docs/direction.noma) for the full positioning and [PLAN.md §23](PLAN.md) for the three-layer model and the central design test every feature must pass.
 
 ## Hello, Noma
 
@@ -54,25 +58,46 @@ That's the whole language — directive blocks (`::name{attrs} ... ::`), Markdow
 git clone https://github.com/ferax564/noma.git
 cd noma
 npm install
-npm run noma -- render examples/thesis.noma --to html --out dist/thesis.html
-npm run noma -- render examples/thesis.noma --to llm
-npm run noma -- check  examples/thesis.noma
-npm run demo  # renders all examples + produces a PDF
+
+# render one demo to HTML / LLM / JSON
+npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
+npm run noma -- render examples/agent-plan.noma --to llm
+npm run noma -- render examples/agent-plan.noma --to json
+
+# validate a document
+npm run noma -- check examples/research-thesis.noma
+
+# build the full site (examples + docs + landing page + demo PDFs)
+npm run build:site
+open dist/index.html
 ```
 
-## What ships in v0.1
+## Demos
 
-- `@noma/parser` — hand-written, no parser-combinator dependency.
+Three artifacts that exercise the full block surface end-to-end. Each renders to HTML, PDF, LLM context, and JSON AST from a single `.noma` source.
+
+| Demo | What it shows | Live |
+| ---- | ------------- | ---- |
+| **Agent planning artifact** ([source](examples/agent-plan.noma)) | Q3 roadmap decision — options, decision matrix, claims/evidence/risks, agent tasks, copy-as-prompt buttons | [HTML](https://ferax564.github.io/noma/examples/agent-plan.html) · [PDF](https://ferax564.github.io/noma/examples/agent-plan.pdf) · [LLM](https://ferax564.github.io/noma/examples/agent-plan.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/agent-plan.json) |
+| **Technical documentation** ([source](examples/tech-doc.noma)) | CLI reference page — tabs, callouts, code blocks, architecture diagram, cross-links | [HTML](https://ferax564.github.io/noma/examples/tech-doc.html) · [PDF](https://ferax564.github.io/noma/examples/tech-doc.pdf) · [LLM](https://ferax564.github.io/noma/examples/tech-doc.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/tech-doc.json) |
+| **Investment thesis** ([source](examples/research-thesis.noma)) | Vertical-AI thesis — claims with confidence scores, counterevidence, risks, datasets, plots, quarterly review tasks | [HTML](https://ferax564.github.io/noma/examples/research-thesis.html) · [PDF](https://ferax564.github.io/noma/examples/research-thesis.pdf) · [LLM](https://ferax564.github.io/noma/examples/research-thesis.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/research-thesis.json) |
+
+## What ships today
+
+- `@noma/parser` — hand-written, no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown.
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively switched everywhere.
-- HTML renderer with a small default CSS theme and a print stylesheet.
+- HTML renderer with a small default CSS theme and a print stylesheet. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, plot placeholders, agent tasks, export buttons, controls, and tables.
 - LLM renderer — deterministic plain-text output for context windows.
 - JSON renderer — full AST export.
 - Validator — duplicate IDs, broken references, plots without data, figures without alt text.
 - CLI — `noma parse | render | check | export`.
-- 3 working examples: investment thesis, landing page, mini-book chapter.
-- 4 docs (written in Noma): spec, getting started, agent patch protocol, architecture.
+- Six examples: three new demos (agent-plan, tech-doc, research-thesis) plus the original thesis, landing, and mini-book chapter.
+- Five docs (all written in Noma): direction, spec, getting started, agent patch protocol, architecture.
+- Hand-crafted HTML landing page (`site/index.html`).
+- PDF demo exports via Puppeteer.
+- GitHub Pages deployment on every push to `main`.
 
-See [PLAN.md](PLAN.md) for the long-term vision and [docs/spec.noma](docs/spec.noma) for the format specification.
+See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/direction.noma) for the positioning, [`docs/spec.noma`](docs/spec.noma) for the format spec, and [`CHANGELOG.md`](CHANGELOG.md) for what changed when.
 
 ## Status
 
