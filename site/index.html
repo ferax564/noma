@@ -90,15 +90,22 @@
   }
   nav.top .links {
     display: flex;
+    align-items: center;
     gap: 22px;
     font-size: 0.92rem;
+    line-height: 1;
   }
-  nav.top .links a { color: var(--muted); }
+  nav.top .links a {
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+  }
   nav.top .links a:hover { color: var(--fg); text-decoration: none; }
   nav.top .gh {
     color: var(--fg);
     border: 1px solid var(--rule);
-    padding: 6px 12px;
+    padding: 0 14px;
     border-radius: 999px;
     background: var(--card-bg);
   }
@@ -563,7 +570,7 @@
     border-radius: 5px;
     background: linear-gradient(135deg, var(--accent), var(--claim));
   }
-  footer .links { display: flex; gap: 20px; }
+  footer .links { display: flex; align-items: center; gap: 20px; }
   footer .links a { color: var(--muted); }
 
   /* Code highlight (inline) */
