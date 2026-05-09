@@ -27,15 +27,16 @@ jobs:
 
       - run: npm ci
 
+      - name: Install Chrome for Puppeteer
+        run: npx puppeteer browsers install chrome
+
       - run: npx tsc --noEmit
       - run: npm test
 
-      - name: Render examples and docs
+      - name: Build site (render HTML, copy landing, generate PDFs)
         run: |
           mkdir -p dist/examples dist/docs
-          npm run render:examples
-          npm run render:docs
-          npx tsx src/cli.ts render examples/index.noma --to html --out dist/index.html
+          npm run build:site
 
       - uses: actions/configure-pages@v5
 
