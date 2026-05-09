@@ -975,3 +975,264 @@ Then dogfood it inside HoldNav and technical documentation workflows.
 The first milestone should be:
 
 > A `.noma` file that a human enjoys reading, an agent can safely edit, and a renderer can turn into a beautiful webpage, PDF, book, or LLM context.
+
+## 23. Revised Final Direction (post-MVP refinement)
+
+This section refines and supersedes the earlier positioning where they conflict.
+Sections 1–22 still hold; this section sharpens the *why* and locks the *what*.
+
+### 23.1 Core Reframe
+
+Noma should not be positioned as "better Markdown" or "HTML replacement."
+
+The stronger thesis is:
+
+> **Noma is readable source for beautiful agent artifacts.**
+
+Markdown is excellent as lightweight text, but too weak for rich artifacts.
+HTML is excellent as a rendering target, but too noisy and unpleasant as long-term source.
+
+Noma is the missing middle:
+
+```txt
+Readable source → Typed document AST → Beautiful HTML / PDF / Book / Slides / LLM Context
+```
+
+### 23.2 The Three-Layer Model
+
+Noma explicitly separates three concerns that Markdown and HTML often mix.
+
+**1. Source layer** — what humans and agents edit. Readable plain text, clean Git diffs,
+stable over time, easy to patch by agents at the block level, structured enough for
+validation, expressive enough for layout, data, charts, reasoning.
+
+**2. Artifact layer** — what humans consume. Primary target is **standalone HTML**:
+a single shareable file with visual hierarchy, grids, cards, tabs, tables, SVG
+diagrams, charts, copy buttons, mobile-responsive layout, collapsible sections.
+HTML is not the enemy. Hand-authored HTML *as source of truth* is.
+
+**3. Agent layer** — what AI systems use. Deterministic LLM context export — more
+structured than Markdown, less noisy than HTML.
+
+### 23.3 Final Positioning
+
+Primary:
+
+> **Noma is a plain-text format for creating beautiful, structured documents
+> with humans and AI agents.**
+
+Sharper:
+
+> **Write in Noma. Render to HTML. Collaborate with agents.**
+
+Or:
+
+> **Readable source. Beautiful artifacts. Agent-safe edits.**
+
+### 23.4 The Central Design Test
+
+> A `.noma` file should be **readable enough to edit manually**, **structured
+> enough for agents to modify safely**, and **rich enough to render into an
+> artifact someone actually wants to read**.
+
+Every feature must pass three questions:
+
+1. Can a human understand this in raw text?
+2. Can an agent edit this safely without destroying the document?
+3. Can it render into an artifact people actually want to read?
+
+If the answer is not yes to all three, the feature does not belong in core Noma.
+
+### 23.5 Why Noma Beats Markdown
+
+| Need                   | Markdown                | Noma                 |
+| ---------------------- | ----------------------: | -------------------: |
+| Plain-text readability | Excellent               | Excellent            |
+| Git diffs              | Excellent               | Excellent            |
+| Grids/cards/tabs       | Poor                    | Native               |
+| Charts/plots           | Poor                    | Native               |
+| Semantic blocks        | Weak                    | Native               |
+| Claims/evidence/risks  | Ad hoc                  | Native               |
+| Agent patching         | Weak                    | Native block IDs     |
+| Validation             | Weak                    | Built-in             |
+| Book scale             | Possible but fragmented | Native project model |
+| Beautiful web output   | Needs tooling           | Built-in             |
+| LLM context export     | Basic                   | Structured           |
+
+### 23.6 Why Noma Beats Raw HTML
+
+| Need                      | Raw HTML   | Noma                   |
+| ------------------------- | ---------: | ---------------------: |
+| Browser rendering         | Excellent  | Excellent via renderer |
+| Human source readability  | Poor       | Excellent              |
+| Long-term maintainability | Poor       | Strong                 |
+| Git diffs                 | Noisy      | Clean                  |
+| Book authoring            | Awkward    | Native                 |
+| PDF/EPUB export           | Awkward    | Native targets         |
+| Semantic reasoning blocks | Ad hoc     | Native                 |
+| Agent-safe edits          | Fragile    | Block-level operations |
+| LLM export                | Noisy      | Clean                  |
+| Styling consistency       | Manual CSS | Themes                 |
+| Validation                | Custom     | Built-in               |
+| Reusable components       | Possible   | Declarative            |
+
+### 23.7 Required v1 Capabilities (Five Pillars)
+
+**1. Markdown-compatible prose** — normal `# headings`, `**bold**`, lists, links,
+fenced code work without ceremony. Reduces adoption friction.
+
+**2. Directive blocks** — `::type{key="value"} ... ::` as the universal extension
+mechanism. Examples: `callout`, `claim`, `evidence`, `decision`.
+
+**3. Layout blocks** — `grid`, `columns`, `card`, `tabs`, `accordion`, `sidebar`,
+`hero`, `section`, `callout`. Semantic layout, not CSS.
+
+**4. Data + visualization blocks** — `dataset`, `plot`, `metric`, `table`. HTML
+renderer turns these interactive; PDF renders static; LLM renderer summarizes
+data + intent.
+
+**5. Agent collaboration blocks** — `agent_task`, `instruction`, `review`, `todo`,
+`decision`, `claim`, `evidence`, `risk`, `assumption`, `open_question`,
+`change_request`. Agent-native from day one.
+
+### 23.8 Artifact-First Rendering
+
+Noma renders **artifacts**, not just documents. A single `.noma` source can become:
+
+- a report, spec, research memo, dashboard, landing page, prototype, code review
+  explainer, book chapter, project plan, decision record, custom mini-tool.
+
+Command:
+
+```bash
+noma artifact pr-review.noma --standalone
+```
+
+Output: a single `.html` file that opens locally or uploads anywhere.
+
+### 23.9 Interactive Artifact Blocks (later)
+
+Declarative interaction so agents can produce useful temporary tools without
+becoming a full app framework:
+
+```noma
+::control{id="growth-rate" type="slider" min=0 max=20 default=8}
+label: Growth rate
+unit: %
+::
+
+::computed_plot{id="projection" depends_on="growth-rate" type="line"}
+formula: revenue * (1 + growth-rate / 100) ^ year
+title: Revenue Projection
+::
+```
+
+### 23.10 Copy/Export Buttons as First-Class
+
+Two-way collaboration: HTML artifacts can feed back into the agent.
+
+```noma
+::export_button{format="prompt" target="review-notes"}
+Label: Copy as prompt for agent
+::
+
+::export_button{format="markdown" target="summary"}
+Label: Copy summary
+::
+```
+
+### 23.11 Agent Patch Protocol — Operations
+
+Confirmed operation set (extends §10):
+
+```txt
+add_block
+replace_block
+delete_block
+move_block
+update_attribute
+add_evidence
+add_comment
+resolve_comment
+rename_id
+```
+
+### 23.12 Validation as Differentiator
+
+Beyond §11, the validator should also catch: missing alt text, claims without
+evidence, risks without owner, decisions without status, agent tasks without
+scope, stale citations.
+
+### 23.13 Themes Instead of Inline Styling
+
+Source must avoid visual clutter. Bad:
+
+```noma
+::card{padding="24px" border="1px solid #ddd" shadow="large" radius="12px"}
+::
+```
+
+Good:
+
+```noma
+::card{variant="important"}
+::
+```
+
+Themes decide how `important` renders. Preserves readability; enforces consistency.
+
+### 23.14 Escape Hatches
+
+Allowed but not default. `::html`, `::svg`, `::script{runtime="browser"}`. Rules:
+
+- allowed only in artifact mode
+- excluded or summarized in LLM mode
+- flagged by validator if unsafe
+- disabled by default in trusted publishing contexts
+
+### 23.15 Updated MVP Demos
+
+Three demos prove Noma beats Markdown *and* HTML for the same workflow. All three
+should ship as `.noma` source + rendered HTML + rendered LLM context, side by side.
+
+**Demo 1 — Agent Planning Artifact**
+summary, decision matrix, grid of options, risks, timeline, agent tasks,
+copy-as-prompt button.
+
+**Demo 2 — Technical Documentation Page**
+API reference, architecture diagram, code snippets, warnings, examples, tabs,
+cross-links.
+
+**Demo 3 — Research / Investment Thesis**
+claims, evidence, risks, charts, tables, citations, quarterly review task, LLM export.
+
+### 23.16 Updated Four-Week Plan
+
+Replaces §18 where they conflict.
+
+**Week 1 — Source and AST.** parser, directive blocks, frontmatter, typed AST,
+block IDs, JSON export, basic validation.
+
+**Week 2 — Artifact Renderer.** standalone HTML, default theme, cards/grids/tabs/
+callouts/tables/code blocks, basic charts, mobile responsive.
+
+**Week 3 — Agent Renderer + Patch Protocol.** LLM context renderer, patch schema,
+`replace_block` / `add_block` / `update_attribute`, claim/evidence/risk rendering,
+copy-as-prompt HTML button.
+
+**Week 4 — Public Demo + OSS Release.** GitHub repo, README, spec draft,
+comparison page, three demo artifacts, VS Code highlighting, examples gallery,
+contribution guide.
+
+Launch line:
+
+> Noma is readable source for beautiful agent artifacts. Write structured
+> documents in plain text, render them to HTML/PDF/LLM context, and let agents
+> edit them safely.
+
+### 23.17 Final Product Definition
+
+> **Noma is a plain-text source format for building beautiful, structured,
+> agent-editable documents. It keeps the source readable like Markdown, renders
+> artifacts as richly as HTML, and gives agents a stable structure for safe
+> collaboration.**

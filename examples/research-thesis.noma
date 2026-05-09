@@ -1,0 +1,200 @@
+---
+title: Vertical AI Agents — Investment Thesis
+author: ferax564
+date: 2026-05-09
+tags: [ai, vertical-saas, thesis, research]
+---
+
+# Vertical AI Agents — Investment Thesis
+
+::summary
+Horizontal LLM platforms commoditize fast. The durable value sits in
+**vertical agents** that own a workflow end-to-end inside a single
+domain — legal review, claims processing, financial-statement audit,
+clinical documentation. This thesis lays out the structural reasons,
+the supporting evidence, the leading indicators to watch, and the
+disqualifying conditions that would invalidate it.
+::
+
+## Thesis at a glance
+
+::grid{columns=2}
+:::card{title="Bull Case" icon="up"}
+Domain-specific agents win on data depth, workflow integration, and
+liability ownership. Each vertical can support 1–3 category leaders
+with $500M+ ARR within 5 years.
+:::
+
+:::card{title="Bear Case" icon="down"}
+Frontier model gains compress the gap. A horizontal model with strong
+tool use plus a thin vertical wrapper captures most of the value.
+Vertical agents become features, not companies.
+:::
+::
+
+## Core claims
+
+::claim{id="claim-data-moat" confidence=0.78}
+Vertical agents accumulate proprietary workflow data — corrections,
+edge-case patterns, customer-specific schemas — that horizontal agents
+cannot replicate by scaling base-model capability alone.
+::
+
+::evidence{for="claim-data-moat" source="harvey-public-disclosures-2026q1"}
+Harvey reports that 71% of model improvements in the last 12 months
+came from fine-tuning on proprietary corrections collected in customer
+deployments — not from base-model upgrades.
+::
+
+::evidence{for="claim-data-moat" source="ambience-customer-case-2026"}
+Ambience Healthcare's clinical-documentation agent improved acceptance
+rates from 62% to 89% after twelve months in production at a single
+hospital network — the gain was specific to that network's documentation
+conventions and did not transfer to the open-source baseline.
+::
+
+::claim{id="claim-liability-moat" confidence=0.71}
+In regulated verticals, the agent vendor must own legal liability for
+agent output. This forces a stack of guarantees (audit logs, escalation,
+human-in-loop sign-off, SOC 2/HIPAA) that takes years to build and is
+adversarial to horizontal generalists.
+::
+
+::evidence{for="claim-liability-moat" source="legal-tech-procurement-survey-2026"}
+89% of in-house legal teams surveyed in Q1 2026 said "vendor accepts
+indemnification for agent output" was a hard requirement for production
+deployment. Only 4 vendors met the bar; all 4 are vertical specialists.
+::
+
+::claim{id="claim-workflow-stickiness" confidence=0.74}
+The integration surface — clearinghouses, EHRs, court filing systems,
+practice-management software — is a structural moat, not a feature gap.
+Each integration is custom, slow, and high-trust.
+::
+
+::counterevidence{for="claim-workflow-stickiness" source="model-context-protocol-traction-2026"}
+The Model Context Protocol (MCP) is reducing per-integration cost by an
+order of magnitude in some verticals. If MCP-style adapters become
+universal, the integration moat compresses faster than the data moat does.
+::
+
+## Risks
+
+::risk{id="risk-frontier-leap" severity="high"}
+A frontier-model capability leap (e.g., GPT-6-class reasoning + native
+long-horizon tool use) could collapse the workflow gap. Most vulnerable
+verticals: those where workflow complexity comes from reasoning chains
+rather than data integration (e.g., research synthesis).
+::
+
+::risk{id="risk-platform-shift" severity="medium"}
+If the major model providers ship vertical-agent SDKs with
+revenue-share models, distribution shifts toward platform-bundled
+offerings. Mitigation: invest in customer ownership of data
+(BYO-storage, on-prem options).
+::
+
+::risk{id="risk-regulatory-freeze" severity="medium"}
+EU AI Act high-risk classification or US sector-specific rules (FDA,
+SEC) could freeze deployments for 12–18 months in the affected
+verticals. This *helps* incumbents and *helps* well-capitalized
+vendors with compliance teams — and disproportionately hurts startups.
+::
+
+::risk{id="risk-talent-concentration" severity="low"}
+Top vertical talent is concentrated in 4–6 startups per category.
+Acquihire risk is real but bounded; not a thesis-breaker.
+::
+
+## What would invalidate the thesis
+
+::open_question{id="invalidator-frontier-tool-use"}
+A frontier model that achieves >85% acceptance on a high-stakes
+vertical workflow (clinical docs, deposition review, SEC filing prep)
+without any vertical-specific tuning. If this happens within 18 months,
+the data moat is weaker than claimed and `confidence` on
+`claim-data-moat` should drop below 0.5.
+::
+
+::open_question{id="invalidator-mcp-universal"}
+Universal MCP-style adapters that reduce vertical integration cost from
+weeks to hours across at least three regulated verticals. If this ships
+broadly within 12 months, `claim-workflow-stickiness` confidence should
+drop below 0.5.
+::
+
+## Quantitative backdrop
+
+::dataset{id="vertical-ai-funding"}
+schema:
+  vertical: string
+  funded_companies: number
+  total_funding_usd_m: number
+  median_arr_growth_yoy: number
+rows:
+  - [legal, 14, 1280, 3.4]
+  - [healthcare, 22, 2650, 2.9]
+  - [financial-audit, 9, 540, 4.1]
+  - [insurance, 11, 720, 3.6]
+  - [construction, 6, 290, 2.7]
+::
+
+::plot{id="vertical-ai-arr-plot" dataset="vertical-ai-funding" type="bar" x="vertical" y="median_arr_growth_yoy" title="Median ARR YoY growth by vertical (2026)"}
+::
+
+::plot{id="vertical-ai-funding-plot" dataset="vertical-ai-funding" type="line" x="vertical" y="total_funding_usd_m" title="Total funding raised by vertical ($M)"}
+::
+
+## Watchlist (positions, not recommendations)
+
+| Vertical          | Public proxy        | Private leader     | Note                                    |
+| ----------------- | ------------------- | ------------------ | --------------------------------------- |
+| Legal             | RELX, Thomson Reuters | Harvey, EvenUp   | Watch incumbents' agent rollouts        |
+| Clinical docs     | —                   | Abridge, Ambience  | Acceptance rate is the leading metric   |
+| Financial audit   | Intuit, S&P         | Numeric, Trullion  | Audit-trail UX is the moat              |
+| Insurance claims  | Verisk              | Sixfold, EvolutionIQ | Loss-ratio impact is the proof point  |
+
+## Quarterly review task
+
+::agent_task{id="quarterly-thesis-review"}
+Every quarter (Q1: Mar 31, Q2: Jun 30, Q3: Sep 30, Q4: Dec 31), walk this
+document and:
+
+1. For each `claim`, check whether new public evidence supports or
+   contradicts. If material, add a fresh `evidence` or `counterevidence`
+   block and adjust the `confidence` attribute.
+2. For each `risk`, check whether the leading indicators have moved.
+   Adjust `severity` if warranted.
+3. For each `open_question` invalidator, check whether the trigger
+   condition has been met. If yes, escalate to a `decision` block
+   recommending exit or rebalance.
+4. Do not delete prior evidence. Append, don't overwrite — the audit
+   trail is the value.
+::
+
+## Stale-evidence guard
+
+::agent_task{id="stale-evidence-scan"}
+Every two weeks, scan all `evidence` blocks for `source` attributes
+older than 90 days. Propose (do not apply) a `replace_block` patch for
+each, citing the latest available source.
+::
+
+## Export
+
+::export_button{format="prompt" target="document"}
+Label: Copy as second-opinion review prompt
+::
+
+::export_button{format="llm" target="document"}
+Label: Copy structured LLM context
+::
+
+::export_button{format="markdown" target="summary"}
+Label: Copy summary as Markdown
+::
+
+> A thesis is only useful if you can revisit it. The blocks above are
+> structured so a future-you (or a future agent acting on your behalf)
+> can update only what changed, leave the rest alone, and produce a
+> clean Git diff that shows exactly which beliefs moved.

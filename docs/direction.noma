@@ -1,0 +1,223 @@
+---
+title: Noma — Direction and Positioning
+author: ferax564
+date: 2026-05-09
+tags: [docs, positioning, vision]
+---
+
+# Noma — Direction and Positioning
+
+::summary
+This document is the canonical statement of what Noma is, what it is not,
+and how to evaluate every proposed feature. It refines the original vision
+in `PLAN.md` with the post-MVP positioning (PLAN.md §23). Everything here
+is itself written in Noma — the rendered HTML version is what you'd send
+to a collaborator who has never heard of the project.
+::
+
+## The one-liner
+
+::callout{tone="tip"}
+**Noma is readable source for beautiful agent artifacts.**
+::
+
+## The longer version
+
+> Noma is a plain-text source format for building beautiful, structured,
+> agent-editable documents. It keeps the source readable like Markdown,
+> renders artifacts as richly as HTML, and gives agents a stable structure
+> for safe collaboration.
+
+## The three-layer model
+
+::grid{columns=3}
+:::card{title="1 · Source" icon="source"}
+What humans and agents edit. Plain-text, clean Git diffs, stable over
+time, easy to patch at the block level.
+:::
+
+:::card{title="2 · Artifact" icon="artifact"}
+What humans consume. Standalone HTML by default — visual hierarchy,
+grids, cards, charts, copy buttons, mobile-responsive.
+:::
+
+:::card{title="3 · Agent" icon="agent"}
+What AI systems use. Deterministic LLM context — more structured than
+Markdown, less noisy than HTML.
+:::
+::
+
+## The central design test
+
+::decision{id="design-test" status="accepted"}
+Every feature must answer **yes** to all three:
+
+1. Can a human understand this in raw text?
+2. Can an agent edit this safely without destroying the document?
+3. Can it render into an artifact people actually want to read?
+
+If any answer is "no", the feature does not belong in core Noma.
+::
+
+## Why not Markdown
+
+::claim{id="claim-vs-markdown" confidence=0.85}
+Markdown is excellent as lightweight prose, but it is too weak for
+modern AI-era documents. It has no native layout, no semantic blocks,
+no validation, no agent patch model, and no clean LLM export.
+::
+
+| Need                   | Markdown                | Noma                 |
+| ---------------------- | ----------------------- | -------------------- |
+| Plain-text readability | Excellent               | Excellent            |
+| Git diffs              | Excellent               | Excellent            |
+| Grids/cards/tabs       | Poor                    | Native               |
+| Charts/plots           | Poor                    | Native               |
+| Semantic blocks        | Weak                    | Native               |
+| Claims/evidence/risks  | Ad hoc                  | Native               |
+| Agent patching         | Weak                    | Native block IDs     |
+| Validation             | Weak                    | Built-in             |
+| Book scale             | Possible but fragmented | Native project model |
+| Beautiful web output   | Needs tooling           | Built-in             |
+| LLM context export     | Basic                   | Structured           |
+
+## Why not raw HTML
+
+::claim{id="claim-vs-html" confidence=0.88}
+HTML is excellent as a rendering target, but unpleasant as long-term
+source. It is noisy in Git diffs, fragile under agent edits, awkward
+for book-scale authoring, and requires custom tooling for every
+validation rule.
+::
+
+| Need                      | Raw HTML   | Noma                   |
+| ------------------------- | ---------- | ---------------------- |
+| Browser rendering         | Excellent  | Excellent via renderer |
+| Human source readability  | Poor       | Excellent              |
+| Long-term maintainability | Poor       | Strong                 |
+| Git diffs                 | Noisy      | Clean                  |
+| Book authoring            | Awkward    | Native                 |
+| PDF/EPUB export           | Awkward    | Native targets         |
+| Semantic reasoning blocks | Ad hoc     | Native                 |
+| Agent-safe edits          | Fragile    | Block-level operations |
+| LLM export                | Noisy      | Clean                  |
+| Styling consistency       | Manual CSS | Themes                 |
+| Validation                | Custom     | Built-in               |
+| Reusable components       | Possible   | Declarative            |
+
+## Five v1 pillars
+
+::grid{columns=2}
+:::card{title="1 · Markdown-compatible prose"}
+`# headings`, `**bold**`, lists, links, fenced code work without
+ceremony. Reduces adoption friction.
+:::
+
+:::card{title="2 · Directive blocks"}
+`::type{key="value"} ... ::` is the universal extension mechanism.
+Examples: `callout`, `claim`, `evidence`, `decision`.
+:::
+
+:::card{title="3 · Layout blocks"}
+`grid`, `columns`, `card`, `tabs`, `accordion`, `sidebar`, `hero`,
+`section`, `callout`. Semantic layout, not CSS.
+:::
+
+:::card{title="4 · Data + visualization"}
+`dataset`, `plot`, `metric`, `table`. HTML renderer makes them
+interactive; PDF static; LLM summarizes.
+:::
+::
+
+::card{title="5 · Agent collaboration"}
+`agent_task`, `instruction`, `review`, `todo`, `decision`, `claim`,
+`evidence`, `risk`, `assumption`, `open_question`, `change_request`.
+Agent-native from day one.
+::
+
+## Artifact-first rendering
+
+A `.noma` source can render into:
+
+- a report
+- a spec
+- a research memo
+- a dashboard
+- a landing page
+- a prototype
+- a code-review explainer
+- a book chapter
+- a project plan
+- a decision record
+- a custom mini-tool
+
+```bash
+noma artifact pr-review.noma --standalone
+```
+
+Output: a single `.html` file that opens locally or uploads anywhere.
+
+## Themes, not inline styling
+
+::callout{tone="warning"}
+**Avoid:** `::card{padding="24px" border="1px solid #ddd" shadow="large"}`
+The source becomes unreadable and the document loses portability.
+::
+
+::callout{tone="tip"}
+**Prefer:** `::card{variant="important"}`
+The theme decides how `important` renders. Source stays clean,
+artifacts stay consistent.
+::
+
+## Escape hatches
+
+Allowed but not default. Reserved for cases that would otherwise force a
+worse compromise.
+
+```noma
+::html
+<div>Raw HTML only when absolutely necessary.</div>
+::
+
+::svg
+<svg>...</svg>
+::
+```
+
+Rules:
+
+- allowed only in artifact mode
+- excluded or summarized in LLM mode
+- flagged by validator if unsafe
+- disabled by default in trusted publishing contexts
+
+## What NOT to build (yet)
+
+::risk{id="scope-creep" severity="high"}
+The following are out of scope for v1. Each one would slow the format
+work that matters more.
+
+- visual / WYSIWYG editor
+- realtime collaboration
+- plugin marketplace
+- enterprise auth/permissions
+- cloud platform
+- complex CSS theming engine
+- a Markdown-to-Noma converter (Noma → Markdown is the supported direction)
+::
+
+## See also
+
+- `PLAN.md` — full vision, including §23 refinements
+- `docs/spec.noma` — block-type reference
+- `docs/agent-protocol.noma` — patch protocol
+- `examples/agent-plan.noma` — Demo 1
+- `examples/tech-doc.noma` — Demo 2
+- `examples/research-thesis.noma` — Demo 3
+
+::agent_task{id="direction-doc-review"}
+On every material change to `PLAN.md` §23, re-read this document and
+update the affected sections. Keep the one-liner, three-layer model,
+and central design test in lockstep with PLAN.md.
+::

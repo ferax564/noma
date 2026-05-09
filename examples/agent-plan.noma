@@ -1,0 +1,155 @@
+---
+title: Agent Planning Artifact — Q3 Roadmap Decision
+author: ferax564
+date: 2026-05-09
+tags: [planning, decision-record, agent-artifact]
+---
+
+# Q3 Roadmap Decision
+
+::summary
+Three candidate directions for next quarter. This document captures the
+options, trade-offs, risks, and timeline as structured blocks so an agent
+can revisit and update each section independently — and so the recommendation
+can be exported as a prompt for a follow-on review pass.
+::
+
+## Options at a glance
+
+::grid{columns=3}
+:::card{title="A · Docs Platform" icon="docs"}
+Build a hosted publishing target for Noma. Highest revenue ceiling, longest path to value.
+:::
+
+:::card{title="B · Research Workflows" icon="search"}
+Lean into claims/evidence/risk blocks for analyst teams. Narrow ICP, fastest to first paying customer.
+:::
+
+:::card{title="C · General Reports" icon="report"}
+Position Noma as the default format for AI-generated reports across domains. Broadest TAM, weakest wedge.
+:::
+::
+
+## Decision
+
+::decision{id="decision-q3-direction" status="proposed"}
+Start with **Option B — Research Workflows**. Narrowest wedge, fastest signal,
+keeps the door open to A and C as adjacent expansions.
+::
+
+## Decision matrix
+
+| Dimension              | A · Docs | B · Research | C · Reports |
+| ---------------------- | -------- | ------------ | ----------- |
+| Time to first revenue  | 6–9 mo   | 6–10 wk      | 4–6 mo      |
+| Wedge sharpness        | Medium   | High         | Low         |
+| Existing block fit     | Strong   | Native       | Medium      |
+| Defensibility          | Network  | Workflow     | Brand only  |
+| 18-month revenue cap   | High     | Medium       | High        |
+
+## Claims and evidence
+
+::claim{id="claim-research-wedge" confidence=0.74}
+Research and analyst teams are the sharpest wedge for Noma because their
+existing tools (Word, Notion, Confluence) lack first-class claim/evidence/risk
+primitives, and they already structure documents this way mentally.
+::
+
+::evidence{for="claim-research-wedge" source="user-interviews-apr-2026"}
+Of 11 analyst-team interviews in April, 9 described their current workflow as
+"copy-paste claims into a doc and hope someone catches stale ones." All 9 said
+they would pay for a tool that flagged stale evidence automatically.
+::
+
+::claim{id="claim-docs-too-slow" confidence=0.68}
+A docs platform is the higher revenue ceiling, but time-to-revenue is too long
+to be the wedge. Better as a follow-on once Noma has format adoption.
+::
+
+## Risks
+
+::risk{id="risk-narrow-icp" severity="medium"}
+Research-team ICP is small (~3k orgs globally). Even high conversion caps the
+business below docs-platform scale. Mitigation: use research wedge to drive
+format adoption, then expand to docs.
+::
+
+::risk{id="risk-format-not-sticky" severity="high"}
+If teams don't keep editing in Noma after first artifact, the workflow value
+disappears. Mitigation: ship the agent patch protocol in week 3 so updates
+flow back into source automatically.
+::
+
+::risk{id="risk-llm-export-quality" severity="low"}
+LLM export quality determines whether agents trust Noma source as canonical.
+Easy to verify, easy to fix. Tracked separately.
+::
+
+## Timeline
+
+::grid{columns=4}
+:::card{title="Wk 1 · Format"}
+Parser, AST, frontmatter, JSON export, basic validation.
+:::
+
+:::card{title="Wk 2 · Artifact"}
+HTML renderer, default theme, cards/grids/tabs/charts, mobile.
+:::
+
+:::card{title="Wk 3 · Agent"}
+LLM export, patch protocol, copy-as-prompt buttons.
+:::
+
+:::card{title="Wk 4 · Launch"}
+3 demos, README, spec, comparison page, OSS release.
+:::
+::
+
+## Open questions
+
+::open_question{id="oq-pricing-model"}
+Per-seat, per-document, or per-render? Research-team workflows favor per-seat;
+agent-driven artifacts favor per-render. Decide before week 3.
+::
+
+::open_question{id="oq-pdf-engine"}
+Typst vs. Puppeteer for PDF. Typst gives better book output; Puppeteer is
+already in the build. Defer until first user actually asks for PDF.
+::
+
+## Agent tasks
+
+::agent_task{id="task-validate-claim-research-wedge"}
+Re-run the interview tally each month. If `claim-research-wedge` evidence base
+drops below 8 of 11 supporting interviews (or new interviews contradict),
+lower the claim's `confidence` attribute and add a `counterevidence` block.
+::
+
+::agent_task{id="task-watch-stale-evidence"}
+Every two weeks, scan `evidence` blocks for `source` attributes older than
+60 days. Flag any whose underlying source has changed materially. Do not
+auto-edit — propose a `replace_block` patch for human approval.
+::
+
+::agent_task{id="task-export-as-review-prompt"}
+On request, package this document's `decision`, top three `claim`s, and all
+`risk`s of severity ≥ medium into an LLM prompt for a second-opinion review.
+::
+
+## Export
+
+::export_button{format="prompt" target="decision-q3-direction"}
+Label: Copy decision + risks as a review prompt
+::
+
+::export_button{format="markdown" target="summary"}
+Label: Copy summary as Markdown
+::
+
+::export_button{format="json" target="document"}
+Label: Copy full document AST
+::
+
+> The point of this artifact is not the prose — it's that an agent can re-open
+> it next month, walk the decision/claim/risk graph, and update only the parts
+> that changed. Everything else stays put, and the Git diff stays clean.

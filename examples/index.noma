@@ -1,0 +1,121 @@
+---
+title: Noma — Demo Gallery
+author: ferax564
+date: 2026-05-09
+---
+
+::hero
+# Noma
+
+Readable source for beautiful agent artifacts.
+
+::button{href="https://github.com/ferax564/noma"}
+View on GitHub
+::
+::
+
+::summary
+Three demos prove the thesis: a `.noma` source file should be readable
+enough to edit manually, structured enough for agents to modify safely,
+and rich enough to render into an artifact someone actually wants to
+read. Each demo below ships as `.noma` source plus rendered HTML, LLM
+context, and JSON AST.
+::
+
+## Three demos
+
+::grid{columns=3}
+:::card{title="1 · Agent Planning Artifact"}
+A Q3 roadmap decision: options, decision matrix, claims, evidence,
+risks, timeline, agent tasks, copy-as-prompt buttons.
+
+[Open rendered artifact →](./examples/agent-plan.html)
+[Source](https://github.com/ferax564/noma/blob/main/examples/agent-plan.noma) · [LLM](./examples/agent-plan.llm.txt) · [JSON](./examples/agent-plan.json)
+:::
+
+:::card{title="2 · Technical Documentation"}
+A CLI reference page: API surface, architecture diagram, code blocks,
+warnings, examples, tabs, cross-links — all from one `.noma` file.
+
+[Open rendered artifact →](./examples/tech-doc.html)
+[Source](https://github.com/ferax564/noma/blob/main/examples/tech-doc.noma) · [LLM](./examples/tech-doc.llm.txt) · [JSON](./examples/tech-doc.json)
+:::
+
+:::card{title="3 · Research / Investment Thesis"}
+A vertical-AI investment thesis: claims with confidence scores, evidence
+and counterevidence, risks, datasets, plots, quarterly review tasks.
+
+[Open rendered artifact →](./examples/research-thesis.html)
+[Source](https://github.com/ferax564/noma/blob/main/examples/research-thesis.noma) · [LLM](./examples/research-thesis.llm.txt) · [JSON](./examples/research-thesis.json)
+:::
+::
+
+## Project docs
+
+::grid{columns=2}
+:::card{title="Direction"}
+The canonical statement of what Noma is, what it is not, and the central
+design test every feature must pass.
+
+[Open →](./docs/direction.html)
+:::
+
+:::card{title="Spec"}
+The block-type reference: every block, every attribute, every renderer
+target.
+
+[Open →](./docs/spec.html)
+:::
+
+:::card{title="Architecture"}
+How the parser, AST, renderers, and validator fit together.
+
+[Open →](./docs/architecture.html)
+:::
+
+:::card{title="Agent Protocol"}
+How agents propose block-level patches without rewriting whole files.
+
+[Open →](./docs/agent-protocol.html)
+:::
+::
+
+## Why Noma
+
+::tabs
+:::tab{title="vs Markdown"}
+Markdown is excellent for prose, weak for layout, charts, semantic
+blocks, agent collaboration, validation, and book-scale authoring.
+Noma keeps Markdown's readability and adds the missing structure.
+:::
+
+:::tab{title="vs Raw HTML"}
+HTML is excellent as a rendering target, unpleasant as long-term
+source. Noisy diffs, fragile under agent edits, awkward for books,
+custom validation. Noma keeps HTML as the output and gives you a
+clean source.
+:::
+
+:::tab{title="The thesis"}
+**Noma is readable source for beautiful agent artifacts.**
+
+Markdown is too weak. HTML is too noisy as source. Noma is the
+missing middle: plain-text source → typed AST → HTML / PDF / book /
+slides / LLM context.
+:::
+::
+
+## The central design test
+
+::decision{id="design-test" status="accepted"}
+Every Noma feature must answer **yes** to all three:
+
+1. Can a human understand this in raw text?
+2. Can an agent edit this safely without destroying the document?
+3. Can it render into an artifact people actually want to read?
+::
+
+> Read this page's `.noma` source side-by-side with the rendered HTML to
+> see how little ceremony Noma adds. Every block above is a few lines of
+> readable plain text — the styling, layout, and structure come from the
+> renderer, not from inline CSS or hand-authored HTML.
