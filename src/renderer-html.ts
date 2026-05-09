@@ -16,11 +16,15 @@ export interface HtmlRenderOptions {
   allowEscapeHatches?: boolean;
 }
 
-let renderState = { allowEscapeHatches: true };
+interface RenderCtx {
+  allowEscapeHatches: boolean;
+}
 
 export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): string {
-  renderState = { allowEscapeHatches: options.allowEscapeHatches !== false };
-  const body = doc.children.map(renderNode).join("\n");
+  const ctx: RenderCtx = {
+    allowEscapeHatches: options.allowEscapeHatches !== false,
+  };
+  const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
   if (!options.standalone) return body;
 
   const title =
@@ -48,12 +52,12 @@ ${body}
 </html>`;
 }
 
-function renderNode(node: Node): string {
+function renderNode(node: Node, ctx: RenderCtx): string {
   switch (node.type) {
     case "document":
-      return node.children.map(renderNode).join("\n");
+      return node.children.map((c) => renderNode(c, ctx)).join("\n");
     case "section":
-      return renderSection(node);
+      return renderSection(node, ctx);
     case "paragraph":
       return `<p>${inlineToHtml(node.content)}</p>`;
     case "code": {
@@ -96,7 +100,7 @@ function renderNode(node: Node): string {
       return `<table class="noma-table">\n<thead><tr>${head}</tr></thead>\n<tbody>\n${body}\n</tbody>\n</table>`;
     }
     case "directive":
-      return renderDirective(node);
+      return renderDirective(node, ctx);
     default: {
       const _exhaustive: never = node;
       void _exhaustive;
@@ -105,10 +109,10 @@ function renderNode(node: Node): string {
   }
 }
 
-function renderSection(node: SectionNode): string {
+function renderSection(node: SectionNode, ctx: RenderCtx): string {
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
   const heading = `<h${node.level}${idAttr}>${inlineToHtml(node.title)}</h${node.level}>`;
-  const inner = node.children.map(renderNode).join("\n");
+  const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
   return `<section${idAttr} data-level="${node.level}">\n${heading}\n${inner}\n</section>`;
 }
 
@@ -119,7 +123,7 @@ function variantAttr(node: DirectiveNode): string {
     : "";
 }
 
-function renderDirective(node: DirectiveNode): string {
+function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
   const name = node.name;
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
   const variant = variantAttr(node);
@@ -131,14 +135,14 @@ function renderDirective(node: DirectiveNode): string {
   switch (name) {
     case "summary":
     case "abstract":
-      return wrap("div", `noma-${name}`, idAttr + dataAttrs, renderChildren(node));
+      return wrap("div", `noma-${name}`, idAttr + dataAttrs, renderChildren(node, ctx));
 
     case "callout":
     case "note":
     case "warning":
     case "tip": {
       const tone = name === "callout" ? String(node.attrs.tone ?? "info") : name;
-      return `<aside class="noma-callout noma-callout-${escapeAttr(tone)}"${idAttr}${variant}>${renderChildren(node)}</aside>`;
+      return `<aside class="noma-callout noma-callout-${escapeAttr(tone)}"${idAttr}${variant}>${renderChildren(node, ctx)}</aside>`;
     }
 
     case "claim":
@@ -152,7 +156,7 @@ function renderDirective(node: DirectiveNode): string {
     case "open_question":
     case "decision":
     case "adr":
-      return renderResearchBlock(node);
+      return renderResearchBlock(node, ctx);
 
     case "export_button": {
       const format = node.attrs.format ? String(node.attrs.format) : "text";
@@ -177,7 +181,7 @@ function renderDirective(node: DirectiveNode): string {
 
     case "grid": {
       const cols = Number(node.attrs.columns ?? 2);
-      return `<div class="noma-grid"${idAttr} style="--noma-cols: ${cols};"${dataAttrs}>${renderChildren(node)}</div>`;
+      return `<div class="noma-grid"${idAttr} style="--noma-cols: ${cols};"${dataAttrs}>${renderChildren(node, ctx)}</div>`;
     }
 
     case "card": {
@@ -186,22 +190,22 @@ function renderDirective(node: DirectiveNode): string {
       const head = title
         ? `<header class="noma-card-head">${icon ? `<span class="noma-icon" aria-hidden="true">◆</span>` : ""}<h3>${escapeHtml(title)}</h3></header>`
         : "";
-      return `<article class="noma-card"${idAttr}${variant}>${head}<div class="noma-card-body">${renderChildren(node)}</div></article>`;
+      return `<article class="noma-card"${idAttr}${variant}>${head}<div class="noma-card-body">${renderChildren(node, ctx)}</div></article>`;
     }
 
     case "hero":
-      return `<section class="noma-hero"${idAttr}>${renderChildren(node)}</section>`;
+      return `<section class="noma-hero"${idAttr}>${renderChildren(node, ctx)}</section>`;
 
     case "button": {
       const href = node.attrs.href ? String(node.attrs.href) : "#";
-      return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node) || escapeHtml(node.body ?? "")}</a>`;
+      return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</a>`;
     }
 
     case "figure": {
       const caption = node.attrs.caption ? String(node.attrs.caption) : undefined;
       const src = node.attrs.src ? String(node.attrs.src) : undefined;
       const alt = node.attrs.alt ? String(node.attrs.alt) : "";
-      const img = src ? `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" />` : renderChildren(node);
+      const img = src ? `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" />` : renderChildren(node, ctx);
       return `<figure${idAttr}>${img}${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}</figure>`;
     }
 
@@ -213,29 +217,29 @@ function renderDirective(node: DirectiveNode): string {
 
     case "agent_task":
     case "todo":
-      return renderAgentTask(node, idAttr);
+      return renderAgentTask(node, idAttr, ctx);
 
     case "tabs":
     case "accordion":
     case "sidebar":
     case "columns":
-      return wrap("div", `noma-${name}`, idAttr + dataAttrs, renderChildren(node));
+      return wrap("div", `noma-${name}`, idAttr + dataAttrs, renderChildren(node, ctx));
 
     case "citation":
-      return `<cite class="noma-citation"${idAttr}>${renderChildren(node) || escapeHtml(node.body ?? "")}</cite>`;
+      return `<cite class="noma-citation"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</cite>`;
 
     case "html":
-      return renderState.allowEscapeHatches
+      return ctx.allowEscapeHatches
         ? `<div class="noma-raw-html"${idAttr}>${node.body ?? ""}</div>`
         : `<aside class="noma-blocked-escape" data-kind="html"${idAttr}>[raw HTML escape hatch disabled]</aside>`;
 
     case "svg":
-      return renderState.allowEscapeHatches
+      return ctx.allowEscapeHatches
         ? `<div class="noma-raw-svg"${idAttr}>${node.body ?? ""}</div>`
         : `<aside class="noma-blocked-escape" data-kind="svg"${idAttr}>[raw SVG escape hatch disabled]</aside>`;
 
     case "script": {
-      if (!renderState.allowEscapeHatches) {
+      if (!ctx.allowEscapeHatches) {
         return `<aside class="noma-blocked-escape" data-kind="script"${idAttr}>[script escape hatch disabled]</aside>`;
       }
       const runtime = String(node.attrs.runtime ?? "browser");
@@ -250,12 +254,12 @@ function renderDirective(node: DirectiveNode): string {
         "div",
         `noma-block noma-block-${escapeAttr(name)}`,
         idAttr + dataAttrs,
-        renderChildren(node),
+        renderChildren(node, ctx),
       );
   }
 }
 
-function renderResearchBlock(node: DirectiveNode): string {
+function renderResearchBlock(node: DirectiveNode, ctx: RenderCtx): string {
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
   const variant = variantAttr(node);
   const confidence =
@@ -277,16 +281,16 @@ function renderResearchBlock(node: DirectiveNode): string {
   const metaHtml = meta.length ? `<div class="noma-meta">${meta.join(" · ")}</div>` : "";
   return `<aside class="noma-research noma-${escapeAttr(node.name)}"${idAttr}${variant}>
   <header class="noma-research-head"><span class="noma-tag">${escapeHtml(node.name)}</span>${confidenceBar}</header>
-  <div class="noma-research-body">${renderChildren(node)}</div>
+  <div class="noma-research-body">${renderChildren(node, ctx)}</div>
   ${metaHtml}
 </aside>`;
 }
 
-function renderAgentTask(node: DirectiveNode, idAttr: string): string {
+function renderAgentTask(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {
   const checked = node.attrs.done === true ? " checked" : "";
   return `<div class="noma-agent-task"${idAttr}>
   <label><input type="checkbox" disabled${checked} /> <span class="noma-tag">${escapeHtml(node.name)}</span></label>
-  <div class="noma-agent-body">${renderChildren(node)}</div>
+  <div class="noma-agent-body">${renderChildren(node, ctx)}</div>
 </div>`;
 }
 
@@ -421,11 +425,11 @@ function formatNum(n: number): string {
   return n.toFixed(2);
 }
 
-function renderChildren(node: DirectiveNode): string {
+function renderChildren(node: DirectiveNode, ctx: RenderCtx): string {
   if (node.children.length === 0 && node.body !== undefined) {
     return `<p>${inlineToHtml(node.body)}</p>`;
   }
-  return node.children.map(renderNode).join("\n");
+  return node.children.map((c) => renderNode(c, ctx)).join("\n");
 }
 
 function wrap(tag: string, className: string, idAndAttrs: string, inner: string): string {

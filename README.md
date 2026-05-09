@@ -59,18 +59,44 @@ git clone https://github.com/ferax564/noma.git
 cd noma
 npm install
 
-# render one demo to HTML / LLM / JSON
+# render one demo to HTML / LLM / JSON / .noma source
 npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
 npm run noma -- render examples/agent-plan.noma --to llm
 npm run noma -- render examples/agent-plan.noma --to json
+npm run noma -- render examples/agent-plan.noma --to noma     # AST → .noma roundtrip
+
+# pick a theme
+npm run noma -- render examples/research-thesis.noma --to html --theme dark
+
+# render a multi-file book (chapters resolved relative to the manifest)
+npm run noma -- render examples/book/book.noma.yml --to html --out dist/book.html
+
+# block-level patch — agent-safe edits, no full-file rewrite
+npm run noma -- patch examples/thesis.noma \
+  --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.95}' \
+  --inplace
 
 # validate a document
 npm run noma -- check examples/research-thesis.noma
 
-# build the full site (examples + docs + landing page + demo PDFs)
+# build the full site (examples + docs + book + dark-theme demo + landing + PDFs)
 npm run build:site
 open dist/index.html
 ```
+
+## Block-level edits
+
+Agents and CI pipelines patch single blocks instead of rewriting whole files. Five operations cover the editing flows that matter:
+
+```bash
+noma patch thesis.noma --op '{"op":"replace_block","id":"claim-x","content":"::claim{id=\"claim-x\" confidence=0.9}\nNew body.\n::"}'
+noma patch thesis.noma --op '{"op":"add_block","parent":"risks","content":"::risk{id=\"r1\" severity=\"high\" owner=\"me\"}\nNew risk.\n::"}'
+noma patch thesis.noma --op '{"op":"delete_block","id":"deprecated"}'
+noma patch thesis.noma --op '{"op":"update_attribute","id":"claim-x","key":"confidence","value":0.85}'
+noma patch thesis.noma --op '{"op":"rename_id","from":"claim-x","to":"claim-renamed"}'
+```
+
+`rename_id` retargets every `for=`, `parent=`, and `[[wikilink]]` reference across the document. Patches re-serialize via the AST source printer, so the unrelated 95% of the file is byte-identical. See [`docs/agent-protocol.noma`](docs/agent-protocol.noma).
 
 ## Demos
 
@@ -86,12 +112,14 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 
 - `@noma/parser` — hand-written, no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown.
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively switched everywhere.
-- HTML renderer with a small default CSS theme and a print stylesheet. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, plot placeholders, agent tasks, export buttons, controls, and tables.
-- LLM renderer — deterministic plain-text output for context windows.
+- HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, real inline-data plots (line + bar SVG, no JS), agent tasks, export buttons, controls, and tables. `::html` / `::svg` / `::script` escape hatches with `--no-unsafe` to block them.
+- LLM renderer — deterministic plain-text output for context windows; escape-hatch bodies always stripped.
 - JSON renderer — full AST export.
-- Validator — duplicate IDs, broken references, plots without data, figures without alt text.
-- CLI — `noma parse | render | check | export`.
-- Six examples: three new demos (agent-plan, tech-doc, research-thesis) plus the original thesis, landing, and mini-book chapter.
+- `.noma` source printer — AST → `.noma` (roundtrip-safe). Backs `noma render --to noma` and the patch CLI.
+- Validator — 10 default rules: duplicate IDs, broken references, plot/figure issues, claim-without-evidence, risk-without-owner, decision-without-status, agent-task-without-scope, stale-citation, escape-hatch-untrusted, evidence-missing-for. Per-block opt-out with the `noverify` flag.
+- CLI — `noma parse | render | check | export | patch`. Five patch ops (`replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`).
+- Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
+- Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
 - Five docs (all written in Noma): direction, spec, getting started, agent patch protocol, architecture.
 - Hand-crafted HTML landing page (`site/index.html`).
 - PDF demo exports via Puppeteer.
@@ -101,7 +129,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-This is **v0.1** — small, sharp, working. Out of scope for now: visual editor, realtime collaboration, plugin marketplace, hosted SaaS. The point is to ship a useful core and let the community shape what comes next.
+**v0.2** — `noma patch`, source printer, theme variants, real plots, book manifests, escape hatches all shipped. See `PLAN.md` §24 for the shipped tracker. Out of scope for now: visual editor, realtime collaboration, plugin marketplace, hosted SaaS, VS Code syntax extension. The point is to ship a useful core and let the community shape what comes next.
 
 ## License
 

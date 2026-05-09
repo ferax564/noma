@@ -45,7 +45,36 @@ The output is deterministic plain text designed for LLM input: typed blocks beco
 npm run noma -- check examples/thesis.noma
 ```
 
-The validator catches duplicate IDs, broken references, plots without data, and figures without alt text.
+The validator catches duplicate IDs, broken references, plots without data, figures without alt text, claims missing evidence, risks without owners, decisions without status, agent tasks without scope, citations older than 365 days, and untrusted `::html` / `::svg` / `::script` escape hatches. Add the `noverify` flag attribute to any block to silence rules on it individually.
+
+## Pick a theme
+
+```bash
+npm run noma -- render examples/research-thesis.noma --to html --theme dark
+```
+
+Two themes ship with the CLI: `default` (warm cream paper) and `dark`. Inside a document, use `{variant="important|subtle|success|danger|info"}` on a card, callout, or claim/evidence/risk block to switch its emphasis without touching CSS.
+
+## Render a multi-file book
+
+Multi-file projects use a YAML manifest with a `.yml` / `.yaml` extension. The CLI auto-detects it:
+
+```bash
+npm run noma -- render examples/book/book.noma.yml --to html --out dist/book.html
+npm run noma -- render examples/book/book.noma.yml --to llm
+```
+
+Chapter paths inside the manifest resolve relative to its directory.
+
+## Patch a block (without rewriting the file)
+
+```bash
+npm run noma -- patch examples/thesis.noma \
+  --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.95}' \
+  --inplace
+```
+
+Five ops cover the common editing flows: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. The patch tool re-serialises through the AST source printer, so unrelated blocks stay byte-identical. See [agent-protocol.noma](agent-protocol.noma) for the schema.
 
 ## Render to PDF
 
