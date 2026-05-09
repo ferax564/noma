@@ -10,5 +10,7 @@ export { renderNoma } from "./renderer-noma.js";
 export type { NomaRenderOptions } from "./renderer-noma.js";
 export { patch, patchAll, findById, PatchError } from "./patch.js";
 export type { PatchOp } from "./patch.js";
+export { loadBook, isBookManifestPath, listChapters } from "./book.js";
+export type { BookManifest } from "./book.js";
 export { validate, formatDiagnostics } from "./validator.js";
 export type { ValidateOptions } from "./validator.js";

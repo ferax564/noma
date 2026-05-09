@@ -14,6 +14,17 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   `noma render --to noma`. New roundtrip test covers every `.noma` file
   in `examples/` and `docs/`.
 
+- **Book manifests + multi-file rendering** (PLAN.md §8) — YAML
+  manifest (`*.yml` / `*.yaml`) lists chapters relative to its
+  directory; the loader concatenates them into a single
+  `DocumentNode` so every existing renderer (HTML, LLM, JSON, PDF)
+  works on books with no per-target wiring. CLI auto-detects manifest
+  extension: `noma render book.noma.yml --to html`. Public API:
+  `loadBook`, `isBookManifestPath`, `listChapters`. Demo book under
+  `examples/book/` (3 chapters: *Why Noma exists*, *The block model*,
+  *Edits agents can trust*). Built site renders it to
+  `dist/examples/book.html` and `dist/examples/book.llm.txt`.
+
 - **Real `::plot` rendering** — inline-data line and bar charts as
   self-contained SVG. Pass a numeric series via `data="10 20 15 30"`
   (space- or comma-separated), optional `xlabels="a,b,c,d"`, optional

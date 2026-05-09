@@ -211,6 +211,35 @@ Options surfaced on the API: `requireEvidenceForClaims` (default `true`), `stale
 | `epub`   | planned    |                                                         |
 | `slides` | planned    |                                                         |
 
+## Book manifests
+
+Multi-file projects use a YAML manifest with a `.yml` / `.yaml` extension.
+
+```yaml
+title: Agentic Documents
+author: ferax564
+
+outputs:
+  html:
+    theme: default
+  llm: {}
+
+chapters:
+  - chapters/01-introduction.noma
+  - chapters/02-block-model.noma
+  - chapters/03-agent-edits.noma
+```
+
+Chapter paths are resolved relative to the manifest directory. The CLI auto-detects the manifest by extension:
+
+```bash
+noma render book.noma.yml --to html --out dist/book.html
+noma render book.noma.yml --to llm  --out dist/book.llm.txt
+noma check  book.noma.yml
+```
+
+The loader concatenates each chapter's parsed AST into a single `DocumentNode` (top-level `# Chapter` headings stay distinct so HTML renders one continuous page with chapter sections; LLM export keeps chapter boundaries via the heading prefix). The manifest's `title` / `author` land on `document.meta`; the `outputs.html.theme` value is honoured by future renderers and ignored for now.
+
 ## Compatibility promises (v0.1)
 
 - The directive **opener/closer** syntax is stable and will not change in 0.x.

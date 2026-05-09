@@ -1,0 +1,29 @@
+# The block model
+
+Noma documents are trees of typed blocks. Each block knows what it is, what it contains, and how it should render across HTML, PDF, and LLM context.
+
+## Anatomy of a block
+
+```noma
+::claim{id="claim-living-docs" confidence=0.9}
+Documentation rots faster than the code it describes.
+::
+```
+
+The opener carries the **type** (`claim`), an **attribute list** (`id`, `confidence`), and the body content. The closer is a bare `::` on its own line. Children get one more colon than their parent — `:::card` inside `::grid`, `::::tab` inside `:::tabs`.
+
+## Why typed blocks matter
+
+A `claim` is not a `risk` is not a `decision`. The validator can reason about them differently — `claim`s should have backing `evidence`, `risk`s should have an `owner`, `decision`s should have a `status`. Themes can render them with different visual emphasis. Agents can patch them by ID without touching unrelated text.
+
+::claim{id="claim-typed-blocks" confidence=0.82}
+Typed semantic blocks are the smallest change to plain text that unlocks every downstream advantage Noma offers.
+::
+
+::evidence{for="claim-typed-blocks" source="dogfooding-april-2026"}
+Across the three demo artifacts in this repo, every cross-cutting feature — validation, agent patching, deterministic LLM export, theme variants — falls out of the typed block model with no per-feature schema work.
+::
+
+## The minimal block set
+
+You can do most real work with about a dozen blocks: `section`, `paragraph`, `code`, `list`, `quote`, `table`, `callout`, `grid`, `card`, `claim`, `evidence`, `risk`, `agent_task`. The rest are convenience.

@@ -14,7 +14,7 @@
     "render:docs": "tsx src/cli.ts render docs/direction.noma --to html --out dist/docs/direction.html && tsx src/cli.ts render docs/spec.noma --to html --out dist/docs/spec.html && tsx src/cli.ts render docs/architecture.noma --to html --out dist/docs/architecture.html && tsx src/cli.ts render docs/getting-started.noma --to html --out dist/docs/getting-started.html && tsx src/cli.ts render docs/agent-protocol.noma --to html --out dist/docs/agent-protocol.html",
     "render:pdf": "tsx scripts/render-pdf.ts dist/thesis.html dist/thesis.pdf",
     "render:pdf:demos": "tsx scripts/render-demo-pdfs.ts",
-    "build:site": "npm run render:examples && npm run render:docs && tsx src/cli.ts render examples/index.noma --to html --out dist/_index-noma.html && tsx src/cli.ts render examples/research-thesis.noma --to html --theme dark --out dist/examples/research-thesis-dark.html && cp -r site/. dist/ && npm run render:pdf:demos",
+    "build:site": "npm run render:examples && npm run render:docs && tsx src/cli.ts render examples/index.noma --to html --out dist/_index-noma.html && tsx src/cli.ts render examples/research-thesis.noma --to html --theme dark --out dist/examples/research-thesis-dark.html && tsx src/cli.ts render examples/book/book.noma.yml --to html --out dist/examples/book.html && tsx src/cli.ts render examples/book/book.noma.yml --to llm --out dist/examples/book.llm.txt && cp -r site/. dist/ && npm run render:pdf:demos",
     "demo": "npm run render:examples && npm run render:pdf"
   },
   "files": [

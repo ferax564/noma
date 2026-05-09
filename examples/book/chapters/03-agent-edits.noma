@@ -1,0 +1,50 @@
+# Edits agents can trust
+
+The single most important question this format answers is: *can an AI agent edit my document without breaking it?*
+
+The answer in Markdown is "sort of, if you're lucky." The answer in HTML is "no." The answer Noma is built to give is **yes, by construction.**
+
+## The patch protocol
+
+Agents propose **operations**, not full-file rewrites. Five ops cover most editing flows:
+
+| Operation           | What it does                                     |
+| ------------------- | ------------------------------------------------ |
+| `replace_block`     | Swap a single block by ID                        |
+| `add_block`         | Insert a new block under a parent                |
+| `delete_block`      | Remove a block by ID                             |
+| `update_attribute`  | Change one attribute on one block                |
+| `rename_id`         | Move an ID, retargeting every reference         |
+
+```bash
+noma patch thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
+```
+
+The CLI parses, applies, re-serializes via the source printer, and writes back. The unrelated 95% of the file is byte-identical to where you left it.
+
+## Why this matters
+
+::claim{id="claim-block-trust" confidence=0.88}
+Trust in agent edits scales with the *blast radius* of each edit. Block-level patches make that blast radius small enough that humans will let agents touch real documents.
+::
+
+::evidence{for="claim-block-trust" source="user-research-2026q2"}
+Across nine research-team interviews, the consistent objection to LLM-assisted document editing was "I don't trust it not to silently rewrite something I care about." Block-scoped patches with diffable output addressed the objection in every case.
+::
+
+## Where to go next
+
+```bash
+# patch a real demo
+noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.95}'
+
+# render this book to a single HTML page
+noma render examples/book/book.noma.yml --to html --out dist/book.html
+
+# pipe the LLM context to your agent of choice
+noma render examples/book/book.noma.yml --to llm
+```
+
+::agent_task{id="book-quarterly-review"}
+Re-read this book once a quarter. If a paragraph still describes the format and CLI accurately, leave it. If the CLI has new commands or block types, file a `replace_block` patch op and a follow-up commit. The book is meant to age in lockstep with the code.
+::

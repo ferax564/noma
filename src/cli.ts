@@ -8,15 +8,16 @@ import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
 import { patchAll, type PatchOp } from "./patch.js";
+import { loadBook, isBookManifestPath } from "./book.js";
 import { validate, formatDiagnostics } from "./validator.js";
 
 const HELP = `noma — readable document format for humans and agents
 
 Usage:
-  noma parse <file.noma>                     Print the AST as JSON
-  noma render <file.noma> [opts]             Render to a target format
-  noma check <file.noma>                     Validate the document
-  noma export <file.noma> [opts]             Alias for render --to json
+  noma parse <file.noma|book.yml>            Print the AST as JSON
+  noma render <file.noma|book.yml> [opts]    Render to a target format
+  noma check <file.noma|book.yml>            Validate the document
+  noma export <file.noma|book.yml> [opts]    Alias for render --to json
   noma patch <file.noma> [opts]              Apply block-level patch ops
   noma --help                                Show this help
 
@@ -159,8 +160,9 @@ function main(): void {
   }
 
   const filePath = resolve(args.file);
-  const source = readFileSync(filePath, "utf8");
-  const doc = parse(source, { filename: filePath });
+  const doc = isBookManifestPath(filePath)
+    ? loadBook(filePath)
+    : parse(readFileSync(filePath, "utf8"), { filename: filePath });
 
   switch (cmd) {
     case "parse": {

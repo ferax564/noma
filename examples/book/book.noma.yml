@@ -1,0 +1,12 @@
+title: Agentic Documents — A Short Field Guide
+author: ferax564
+
+outputs:
+  html:
+    theme: default
+  llm: {}
+
+chapters:
+  - chapters/01-why-noma.noma
+  - chapters/02-block-model.noma
+  - chapters/03-agent-edits.noma

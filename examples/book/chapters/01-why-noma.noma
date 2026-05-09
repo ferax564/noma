@@ -1,0 +1,31 @@
+# Why Noma exists
+
+Markdown is excellent at the lightest end of the document spectrum. HTML is excellent at the rendering end. The space between them — *structured documents that humans still want to read in source* — is where Noma lives.
+
+::callout{tone="note"}
+This book is intentionally short. It is the smallest set of ideas you need to use Noma productively, written in Noma so you can see the format defending itself.
+::
+
+## The three layers
+
+Every Noma document has three layers stacked on top of each other:
+
+::grid{columns=3}
+:::card{title="Source" variant="info"}
+What humans and agents edit. Plain text, clean Git diffs, stable IDs.
+:::
+
+:::card{title="Artifact" variant="success"}
+What humans consume. Standalone HTML, PDF, EPUB. One file you can share.
+:::
+
+:::card{title="Agent context"}
+What AI systems use. Deterministic LLM export, less noisy than HTML, more structured than Markdown.
+:::
+::
+
+The same source feeds all three. You write once; Noma renders into the form your reader needs.
+
+## What you trade away
+
+Noma asks you to learn two new pieces of syntax — `::block{attrs}` for typed blocks and `[[block-id]]` for cross-references — in exchange for native layout, semantic blocks, validation, and an agent patch protocol. If your document is six paragraphs and a code fence, Markdown is still the right answer. If it has claims, evidence, plots, decisions, and a quarterly review task attached, Noma starts paying for itself by the third edit.
