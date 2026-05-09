@@ -7,6 +7,7 @@ import { renderHtml } from "./renderer-html.js";
 import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
+import { patchAll, type PatchOp } from "./patch.js";
 import { validate, formatDiagnostics } from "./validator.js";
 
 const HELP = `noma — readable document format for humans and agents
@@ -16,6 +17,7 @@ Usage:
   noma render <file.noma> [opts]             Render to a target format
   noma check <file.noma>                     Validate the document
   noma export <file.noma> [opts]             Alias for render --to json
+  noma patch <file.noma> [opts]              Apply block-level patch ops
   noma --help                                Show this help
 
 Render options:
@@ -24,11 +26,18 @@ Render options:
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
 
+Patch options:
+  --op <json>               One inline patch op (JSON object)
+  --ops <file.json>         File containing one op or an array of ops
+  --inplace                 Write the result back to <file.noma>
+  --out <path>              Write to file instead of stdout
+
 Examples:
   noma parse examples/thesis.noma
   noma render examples/thesis.noma --to html --out dist/thesis.html
   noma render examples/thesis.noma --to llm
   noma check examples/thesis.noma
+  noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
 `;
 
 interface CliArgs {
@@ -39,6 +48,9 @@ interface CliArgs {
   standalone: boolean;
   title?: string;
   help: boolean;
+  op?: string;
+  opsFile?: string;
+  inplace: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -47,6 +59,7 @@ function parseArgs(argv: string[]): CliArgs {
     to: "html",
     standalone: true,
     help: false,
+    inplace: false,
   };
   let i = 1;
   while (i < argv.length) {
@@ -68,6 +81,15 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--title") {
       args.title = argv[++i];
+      i++;
+    } else if (a === "--op") {
+      args.op = argv[++i];
+      i++;
+    } else if (a === "--ops") {
+      args.opsFile = argv[++i];
+      i++;
+    } else if (a === "--inplace") {
+      args.inplace = true;
       i++;
     } else if (!a.startsWith("--") && !args.file) {
       args.file = a;
@@ -175,6 +197,26 @@ function main(): void {
       process.stdout.write(formatted + "\n");
       const hasError = diagnostics.some((d) => d.severity === "error");
       process.exit(hasError ? 1 : 0);
+    }
+    case "patch": {
+      const ops: PatchOp[] = [];
+      if (args.op) {
+        ops.push(JSON.parse(args.op) as PatchOp);
+      }
+      if (args.opsFile) {
+        const raw = JSON.parse(readFileSync(resolve(args.opsFile), "utf8"));
+        if (Array.isArray(raw)) ops.push(...(raw as PatchOp[]));
+        else ops.push(raw as PatchOp);
+      }
+      if (ops.length === 0) {
+        process.stderr.write(`error: noma patch needs --op or --ops\n`);
+        process.exit(2);
+      }
+      const next = patchAll(doc, ops);
+      const printed = renderNoma(next);
+      const target = args.inplace ? filePath : args.out;
+      output(printed, target);
+      return;
     }
     default:
       process.stderr.write(`error: unknown command "${cmd}"\n\n${HELP}`);

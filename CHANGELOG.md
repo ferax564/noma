@@ -14,6 +14,20 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   `noma render --to noma`. New roundtrip test covers every `.noma` file
   in `examples/` and `docs/`.
 
+- **`noma patch`** — block-level edits without rewriting the file. Five
+  ops shipped:
+  - `replace_block{id, content}`
+  - `add_block{parent, content, position?}`
+  - `delete_block{id}`
+  - `update_attribute{id, key, value}`
+  - `rename_id{from, to}` — also rewrites `for=`, `parent=`, and
+    `[[wikilink]]` references across the document.
+
+  CLI: `noma patch <file> --op '<json>' [--inplace | --out path]` or
+  `--ops <file.json>` for batches. Public API: `patch`, `patchAll`,
+  `findById`, `PatchError` from `@noma/cli`. This closes PLAN.md §23.11
+  and turns the agent-protocol doc from spec into shipped code.
+
 - **Three new demo artifacts** under `examples/`, exercising the full block
   surface end-to-end:
   - `agent-plan.noma` — Q3 roadmap decision (options, decision matrix,
