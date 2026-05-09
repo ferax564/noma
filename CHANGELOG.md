@@ -14,6 +14,18 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   `noma render --to noma`. New roundtrip test covers every `.noma` file
   in `examples/` and `docs/`.
 
+- **Theme variants** (PLAN.md §23.13) — `{variant="..."}` lands as
+  `data-variant="..."` on cards, callouts, and research blocks
+  (`claim`, `evidence`, `risk`, `decision`, `adr`, etc.). The bundled
+  themes recognise `important`, `subtle`, `success`, `danger`, and
+  `info`; custom values pass through unchanged. Replaces inline
+  styling — source stays readable, theme decides how variants render.
+
+- **Dark theme** (`themes/dark.css`) — first alternate theme. CLI flag
+  `noma render --theme dark` (default: `default`). Build site renders
+  `research-thesis` in both themes side by side
+  (`dist/examples/research-thesis-dark.html`).
+
 - **Validator hardening** (PLAN.md §23.12) — five new default rules:
   `claim-without-evidence` (promoted from optional), `risk-without-owner`,
   `decision-without-status` (covers `decision` and `adr`),

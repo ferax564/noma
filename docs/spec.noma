@@ -110,6 +110,14 @@ Attribute lists appear after a directive name in curly braces:
 
 The attribute named `id` is special: it is promoted to the AST node's stable identifier and used by validators and the agent patch protocol.
 
+The attribute named `variant` is a theme hook. It lands as `data-variant="..."` on the rendered element so themes can style the same block class with different emphasis (`important`, `subtle`, `success`, `danger`, `info` are recognised by the bundled themes; custom values pass through). Use `variant` instead of inline styling to keep source readable. Example:
+
+```noma
+::card{title="Bull case" variant="success"}
+EUV demand structurally high.
+::
+```
+
 ## Core block types
 
 ### Document blocks

@@ -1,19 +1,19 @@
 :root {
-  --noma-bg: #fbfaf7;
-  --noma-fg: #1d1c1a;
-  --noma-muted: #6b6a66;
-  --noma-rule: #e7e4dc;
-  --noma-accent: #b9522a;
-  --noma-accent-soft: #f4dccd;
-  --noma-claim: #2c5d8f;
-  --noma-claim-soft: #dfeaf5;
-  --noma-evidence: #2f7d4a;
-  --noma-evidence-soft: #dff0e3;
-  --noma-risk: #a8362e;
-  --noma-risk-soft: #f7d9d4;
-  --noma-code-bg: #f1ede4;
-  --noma-card-bg: #ffffff;
-  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);
+  --noma-bg: #14151a;
+  --noma-fg: #e8e6e1;
+  --noma-muted: #8b8a85;
+  --noma-rule: #2b2d33;
+  --noma-accent: #ffa874;
+  --noma-accent-soft: #3a261c;
+  --noma-claim: #7eb8e8;
+  --noma-claim-soft: #1c2a3a;
+  --noma-evidence: #82d39c;
+  --noma-evidence-soft: #1c2e22;
+  --noma-risk: #f0857c;
+  --noma-risk-soft: #341d1c;
+  --noma-code-bg: #1c1d22;
+  --noma-card-bg: #1a1b20;
+  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px -16px rgba(0, 0, 0, 0.6);
   --noma-radius: 10px;
   --noma-cols: 2;
   --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;
@@ -52,6 +52,7 @@ h1, h2, h3, h4, h5, h6 {
   line-height: 1.2;
   letter-spacing: -0.01em;
   margin: 2.5em 0 0.6em;
+  color: var(--noma-fg);
 }
 h1 { font-size: 2.4rem; margin-top: 0; letter-spacing: -0.02em; }
 h2 { font-size: 1.7rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.3em; }
@@ -68,6 +69,7 @@ code {
   background: var(--noma-code-bg);
   padding: 0.1em 0.35em;
   border-radius: 4px;
+  color: var(--noma-fg);
 }
 pre {
   background: var(--noma-code-bg);
@@ -76,6 +78,8 @@ pre {
   overflow-x: auto;
   font-size: 0.9rem;
   line-height: 1.5;
+  color: var(--noma-fg);
+  border: 1px solid var(--noma-rule);
 }
 pre code { background: none; padding: 0; }
 
@@ -92,7 +96,6 @@ hr { border: 0; border-top: 1px solid var(--noma-rule); margin: 3em 0; }
 ul, ol { padding-left: 1.4em; }
 li { margin: 0.25em 0; }
 
-/* Callouts */
 aside.noma-callout {
   margin: 1.6em 0;
   padding: 1em 1.2em;
@@ -100,11 +103,10 @@ aside.noma-callout {
   background: var(--noma-accent-soft);
   border-left: 3px solid var(--noma-accent);
 }
-aside.noma-callout-warning { background: #fbe6df; border-color: var(--noma-risk); }
-aside.noma-callout-tip     { background: #e6f3eb; border-color: var(--noma-evidence); }
-aside.noma-callout-note    { background: #ecedf2; border-color: #5a6071; }
+aside.noma-callout-warning { background: var(--noma-risk-soft); border-color: var(--noma-risk); }
+aside.noma-callout-tip     { background: var(--noma-evidence-soft); border-color: var(--noma-evidence); }
+aside.noma-callout-note    { background: #232530; border-color: #5a6071; }
 
-/* Research blocks */
 aside.noma-research {
   margin: 1.6em 0;
   padding: 1em 1.2em;
@@ -141,19 +143,11 @@ aside.noma-risk           { border-left: 3px solid var(--noma-risk); }
 aside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }
 aside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }
 aside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }
-aside.noma-open_question { border-left: 3px solid #8b6c1a; }
-aside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }
-aside.noma-assumption { border-left: 3px solid #5a6071; }
-aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
+aside.noma-open_question { border-left: 3px solid #d4b066; }
+aside.noma-open_question .noma-tag { color: #d4b066; background: #2e2616; }
+aside.noma-assumption { border-left: 3px solid #8a93ad; }
+aside.noma-assumption .noma-tag { color: #8a93ad; background: #232530; }
 
-/* Variants — themable per-block emphasis without inline styling */
-[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }
-[data-variant="subtle"] { opacity: 0.78; box-shadow: none; }
-[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }
-[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }
-[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }
-
-/* Export buttons (artifact-side action surface) */
 .noma-export-button {
   display: inline-block;
   background: var(--noma-fg);
@@ -168,12 +162,11 @@ aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
   cursor: pointer;
   transition: background 120ms ease;
 }
-.noma-export-button:hover { background: var(--noma-accent); color: white; }
-.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }
-.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }
-.noma-export-button[data-format="json"] { background: var(--noma-muted); }
+.noma-export-button:hover { background: var(--noma-accent); color: var(--noma-bg); }
+.noma-export-button[data-format="prompt"] { background: var(--noma-claim); color: var(--noma-bg); }
+.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); color: var(--noma-bg); }
+.noma-export-button[data-format="json"] { background: var(--noma-muted); color: var(--noma-bg); }
 
-/* Controls (interactive artifact blocks) */
 .noma-control {
   margin: 1em 0;
   padding: 0.8em 1em;
@@ -182,8 +175,9 @@ aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
   border-radius: var(--noma-radius);
   font-family: var(--noma-font-sans);
   font-size: 0.9rem;
+  color: var(--noma-fg);
 }
-.noma-control input { margin-left: 0.6em; }
+.noma-control input { margin-left: 0.6em; background: var(--noma-bg); color: var(--noma-fg); border: 1px solid var(--noma-rule); border-radius: 4px; padding: 0.2em 0.4em; }
 
 .noma-confidence {
   flex: 1;
@@ -209,7 +203,6 @@ aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
   color: var(--noma-fg);
 }
 
-/* Grid */
 .noma-grid {
   display: grid;
   grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));
@@ -220,7 +213,6 @@ aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
   .noma-grid { grid-template-columns: 1fr; }
 }
 
-/* Card */
 article.noma-card {
   background: var(--noma-card-bg);
   border: 1px solid var(--noma-rule);
@@ -245,7 +237,6 @@ article.noma-card .noma-icon {
 }
 article.noma-card p:last-child { margin-bottom: 0; }
 
-/* Hero */
 section.noma-hero {
   background: linear-gradient(180deg, var(--noma-accent-soft), transparent);
   padding: 4rem 2.5rem 3rem;
@@ -267,9 +258,8 @@ a.noma-button {
   font-size: 0.95rem;
   margin-top: 0.5em;
 }
-a.noma-button:hover { background: var(--noma-accent); color: white; }
+a.noma-button:hover { background: var(--noma-accent); color: var(--noma-bg); }
 
-/* Plot */
 figure.noma-plot {
   margin: 1.8em 0;
   padding: 1em 1.2em;
@@ -291,7 +281,6 @@ figure.noma-plot figcaption {
   font-family: var(--noma-font-sans);
 }
 
-/* Dataset */
 details.noma-dataset {
   margin: 1.4em 0;
   padding: 0.6em 1em;
@@ -299,13 +288,14 @@ details.noma-dataset {
   border-radius: var(--noma-radius);
   font-family: var(--noma-font-sans);
   font-size: 0.9rem;
+  color: var(--noma-fg);
 }
 details.noma-dataset pre {
   background: transparent;
   padding: 0.6em 0 0;
+  border: 0;
 }
 
-/* Agent task */
 .noma-agent-task {
   margin: 1.4em 0;
   padding: 1em 1.2em;
@@ -323,7 +313,6 @@ details.noma-dataset pre {
   margin-bottom: 0.4em;
 }
 
-/* Tables */
 table.noma-table {
   width: 100%;
   border-collapse: collapse;
@@ -351,16 +340,22 @@ table.noma-table td {
   padding: 0.6em 1em;
   border-bottom: 1px solid var(--noma-rule);
   vertical-align: top;
+  color: var(--noma-fg);
 }
 table.noma-table tbody tr:last-child td { border-bottom: 0; }
-table.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }
+table.noma-table tbody tr:hover { background: rgba(255, 168, 116, 0.06); }
 
-/* Print */
+[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }
+[data-variant="subtle"] { opacity: 0.7; box-shadow: none; }
+[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }
+[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }
+[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }
+
 @media print {
-  html, body { background: white; font-size: 11pt; }
+  html, body { background: white; color: black; font-size: 11pt; }
   main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }
-  section.noma-hero { background: none; border: 1px solid var(--noma-rule); }
-  a { color: var(--noma-fg); }
+  section.noma-hero { background: none; border: 1px solid #ddd; }
+  a { color: black; }
   pre, article.noma-card, figure.noma-plot, aside.noma-research, details.noma-dataset {
     box-shadow: none;
     page-break-inside: avoid;

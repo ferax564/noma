@@ -103,9 +103,17 @@ function renderSection(node: SectionNode): string {
   return `<section${idAttr} data-level="${node.level}">\n${heading}\n${inner}\n</section>`;
 }
 
+function variantAttr(node: DirectiveNode): string {
+  const v = node.attrs.variant;
+  return typeof v === "string" && v.length > 0
+    ? ` data-variant="${escapeAttr(v)}"`
+    : "";
+}
+
 function renderDirective(node: DirectiveNode): string {
   const name = node.name;
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
+  const variant = variantAttr(node);
   const dataAttrs = Object.entries(node.attrs)
     .filter(([k]) => k !== "id")
     .map(([k, v]) => ` data-${escapeAttr(k)}="${escapeAttr(String(v))}"`)
@@ -121,7 +129,7 @@ function renderDirective(node: DirectiveNode): string {
     case "warning":
     case "tip": {
       const tone = name === "callout" ? String(node.attrs.tone ?? "info") : name;
-      return `<aside class="noma-callout noma-callout-${escapeAttr(tone)}"${idAttr}>${renderChildren(node)}</aside>`;
+      return `<aside class="noma-callout noma-callout-${escapeAttr(tone)}"${idAttr}${variant}>${renderChildren(node)}</aside>`;
     }
 
     case "claim":
@@ -169,7 +177,7 @@ function renderDirective(node: DirectiveNode): string {
       const head = title
         ? `<header class="noma-card-head">${icon ? `<span class="noma-icon" aria-hidden="true">◆</span>` : ""}<h3>${escapeHtml(title)}</h3></header>`
         : "";
-      return `<article class="noma-card"${idAttr}>${head}<div class="noma-card-body">${renderChildren(node)}</div></article>`;
+      return `<article class="noma-card"${idAttr}${variant}>${head}<div class="noma-card-body">${renderChildren(node)}</div></article>`;
     }
 
     case "hero":
@@ -219,6 +227,7 @@ function renderDirective(node: DirectiveNode): string {
 
 function renderResearchBlock(node: DirectiveNode): string {
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
+  const variant = variantAttr(node);
   const confidence =
     typeof node.attrs.confidence === "number" ? node.attrs.confidence : undefined;
   const meta: string[] = [];
@@ -236,7 +245,7 @@ function renderResearchBlock(node: DirectiveNode): string {
       ? `<div class="noma-confidence" title="confidence ${confidence}"><div class="noma-confidence-bar" style="width: ${Math.round(confidence * 100)}%"></div></div>`
       : "";
   const metaHtml = meta.length ? `<div class="noma-meta">${meta.join(" · ")}</div>` : "";
-  return `<aside class="noma-research noma-${escapeAttr(node.name)}"${idAttr}>
+  return `<aside class="noma-research noma-${escapeAttr(node.name)}"${idAttr}${variant}>
   <header class="noma-research-head"><span class="noma-tag">${escapeHtml(node.name)}</span>${confidenceBar}</header>
   <div class="noma-research-body">${renderChildren(node)}</div>
   ${metaHtml}

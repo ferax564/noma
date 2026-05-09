@@ -25,6 +25,7 @@ Render options:
   --out <path>              Write to file instead of stdout
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
+  --theme <name>            HTML theme: default | dark (default: default)
 
 Patch options:
   --op <json>               One inline patch op (JSON object)
@@ -51,6 +52,7 @@ interface CliArgs {
   op?: string;
   opsFile?: string;
   inplace: boolean;
+  theme: string;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -60,6 +62,7 @@ function parseArgs(argv: string[]): CliArgs {
     standalone: true,
     help: false,
     inplace: false,
+    theme: "default",
   };
   let i = 1;
   while (i < argv.length) {
@@ -82,6 +85,9 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--title") {
       args.title = argv[++i];
       i++;
+    } else if (a === "--theme") {
+      args.theme = argv[++i] ?? "default";
+      i++;
     } else if (a === "--op") {
       args.op = argv[++i];
       i++;
@@ -101,15 +107,17 @@ function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
-function loadTheme(): string {
+function loadTheme(name = "default"): string {
+  const safe = /^[a-z0-9-]+$/.test(name) ? name : "default";
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    resolve(here, "..", "themes", "default.css"),
-    resolve(here, "..", "..", "themes", "default.css"),
+    resolve(here, "..", "themes", `${safe}.css`),
+    resolve(here, "..", "..", "themes", `${safe}.css`),
   ];
   for (const c of candidates) {
     if (existsSync(c)) return readFileSync(c, "utf8");
   }
+  if (safe !== "default") return loadTheme("default");
   return "";
 }
 
@@ -164,7 +172,7 @@ function main(): void {
       const to = cmd === "export" ? "json" : args.to;
       switch (to) {
         case "html": {
-          const themeCss = loadTheme();
+          const themeCss = loadTheme(args.theme);
           const html = renderHtml(doc, {
             standalone: args.standalone,
             title: args.title,

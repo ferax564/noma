@@ -106,3 +106,13 @@ test("standalone HTML wraps with theme", () => {
   assert.match(html, /<!doctype html>/);
   assert.match(html, /color:red/);
 });
+
+test("variant attribute lands as data-variant on cards/callouts/research", () => {
+  const doc = parse(
+    `::card{title="X" variant="important"}\nA\n::\n\n::callout{tone="info" variant="subtle"}\nB\n::\n\n::claim{id="c1" variant="danger"}\nC\n::\n`,
+  );
+  const html = renderHtml(doc);
+  assert.match(html, /class="noma-card"[^>]*data-variant="important"/);
+  assert.match(html, /class="noma-callout[^"]*"[^>]*data-variant="subtle"/);
+  assert.match(html, /class="noma-research noma-claim"[^>]*data-variant="danger"/);
+});
