@@ -6,6 +6,7 @@ import { parse } from "./parser.js";
 import { renderHtml } from "./renderer-html.js";
 import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
+import { renderNoma } from "./renderer-noma.js";
 import { validate, formatDiagnostics } from "./validator.js";
 
 const HELP = `noma — readable document format for humans and agents
@@ -18,7 +19,7 @@ Usage:
   noma --help                                Show this help
 
 Render options:
-  --to <html|llm|json>      Target format (default: html)
+  --to <html|llm|json|noma> Target format (default: html)
   --out <path>              Write to file instead of stdout
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
@@ -156,6 +157,10 @@ function main(): void {
         }
         case "json": {
           output(renderJson(doc, { pretty: true }), args.out);
+          return;
+        }
+        case "noma": {
+          output(renderNoma(doc), args.out);
           return;
         }
         default:

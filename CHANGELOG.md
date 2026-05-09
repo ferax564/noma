@@ -8,6 +8,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **AST source printer** (`src/renderer-noma.ts`) — AST → `.noma`
+  serializer. Roundtrip-safe (`parse → renderNoma → parse` preserves the
+  AST modulo positions). Foundation for `noma patch`. Also exposed as
+  `noma render --to noma`. New roundtrip test covers every `.noma` file
+  in `examples/` and `docs/`.
+
 - **Three new demo artifacts** under `examples/`, exercising the full block
   surface end-to-end:
   - `agent-plan.noma` — Q3 roadmap decision (options, decision matrix,
