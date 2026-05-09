@@ -64,7 +64,7 @@ The HTML renderer is theme-agnostic — it only emits semantic class names. The 
 
 ## Why no plugin system (yet)
 
-::claim{id="claim-no-plugins-mvp" confidence=0.7}
+::claim{id="claim-no-plugins-mvp" confidence=0.7 noverify}
 A plugin system at v0.1 would harden block semantics before we know which blocks matter. Better to evolve the core typed-block set in lockstep with the renderer until the shape of "real" Noma documents is clear.
 ::
 

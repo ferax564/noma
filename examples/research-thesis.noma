@@ -80,28 +80,28 @@ universal, the integration moat compresses faster than the data moat does.
 
 ## Risks
 
-::risk{id="risk-frontier-leap" severity="high"}
+::risk{id="risk-frontier-leap" severity="high" owner="ferax564"}
 A frontier-model capability leap (e.g., GPT-6-class reasoning + native
 long-horizon tool use) could collapse the workflow gap. Most vulnerable
 verticals: those where workflow complexity comes from reasoning chains
 rather than data integration (e.g., research synthesis).
 ::
 
-::risk{id="risk-platform-shift" severity="medium"}
+::risk{id="risk-platform-shift" severity="medium" owner="ferax564"}
 If the major model providers ship vertical-agent SDKs with
 revenue-share models, distribution shifts toward platform-bundled
 offerings. Mitigation: invest in customer ownership of data
 (BYO-storage, on-prem options).
 ::
 
-::risk{id="risk-regulatory-freeze" severity="medium"}
+::risk{id="risk-regulatory-freeze" severity="medium" owner="ferax564"}
 EU AI Act high-risk classification or US sector-specific rules (FDA,
 SEC) could freeze deployments for 12–18 months in the affected
 verticals. This *helps* incumbents and *helps* well-capitalized
 vendors with compliance teams — and disproportionately hurts startups.
 ::
 
-::risk{id="risk-talent-concentration" severity="low"}
+::risk{id="risk-talent-concentration" severity="low" owner="ferax564"}
 Top vertical talent is concentrated in 4–6 startups per category.
 Acquihire risk is real but bounded; not a thesis-breaker.
 ::

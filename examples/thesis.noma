@@ -43,11 +43,11 @@ The 2025 update to US export controls may extend to deep-ultraviolet (DUV) immer
 
 ## Risks
 
-::risk{id="risk-china-restrictions" severity="high"}
+::risk{id="risk-china-restrictions" severity="high" owner="ferax564"}
 Further US/EU export restrictions could reduce ASML's China revenue by a high single-digit to low double-digit percentage of total sales.
 ::
 
-::risk{id="risk-cyclicality" severity="medium"}
+::risk{id="risk-cyclicality" severity="medium" owner="ferax564"}
 Semiconductor capex is cyclical. A WFE downturn could compress ASML's near-term order book even as the long-term thesis holds.
 ::
 

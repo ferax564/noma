@@ -179,15 +179,18 @@ Renderers exhaustively switch on `type`. Adding a new variant is a typed change:
 
 The default validator detects:
 
-- duplicate IDs
-- references (`for=`, `[[id]]`) pointing to unknown IDs
-- `evidence` and `counterevidence` with no `for=` attribute
-- `figure` blocks with neither `alt` nor `caption`
-- `plot` blocks with no `data=` or `dataset=`
+- **errors** — duplicate IDs, references (`for=`, `[[id]]`) pointing to unknown IDs, `plot` blocks with no `data=` or `dataset=`.
+- **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, and `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days).
 
-Optional rules:
+Per-block opt-out: add the `noverify` flag attribute to silence rules on a single block (e.g. rhetorical claims that aren't expected to carry their own evidence chain).
 
-- `requireEvidenceForClaims` — every `claim` with an `id` must be referenced by at least one `evidence` block.
+```noma
+::claim{id="claim-vs-markdown" confidence=0.85 noverify}
+Markdown is too weak for AI-era documents.
+::
+```
+
+Options surfaced on the API: `requireEvidenceForClaims` (default `true`), `staleCitationDays` (default `365`), `now` (test injection point for the stale-citation rule).
 
 ## Render targets (v0.1)
 
@@ -214,5 +217,5 @@ Should the long-term canonical PDF engine be Typst (richer typography, native La
 ::
 
 ::open_question{id="oq-agent-protocol"}
-What is the smallest set of agent patch operations needed to cover real editing workflows? Current candidates: `replace_block`, `add_child`, `remove_block`, `set_attr`, `move_block`.
+What is the smallest set of agent patch operations needed to cover real editing workflows? v0.2 ships five: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. Open question: do we need `move_block` and `add_comment` as first-class ops, or are they better expressed as compositions of the existing five?
 ::

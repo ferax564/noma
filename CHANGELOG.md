@@ -14,6 +14,14 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   `noma render --to noma`. New roundtrip test covers every `.noma` file
   in `examples/` and `docs/`.
 
+- **Validator hardening** (PLAN.md §23.12) — five new default rules:
+  `claim-without-evidence` (promoted from optional), `risk-without-owner`,
+  `decision-without-status` (covers `decision` and `adr`),
+  `agent-task-without-scope`, and `stale-citation` (default 365 days,
+  configurable via `staleCitationDays`). All emit warnings; per-block
+  opt-out is the `noverify` flag attribute. Existing demos updated to
+  carry owners and evidence (or `noverify` for rhetorical claims).
+
 - **`noma patch`** — block-level edits without rewriting the file. Five
   ops shipped:
   - `replace_block{id, content}`

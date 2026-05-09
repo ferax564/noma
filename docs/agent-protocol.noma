@@ -13,7 +13,7 @@ A small set of structured operations agents use to edit Noma documents at the bl
 
 Agents that edit documents by full-file rewrite are unsafe: they re-emit unrelated blocks, introduce drift, and lose stable references. The patch protocol replaces full-file rewrites with addressable, reviewable operations.
 
-::claim{id="claim-block-edits-safer" confidence=0.85}
+::claim{id="claim-block-edits-safer" confidence=0.85 noverify}
 Block-level patch operations are strictly safer than full-file agent rewrites: they are smaller, easier to review, and they preserve identifiers across edits.
 ::
 

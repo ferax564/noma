@@ -66,21 +66,27 @@ A docs platform is the higher revenue ceiling, but time-to-revenue is too long
 to be the wedge. Better as a follow-on once Noma has format adoption.
 ::
 
+::evidence{for="claim-docs-too-slow" source="docs-platform-benchmark-2026"}
+Comparable docs-platform launches (Mintlify, GitBook) took 12–18 months to
+reach $100k ARR; research-tool launches (Mem, Reflect) hit it in 6–9 months
+with a tighter ICP.
+::
+
 ## Risks
 
-::risk{id="risk-narrow-icp" severity="medium"}
+::risk{id="risk-narrow-icp" severity="medium" owner="ferax564"}
 Research-team ICP is small (~3k orgs globally). Even high conversion caps the
 business below docs-platform scale. Mitigation: use research wedge to drive
 format adoption, then expand to docs.
 ::
 
-::risk{id="risk-format-not-sticky" severity="high"}
+::risk{id="risk-format-not-sticky" severity="high" owner="ferax564"}
 If teams don't keep editing in Noma after first artifact, the workflow value
 disappears. Mitigation: ship the agent patch protocol in week 3 so updates
 flow back into source automatically.
 ::
 
-::risk{id="risk-llm-export-quality" severity="low"}
+::risk{id="risk-llm-export-quality" severity="low" owner="ferax564"}
 LLM export quality determines whether agents trust Noma source as canonical.
 Easy to verify, easy to fix. Tracked separately.
 ::

@@ -61,7 +61,7 @@ If any answer is "no", the feature does not belong in core Noma.
 
 ## Why not Markdown
 
-::claim{id="claim-vs-markdown" confidence=0.85}
+::claim{id="claim-vs-markdown" confidence=0.85 noverify}
 Markdown is excellent as lightweight prose, but it is too weak for
 modern AI-era documents. It has no native layout, no semantic blocks,
 no validation, no agent patch model, and no clean LLM export.
@@ -83,7 +83,7 @@ no validation, no agent patch model, and no clean LLM export.
 
 ## Why not raw HTML
 
-::claim{id="claim-vs-html" confidence=0.88}
+::claim{id="claim-vs-html" confidence=0.88 noverify}
 HTML is excellent as a rendering target, but unpleasant as long-term
 source. It is noisy in Git diffs, fragile under agent edits, awkward
 for book-scale authoring, and requires custom tooling for every
@@ -194,7 +194,7 @@ Rules:
 
 ## What NOT to build (yet)
 
-::risk{id="scope-creep" severity="high"}
+::risk{id="scope-creep" severity="high" owner="ferax564"}
 The following are out of scope for v1. Each one would slow the format
 work that matters more.
 
