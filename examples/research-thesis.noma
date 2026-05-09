@@ -139,10 +139,10 @@ rows:
   - [construction, 6, 290, 2.7]
 ::
 
-::plot{id="vertical-ai-arr-plot" dataset="vertical-ai-funding" type="bar" x="vertical" y="median_arr_growth_yoy" title="Median ARR YoY growth by vertical (2026)"}
+::plot{id="vertical-ai-arr-plot" type="bar" data="3.4 2.9 4.1 3.6 2.7" xlabels="legal,healthcare,fin-audit,insurance,construction" title="Median ARR YoY growth by vertical (2026)"}
 ::
 
-::plot{id="vertical-ai-funding-plot" dataset="vertical-ai-funding" type="line" x="vertical" y="total_funding_usd_m" title="Total funding raised by vertical ($M)"}
+::plot{id="vertical-ai-funding-plot" type="line" data="1280 2650 540 720 290" xlabels="legal,healthcare,fin-audit,insurance,construction" title="Total funding raised by vertical ($M)"}
 ::
 
 ## Watchlist (positions, not recommendations)

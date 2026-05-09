@@ -14,6 +14,18 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   `noma render --to noma`. New roundtrip test covers every `.noma` file
   in `examples/` and `docs/`.
 
+- **Real `::plot` rendering** — inline-data line and bar charts as
+  self-contained SVG. Pass a numeric series via `data="10 20 15 30"`
+  (space- or comma-separated), optional `xlabels="a,b,c,d"`, optional
+  `width=` / `height=`. Line charts gain a soft area fill, point
+  markers, faint gridlines, and min/max axis labels; bar charts get
+  per-value rects. Zero JS, zero chart-library deps. CSV-path values
+  (`data="./file.csv"`) keep the placeholder so existing files don't
+  regress; CSV evaluation arrives later. Demos updated:
+  `examples/thesis.noma` shows ASML revenue (line);
+  `examples/research-thesis.noma` shows the vertical-AI funding bar
+  chart and ARR-growth line, both with real numbers.
+
 - **Theme variants** (PLAN.md §23.13) — `{variant="..."}` lands as
   `data-variant="..."` on cards, callouts, and research blocks
   (`claim`, `evidence`, `risk`, `decision`, `adr`, etc.). The bundled

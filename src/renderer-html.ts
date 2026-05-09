@@ -263,16 +263,132 @@ function renderAgentTask(node: DirectiveNode, idAttr: string): string {
 function renderPlotPlaceholder(node: DirectiveNode, idAttr: string): string {
   const title = node.attrs.title ? String(node.attrs.title) : "Plot";
   const dataSrc = node.attrs.data ?? node.attrs.dataset ?? "—";
-  const type = node.attrs.type ?? "line";
-  return `<figure class="noma-plot"${idAttr}>
-  <div class="noma-plot-canvas" data-type="${escapeAttr(String(type))}" data-source="${escapeAttr(String(dataSrc))}">
-    <svg viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <polyline points="0,100 40,80 80,90 120,60 160,55 200,40 240,35 280,20 320,15"
+  const type = String(node.attrs.type ?? "line");
+  const w = Number(node.attrs.width ?? 320);
+  const h = Number(node.attrs.height ?? 140);
+  const series = parseSeries(node);
+  const labels = parseLabels(node);
+
+  const svg = series.length >= 2
+    ? renderChartSvg(series, type, w, h, labels)
+    : `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <polyline points="0,${h - 20} ${w * 0.13},${h - 40} ${w * 0.25},${h - 30} ${w * 0.38},${h - 60} ${w * 0.5},${h - 65} ${w * 0.63},${h - 80} ${w * 0.75},${h - 85} ${w * 0.88},${h - 100} ${w},${h - 105}"
         fill="none" stroke="currentColor" stroke-width="2" />
-    </svg>
+    </svg>`;
+
+  const sourceLabel = series.length >= 2 ? `${series.length} points` : String(dataSrc);
+  return `<figure class="noma-plot"${idAttr}>
+  <div class="noma-plot-canvas" data-type="${escapeAttr(type)}" data-source="${escapeAttr(String(dataSrc))}">
+    ${svg}
   </div>
-  <figcaption>${escapeHtml(title)} <span class="noma-meta-key">type</span> ${escapeHtml(String(type))} · <span class="noma-meta-key">source</span> ${escapeHtml(String(dataSrc))}</figcaption>
+  <figcaption>${escapeHtml(title)} <span class="noma-meta-key">type</span> ${escapeHtml(type)} · <span class="noma-meta-key">source</span> ${escapeHtml(sourceLabel)}</figcaption>
 </figure>`;
+}
+
+function parseSeries(node: DirectiveNode): number[] {
+  const tryParse = (raw: string): number[] => {
+    const parts = raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+    const nums = parts.map(Number);
+    if (nums.length >= 2 && nums.every((n) => Number.isFinite(n))) return nums;
+    return [];
+  };
+  const data = node.attrs.data;
+  if (typeof data === "string" && !data.includes("/") && !data.endsWith(".csv")) {
+    const fromAttr = tryParse(data);
+    if (fromAttr.length) return fromAttr;
+  }
+  if (typeof data === "number") return [];
+  if (node.body) {
+    const lines = node.body
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#") && !/^[a-zA-Z_]+\s*:/.test(l));
+    const inline = tryParse(lines.join(" "));
+    if (inline.length) return inline;
+  }
+  return [];
+}
+
+function parseLabels(node: DirectiveNode): string[] {
+  const raw = node.attrs.xlabels;
+  if (typeof raw !== "string") return [];
+  return raw.split(/\s*,\s*/).filter(Boolean);
+}
+
+function renderChartSvg(
+  series: number[],
+  type: string,
+  w: number,
+  h: number,
+  labels: string[],
+): string {
+  const padL = 28;
+  const padR = 6;
+  const padT = 8;
+  const padB = labels.length ? 22 : 8;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  const span = max - min || 1;
+  const x = (i: number) =>
+    padL + (series.length === 1 ? innerW / 2 : (i / (series.length - 1)) * innerW);
+  const y = (v: number) => padT + innerH - ((v - min) / span) * innerH;
+
+  const gridY = [0, 0.25, 0.5, 0.75, 1].map(
+    (t) =>
+      `<line x1="${padL}" x2="${w - padR}" y1="${padT + t * innerH}" y2="${padT + t * innerH}" stroke="currentColor" stroke-opacity="0.12" />`,
+  ).join("");
+
+  let plot: string;
+  if (type === "bar") {
+    const barW = (innerW / series.length) * 0.7;
+    plot = series
+      .map((v, i) => {
+        const cx = x(i);
+        const top = y(v);
+        return `<rect x="${cx - barW / 2}" y="${top}" width="${barW}" height="${padT + innerH - top}" fill="currentColor" opacity="0.85" />`;
+      })
+      .join("");
+  } else {
+    const points = series.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const area = `M ${x(0).toFixed(1)},${(padT + innerH).toFixed(1)} L ${points
+      .split(" ")
+      .join(" L ")} L ${x(series.length - 1).toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
+    plot =
+      `<path d="${area}" fill="currentColor" opacity="0.12" />` +
+      `<polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2" />` +
+      series
+        .map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="currentColor" />`)
+        .join("");
+  }
+
+  const minLabel = `<text x="${padL - 4}" y="${(padT + innerH).toFixed(1)}" text-anchor="end" font-size="9" fill="currentColor" opacity="0.7">${escapeHtml(formatNum(min))}</text>`;
+  const maxLabel = `<text x="${padL - 4}" y="${(padT + 8).toFixed(1)}" text-anchor="end" font-size="9" fill="currentColor" opacity="0.7">${escapeHtml(formatNum(max))}</text>`;
+
+  const xLabels = labels.length
+    ? series
+        .map((_, i) => {
+          const lbl = labels[i] ?? "";
+          if (!lbl) return "";
+          return `<text x="${x(i).toFixed(1)}" y="${(h - 6).toFixed(1)}" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">${escapeHtml(lbl)}</text>`;
+        })
+        .join("")
+    : "";
+
+  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img">
+    ${gridY}
+    ${plot}
+    ${minLabel}
+    ${maxLabel}
+    ${xLabels}
+  </svg>`;
+}
+
+function formatNum(n: number): string {
+  if (Math.abs(n) >= 1000) return n.toFixed(0);
+  if (Math.abs(n) >= 10) return n.toFixed(1);
+  return n.toFixed(2);
 }
 
 function renderChildren(node: DirectiveNode): string {
