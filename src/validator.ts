@@ -127,6 +127,20 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       });
     }
 
+    if (
+      (node.name === "html" || node.name === "svg" || node.name === "script") &&
+      !suppressed(node) &&
+      node.attrs.trusted !== true
+    ) {
+      diagnostics.push({
+        severity: "warning",
+        code: "escape-hatch-untrusted",
+        message: `${node.name} escape-hatch block has no \`trusted\` attribute. Add \`trusted\` to silence this warning, or \`noverify\` to suppress all checks on this block.`,
+        pos: node.pos,
+        nodeId: node.id,
+      });
+    }
+
     if (node.name === "citation" && !suppressed(node) && node.attrs.accessed) {
       const stale = isStale(String(node.attrs.accessed), now, staleDays);
       if (stale) {

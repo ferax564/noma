@@ -27,6 +27,7 @@ Render options:
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
   --theme <name>            HTML theme: default | dark (default: default)
+  --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
 
 Patch options:
   --op <json>               One inline patch op (JSON object)
@@ -54,6 +55,7 @@ interface CliArgs {
   opsFile?: string;
   inplace: boolean;
   theme: string;
+  allowEscapeHatches: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -64,6 +66,7 @@ function parseArgs(argv: string[]): CliArgs {
     help: false,
     inplace: false,
     theme: "default",
+    allowEscapeHatches: true,
   };
   let i = 1;
   while (i < argv.length) {
@@ -88,6 +91,9 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--theme") {
       args.theme = argv[++i] ?? "default";
+      i++;
+    } else if (a === "--no-unsafe") {
+      args.allowEscapeHatches = false;
       i++;
     } else if (a === "--op") {
       args.op = argv[++i];
@@ -179,6 +185,7 @@ function main(): void {
             standalone: args.standalone,
             title: args.title,
             themeCss,
+            allowEscapeHatches: args.allowEscapeHatches,
           });
           output(html, args.out);
           return;

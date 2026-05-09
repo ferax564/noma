@@ -8,9 +8,18 @@ export interface HtmlRenderOptions {
   title?: string;
   /** Inline CSS injected into <head> when standalone. */
   themeCss?: string;
+  /**
+   * Allow `::html`, `::svg`, `::script` escape hatches to emit raw markup.
+   * Default: `true` (artifact mode). Set `false` for trusted-publishing
+   * contexts where unfiltered HTML is unsafe.
+   */
+  allowEscapeHatches?: boolean;
 }
 
+let renderState = { allowEscapeHatches: true };
+
 export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): string {
+  renderState = { allowEscapeHatches: options.allowEscapeHatches !== false };
   const body = doc.children.map(renderNode).join("\n");
   if (!options.standalone) return body;
 
@@ -214,6 +223,27 @@ function renderDirective(node: DirectiveNode): string {
 
     case "citation":
       return `<cite class="noma-citation"${idAttr}>${renderChildren(node) || escapeHtml(node.body ?? "")}</cite>`;
+
+    case "html":
+      return renderState.allowEscapeHatches
+        ? `<div class="noma-raw-html"${idAttr}>${node.body ?? ""}</div>`
+        : `<aside class="noma-blocked-escape" data-kind="html"${idAttr}>[raw HTML escape hatch disabled]</aside>`;
+
+    case "svg":
+      return renderState.allowEscapeHatches
+        ? `<div class="noma-raw-svg"${idAttr}>${node.body ?? ""}</div>`
+        : `<aside class="noma-blocked-escape" data-kind="svg"${idAttr}>[raw SVG escape hatch disabled]</aside>`;
+
+    case "script": {
+      if (!renderState.allowEscapeHatches) {
+        return `<aside class="noma-blocked-escape" data-kind="script"${idAttr}>[script escape hatch disabled]</aside>`;
+      }
+      const runtime = String(node.attrs.runtime ?? "browser");
+      if (runtime !== "browser") {
+        return `<!-- noma:script runtime="${escapeAttr(runtime)}" omitted -->`;
+      }
+      return `<script${idAttr}>${node.body ?? ""}</script>`;
+    }
 
     default:
       return wrap(

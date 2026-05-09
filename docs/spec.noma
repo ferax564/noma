@@ -160,6 +160,22 @@ dataset, plot, metric, code_cell, output
 agent_task, todo, review, comment, change_request, provenance, confidence, citation
 ```
 
+### Escape hatches
+
+```
+html, svg, script
+```
+
+Allowed but discouraged. The validator warns on every untrusted use. Add the `trusted` flag attribute to silence the warning on a single block; pass `--no-unsafe` to the CLI (or set `allowEscapeHatches: false` on the API) to block escape hatches entirely in trusted-publishing contexts. The LLM renderer always strips escape-hatch bodies and replaces them with a placeholder so agent context stays predictable.
+
+```noma
+::svg{trusted}
+<svg width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="30" fill="#b9522a" />
+</svg>
+::
+```
+
 ::callout{tone="note"}
 v0.2 ships real chart rendering for `::plot`. Pass numeric data inline via `data="10 20 15 30"` (space- or comma-separated), optional `xlabels="a,b,c,d"`, and `type="line"` or `type="bar"`. The renderer emits a self-contained inline SVG with min/max axis labels, faint gridlines, and (line) a soft area fill plus point markers — no external chart library, no JS. CSV-path values like `data="./series.csv"` still fall through to the placeholder so existing files don't break; CSV evaluation is a later milestone.
 ::

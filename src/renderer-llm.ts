@@ -94,6 +94,11 @@ function emitSection(node: SectionNode, out: string[], depth: number): void {
 }
 
 function emitDirective(node: DirectiveNode, out: string[], depth: number): void {
+  if (node.name === "html" || node.name === "svg" || node.name === "script") {
+    out.push(`[${node.name.toUpperCase()} escape-hatch block omitted from LLM context]`);
+    out.push("");
+    return;
+  }
   const tag = node.name.toUpperCase();
   const attrs = Object.entries(node.attrs)
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)

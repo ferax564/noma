@@ -14,6 +14,17 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   `noma render --to noma`. New roundtrip test covers every `.noma` file
   in `examples/` and `docs/`.
 
+- **Escape hatches** (PLAN.md §23.14) — three new directives:
+  `::html`, `::svg`, `::script{runtime="browser"}`. The HTML renderer
+  emits raw markup by default (artifact mode); the LLM renderer
+  always strips the body and replaces it with a placeholder so agent
+  context stays predictable. Validator warns on every untrusted use;
+  add the `trusted` flag attribute to silence per-block, or pass
+  `--no-unsafe` (`allowEscapeHatches: false`) to the CLI / API to
+  block all three entirely for trusted-publishing contexts. The
+  blocked render emits a `noma-blocked-escape` aside with a clear
+  reason.
+
 - **Book manifests + multi-file rendering** (PLAN.md §8) — YAML
   manifest (`*.yml` / `*.yaml`) lists chapters relative to its
   directory; the loader concatenates them into a single
