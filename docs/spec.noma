@@ -1,13 +1,13 @@
 ---
-title: Noma — Format Specification (v0.4)
-version: 0.4
+title: Noma — Format Specification (v0.5)
+version: 0.5
 status: stable
 ---
 
 # Noma Format Specification
 
 ::summary
-This document defines the **Noma** plain-text document format at version 0.4. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+This document defines the **Noma** plain-text document format at version 0.5. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
 ::
 
 ## Conventions
@@ -310,7 +310,46 @@ noma check chapters/03-risks.noma --ignore-rule broken-reference
 
 Unknown rule names produce an `info` note; they do not fail the run.
 
-## Render targets (v0.4)
+## Diagrams, plotly, external datasets (v0.5)
+
+Three new directives turn `.noma` into a richer artifact format without
+breaking the AST.
+
+`::diagram{kind="mermaid|graphviz|drawio"}` — body holds the source
+verbatim. The HTML renderer ships a small per-kind hydrator and only
+injects the matching CDN runtime when the document actually contains
+that kind, keeping plain pages CDN-free.
+
+```noma
+::diagram{kind="mermaid"}
+flowchart LR
+  A --> B
+  B --> C
+::
+```
+
+`::plotly` — body is a JSON spec (`{ "data": [...], "layout": {...} }`).
+The HTML renderer injects Plotly.js and hydrates each block; the LLM
+renderer keeps the JSON unchanged so an agent can still reason about
+the chart.
+
+`::dataset{src="data.csv"}` — paths resolve relative to the source file
+(book mode resolves per chapter). The CLI calls `inlineDatasetSources`
+after parse so renderers stay pure: by the time HTML/LLM/JSON run, the
+dataset body is already inlined and the format attribute is set
+(`csv`, `tsv`, `json`, `yaml`). Plots reference these datasets by id
+and column exactly as before.
+
+## Source-preserving patch (v0.5)
+
+`noma patch` no longer round-trips through `renderNoma` over the whole
+file. It now rewrites only the targeted line range — frontmatter
+quoting, sibling blocks, blank-line padding, and attribute order on
+unchanged lines all survive intact. The programmatic API exposes the
+new function as `patchSource(source, ops)`; the AST-level
+`patch(doc, op)` stays for callers that already work in AST space.
+
+## Render targets (v0.5)
 
 | Target   | Status  | Notes                                                                         |
 | -------- | ------- | ----------------------------------------------------------------------------- |
@@ -374,7 +413,7 @@ The loader concatenates each chapter's parsed AST into a single `DocumentNode` (
 
 Resolution order: explicit `id=` on the heading → auto-slug from the title → frontmatter `aliases:` → filename slug. Any of those paths matching the wikilink target counts as resolved.
 
-## Compatibility promises (v0.4)
+## Compatibility promises (v0.5)
 
 - The directive **opener/closer** syntax is stable and will not change in 0.x.
 - Attribute grammar is stable.
