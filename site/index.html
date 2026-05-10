@@ -578,6 +578,77 @@
   .preview pre .s { color: #2c5d8f; }
   .preview pre .c { color: var(--muted); font-style: italic; }
   .preview pre .h { color: #1d1c1a; font-weight: 700; }
+
+  /* What's new strip */
+  section.whatsnew {
+    background: var(--bg-soft);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 36px 0 40px;
+  }
+  .whatsnew-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .whatsnew-head h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .whatsnew-head .version-tag {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin-right: 8px;
+  }
+  .whatsnew-head .meta {
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+  .whatsnew-head .meta a {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .whatsnew-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+  }
+  .whatsnew-item {
+    background: var(--card-bg);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .whatsnew-item code {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+  .whatsnew-item h3 {
+    margin: 0 0 6px;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+  .whatsnew-item p {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--muted);
+  }
 </style>
 </head>
 <body>
@@ -586,6 +657,7 @@
   <div class="wrap">
     <a class="brand" href="#top"><span class="brand-mark"></span>Noma</a>
     <div class="links">
+      <a href="#whats-new">What's new</a>
       <a href="#three-layers">Layers</a>
       <a href="#demos">Demos</a>
       <a href="#compare">Compare</a>
@@ -653,6 +725,43 @@ Research teams are the sharpest wedge.
     </div>
   </div>
 </header>
+
+<section class="whatsnew" id="whats-new">
+  <div class="wrap">
+    <div class="whatsnew-head">
+      <h2><span class="version-tag">v0.3.0</span>Response to first real-world authoring pass</h2>
+      <div class="meta">
+        Eight friction items + two design questions from <a href="https://github.com/ferax564/noma/issues/1">issue #1</a> · <a href="https://github.com/ferax564/noma/blob/main/CHANGELOG.md#030--2026-05-10">full changelog</a>
+      </div>
+    </div>
+    <div class="whatsnew-grid">
+      <div class="whatsnew-item">
+        <h3><code>::table</code> directive + <code>noma fmt</code></h3>
+        <p>Tables without separator-row tax. <code>fmt</code> re-aligns pipe tables in source, respects code spans and <code>\|</code> escapes.</p>
+      </div>
+      <div class="whatsnew-item">
+        <h3><code>::plot{dataset, column}</code></h3>
+        <p>Plots resolve their series against sibling <code>::dataset</code> blocks. No more authoring numbers twice.</p>
+      </div>
+      <div class="whatsnew-item">
+        <h3><code>::state_change</code> directive</h3>
+        <p>Typed deltas for weekly/quarterly recap docs. Strike-through → bold in HTML, structured fields in LLM context.</p>
+      </div>
+      <div class="whatsnew-item">
+        <h3>Profile frontmatter</h3>
+        <p><code>profile: research | technical | minimal</code> as a contract about which directives the document uses. Validator warns on out-of-profile blocks.</p>
+      </div>
+      <div class="whatsnew-item">
+        <h3>Citation staleness overrides</h3>
+        <p>Per-document <code>stale_citation_days</code>, per-citation <code>stale_after_days</code>, plus <code>noma check --stale-days N</code>.</p>
+      </div>
+      <div class="whatsnew-item">
+        <h3>Wikilinks across chapters</h3>
+        <p><code>[[id]]</code> references resolve across an entire book manifest. Validator surfaces broken targets as <code>broken-reference</code> errors.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
 <section id="three-layers">
   <div class="wrap">
@@ -836,6 +945,7 @@ Research teams are the sharpest wedge.
     <a class="brand" href="#top"><span class="brand-mark"></span>Noma</a>
     <div class="links">
       <a href="https://github.com/ferax564/noma">GitHub</a>
+      <a href="docs/getting-started.html">Getting started</a>
       <a href="docs/direction.html">Direction</a>
       <a href="docs/spec.html">Spec</a>
       <a href="docs/architecture.html">Architecture</a>
