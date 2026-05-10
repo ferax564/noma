@@ -590,8 +590,11 @@ function renderChartSvg(
   h: number,
   labels: string[],
 ): string {
+  // Bar plots reserve half a slot of margin so end bars don't run past the
+  // data-area edge. Line/area plots anchor to the edges.
+  const isBar = type === "bar";
   const padL = 28;
-  const padR = 6;
+  const padR = isBar ? 12 : 6;
   const padT = 8;
   const padB = labels.length ? 22 : 8;
   const innerW = w - padL - padR;
@@ -599,8 +602,11 @@ function renderChartSvg(
   const min = Math.min(...series);
   const max = Math.max(...series);
   const span = max - min || 1;
-  const x = (i: number) =>
-    padL + (series.length === 1 ? innerW / 2 : (i / (series.length - 1)) * innerW);
+  const x = (i: number) => {
+    if (series.length === 1) return padL + innerW / 2;
+    if (isBar) return padL + ((i + 0.5) / series.length) * innerW;
+    return padL + (i / (series.length - 1)) * innerW;
+  };
   const y = (v: number) => padT + innerH - ((v - min) / span) * innerH;
 
   const gridY = [0, 0.25, 0.5, 0.75, 1].map(

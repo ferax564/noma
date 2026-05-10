@@ -16,7 +16,11 @@ export function inlineToHtml(src: string): string {
   text = text.replace(/\[\[([a-zA-Z_][\w-]*)\]\]/g, (_m, id) =>
     `<a class="noma-ref" href="#${escapeAttr(id)}">${id}</a>`,
   );
-  text = text.replace(/\n/g, "<br />");
+  // CommonMark: a single newline inside a paragraph is a soft line break
+  // (renders as a space); two trailing spaces or a trailing backslash before
+  // the newline make it a hard break (`<br/>`).
+  text = text.replace(/(?:  +|\\)\n/g, "<br />");
+  text = text.replace(/\n/g, " ");
   return text;
 }
 
