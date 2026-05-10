@@ -1,4 +1,6 @@
+import yaml from "js-yaml";
 import type { DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
+import { walk } from "./ast.js";
 import { escapeAttr, escapeHtml, inlineToHtml } from "./inline.js";
 
 export interface HtmlRenderOptions {
@@ -16,13 +18,92 @@ export interface HtmlRenderOptions {
   allowEscapeHatches?: boolean;
 }
 
+interface DatasetTable {
+  columns: string[];
+  rows: unknown[][];
+}
+
 interface RenderCtx {
   allowEscapeHatches: boolean;
+  datasets: Map<string, DatasetTable>;
+}
+
+function buildDatasetRegistry(doc: DocumentNode): Map<string, DatasetTable> {
+  const out = new Map<string, DatasetTable>();
+  for (const node of walk(doc)) {
+    if (node.type !== "directive" || node.name !== "dataset" || !node.id) continue;
+    const table = parseDatasetBody(node);
+    if (table) out.set(node.id, table);
+  }
+  return out;
+}
+
+function parseDatasetBody(node: DirectiveNode): DatasetTable | null {
+  const body = node.body ?? "";
+  if (!body.trim()) return null;
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(body);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const obj = parsed as Record<string, unknown>;
+  const schema = obj.schema;
+  const rows = obj.rows;
+  if (!Array.isArray(rows)) return null;
+  let columns: string[] = [];
+  if (schema && typeof schema === "object" && !Array.isArray(schema)) {
+    columns = Object.keys(schema as Record<string, unknown>);
+  } else if (typeof node.attrs.columns === "string") {
+    columns = node.attrs.columns.split(/[,\s]+/).filter(Boolean);
+  }
+  const cleanRows: unknown[][] = rows
+    .filter((r): r is unknown[] => Array.isArray(r))
+    .map((r) => [...r]);
+  return { columns, rows: cleanRows };
+}
+
+export function resolvePlotData(
+  table: DatasetTable,
+  column?: string,
+): { values: number[]; column: string } | null {
+  if (table.rows.length === 0) return null;
+  let idx = -1;
+  let name = column ?? "";
+  if (column) {
+    idx = table.columns.indexOf(column);
+    if (idx === -1) return null;
+  } else {
+    for (let i = 0; i < table.columns.length; i++) {
+      const sample = table.rows[0]?.[i];
+      if (typeof sample === "number") {
+        idx = i;
+        name = table.columns[i] ?? `col${i}`;
+        break;
+      }
+    }
+    if (idx === -1) return null;
+  }
+  const values = table.rows
+    .map((r) => Number(r[idx]))
+    .filter((n) => Number.isFinite(n));
+  return values.length >= 2 ? { values, column: name } : null;
+}
+
+export function resolvePlotLabels(
+  table: DatasetTable,
+  column: string,
+): string[] | null {
+  const idx = table.columns.indexOf(column);
+  if (idx === -1) return null;
+  return table.rows.map((r) => String(r[idx] ?? ""));
 }
 
 export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): string {
   const ctx: RenderCtx = {
     allowEscapeHatches: options.allowEscapeHatches !== false,
+    datasets: buildDatasetRegistry(doc),
   };
   const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
   if (!options.standalone) return body;
@@ -210,7 +291,7 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
     }
 
     case "plot":
-      return renderPlotPlaceholder(node, idAttr);
+      return renderPlotPlaceholder(node, idAttr, ctx);
 
     case "dataset":
       return `<details class="noma-dataset"${idAttr}><summary>Dataset: ${escapeHtml(String(node.attrs.id ?? "dataset"))}</summary><pre>${escapeHtml(node.body ?? "")}</pre></details>`;
@@ -218,6 +299,12 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
     case "agent_task":
     case "todo":
       return renderAgentTask(node, idAttr, ctx);
+
+    case "state_change":
+      return renderStateChange(node, idAttr, ctx);
+
+    case "table":
+      return renderTableDirective(node, idAttr);
 
     case "tabs":
     case "accordion":
@@ -286,6 +373,88 @@ function renderResearchBlock(node: DirectiveNode, ctx: RenderCtx): string {
 </aside>`;
 }
 
+function parseAlignSpec(raw: string, columns: number): (string | null)[] {
+  const codes = raw.split(/[,\s]+/).map((c) => c.trim().toLowerCase());
+  const out: (string | null)[] = [];
+  for (let i = 0; i < columns; i++) {
+    const c = codes[i] ?? "-";
+    if (c === "l" || c === "left") out.push("left");
+    else if (c === "c" || c === "center") out.push("center");
+    else if (c === "r" || c === "right") out.push("right");
+    else out.push(null);
+  }
+  return out;
+}
+
+function splitTableLine(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+}
+
+function renderTableDirective(node: DirectiveNode, idAttr: string): string {
+  const body = node.body ?? "";
+  const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return `<div class="noma-block noma-block-table"${idAttr}></div>`;
+  const rows = lines.map(splitTableLine);
+  const columns = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  for (const r of rows) while (r.length < columns) r.push("");
+  const wantsHeader = node.attrs.header === true || node.attrs.header === "true";
+  const headerRow = wantsHeader ? rows.shift() : undefined;
+  const align = typeof node.attrs.align === "string"
+    ? parseAlignSpec(node.attrs.align, columns)
+    : new Array<string | null>(columns).fill(null);
+
+  const renderCell = (tag: "th" | "td", cell: string, idx: number): string => {
+    const a = align[idx];
+    const styleAttr = a ? ` style="text-align: ${a}"` : "";
+    return `<${tag}${styleAttr}>${inlineToHtml(cell)}</${tag}>`;
+  };
+
+  const head = headerRow
+    ? `<thead><tr>${headerRow.map((c, i) => renderCell("th", c, i)).join("")}</tr></thead>\n`
+    : "";
+  const bodyRows = rows
+    .map((r) => `<tr>${r.map((c, i) => renderCell("td", c, i)).join("")}</tr>`)
+    .join("\n");
+  return `<table class="noma-table"${idAttr}>\n${head}<tbody>\n${bodyRows}\n</tbody>\n</table>`;
+}
+
+function renderStateChange(
+  node: DirectiveNode,
+  idAttr: string,
+  ctx: RenderCtx,
+): string {
+  const block = node.attrs.block ? String(node.attrs.block) : undefined;
+  const attribute = node.attrs.attribute ? String(node.attrs.attribute) : undefined;
+  const from = node.attrs.from !== undefined ? String(node.attrs.from) : undefined;
+  const to = node.attrs.to !== undefined ? String(node.attrs.to) : undefined;
+  const reason = node.attrs.reason ? String(node.attrs.reason) : undefined;
+  const at = node.attrs.at ? String(node.attrs.at) : undefined;
+  const target = block
+    ? `<a class="noma-ref" href="#${escapeAttr(block)}">${escapeHtml(block)}</a>`
+    : "—";
+  const attrLabel = attribute ? `<code>${escapeHtml(attribute)}</code>` : "";
+  const fromTo =
+    from !== undefined && to !== undefined
+      ? `<span class="noma-state-from">${escapeHtml(from)}</span> <span class="noma-state-arrow" aria-hidden="true">→</span> <span class="noma-state-to">${escapeHtml(to)}</span>`
+      : "";
+  const meta: string[] = [];
+  if (at) meta.push(`<span class="noma-meta-key">at</span> ${escapeHtml(at)}`);
+  if (reason) meta.push(`<span class="noma-meta-key">why</span> ${escapeHtml(reason)}`);
+  const metaHtml = meta.length ? `<div class="noma-meta">${meta.join(" · ")}</div>` : "";
+  const body = renderChildren(node, ctx);
+  return `<aside class="noma-state-change"${idAttr}>
+  <header class="noma-state-change-head"><span class="noma-tag">state_change</span> ${target}${attribute ? ` · ${attrLabel}` : ""}</header>
+  ${fromTo ? `<div class="noma-state-change-delta">${fromTo}</div>` : ""}
+  ${body}
+  ${metaHtml}
+</aside>`;
+}
+
 function renderAgentTask(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {
   const checked = node.attrs.done === true ? " checked" : "";
   return `<div class="noma-agent-task"${idAttr}>
@@ -294,14 +463,19 @@ function renderAgentTask(node: DirectiveNode, idAttr: string, ctx: RenderCtx): s
 </div>`;
 }
 
-function renderPlotPlaceholder(node: DirectiveNode, idAttr: string): string {
+function renderPlotPlaceholder(
+  node: DirectiveNode,
+  idAttr: string,
+  ctx: RenderCtx,
+): string {
   const title = node.attrs.title ? String(node.attrs.title) : "Plot";
   const dataSrc = node.attrs.data ?? node.attrs.dataset ?? "—";
   const type = String(node.attrs.type ?? "line");
   const w = Number(node.attrs.width ?? 320);
   const h = Number(node.attrs.height ?? 140);
-  const series = parseSeries(node);
-  const labels = parseLabels(node);
+  const fromDataset = resolveFromDataset(node, ctx);
+  const series = fromDataset?.values ?? parseSeries(node);
+  const labels = fromDataset?.labels ?? parseLabels(node);
 
   const svg = series.length >= 2
     ? renderChartSvg(series, type, w, h, labels)
@@ -317,6 +491,22 @@ function renderPlotPlaceholder(node: DirectiveNode, idAttr: string): string {
   </div>
   <figcaption>${escapeHtml(title)} <span class="noma-meta-key">type</span> ${escapeHtml(type)} · <span class="noma-meta-key">source</span> ${escapeHtml(sourceLabel)}</figcaption>
 </figure>`;
+}
+
+function resolveFromDataset(
+  node: DirectiveNode,
+  ctx: RenderCtx,
+): { values: number[]; labels: string[] } | null {
+  const dsId = node.attrs.dataset;
+  if (typeof dsId !== "string") return null;
+  const table = ctx.datasets.get(dsId);
+  if (!table) return null;
+  const column = typeof node.attrs.column === "string" ? node.attrs.column : undefined;
+  const resolved = resolvePlotData(table, column);
+  if (!resolved) return null;
+  const xColumn = typeof node.attrs.xcolumn === "string" ? node.attrs.xcolumn : undefined;
+  const labels = xColumn ? (resolvePlotLabels(table, xColumn) ?? []) : parseLabels(node);
+  return { values: resolved.values, labels };
 }
 
 function parseSeries(node: DirectiveNode): number[] {
@@ -346,7 +536,7 @@ function parseSeries(node: DirectiveNode): number[] {
 function parseLabels(node: DirectiveNode): string[] {
   const raw = node.attrs.xlabels;
   if (typeof raw !== "string") return [];
-  return raw.split(/\s*,\s*/).filter(Boolean);
+  return raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
 }
 
 function renderChartSvg(

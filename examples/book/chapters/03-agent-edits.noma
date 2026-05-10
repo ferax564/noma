@@ -22,6 +22,8 @@ noma patch thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key"
 
 The CLI parses, applies, re-serializes via the source printer, and writes back. The unrelated 95% of the file is byte-identical to where you left it.
 
+The patch protocol is the third leg of [[the-three-layers]] introduced in chapter 1: source, artifact, agent context. Without it, the agent layer is read-only.
+
 ## Why this matters
 
 ::claim{id="claim-block-trust" confidence=0.88}

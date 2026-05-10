@@ -192,6 +192,37 @@ Rules:
 - flagged by validator if unsafe
 - disabled by default in trusted publishing contexts
 
+## Core directives vs. community packs
+
+::decision{id="core-directive-boundary" status="proposed"}
+Core Noma absorbs directives that are **shape-stable, domain-neutral, and useful in more than one downstream renderer**. Domain-specific shapes (finance positions, ops incidents, lab notebooks) belong in **namespaced community packs**, not the core surface.
+::
+
+**Why a boundary at all.** The validator and HTML renderer hardcode rules per directive name. Every accepted core directive is a forever-supported shape — it cannot be removed without breaking documents that already use it. A growing surface area also makes the format harder to learn and harder to write tools for.
+
+**Core today (research-shaped).** `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `agent_task`, `todo`, `review`, `comment`, `change_request`, `provenance`, `confidence`, `citation`, `state_change`. These are kept because *any* knowledge-work document benefits from them — a roadmap and a research thesis both need claims, risks, and decisions.
+
+**Out of core (proposed packs).**
+
+| Pack name   | Sample directives                                        | Owner pattern              |
+|-------------|----------------------------------------------------------|----------------------------|
+| `finance::` | `position`, `trade`, `forecast`, `holding`, `pnl_event`  | finance/portfolio docs     |
+| `ops::`     | `incident`, `runbook`, `postmortem`, `alert`, `oncall`   | SRE/ops teams              |
+| `lab::`     | `experiment`, `protocol`, `sample`, `apparatus`          | wet/dry-lab notebooks      |
+| `legal::`   | `clause`, `obligation`, `party`, `jurisdiction`          | contract drafting          |
+
+**Pack contract.**
+
+1. **Namespacing.** Pack directive names use `pack::name` (e.g. `::finance::position{...}`). Parser change required to allow `::` inside the directive name token; until that lands, packs may use snake-case-prefixed names (`finance_position`) as a stop-gap.
+2. **Renderer plug-in.** Packs ship a function `render(node, ctx) → string` that the core HTML renderer falls back to when it sees an unknown directive name with a registered prefix.
+3. **Validator plug-in.** Same shape for validator rules — packs export `validate(node) → Diagnostic[]` for their owned namespace.
+4. **No reserved attribute names.** Packs may not redefine `id`, `variant`, `noverify`, `for`, or any attribute the core validator already inspects.
+5. **Profile compatibility.** Pack directives are out-of-profile by default. Documents declaring `profile: research | technical | minimal` will warn on pack usage; pack consumers should declare `profile: <pack>` (or omit profile entirely).
+
+**Promotion rule.** A pack directive can be promoted to core if (a) two unrelated packs converge on the same shape, or (b) a renderer/validator rule in the pack would benefit every Noma document. Promotion is a versioned change that ships in a minor release.
+
+This stance means the core stays small, the validator's per-block rule set stays bounded, and the ecosystem can grow without forcing every downstream tool to switch over a sprawling union.
+
 ## What NOT to build (yet)
 
 ::risk{id="scope-creep" severity="high" owner="ferax564"}

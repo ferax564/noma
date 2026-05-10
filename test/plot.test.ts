@@ -42,3 +42,41 @@ test("plot accepts inline data in body", () => {
   const html = renderHtml(doc);
   assert.match(html, /<polyline points=/);
 });
+
+test("plot resolves data from a linked dataset", () => {
+  const src = `::dataset{id="ds1"}
+schema:
+  vertical: string
+  growth: number
+rows:
+  - [a, 3.4]
+  - [b, 2.9]
+  - [c, 4.1]
+::
+
+::plot{id="p1" type="bar" dataset="ds1" column="growth" xcolumn="vertical" title="X"}
+::
+`;
+  const doc = parse(src);
+  const html = renderHtml(doc);
+  const rects = html.match(/<rect/g) ?? [];
+  assert.equal(rects.length, 3);
+  assert.match(html, />a</);
+  assert.match(html, />c</);
+  assert.match(html, /3 points/);
+});
+
+test("plot xlabels accept space or comma", () => {
+  const docComma = parse(
+    `::plot{id="p1" type="bar" data="1,2,3" xlabels="a,b,c" title="X"}\n::\n`,
+  );
+  const docSpace = parse(
+    `::plot{id="p2" type="bar" data="1 2 3" xlabels="a b c" title="X"}\n::\n`,
+  );
+  const h1 = renderHtml(docComma);
+  const h2 = renderHtml(docSpace);
+  for (const lbl of ["a", "b", "c"]) {
+    assert.match(h1, new RegExp(`>${lbl}<`));
+    assert.match(h2, new RegExp(`>${lbl}<`));
+  }
+});

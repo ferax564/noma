@@ -1,3 +1,4 @@
+import yaml from "js-yaml";
 import type { Diagnostic, DirectiveNode, DocumentNode, Node } from "./ast.js";
 import { walk } from "./ast.js";
 
@@ -18,9 +19,93 @@ export interface ValidateOptions {
 
 const DEFAULT_STALE_DAYS = 365;
 
+/**
+ * Directive allow-lists per declared `profile`. A document that opts in to a
+ * profile guarantees to downstream tools that it only uses these directive
+ * names. The validator warns on out-of-profile directives so authors notice
+ * before their consumers do.
+ */
+const PROFILES: Record<string, ReadonlySet<string>> = {
+  minimal: new Set([
+    "summary",
+    "abstract",
+    "callout",
+    "note",
+    "warning",
+    "tip",
+    "figure",
+    "citation",
+  ]),
+  technical: new Set([
+    "summary",
+    "abstract",
+    "callout",
+    "note",
+    "warning",
+    "tip",
+    "hero",
+    "grid",
+    "card",
+    "columns",
+    "tabs",
+    "accordion",
+    "sidebar",
+    "button",
+    "figure",
+    "plot",
+    "dataset",
+    "code_cell",
+    "output",
+    "control",
+    "export_button",
+    "agent_task",
+    "todo",
+    "citation",
+    "html",
+    "svg",
+    "script",
+  ]),
+  research: new Set([
+    "summary",
+    "abstract",
+    "callout",
+    "note",
+    "warning",
+    "tip",
+    "claim",
+    "evidence",
+    "counterevidence",
+    "assumption",
+    "risk",
+    "hypothesis",
+    "result",
+    "limitation",
+    "open_question",
+    "decision",
+    "adr",
+    "dataset",
+    "plot",
+    "metric",
+    "figure",
+    "agent_task",
+    "todo",
+    "review",
+    "comment",
+    "change_request",
+    "provenance",
+    "confidence",
+    "citation",
+    "state_change",
+  ]),
+};
+
+export const KNOWN_PROFILES = Object.keys(PROFILES);
+
 export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diagnostic[] {
   const requireEvidence = options.requireEvidenceForClaims !== false;
-  const staleDays = options.staleCitationDays ?? DEFAULT_STALE_DAYS;
+  const metaStale = readPositiveNumber(doc.meta.stale_citation_days);
+  const staleDays =
+    options.staleCitationDays ?? metaStale ?? DEFAULT_STALE_DAYS;
   const now = options.now ?? new Date();
 
   const diagnostics: Diagnostic[] = [];
@@ -28,8 +113,35 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   const claims: DirectiveNode[] = [];
   const evidenceTargets = new Set<string>();
   const referenced = new Set<string>();
+  const datasetIds = new Map<string, DirectiveNode>();
+  const datasetColumns = new Map<string, Set<string>>();
+
+  const profileName =
+    typeof doc.meta.profile === "string" ? doc.meta.profile : undefined;
+  const profileSet = profileName ? PROFILES[profileName] : undefined;
+  if (profileName && !profileSet) {
+    diagnostics.push({
+      severity: "warning",
+      code: "unknown-profile",
+      message: `Document declares unknown profile "${profileName}". Known: ${KNOWN_PROFILES.join(", ")}.`,
+    });
+  }
+
+  const wikilinkRe = /\[\[([a-zA-Z_][\w-]*)\]\]/g;
+  const collectWikilinks = (text: string): void => {
+    const stripped = text.replace(/`[^`]*`/g, "");
+    for (const m of stripped.matchAll(wikilinkRe)) referenced.add(m[1]!);
+  };
 
   for (const node of walk(doc)) {
+    if (node.type === "paragraph" || node.type === "quote") collectWikilinks(node.content);
+    else if (node.type === "list_item") collectWikilinks(node.content);
+    else if (node.type === "section") collectWikilinks(node.title);
+    else if (node.type === "directive" && node.body) collectWikilinks(node.body);
+    else if (node.type === "table") {
+      for (const cell of node.header) collectWikilinks(cell);
+      for (const row of node.rows) for (const cell of row) collectWikilinks(cell);
+    }
     if (node.id) {
       if (ids.has(node.id)) {
         diagnostics.push({
@@ -46,7 +158,48 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
     if (node.type !== "directive") continue;
 
+    if (profileSet && !suppressed(node) && !profileSet.has(node.name)) {
+      diagnostics.push({
+        severity: "warning",
+        code: "out-of-profile-directive",
+        message: `Directive "${node.name}" is not part of the declared "${profileName}" profile.`,
+        pos: node.pos,
+        nodeId: node.id,
+      });
+    }
+
+    if (node.name === "dataset" && node.id) {
+      datasetIds.set(node.id, node);
+      datasetColumns.set(node.id, readDatasetColumns(node));
+    }
+
     if (node.name === "claim" && node.id) claims.push(node);
+
+    if (node.name === "state_change" && !suppressed(node)) {
+      const block = node.attrs.block;
+      if (typeof block === "string") {
+        referenced.add(block);
+      } else {
+        diagnostics.push({
+          severity: "warning",
+          code: "state-change-missing-block",
+          message: `state_change has no \`block=\` attribute pointing at the changed block.`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
+      const hasFrom = "from" in node.attrs;
+      const hasTo = "to" in node.attrs;
+      if (!hasFrom || !hasTo) {
+        diagnostics.push({
+          severity: "warning",
+          code: "state-change-missing-from-to",
+          message: `state_change "${node.id ?? "?"}" needs both \`from=\` and \`to=\` attributes.`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
+    }
 
     if (node.name === "evidence" || node.name === "counterevidence") {
       const target = node.attrs.for;
@@ -76,6 +229,29 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
     if (node.name === "plot") {
       const hasData = "data" in node.attrs || "dataset" in node.attrs;
+      if (typeof node.attrs.dataset === "string") {
+        const ref = node.attrs.dataset;
+        if (!datasetIds.has(ref)) {
+          diagnostics.push({
+            severity: "error",
+            code: "plot-unknown-dataset",
+            message: `Plot "${node.id ?? "?"}" references unknown dataset "${ref}".`,
+            pos: node.pos,
+            nodeId: node.id,
+          });
+        } else if (typeof node.attrs.column === "string") {
+          const cols = datasetColumns.get(ref) ?? new Set<string>();
+          if (cols.size > 0 && !cols.has(node.attrs.column)) {
+            diagnostics.push({
+              severity: "error",
+              code: "plot-unknown-column",
+              message: `Plot "${node.id ?? "?"}" references unknown column "${node.attrs.column}" in dataset "${ref}".`,
+              pos: node.pos,
+              nodeId: node.id,
+            });
+          }
+        }
+      }
       if (!hasData) {
         diagnostics.push({
           severity: "error",
@@ -84,6 +260,28 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
           pos: node.pos,
           nodeId: node.id,
         });
+      }
+      if (!suppressed(node)) {
+        const data = typeof node.attrs.data === "string" ? node.attrs.data : "";
+        const labels = typeof node.attrs.xlabels === "string" ? node.attrs.xlabels : "";
+        const delim = (s: string): "comma" | "space" | null => {
+          const hasComma = /,/.test(s);
+          const hasSpace = /\s/.test(s.trim());
+          if (hasComma && !hasSpace) return "comma";
+          if (hasSpace && !hasComma) return "space";
+          return null;
+        };
+        const a = delim(data);
+        const b = delim(labels);
+        if (a && b && a !== b) {
+          diagnostics.push({
+            severity: "warning",
+            code: "plot-mixed-delimiters",
+            message: `Plot "${node.id ?? "?"}" mixes ${a}-separated data with ${b}-separated xlabels. Use commas for both (preferred).`,
+            pos: node.pos,
+            nodeId: node.id,
+          });
+        }
       }
     }
 
@@ -142,12 +340,14 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     }
 
     if (node.name === "citation" && !suppressed(node) && node.attrs.accessed) {
-      const stale = isStale(String(node.attrs.accessed), now, staleDays);
+      const perBlock = readPositiveNumber(node.attrs.stale_after_days);
+      const window = perBlock ?? staleDays;
+      const stale = isStale(String(node.attrs.accessed), now, window);
       if (stale) {
         diagnostics.push({
           severity: "warning",
           code: "stale-citation",
-          message: `Citation "${node.id ?? "?"}" was last accessed ${node.attrs.accessed} (>${staleDays} days ago).`,
+          message: `Citation "${node.id ?? "?"}" was last accessed ${node.attrs.accessed} (>${window} days ago).`,
           pos: node.pos,
           nodeId: node.id,
         });
@@ -185,6 +385,38 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
 function suppressed(node: DirectiveNode): boolean {
   return node.attrs.noverify === true;
+}
+
+function readDatasetColumns(node: DirectiveNode): Set<string> {
+  const cols = new Set<string>();
+  if (typeof node.attrs.columns === "string") {
+    for (const c of node.attrs.columns.split(/[,\s]+/).filter(Boolean)) cols.add(c);
+  }
+  const body = node.body ?? "";
+  if (body.trim()) {
+    let parsed: unknown;
+    try {
+      parsed = yaml.load(body);
+    } catch {
+      parsed = null;
+    }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const schema = (parsed as Record<string, unknown>).schema;
+      if (schema && typeof schema === "object" && !Array.isArray(schema)) {
+        for (const k of Object.keys(schema as Record<string, unknown>)) cols.add(k);
+      }
+    }
+  }
+  return cols;
+}
+
+function readPositiveNumber(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return undefined;
 }
 
 function isStale(accessed: string, now: Date, days: number): boolean {

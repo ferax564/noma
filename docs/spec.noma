@@ -91,6 +91,20 @@ The separator row sets per-column alignment: `:---` left, `:---:` center, `---:`
 
 The HTML renderer emits a real `<table class="noma-table">` with `text-align` styles per cell. The LLM renderer keeps the pipe format aligned to column widths so the output stays readable in agent context.
 
+For tables where pipe-syntax becomes ugly — single-character markers (`✓`, `—`) next to long prose cells force visible padding to keep the separator row valid — wrap the rows in a `::table` directive. The separator row is no longer required, alignment is declared via an attribute, and the source stays compact:
+
+```noma
+::table{header align="-,c,r"}
+| Vertical | Status | Score |
+| Legal | ✓ | 3.4 |
+| Healthcare | — | 2.9 |
+::
+```
+
+`align` is a comma-separated list of column codes: `l` left, `c` center, `r` right, `-` default. Add the `header` flag to treat the first row as the header (omit it for body-only tables).
+
+For source hygiene, run `noma fmt <file>` (`--inplace` to rewrite). It rebuilds GitHub-style pipe tables to a single column width and leaves everything else byte-identical, including tables inside fenced code blocks.
+
 ## Attribute grammar
 
 Attribute lists appear after a directive name in curly braces:
@@ -107,6 +121,8 @@ Attribute lists appear after a directive name in curly braces:
 | `key=0.82`        | number    | `confidence=0.82` |
 | `flag`            | boolean   | `done`           |
 | `key=true|false`  | boolean   | `pinned=true`    |
+
+**Attribute values are plain text.** Inline markup (`**bold**`, `*em*`, `` `code` ``, `[link](url)`, `[[id]]`) inside an attribute value is **not** parsed — it lands in the rendered output as a literal string. If you need rich content for a card title, evidence note, or callout heading, put it in the block body or as a child paragraph, not in an attribute. This keeps the attribute grammar trivially parseable and the AST shape predictable.
 
 The attribute named `id` is special: it is promoted to the AST node's stable identifier and used by validators and the agent patch protocol.
 
@@ -145,8 +161,10 @@ export_button, control
 ### Research and reasoning
 
 ```
-claim, evidence, counterevidence, assumption, risk, hypothesis, result, limitation, open_question, decision, adr
+claim, evidence, counterevidence, assumption, risk, hypothesis, result, limitation, open_question, decision, adr, state_change
 ```
+
+`::state_change{block="<id>" attribute="<name>" from=<old> to=<new> reason="..." at="<iso-date>"}` records a typed delta against another block — useful for weekly/quarterly recap docs that need to express "value was X, now Y". The HTML renderer shows it as a strike-through → bold delta; the LLM renderer keeps the structured fields. Validator: `block=` must point to an existing id; both `from=` and `to=` are required.
 
 ### Data and computation
 
@@ -177,8 +195,14 @@ Allowed but discouraged. The validator warns on every untrusted use. Add the `tr
 ```
 
 ::callout{tone="note"}
-v0.2 ships real chart rendering for `::plot`. Pass numeric data inline via `data="10 20 15 30"` (space- or comma-separated), optional `xlabels="a,b,c,d"`, and `type="line"` or `type="bar"`. The renderer emits a self-contained inline SVG with min/max axis labels, faint gridlines, and (line) a soft area fill plus point markers — no external chart library, no JS. CSV-path values like `data="./series.csv"` still fall through to the placeholder so existing files don't break; CSV evaluation is a later milestone.
+v0.2 ships real chart rendering for `::plot`. Pass numeric data inline via `data="10,20,15,30"`, optional `xlabels="a,b,c,d"`, and `type="line"` or `type="bar"`. The renderer emits a self-contained inline SVG with min/max axis labels, faint gridlines, and (line) a soft area fill plus point markers — no external chart library, no JS. CSV-path values like `data="./series.csv"` still fall through to the placeholder so existing files don't break; CSV evaluation is a later milestone.
 ::
+
+**Delimiter rule.** Commas are canonical for both `data` and `xlabels`. Whitespace separators are still accepted for backward compatibility, but mixing styles between `data` and `xlabels` in the same plot triggers the `plot-mixed-delimiters` warning.
+
+**Dataset linkage.** A `::plot` may pull its data out of a sibling `::dataset` instead of duplicating numbers inline. Use a `dataset="<id>"` attribute on the plot together with `column="<name>"` to select the y-series and optionally `xcolumn="<name>"` for categorical labels. If `column` is omitted, the renderer picks the first numeric column from the dataset schema.
+
+The validator emits `plot-unknown-dataset` (error) when the referenced dataset id does not exist and `plot-unknown-column` (error) when the column is not declared in the dataset's schema. See `examples/research-thesis.noma` for the full pattern.
 
 ## AST shape
 
@@ -215,6 +239,32 @@ Markdown is too weak for AI-era documents.
 ```
 
 Options surfaced on the API: `requireEvidenceForClaims` (default `true`), `staleCitationDays` (default `365`), `now` (test injection point for the stale-citation rule).
+
+**Per-document override.** Set `stale_citation_days: 30` in frontmatter to tighten the window for the whole document (newsletters, research notes, portfolio updates).
+
+**Per-citation override.** Add `stale_after_days=N` to a single citation to give it its own window — useful when one citation is intentionally evergreen (a definition, a constitution) inside an otherwise time-sensitive doc.
+
+**Precedence** (high → low): CLI `--stale-days`, per-citation `stale_after_days`, frontmatter `stale_citation_days`, default 365.
+
+## Profiles
+
+A document may declare a **profile** in frontmatter as a contract with downstream tools: "I only use these directives." Consumers (renderers, linters, schema generators) can then narrow safely instead of switching over the full `Node` union.
+
+```yaml
+---
+profile: research
+---
+```
+
+Built-in profiles:
+
+| Profile     | Intended for                              | Includes (beyond core text blocks)                                                                                                                       |
+|-------------|-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `figure`, `citation`                                                                            |
+| `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `plot`, `dataset`, `code_cell`, `output`, `control`, `export_button`, `agent_task`, `todo` |
+| `research`  | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence` |
+
+The validator emits a `out-of-profile-directive` warning for any directive outside the declared profile (`noverify` on a single block silences it). Authors who want the open surface should simply omit the `profile` field.
 
 ## Render targets (v0.1)
 

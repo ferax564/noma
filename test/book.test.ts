@@ -43,3 +43,28 @@ test("loaded book validates with no errors", () => {
   const errors = diags.filter((d) => d.severity === "error");
   assert.equal(errors.length, 0, errors.map((d) => d.message).join("\n"));
 });
+
+test("wikilinks resolve across chapter boundaries", () => {
+  const doc = loadBook("examples/book/book.noma.yml");
+  const diags = validate(doc, { now: new Date("2026-05-09") });
+  const broken = diags.filter((d) => d.code === "broken-reference");
+  assert.equal(
+    broken.length,
+    0,
+    `expected zero broken refs across the book, got: ${broken.map((d) => d.message).join("; ")}`,
+  );
+});
+
+test("broken wikilink target is reported as broken-reference", () => {
+  const doc = loadBook("examples/book/book.noma.yml");
+  doc.children.push({
+    type: "paragraph",
+    content: "See [[no-such-id]].",
+  });
+  const diags = validate(doc, { now: new Date("2026-05-09") });
+  assert.ok(
+    diags.some(
+      (d) => d.code === "broken-reference" && d.message.includes("no-such-id"),
+    ),
+  );
+});

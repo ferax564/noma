@@ -82,6 +82,25 @@ Move an id, retargeting every reference to it: `for=`, `parent=`, and `[[wikilin
 { "op": "rename_id", "from": "claim-x", "to": "claim-x-2026" }
 ```
 
+## Choosing the right op
+
+For most edits the choice is obvious; the awkward case is "this block has both a body change and an attribute change". The tree below removes the ambiguity so two agents editing the same document make the same call.
+
+```
+Need to add a brand-new block?            → add_block
+Need to remove an existing block?         → delete_block
+Renaming an id (or splitting one)?        → rename_id
+Editing only attributes (no body change)? → update_attribute (one op per attr)
+Anything that touches the body?           → replace_block
+```
+
+**Rules of thumb.**
+
+- **Prefer the narrowest op.** `update_attribute` mutates one field; `replace_block` rewrites the whole node. Reviewers should always see the smallest legible diff. Multiple `update_attribute` ops on the same id are fine and preferred over a single `replace_block` if no body text changes.
+- **Body content is `replace_block` territory.** Once a paragraph, list, or nested child changes, use `replace_block`. Mixing `update_attribute` calls with manual body edits is forbidden — there is no `update_body` op on purpose.
+- **Never amend an `id` with `update_attribute`.** The runtime rejects it. Use `rename_id` so wikilinks and `for=` references migrate atomically.
+- **One semantic change per op list.** Splitting a single change across N ops is fine for clarity; bundling N unrelated changes into one op list makes review harder. If you find yourself writing 6+ ops, consider whether they should be a single `replace_block` of a parent.
+
 ## Validation contract
 
 Every patch must:

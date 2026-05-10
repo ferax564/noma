@@ -6,6 +6,22 @@ import { renderLlm } from "../src/renderer-llm.js";
 import { validate } from "../src/validator.js";
 import type { DirectiveNode, SectionNode, TableNode } from "../src/ast.js";
 
+test("::table directive renders pipe-body without separator row", () => {
+  const src = `::table{header align="-,c,r"}
+| Vertical | Status | Score |
+| Legal | OK | 3.4 |
+| Healthcare | OK | 2.9 |
+::
+`;
+  const html = renderHtml(parse(src));
+  assert.match(html, /<table class="noma-table"/);
+  assert.match(html, /<th[^>]*>Vertical<\/th>/);
+  assert.match(html, /<th[^>]*style="text-align: center"[^>]*>Status<\/th>/);
+  assert.match(html, /<th[^>]*style="text-align: right"[^>]*>Score<\/th>/);
+  assert.match(html, /<td[^>]*>Legal<\/td>/);
+  assert.match(html, /<td[^>]*style="text-align: right"[^>]*>3.4<\/td>/);
+});
+
 test("frontmatter parsed into meta", () => {
   const doc = parse(`---\ntitle: Hello\nauthor: ferax564\n---\n\n# Body\n`);
   assert.equal(doc.meta.title, "Hello");

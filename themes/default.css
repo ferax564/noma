@@ -323,6 +323,46 @@ details.noma-dataset pre {
   margin-bottom: 0.4em;
 }
 
+/* State change */
+aside.noma-state-change {
+  margin: 1.4em 0;
+  padding: 1em 1.2em;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-left: 3px solid var(--noma-fg);
+  border-radius: var(--noma-radius);
+  font-family: var(--noma-font-sans);
+}
+.noma-state-change-head {
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: var(--noma-muted, var(--noma-fg));
+  margin-bottom: 0.4em;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+}
+.noma-state-change-delta {
+  font-size: 1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  margin: 0.3em 0 0.5em;
+  font-variant-numeric: tabular-nums;
+}
+.noma-state-from {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+.noma-state-to {
+  font-weight: 700;
+}
+.noma-state-arrow {
+  opacity: 0.55;
+  font-size: 0.95em;
+}
+
 /* Tables */
 table.noma-table {
   width: 100%;

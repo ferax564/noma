@@ -10,6 +10,7 @@ import { renderNoma } from "./renderer-noma.js";
 import { patchAll, type PatchOp } from "./patch.js";
 import { loadBook, isBookManifestPath } from "./book.js";
 import { validate, formatDiagnostics } from "./validator.js";
+import { formatSource } from "./fmt.js";
 
 const HELP = `noma — readable document format for humans and agents
 
@@ -19,6 +20,7 @@ Usage:
   noma check <file.noma|book.yml>            Validate the document
   noma export <file.noma|book.yml> [opts]    Alias for render --to json
   noma patch <file.noma> [opts]              Apply block-level patch ops
+  noma fmt   <file.noma> [--inplace|--out p] Re-align pipe tables in source
   noma --help                                Show this help
 
 Render options:
@@ -28,6 +30,9 @@ Render options:
   --title <text>            Override document title
   --theme <name>            HTML theme: default | dark (default: default)
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
+
+Check options:
+  --stale-days <n>          Override the citation staleness window (days)
 
 Patch options:
   --op <json>               One inline patch op (JSON object)
@@ -56,6 +61,7 @@ interface CliArgs {
   inplace: boolean;
   theme: string;
   allowEscapeHatches: boolean;
+  staleDays?: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -94,6 +100,10 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--no-unsafe") {
       args.allowEscapeHatches = false;
+      i++;
+    } else if (a === "--stale-days") {
+      const v = Number(argv[++i]);
+      if (Number.isFinite(v) && v > 0) args.staleDays = v;
       i++;
     } else if (a === "--op") {
       args.op = argv[++i];
@@ -166,6 +176,17 @@ function main(): void {
   }
 
   const filePath = resolve(args.file);
+  if (cmd === "fmt") {
+    if (isBookManifestPath(filePath)) {
+      process.stderr.write(`error: noma fmt operates on .noma source files, not book manifests\n`);
+      process.exit(2);
+    }
+    const formatted = formatSource(readFileSync(filePath, "utf8"));
+    const target = args.inplace ? filePath : args.out;
+    output(formatted, target);
+    return;
+  }
+
   const doc = isBookManifestPath(filePath)
     ? loadBook(filePath)
     : parse(readFileSync(filePath, "utf8"), { filename: filePath });
@@ -209,7 +230,9 @@ function main(): void {
       return;
     }
     case "check": {
-      const diagnostics = validate(doc);
+      const diagnostics = validate(doc, {
+        ...(args.staleDays !== undefined ? { staleCitationDays: args.staleDays } : {}),
+      });
       const formatted = formatDiagnostics(diagnostics, args.file);
       process.stdout.write(formatted + "\n");
       const hasError = diagnostics.some((d) => d.severity === "error");

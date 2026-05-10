@@ -6,6 +6,61 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Response to issue #1 — eight friction points and two design questions raised
+by the first real-world authoring pass on a non-trivial weekly recap.
+
+### Added
+
+- **`::table` directive** for tables where pipe-syntax is awkward
+  (single-character markers next to long-prose cells). Body is plain pipe
+  rows with no separator-row requirement; alignment declared via
+  `align="l,c,r,-"`; `header` flag promotes the first row to `<th>`.
+- **`noma fmt <file>`** subcommand re-aligns existing GitHub-style pipe
+  tables to a single column width and leaves everything else byte-identical
+  (skips fenced code blocks). `--inplace` rewrites in place.
+- **`::plot{dataset="<id>" column="<name>" xcolumn="<name>"}`** linkage —
+  plots can pull their series out of a sibling `::dataset` instead of
+  duplicating the numbers inline. Validator emits `plot-unknown-dataset`
+  / `plot-unknown-column` errors when references don't resolve.
+  `examples/research-thesis.noma` now uses the linked form.
+- **`::state_change{block, attribute, from, to, reason, at}`** directive
+  for weekly/quarterly recap docs — records typed deltas against another
+  block. HTML renders as a strike-through → bold delta; LLM keeps the
+  structured fields. Validator: `block=` must point to an existing id;
+  both `from=` and `to=` are required. Included in the `research` profile.
+- **Profile frontmatter field** (`profile: research | technical | minimal`)
+  — opt-in contract about which directives the document guarantees to use.
+  Validator warns on out-of-profile directives so downstream tools can
+  narrow safely. Pure metadata; no AST change.
+- **`stale_citation_days` frontmatter override** + per-citation
+  `stale_after_days=N` attribute. Precedence: CLI `--stale-days` >
+  per-citation `stale_after_days` > frontmatter `stale_citation_days` >
+  default 365.
+- **`noma check --stale-days <n>`** CLI flag (was previously documented but
+  not actually wired).
+- **Wikilink validation** — `[[id]]` references inside paragraphs, quotes,
+  list items, headings, table cells, and directive bodies are now tracked
+  by the validator and surface `broken-reference` errors when the target
+  doesn't exist. Resolves across all chapters when a book manifest is
+  loaded. Wikilinks inside `` `code spans` `` are intentionally ignored.
+- **`plot-mixed-delimiters` warning** — flagged when `data="…"` and
+  `xlabels="…"` use different separators (commas vs. spaces) in the same
+  plot. Both forms remain accepted; commas are canonical. Existing demos
+  normalized to commas.
+- **Spec doc** (`docs/spec.noma`) — explicit attribute-grammar note that
+  attribute values are plain text (inline markup like `**bold**` or
+  `[[id]]` does not render inside attrs); section on dataset linkage,
+  delimiter rule, profiles, citation-staleness precedence, `::table`
+  directive, and `noma fmt`.
+- **Agent-protocol doc** — choose-your-op decision tree and rules of thumb
+  to keep two agents from picking different ops on the same edit.
+- **Direction doc** — core directives vs. community packs stance with a
+  proposed namespacing convention (`pack::name`) and pack contract
+  (renderer plug-in, validator plug-in, no reserved attrs, profile
+  compatibility).
+
+
+
 ## [0.2.0] — 2026-05-09
 
 Six §23 / §8 items shipped, taking Noma from "renderable plain text" to

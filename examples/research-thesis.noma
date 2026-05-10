@@ -139,10 +139,10 @@ rows:
   - [construction, 6, 290, 2.7]
 ::
 
-::plot{id="vertical-ai-arr-plot" type="bar" data="3.4 2.9 4.1 3.6 2.7" xlabels="legal,healthcare,fin-audit,insurance,construction" title="Median ARR YoY growth by vertical (2026)"}
+::plot{id="vertical-ai-arr-plot" type="bar" dataset="vertical-ai-funding" column="median_arr_growth_yoy" xcolumn="vertical" title="Median ARR YoY growth by vertical (2026)"}
 ::
 
-::plot{id="vertical-ai-funding-plot" type="line" data="1280 2650 540 720 290" xlabels="legal,healthcare,fin-audit,insurance,construction" title="Total funding raised by vertical ($M)"}
+::plot{id="vertical-ai-funding-plot" type="line" dataset="vertical-ai-funding" column="total_funding_usd_m" xcolumn="vertical" title="Total funding raised by vertical ($M)"}
 ::
 
 ## Watchlist (positions, not recommendations)
@@ -153,6 +153,14 @@ rows:
 | Clinical docs     | —                   | Abridge, Ambience  | Acceptance rate is the leading metric   |
 | Financial audit   | Intuit, S&P         | Numeric, Trullion  | Audit-trail UX is the moat              |
 | Insurance claims  | Verisk              | Sixfold, EvolutionIQ | Loss-ratio impact is the proof point  |
+
+## Deltas since last update
+
+::state_change{block="claim-data-moat" attribute="confidence" from=0.72 to=0.78 reason="Harvey's Q1 disclosure quantified the proprietary-correction loop more concretely than expected" at="2026-05-09"}
+::
+
+::state_change{block="claim-liability-moat" attribute="confidence" from=0.65 to=0.71 reason="legal-tech procurement survey put the indemnification requirement at 89%, vs. 71% the prior survey" at="2026-05-09"}
+::
 
 ## Quarterly review task
 
