@@ -17,16 +17,17 @@ Source files use the `.noma` extension. The full vision lives in `PLAN.md` — r
 src/                       TypeScript source for parser, AST, renderers, validator, CLI
   ast.ts                   Typed AST node definitions (single source of truth)
   parser.ts                .noma → AST (hand-written recursive descent)
-  renderer-html.ts         AST → semantic HTML (incl. real plot SVGs, escape hatches)
-  renderer-llm.ts          AST → deterministic LLM context (escape-hatch bodies stripped)
+  renderer-html.ts         AST → semantic HTML (plot SVGs, escape hatches, KaTeX auto-inject, alias anchors)
+  renderer-llm.ts          AST → deterministic LLM context (escape-hatch bodies stripped; math passes through)
   renderer-json.ts         AST → JSON
   renderer-noma.ts         AST → .noma source (roundtrip-safe; backs `noma patch`)
-  validator.ts             AST → diagnostics (`noverify` opt-out; profile-aware; wikilink refs)
+  renderer-site.ts         Multi-page HTML site for book manifests (`--to site`). Cross-chapter wikilink rewrite.
+  validator.ts             AST → diagnostics (`noverify` opt-out; composable profiles; wikilink refs incl. aliases; `--ignore-rule`)
   inline.ts                Inline markdown + shared `splitPipeRow` util
   patch.ts                 Block-level patch ops (replace/add/delete/update_attr/rename_id)
-  book.ts                  YAML manifest loader; concatenates chapters → DocumentNode
+  book.ts                  YAML manifest loader. `loadBook` (concat) + `loadBookChapters` (per-chapter, scoped IDs)
   fmt.ts                   Source formatter; re-aligns pipe tables, leaves rest byte-identical
-  cli.ts                   `noma parse|render|check|export|patch|fmt`
+  cli.ts                   `noma parse|render|check|export|patch|fmt` (`--to site`, `--math`, `--ignore-rule`)
 bin/noma.mjs               Node CLI shim
 themes/default.css         Default HTML theme (tables, export buttons, controls, variants)
 themes/dark.css            Alternate dark theme — `noma render --theme dark`
@@ -69,10 +70,19 @@ inline content or nested children
 - `::name{...}` opens a block; `::` closes it.
 - `:::` opens a child block one level deeper (Pandoc-style fences).
 - Frontmatter is YAML between `---` markers at the top of the file.
-- Headings (`# H1`, `## H2`) auto-create `section` blocks with stable IDs derived from slugified titles.
+- Headings (`# H1`, `## H2`) auto-create `section` blocks with stable IDs derived from slugified titles. **v0.4:** trailing `{id="..." aliases="a,b"}` overrides the slug or registers extra IDs.
 - Inline markdown (`**bold**`, `*em*`, `` `code` ``, `[text](url)`) is kept inside paragraph and heading content.
+- **v0.4:** inline math via `$..$`, `$$..$$`, `\(..\)`, `\[..\]` and the `::math` block. KaTeX is auto-injected on standalone HTML when math is detected.
 
 Block IDs are **stable**: agents target them by ID for safe edits. Renaming an ID is a breaking edit.
+
+**Aliases (v0.4).** A node can carry `aliases?: string[]` — alternative IDs that resolve to the same node. Sources:
+- frontmatter `aliases: [...]` → attached to chapter root section
+- chapter filename slug → auto-attached to root section
+- `## Heading {aliases="..."}` → attached to that section
+- book mode scoping → original (un-prefixed) slug retained as alias
+
+Validator: `referenced` IDs match against `ids ∪ aliasIds`. HTML renderer: emits hidden `<a class="noma-alias" id="alias">` anchors before each headed section so URL fragments resolve. The site renderer's wikilink-rewrite uses the alias map to find the owning chapter.
 
 ## Iron Rules
 
@@ -108,6 +118,12 @@ Inline content is **not** fully parsed at parser time — it is stored as a stri
 Cell splitting (parser, fmt, `::table` directive renderer) all share `splitPipeRow` from `src/inline.ts` — pipes inside `` `code spans` `` and `\|` escapes are kept verbatim inside the cell instead of starting a new column. If you touch the table parser, touch the shared util once; don't duplicate the logic.
 
 For tables where pipe-syntax becomes ugly (mixed `✓`/long-prose columns), the `::table` directive accepts pipe rows in its body without a separator row and declares alignment via `align="l,c,r,-"`. `noma fmt <file> [--inplace]` re-aligns existing pipe tables to a single column width and skips fenced code blocks.
+
+**Heading attribute syntax (v0.4).** `HEADING_RE` accepts a trailing `{...}` block. `parseAttrs` reuses the directive grammar. `id="..."` overrides the slug; `aliases="a,b"` (or `"a b"`) becomes `section.aliases`. The frontmatter `aliases: [...]` and the filename slug are attached to the **first H1 section** in `attachChapterAliases` after `foldSections`.
+
+**Book mode scoping (v0.4).** `loadBookChapters` (and `loadBook`, internally) calls `scopeHeadingIds(doc, chapterSlug)` per chapter. Every level ≥ 2 section's id becomes `${chapterSlug}/${original}`, and the original slug is added to `aliases` so legacy `[[risks]]` still resolves. Single-file `parse()` is unchanged — scoping is book-scope-only.
+
+**Math (v0.4).** `::math` is a generic directive (no AST change). `renderer-html` wraps the body in `\[...\]` (default `display`) or `\(...\)` (when `display="inline"`). `resolveMathMode(doc, override)` auto-detects `$$..$$`, `\(`, `\[`, or any `::math` directive, plus respecting `meta.math` and the `--math={katex|none}` CLI flag. KaTeX assets are CDN-injected (`KATEX_VERSION = "0.16.11"`) only when math is present, keeping plain pages zero-CDN.
 
 ## Current AST Variants
 
@@ -149,9 +165,12 @@ npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.
 npm run noma -- render examples/agent-plan.noma --to llm
 npm run noma -- render examples/agent-plan.noma --to noma          # AST → .noma source
 npm run noma -- render examples/research-thesis.noma --to html --theme dark
-npm run noma -- render examples/book/book.noma.yml --to html       # multi-file book
+npm run noma -- render examples/book/book.noma.yml --to html       # multi-file book (single page)
+npm run noma -- render examples/book/book.noma.yml --to site --out dist/book   # multi-page site
+npm run noma -- render examples/research-thesis.noma --math katex  # force KaTeX assets in HTML
 npm run noma -- check examples/research-thesis.noma
 npm run noma -- check examples/research-thesis.noma --stale-days 30   # tighter window for time-sensitive docs
+npm run noma -- check chapters/03.noma --ignore-rule broken-reference  # skip cross-book refs
 
 # block-level patch (rewrites only the addressed block)
 npm run noma -- patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.95}' --inplace
@@ -192,4 +211,47 @@ If any fail, the feature is not done. No partial-success claims. The CI workflow
 - Add user-facing changes to `CHANGELOG.md` under `[Unreleased]`. Promote to a real version on tag.
 - When a §23 item ships, move it to PLAN.md §24 (the "shipped" tracker).
 - Keep `docs/direction.noma` in lockstep with PLAN.md §23 — they say the same thing in different forms.
-- Updates to block syntax must update `docs/spec.noma`.
+- Updates to block syntax must update `docs/spec.noma`. Bump the spec's `version:` frontmatter and the "Compatibility promises (vX.Y)" header in lockstep with `package.json`.
+- After every release: `package.json` version, `CHANGELOG.md` heading, `docs/spec.noma` (`version:` + the "Render targets" / "Compatibility promises" headings), `docs/agent-protocol.noma` (`version:`), `README.md` Status paragraph, and `PLAN.md §24.N` must all carry the same vN.
+
+## Versioned Locations (Bump These Together)
+
+```
+package.json                    "version"
+docs/spec.noma                  frontmatter `version:` + section headings tagged "(vN)"
+docs/agent-protocol.noma        frontmatter `version:`
+CHANGELOG.md                    new `## [N.N.N] — YYYY-MM-DD` heading
+README.md                       Status paragraph (vN summary)
+PLAN.md                         new §24.X subsection
+```
+
+## Releasing
+
+The published flow (matches what shipped v0.3 and v0.4):
+
+```bash
+# 1. ensure clean
+npx tsc --noEmit && npm test && npm run build:site
+
+# 2. bump every versioned location (see above), update CHANGELOG, PLAN.md §24
+
+# 3. commit
+git add -p   # review explicitly; do not -A
+git commit -m "feat: vN.N.N — short headline"
+
+# 4. push, tag, push tag
+git push origin main
+git tag vN.N.N
+git push origin vN.N.N
+
+# 5. release notes from CHANGELOG slice
+awk '/^## \[N\.N\.N\]/{f=1;next}/^## \[/{f=0}f' CHANGELOG.md > /tmp/notes.md
+gh release create vN.N.N --title "vN.N.N — short headline" --notes-file /tmp/notes.md
+
+# 6. close the issues that shipped
+for n in <issue-numbers>; do
+  gh issue close $n --comment "Shipped in vN.N.N — <release-url>"
+done
+```
+
+GitHub Actions tags created by GITHUB_TOKEN cannot trigger other workflows. Local-tag-then-push (step 4) avoids that trap; that's why the flow above does not let CI cut the tag.
