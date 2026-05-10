@@ -7,7 +7,7 @@ import { renderHtml } from "./renderer-html.js";
 import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
-import { patchAll, type PatchOp } from "./patch.js";
+import { patchSource, type PatchOp } from "./patch.js";
 import { loadBook, loadBookChapters, isBookManifestPath } from "./book.js";
 import { renderSite } from "./renderer-site.js";
 import { validate, formatDiagnostics } from "./validator.js";
@@ -292,8 +292,11 @@ function main(): void {
         process.stderr.write(`error: noma patch needs --op or --ops\n`);
         process.exit(2);
       }
-      const next = patchAll(doc, ops);
-      const printed = renderNoma(next);
+      if (isBookManifestPath(filePath)) {
+        process.stderr.write(`error: noma patch operates on .noma source files, not book manifests\n`);
+        process.exit(2);
+      }
+      const printed = patchSource(readFileSync(filePath, "utf8"), ops);
       const target = args.inplace ? filePath : args.out;
       output(printed, target);
       return;

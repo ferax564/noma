@@ -228,3 +228,265 @@ function parseFragment(content: string, op: PatchOp): Node {
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
+
+/**
+ * Apply patch ops directly to source text. Unlike `patch(doc, op)` (which
+ * round-trips through the AST renderer and reformats the entire file), this
+ * preserves every byte outside the targeted block — frontmatter quoting,
+ * sibling blocks, comments, blank-line padding, attr ordering on unchanged
+ * lines.
+ *
+ * Each op:
+ *   - re-parses the *current* source so line numbers stay accurate after
+ *     prior ops in the sequence,
+ *   - locates the target by ID,
+ *   - rewrites only the affected line range.
+ */
+export function patchSource(source: string, ops: PatchOp | PatchOp[]): string {
+  const list = Array.isArray(ops) ? ops : [ops];
+  let cur = source;
+  for (const op of list) cur = applyToSource(cur, op);
+  return cur;
+}
+
+function applyToSource(source: string, op: PatchOp): string {
+  switch (op.op) {
+    case "update_attribute":
+      return applySrcUpdateAttr(source, op);
+    case "replace_block":
+      return applySrcReplace(source, op);
+    case "delete_block":
+      return applySrcDelete(source, op);
+    case "add_block":
+      return applySrcAdd(source, op);
+    case "rename_id":
+      return applySrcRenameId(source, op);
+    default: {
+      const _exhaustive: never = op;
+      void _exhaustive;
+      throw new Error("unknown patch op");
+    }
+  }
+}
+
+function locate(source: string, id: string, op: PatchOp): { node: Node; start: number; end: number } {
+  const doc = parse(source);
+  const node = findById(doc, id);
+  if (!node) throw new PatchError(`block "${id}" not found`, op);
+  const start = node.pos?.line;
+  const end = node.endLine;
+  if (!start || !end) {
+    throw new PatchError(`block "${id}" has no source span`, op);
+  }
+  return { node, start, end };
+}
+
+function applySrcUpdateAttr(
+  source: string,
+  op: Extract<PatchOp, { op: "update_attribute" }>,
+): string {
+  if (op.key === "id") {
+    throw new PatchError(`use rename_id to change a block's id`, op);
+  }
+  const { node, start } = locate(source, op.id, op);
+  if (!isDirective(node)) {
+    throw new PatchError(`block "${op.id}" is not a directive`, op);
+  }
+  const lines = source.split("\n");
+  const lineIdx = start - 1;
+  const open = lines[lineIdx] ?? "";
+  lines[lineIdx] = rewriteOpenLineAttr(open, op.key, op.value, op);
+  return lines.join("\n");
+}
+
+function applySrcReplace(
+  source: string,
+  op: Extract<PatchOp, { op: "replace_block" }>,
+): string {
+  const { start, end } = locate(source, op.id, op);
+  const lines = source.split("\n");
+  const replacement = op.content.replace(/\n+$/, "").split("\n");
+  lines.splice(start - 1, end - start + 1, ...replacement);
+  return lines.join("\n");
+}
+
+function applySrcDelete(
+  source: string,
+  op: Extract<PatchOp, { op: "delete_block" }>,
+): string {
+  const { start, end } = locate(source, op.id, op);
+  const lines = source.split("\n");
+  let removeCount = end - start + 1;
+  // Collapse a single trailing blank line so we don't grow whitespace.
+  if (lines[start - 1 + removeCount] === "" && lines[start - 2] === "") {
+    removeCount += 1;
+  }
+  lines.splice(start - 1, removeCount);
+  return lines.join("\n");
+}
+
+function applySrcAdd(
+  source: string,
+  op: Extract<PatchOp, { op: "add_block" }>,
+): string {
+  const doc = parse(source);
+  const parent = findById(doc, op.parent);
+  if (!parent) throw new PatchError(`parent "${op.parent}" not found`, op);
+  if (!hasChildren(parent)) {
+    throw new PatchError(`parent "${op.parent}" cannot have children`, op);
+  }
+  const children = parent.children;
+  const pos = Math.max(0, Math.min(op.position ?? children.length, children.length));
+  const lines = source.split("\n");
+  const fragmentLines = op.content.replace(/\n+$/, "").split("\n");
+
+  let insertAt: number;
+  if (pos < children.length) {
+    const next = children[pos]!;
+    const nextStart = next.pos?.line;
+    if (!nextStart) throw new PatchError(`sibling has no source span`, op);
+    insertAt = nextStart - 1;
+    fragmentLines.push("");
+  } else if (children.length > 0) {
+    const last = children[children.length - 1]!;
+    const lastEnd = last.endLine;
+    if (!lastEnd) throw new PatchError(`sibling has no source span`, op);
+    insertAt = lastEnd;
+    fragmentLines.unshift("");
+  } else {
+    // Empty parent — insert just inside.
+    if (parent.type === "directive" && parent.endLine) {
+      insertAt = parent.endLine - 1;
+    } else if (parent.type === "section" && parent.endLine) {
+      insertAt = parent.endLine;
+    } else {
+      insertAt = lines.length;
+    }
+  }
+  lines.splice(insertAt, 0, ...fragmentLines);
+  return lines.join("\n");
+}
+
+function applySrcRenameId(
+  source: string,
+  op: Extract<PatchOp, { op: "rename_id" }>,
+): string {
+  const doc = parse(source);
+  const node = findById(doc, op.from);
+  if (!node) throw new PatchError(`block "${op.from}" not found`, op);
+  if (findById(doc, op.to)) {
+    throw new PatchError(`target id "${op.to}" already exists`, op);
+  }
+  const lines = source.split("\n");
+  const startLine = node.pos?.line;
+  if (!startLine) throw new PatchError(`block has no source span`, op);
+  const lineIdx = startLine - 1;
+  const open = lines[lineIdx] ?? "";
+
+  if (isDirective(node)) {
+    lines[lineIdx] = rewriteOpenLineAttr(open, "id", op.to, op);
+  } else if (node.type === "section") {
+    // Heading line: rewrite trailing {id="..."} block.
+    lines[lineIdx] = rewriteHeadingId(open, op.to);
+  }
+
+  let result = lines.join("\n");
+  result = rewriteWikilinksInSource(result, op.from, op.to);
+  result = rewriteAttrReferences(result, op.from, op.to);
+  return result;
+}
+
+const REF_ATTRS = new Set(["for", "dataset", "block", "ref"]);
+
+function rewriteAttrReferences(source: string, from: string, to: string): string {
+  // Rewrite key="from" or key='from' inside any directive open line.
+  // Done line-by-line so we don't touch identical strings in prose.
+  return source
+    .split("\n")
+    .map((line) => {
+      if (!/^:{2,}\w/.test(line.trim())) return line;
+      let out = line;
+      for (const k of REF_ATTRS) {
+        const re = new RegExp(`(\\b${k}=)("|')${escapeRegex(from)}\\2`, "g");
+        out = out.replace(re, `$1$2${to}$2`);
+      }
+      return out;
+    })
+    .join("\n");
+}
+
+function rewriteWikilinksInSource(source: string, from: string, to: string): string {
+  return source.replace(
+    new RegExp(`\\[\\[${escapeRegex(from)}\\]\\]`, "g"),
+    `[[${to}]]`,
+  );
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const ATTR_TOKEN_RE =
+  /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s}]+)))?/g;
+
+function rewriteOpenLineAttr(
+  line: string,
+  key: string,
+  value: AttrValue,
+  op: PatchOp,
+): string {
+  const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*)(\s*\{)?(.*?)(\}\s*)?$/);
+  if (!openMatch) {
+    throw new PatchError(`malformed open line for "${(op as { id?: string }).id}"`, op);
+  }
+  const head = openMatch[1] ?? "";
+  const inner = openMatch[3] ?? "";
+  const trailing = (line.match(/\s*$/) ?? [""])[0];
+  const serialized = serializeOneAttr(key, value);
+
+  let replaced = false;
+  const rewrittenInner = inner.replace(ATTR_TOKEN_RE, (m, k) => {
+    if (k !== key) return m;
+    replaced = true;
+    return value === false && typeof value === "boolean"
+      ? `${key}=false`
+      : serialized;
+  });
+
+  let next: string;
+  if (replaced) {
+    next = rewrittenInner;
+  } else {
+    const trimmed = inner.trim();
+    next = trimmed ? `${trimmed} ${serialized}` : serialized;
+  }
+  return `${head}{${next.trim()}}${trailing}`.replace(/\s+$/, "") + (line.endsWith("\n") ? "\n" : "");
+}
+
+function rewriteHeadingId(line: string, newId: string): string {
+  const m = line.match(/^(#+\s+.+?)(?:\s+\{([^}]*)\})?\s*$/);
+  if (!m) return line;
+  const head = m[1] ?? "";
+  const attrsInner = (m[2] ?? "").trim();
+  if (!attrsInner) return `${head} {id="${newId}"}`;
+  let replaced = false;
+  const updated = attrsInner.replace(ATTR_TOKEN_RE, (full, k) => {
+    if (k !== "id") return full;
+    replaced = true;
+    return `id="${newId}"`;
+  });
+  if (!replaced) return `${head} {${attrsInner} id="${newId}"}`;
+  return `${head} {${updated.trim()}}`;
+}
+
+function serializeOneAttr(key: string, value: AttrValue): string {
+  if (value === true) return key;
+  if (value === false) return `${key}=false`;
+  if (typeof value === "number") return `${key}=${value}`;
+  const s = String(value);
+  if (s.includes('"')) {
+    if (s.includes("'")) return `${key}="${s.replace(/"/g, '\\"')}"`;
+    return `${key}='${s}'`;
+  }
+  return `${key}="${s}"`;
+}

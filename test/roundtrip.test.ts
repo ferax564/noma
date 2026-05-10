@@ -9,6 +9,7 @@ import type { DocumentNode, Node } from "../src/ast.js";
 function stripPositions(node: Node): Node {
   const clone: Record<string, unknown> = { ...node };
   delete clone.pos;
+  delete clone.endLine;
   if ("children" in clone && Array.isArray(clone.children)) {
     clone.children = (clone.children as Node[]).map(stripPositions);
   }
