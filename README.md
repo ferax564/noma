@@ -82,6 +82,9 @@ npm run noma -- check examples/research-thesis.noma
 # build the full site (examples + docs + book + dark-theme demo + landing + PDFs)
 npm run build:site
 open dist/index.html
+
+# re-align pipe tables in source (idempotent; skips fenced code blocks)
+npm run noma -- fmt examples/research-thesis.noma --inplace
 ```
 
 ## Block-level edits
@@ -112,12 +115,16 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 
 - `@noma/parser` — hand-written, no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown.
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively switched everywhere.
-- HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, real inline-data plots (line + bar SVG, no JS), agent tasks, export buttons, controls, and tables. `::html` / `::svg` / `::script` escape hatches with `--no-unsafe` to block them.
+- HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, real inline-data plots (line + bar SVG, no JS), agent tasks, export buttons, controls, tables, the new `::table` directive, and `::state_change` deltas. `::html` / `::svg` / `::script` escape hatches with `--no-unsafe` to block them.
 - LLM renderer — deterministic plain-text output for context windows; escape-hatch bodies always stripped.
 - JSON renderer — full AST export.
 - `.noma` source printer — AST → `.noma` (roundtrip-safe). Backs `noma render --to noma` and the patch CLI.
-- Validator — 10 default rules: duplicate IDs, broken references, plot/figure issues, claim-without-evidence, risk-without-owner, decision-without-status, agent-task-without-scope, stale-citation, escape-hatch-untrusted, evidence-missing-for. Per-block opt-out with the `noverify` flag.
-- CLI — `noma parse | render | check | export | patch`. Five patch ops (`replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`).
+- `noma fmt` — re-aligns GitHub-style pipe tables in source; respects pipes inside `` `code spans` `` and `\|` escapes; leaves everything else byte-identical.
+- Validator — wikilink references resolve across paragraphs, quotes, list items, headings, table cells, and book chapters. Default rules: duplicate IDs, broken references (incl. wikilinks), plot/figure issues, plot/dataset linkage (`plot-unknown-dataset`, `plot-unknown-column`), `plot-mixed-delimiters`, claim-without-evidence, risk-without-owner, decision-without-status, agent-task-without-scope, stale-citation, escape-hatch-untrusted, evidence-missing-for, state_change shape rules, and `out-of-profile-directive` when a `profile` is declared. Per-block opt-out with the `noverify` flag.
+- Profiles — declare `profile: research | technical | minimal` in frontmatter as a contract about which directives the document uses; downstream tools can narrow safely.
+- Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
+- Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
+- CLI — `noma parse | render | check | export | patch | fmt`. Five patch ops (`replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`).
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
 - Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
 - Five docs (all written in Noma): direction, spec, getting started, agent patch protocol, architecture.
@@ -129,7 +136,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**v0.2** — `noma patch`, source printer, theme variants, real plots, book manifests, escape hatches all shipped. See `PLAN.md` §24 for the shipped tracker. Out of scope for now: visual editor, realtime collaboration, plugin marketplace, hosted SaaS, VS Code syntax extension. The point is to ship a useful core and let the community shape what comes next.
+**v0.3** — `::table` directive, `noma fmt`, `::state_change` deltas, plot/dataset linkage, profile frontmatter, wikilink validation across chapters, citation staleness overrides — all shipped in response to issue #1. **v0.2** shipped `noma patch`, the source printer, theme variants, real plots, book manifests, and escape hatches. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24 for the per-version tracker. Out of scope for now: visual editor, realtime collaboration, plugin marketplace, hosted SaaS, VS Code syntax extension. The point is to ship a useful core and let the community shape what comes next.
 
 ## License
 

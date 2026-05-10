@@ -12,19 +12,21 @@ The whole codebase fits in one mental model: source → parser → AST → rende
 ## Pipeline
 
 ```
-.noma source
+.noma source ──► fmt.ts ──► .noma source           (table re-alignment)
    │
-   ▼  parser.ts
+   ▼  parser.ts                                    (or book.ts for manifests)
 typed AST  ─────────►  validator.ts  ─►  diagnostics
    │
-   ▼  renderer-html.ts / renderer-llm.ts / renderer-json.ts
-HTML / LLM context / JSON
+   ├──►  renderer-html.ts  ─►  HTML
+   ├──►  renderer-llm.ts   ─►  LLM context
+   ├──►  renderer-json.ts  ─►  JSON
+   └──►  renderer-noma.ts  ─►  .noma source        (roundtrip + patch)
    │
    ▼  scripts/render-pdf.ts
 PDF
 ```
 
-Each arrow is a pure function. The parser does not validate. The renderers do not parse. The validator does not render.
+Each arrow is a pure function. The parser does not validate. The renderers do not parse. The validator does not render. The patch tool (`patch.ts`) takes (AST, op[]) → AST and re-serialises through `renderer-noma.ts`, so unrelated blocks land byte-identical.
 
 ## Modules
 
@@ -38,23 +40,39 @@ Hand-written line-based recursive descent. ~250 lines. Parses frontmatter, headi
 :::
 
 :::card{title="src/inline.ts"}
-Tiny inline markup parser. Two entry points: `inlineToHtml` and `inlineToPlain`. Each renderer chooses which to call.
+Tiny inline markup parser plus the shared `splitPipeRow` utility used by the parser, the formatter, and the `::table` renderer. Three entry points: `inlineToHtml`, `inlineToPlain`, `splitPipeRow`.
 :::
 
 :::card{title="src/renderer-html.ts"}
-AST → semantic HTML. Special-cases the typed blocks (claim, evidence, grid, card, plot, agent_task, ...) and falls through to a generic wrapper for unknown directive names.
+AST → semantic HTML. Special-cases the typed blocks (claim, evidence, grid, card, plot, agent_task, state_change, table, ...), resolves `::plot{dataset=, column=}` against a per-render dataset registry, and falls through to a generic wrapper for unknown directive names.
 :::
 
 :::card{title="src/renderer-llm.ts"}
 AST → deterministic plain text with `[TAG attr=value]` markers. Designed to maximize signal density inside LLM context windows.
 :::
 
+:::card{title="src/renderer-noma.ts"}
+AST → `.noma` source. Roundtrip-safe printer that backs `noma render --to noma` and `noma patch`. `parse → renderNoma → parse` preserves the AST modulo positions.
+:::
+
 :::card{title="src/validator.ts"}
-AST → diagnostics list. Detects duplicate IDs, broken references, plots without data, figures without alt text. Optional schema rules (e.g., claims-need-evidence) are flag-gated.
+AST → diagnostics list. Detects duplicate IDs, broken references (incl. `[[wikilink]]` targets), plot/dataset linkage errors, plot/figure issues, claim-without-evidence, risk/decision/agent-task shape rules, stale citations, escape-hatch trust, state_change shape, and `out-of-profile-directive` when the document declares a `profile`.
+:::
+
+:::card{title="src/patch.ts"}
+Block-level patch ops: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. Returns a new AST; the input is never mutated. `rename_id` retargets `for=`, `parent=`, and `[[wikilink]]` references across the document.
+:::
+
+:::card{title="src/book.ts"}
+YAML manifest loader. `loadBook` concatenates each chapter's parsed AST into a single `DocumentNode`, so every renderer works on books with no per-target wiring.
+:::
+
+:::card{title="src/fmt.ts"}
+Source formatter. Walks the file line-by-line, recognises GitHub-style pipe tables, rebuilds them to a single column width, and leaves everything else byte-identical (including tables inside fenced code blocks).
 :::
 
 :::card{title="src/cli.ts"}
-The `noma parse|render|check|export` command-line entry. Glue, no logic.
+The `noma parse|render|check|export|patch|fmt` command-line entry. Glue, no logic.
 :::
 
 :::card{title="themes/default.css"}

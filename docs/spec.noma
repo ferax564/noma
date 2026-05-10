@@ -1,13 +1,13 @@
 ---
-title: Noma — Format Specification (v0.1 draft)
-version: 0.1
-status: draft
+title: Noma — Format Specification (v0.3)
+version: 0.3
+status: stable
 ---
 
 # Noma Format Specification
 
 ::summary
-This document defines the **Noma** plain-text document format at version 0.1. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+This document defines the **Noma** plain-text document format at version 0.3. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
 ::
 
 ## Conventions
@@ -266,7 +266,7 @@ Built-in profiles:
 
 The validator emits a `out-of-profile-directive` warning for any directive outside the declared profile (`noverify` on a single block silences it). Authors who want the open surface should simply omit the `profile` field.
 
-## Render targets (v0.1)
+## Render targets (v0.3)
 
 | Target   | Status  | Notes                                                             |
 | -------- | ------- | ----------------------------------------------------------------- |
@@ -306,7 +306,7 @@ noma check  book.noma.yml
 
 The loader concatenates each chapter's parsed AST into a single `DocumentNode` (top-level `# Chapter` headings stay distinct so HTML renders one continuous page with chapter sections; LLM export keeps chapter boundaries via the heading prefix). The manifest's `title` / `author` land on `document.meta`; the `outputs.html.theme` value is honoured by future renderers and ignored for now.
 
-## Compatibility promises (v0.1)
+## Compatibility promises (v0.3)
 
 - The directive **opener/closer** syntax is stable and will not change in 0.x.
 - Attribute grammar is stable.

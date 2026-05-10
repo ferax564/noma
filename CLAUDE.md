@@ -21,11 +21,12 @@ src/                       TypeScript source for parser, AST, renderers, validat
   renderer-llm.ts          AST → deterministic LLM context (escape-hatch bodies stripped)
   renderer-json.ts         AST → JSON
   renderer-noma.ts         AST → .noma source (roundtrip-safe; backs `noma patch`)
-  validator.ts             AST → diagnostics (10 default rules, `noverify` opt-out)
-  inline.ts                Inline markdown (bold, em, code, links) → HTML/plain
+  validator.ts             AST → diagnostics (`noverify` opt-out; profile-aware; wikilink refs)
+  inline.ts                Inline markdown + shared `splitPipeRow` util
   patch.ts                 Block-level patch ops (replace/add/delete/update_attr/rename_id)
   book.ts                  YAML manifest loader; concatenates chapters → DocumentNode
-  cli.ts                   `noma parse|render|check|export|patch`
+  fmt.ts                   Source formatter; re-aligns pipe tables, leaves rest byte-identical
+  cli.ts                   `noma parse|render|check|export|patch|fmt`
 bin/noma.mjs               Node CLI shim
 themes/default.css         Default HTML theme (tables, export buttons, controls, variants)
 themes/dark.css            Alternate dark theme — `noma render --theme dark`
@@ -104,6 +105,10 @@ Inline content is **not** fully parsed at parser time — it is stored as a stri
 
 **GitHub-style tables** are detected by a pipe-row + separator-row pair (`| col | col |\n|---|---|`). Per-column alignment comes from the separator (`:---` left, `:---:` center, `---:` right). Inline markdown inside cells is preserved (rendered by the HTML renderer, stripped by LLM). The paragraph buffer also breaks on table starts — without this, an inline table after prose would get pulled into the paragraph.
 
+Cell splitting (parser, fmt, `::table` directive renderer) all share `splitPipeRow` from `src/inline.ts` — pipes inside `` `code spans` `` and `\|` escapes are kept verbatim inside the cell instead of starting a new column. If you touch the table parser, touch the shared util once; don't duplicate the logic.
+
+For tables where pipe-syntax becomes ugly (mixed `✓`/long-prose columns), the `::table` directive accepts pipe rows in its body without a separator row and declares alignment via `align="l,c,r,-"`. `noma fmt <file> [--inplace]` re-aligns existing pipe tables to a single column width and skips fenced code blocks.
+
 ## Current AST Variants
 
 ```
@@ -146,9 +151,13 @@ npm run noma -- render examples/agent-plan.noma --to noma          # AST → .no
 npm run noma -- render examples/research-thesis.noma --to html --theme dark
 npm run noma -- render examples/book/book.noma.yml --to html       # multi-file book
 npm run noma -- check examples/research-thesis.noma
+npm run noma -- check examples/research-thesis.noma --stale-days 30   # tighter window for time-sensitive docs
 
 # block-level patch (rewrites only the addressed block)
 npm run noma -- patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.95}' --inplace
+
+# re-align pipe tables in source (idempotent; skips fenced code blocks)
+npm run noma -- fmt examples/research-thesis.noma --inplace
 
 # render all examples and docs (HTML + LLM + JSON)
 npm run render:examples

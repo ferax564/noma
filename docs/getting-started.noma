@@ -21,12 +21,12 @@ npm install
 
 ## Render an example
 
-The repo ships three working examples in `examples/`:
+The repo ships seven working examples in `examples/` — three full-surface demos plus the original three intro files plus a multi-file book:
 
 ```bash
-npm run noma -- render examples/thesis.noma --to html --out dist/thesis.html
-npm run noma -- render examples/landing.noma --to html --out dist/landing.html
-npm run noma -- render examples/book-chapter.noma --to html --out dist/chapter.html
+npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
+npm run noma -- render examples/research-thesis.noma --to html --out dist/research-thesis.html
+npm run noma -- render examples/tech-doc.noma --to html --out dist/tech-doc.html
 ```
 
 Open any of the produced files in a browser — they are fully self-contained and include the default theme inline.
@@ -43,9 +43,12 @@ The output is deterministic plain text designed for LLM input: typed blocks beco
 
 ```bash
 npm run noma -- check examples/thesis.noma
+npm run noma -- check examples/research-thesis.noma --stale-days 30
 ```
 
-The validator catches duplicate IDs, broken references, plots without data, figures without alt text, claims missing evidence, risks without owners, decisions without status, agent tasks without scope, citations older than 365 days, and untrusted `::html` / `::svg` / `::script` escape hatches. Add the `noverify` flag attribute to any block to silence rules on it individually.
+The validator catches duplicate IDs, broken references (including `[[wikilink]]` targets across all chapters of a book), plots missing data, plots referencing unknown datasets or unknown columns, figures without alt text, claims missing evidence, risks without owners, decisions without status, agent tasks without scope, `state_change` blocks missing `block`/`from`/`to`, citations older than the staleness window, untrusted `::html` / `::svg` / `::script` escape hatches, and (when a `profile` is declared in frontmatter) any directive outside the declared profile. Add the `noverify` flag attribute to any block to silence rules on it individually.
+
+The staleness window defaults to 365 days. Override it for one document via `stale_citation_days: 30` in frontmatter, for one citation via `stale_after_days=30` on the citation, or globally with `--stale-days 30` on the CLI.
 
 ## Pick a theme
 
@@ -75,6 +78,46 @@ npm run noma -- patch examples/thesis.noma \
 ```
 
 Five ops cover the common editing flows: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. The patch tool re-serialises through the AST source printer, so unrelated blocks stay byte-identical. See [agent-protocol.noma](agent-protocol.noma) for the schema.
+
+## Re-align tables in source
+
+```bash
+npm run noma -- fmt examples/research-thesis.noma --inplace
+```
+
+GitHub-style pipe tables get rebuilt to a single column width. Tables inside fenced code blocks are skipped. Pipes inside `` `code spans` `` and `\|` escapes are preserved. Idempotent — running `fmt` twice produces the same output.
+
+## Connect a plot to a dataset
+
+Stop authoring numbers twice — link a plot to a sibling dataset by id:
+
+```noma
+::dataset{id="vertical-arr"}
+schema:
+  vertical: string
+  growth: number
+rows:
+  - [legal, 3.4]
+  - [healthcare, 2.9]
+::
+
+::plot{id="arr" type="bar" dataset="vertical-arr" column="growth" xcolumn="vertical"}
+::
+```
+
+`column=` selects the y-series. `xcolumn=` (optional) pulls categorical labels from a string column. The validator emits errors when the dataset id or column name don't resolve.
+
+## Declare a profile
+
+Tell downstream tools which directives the document guarantees to use:
+
+```noma
+---
+profile: research
+---
+```
+
+Three built-in profiles ship: `minimal` (markdown-equivalent), `technical` (product docs, landing pages), and `research` (theses, ADRs, recap docs). The validator warns on any out-of-profile directive. Omit the field to keep the open surface.
 
 ## Render to PDF
 
