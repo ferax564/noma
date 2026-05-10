@@ -9,6 +9,7 @@ import type { DocumentNode, Node } from "../src/ast.js";
 function stripPositions(node: Node): Node {
   const clone: Record<string, unknown> = { ...node };
   delete clone.pos;
+  delete clone.endLine;
   if ("children" in clone && Array.isArray(clone.children)) {
     clone.children = (clone.children as Node[]).map(stripPositions);
   }
@@ -86,6 +87,45 @@ test("roundtrip: every file in examples/ and docs/", () => {
       }
     }
   }
+});
+
+test("roundtrip: heading with explicit id and aliases", () => {
+  const src = `# Chapter Title {id="custom-id" aliases="old-name,legacy"}\n\nbody.\n\n## Sub {id="explicit-sub"}\n\nmore.\n`;
+  roundtripEquals(src);
+});
+
+test("renderNoma emits heading id when non-slug", () => {
+  const doc = parse(`# Cover {id="custom-id"}\n\ntext.\n`);
+  const out = renderNoma(doc);
+  assert.match(out, /^# Cover \{id="custom-id"\}/m);
+});
+
+test("renderNoma omits heading attrs when id matches slug and no aliases", () => {
+  const doc = parse(`# Plain Title\n\ntext.\n`);
+  const out = renderNoma(doc);
+  assert.match(out, /^# Plain Title$/m);
+});
+
+test("renderNoma emits aliases attr on heading", () => {
+  const doc = parse(`# Title {aliases="foo,bar"}\n\nx.\n`);
+  const out = renderNoma(doc);
+  assert.match(out, /aliases="foo,bar"/);
+});
+
+test("renderNoma drops aliases the parser will re-derive (frontmatter)", () => {
+  const doc = parse(`---\naliases:\n  - rp3\n---\n# Title\n\nx.\n`);
+  const out = renderNoma(doc);
+  // Frontmatter list is preserved...
+  assert.match(out, /aliases:\s*\n\s*- rp3/);
+  // ...so the heading must NOT also carry it (otherwise duplicates accumulate).
+  assert.doesNotMatch(out, /^# Title \{aliases/m);
+});
+
+test("renderNoma drops filename-slug aliases", () => {
+  const doc = parse(`# Title\n\nx.\n`, { filename: "/tmp/risk-premia.noma" });
+  // Parser should attach 'risk-premia' as alias.
+  const out = renderNoma(doc);
+  assert.doesNotMatch(out, /aliases="risk-premia"/);
 });
 
 test("printer escapes attr values containing quotes", () => {

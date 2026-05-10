@@ -13,10 +13,14 @@ export function inlineToHtml(src: string): string {
     /\[([^\]]+)\]\(([^)\s]+)\)/g,
     (_m, label, href) => `<a href="${escapeAttr(href)}">${label}</a>`,
   );
-  text = text.replace(/\[\[([a-zA-Z_][\w-]*)\]\]/g, (_m, id) =>
+  text = text.replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, (_m, id) =>
     `<a class="noma-ref" href="#${escapeAttr(id)}">${id}</a>`,
   );
-  text = text.replace(/\n/g, "<br />");
+  // CommonMark: a single newline inside a paragraph is a soft line break
+  // (renders as a space); two trailing spaces or a trailing backslash before
+  // the newline make it a hard break (`<br/>`).
+  text = text.replace(/(?:  +|\\)\n/g, "<br />");
+  text = text.replace(/\n/g, " ");
   return text;
 }
 
@@ -27,7 +31,7 @@ export function inlineToPlain(src: string): string {
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/\b_([^_]+)_\b/g, "$1")
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 ($2)")
-    .replace(/\[\[([a-zA-Z_][\w-]*)\]\]/g, "$1");
+    .replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, "$1");
 }
 
 export function escapeHtml(s: string): string {

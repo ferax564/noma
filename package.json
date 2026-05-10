@@ -1,15 +1,24 @@
 {
   "name": "@noma/cli",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Noma — readable document format for humans and agents",
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "noma": "./bin/noma.mjs"
   },
   "scripts": {
     "noma": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.json",
-    "prepare": "tsc -p tsconfig.json || true",
+    "prepare": "tsc -p tsconfig.json",
     "test": "tsx --test test/*.test.ts",
     "render:examples": "tsx src/cli.ts render examples/thesis.noma --to html --out dist/thesis.html && tsx src/cli.ts render examples/landing.noma --to html --out dist/landing.html && tsx src/cli.ts render examples/agent-plan.noma --to html --out dist/examples/agent-plan.html && tsx src/cli.ts render examples/agent-plan.noma --to llm --out dist/examples/agent-plan.llm.txt && tsx src/cli.ts render examples/agent-plan.noma --to json --out dist/examples/agent-plan.json && tsx src/cli.ts render examples/tech-doc.noma --to html --out dist/examples/tech-doc.html && tsx src/cli.ts render examples/tech-doc.noma --to llm --out dist/examples/tech-doc.llm.txt && tsx src/cli.ts render examples/tech-doc.noma --to json --out dist/examples/tech-doc.json && tsx src/cli.ts render examples/research-thesis.noma --to html --out dist/examples/research-thesis.html && tsx src/cli.ts render examples/research-thesis.noma --to llm --out dist/examples/research-thesis.llm.txt && tsx src/cli.ts render examples/research-thesis.noma --to json --out dist/examples/research-thesis.json",
     "render:docs": "tsx src/cli.ts render docs/direction.noma --to html --out dist/docs/direction.html && tsx src/cli.ts render docs/spec.noma --to html --out dist/docs/spec.html && tsx src/cli.ts render docs/architecture.noma --to html --out dist/docs/architecture.html && tsx src/cli.ts render docs/getting-started.noma --to html --out dist/docs/getting-started.html && tsx src/cli.ts render docs/agent-protocol.noma --to html --out dist/docs/agent-protocol.html",

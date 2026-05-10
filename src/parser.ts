@@ -43,6 +43,7 @@ export function parse(source: string, options: ParseOptions = {}): DocumentNode 
   const { meta, startLine } = extractFrontmatter(lines);
   const flatChildren = parseBlocks(lines, startLine, lines.length, 0);
   const children = foldSections(flatChildren);
+  for (const c of children) computeSectionEndLines(c);
 
   attachChapterAliases(children, meta, options.filename);
 
@@ -175,13 +176,15 @@ function parseBlocks(
       let end = start;
       while (end < to && !FENCE_RE.test(lines[end] ?? "")) end++;
       const content = lines.slice(start, end).join("\n");
+      const closed = end < to;
       out.push({
         type: "code",
         lang,
         content,
         pos: { line: i + 1, column: 1 },
+        endLine: closed ? end + 1 : end,
       } satisfies CodeNode);
-      i = end < to ? end + 1 : end;
+      i = closed ? end + 1 : end;
       continue;
     }
 
@@ -192,6 +195,7 @@ function parseBlocks(
     ) {
       const result = parseTable(lines, i, to);
       if (result) {
+        result.node.endLine = result.next;
         out.push(result.node);
         i = result.next;
         continue;
@@ -202,6 +206,7 @@ function parseBlocks(
       out.push({
         type: "thematic_break",
         pos: { line: i + 1, column: 1 },
+        endLine: i + 1,
       } satisfies ThematicBreakNode);
       i++;
       continue;
@@ -220,6 +225,7 @@ function parseBlocks(
         type: "quote",
         content: buf.join("\n"),
         pos: { line: startLine + 1, column: 1 },
+        endLine: i,
       } satisfies QuoteNode);
       continue;
     }
@@ -236,6 +242,7 @@ function parseBlocks(
           type: "list_item",
           content: m[2] ?? "",
           pos: { line: i + 1, column: 1 },
+          endLine: i + 1,
         });
         i++;
       }
@@ -244,6 +251,7 @@ function parseBlocks(
         ordered,
         items,
         pos: { line: startLine + 1, column: 1 },
+        endLine: i,
       } satisfies ListNode);
       continue;
     }
@@ -270,7 +278,7 @@ function parseBlocks(
       buf.push(cur);
       i++;
     }
-    if (buf.length > 0) out.push(paragraph(buf.join("\n"), startLine));
+    if (buf.length > 0) out.push(paragraph(buf.join("\n"), startLine, i));
   }
 
   return out;
@@ -303,6 +311,7 @@ function parseDirective(
     attrs,
     children,
     pos: { line: i + 1, column: 1 },
+    endLine: close === -1 ? to : close + 1,
   };
 
   if (typeof attrs.id === "string") node.id = attrs.id;
@@ -387,12 +396,30 @@ function coerce(v: string): AttrValue {
   return v;
 }
 
-function paragraph(content: string, line: number): ParagraphNode {
+function paragraph(content: string, line: number, endIdx?: number): ParagraphNode {
+  const lineCount = content.split("\n").length;
   return {
     type: "paragraph",
     content: content.replace(/\n+$/, ""),
     pos: { line: line + 1, column: 1 },
+    endLine: endIdx !== undefined ? endIdx : line + lineCount,
   };
+}
+
+function computeSectionEndLines(node: Node): number {
+  if (node.type === "section") {
+    let end = node.pos?.line ?? 0;
+    for (const c of node.children) {
+      const ce = computeSectionEndLines(c);
+      if (ce > end) end = ce;
+    }
+    node.endLine = end;
+    return end;
+  }
+  if (node.type === "directive") {
+    for (const c of node.children) computeSectionEndLines(c);
+  }
+  return node.endLine ?? node.pos?.line ?? 0;
 }
 
 function foldSections(nodes: Node[]): Node[] {

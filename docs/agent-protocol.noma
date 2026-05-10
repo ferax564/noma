@@ -1,6 +1,6 @@
 ---
 title: Noma Agent Patch Protocol
-version: 0.4
+version: 0.5
 ---
 
 # Agent Patch Protocol
@@ -24,7 +24,7 @@ noma patch <file.noma> --op '<json-op>' [--inplace | --out path]
 noma patch <file.noma> --ops <file.json>          # one op or a JSON array of ops
 ```
 
-The CLI parses the document, applies each op against the AST, and re-serialises through the source printer (`renderer-noma.ts`). Unrelated blocks land byte-identical to where they started.
+The CLI rewrites only the targeted source span (`patchSource` in `src/patch.ts`). Unrelated bytes — frontmatter quoting, sibling blocks, blank-line padding, attribute order on unchanged lines — survive verbatim. Programmatic callers that want the AST-level transform can keep using `patch(doc, op)`; that path round-trips through the source printer.
 
 ## Operations
 

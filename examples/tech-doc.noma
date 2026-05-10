@@ -187,6 +187,19 @@ Operations: `add_block`, `replace_block`, `delete_block`, `move_block`,
 `update_attribute`, `add_evidence`, `add_comment`, `resolve_comment`,
 `rename_id`. See `docs/agent-protocol.noma` for the full schema.
 
+## Architecture (v0.5 — interactive diagrams)
+
+::diagram{kind="mermaid" id="cli-flow"}
+flowchart LR
+  A[.noma source] --> B[parser]
+  B --> C[AST]
+  C --> D[validator]
+  C --> E[renderer-html]
+  C --> F[renderer-llm]
+  C --> G[renderer-noma]
+  G --> H[noma fmt / patch]
+::
+
 ## Cross-links
 
 - See `docs/spec.noma` for the full block reference.

@@ -26,6 +26,12 @@ interface NodeBase {
   aliases?: string[];
   /** Source position of the node's first character. */
   pos?: Position;
+  /**
+   * 1-based last source line covered by this node (inclusive). Populated by
+   * the parser; used by `patchSource` to splice ranges without re-rendering
+   * the rest of the document.
+   */
+  endLine?: number;
 }
 
 export interface DocumentNode extends NodeBase {

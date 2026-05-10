@@ -87,6 +87,21 @@ test("issue #5: wikilinks resolve via alias in validator", () => {
   assert.ok(!diags.some((d) => d.code === "broken-reference"));
 });
 
+test("review fix #3: wikilinks support /, ., : in IDs", () => {
+  const doc = parse(
+    `# T\n\n::claim{id="chapter/risks"}\nx\n::\n\n::claim{id="metric.r10"}\ny\n::\n\n::claim{id="ns:scoped"}\nz\n::\n\nSee [[chapter/risks]], [[metric.r10]], [[ns:scoped]].\n`,
+  );
+  const diags = validate(doc);
+  assert.ok(
+    !diags.some((d) => d.code === "broken-reference"),
+    `unexpected broken-reference: ${JSON.stringify(diags)}`,
+  );
+  const html = renderHtml(doc);
+  assert.match(html, /href="#chapter\/risks"/);
+  assert.match(html, /href="#metric\.r10"/);
+  assert.match(html, /href="#ns:scoped"/);
+});
+
 test("issue #5: HTML emits hidden anchors for aliases", () => {
   const doc = parse(
     `---\naliases:\n  - rp3\n---\n# Risk Premia 3\n\nbody\n`,

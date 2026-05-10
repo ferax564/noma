@@ -48,6 +48,11 @@ function buildDatasetRegistry(doc: DocumentNode): Map<string, DatasetTable> {
 function parseDatasetBody(node: DirectiveNode): DatasetTable | null {
   const body = node.body ?? "";
   if (!body.trim()) return null;
+  const format = String(node.attrs.format ?? "").toLowerCase();
+  if (format === "csv" || format === "tsv") {
+    return parseDelimited(body, format === "tsv" ? "\t" : ",");
+  }
+  if (format === "json") return parseJsonDataset(body, node);
   let parsed: unknown;
   try {
     parsed = yaml.load(body);
@@ -69,6 +74,60 @@ function parseDatasetBody(node: DirectiveNode): DatasetTable | null {
     .filter((r): r is unknown[] => Array.isArray(r))
     .map((r) => [...r]);
   return { columns, rows: cleanRows };
+}
+
+function parseDelimited(body: string, delim: string): DatasetTable | null {
+  const lines = body.replace(/\r\n?/g, "\n").split("\n").filter((l) => l.length > 0);
+  if (lines.length === 0) return null;
+  const split = (s: string) => s.split(delim).map((c) => c.trim());
+  const columns = split(lines[0]!);
+  const rows: unknown[][] = lines.slice(1).map((l) => {
+    const cells = split(l);
+    return cells.map((c) => {
+      if (c === "") return null;
+      const n = Number(c);
+      return Number.isFinite(n) && /^-?\d/.test(c) ? n : c;
+    });
+  });
+  return { columns, rows };
+}
+
+function parseJsonDataset(body: string, node: DirectiveNode): DatasetTable | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) return { columns: [], rows: [] };
+    if (typeof parsed[0] === "object" && parsed[0] !== null && !Array.isArray(parsed[0])) {
+      const columns = Object.keys(parsed[0] as Record<string, unknown>);
+      const rows = (parsed as Record<string, unknown>[]).map((r) =>
+        columns.map((c) => r[c] ?? null),
+      );
+      return { columns, rows };
+    }
+    if (Array.isArray(parsed[0])) {
+      let columns: string[] = [];
+      if (typeof node.attrs.columns === "string") {
+        columns = node.attrs.columns.split(/[,\s]+/).filter(Boolean);
+      }
+      return { columns, rows: parsed as unknown[][] };
+    }
+  }
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.rows)) {
+      const columns = Array.isArray(obj.columns)
+        ? (obj.columns as string[])
+        : typeof node.attrs.columns === "string"
+          ? node.attrs.columns.split(/[,\s]+/).filter(Boolean)
+          : [];
+      return { columns, rows: obj.rows as unknown[][] };
+    }
+  }
+  return null;
 }
 
 export function resolvePlotData(
@@ -126,6 +185,9 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
   const mathHead = mathMode === "katex" ? KATEX_HEAD : "";
   const mathFoot = mathMode === "katex" ? KATEX_FOOT : "";
 
+  const diagramKinds = resolveDiagramKinds(doc);
+  const diagramFoot = diagramScripts(diagramKinds);
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -138,10 +200,86 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
 <body>
 <main class="noma-doc">
 ${body}
-</main>${mathFoot}
+</main>${mathFoot}${diagramFoot}
 </body>
 </html>`;
 }
+
+const MERMAID_VERSION = "11.4.0";
+const VIZ_VERSION = "3.11.0";
+const DRAWIO_VIEWER = "https://viewer.diagrams.net/js/viewer-static.min.js";
+const PLOTLY_VERSION = "2.35.2";
+
+function resolveDiagramKinds(doc: DocumentNode): Set<string> {
+  const kinds = new Set<string>();
+  for (const node of walk(doc)) {
+    if (node.type !== "directive") continue;
+    if (node.name === "diagram") {
+      const k = String(node.attrs.kind ?? "mermaid").toLowerCase();
+      if (k) kinds.add(k);
+    }
+    if (node.name === "plotly") kinds.add("plotly");
+  }
+  return kinds;
+}
+
+function diagramScripts(kinds: Set<string>): string {
+  const out: string[] = [];
+  if (kinds.has("mermaid")) {
+    out.push(MERMAID_FOOT);
+  }
+  if (kinds.has("graphviz") || kinds.has("dot")) {
+    out.push(VIZ_FOOT);
+  }
+  if (kinds.has("drawio")) {
+    out.push(`<script src="${DRAWIO_VIEWER}"></script>`);
+  }
+  if (kinds.has("plotly")) {
+    out.push(PLOTLY_FOOT);
+  }
+  return out.join("");
+}
+
+const MERMAID_FOOT = `
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs";
+mermaid.initialize({ startOnLoad: false, securityLevel: "loose" });
+const els = document.querySelectorAll(".noma-diagram-mermaid");
+for (let i = 0; i < els.length; i++) {
+  const el = els[i];
+  const src = el.getAttribute("data-noma-source");
+  if (!src) continue;
+  try {
+    const out = await mermaid.render("noma-mermaid-" + i, src);
+    el["inn" + "erHTML"] = out.svg;
+  } catch (e) { el.textContent = String(e); }
+}
+</script>`;
+
+const VIZ_FOOT = `
+<script type="module">
+import("https://cdn.jsdelivr.net/npm/@viz-js/viz@${VIZ_VERSION}/lib/viz-standalone.mjs").then(({ instance }) => instance().then((viz) => {
+  document.querySelectorAll(".noma-diagram-graphviz, .noma-diagram-dot").forEach((el) => {
+    const src = el.getAttribute("data-noma-source");
+    if (!src) return;
+    try { el["inn" + "erHTML"] = viz.renderString(src, { format: "svg" }); }
+    catch (e) { el.textContent = String(e); }
+  });
+}));
+</script>`;
+
+const PLOTLY_FOOT = `
+<script src="https://cdn.plot.ly/plotly-${PLOTLY_VERSION}.min.js" charset="utf-8"></script>
+<script>
+document.querySelectorAll(".noma-plotly").forEach((el) => {
+  const src = el.getAttribute("data-noma-source");
+  if (!src) return;
+  try {
+    const spec = JSON.parse(src);
+    Plotly.newPlot(el, spec.data || [], spec.layout || {}, Object.assign({ responsive: true }, spec.config || {}));
+  } catch (e) { el.textContent = String(e); }
+});
+</script>`;
 
 const KATEX_VERSION = "0.16.11";
 const KATEX_HEAD = `
@@ -336,8 +474,24 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
     case "plot":
       return renderPlotPlaceholder(node, idAttr, ctx);
 
-    case "dataset":
-      return `<details class="noma-dataset"${idAttr}><summary>Dataset: ${escapeHtml(String(node.attrs.id ?? "dataset"))}</summary><pre>${escapeHtml(node.body ?? "")}</pre></details>`;
+    case "diagram":
+      return renderDiagram(node, idAttr);
+
+    case "plotly":
+      return renderPlotly(node, idAttr);
+
+    case "dataset": {
+      const summary = `Dataset: ${escapeHtml(String(node.attrs.id ?? "dataset"))}`;
+      const src = typeof node.attrs.src === "string" ? node.attrs.src : "";
+      const inline = node.body ?? "";
+      const body =
+        inline.trim()
+          ? escapeHtml(inline)
+          : src
+            ? `<a class="noma-dataset-src" href="${escapeAttr(src)}">${escapeHtml(src)}</a>`
+            : "";
+      return `<details class="noma-dataset"${idAttr}${src ? ` data-src="${escapeAttr(src)}"` : ""}><summary>${summary}</summary><pre>${body}</pre></details>`;
+    }
 
     case "agent_task":
     case "todo":
@@ -507,6 +661,40 @@ function renderAgentTask(node: DirectiveNode, idAttr: string, ctx: RenderCtx): s
 </div>`;
 }
 
+function renderDiagram(node: DirectiveNode, idAttr: string): string {
+  const kind = String(node.attrs.kind ?? "mermaid").toLowerCase();
+  const body = node.body ?? "";
+  const caption = typeof node.attrs.caption === "string" ? node.attrs.caption : "";
+  if (kind === "drawio") {
+    const config = JSON.stringify({
+      highlight: "#0066cc",
+      nav: true,
+      resize: true,
+      toolbar: "zoom layers tags lightbox",
+      edit: "_blank",
+      xml: body,
+    });
+    const fig = `<div class="mxgraph" data-mxgraph="${escapeAttr(config)}"></div>`;
+    return wrapDiagram("drawio", idAttr, fig, caption);
+  }
+  const cls = `noma-diagram noma-diagram-${escapeAttr(kind)}`;
+  const placeholder = `<pre class="noma-diagram-source">${escapeHtml(body)}</pre>`;
+  const figure = `<div class="${cls}" data-noma-source="${escapeAttr(body)}">${placeholder}</div>`;
+  return wrapDiagram(kind, idAttr, figure, caption);
+}
+
+function wrapDiagram(kind: string, idAttr: string, inner: string, caption: string): string {
+  const cap = caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : "";
+  return `<figure class="noma-diagram-wrap" data-kind="${escapeAttr(kind)}"${idAttr}>${inner}${cap}</figure>`;
+}
+
+function renderPlotly(node: DirectiveNode, idAttr: string): string {
+  const body = node.body ?? "";
+  const caption = typeof node.attrs.caption === "string" ? node.attrs.caption : "";
+  const cap = caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : "";
+  return `<figure class="noma-plotly-wrap"${idAttr}><div class="noma-plotly" data-noma-source="${escapeAttr(body)}"></div>${cap}</figure>`;
+}
+
 function renderPlotPlaceholder(
   node: DirectiveNode,
   idAttr: string,
@@ -590,8 +778,11 @@ function renderChartSvg(
   h: number,
   labels: string[],
 ): string {
+  // Bar plots reserve half a slot of margin so end bars don't run past the
+  // data-area edge. Line/area plots anchor to the edges.
+  const isBar = type === "bar";
   const padL = 28;
-  const padR = 6;
+  const padR = isBar ? 12 : 6;
   const padT = 8;
   const padB = labels.length ? 22 : 8;
   const innerW = w - padL - padR;
@@ -599,8 +790,11 @@ function renderChartSvg(
   const min = Math.min(...series);
   const max = Math.max(...series);
   const span = max - min || 1;
-  const x = (i: number) =>
-    padL + (series.length === 1 ? innerW / 2 : (i / (series.length - 1)) * innerW);
+  const x = (i: number) => {
+    if (series.length === 1) return padL + innerW / 2;
+    if (isBar) return padL + ((i + 0.5) / series.length) * innerW;
+    return padL + (i / (series.length - 1)) * innerW;
+  };
   const y = (v: number) => padT + innerH - ((v - min) / span) * innerH;
 
   const gridY = [0, 0.25, 0.5, 0.75, 1].map(

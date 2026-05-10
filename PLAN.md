@@ -1400,13 +1400,50 @@ Closes issue #9 — papercut surfaced after v0.4.0 went out the door.
   TOC overlays, theme switchers) no longer need an index special-case.
   The home crumb is marked `noma-nav-current` on the index itself.
 
-### 24.7 Still ahead
+### 24.7 v0.5.0 — review fixes + interactive directives (2026-05-10)
+
+Closes the executive-read review (review fixes #1–#4) plus issues #10,
+#11, #12. Theme: tightening the human-and-agent collaboration contract
+and shipping the artifacts that turn `.noma` into a richer document
+substrate without breaking the AST.
+
+- ✅ Source-preserving `patchSource(source, ops)` (review fix #1).
+  Parser now records `endLine` per node; patches rewrite only the
+  targeted line range. Frontmatter quoting, sibling blocks, blank-line
+  padding, and attribute order on unchanged lines all survive
+  byte-for-byte. Backs the "unrelated 95% byte-identical" promise the
+  protocol doc has been making since v0.2.
+- ✅ `renderNoma` emits explicit heading attributes (review fix #2).
+  Sections with non-slug `id=` or aliases now print as
+  `## Title {id="..." aliases="a,b"}`. Stable IDs survive the parse →
+  render → parse cycle.
+- ✅ Wikilink grammar accepts `/`, `.`, `:` in IDs (review fix #3).
+  Book-scoped IDs (`chapter/risks`), dotted metric IDs, namespaced
+  IDs all resolve. Fixed uniformly across `inline.ts`, `patch.ts`,
+  `validator.ts`.
+- ✅ `@noma/cli` programmatic API (review fix #4). Added `main`,
+  `types`, `exports` so `import { parse, patchSource, renderHtml }
+  from "@noma/cli"` works in any Node 20+ project. Dropped `|| true`
+  from `prepare` so broken builds fail loud.
+- ✅ `::diagram{kind="mermaid|graphviz|drawio"}` directive (issue #10).
+  Body holds source verbatim. HTML auto-injects the matching CDN only
+  when the doc actually uses that kind, keeping plain pages CDN-free.
+- ✅ `::plotly` directive (issue #11). Body is a JSON spec
+  (`{ data, layout, config }`). HTML hydrates via Plotly.js; LLM keeps
+  the JSON intact.
+- ✅ `::dataset{src="data.csv"}` external sources (issue #12). New
+  `src/loader.ts` inlines the file into `body` after parse, inferring
+  format (csv/tsv/json/yaml). Renderers stay pure. Plots can reference
+  CSV/JSON datasets the same way they reference inline ones.
+
+### 24.8 Still ahead
 
 - ⏳ Shared `_assets/theme.css` for `--to site` (currently inlines CSS
   per page; functional but doubles output size on large books).
-- ⏳ VS Code syntax highlighting extension.
-- ⏳ External CSV evaluation for `::plot data="./series.csv"` (today
-  the CSV path falls through to the placeholder).
+- ⏳ VS Code syntax highlighting extension (deferred from review fix #5;
+  separate package).
+- ⏳ Killer demo: agent updates a stale research memo without rewriting
+  the file (deferred from review fix #6).
 - ⏳ Trusted-publishing context (auto-set `--no-unsafe` based on
   manifest config).
 - ⏳ Parser fix: `::` inside fenced code regions inside a parent

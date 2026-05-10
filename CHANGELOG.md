@@ -6,6 +6,87 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-10
+
+Closes the executive-read review fixes (#1–#4) plus issues #10, #11, #12.
+Theme: tightening the human-and-agent collaboration contract — patches that
+truly preserve unrelated bytes, roundtrip-safe stable IDs, and richer
+artifacts (interactive diagrams, plotly, external datasets) without breaking
+the AST.
+
+### Added
+
+- **`patchSource(source, ops)` — source-preserving patch** (review fix #1).
+  `noma patch` no longer round-trips the whole file through `renderNoma`. The
+  parser now records `endLine` per node; `patchSource` rewrites only the
+  targeted line range. Frontmatter quoting, sibling blocks, blank-line
+  padding, and attribute order on unchanged lines all survive byte-for-byte.
+  AST-level `patch(doc, op)` stays for callers that already work in AST space.
+- **`::diagram{kind="mermaid|graphviz|drawio"}` directive** (issue #10).
+  Body holds the source verbatim. The HTML renderer auto-injects the matching
+  CDN runtime only when the document actually uses that kind, so plain pages
+  stay CDN-free. Mermaid renders to inline SVG, Graphviz uses
+  `@viz-js/viz`, drawio uses the diagrams.net `viewer-static` script. LLM
+  export keeps the body unmodified (markdown stripping would mangle DOT or
+  Mermaid syntax).
+- **`::plotly` directive** (issue #11). Body is a JSON spec
+  (`{ data, layout, config }`). HTML emits a container Plotly hydrates; LLM
+  keeps the JSON intact. PDF capture works because Puppeteer waits for
+  network idle.
+- **`::dataset{src="data.csv"}` external sources** (issue #12). New
+  `src/loader.ts` inlines the file into `body` after parse, inferring format
+  (`csv`, `tsv`, `json`, `yaml`) from extension or content. CLI calls the
+  loader for both single files and book chapters (per-chapter directory
+  resolution). Renderers stay pure.
+- **Programmatic API surface** (review fix #4). `@noma/cli` now exposes
+  `main`/`types`/`exports` so `import { parse, patchSource, renderHtml }
+  from "@noma/cli"` works in any Node 20+ project.
+
+### Changed
+
+- **`renderNoma` emits explicit heading attributes** (review fix #2). Sections
+  with non-slug `id=` or any `aliases` now print as
+  `## Title {id="..." aliases="a,b"}`. Without this, the parse → render → parse
+  cycle dropped stable IDs that agents rely on.
+- **Wikilink grammar accepts `/`, `.`, `:` in IDs** (review fix #3). Book-scoped
+  IDs (`chapter/risks`), dotted metric IDs (`metric.r10`), and namespaced IDs
+  (`ns:scoped`) now resolve. Fixed uniformly in `inline.ts`, `patch.ts`,
+  `validator.ts`.
+- **`prepare` script no longer swallows build failures.** The `|| true`
+  fallback is gone — broken builds now fail loud instead of silently shipping
+  a stale `dist/`.
+- **CommonMark soft line breaks.** A single newline inside a paragraph now
+  renders as a space; hard breaks need two trailing spaces or a trailing
+  backslash. Brings rendering in line with every other Markdown processor.
+- **Bar plot edge padding.** Bars no longer run past the data-area edge.
+
+### Fixed
+
+- The "unrelated 95% of the file is byte-identical" promise from
+  `docs/agent-protocol.noma` is now actually true (was: drifted frontmatter
+  YAML formatting, dropped heading attributes).
+
+### Validator
+
+New rules: `diagram-missing-kind`, `diagram-missing-source`,
+`plotly-missing-spec`, `plotly-invalid-json`, `dataset-src-missing`. The
+`technical` and `research` profiles now include `diagram` and `plotly`.
+
+### Documentation
+
+- `docs/spec.noma` bumped to v0.5 with new sections for diagrams, plotly,
+  external datasets, and source-preserving patch.
+- `docs/agent-protocol.noma` bumped to v0.5; clarifies that `noma patch`
+  preserves bytes outside the targeted span.
+- README clarifies `@noma/cli` is the published name (was `@noma/parser`,
+  never published under that name).
+
+### Known follow-ups
+
+The review also flagged a "killer demo" (agent updates a stale research
+memo without rewriting the file) and a VS Code TextMate grammar — both
+deferred to follow-up issues to keep this PR focused.
+
 ## [0.4.1] — 2026-05-10
 
 Closes issue #9 — polishes the `--to site` index page so it stops embarrassing
