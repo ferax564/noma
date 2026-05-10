@@ -204,12 +204,12 @@ Core Noma absorbs directives that are **shape-stable, domain-neutral, and useful
 
 **Out of core (proposed packs).**
 
-| Pack name   | Sample directives                                        | Owner pattern              |
-|-------------|----------------------------------------------------------|----------------------------|
-| `finance::` | `position`, `trade`, `forecast`, `holding`, `pnl_event`  | finance/portfolio docs     |
-| `ops::`     | `incident`, `runbook`, `postmortem`, `alert`, `oncall`   | SRE/ops teams              |
-| `lab::`     | `experiment`, `protocol`, `sample`, `apparatus`          | wet/dry-lab notebooks      |
-| `legal::`   | `clause`, `obligation`, `party`, `jurisdiction`          | contract drafting          |
+| Pack name   | Sample directives                                       | Owner pattern          |
+| ----------- | ------------------------------------------------------- | ---------------------- |
+| `finance::` | `position`, `trade`, `forecast`, `holding`, `pnl_event` | finance/portfolio docs |
+| `ops::`     | `incident`, `runbook`, `postmortem`, `alert`, `oncall`  | SRE/ops teams          |
+| `lab::`     | `experiment`, `protocol`, `sample`, `apparatus`         | wet/dry-lab notebooks  |
+| `legal::`   | `clause`, `obligation`, `party`, `jurisdiction`         | contract drafting      |
 
 **Pack contract.**
 

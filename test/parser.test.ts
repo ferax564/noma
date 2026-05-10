@@ -6,6 +6,17 @@ import { renderLlm } from "../src/renderer-llm.js";
 import { validate } from "../src/validator.js";
 import type { DirectiveNode, SectionNode, TableNode } from "../src/ast.js";
 
+test("table cells preserve pipes inside backticks", () => {
+  const src = `| Form          | Type    |
+| :------------ | :------ |
+| \`a|b\`       | string  |
+| \`x\\|y\`     | string  |
+`;
+  const html = renderHtml(parse(src));
+  assert.match(html, /<code>a\|b<\/code>/);
+  assert.match(html, /<code>x\\\|y<\/code>/);
+});
+
 test("::table directive renders pipe-body without separator row", () => {
   const src = `::table{header align="-,c,r"}
 | Vertical | Status | Score |

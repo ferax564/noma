@@ -1307,7 +1307,45 @@ agent-editable document operating system". Six §23 items shipped:
   `DocumentNode` so every renderer works on books unchanged. Demo
   book at `examples/book/` (3 chapters).
 
-### 24.4 Still ahead
+### 24.4 v0.3.0 — first real-world authoring response (2026-05-10)
+
+Issue #1 surfaced eight friction items and two design questions from a
+non-trivial weekly recap document. All ten shipped:
+
+- ✅ `::table` directive — body is plain pipe rows, no separator-row
+  required, alignment via `align="l,c,r,-"`, optional `header` flag.
+  For tables where pipe-syntax becomes ugly under mixed cell widths.
+- ✅ `noma fmt <file>` — re-aligns GitHub-style pipe tables in source
+  to a single column width, leaves everything else byte-identical
+  (skips fenced code blocks). Respects pipes inside `` `code` `` and
+  `\|` escapes — same rule applied to the parser, fixing a latent
+  cell-truncation bug.
+- ✅ `::plot{dataset, column, xcolumn}` linkage — plots resolve their
+  series against sibling `::dataset` blocks at render time. Validator:
+  `plot-unknown-dataset`, `plot-unknown-column`. Demo updated.
+- ✅ `::state_change{block, attribute, from, to, reason, at}` — typed
+  delta directive for weekly/quarterly recap docs. HTML strike-through
+  → bold; LLM keeps structured fields; included in research profile.
+  Foundation for a future `noma diff a.noma b.noma`.
+- ✅ Profile frontmatter (`research | technical | minimal`) — opt-in
+  contract with downstream tools. Validator warns on out-of-profile
+  directives. Pure metadata; no AST change.
+- ✅ Citation staleness override — `stale_citation_days` in
+  frontmatter, `stale_after_days=N` per citation. CLI `--stale-days`
+  finally wired (was previously documented but not implemented).
+- ✅ Wikilink validation — `[[id]]` references in paragraphs, quotes,
+  list items, headings, table cells, and directive bodies are tracked
+  by the validator. Resolves across all chapters in a loaded book.
+  Wikilinks inside `` `code spans` `` ignored.
+- ✅ `plot-mixed-delimiters` warning when `data` and `xlabels` use
+  different separators. Commas canonical; existing demos normalized.
+- ✅ Spec doc — explicit attribute-grammar rule (attrs are plain text),
+  dataset linkage, profiles, staleness precedence, `::table`, `noma
+  fmt`. Agent-protocol doc — choose-your-op decision tree. Direction
+  doc — core directives vs community packs stance with proposed
+  `pack::name` namespacing convention and pack contract.
+
+### 24.5 Still ahead
 
 - ⏳ VS Code syntax highlighting extension.
 - ⏳ External CSV evaluation for `::plot data="./series.csv"` (today
@@ -1316,3 +1354,9 @@ agent-editable document operating system". Six §23 items shipped:
   manifest config).
 - ⏳ Per-chapter rendering for books (currently single concatenated
   output only).
+- ⏳ Parser fix: `::` inside fenced code regions inside a parent
+  directive currently confuses the directive close-search. Workaround:
+  keep fenced examples at top level. Surfaced while writing v0.3 spec
+  docs.
+- ⏳ `noma diff a.noma b.noma` — emit `::state_change` blocks for
+  attribute drift between two versions of the same document.

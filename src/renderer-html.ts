@@ -1,7 +1,7 @@
 import yaml from "js-yaml";
 import type { DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
-import { escapeAttr, escapeHtml, inlineToHtml } from "./inline.js";
+import { escapeAttr, escapeHtml, inlineToHtml, splitPipeRow } from "./inline.js";
 
 export interface HtmlRenderOptions {
   /** When true, wrap output in a full HTML document with the default theme. */
@@ -386,14 +386,7 @@ function parseAlignSpec(raw: string, columns: number): (string | null)[] {
   return out;
 }
 
-function splitTableLine(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((c) => c.trim());
-}
+const splitTableLine = splitPipeRow;
 
 function renderTableDirective(node: DirectiveNode, idAttr: string): string {
   const body = node.body ?? "";

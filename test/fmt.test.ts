@@ -32,6 +32,26 @@ test("fmt does not touch tables inside fenced code blocks", () => {
   assert.equal(formatSource(src), src);
 });
 
+test("fmt preserves pipes inside backtick code spans", () => {
+  const src = `| Form              | Type      | Example           |
+| :---------------- | :-------- | :---------------- |
+| \`key="text"\`    | string    | \`id="x"\`        |
+| \`key=true\\|false\` | boolean | \`pinned=true\`   |
+`;
+  const out = formatSource(src);
+  assert.match(out, /`key=true\\\|false`/);
+  assert.match(out, /`pinned=true`/);
+  const lines = out.split("\n").filter((l) => l.startsWith("|"));
+  for (const line of lines) {
+    const cells = line
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .match(/`[^`]*`|[^|]+/g);
+    assert.ok(cells && cells.length >= 3, `row should keep 3 cells: ${line}`);
+  }
+});
+
 test("fmt preserves alignment markers", () => {
   const src = `| a | b | c |
 | :- | :-: | -: |

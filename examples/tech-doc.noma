@@ -50,11 +50,11 @@ diffs.
 
 Render a `.noma` file to one of the supported targets.
 
-| Target | Output                                              |
-| ------ | --------------------------------------------------- |
-| `html` | Standalone HTML document with the default theme     |
+| Target | Output                                               |
+| ------ | ---------------------------------------------------- |
+| `html` | Standalone HTML document with the default theme      |
 | `llm`  | Deterministic plain-text context for LLM consumption |
-| `json` | The parsed AST (alias of `noma export`)             |
+| `json` | The parsed AST (alias of `noma export`)              |
 
 ```bash
 noma render docs/spec.noma --to html --out dist/spec.html

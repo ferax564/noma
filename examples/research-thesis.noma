@@ -147,12 +147,12 @@ rows:
 
 ## Watchlist (positions, not recommendations)
 
-| Vertical          | Public proxy        | Private leader     | Note                                    |
-| ----------------- | ------------------- | ------------------ | --------------------------------------- |
-| Legal             | RELX, Thomson Reuters | Harvey, EvenUp   | Watch incumbents' agent rollouts        |
-| Clinical docs     | —                   | Abridge, Ambience  | Acceptance rate is the leading metric   |
-| Financial audit   | Intuit, S&P         | Numeric, Trullion  | Audit-trail UX is the moat              |
-| Insurance claims  | Verisk              | Sixfold, EvolutionIQ | Loss-ratio impact is the proof point  |
+| Vertical         | Public proxy          | Private leader       | Note                                  |
+| ---------------- | --------------------- | -------------------- | ------------------------------------- |
+| Legal            | RELX, Thomson Reuters | Harvey, EvenUp       | Watch incumbents' agent rollouts      |
+| Clinical docs    | —                     | Abridge, Ambience    | Acceptance rate is the leading metric |
+| Financial audit  | Intuit, S&P           | Numeric, Trullion    | Audit-trail UX is the moat            |
+| Insurance claims | Verisk                | Sixfold, EvolutionIQ | Loss-ratio impact is the proof point  |
 
 ## Deltas since last update
 

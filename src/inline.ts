@@ -40,3 +40,36 @@ export function escapeHtml(s: string): string {
 export function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, "&quot;");
 }
+
+/**
+ * Split a pipe-table row respecting `code spans` and `\|` escapes — pipes
+ * inside backticks or escaped with a backslash are kept verbatim inside the
+ * cell. Used by the parser and by `noma fmt` so both agree on cell counts.
+ */
+export function splitPipeRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells: string[] = [];
+  let buf = "";
+  let inBacktick = false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i]!;
+    if (ch === "\\" && trimmed[i + 1] === "|") {
+      buf += "\\|";
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      inBacktick = !inBacktick;
+      buf += ch;
+      continue;
+    }
+    if (ch === "|" && !inBacktick) {
+      cells.push(buf.trim());
+      buf = "";
+      continue;
+    }
+    buf += ch;
+  }
+  cells.push(buf.trim());
+  return cells;
+}

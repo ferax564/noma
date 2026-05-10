@@ -8,13 +8,13 @@ The answer in Markdown is "sort of, if you're lucky." The answer in HTML is "no.
 
 Agents propose **operations**, not full-file rewrites. Five ops cover most editing flows:
 
-| Operation           | What it does                                     |
-| ------------------- | ------------------------------------------------ |
-| `replace_block`     | Swap a single block by ID                        |
-| `add_block`         | Insert a new block under a parent                |
-| `delete_block`      | Remove a block by ID                             |
-| `update_attribute`  | Change one attribute on one block                |
-| `rename_id`         | Move an ID, retargeting every reference         |
+| Operation          | What it does                            |
+| ------------------ | --------------------------------------- |
+| `replace_block`    | Swap a single block by ID               |
+| `add_block`        | Insert a new block under a parent       |
+| `delete_block`     | Remove a block by ID                    |
+| `update_attribute` | Change one attribute on one block       |
+| `rename_id`        | Move an ID, retargeting every reference |
 
 ```bash
 noma patch thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace

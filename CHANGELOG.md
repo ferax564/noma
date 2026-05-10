@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-10
+
 Response to issue #1 — eight friction points and two design questions raised
 by the first real-world authoring pass on a non-trivial weekly recap.
 
@@ -17,7 +19,8 @@ by the first real-world authoring pass on a non-trivial weekly recap.
   `align="l,c,r,-"`; `header` flag promotes the first row to `<th>`.
 - **`noma fmt <file>`** subcommand re-aligns existing GitHub-style pipe
   tables to a single column width and leaves everything else byte-identical
-  (skips fenced code blocks). `--inplace` rewrites in place.
+  (skips fenced code blocks). `--inplace` rewrites in place. All
+  `examples/` and `docs/` files dogfooded with `noma fmt --inplace`.
 - **`::plot{dataset="<id>" column="<name>" xcolumn="<name>"}`** linkage —
   plots can pull their series out of a sibling `::dataset` instead of
   duplicating the numbers inline. Validator emits `plot-unknown-dataset`
@@ -58,6 +61,14 @@ by the first real-world authoring pass on a non-trivial weekly recap.
   proposed namespacing convention (`pack::name`) and pack contract
   (renderer plug-in, validator plug-in, no reserved attrs, profile
   compatibility).
+
+### Fixed
+
+- **Pipe-table cell splitter respects backticks and `\|` escapes.** Both
+  the parser and `noma fmt` now share a single `splitPipeRow` util that
+  treats `|` inside `` `code spans` `` as cell content rather than a
+  column separator. Fixes a latent bug where `` `key=true|false` `` rows
+  were silently truncated to two cells.
 
 
 

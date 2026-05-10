@@ -1,4 +1,5 @@
 import yaml from "js-yaml";
+import { splitPipeRow } from "./inline.js";
 import type {
   Attrs,
   AttrValue,
@@ -272,10 +273,7 @@ function parseDirective(
   return { node, next: close === -1 ? to : close + 1 };
 }
 
-function splitRow(line: string): string[] {
-  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-  return trimmed.split("|").map((c) => c.trim());
-}
+const splitRow = splitPipeRow;
 
 function parseTable(
   lines: string[],

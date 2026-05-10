@@ -113,14 +113,14 @@ Attribute lists appear after a directive name in curly braces:
 {key="quoted value" key=bare key=0.82 flag}
 ```
 
-| Form              | Type      | Example          |
-|-------------------|-----------|------------------|
-| `key="text"`      | string    | `id="claim-1"`   |
-| `key=word`        | string    | `tone=warning`   |
-| `key=42`          | number    | `columns=3`      |
-| `key=0.82`        | number    | `confidence=0.82` |
-| `flag`            | boolean   | `done`           |
-| `key=true|false`  | boolean   | `pinned=true`    |
+| Form             | Type    | Example           |
+| ---------------- | ------- | ----------------- |
+| `key="text"`     | string  | `id="claim-1"`    |
+| `key=word`       | string  | `tone=warning`    |
+| `key=42`         | number  | `columns=3`       |
+| `key=0.82`       | number  | `confidence=0.82` |
+| `flag`           | boolean | `done`            |
+| `key=true|false` | boolean | `pinned=true`     |
 
 **Attribute values are plain text.** Inline markup (`**bold**`, `*em*`, `` `code` ``, `[link](url)`, `[[id]]`) inside an attribute value is **not** parsed — it lands in the rendered output as a literal string. If you need rich content for a card title, evidence note, or callout heading, put it in the block body or as a child paragraph, not in an attribute. This keeps the attribute grammar trivially parseable and the AST shape predictable.
 
@@ -258,24 +258,24 @@ profile: research
 
 Built-in profiles:
 
-| Profile     | Intended for                              | Includes (beyond core text blocks)                                                                                                                       |
-|-------------|-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `figure`, `citation`                                                                            |
-| `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `plot`, `dataset`, `code_cell`, `output`, `control`, `export_button`, `agent_task`, `todo` |
+| Profile     | Intended for                              | Includes (beyond core text blocks)                                                                                                                                                                                                                                             |
+| ----------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `figure`, `citation`                                                                                                                                                                                                  |
+| `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `plot`, `dataset`, `code_cell`, `output`, `control`, `export_button`, `agent_task`, `todo`                                                                                              |
 | `research`  | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence` |
 
 The validator emits a `out-of-profile-directive` warning for any directive outside the declared profile (`noverify` on a single block silences it). Authors who want the open surface should simply omit the `profile` field.
 
 ## Render targets (v0.1)
 
-| Target   | Status     | Notes                                                   |
-|----------|------------|---------------------------------------------------------|
-| `html`   | stable     | Self-contained, semantic, with print stylesheet         |
-| `llm`    | stable     | Deterministic, LLM-friendly text                        |
-| `json`   | stable     | Full AST                                                |
-| `pdf`    | shipped    | Puppeteer (HTML → Chromium print). See `npm run render:pdf:demos` |
-| `epub`   | planned    |                                                         |
-| `slides` | planned    |                                                         |
+| Target   | Status  | Notes                                                             |
+| -------- | ------- | ----------------------------------------------------------------- |
+| `html`   | stable  | Self-contained, semantic, with print stylesheet                   |
+| `llm`    | stable  | Deterministic, LLM-friendly text                                  |
+| `json`   | stable  | Full AST                                                          |
+| `pdf`    | shipped | Puppeteer (HTML → Chromium print). See `npm run render:pdf:demos` |
+| `epub`   | planned |                                                                   |
+| `slides` | planned |                                                                   |
 
 ## Book manifests
 

@@ -6,6 +6,7 @@
  * columns are the friction point). It only touches recognised pipe-table
  * blocks; unrelated lines are byte-identical to the input.
  */
+import { splitPipeRow } from "./inline.js";
 
 const TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
 const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/;
@@ -22,14 +23,7 @@ function visibleWidth(s: string): number {
   return Array.from(s).length;
 }
 
-function splitRow(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((c) => c.trim());
-}
+const splitRow = splitPipeRow;
 
 function parseSeparator(line: string): Alignment[] | null {
   if (!TABLE_SEPARATOR_RE.test(line)) return null;
