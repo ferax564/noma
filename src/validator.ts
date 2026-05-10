@@ -546,18 +546,49 @@ function readDatasetColumns(node: DirectiveNode): Set<string> {
     for (const c of node.attrs.columns.split(/[,\s]+/).filter(Boolean)) cols.add(c);
   }
   const body = node.body ?? "";
-  if (body.trim()) {
-    let parsed: unknown;
-    try {
-      parsed = yaml.load(body);
-    } catch {
-      parsed = null;
-    }
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const schema = (parsed as Record<string, unknown>).schema;
-      if (schema && typeof schema === "object" && !Array.isArray(schema)) {
-        for (const k of Object.keys(schema as Record<string, unknown>)) cols.add(k);
+  const format = String(node.attrs.format ?? "").toLowerCase();
+  if (!body.trim()) return cols;
+
+  if (format === "csv" || format === "tsv") {
+    const delim = format === "tsv" ? "\t" : ",";
+    const firstLine = body.replace(/\r\n?/g, "\n").split("\n").find((l) => l.length > 0);
+    if (firstLine) {
+      for (const c of firstLine.split(delim).map((s) => s.trim()).filter(Boolean)) {
+        cols.add(c);
       }
+    }
+    return cols;
+  }
+  if (format === "json") {
+    try {
+      const parsed = JSON.parse(body);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const head = parsed[0];
+        if (head && typeof head === "object" && !Array.isArray(head)) {
+          for (const k of Object.keys(head as Record<string, unknown>)) cols.add(k);
+        }
+      } else if (parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).columns)) {
+        for (const c of (parsed as { columns: unknown[] }).columns) {
+          if (typeof c === "string") cols.add(c);
+        }
+      }
+    } catch {
+      // fall through
+    }
+    return cols;
+  }
+
+  // Default: YAML (existing behavior).
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(body);
+  } catch {
+    parsed = null;
+  }
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const schema = (parsed as Record<string, unknown>).schema;
+    if (schema && typeof schema === "object" && !Array.isArray(schema)) {
+      for (const k of Object.keys(schema as Record<string, unknown>)) cols.add(k);
     }
   }
   return cols;

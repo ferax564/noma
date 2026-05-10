@@ -33,6 +33,18 @@ test("::diagram drawio embeds via diagrams.net viewer", () => {
   assert.match(html, /viewer\.diagrams\.net\/js\/viewer-static\.min\.js/);
 });
 
+test("::diagram drawio body with apostrophes survives attribute encoding", () => {
+  const body = `<mxCell value="Anne's box" style="font-family='Arial'"/>`;
+  const doc = parse(`::diagram{kind="drawio"}\n${body}\n::\n`);
+  const html = renderHtml(doc, { standalone: true });
+  // attr container must use double quotes; embedded JSON " gets &quot;
+  assert.match(html, /data-mxgraph="/);
+  // raw apostrophe must not bleed out — original text preserved inside encoded JSON
+  assert.match(html, /Anne's box/);
+  // and the attribute must still close cleanly
+  assert.match(html, /<\/div><\/figure>/);
+});
+
 test("::diagram body passes verbatim to LLM (no markdown stripping)", () => {
   const doc = parse(
     "::diagram{kind=\"mermaid\"}\ngraph TD\nA-->|`label`|B\n::\n",
@@ -87,6 +99,41 @@ test("dataset src= missing file flagged by validator", () => {
     diags.some((d) => d.code === "dataset-src-missing"),
     `expected dataset-src-missing, got: ${JSON.stringify(diags.map((d) => d.code))}`,
   );
+});
+
+test("CSV-backed dataset flags plot-unknown-column on typo", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-ds-"));
+  try {
+    writeFileSync(join(dir, "rev.csv"), "year,revenue\n2022,100\n2023,150\n");
+    const src = `::dataset{id="rev" src="rev.csv"}\n::\n\n::plot{id="p" dataset="rev" column="revneue"}\n::\n`;
+    const docPath = join(dir, "doc.noma");
+    writeFileSync(docPath, src);
+    const doc = parse(src, { filename: docPath });
+    inlineDatasetSources(doc);
+    const diags = validate(doc);
+    assert.ok(
+      diags.some((d) => d.code === "plot-unknown-column"),
+      `expected plot-unknown-column for typo, got: ${JSON.stringify(diags.map((d) => d.code))}`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test("JSON-backed dataset extracts columns from first object key", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-ds-"));
+  try {
+    writeFileSync(join(dir, "data.json"), JSON.stringify([{ name: "a", count: 1 }, { name: "b", count: 2 }]));
+    const src = `::dataset{id="d" src="data.json"}\n::\n\n::plot{id="p" dataset="d" column="missing"}\n::\n`;
+    const docPath = join(dir, "doc.noma");
+    writeFileSync(docPath, src);
+    const doc = parse(src, { filename: docPath });
+    inlineDatasetSources(doc);
+    const diags = validate(doc);
+    assert.ok(diags.some((d) => d.code === "plot-unknown-column"));
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
 });
 
 test("CSV-backed dataset is queryable by ::plot{column=...}", () => {

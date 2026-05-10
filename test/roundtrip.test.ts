@@ -112,6 +112,22 @@ test("renderNoma emits aliases attr on heading", () => {
   assert.match(out, /aliases="foo,bar"/);
 });
 
+test("renderNoma drops aliases the parser will re-derive (frontmatter)", () => {
+  const doc = parse(`---\naliases:\n  - rp3\n---\n# Title\n\nx.\n`);
+  const out = renderNoma(doc);
+  // Frontmatter list is preserved...
+  assert.match(out, /aliases:\s*\n\s*- rp3/);
+  // ...so the heading must NOT also carry it (otherwise duplicates accumulate).
+  assert.doesNotMatch(out, /^# Title \{aliases/m);
+});
+
+test("renderNoma drops filename-slug aliases", () => {
+  const doc = parse(`# Title\n\nx.\n`, { filename: "/tmp/risk-premia.noma" });
+  // Parser should attach 'risk-premia' as alias.
+  const out = renderNoma(doc);
+  assert.doesNotMatch(out, /aliases="risk-premia"/);
+});
+
 test("printer escapes attr values containing quotes", () => {
   const doc = parse(`::callout{tone="info"}\nhi\n::\n`);
   const out = renderNoma(doc);

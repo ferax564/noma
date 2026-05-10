@@ -674,7 +674,7 @@ function renderDiagram(node: DirectiveNode, idAttr: string): string {
       edit: "_blank",
       xml: body,
     });
-    const fig = `<div class="mxgraph" data-mxgraph='${escapeAttr(config)}'></div>`;
+    const fig = `<div class="mxgraph" data-mxgraph="${escapeAttr(config)}"></div>`;
     return wrapDiagram("drawio", idAttr, fig, caption);
   }
   const cls = `noma-diagram noma-diagram-${escapeAttr(kind)}`;

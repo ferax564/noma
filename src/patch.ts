@@ -399,16 +399,19 @@ function applySrcRenameId(
 const REF_ATTRS = new Set(["for", "dataset", "block", "ref"]);
 
 function rewriteAttrReferences(source: string, from: string, to: string): string {
-  // Rewrite key="from" or key='from' inside any directive open line.
-  // Done line-by-line so we don't touch identical strings in prose.
+  // Rewrite key="from", key='from', or key=from (bareword) inside any
+  // directive open line. Line-by-line so identical strings in prose stay put.
+  const escFrom = escapeRegex(from);
   return source
     .split("\n")
     .map((line) => {
       if (!/^:{2,}\w/.test(line.trim())) return line;
       let out = line;
       for (const k of REF_ATTRS) {
-        const re = new RegExp(`(\\b${k}=)("|')${escapeRegex(from)}\\2`, "g");
-        out = out.replace(re, `$1$2${to}$2`);
+        const quoted = new RegExp(`(\\b${k}=)("|')${escFrom}\\2`, "g");
+        out = out.replace(quoted, `$1$2${to}$2`);
+        const bare = new RegExp(`(\\b${k}=)${escFrom}(?=[\\s}])`, "g");
+        out = out.replace(bare, `$1"${to}"`);
       }
       return out;
     })

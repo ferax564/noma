@@ -29,6 +29,7 @@ const INTERNAL_META_KEYS = new Set(["filename"]);
 export function renderNoma(doc: DocumentNode, options: NomaRenderOptions = {}): string {
   const stripInternal = options.stripInternal !== false;
   const out: string[] = [];
+  const ctx = buildContext(doc);
 
   const metaEntries = Object.entries(doc.meta).filter(
     ([k]) => !stripInternal || !INTERNAL_META_KEYS.has(k),
@@ -41,19 +42,41 @@ export function renderNoma(doc: DocumentNode, options: NomaRenderOptions = {}): 
   }
 
   for (const child of doc.children) {
-    out.push(renderNode(child, 2));
+    out.push(renderNode(child, 2, ctx));
     out.push("");
   }
 
   return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "\n");
 }
 
-function renderNode(node: Node, colons: number): string {
+interface RenderCtx {
+  /** Aliases that the parser/loader will re-derive on parse and so don't
+   *  need to be emitted on the heading. Filename slug + frontmatter list. */
+  regenAliases: Set<string>;
+}
+
+function buildContext(doc: DocumentNode): RenderCtx {
+  const regenAliases = new Set<string>();
+  if (Array.isArray(doc.meta.aliases)) {
+    for (const a of doc.meta.aliases) {
+      if (typeof a === "string" && a.trim()) regenAliases.add(a.trim());
+    }
+  }
+  if (typeof doc.meta.filename === "string") {
+    const base = doc.meta.filename.replace(/\\/g, "/").split("/").pop() ?? "";
+    const stem = base.replace(/\.noma$/i, "").replace(/^\d+[-_]/, "");
+    const slug = slugify(stem);
+    if (slug) regenAliases.add(slug);
+  }
+  return { regenAliases };
+}
+
+function renderNode(node: Node, colons: number, ctx: RenderCtx): string {
   switch (node.type) {
     case "document":
-      return node.children.map((c) => renderNode(c, colons)).join("\n\n");
+      return node.children.map((c) => renderNode(c, colons, ctx)).join("\n\n");
     case "section":
-      return renderSection(node, colons);
+      return renderSection(node, colons, ctx);
     case "paragraph":
       return renderParagraph(node);
     case "code":
@@ -69,7 +92,7 @@ function renderNode(node: Node, colons: number): string {
     case "table":
       return renderTable(node);
     case "directive":
-      return renderDirective(node, colons);
+      return renderDirective(node, colons, ctx);
     default: {
       const _exhaustive: never = node;
       void _exhaustive;
@@ -78,22 +101,22 @@ function renderNode(node: Node, colons: number): string {
   }
 }
 
-function renderSection(node: SectionNode, colons: number): string {
+function renderSection(node: SectionNode, colons: number, ctx: RenderCtx): string {
   const hashes = "#".repeat(Math.max(1, Math.min(6, node.level)));
-  const attrs = headingAttrs(node);
+  const attrs = headingAttrs(node, ctx);
   const head = attrs ? `${hashes} ${node.title} ${attrs}` : `${hashes} ${node.title}`;
   if (node.children.length === 0) return head;
-  const inner = node.children.map((c) => renderNode(c, colons)).join("\n\n");
+  const inner = node.children.map((c) => renderNode(c, colons, ctx)).join("\n\n");
   return `${head}\n\n${inner}`;
 }
 
-function headingAttrs(node: SectionNode): string {
-  // Drop the auto-attached chapter-filename / book-scope aliases — those are
-  // re-derived on parse, not source-of-truth. Keep only aliases that wouldn't
-  // be regenerated, plus a non-slug explicit id.
+function headingAttrs(node: SectionNode, ctx: RenderCtx): string {
   const explicitId =
     node.id && node.id !== slugify(node.title) ? node.id : undefined;
-  const aliases = node.aliases ?? [];
+  // Drop aliases the parser/loader will re-derive (frontmatter list, filename
+  // slug). Anything else came from explicit `{aliases="..."}` in source and
+  // must be kept to round-trip.
+  const aliases = (node.aliases ?? []).filter((a) => !ctx.regenAliases.has(a));
   const parts: string[] = [];
   if (explicitId) parts.push(`id="${explicitId}"`);
   if (aliases.length > 0) {
@@ -151,7 +174,7 @@ function renderTable(node: TableNode): string {
   return [fmtRow(node.header), sep, ...node.rows.map(fmtRow)].join("\n");
 }
 
-function renderDirective(node: DirectiveNode, colons: number): string {
+function renderDirective(node: DirectiveNode, colons: number, ctx: RenderCtx): string {
   const fence = ":".repeat(colons);
   const attrs = serializeAttrs(node.attrs);
   const open = `${fence}${node.name}${attrs ? attrs : ""}`;
@@ -165,7 +188,7 @@ function renderDirective(node: DirectiveNode, colons: number): string {
   }
 
   const childColons = colons + 1;
-  const inner = node.children.map((c) => renderNode(c, childColons)).join("\n\n");
+  const inner = node.children.map((c) => renderNode(c, childColons, ctx)).join("\n\n");
   return `${open}\n${inner}\n${close}`;
 }
 

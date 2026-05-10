@@ -168,6 +168,14 @@ test("patchSource: replace_block leaves frontmatter and sibling bytes identical"
   }
 });
 
+test("patchSource: rename_id retargets bareword reference attrs", () => {
+  const src = `::claim{id="c1"}\nx\n::\n\n::evidence{for=c1}\ne\n::\n\n::plot{dataset=c1}\np\n::\n`;
+  const out = patchSource(src, { op: "rename_id", from: "c1", to: "c2" });
+  assert.match(out, /::evidence\{for="c2"\}/);
+  assert.match(out, /::plot\{dataset="c2"\}/);
+  assert.doesNotMatch(out, /=c1\b/);
+});
+
 test("patchSource: missing id throws", () => {
   assert.throws(
     () => patchSource(sample, { op: "delete_block", id: "missing" }),
