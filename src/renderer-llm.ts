@@ -93,6 +93,8 @@ function emitSection(node: SectionNode, out: string[], depth: number): void {
   for (const child of node.children) emit(child, out, depth);
 }
 
+const VERBATIM_BODY = new Set(["diagram", "plotly", "math"]);
+
 function emitDirective(node: DirectiveNode, out: string[], depth: number): void {
   if (node.name === "html" || node.name === "svg" || node.name === "script") {
     out.push(`[${node.name.toUpperCase()} escape-hatch block omitted from LLM context]`);
@@ -104,7 +106,9 @@ function emitDirective(node: DirectiveNode, out: string[], depth: number): void 
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
     .join(" ");
   out.push(`[${tag}${attrs ? " " + attrs : ""}]`);
-  if (node.children.length === 0 && node.body !== undefined) {
+  if (VERBATIM_BODY.has(node.name) && node.body !== undefined) {
+    out.push(node.body);
+  } else if (node.children.length === 0 && node.body !== undefined) {
     out.push(inlineToPlain(node.body));
   } else {
     for (const child of node.children) emit(child, out, depth + 1);

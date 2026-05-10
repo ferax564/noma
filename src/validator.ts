@@ -61,6 +61,8 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "button",
     "figure",
     "plot",
+    "plotly",
+    "diagram",
     "dataset",
     "code_cell",
     "output",
@@ -95,6 +97,8 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "adr",
     "dataset",
     "plot",
+    "plotly",
+    "diagram",
     "metric",
     "figure",
     "agent_task",
@@ -195,9 +199,24 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       });
     }
 
-    if (node.name === "dataset" && node.id) {
-      datasetIds.set(node.id, node);
-      datasetColumns.set(node.id, readDatasetColumns(node));
+    if (node.name === "dataset") {
+      if (node.id) {
+        datasetIds.set(node.id, node);
+        datasetColumns.set(node.id, readDatasetColumns(node));
+      }
+      if (
+        !suppressed(node) &&
+        typeof node.attrs.src === "string" &&
+        (!(node.body && node.body.trim()) || node.attrs.format === "error")
+      ) {
+        diagnostics.push({
+          severity: "warning",
+          code: "dataset-src-missing",
+          message: `Dataset "${node.id ?? "?"}" src="${node.attrs.src}" failed to load (file missing or unreadable).`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
     }
 
     if (node.name === "claim" && node.id) claims.push(node);
@@ -241,6 +260,53 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
           pos: node.pos,
           nodeId: node.id,
         });
+      }
+    }
+
+    if (node.name === "diagram" && !suppressed(node)) {
+      const kind = String(node.attrs.kind ?? "");
+      if (!kind) {
+        diagnostics.push({
+          severity: "warning",
+          code: "diagram-missing-kind",
+          message: `Diagram "${node.id ?? "?"}" has no \`kind=\` (mermaid|graphviz|drawio).`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
+      if (!(node.body && node.body.trim())) {
+        diagnostics.push({
+          severity: "warning",
+          code: "diagram-missing-source",
+          message: `Diagram "${node.id ?? "?"}" has no source body.`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.name === "plotly" && !suppressed(node)) {
+      const body = (node.body ?? "").trim();
+      if (!body) {
+        diagnostics.push({
+          severity: "warning",
+          code: "plotly-missing-spec",
+          message: `Plotly "${node.id ?? "?"}" has no JSON spec body.`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      } else {
+        try {
+          JSON.parse(body);
+        } catch (e) {
+          diagnostics.push({
+            severity: "error",
+            code: "plotly-invalid-json",
+            message: `Plotly "${node.id ?? "?"}" body is not valid JSON: ${(e as Error).message}`,
+            pos: node.pos,
+            nodeId: node.id,
+          });
+        }
       }
     }
 
@@ -459,6 +525,11 @@ const KNOWN_RULES = [
   "claim-without-evidence",
   "state-change-missing-block",
   "state-change-missing-from-to",
+  "diagram-missing-kind",
+  "diagram-missing-source",
+  "plotly-missing-spec",
+  "plotly-invalid-json",
+  "dataset-src-missing",
 ];
 
 function collectRuleCodes(): Set<string> {

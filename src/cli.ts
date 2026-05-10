@@ -9,6 +9,7 @@ import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
 import { patchSource, type PatchOp } from "./patch.js";
 import { loadBook, loadBookChapters, isBookManifestPath } from "./book.js";
+import { inlineDatasetSources } from "./loader.js";
 import { renderSite } from "./renderer-site.js";
 import { validate, formatDiagnostics } from "./validator.js";
 import { formatSource } from "./fmt.js";
@@ -228,6 +229,7 @@ function main(): void {
   const doc = isBookManifestPath(filePath)
     ? loadBook(filePath)
     : parse(readFileSync(filePath, "utf8"), { filename: filePath });
+  inlineDatasetSources(doc);
 
   switch (cmd) {
     case "parse": {

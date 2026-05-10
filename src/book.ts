@@ -4,6 +4,7 @@ import yaml from "js-yaml";
 import type { DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
 import { parse } from "./parser.js";
+import { inlineDatasetSources } from "./loader.js";
 
 export interface BookManifest {
   title?: string;
@@ -96,6 +97,7 @@ function loadChapters(chapterPaths: string[], baseDir: string): LoadedChapter[] 
     const chapterPath = isAbsolute(chapter) ? chapter : resolve(baseDir, chapter);
     const source = readFileSync(chapterPath, "utf8");
     const doc = parse(source, { filename: chapterPath });
+    inlineDatasetSources(doc, dirname(chapterPath));
     const slug = chapterSlug(chapterPath, doc);
     scopeHeadingIds(doc, slug);
     out.push({ slug, source: chapterPath, doc });
