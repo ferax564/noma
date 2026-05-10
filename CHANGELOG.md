@@ -6,6 +6,64 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-10
+
+Closes every open GitHub issue (#2 through #8) raised after the v0.3.0 ship.
+Theme: making books a first-class output, fixing every authoring papercut from
+the 30-chapter strategy reference dogfood.
+
+### Added
+
+- **`--to site` multi-page renderer** (issue #3). `noma render <book.yml> --to site --out <dir>`
+  emits one `<chapter-slug>.html` per chapter plus an `index.html` table of contents.
+  Cross-chapter `[[block-id]]` wikilinks rewrite to `<other-chapter>.html#block-id`;
+  same-page references stay as `#block-id`. Each page gets a top nav listing every
+  chapter and a back-link to the index. Single-page `--to html` keeps working
+  unchanged. Theme CSS is currently inlined per page; the shared `_assets/theme.css`
+  layout the issue mentions is queued for a follow-up — functional today, just larger
+  output for big books.
+- **Math rendering** (issue #2). New `::math{display="block|inline"}` directive plus
+  `$..$`, `$$..$$`, `\(..\)`, `\[..\]` inline delimiters. The HTML renderer auto-injects
+  KaTeX from CDN when math is detected (via `::math`, `$$..$$`, or `meta.math`).
+  Force-enable with `--math=katex`; force-disable with `--math=none`. The LLM renderer
+  passes the LaTeX source through untouched. `math` is included in every profile.
+- **Scoped heading IDs in book mode** (issue #4). Every level ≥ 2 heading now has its
+  slug path-prefixed by its chapter root: `## Risks` inside `# Risk Premia 3` becomes
+  `risk-premia-3/risks`. The original slug is registered as an alias on the same
+  section so existing `[[risks]]` links still resolve to the first occurrence.
+  Eliminates the `duplicate-id` errors books used to flood validators with.
+- **Heading attribute syntax** (`## Title {id="..." aliases="a,b"}`). Lets authors
+  pin a stable wikilink target without restructuring the heading title.
+- **Chapter aliases** (issue #5). Two extra resolution paths now land on the chapter
+  root section: the chapter filename slug, and a frontmatter `aliases:` list. Wikilinks
+  resolve against `{explicit id, auto-slug, frontmatter aliases, filename slug}` in
+  that priority order.
+- **Composable profiles** (issue #6). Frontmatter `profiles: [research, technical]`
+  opts in to the union of multiple profiles. The legacy `profile: <single>` form keeps
+  working unchanged. `::table` and `::math` now ship in every profile (they were the
+  most common out-of-profile false positives).
+- **`--ignore-rule <name>` flag** (issue #7) on `noma check` and `noma render`.
+  Repeatable; drops matching diagnostics for that invocation. Unknown rule names
+  produce an `info` note. Useful when chapter-by-chapter validation hits expected
+  cross-book wikilink failures.
+- **`prepare` script + `dist/` in published files** (issue #8). `npm i -g
+  github:ferax564/noma` now builds `dist/` automatically before symlinking the bin,
+  fixing the dangling-symlink failure on direct-from-GitHub installs.
+
+### Changed
+
+- **`research`, `technical`, `minimal` profiles** all include `math` and `table`
+  from this version forward.
+- **Default theme** picks up styles for the multi-page site nav, alias anchors,
+  and centered display math.
+
+### Fixed
+
+- Book validator no longer floods with `duplicate-id` errors on common subsection
+  titles (`## Risks`, `## Citations`, `## Cross-references`, `## Premise`) repeated
+  across chapters.
+- `npm i -g github:ferax564/noma` no longer leaves a dangling symlink.
+
 ## [0.3.0] — 2026-05-10
 
 Response to issue #1 — eight friction points and two design questions raised

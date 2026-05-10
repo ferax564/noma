@@ -17,6 +17,13 @@ export interface Position {
 interface NodeBase {
   /** Stable, user-facing identifier when set. Auto-generated for headings. */
   id?: string;
+  /**
+   * Additional IDs that resolve to this node. Populated by:
+   *   • frontmatter `aliases:` list (attaches to chapter root section)
+   *   • chapter filename slug in book mode
+   *   • path-scoped heading ID in book mode (registers the bare slug as alias)
+   */
+  aliases?: string[];
   /** Source position of the node's first character. */
   pos?: Position;
 }

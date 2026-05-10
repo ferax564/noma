@@ -136,7 +136,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**v0.3** — `::table` directive, `noma fmt`, `::state_change` deltas, plot/dataset linkage, profile frontmatter, wikilink validation across chapters, citation staleness overrides — all shipped in response to issue #1. **v0.2** shipped `noma patch`, the source printer, theme variants, real plots, book manifests, and escape hatches. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24 for the per-version tracker. Out of scope for now: visual editor, realtime collaboration, plugin marketplace, hosted SaaS, VS Code syntax extension. The point is to ship a useful core and let the community shape what comes next.
+**v0.4** — multi-page book site renderer (`--to site`), KaTeX math (`::math` and `$..$` delimiters), scoped heading IDs in book mode, chapter aliases (filename slug + frontmatter `aliases:`), composable profiles (`profiles: [research, technical]`), `--ignore-rule` flag, `prepare` build hook so `npm i -g github:ferax564/noma` works — all shipped in response to issues #2 through #8. **v0.3** shipped `::table`, `noma fmt`, `::state_change`, plot/dataset linkage, profile frontmatter, wikilink validation across chapters, citation staleness overrides. **v0.2** shipped `noma patch`, the source printer, theme variants, real plots, book manifests, and escape hatches. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24 for the per-version tracker. Out of scope for now: visual editor, realtime collaboration, plugin marketplace, hosted SaaS, VS Code syntax extension. The point is to ship a useful core and let the community shape what comes next.
 
 ## License
 

@@ -362,3 +362,21 @@ table.noma-table tbody tr:hover { background: rgba(255, 168, 116, 0.06); }
   }
   h1, h2, h3 { page-break-after: avoid; }
 }
+
+/* v0.4 — site nav + math (mirrors default.css; vars from :root cascade) */
+a.noma-alias { display: block; position: relative; top: -1.2em; visibility: hidden; height: 0; }
+nav.noma-site-nav { max-width: 880px; margin: 1.5rem auto 0; padding: 0 2rem; display: flex; align-items: baseline; gap: 1.5rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--noma-muted); }
+nav.noma-site-nav a.noma-site-home { font-weight: 600; color: var(--noma-fg); text-decoration: none; border-right: 1px solid var(--noma-rule); padding-right: 1.25rem; }
+nav.noma-site-nav ol { list-style: none; padding: 0; margin: 0; display: flex; gap: 1.25rem; flex-wrap: wrap; }
+nav.noma-site-nav a { color: var(--noma-muted); text-decoration: none; }
+nav.noma-site-nav a:hover { color: var(--noma-accent); }
+nav.noma-site-nav .noma-nav-current span { color: var(--noma-fg); font-weight: 500; }
+a.noma-ref.noma-xchapter::after { content: " ↗"; font-size: 0.85em; color: var(--noma-muted); }
+ol.noma-site-toc { list-style: none; padding: 0; margin: 2rem 0; display: grid; gap: 0.6rem; }
+a.noma-site-chapter { display: block; padding: 1.1rem 1.4rem; background: var(--noma-card-bg); border: 1px solid var(--noma-rule); border-radius: var(--noma-radius); text-decoration: none; color: inherit; }
+a.noma-site-chapter:hover { border-color: var(--noma-accent); }
+.noma-site-chapter-title { display: block; font-weight: 600; font-size: 1.1rem; }
+.noma-site-chapter-summary { display: block; color: var(--noma-muted); margin-top: 0.4rem; font-size: 0.93rem; }
+.noma-math-display { margin: 1.4em auto; text-align: center; overflow-x: auto; }
+.noma-math-inline { display: inline; }
+

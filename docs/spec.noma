@@ -1,13 +1,13 @@
 ---
-title: Noma — Format Specification (v0.3)
-version: 0.3
+title: Noma — Format Specification (v0.4)
+version: 0.4
 status: stable
 ---
 
 # Noma Format Specification
 
 ::summary
-This document defines the **Noma** plain-text document format at version 0.3. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+This document defines the **Noma** plain-text document format at version 0.4. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
 ::
 
 ## Conventions
@@ -41,6 +41,14 @@ The frontmatter is YAML. It is exposed on the document AST as `meta`. If the ope
 ```
 
 Headings auto-create `section` nodes. Each section has an `id` derived by slugifying the title. Sections nest by level: `# A` is a parent of `## B` and `## B'` until the next `# C`.
+
+**Heading attributes (v0.4).** A heading line may end with a `{...}` attribute block to override the auto-slug or attach aliases:
+
+```
+## Risks {id="rp3-risks" aliases="risks,rp3-risk-list"}
+```
+
+`id="..."` replaces the slugified default. `aliases="comma,or,space,separated"` registers extra IDs that resolve to the same section — the validator accepts either, the HTML renderer emits a hidden `<a id="alias">` anchor before the heading so wikilinks and URL fragments work.
 
 ### Directive blocks
 
@@ -178,6 +186,22 @@ dataset, plot, metric, code_cell, output
 agent_task, todo, review, comment, change_request, provenance, confidence, citation
 ```
 
+### Math
+
+```
+math
+```
+
+`::math{display="block|inline" id="..."}` carries a LaTeX expression. The HTML renderer wraps the body in `\[...\]` (display) or `\(...\)` (inline) and ships KaTeX assets from CDN automatically when the document contains math. Inline math written in prose with `$...$` or `$$...$$` delimiters renders too — KaTeX auto-render finds and replaces them in place. The LLM renderer passes the LaTeX source through untouched so structural addressability survives.
+
+```noma
+::math{id="vol-target"}
+w_{i,t} = \frac{\sigma_\text{target}}{\hat\sigma_{i,t-1}}
+::
+```
+
+Force-disable assets with `--math=none` (or `meta.math: false`); force-enable with `--math=katex`.
+
 ### Escape hatches
 
 ```
@@ -258,24 +282,50 @@ profile: research
 
 Built-in profiles:
 
-| Profile     | Intended for                              | Includes (beyond core text blocks)                                                                                                                                                                                                                                             |
-| ----------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `figure`, `citation`                                                                                                                                                                                                  |
-| `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `plot`, `dataset`, `code_cell`, `output`, `control`, `export_button`, `agent_task`, `todo`                                                                                              |
-| `research`  | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence` |
+| Profile     | Intended for                              | Includes (beyond core text blocks)                                                                                                                                                                                                                                                            |
+| ----------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `figure`, `citation`, `math`, `table`                                                                                                                                                                                                |
+| `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `plot`, `dataset`, `code_cell`, `output`, `control`, `export_button`, `agent_task`, `todo`                                                                                                             |
+| `research`  | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence`                |
+
+`math` and `table` are content-neutral and shipped in every profile from v0.4 onward — they were the most common "out-of-profile" warnings authors hit before they learned the workaround.
 
 The validator emits a `out-of-profile-directive` warning for any directive outside the declared profile (`noverify` on a single block silences it). Authors who want the open surface should simply omit the `profile` field.
 
-## Render targets (v0.3)
+**Composing profiles (v0.4).** A document can opt in to the union of multiple profiles via `profiles:` (note the plural):
 
-| Target   | Status  | Notes                                                             |
-| -------- | ------- | ----------------------------------------------------------------- |
-| `html`   | stable  | Self-contained, semantic, with print stylesheet                   |
-| `llm`    | stable  | Deterministic, LLM-friendly text                                  |
-| `json`   | stable  | Full AST                                                          |
-| `pdf`    | shipped | Puppeteer (HTML → Chromium print). See `npm run render:pdf:demos` |
-| `epub`   | planned |                                                                   |
-| `slides` | planned |                                                                   |
+```yaml
+---
+profiles: [research, technical]
+---
+```
+
+The validator accepts every directive listed in either profile. The legacy `profile: <single>` form keeps working unchanged.
+
+**Suppressing rules at the file level (v0.4).** Pass `--ignore-rule <name>` (repeatable) to `noma check` and `noma render` to drop matching diagnostics for that invocation. Useful when validating a single chapter that contains intentional cross-book wikilinks:
+
+```bash
+noma check chapters/03-risks.noma --ignore-rule broken-reference
+```
+
+Unknown rule names produce an `info` note; they do not fail the run.
+
+## Render targets (v0.4)
+
+| Target   | Status  | Notes                                                                         |
+| -------- | ------- | ----------------------------------------------------------------------------- |
+| `html`   | stable  | Self-contained, semantic, with print stylesheet. Auto-injects KaTeX for math. |
+| `llm`    | stable  | Deterministic, LLM-friendly text                                              |
+| `json`   | stable  | Full AST                                                                      |
+| `noma`   | stable  | AST → `.noma` source (roundtrip-safe; backs `noma patch`)                     |
+| `site`   | stable  | Multi-page HTML site for book manifests; one page per chapter + index         |
+| `pdf`    | shipped | Puppeteer (HTML → Chromium print). See `npm run render:pdf:demos`             |
+| `epub`   | planned |                                                                               |
+| `slides` | planned |                                                                               |
+
+### `--to site`
+
+Pass a book manifest to `noma render <book.yml> --to site --out <dir>`. The renderer writes one `<chapter-slug>.html` per chapter plus an `index.html` table-of-contents. Chapter slugs come from the chapter filename (or the chapter root H1's id when the filename is unstable). Cross-chapter wikilinks `[[block-id]]` resolve into `<other-chapter>.html#block-id` URLs, with same-page references staying as `#block-id`. Each page gets a top nav listing every chapter and a back-link to the index.
 
 ## Book manifests
 
@@ -306,7 +356,25 @@ noma check  book.noma.yml
 
 The loader concatenates each chapter's parsed AST into a single `DocumentNode` (top-level `# Chapter` headings stay distinct so HTML renders one continuous page with chapter sections; LLM export keeps chapter boundaries via the heading prefix). The manifest's `title` / `author` land on `document.meta`; the `outputs.html.theme` value is honoured by future renderers and ignored for now.
 
-## Compatibility promises (v0.3)
+**Scoped heading IDs (v0.4).** In book mode, every level ≥ 2 heading has its slug path-prefixed by its chapter root: `## Risks` inside `# Risk Premia 3` becomes `risk-premia-3/risks`. The original (un-prefixed) slug is kept as an alias so legacy `[[risks]]` links still resolve. This eliminates the `duplicate-id` floods that 30-chapter books hit when every chapter has `## Risks` + `## Citations`. Single-file mode behaves exactly as before.
+
+**Chapter aliases (v0.4).** Two extra resolution paths land on the chapter root section:
+
+- **Filename slug.** `chapters/risk-premia-3.noma` adds `risk-premia-3` as an alias for the chapter — `[[risk-premia-3]]` resolves regardless of the H1's spelling.
+- **Frontmatter `aliases:`.** A list of strings on the chapter that registers extra IDs:
+
+  ```yaml
+  ---
+  title: Risk Premia 3 (RP3)
+  aliases: [rp3]
+  ---
+  ```
+
+  After this, `[[rp3]]`, `[[risk-premia-3]]`, and `[[risk-premia-3-rp3]]` all resolve to the same section.
+
+Resolution order: explicit `id=` on the heading → auto-slug from the title → frontmatter `aliases:` → filename slug. Any of those paths matching the wikilink target counts as resolved.
+
+## Compatibility promises (v0.4)
 
 - The directive **opener/closer** syntax is stable and will not change in 0.x.
 - Attribute grammar is stable.

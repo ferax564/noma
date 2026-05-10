@@ -8,7 +8,8 @@ import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
 import { patchAll, type PatchOp } from "./patch.js";
-import { loadBook, isBookManifestPath } from "./book.js";
+import { loadBook, loadBookChapters, isBookManifestPath } from "./book.js";
+import { renderSite } from "./renderer-site.js";
 import { validate, formatDiagnostics } from "./validator.js";
 import { formatSource } from "./fmt.js";
 
@@ -24,15 +25,20 @@ Usage:
   noma --help                                Show this help
 
 Render options:
-  --to <html|llm|json|noma> Target format (default: html)
-  --out <path>              Write to file instead of stdout
+  --to <html|llm|json|noma|site> Target format (default: html). 'site' renders
+                            a book manifest as a multi-page HTML site.
+  --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
   --theme <name>            HTML theme: default | dark (default: default)
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
+  --math <katex|none>       Math rendering: enable KaTeX assets in standalone HTML
+                            (default: auto-detect from doc / book manifest)
+  --ignore-rule <name>      Suppress a validator rule (repeatable)
 
 Check options:
   --stale-days <n>          Override the citation staleness window (days)
+  --ignore-rule <name>      Suppress a validator rule (repeatable)
 
 Patch options:
   --op <json>               One inline patch op (JSON object)
@@ -62,6 +68,8 @@ interface CliArgs {
   theme: string;
   allowEscapeHatches: boolean;
   staleDays?: number;
+  ignoreRules: string[];
+  math?: "katex" | "none";
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -73,6 +81,7 @@ function parseArgs(argv: string[]): CliArgs {
     inplace: false,
     theme: "default",
     allowEscapeHatches: true,
+    ignoreRules: [],
   };
   let i = 1;
   while (i < argv.length) {
@@ -104,6 +113,14 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--stale-days") {
       const v = Number(argv[++i]);
       if (Number.isFinite(v) && v > 0) args.staleDays = v;
+      i++;
+    } else if (a === "--ignore-rule") {
+      const v = argv[++i];
+      if (v) args.ignoreRules.push(v);
+      i++;
+    } else if (a === "--math") {
+      const v = argv[++i];
+      args.math = v === "none" ? "none" : "katex";
       i++;
     } else if (a === "--op") {
       args.op = argv[++i];
@@ -187,6 +204,27 @@ function main(): void {
     return;
   }
 
+  if ((cmd === "render" || cmd === "export") && args.to === "site") {
+    if (!isBookManifestPath(filePath)) {
+      process.stderr.write(`error: --to site requires a book manifest (.yml)\n`);
+      process.exit(2);
+    }
+    if (!args.out) {
+      process.stderr.write(`error: --to site requires --out <directory>\n`);
+      process.exit(2);
+    }
+    const themeCss = loadTheme(args.theme);
+    const { manifest, chapters } = loadBookChapters(filePath);
+    renderSite(manifest, chapters, args.out, {
+      themeCss,
+      title: args.title,
+      allowEscapeHatches: args.allowEscapeHatches,
+      ...(args.math ? { math: args.math } : {}),
+    });
+    process.stderr.write(`✓ wrote ${chapters.length + 1} pages to ${args.out}\n`);
+    return;
+  }
+
   const doc = isBookManifestPath(filePath)
     ? loadBook(filePath)
     : parse(readFileSync(filePath, "utf8"), { filename: filePath });
@@ -207,6 +245,7 @@ function main(): void {
             title: args.title,
             themeCss,
             allowEscapeHatches: args.allowEscapeHatches,
+            ...(args.math ? { math: args.math } : {}),
           });
           output(html, args.out);
           return;
@@ -232,6 +271,7 @@ function main(): void {
     case "check": {
       const diagnostics = validate(doc, {
         ...(args.staleDays !== undefined ? { staleCitationDays: args.staleDays } : {}),
+        ...(args.ignoreRules.length > 0 ? { ignoreRules: args.ignoreRules } : {}),
       });
       const formatted = formatDiagnostics(diagnostics, args.file);
       process.stdout.write(formatted + "\n");

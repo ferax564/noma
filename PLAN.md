@@ -1345,15 +1345,52 @@ non-trivial weekly recap document. All ten shipped:
   doc — core directives vs community packs stance with proposed
   `pack::name` namespacing convention and pack contract.
 
-### 24.5 Still ahead
+### 24.5 v0.4.0 — book authoring + math (2026-05-10)
 
+Issues #2 through #8 came out of a 30-chapter strategy reference dogfood
+of the format. All seven shipped:
+
+- ✅ Multi-page site renderer (`--to site`) — book manifests render to
+  one HTML page per chapter plus `index.html`. Cross-chapter `[[id]]`
+  wikilinks rewrite to `<other-chapter>.html#id` URLs; same-page refs
+  stay as `#id`. Per-page top nav lists every chapter and links back
+  to the index. Closes the per-chapter rendering item from §24.5 (old).
+- ✅ Math rendering — new `::math` directive plus inline `$..$`,
+  `$$..$$`, `\(..\)`, `\[..\]` delimiters. The HTML renderer auto-injects
+  KaTeX from CDN when math is detected. Force with `--math=katex|none`.
+  LLM passes LaTeX source through verbatim. `math` is in every profile.
+- ✅ Scoped heading IDs in book mode — every level ≥ 2 heading is
+  path-prefixed by its chapter root (`risk-premia-3/risks` instead of
+  the bare `risks`). Original slug stays as an alias on the same node
+  so `[[risks]]` still resolves to the first occurrence. Eliminates
+  the `duplicate-id` floods 30-chapter books used to flood validators
+  with.
+- ✅ Heading attribute syntax (`## Title {id="..." aliases="a,b"}`)
+  for pinning a stable wikilink target without restructuring the title.
+- ✅ Chapter aliases — filename slug auto-registers as a chapter root
+  alias; frontmatter `aliases:` list registers extras. Wikilink
+  resolution order: explicit id → auto-slug → frontmatter aliases →
+  filename slug.
+- ✅ Composable profiles — `profiles: [research, technical]` opts in
+  to the union of multiple profiles. Legacy `profile: <single>` form
+  still works. `::table` and `::math` now ship in every profile (the
+  most common false-positive sources before).
+- ✅ `--ignore-rule <name>` flag on `noma check` and `noma render`.
+  Repeatable; drops matching diagnostics. Unknown rule names produce
+  an `info` note, not a failure.
+- ✅ `prepare` script + `dist/` in published `files`. `npm i -g
+  github:ferax564/noma` now builds before symlinking, fixing the
+  dangling-symlink failure on direct-from-GitHub installs.
+
+### 24.6 Still ahead
+
+- ⏳ Shared `_assets/theme.css` for `--to site` (currently inlines CSS
+  per page; functional but doubles output size on large books).
 - ⏳ VS Code syntax highlighting extension.
 - ⏳ External CSV evaluation for `::plot data="./series.csv"` (today
   the CSV path falls through to the placeholder).
 - ⏳ Trusted-publishing context (auto-set `--no-unsafe` based on
   manifest config).
-- ⏳ Per-chapter rendering for books (currently single concatenated
-  output only).
 - ⏳ Parser fix: `::` inside fenced code regions inside a parent
   directive currently confuses the directive close-search. Workaround:
   keep fenced examples at top level. Surfaced while writing v0.3 spec

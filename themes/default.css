@@ -407,3 +407,131 @@ table.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }
   }
   h1, h2, h3 { page-break-after: avoid; }
 }
+
+/* v0.4 — alias anchors (offset for sticky-headed pages) */
+a.noma-alias {
+  display: block;
+  position: relative;
+  top: -1.2em;
+  visibility: hidden;
+  height: 0;
+}
+
+/* v0.4 — multi-page site nav (rendered above main when --to site) */
+nav.noma-site-nav {
+  max-width: 880px;
+  margin: 1.5rem auto 0;
+  padding: 0 2rem;
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--noma-muted);
+}
+nav.noma-site-nav a.noma-site-home {
+  font-weight: 600;
+  color: var(--noma-fg);
+  text-decoration: none;
+  border-right: 1px solid var(--noma-rule);
+  padding-right: 1.25rem;
+}
+nav.noma-site-nav ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  counter-reset: chap;
+}
+nav.noma-site-nav li {
+  counter-increment: chap;
+}
+nav.noma-site-nav li::before {
+  content: counter(chap, decimal-leading-zero) " · ";
+  color: var(--noma-rule);
+  font-variant-numeric: tabular-nums;
+}
+nav.noma-site-nav a {
+  color: var(--noma-muted);
+  text-decoration: none;
+}
+nav.noma-site-nav a:hover { color: var(--noma-accent); }
+nav.noma-site-nav .noma-nav-current span {
+  color: var(--noma-fg);
+  font-weight: 500;
+}
+
+a.noma-ref.noma-xchapter::after {
+  content: " ↗";
+  font-size: 0.85em;
+  color: var(--noma-muted);
+}
+
+main.noma-site-index {
+  padding-top: 3rem;
+}
+header.noma-site-header h1 {
+  font-size: 2.4rem;
+  margin-bottom: 0.25rem;
+}
+header.noma-site-header .noma-site-author {
+  color: var(--noma-muted);
+  margin: 0 0 2rem;
+}
+ol.noma-site-toc {
+  list-style: none;
+  padding: 0;
+  margin: 2rem 0;
+  display: grid;
+  gap: 0.6rem;
+  counter-reset: toc;
+}
+ol.noma-site-toc li {
+  counter-increment: toc;
+}
+a.noma-site-chapter {
+  display: block;
+  padding: 1.1rem 1.4rem;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-radius: var(--noma-radius);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+a.noma-site-chapter:hover {
+  border-color: var(--noma-accent);
+  transform: translateY(-1px);
+}
+a.noma-site-chapter::before {
+  content: counter(toc, decimal-leading-zero);
+  display: block;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--noma-muted);
+  margin-bottom: 0.25rem;
+}
+.noma-site-chapter-title {
+  display: block;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+.noma-site-chapter-summary {
+  display: block;
+  color: var(--noma-muted);
+  margin-top: 0.4rem;
+  font-size: 0.93rem;
+}
+
+/* v0.4 — math (KaTeX is loaded from CDN; we just style block layout) */
+.noma-math-display {
+  margin: 1.4em auto;
+  text-align: center;
+  overflow-x: auto;
+}
+.noma-math-inline {
+  display: inline;
+}
+

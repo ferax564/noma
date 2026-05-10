@@ -15,6 +15,12 @@ export interface ValidateOptions {
   now?: Date;
   /** Citations older than this many days are flagged stale. Default: 365. */
   staleCitationDays?: number;
+  /**
+   * Rule codes to drop from the result. Diagnostics whose `code` matches an
+   * entry are filtered out and do not affect exit status. Mirrors the per-block
+   * `noverify` flag at file level. Used by `noma check --ignore-rule X`.
+   */
+  ignoreRules?: string[];
 }
 
 const DEFAULT_STALE_DAYS = 365;
@@ -35,6 +41,8 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "tip",
     "figure",
     "citation",
+    "math",
+    "table",
   ]),
   technical: new Set([
     "summary",
@@ -61,6 +69,8 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "agent_task",
     "todo",
     "citation",
+    "math",
+    "table",
     "html",
     "svg",
     "script",
@@ -96,6 +106,8 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "confidence",
     "citation",
     "state_change",
+    "math",
+    "table",
   ]),
 };
 
@@ -110,22 +122,34 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
   const diagnostics: Diagnostic[] = [];
   const ids = new Map<string, Node>();
+  const aliasIds = new Set<string>();
   const claims: DirectiveNode[] = [];
   const evidenceTargets = new Set<string>();
   const referenced = new Set<string>();
   const datasetIds = new Map<string, DirectiveNode>();
   const datasetColumns = new Map<string, Set<string>>();
 
-  const profileName =
-    typeof doc.meta.profile === "string" ? doc.meta.profile : undefined;
-  const profileSet = profileName ? PROFILES[profileName] : undefined;
-  if (profileName && !profileSet) {
-    diagnostics.push({
-      severity: "warning",
-      code: "unknown-profile",
-      message: `Document declares unknown profile "${profileName}". Known: ${KNOWN_PROFILES.join(", ")}.`,
-    });
-  }
+  const declaredProfiles = readDeclaredProfiles(doc.meta);
+  const profileSet: Set<string> | undefined = (() => {
+    if (declaredProfiles.length === 0) return undefined;
+    const union = new Set<string>();
+    let any = false;
+    for (const name of declaredProfiles) {
+      const set = PROFILES[name];
+      if (!set) {
+        diagnostics.push({
+          severity: "warning",
+          code: "unknown-profile",
+          message: `Document declares unknown profile "${name}". Known: ${KNOWN_PROFILES.join(", ")}.`,
+        });
+        continue;
+      }
+      any = true;
+      for (const directive of set) union.add(directive);
+    }
+    return any ? union : undefined;
+  })();
+  const profileLabel = declaredProfiles.join("+");
 
   const wikilinkRe = /\[\[([a-zA-Z_][\w-]*)\]\]/g;
   const collectWikilinks = (text: string): void => {
@@ -155,6 +179,9 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
         ids.set(node.id, node);
       }
     }
+    if (node.aliases) {
+      for (const a of node.aliases) aliasIds.add(a);
+    }
 
     if (node.type !== "directive") continue;
 
@@ -162,7 +189,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       diagnostics.push({
         severity: "warning",
         code: "out-of-profile-directive",
-        message: `Directive "${node.name}" is not part of the declared "${profileName}" profile.`,
+        message: `Directive "${node.name}" is not part of the declared "${profileLabel}" profile.`,
         pos: node.pos,
         nodeId: node.id,
       });
@@ -356,7 +383,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   }
 
   for (const target of referenced) {
-    if (!ids.has(target)) {
+    if (!ids.has(target) && !aliasIds.has(target)) {
       diagnostics.push({
         severity: "error",
         code: "broken-reference",
@@ -380,7 +407,62 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     }
   }
 
+  const ignore = options.ignoreRules;
+  if (ignore && ignore.length > 0) {
+    const known = collectRuleCodes();
+    for (const rule of ignore) {
+      if (!known.has(rule)) {
+        diagnostics.push({
+          severity: "info",
+          code: "unknown-ignore-rule",
+          message: `--ignore-rule "${rule}" matches no known validator rule (ignored).`,
+        });
+      }
+    }
+    const set = new Set(ignore);
+    return diagnostics.filter((d) => !set.has(d.code));
+  }
+
   return diagnostics;
+}
+
+function readDeclaredProfiles(meta: Record<string, unknown>): string[] {
+  if (Array.isArray(meta.profiles)) {
+    const out: string[] = [];
+    for (const p of meta.profiles) {
+      if (typeof p === "string" && p.trim()) out.push(p.trim());
+    }
+    if (out.length > 0) return out;
+  }
+  if (typeof meta.profile === "string" && meta.profile.trim()) {
+    return [meta.profile.trim()];
+  }
+  return [];
+}
+
+const KNOWN_RULES = [
+  "duplicate-id",
+  "out-of-profile-directive",
+  "unknown-profile",
+  "broken-reference",
+  "evidence-missing-for",
+  "figure-missing-alt",
+  "plot-unknown-dataset",
+  "plot-unknown-column",
+  "plot-missing-data",
+  "plot-mixed-delimiters",
+  "risk-without-owner",
+  "decision-without-status",
+  "agent-task-without-scope",
+  "escape-hatch-untrusted",
+  "stale-citation",
+  "claim-without-evidence",
+  "state-change-missing-block",
+  "state-change-missing-from-to",
+];
+
+function collectRuleCodes(): Set<string> {
+  return new Set(KNOWN_RULES);
 }
 
 function suppressed(node: DirectiveNode): boolean {

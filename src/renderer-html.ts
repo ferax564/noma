@@ -16,6 +16,13 @@ export interface HtmlRenderOptions {
    * contexts where unfiltered HTML is unsafe.
    */
   allowEscapeHatches?: boolean;
+  /**
+   * Math rendering. `katex` injects KaTeX CDN assets in standalone HTML and
+   * configures auto-render for `$..$`, `$$..$$`, `\(..\)`, `\[..\]`. Default
+   * is auto-detect: enabled when the doc uses `::math` or `$$..$$` delimiters,
+   * or `meta.math` is truthy.
+   */
+  math?: "katex" | "none";
 }
 
 interface DatasetTable {
@@ -115,6 +122,9 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
     "Noma Document";
 
   const themeCss = options.themeCss ?? "";
+  const mathMode = resolveMathMode(doc, options.math);
+  const mathHead = mathMode === "katex" ? KATEX_HEAD : "";
+  const mathFoot = mathMode === "katex" ? KATEX_FOOT : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -123,14 +133,44 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="generator" content="noma" />
 <title>${escapeHtml(title)}</title>
-<style>${themeCss}</style>
+<style>${themeCss}</style>${mathHead}
 </head>
 <body>
 <main class="noma-doc">
 ${body}
-</main>
+</main>${mathFoot}
 </body>
 </html>`;
+}
+
+const KATEX_VERSION = "0.16.11";
+const KATEX_HEAD = `
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.css" crossorigin="anonymous" />`;
+const KATEX_FOOT = `
+<script defer src="https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/contrib/auto-render.min.js" crossorigin="anonymous" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\\\[', right: '\\\\]', display: true}, {left: '\\\\(', right: '\\\\)', display: false}, {left: '$', right: '$', display: false}], throwOnError: false});"></script>`;
+
+function resolveMathMode(doc: DocumentNode, override?: "katex" | "none"): "katex" | "none" {
+  if (override === "katex" || override === "none") return override;
+  if (typeof doc.meta.math === "string") {
+    return doc.meta.math === "katex" ? "katex" : "none";
+  }
+  if (doc.meta.math === true) return "katex";
+  for (const node of walk(doc)) {
+    if (node.type === "directive" && node.name === "math") return "katex";
+    const text = textForMathScan(node);
+    if (text && /\$\$[^$]+\$\$|\\\(|\\\[/.test(text)) return "katex";
+  }
+  return "none";
+}
+
+function textForMathScan(node: Node): string | null {
+  if (node.type === "paragraph" || node.type === "quote") return node.content;
+  if (node.type === "list_item") return node.content;
+  if (node.type === "section") return node.title;
+  if (node.type === "directive" && node.body) return node.body;
+  if (node.type === "code") return null;
+  return null;
 }
 
 function renderNode(node: Node, ctx: RenderCtx): string {
@@ -192,9 +232,12 @@ function renderNode(node: Node, ctx: RenderCtx): string {
 
 function renderSection(node: SectionNode, ctx: RenderCtx): string {
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
+  const aliasAnchors = (node.aliases ?? [])
+    .map((a) => `<a class="noma-alias" id="${escapeAttr(a)}" aria-hidden="true"></a>`)
+    .join("");
   const heading = `<h${node.level}${idAttr}>${inlineToHtml(node.title)}</h${node.level}>`;
   const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
-  return `<section${idAttr} data-level="${node.level}">\n${heading}\n${inner}\n</section>`;
+  return `<section${idAttr} data-level="${node.level}">\n${aliasAnchors}${heading}\n${inner}\n</section>`;
 }
 
 function variantAttr(node: DirectiveNode): string {
@@ -305,6 +348,14 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
 
     case "table":
       return renderTableDirective(node, idAttr);
+
+    case "math": {
+      const body = (node.body ?? "").trim();
+      const display = node.attrs.display !== "inline";
+      const wrapped = display ? `\\[${body}\\]` : `\\(${body}\\)`;
+      const cls = display ? "noma-math noma-math-display" : "noma-math noma-math-inline";
+      return `<div class="${cls}"${idAttr}>${escapeHtml(wrapped)}</div>`;
+    }
 
     case "tabs":
     case "accordion":

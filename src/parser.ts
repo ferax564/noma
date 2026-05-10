@@ -23,7 +23,7 @@ export interface ParseOptions {
 }
 
 const FRONTMATTER_RE = /^---\s*$/;
-const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+const HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
 const FENCE_RE = /^```(\w*)\s*$/;
 const DIRECTIVE_OPEN_RE = /^(:{2,})\s*([a-zA-Z_][\w-]*)\s*(\{.*\})?\s*$/;
 const DIRECTIVE_CLOSE_RE = /^(:{2,})\s*$/;
@@ -44,11 +44,40 @@ export function parse(source: string, options: ParseOptions = {}): DocumentNode 
   const flatChildren = parseBlocks(lines, startLine, lines.length, 0);
   const children = foldSections(flatChildren);
 
+  attachChapterAliases(children, meta, options.filename);
+
   return {
     type: "document",
     meta: { ...(options.filename ? { filename: options.filename } : {}), ...meta },
     children,
   };
+}
+
+function attachChapterAliases(
+  children: Node[],
+  meta: Record<string, unknown>,
+  filename: string | undefined,
+): void {
+  const root = children.find((n): n is SectionNode => n.type === "section" && n.level === 1);
+  if (!root) return;
+
+  const aliases = new Set<string>(root.aliases ?? []);
+
+  if (filename) {
+    const base = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
+    const stem = base.replace(/\.noma$/i, "").replace(/^\d+[-_]/, "");
+    const slug = slugify(stem);
+    if (slug && slug !== root.id) aliases.add(slug);
+  }
+
+  const fmAliases = meta.aliases;
+  if (Array.isArray(fmAliases)) {
+    for (const a of fmAliases) {
+      if (typeof a === "string" && a.trim()) aliases.add(a.trim());
+    }
+  }
+
+  if (aliases.size > 0) root.aliases = [...aliases];
 }
 
 function extractFrontmatter(lines: string[]): {
@@ -115,14 +144,26 @@ function parseBlocks(
     if (heading) {
       const level = heading[1]!.length;
       const title = heading[2]!.trim();
-      out.push({
+      const headingAttrs = heading[3] ? parseAttrs(`{${heading[3]}}`) : {};
+      const explicitId =
+        typeof headingAttrs.id === "string" ? headingAttrs.id : undefined;
+      const section: SectionNode = {
         type: "section",
-        id: slugify(title),
+        id: explicitId ?? slugify(title),
         level,
         title,
         children: [],
         pos: { line: i + 1, column: 1 },
-      } satisfies SectionNode);
+      };
+      const aliasesAttr = headingAttrs.aliases;
+      if (typeof aliasesAttr === "string") {
+        const list = aliasesAttr
+          .split(/[,\s]+/)
+          .map((a) => a.trim())
+          .filter(Boolean);
+        if (list.length > 0) section.aliases = list;
+      }
+      out.push(section);
       i++;
       continue;
     }
