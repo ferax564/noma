@@ -126,6 +126,48 @@ test("patchSource: ops sequence (re-locates after each op)", () => {
   assert.match(out, /for="c2"/);
 });
 
+test("patchSource: every line outside the patched block is byte-identical", () => {
+  const out = patchSource(sample, {
+    op: "update_attribute",
+    id: "c1",
+    key: "confidence",
+    value: 0.95,
+  });
+  const before = sample.split("\n");
+  const after = out.split("\n");
+  assert.equal(after.length, before.length, "line count must not change");
+  let driftLines = 0;
+  for (let i = 0; i < before.length; i++) {
+    if (before[i]!.includes('id="c1"')) {
+      driftLines++;
+      continue;
+    }
+    assert.equal(after[i], before[i], `line ${i + 1} drifted: "${before[i]}" → "${after[i]}"`);
+  }
+  assert.equal(driftLines, 1, "exactly one line should change (the targeted open line)");
+});
+
+test("patchSource: replace_block leaves frontmatter and sibling bytes identical", () => {
+  const out = patchSource(sample, {
+    op: "replace_block",
+    id: "c1",
+    content: `::claim{id="c1" confidence=0.99}\nfresh body\n::`,
+  });
+  const before = sample.split("\n");
+  const after = out.split("\n");
+  // Frontmatter (lines 0..3, ending '---') untouched.
+  for (let i = 0; i < 5; i++) {
+    assert.equal(after[i], before[i], `frontmatter line ${i} drifted`);
+  }
+  // The evidence block (after the claim) must still be byte-identical.
+  const evIdxBefore = before.findIndex((l) => l.includes("::evidence"));
+  const evIdxAfter = after.findIndex((l) => l.includes("::evidence"));
+  assert.notEqual(evIdxAfter, -1);
+  for (let i = 0; i < 4; i++) {
+    assert.equal(after[evIdxAfter + i], before[evIdxBefore + i]);
+  }
+});
+
 test("patchSource: missing id throws", () => {
   assert.throws(
     () => patchSource(sample, { op: "delete_block", id: "missing" }),
