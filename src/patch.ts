@@ -149,7 +149,7 @@ function retargetReferences(node: Node, from: string, to: string): void {
 }
 
 function rewriteWikilinks(text: string, from: string, to: string): string {
-  return text.replace(/\[\[([a-zA-Z_][\w-]*)\]\]/g, (m, id) =>
+  return text.replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, (m, id) =>
     id === from ? `[[${to}]]` : m,
   );
 }

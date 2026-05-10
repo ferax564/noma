@@ -151,7 +151,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   })();
   const profileLabel = declaredProfiles.join("+");
 
-  const wikilinkRe = /\[\[([a-zA-Z_][\w-]*)\]\]/g;
+  const wikilinkRe = /\[\[([a-zA-Z_][\w\-./:]*)\]\]/g;
   const collectWikilinks = (text: string): void => {
     const stripped = text.replace(/`[^`]*`/g, "");
     for (const m of stripped.matchAll(wikilinkRe)) referenced.add(m[1]!);
