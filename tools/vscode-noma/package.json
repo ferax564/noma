@@ -1,0 +1,59 @@
+{
+  "name": "noma-language",
+  "displayName": "Noma",
+  "description": "Syntax highlighting for the Noma document format (.noma) — directives, blocks, frontmatter, math, wikilinks.",
+  "version": "0.1.0",
+  "publisher": "ferax564",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "noma",
+    "documents",
+    "agents",
+    "research",
+    "markdown-alternative"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ferax564/noma.git",
+    "directory": "tools/vscode-noma"
+  },
+  "homepage": "https://ferax564.github.io/noma/",
+  "bugs": {
+    "url": "https://github.com/ferax564/noma/issues"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "noma",
+        "aliases": [
+          "Noma",
+          "noma"
+        ],
+        "extensions": [
+          ".noma"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "noma",
+        "scopeName": "source.noma",
+        "path": "./syntaxes/noma.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.frontmatter": "yaml",
+          "meta.embedded.block.math": "latex",
+          "meta.embedded.block.plotly": "json",
+          "meta.embedded.block.diagram.mermaid": "mermaid",
+          "meta.embedded.block.diagram.graphviz": "dot"
+        }
+      }
+    ]
+  }
+}

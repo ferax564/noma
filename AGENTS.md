@@ -40,6 +40,7 @@ examples/                  Demo .noma files
   research-thesis.noma     Demo 3 — vertical-AI investment thesis (with real bar/line plots)
   index.noma               Noma-rendered gallery (kept around as dist/_index-noma.html)
   book/                    Multi-file demo book — book.noma.yml + 3 chapters
+  agent-stale-memo/        Killer demo — stale research memo + patches.json
 docs/                      Project docs, all written in .noma
   direction.noma           Canonical positioning (mirrors PLAN.md §23)
   spec.noma                Block-type and AST reference (incl. variants, book manifests, escape hatches)
@@ -51,6 +52,9 @@ site/                      Hand-crafted HTML landing page (NOT a .noma file)
 scripts/                   Build/render helpers
   render-pdf.ts            Single HTML → PDF via Puppeteer
   render-demo-pdfs.ts      All three demos → PDF (single browser instance)
+  agent-stale-memo.ts      Stale-memo demo runner — validate → patchSource → re-validate + trace.html
+tools/                     Developer tooling outside the core lib
+  vscode-noma/             VS Code language extension (TextMate grammar + lang config)
 test/                      node:test suites — parser, roundtrip, patch, validator, plot, book, escape-hatch
 .github/workflows/         CI
   pages.yml                Typecheck + tests + build:site → GitHub Pages

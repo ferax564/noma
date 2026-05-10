@@ -1,0 +1,86 @@
+---
+title: Vertical AI — Q1 2026 Investment Memo
+author: ferax564
+date: 2026-01-30
+tags: [memo, research, vertical-ai]
+profile: research
+stale_citation_days: 60
+---
+
+# Vertical AI — Q1 2026 Investment Memo
+
+::summary
+Position paper on the three vertical-AI categories worth tracking heading into
+Q2: clinical documentation, legal review, and financial-statement audit. Each
+section carries claims, supporting evidence, and a stale-evidence flag that an
+agent can refresh on a schedule without rewriting the memo.
+::
+
+## Thesis
+
+::claim{id="claim-clinical-leaders" confidence=0.62}
+Clinical-documentation agents are 18 months ahead of legal-tech competitors on
+production deployment depth. The deployment-rate delta is the leading indicator.
+::
+
+::evidence{for="claim-clinical-leaders" source="ambience-2025-q4-disclosure"}
+Ambience reported 41 hospital-network deployments at the close of Q4 2025 and
+projected 60 by mid-2026. Comparable numbers from leading legal-review vendors
+sit in the high-single-digits.
+::
+
+::citation{id="ambience-q4-disclosure" url="https://example.com/ambience-q4-2025" accessed="2025-12-15"}
+Ambience Q4 2025 transparency disclosure, accessed December 15, 2025.
+::
+
+::claim{id="claim-legal-mcp-risk" confidence=0.58}
+Legal-review vendors face the steepest disruption from MCP-style adapters
+because their workflow value is concentrated in document ingestion rather than
+in regulated workflow ownership.
+::
+
+::evidence{for="claim-legal-mcp-risk" source="legal-tech-survey-2025-q3"}
+Q3 2025 procurement survey: 62% of GCs cited "ingestion + retrieval" as the
+single biggest reason they bought a legal-tech product. Workflow ownership
+ranked fourth.
+::
+
+::citation{id="legal-tech-survey-q3" url="https://example.com/legaltech-survey-2025-q3" accessed="2025-10-04"}
+Legal-tech procurement survey, Q3 2025 wave, accessed October 4, 2025.
+::
+
+## Risks
+
+::risk{id="risk-frontier-leap" severity="medium" owner="ferax564"}
+A frontier-model capability leap (GPT-6-class long-horizon tool use) could
+collapse the workflow gap. Most vulnerable: verticals where workflow
+complexity comes from reasoning chains rather than data integration.
+::
+
+::risk{id="risk-mcp-integration-collapse" severity="medium" owner="ferax564"}
+Universal MCP adapters compress the integration moat from weeks to hours.
+Watch the EHR + practice-management adapter rollout as the leading indicator.
+::
+
+## Quarterly review task
+
+::agent_task{id="quarterly-review"}
+Every quarter, walk this memo and:
+
+1. For each `::claim`, check whether new public evidence supports or
+   contradicts. Add a fresh `::evidence` block and adjust `confidence`.
+2. For each `::citation`, check whether `accessed` is older than 60 days
+   (the `stale_citation_days` window declared in frontmatter). If yes,
+   update the `accessed` date or replace with a newer source.
+3. For each `::risk`, check whether the leading indicators have moved.
+   Adjust `severity` if warranted. Do not delete prior risks.
+
+Issue patches as block-level operations (`update_attribute`, `add_block`,
+`replace_block`) rather than rewriting the memo. The unrelated 95% of
+the file should be byte-identical after the refresh.
+::
+
+> The point of this memo is not the prose. It is that an agent can
+> re-open it next month, walk the claim/evidence/risk graph, and update
+> only the parts that changed — leaving the rest alone, producing a Git
+> diff that shows exactly which beliefs moved.

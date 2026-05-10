@@ -6,6 +6,46 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-05-10
+
+Closes the two items deferred from the executive-read review (#5 and #6).
+Theme: shipping the developer-experience artifacts that turn `.noma` from a
+working format into one that's pleasant to author and demo.
+
+### Added
+
+- **VS Code language extension** (`tools/vscode-noma/`). TextMate grammar
+  (`source.noma`) plus `language-configuration.json`. Highlights directive
+  blocks (`::name{...}` / `::`), headings with `{id=... aliases=...}`
+  attributes, wikilinks `[[block-id]]`, math (`$..$`, `$$..$$`, `\(..\)`,
+  `::math`), pipe tables, list items, block quotes, fenced code, and the
+  attribute grammar. Embedded language scopes hand off to YAML for
+  frontmatter, JSON for `::plotly` bodies, LaTeX for `::math` bodies,
+  Mermaid for `::diagram{kind="mermaid"}`, and DOT for
+  `::diagram{kind="graphviz"}`. Escape-hatch directives (`::html`,
+  `::svg`, `::script`) emit `invalid.illegal.*` scopes so themes can
+  warn on them. Folding markers track directive opener/closer pairs.
+  Special highlight for the attributes that the patch protocol cares
+  about (`id=`, `for=`, `parent=`, `block=`, `target=`, `dataset=`,
+  `column=`, `xcolumn=`, `src=`, `href=`, `aliases=`). Closes review
+  fix #5. Install locally with `vsce package` → `code
+  --install-extension`. Not yet on the marketplace.
+- **Killer demo: agent updates a stale research memo without rewriting
+  the file** (`examples/agent-stale-memo/`). The memo declares
+  `stale_citation_days: 60` in frontmatter and ships two citations
+  whose `accessed=` dates are outside the window. Five patch
+  operations (`update_attribute` on the two `accessed=` dates, one on
+  `confidence=`, one on `severity=`, plus an `add_block` for a fresh
+  `::evidence`) refresh the memo end-to-end. The runner script at
+  `scripts/agent-stale-memo.ts` validates before (surfaces the
+  stale-citation warnings), applies the patches via `patchSource`,
+  validates after (clean), and writes a narrated walkthrough at
+  `dist/examples/agent-stale-memo/trace.html`. ~89% of source lines
+  survive byte-for-byte: the only changed lines are the edited
+  attribute lines plus the inserted evidence block. New npm script
+  `demo:stale-memo`; wired into `build:site` so the trace ships with
+  the site build. Closes review fix #6.
+
 ## [0.5.0] — 2026-05-10
 
 Closes the executive-read review fixes (#1–#4) plus issues #10, #11, #12.

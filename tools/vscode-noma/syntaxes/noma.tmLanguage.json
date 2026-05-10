@@ -1,0 +1,358 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Noma",
+  "scopeName": "source.noma",
+  "fileTypes": ["noma"],
+  "patterns": [
+    { "include": "#frontmatter" },
+    { "include": "#fenced-code" },
+    { "include": "#math-block-dollars" },
+    { "include": "#directive-math" },
+    { "include": "#directive-plotly" },
+    { "include": "#directive-diagram-mermaid" },
+    { "include": "#directive-diagram-graphviz" },
+    { "include": "#directive-html-svg-script" },
+    { "include": "#directive-opener" },
+    { "include": "#directive-closer" },
+    { "include": "#heading" },
+    { "include": "#thematic-break" },
+    { "include": "#blockquote" },
+    { "include": "#list-item" },
+    { "include": "#table-row" },
+    { "include": "#inline" }
+  ],
+  "repository": {
+    "frontmatter": {
+      "begin": "\\A---\\s*$",
+      "end": "^---\\s*$",
+      "name": "meta.frontmatter.noma",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.frontmatter.begin.noma" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.frontmatter.end.noma" }
+      },
+      "contentName": "meta.embedded.block.frontmatter",
+      "patterns": [
+        { "include": "source.yaml" }
+      ]
+    },
+    "fenced-code": {
+      "begin": "^(\\s*)(```)([a-zA-Z0-9_+-]*)\\s*$",
+      "end": "^\\s*```\\s*$",
+      "name": "markup.fenced_code.block.noma",
+      "beginCaptures": {
+        "2": { "name": "punctuation.definition.markdown" },
+        "3": { "name": "fenced_code.block.language.noma" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.markdown" }
+      },
+      "contentName": "meta.embedded.block.code"
+    },
+    "math-block-dollars": {
+      "begin": "^\\s*\\$\\$\\s*$",
+      "end": "^\\s*\\$\\$\\s*$",
+      "name": "markup.math.block.noma",
+      "contentName": "meta.embedded.block.math",
+      "patterns": [{ "include": "text.tex" }]
+    },
+    "directive-math": {
+      "begin": "^(::+)(math)(\\{[^}]*\\})?\\s*$",
+      "end": "^(::+)\\s*$",
+      "name": "meta.directive.math.noma",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.directive.begin.noma" },
+        "2": { "name": "entity.name.directive.math.noma keyword.control.directive.noma" },
+        "3": {
+          "name": "meta.attributes.noma",
+          "patterns": [{ "include": "#attribute-list" }]
+        }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.directive.end.noma" }
+      },
+      "contentName": "meta.embedded.block.math",
+      "patterns": [{ "include": "text.tex" }]
+    },
+    "directive-plotly": {
+      "begin": "^(::+)(plotly)(\\{[^}]*\\})?\\s*$",
+      "end": "^(::+)\\s*$",
+      "name": "meta.directive.plotly.noma",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.directive.begin.noma" },
+        "2": { "name": "entity.name.directive.plotly.noma keyword.control.directive.noma" },
+        "3": {
+          "name": "meta.attributes.noma",
+          "patterns": [{ "include": "#attribute-list" }]
+        }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.directive.end.noma" }
+      },
+      "contentName": "meta.embedded.block.plotly",
+      "patterns": [{ "include": "source.json" }]
+    },
+    "directive-diagram-mermaid": {
+      "begin": "^(::+)(diagram)(\\{[^}]*kind=\"?mermaid\"?[^}]*\\})\\s*$",
+      "end": "^(::+)\\s*$",
+      "name": "meta.directive.diagram.mermaid.noma",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.directive.begin.noma" },
+        "2": { "name": "entity.name.directive.diagram.noma keyword.control.directive.noma" },
+        "3": {
+          "name": "meta.attributes.noma",
+          "patterns": [{ "include": "#attribute-list" }]
+        }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.directive.end.noma" }
+      },
+      "contentName": "meta.embedded.block.diagram.mermaid"
+    },
+    "directive-diagram-graphviz": {
+      "begin": "^(::+)(diagram)(\\{[^}]*kind=\"?(graphviz|dot)\"?[^}]*\\})\\s*$",
+      "end": "^(::+)\\s*$",
+      "name": "meta.directive.diagram.graphviz.noma",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.directive.begin.noma" },
+        "2": { "name": "entity.name.directive.diagram.noma keyword.control.directive.noma" },
+        "3": {
+          "name": "meta.attributes.noma",
+          "patterns": [{ "include": "#attribute-list" }]
+        }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.directive.end.noma" }
+      },
+      "contentName": "meta.embedded.block.diagram.graphviz"
+    },
+    "directive-html-svg-script": {
+      "begin": "^(::+)(html|svg|script)(\\{[^}]*\\})?\\s*$",
+      "end": "^(::+)\\s*$",
+      "name": "meta.directive.escape-hatch.noma invalid.illegal.escape-hatch.noma",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.directive.begin.noma" },
+        "2": { "name": "entity.name.directive.escape-hatch.noma keyword.other.escape-hatch.noma" },
+        "3": {
+          "name": "meta.attributes.noma",
+          "patterns": [{ "include": "#attribute-list" }]
+        }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.directive.end.noma" }
+      }
+    },
+    "directive-opener": {
+      "match": "^(::+)([a-z][a-z0-9_]*)(\\{([^}]*)\\})?\\s*$",
+      "name": "meta.directive.noma",
+      "captures": {
+        "1": { "name": "punctuation.definition.directive.begin.noma" },
+        "2": { "name": "entity.name.directive.noma keyword.control.directive.noma" },
+        "3": {
+          "name": "meta.attributes.noma",
+          "patterns": [{ "include": "#attribute-list" }]
+        }
+      }
+    },
+    "directive-closer": {
+      "match": "^(::+)\\s*$",
+      "name": "punctuation.definition.directive.end.noma"
+    },
+    "heading": {
+      "match": "^(#{1,6})\\s+(.*?)(\\s*(\\{[^}]*\\}))?\\s*$",
+      "captures": {
+        "1": { "name": "punctuation.definition.heading.noma" },
+        "2": {
+          "name": "entity.name.section.noma markup.heading.noma",
+          "patterns": [{ "include": "#inline" }]
+        },
+        "4": {
+          "name": "meta.attributes.heading.noma",
+          "patterns": [{ "include": "#attribute-list" }]
+        }
+      }
+    },
+    "thematic-break": {
+      "match": "^\\s*(---|\\*\\*\\*|___)\\s*$",
+      "name": "meta.separator.thematic-break.noma"
+    },
+    "blockquote": {
+      "match": "^(>\\s+)(.*)$",
+      "captures": {
+        "1": { "name": "punctuation.definition.quote.noma" },
+        "2": {
+          "name": "markup.quote.noma",
+          "patterns": [{ "include": "#inline" }]
+        }
+      }
+    },
+    "list-item": {
+      "match": "^\\s*([-*+]|\\d+\\.)\\s+(.*)$",
+      "captures": {
+        "1": { "name": "punctuation.definition.list.begin.noma markup.list.noma" },
+        "2": {
+          "name": "markup.list.item.noma",
+          "patterns": [{ "include": "#inline" }]
+        }
+      }
+    },
+    "table-row": {
+      "match": "^\\s*\\|.*\\|\\s*$",
+      "name": "markup.table.row.noma",
+      "captures": {
+        "0": {
+          "patterns": [
+            {
+              "match": "\\|",
+              "name": "punctuation.separator.table.noma"
+            },
+            { "include": "#inline" }
+          ]
+        }
+      }
+    },
+    "attribute-list": {
+      "patterns": [
+        { "include": "#attr-id" },
+        { "include": "#attr-ref" },
+        { "include": "#attr-flag-known" },
+        { "include": "#attr-quoted" },
+        { "include": "#attr-numeric" },
+        { "include": "#attr-bareword" },
+        { "include": "#attr-flag" },
+        {
+          "match": "[{}]",
+          "name": "punctuation.section.attributes.noma"
+        }
+      ]
+    },
+    "attr-id": {
+      "match": "\\b(id|aliases)(=)(\"[^\"]*\"|[A-Za-z0-9_/.:-]+)",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.id.noma support.type.property-name.id.noma" },
+        "2": { "name": "punctuation.separator.key-value.noma" },
+        "3": { "name": "string.quoted.double.id.noma constant.other.id.noma" }
+      }
+    },
+    "attr-ref": {
+      "match": "\\b(for|parent|block|target|dataset|column|xcolumn|src|href)(=)(\"[^\"]*\"|[A-Za-z0-9_/.:-]+)",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.reference.noma support.type.property-name.reference.noma" },
+        "2": { "name": "punctuation.separator.key-value.noma" },
+        "3": { "name": "string.quoted.double.reference.noma constant.other.reference.noma" }
+      }
+    },
+    "attr-flag-known": {
+      "match": "\\b(noverify|trusted|done|pinned|header)\\b(?!=)",
+      "name": "constant.language.flag.noma keyword.other.flag.noma"
+    },
+    "attr-quoted": {
+      "match": "([A-Za-z_][A-Za-z0-9_-]*)(=)(\"[^\"]*\")",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.noma" },
+        "2": { "name": "punctuation.separator.key-value.noma" },
+        "3": { "name": "string.quoted.double.noma" }
+      }
+    },
+    "attr-numeric": {
+      "match": "([A-Za-z_][A-Za-z0-9_-]*)(=)(-?\\d+(\\.\\d+)?)",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.noma" },
+        "2": { "name": "punctuation.separator.key-value.noma" },
+        "3": { "name": "constant.numeric.noma" }
+      }
+    },
+    "attr-bareword": {
+      "match": "([A-Za-z_][A-Za-z0-9_-]*)(=)([A-Za-z_][A-Za-z0-9_-]*)",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.noma" },
+        "2": { "name": "punctuation.separator.key-value.noma" },
+        "3": { "name": "string.unquoted.noma constant.language.noma" }
+      }
+    },
+    "attr-flag": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_-]*)\\b(?!=)",
+      "name": "constant.language.flag.noma"
+    },
+    "inline": {
+      "patterns": [
+        { "include": "#inline-code" },
+        { "include": "#inline-math" },
+        { "include": "#wikilink" },
+        { "include": "#link" },
+        { "include": "#bold" },
+        { "include": "#emphasis" }
+      ]
+    },
+    "inline-code": {
+      "match": "(`)([^`]+)(`)",
+      "name": "markup.inline.raw.noma",
+      "captures": {
+        "1": { "name": "punctuation.definition.raw.noma" },
+        "2": { "name": "markup.raw.inline.noma string.other.code.noma" },
+        "3": { "name": "punctuation.definition.raw.noma" }
+      }
+    },
+    "inline-math": {
+      "patterns": [
+        {
+          "match": "(\\\\\\()(.+?)(\\\\\\))",
+          "name": "markup.math.inline.noma",
+          "captures": {
+            "1": { "name": "punctuation.definition.math.begin.noma" },
+            "2": { "name": "string.other.math.noma" },
+            "3": { "name": "punctuation.definition.math.end.noma" }
+          }
+        },
+        {
+          "match": "(\\$)([^$\\n]+)(\\$)",
+          "name": "markup.math.inline.noma",
+          "captures": {
+            "1": { "name": "punctuation.definition.math.begin.noma" },
+            "2": { "name": "string.other.math.noma" },
+            "3": { "name": "punctuation.definition.math.end.noma" }
+          }
+        }
+      ]
+    },
+    "wikilink": {
+      "match": "(\\[\\[)([^\\[\\]\\|]+)(\\|([^\\[\\]]+))?(\\]\\])",
+      "name": "meta.link.wikilink.noma",
+      "captures": {
+        "1": { "name": "punctuation.definition.link.begin.noma" },
+        "2": { "name": "constant.other.reference.link.noma string.other.link.title.noma" },
+        "4": { "name": "string.other.link.description.noma" },
+        "5": { "name": "punctuation.definition.link.end.noma" }
+      }
+    },
+    "link": {
+      "match": "(\\[)([^\\]]+)(\\])(\\()([^)]+)(\\))",
+      "name": "meta.link.inline.noma",
+      "captures": {
+        "1": { "name": "punctuation.definition.link.begin.noma" },
+        "2": { "name": "string.other.link.title.noma" },
+        "3": { "name": "punctuation.definition.link.end.noma" },
+        "4": { "name": "punctuation.definition.link.url.begin.noma" },
+        "5": { "name": "markup.underline.link.noma" },
+        "6": { "name": "punctuation.definition.link.url.end.noma" }
+      }
+    },
+    "bold": {
+      "match": "(\\*\\*)([^*]+)(\\*\\*)",
+      "name": "markup.bold.noma",
+      "captures": {
+        "1": { "name": "punctuation.definition.bold.noma" },
+        "3": { "name": "punctuation.definition.bold.noma" }
+      }
+    },
+    "emphasis": {
+      "match": "(?<!\\*)(\\*)([^*\\n]+)(\\*)(?!\\*)",
+      "name": "markup.italic.noma",
+      "captures": {
+        "1": { "name": "punctuation.definition.italic.noma" },
+        "3": { "name": "punctuation.definition.italic.noma" }
+      }
+    }
+  }
+}

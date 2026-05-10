@@ -1,0 +1,31 @@
+[
+  {
+    "op": "update_attribute",
+    "id": "ambience-q4-disclosure",
+    "key": "accessed",
+    "value": "2026-05-10"
+  },
+  {
+    "op": "update_attribute",
+    "id": "legal-tech-survey-q3",
+    "key": "accessed",
+    "value": "2026-05-10"
+  },
+  {
+    "op": "update_attribute",
+    "id": "claim-clinical-leaders",
+    "key": "confidence",
+    "value": 0.74
+  },
+  {
+    "op": "add_block",
+    "parent": "thesis",
+    "content": "::evidence{for=\"claim-clinical-leaders\" source=\"abridge-2026-q1-disclosure\"}\nAbridge reported 73 hospital-network deployments in Q1 2026 — up from 52 at the\nend of 2025. The category leaders are now growing deployments at ~40% per\nquarter, which is the data point that pushed the confidence revision.\n::"
+  },
+  {
+    "op": "update_attribute",
+    "id": "risk-mcp-integration-collapse",
+    "key": "severity",
+    "value": "high"
+  }
+]

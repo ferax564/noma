@@ -1436,14 +1436,40 @@ substrate without breaking the AST.
   format (csv/tsv/json/yaml). Renderers stay pure. Plots can reference
   CSV/JSON datasets the same way they reference inline ones.
 
-### 24.8 Still ahead
+### 24.8 v0.5.1 — VS Code grammar + stale-memo demo (2026-05-10)
+
+Closes the two items deferred from review fixes #5 and #6.
+
+- ✅ **VS Code language extension** — `tools/vscode-noma/` ships a
+  TextMate grammar (`source.noma`) and `language-configuration.json`
+  with directive folding, attribute highlighting (`id=`, `for=`,
+  `parent=`, `block=`, `dataset=`, `column=`, `xcolumn=`, `src=`,
+  `href=`, `aliases=`), wikilinks, math (`$..$`, `$$..$$`, `\(..\)`,
+  `::math`), embedded YAML in frontmatter, and embedded language
+  scopes for `::plotly` (JSON), `::diagram{kind="mermaid"}` (Mermaid),
+  `::diagram{kind="graphviz"}` (DOT), `::math` (LaTeX). Escape-hatch
+  blocks (`::html`, `::svg`, `::script`) emit `invalid.illegal.*`
+  scopes so themes can warn on them. Install: `vsce package` →
+  `code --install-extension`. Not yet on the marketplace; published
+  separately under `@ferax564/noma-language` once the grammar
+  stabilises against real-world `.noma` files.
+- ✅ **Killer demo: agent updates a stale research memo** —
+  `examples/agent-stale-memo/` plus `scripts/agent-stale-memo.ts`.
+  The memo declares `stale_citation_days: 60` and carries two
+  citations whose `accessed=` dates are outside the window. Five
+  patch operations (two `update_attribute` on `accessed=`, one on
+  `confidence=`, one on `severity=`, one `add_block` for fresh
+  evidence) refresh the memo end-to-end. The runner validates
+  before, applies via `patchSource`, validates after (clean), and
+  writes a narrated `dist/examples/agent-stale-memo/trace.html`.
+  Output: ~89% of source lines preserved byte-for-byte; the only
+  changed lines are the four edited attribute lines plus the new
+  evidence block. `npm run demo:stale-memo`. Wired into `build:site`.
+
+### 24.9 Still ahead
 
 - ⏳ Shared `_assets/theme.css` for `--to site` (currently inlines CSS
   per page; functional but doubles output size on large books).
-- ⏳ VS Code syntax highlighting extension (deferred from review fix #5;
-  separate package).
-- ⏳ Killer demo: agent updates a stale research memo without rewriting
-  the file (deferred from review fix #6).
 - ⏳ Trusted-publishing context (auto-set `--no-unsafe` based on
   manifest config).
 - ⏳ Parser fix: `::` inside fenced code regions inside a parent
@@ -1452,3 +1478,6 @@ substrate without breaking the AST.
   docs.
 - ⏳ `noma diff a.noma b.noma` — emit `::state_change` blocks for
   attribute drift between two versions of the same document.
+- ⏳ Publish `noma-language` to the VS Code marketplace once the
+  grammar has soaked against external `.noma` files (currently
+  ships in-repo only).

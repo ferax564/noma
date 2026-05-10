@@ -1,6 +1,6 @@
 ---
-title: Noma — Format Specification (v0.5)
-version: 0.5
+title: Noma — Format Specification (v0.5.1)
+version: 0.5.1
 status: stable
 ---
 
@@ -349,7 +349,7 @@ unchanged lines all survive intact. The programmatic API exposes the
 new function as `patchSource(source, ops)`; the AST-level
 `patch(doc, op)` stays for callers that already work in AST space.
 
-## Render targets (v0.5)
+## Render targets (v0.5.1)
 
 | Target   | Status  | Notes                                                                         |
 | -------- | ------- | ----------------------------------------------------------------------------- |
@@ -413,7 +413,7 @@ The loader concatenates each chapter's parsed AST into a single `DocumentNode` (
 
 Resolution order: explicit `id=` on the heading → auto-slug from the title → frontmatter `aliases:` → filename slug. Any of those paths matching the wikilink target counts as resolved.
 
-## Compatibility promises (v0.5)
+## Compatibility promises (v0.5.1)
 
 - The directive **opener/closer** syntax is stable and will not change in 0.x.
 - Attribute grammar is stable.
