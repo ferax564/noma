@@ -1,4 +1,4 @@
-# @noma/mcp-server Phase 0 Implementation Plan
+# @noma/mcp-server Phase 0 Implementation Plan (Rev 2)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -67,7 +67,17 @@ npm install
 
 Expected: no errors. A `packages/` symlink may appear in `node_modules/@noma/` after the mcp-server package is created.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Build root package**
+
+`@noma/cli` points to `file:../..` which resolves to `dist/index.js`. The `dist/` must exist before any mcp-server test runs.
+
+```bash
+npm run build
+```
+
+Expected: `dist/` (re)created. This is a one-time step — subsequent tasks run from the root dir and don't need to rebuild unless you change `src/`.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add package.json packages/
@@ -102,12 +112,12 @@ Create `packages/mcp-server/package.json`:
     "noma-mcp-server": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
-    "@noma/cli": "*",
+    "@noma/cli": "file:../..",
     "zod": "^3.24.0"
   },
   "devDependencies": {
@@ -143,6 +153,7 @@ Create `packages/mcp-server/tsconfig.json`:
 Create `packages/mcp-server/src/index.ts`:
 
 ```typescript
+#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
@@ -473,13 +484,20 @@ export function readDoc(file: string): BlockSummary[] {
   return summaries;
 }
 
+function nodeChildren(node: Node): Node[] {
+  if (node.type === "list") return node.items as unknown as Node[];
+  if ("children" in node) return (node as { children: Node[] }).children;
+  return [];
+}
+
 function collectBlocks(nodes: Node[], out: BlockSummary[]): void {
   for (const node of nodes) {
     const startLine = node.pos?.line ?? 0;
     const endLine = node.endLine ?? startLine;
+    const children = nodeChildren(node);
     const base: BlockSummary = {
       type: node.type,
-      childCount: "children" in node ? (node.children as Node[]).length : 0,
+      childCount: children.length,
       lines: [startLine, endLine],
       patchable: typeof node.id === "string" && node.id.length > 0,
     };
@@ -491,14 +509,13 @@ function collectBlocks(nodes: Node[], out: BlockSummary[]): void {
       base.level = node.level;
     } else if (node.type === "directive") {
       base.name = node.name;
-      base.attrs = { ...node.attrs };
+      // exclude id — already surfaced in base.id
+      const { id: _id, ...rest } = node.attrs ?? {};
+      base.attrs = rest as Record<string, AttrValue>;
     }
 
     out.push(base);
-
-    if ("children" in node) {
-      collectBlocks(node.children as Node[], out);
-    }
+    collectBlocks(children, out);
   }
 }
 ```
@@ -568,6 +585,11 @@ describe("listIds", () => {
     assert.equal(ids.length, 0);
     assert.deepEqual(aliases, {});
   });
+
+  it("rejects book manifests", () => {
+    const file = writeNoma("book.noma.yml", "chapters: []");
+    assert.throws(() => listIds(file), /book manifests/);
+  });
 });
 ```
 
@@ -585,7 +607,7 @@ Create `packages/mcp-server/src/tools/list-ids.ts`:
 
 ```typescript
 import { readFileSync } from "node:fs";
-import { parse } from "@noma/cli";
+import { parse, isBookManifestPath } from "@noma/cli";
 import type { Node } from "@noma/cli";
 
 export interface ListIdsResult {
@@ -594,12 +616,21 @@ export interface ListIdsResult {
 }
 
 export function listIds(file: string): ListIdsResult {
+  if (isBookManifestPath(file)) {
+    throw new Error("book manifests are not supported by list_ids — use the CLI");
+  }
   const source = readFileSync(file, "utf8");
   const doc = parse(source);
   const ids: string[] = [];
   const aliases: Record<string, string> = {};
   collectIds(doc.children, ids, aliases);
   return { ids, aliases };
+}
+
+function nodeChildren(node: Node): Node[] {
+  if (node.type === "list") return node.items as unknown as Node[];
+  if ("children" in node) return (node as { children: Node[] }).children;
+  return [];
 }
 
 function collectIds(nodes: Node[], ids: string[], aliases: Record<string, string>): void {
@@ -610,9 +641,7 @@ function collectIds(nodes: Node[], ids: string[], aliases: Record<string, string
         aliases[alias] = node.id;
       }
     }
-    if ("children" in node) {
-      collectIds(node.children as Node[], ids, aliases);
-    }
+    collectIds(nodeChildren(node), ids, aliases);
   }
 }
 ```
@@ -722,7 +751,8 @@ export function validateDoc(file: string): ValidateDocResult {
 
 export function summarizeValidation(diagnostics: Diagnostic[]): ValidationSummary {
   if (diagnostics.some(d => d.severity === "error")) return "error";
-  if (diagnostics.some(d => d.severity === "warn")) return "warn";
+  // Diagnostic.severity uses "warning" (not "warn") — map to our compact "warn"
+  if (diagnostics.some(d => d.severity === "warning")) return "warn";
   return "ok";
 }
 ```
@@ -921,7 +951,7 @@ export function patchBlock(args: PatchBlockArgs): PatchBlockResult {
     return { ok: false, error: "book manifests are not supported by patch_block" };
   }
 
-  if ("content" in op && typeof op.content === "string" && op.content.length > MAX_CONTENT_BYTES) {
+  if ("content" in op && typeof op.content === "string" && Buffer.byteLength(op.content, "utf8") > MAX_CONTENT_BYTES) {
     return { ok: false, error: "content_too_large" };
   }
 
@@ -1010,6 +1040,7 @@ git commit -m "feat(mcp-server): patch_block tool with patchSource + transcript"
 Replace the contents of `packages/mcp-server/src/index.ts` with:
 
 ```typescript
+#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -1133,7 +1164,7 @@ Expected: all tests pass. Note exact count.
 - [ ] **Step 2: Run root package tests (regression check)**
 
 ```bash
-cd /path/to/noma && npm test
+cd ../.. && npm test
 ```
 
 Expected: all existing tests still pass. The workspace changes must not break the root package.
@@ -1148,25 +1179,41 @@ Expected: no errors from either.
 
 - [ ] **Step 4: Smoke test the server**
 
-Build and run the server with a real document:
+MCP stdio requires a full handshake: `initialize` → `initialized` notification → then requests.
+Raw `tools/list` without this will be ignored by the SDK. Use `printf` to send the three-message sequence atomically:
 
 ```bash
 cd packages/mcp-server && npm run build
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | node dist/index.js
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0.1"}}}\n{"jsonrpc":"2.0","method":"notifications/initialized"}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' \
+  | node dist/index.js
 ```
 
-Expected: JSON response listing all four tools (`read_doc`, `list_ids`, `validate_doc`, `patch_block`).
+Expected: one JSON line containing `result.tools` with 4 entries (`read_doc`, `list_ids`, `validate_doc`, `patch_block`). Ignore the `initialize` response line — look for the `tools/list` response (`"id":2`).
 
 - [ ] **Step 5: End-to-end agent loop smoke test**
 
 ```bash
+cd packages/mcp-server
 FILE=$(realpath ../../examples/agent-plan.noma)
-echo "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"list_ids\",\"arguments\":{\"file\":\"$FILE\"}}}" | node dist/index.js
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0.1"}}}\n{"jsonrpc":"2.0","method":"notifications/initialized"}\n{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_ids","arguments":{"file":"'"$FILE"'"}}}\n' \
+  | node dist/index.js
 ```
 
-Expected: JSON with `ids` array containing block IDs from `examples/agent-plan.noma`.
+Expected: JSON response with `content[0].text` parseable to `{ ids: [...], aliases: {...} }` where `ids` contains block IDs from `examples/agent-plan.noma`.
 
-- [ ] **Step 6: Final commit**
+- [ ] **Step 6: Update CHANGELOG.md**
+
+Add to the `[Unreleased]` section in `CHANGELOG.md` (root):
+
+```markdown
+### Added
+- `@noma/mcp-server` (Phase 0): MCP server for block-level agent editing via stdio transport.
+  Four tools: `read_doc`, `list_ids`, `validate_doc`, `patch_block`. Byte-preserving
+  `patchSource()` write path. Append-only `.noma.patches` JSONL transcript with
+  `pre_sha`/`post_sha` and `expected_sha` concurrency guard.
+```
+
+- [ ] **Step 7: Final commit**
 
 ```bash
 git add -p
@@ -1180,6 +1227,7 @@ git commit -m "test(mcp-server): full test suite + smoke verified"
 - [ ] `npm test` passes in `packages/mcp-server/` (all tasks 2–7 green)
 - [ ] `npx tsc --noEmit` passes in both root and `packages/mcp-server/`
 - [ ] Root `npm test` still passes (no regressions)
-- [ ] `tools/list` returns 4 tools via stdio JSON-RPC
+- [ ] `tools/list` returns 4 tools via stdio JSON-RPC (with initialize handshake)
 - [ ] `list_ids` on `examples/agent-plan.noma` returns non-empty ID list
 - [ ] `patch_block` with a real op writes byte-preserving result and appends `.noma.patches`
+- [ ] `CHANGELOG.md` updated under `[Unreleased]`
