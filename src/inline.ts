@@ -5,7 +5,17 @@
 export function inlineToHtml(src: string): string {
   let text = escapeHtml(src);
 
-  text = text.replace(/`([^`]+)`/g, (_m, body) => `<code>${body}</code>`);
+  // Code spans go first AND get placeholdered so subsequent inline rules
+  // (emphasis, links, wikilinks) don't reach into their content. Without the
+  // placeholder, a sequence like `x_y` ... `a_b` lets the underscore regex
+  // greedily span across the rendered <code> tags.
+  const codeSpans: string[] = [];
+  const PH_OPEN = String.fromCharCode(2);
+  const PH_CLOSE = String.fromCharCode(3);
+  text = text.replace(/`([^`]+)`/g, (_m, body) => {
+    const i = codeSpans.push("<code>" + body + "</code>") - 1;
+    return PH_OPEN + i + PH_CLOSE;
+  });
   text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
@@ -21,6 +31,9 @@ export function inlineToHtml(src: string): string {
   // the newline make it a hard break (`<br/>`).
   text = text.replace(/(?:  +|\\)\n/g, "<br />");
   text = text.replace(/\n/g, " ");
+  // Restore code-span placeholders.
+  const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
+  text = text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
   return text;
 }
 

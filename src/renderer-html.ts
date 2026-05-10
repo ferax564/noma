@@ -705,18 +705,36 @@ function renderPlotPlaceholder(
   const type = String(node.attrs.type ?? "line");
   const w = Number(node.attrs.width ?? 320);
   const h = Number(node.attrs.height ?? 140);
-  const fromDataset = resolveFromDataset(node, ctx);
-  const series = fromDataset?.values ?? parseSeries(node);
-  const labels = fromDataset?.labels ?? parseLabels(node);
 
-  const svg = series.length >= 2
-    ? renderChartSvg(series, type, w, h, labels)
+  // Multi-series via `columns="a,b,c"`. Falls back to single-series via
+  // `column="a"` (legacy form) or inline body data.
+  const multi = resolveFromDatasetMulti(node, ctx);
+  let seriesList: Array<{ name: string; values: number[] }>;
+  let labels: string[];
+
+  if (multi) {
+    seriesList = multi.series;
+    labels = multi.labels;
+  } else {
+    const single = resolveFromDataset(node, ctx);
+    const values = single?.values ?? parseSeries(node);
+    seriesList = values.length >= 2
+      ? [{ name: single?.column ?? String(node.attrs.column ?? ""), values }]
+      : [];
+    labels = single?.labels ?? parseLabels(node);
+  }
+
+  const totalPoints = seriesList.reduce((s, ser) => s + ser.values.length, 0);
+  const svg = seriesList.length > 0 && seriesList[0]!.values.length >= 2
+    ? renderChartSvg(seriesList, type, w, h, labels)
     : `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <polyline points="0,${h - 20} ${w * 0.13},${h - 40} ${w * 0.25},${h - 30} ${w * 0.38},${h - 60} ${w * 0.5},${h - 65} ${w * 0.63},${h - 80} ${w * 0.75},${h - 85} ${w * 0.88},${h - 100} ${w},${h - 105}"
         fill="none" stroke="currentColor" stroke-width="2" />
     </svg>`;
 
-  const sourceLabel = series.length >= 2 ? `${series.length} points` : String(dataSrc);
+  const sourceLabel = totalPoints >= 2
+    ? `${seriesList[0]!.values.length} points${seriesList.length > 1 ? ` × ${seriesList.length} series` : ""}`
+    : String(dataSrc);
   return `<figure class="noma-plot"${idAttr}>
   <div class="noma-plot-canvas" data-type="${escapeAttr(type)}" data-source="${escapeAttr(String(dataSrc))}">
     ${svg}
@@ -728,7 +746,7 @@ function renderPlotPlaceholder(
 function resolveFromDataset(
   node: DirectiveNode,
   ctx: RenderCtx,
-): { values: number[]; labels: string[] } | null {
+): { values: number[]; labels: string[]; column: string } | null {
   const dsId = node.attrs.dataset;
   if (typeof dsId !== "string") return null;
   const table = ctx.datasets.get(dsId);
@@ -738,7 +756,31 @@ function resolveFromDataset(
   if (!resolved) return null;
   const xColumn = typeof node.attrs.xcolumn === "string" ? node.attrs.xcolumn : undefined;
   const labels = xColumn ? (resolvePlotLabels(table, xColumn) ?? []) : parseLabels(node);
-  return { values: resolved.values, labels };
+  return { values: resolved.values, labels, column: resolved.column };
+}
+
+function resolveFromDatasetMulti(
+  node: DirectiveNode,
+  ctx: RenderCtx,
+): { series: Array<{ name: string; values: number[] }>; labels: string[] } | null {
+  const dsId = node.attrs.dataset;
+  if (typeof dsId !== "string") return null;
+  const table = ctx.datasets.get(dsId);
+  if (!table) return null;
+  const colsAttr = node.attrs.columns;
+  if (typeof colsAttr !== "string") return null;
+  const colNames = colsAttr.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+  if (colNames.length === 0) return null;
+  const series: Array<{ name: string; values: number[] }> = [];
+  for (const name of colNames) {
+    const resolved = resolvePlotData(table, name);
+    if (!resolved) continue;
+    series.push({ name: resolved.column, values: resolved.values });
+  }
+  if (series.length === 0) return null;
+  const xColumn = typeof node.attrs.xcolumn === "string" ? node.attrs.xcolumn : undefined;
+  const labels = xColumn ? (resolvePlotLabels(table, xColumn) ?? []) : parseLabels(node);
+  return { series, labels };
 }
 
 function parseSeries(node: DirectiveNode): number[] {
@@ -771,8 +813,21 @@ function parseLabels(node: DirectiveNode): string[] {
   return raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
 }
 
+// Categorical palette tuned for distinguishability on a near-white background.
+// First color is the existing "currentColor" deep blue used by single-series
+// charts (kept identical so single-series renders are byte-stable across the
+// multi-series refactor).
+const PLOT_COLORS = [
+  "currentColor",
+  "#cf6037",
+  "#2e8b57",
+  "#8b6c1a",
+  "#5a6071",
+  "#a8362e",
+];
+
 function renderChartSvg(
-  series: number[],
+  seriesList: Array<{ name: string; values: number[] }>,
   type: string,
   w: number,
   h: number,
@@ -781,75 +836,177 @@ function renderChartSvg(
   // Bar plots reserve half a slot of margin so end bars don't run past the
   // data-area edge. Line/area plots anchor to the edges.
   const isBar = type === "bar";
+  const nSeries = seriesList.length;
+  const N = seriesList[0]?.values.length ?? 0;
+  const showLegend = nSeries > 1;
+
+  // Decide bar-label rotation up-front: rotated labels need a taller bottom
+  // gutter. We rotate when the longest label is wider than the per-bar slot.
+  const FONT_PX = 9;
+  const CHAR_W = 5.5; // approx avg width of a 9pt sans char
+  const innerWProbe = w - 28 - (isBar ? 12 : 6);
+  const slotW = labels.length ? innerWProbe / Math.max(1, N) : 0;
+  const longest = labels.reduce(
+    (m, l) => Math.max(m, (l ?? "").length * CHAR_W),
+    0,
+  );
+  const rotateBarLabels = isBar && labels.length > 1 && longest > slotW * 0.95;
+
   const padL = 28;
   const padR = isBar ? 12 : 6;
-  const padT = 8;
-  const padB = labels.length ? 22 : 8;
+  const padT = showLegend ? 22 : 8;
+  const padB = labels.length
+    ? rotateBarLabels
+      ? Math.min(70, Math.ceil(longest * Math.sin(0.45)) + 16)
+      : 22
+    : 8;
   const innerW = w - padL - padR;
   const innerH = h - padT - padB;
-  const min = Math.min(...series);
-  const max = Math.max(...series);
+  const allValues = seriesList.flatMap((s) => s.values);
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues);
   const span = max - min || 1;
   const x = (i: number) => {
-    if (series.length === 1) return padL + innerW / 2;
-    if (isBar) return padL + ((i + 0.5) / series.length) * innerW;
-    return padL + (i / (series.length - 1)) * innerW;
+    if (N === 1) return padL + innerW / 2;
+    if (isBar) return padL + ((i + 0.5) / N) * innerW;
+    return padL + (i / (N - 1)) * innerW;
   };
   const y = (v: number) => padT + innerH - ((v - min) / span) * innerH;
 
-  const gridY = [0, 0.25, 0.5, 0.75, 1].map(
-    (t) =>
-      `<line x1="${padL}" x2="${w - padR}" y1="${padT + t * innerH}" y2="${padT + t * innerH}" stroke="currentColor" stroke-opacity="0.12" />`,
-  ).join("");
+  const gridY = [0, 0.25, 0.5, 0.75, 1]
+    .map(
+      (t) =>
+        `<line x1="${padL}" x2="${w - padR}" y1="${padT + t * innerH}" y2="${padT + t * innerH}" stroke="currentColor" stroke-opacity="0.12" />`,
+    )
+    .join("");
 
-  let plot: string;
+  let plot = "";
   if (type === "bar") {
-    const barW = (innerW / series.length) * 0.7;
-    plot = series
-      .map((v, i) => {
-        const cx = x(i);
-        const top = y(v);
-        return `<rect x="${cx - barW / 2}" y="${top}" width="${barW}" height="${padT + innerH - top}" fill="currentColor" opacity="0.85" />`;
-      })
+    // Cluster bars within each x-slot when multi-series.
+    const slotInner = (innerW / N) * 0.85;
+    const barW = slotInner / nSeries;
+    plot = seriesList
+      .map((ser, sIdx) =>
+        ser.values
+          .map((v, i) => {
+            const slotCenter = x(i);
+            const cx = slotCenter - slotInner / 2 + sIdx * barW + barW / 2;
+            const top = y(v);
+            return `<rect x="${(cx - barW / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${barW.toFixed(1)}" height="${(padT + innerH - top).toFixed(1)}" fill="${PLOT_COLORS[sIdx % PLOT_COLORS.length]}" opacity="0.85" />`;
+          })
+          .join(""),
+      )
       .join("");
   } else {
-    const points = series.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-    const area = `M ${x(0).toFixed(1)},${(padT + innerH).toFixed(1)} L ${points
-      .split(" ")
-      .join(" L ")} L ${x(series.length - 1).toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
-    plot =
-      `<path d="${area}" fill="currentColor" opacity="0.12" />` +
-      `<polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2" />` +
-      series
-        .map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="currentColor" />`)
-        .join("");
+    // Line/area: one polyline per series. Area-fill only on the first series
+    // so multi-series doesn't get visually muddled.
+    const showMarkers = N <= 30;
+    plot = seriesList
+      .map((ser, sIdx) => {
+        const color = PLOT_COLORS[sIdx % PLOT_COLORS.length]!;
+        const points = ser.values
+          .map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`)
+          .join(" ");
+        const areaFill = sIdx === 0 && nSeries === 1
+          ? `<path d="M ${x(0).toFixed(1)},${(padT + innerH).toFixed(1)} L ${points
+              .split(" ")
+              .join(" L ")} L ${x(N - 1).toFixed(1)},${(padT + innerH).toFixed(1)} Z" fill="${color}" opacity="0.12" />`
+          : "";
+        const line = `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" />`;
+        const markers = showMarkers
+          ? ser.values
+              .map(
+                (v, i) =>
+                  `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="${color}" />`,
+              )
+              .join("")
+          : "";
+        return areaFill + line + markers;
+      })
+      .join("");
   }
 
-  const minLabel = `<text x="${padL - 4}" y="${(padT + innerH).toFixed(1)}" text-anchor="end" font-size="9" fill="currentColor" opacity="0.7">${escapeHtml(formatNum(min))}</text>`;
-  const maxLabel = `<text x="${padL - 4}" y="${(padT + 8).toFixed(1)}" text-anchor="end" font-size="9" fill="currentColor" opacity="0.7">${escapeHtml(formatNum(max))}</text>`;
+  // Y-axis labels: 5 ticks matching the gridY rule count.
+  const yTickVals = [0, 0.25, 0.5, 0.75, 1].map((t) => max - t * span);
+  const yLabels = yTickVals
+    .map(
+      (v, idx) =>
+        `<text x="${padL - 4}" y="${(padT + idx * innerH * 0.25 + 3).toFixed(1)}" text-anchor="end" font-size="${FONT_PX}" fill="currentColor" opacity="0.7">${escapeHtml(formatNum(v))}</text>`,
+    )
+    .join("");
 
-  const xLabels = labels.length
-    ? series
+  // X-axis labels.
+  // - bar: one label per bar, optionally rotated -35° to fit.
+  // - line: at most 6 evenly-spaced ticks sampled from the labels[] array
+  //   (typical case: dates from xcolumn). Suppress when labels are absent.
+  let xLabels = "";
+  if (labels.length) {
+    if (isBar) {
+      xLabels = Array.from({ length: N })
         .map((_, i) => {
           const lbl = labels[i] ?? "";
           if (!lbl) return "";
-          return `<text x="${x(i).toFixed(1)}" y="${(h - 6).toFixed(1)}" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">${escapeHtml(lbl)}</text>`;
+          const cx = x(i);
+          const yPos = padT + innerH + 12;
+          if (rotateBarLabels) {
+            return `<text transform="translate(${cx.toFixed(1)} ${yPos}) rotate(-35)" text-anchor="end" font-size="${FONT_PX}" fill="currentColor" opacity="0.7">${escapeHtml(lbl)}</text>`;
+          }
+          return `<text x="${cx.toFixed(1)}" y="${yPos}" text-anchor="middle" font-size="${FONT_PX}" fill="currentColor" opacity="0.7">${escapeHtml(lbl)}</text>`;
         })
-        .join("")
-    : "";
+        .join("");
+    } else {
+      const T = Math.min(6, N);
+      const idxs = Array.from({ length: T }, (_, k) =>
+        Math.round((k * (N - 1)) / Math.max(1, T - 1)),
+      );
+      xLabels = idxs
+        .map((i, k) => {
+          const lbl = labels[i] ?? "";
+          if (!lbl) return "";
+          const cx = x(i);
+          const anchor = k === 0 ? "start" : k === T - 1 ? "end" : "middle";
+          return `<text x="${cx.toFixed(1)}" y="${(padT + innerH + 12).toFixed(1)}" text-anchor="${anchor}" font-size="${FONT_PX}" fill="currentColor" opacity="0.7">${escapeHtml(lbl)}</text>`;
+        })
+        .join("");
+    }
+  }
+
+  // Legend: one swatch + label per series, laid out left-to-right at top.
+  let legend = "";
+  if (showLegend) {
+    let cursor = padL;
+    legend = seriesList
+      .map((ser, sIdx) => {
+        const color = PLOT_COLORS[sIdx % PLOT_COLORS.length]!;
+        const swatchX = cursor;
+        const textX = cursor + 14;
+        const labelW = ser.name.length * CHAR_W + 22;
+        cursor += labelW;
+        return (
+          `<rect x="${swatchX}" y="6" width="10" height="10" fill="${color}" opacity="0.85" />` +
+          `<text x="${textX}" y="14" font-size="${FONT_PX}" fill="currentColor" opacity="0.85">${escapeHtml(ser.name)}</text>`
+        );
+      })
+      .join("");
+  }
 
   return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img">
     ${gridY}
     ${plot}
-    ${minLabel}
-    ${maxLabel}
+    ${yLabels}
     ${xLabels}
+    ${legend}
   </svg>`;
 }
 
 function formatNum(n: number): string {
-  if (Math.abs(n) >= 1000) return n.toFixed(0);
-  if (Math.abs(n) >= 10) return n.toFixed(1);
+  const a = Math.abs(n);
+  // Compact notation keeps axis labels narrow enough not to overflow the
+  // 24-px left gutter of the chart SVG. Without this, six-digit NAV values
+  // (e.g. 245406) clip past the SVG's left edge.
+  if (a >= 1_000_000) return (n / 1_000_000).toFixed(a >= 10_000_000 ? 0 : 1) + "M";
+  if (a >= 1_000) return (n / 1_000).toFixed(a >= 10_000 ? 0 : 1) + "k";
+  if (a >= 10) return n.toFixed(1);
   return n.toFixed(2);
 }
 
