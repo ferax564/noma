@@ -165,6 +165,60 @@ test("issue #2: math assets disabled when --math=none", () => {
   assert.ok(!/katex.min.css/.test(html));
 });
 
+test("issue #9: site index card descriptions parse inline markdown", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-site-"));
+  const { manifest, chapters } = loadBookChapters("examples/book/book.noma.yml");
+  renderSite(manifest, chapters, dir, { themeCss: "" });
+  const idx = readFileSync(join(dir, "index.html"), "utf8");
+  assert.ok(!/\*\*[^*]+\*\*/.test(idx), "raw **bold** must not appear in index");
+  assert.ok(!/`[^`]+`/.test(idx), "raw `code` must not appear in index");
+  assert.ok(!/\[\[[^\]]+\]\]/.test(idx), "raw [[wikilink]] must not appear in index");
+});
+
+test("issue #9: site index renders <strong>/<em>/<code> from summary markup", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-issue9-"));
+  const { manifest, chapters } = loadBookChapters("examples/book/book.noma.yml");
+  // Inject a chapter with rich markup into the bundle
+  const richChapter = chapters[0];
+  if (richChapter) {
+    richChapter.doc = parse(
+      `# Demo\n\n::summary\nThis chapter covers **bold ideas** and \`code-like\` concepts.\n::\n`,
+      { filename: "/tmp/demo.noma" },
+    );
+    richChapter.slug = "demo-issue9";
+  }
+  renderSite(manifest, chapters, dir, { themeCss: "" });
+  const idx = readFileSync(join(dir, "index.html"), "utf8");
+  assert.match(idx, /<strong>bold ideas<\/strong>/);
+  assert.match(idx, /<code>code-like<\/code>/);
+});
+
+test("issue #9: site index includes nav.noma-site-nav", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-site-"));
+  const { manifest, chapters } = loadBookChapters("examples/book/book.noma.yml");
+  renderSite(manifest, chapters, dir, { themeCss: "" });
+  const idx = readFileSync(join(dir, "index.html"), "utf8");
+  assert.match(idx, /<nav class="noma-site-nav"/);
+  assert.ok(idx.includes("noma-nav-current"), "home crumb should be marked current on index");
+});
+
+test("issue #9: card description truncates at sentence boundary", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-issue9-trunc-"));
+  const { manifest, chapters } = loadBookChapters("examples/book/book.noma.yml");
+  const ch = chapters[0];
+  if (ch) {
+    ch.doc = parse(
+      `# Demo\n\n::summary\nFirst sentence here. Second sentence should not appear.\n::\n`,
+      { filename: "/tmp/demo.noma" },
+    );
+    ch.slug = "demo-trunc";
+  }
+  renderSite(manifest, chapters, dir, { themeCss: "" });
+  const idx = readFileSync(join(dir, "index.html"), "utf8");
+  assert.match(idx, /First sentence here\./);
+  assert.ok(!/Second sentence/.test(idx));
+});
+
 test("issue #8: package.json declares dist in files and prepare script", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   assert.ok(pkg.files.includes("dist"), "dist must be in files");

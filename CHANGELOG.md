@@ -6,6 +6,26 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-10
+
+Closes issue #9 — polishes the `--to site` index page so it stops embarrassing
+books with rich `::summary` blocks.
+
+### Fixed
+
+- **Card descriptions parse inline markdown** (issue #9). The auto-generated
+  `index.html` from `--to site` was emitting literal `**bold**`, `` `code` ``,
+  and `[[wikilink]]` text in chapter card descriptions. Descriptions now run
+  through the same inline parser as the rest of the document: `**bold**` →
+  `<strong>`, `` `code` `` → `<code>`, `*em*` → `<em>`, `[label](url)` → `<a>`.
+  Wikilinks resolve to the owning chapter (`other.html#id`) when known, or fall
+  back to bare label text — no more literal `[[...]]`. Description truncation
+  now honours sentence boundaries instead of character count.
+- **Index page emits `nav.noma-site-nav`** (issue #9). The auto-generated index
+  no longer skips the shared chapter nav. Post-processing layers that target
+  `nav.noma-site-nav` no longer need an index special-case. The home crumb is
+  marked `noma-nav-current` on the index itself.
+
 ## [0.4.0] — 2026-05-10
 
 Closes every open GitHub issue (#2 through #8) raised after the v0.3.0 ship.

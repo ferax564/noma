@@ -1,6 +1,6 @@
 {
   "name": "@noma/cli",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Noma — readable document format for humans and agents",
   "type": "module",
   "bin": {

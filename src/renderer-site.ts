@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
-import { escapeAttr, escapeHtml } from "./inline.js";
+import { escapeAttr, escapeHtml, inlineToHtml } from "./inline.js";
 import { renderHtml } from "./renderer-html.js";
 import type { LoadedChapter } from "./book.js";
 
@@ -49,7 +49,7 @@ export function renderSite(
     writeFileSync(target, withNav, "utf8");
   }
 
-  const indexHtml = renderIndex(bookTitle, manifest, chapters, options.themeCss ?? "");
+  const indexHtml = renderIndex(bookTitle, manifest, chapters, options.themeCss ?? "", idMap);
   writeFileSync(join(absOut, "index.html"), indexHtml, "utf8");
 }
 
@@ -98,6 +98,18 @@ function injectNav(
   currentSlug: string,
   bookTitle: string,
 ): string {
+  const nav = buildNav(chapters, currentSlug, bookTitle);
+  return html.replace(
+    /<main class="noma-doc">/,
+    `${nav}\n<main class="noma-doc">`,
+  );
+}
+
+function buildNav(
+  chapters: LoadedChapter[],
+  currentSlug: string | null,
+  bookTitle: string,
+): string {
   const items = chapters
     .map((c) => {
       const isCurrent = c.slug === currentSlug;
@@ -107,14 +119,14 @@ function injectNav(
         : `<li><a href="${escapeAttr(c.slug)}.html">${escapeHtml(label)}</a></li>`;
     })
     .join("");
-  const nav = `<nav class="noma-site-nav" aria-label="Chapters">
-<a class="noma-site-home" href="index.html">${escapeHtml(bookTitle)}</a>
+  const homeMarkup =
+    currentSlug === null
+      ? `<span class="noma-site-home noma-nav-current">${escapeHtml(bookTitle)}</span>`
+      : `<a class="noma-site-home" href="index.html">${escapeHtml(bookTitle)}</a>`;
+  return `<nav class="noma-site-nav" aria-label="Chapters">
+${homeMarkup}
 <ol>${items}</ol>
 </nav>`;
-  return html.replace(
-    /<main class="noma-doc">/,
-    `${nav}\n<main class="noma-doc">`,
-  );
 }
 
 function renderIndex(
@@ -122,17 +134,20 @@ function renderIndex(
   manifest: Record<string, unknown>,
   chapters: LoadedChapter[],
   themeCss: string,
+  idMap: Map<string, IdLocation>,
 ): string {
   const author =
     typeof manifest.author === "string" ? manifest.author : undefined;
+  const nav = buildNav(chapters, null, bookTitle);
   const items = chapters
     .map((c) => {
       const label = chapterTitle(c) ?? c.slug;
-      const summary = chapterSummary(c.doc);
+      const raw = chapterSummaryRaw(c.doc);
+      const descHtml = raw ? renderCardDescription(raw, idMap) : "";
       return `<li>
         <a class="noma-site-chapter" href="${escapeAttr(c.slug)}.html">
           <span class="noma-site-chapter-title">${escapeHtml(label)}</span>
-          ${summary ? `<span class="noma-site-chapter-summary">${escapeHtml(summary)}</span>` : ""}
+          ${descHtml ? `<span class="noma-site-chapter-summary">${descHtml}</span>` : ""}
         </a>
       </li>`;
     })
@@ -148,6 +163,7 @@ function renderIndex(
 <style>${themeCss}</style>
 </head>
 <body>
+${nav}
 <main class="noma-doc noma-site-index">
 <header class="noma-site-header">
   <h1>${escapeHtml(bookTitle)}</h1>
@@ -161,23 +177,44 @@ ${items}
 </html>`;
 }
 
-function chapterSummary(doc: DocumentNode): string | undefined {
+function chapterSummaryRaw(doc: DocumentNode): string | undefined {
   for (const node of walk(doc)) {
     if (node.type === "directive" && (node.name === "summary" || node.name === "abstract")) {
       const body = (node.body ?? "").trim();
-      if (body) return firstLine(body);
+      if (body) return body;
     }
     if (node.type === "paragraph") {
       const body = node.content.trim();
-      if (body) return firstLine(body);
+      if (body) return body;
     }
   }
   return undefined;
 }
 
-function firstLine(s: string): string {
-  const line = s.split("\n")[0]!.trim();
-  return line.length > 200 ? line.slice(0, 197) + "…" : line;
+const SENTENCE_END_RE = /([.!?])(?=\s|$)/;
+
+function firstSentence(s: string): string {
+  const collapsed = s.replace(/\s+/g, " ").trim();
+  const m = collapsed.match(SENTENCE_END_RE);
+  if (m && m.index !== undefined) {
+    return collapsed.slice(0, m.index + 1);
+  }
+  return collapsed.length > 200 ? collapsed.slice(0, 197) + "…" : collapsed;
+}
+
+const CARD_REF_RE = /<a class="noma-ref" href="#([^"]+)">([^<]+)<\/a>/g;
+
+function renderCardDescription(
+  raw: string,
+  idMap: Map<string, IdLocation>,
+): string {
+  const sentence = firstSentence(raw);
+  const html = inlineToHtml(sentence);
+  return html.replace(CARD_REF_RE, (_m, id: string, label: string) => {
+    const loc = idMap.get(id);
+    if (!loc) return label;
+    return `<a class="noma-ref noma-xchapter" href="${escapeAttr(loc.chapterSlug)}.html#${escapeAttr(loc.anchor)}">${label}</a>`;
+  });
 }
 
 export type { LoadedChapter, Node };

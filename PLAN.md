@@ -1382,7 +1382,25 @@ of the format. All seven shipped:
   github:ferax564/noma` now builds before symlinking, fixing the
   dangling-symlink failure on direct-from-GitHub installs.
 
-### 24.6 Still ahead
+### 24.6 v0.4.1 — site index polish (2026-05-10)
+
+Closes issue #9 — papercut surfaced after v0.4.0 went out the door.
+
+- ✅ Card descriptions on the auto-generated `index.html` for `--to site`
+  now run through the inline parser. `**bold**` → `<strong>`, `` `code` ``
+  → `<code>`, `*em*` → `<em>`, `[label](url)` → `<a>`. Wikilinks resolve
+  to the owning chapter (`other.html#id`) when the target is known and
+  fall back to bare label text when it isn't — no more literal `[[...]]`
+  in card output.
+- ✅ Description truncation now honours sentence boundaries (`.`, `!`,
+  `?` followed by whitespace) instead of naive character count. Ugly
+  mid-sentence cutoffs gone.
+- ✅ The index page emits the same `nav.noma-site-nav` element every
+  chapter page does. Post-processing layers that target the nav (grouped
+  TOC overlays, theme switchers) no longer need an index special-case.
+  The home crumb is marked `noma-nav-current` on the index itself.
+
+### 24.7 Still ahead
 
 - ⏳ Shared `_assets/theme.css` for `--to site` (currently inlines CSS
   per page; functional but doubles output size on large books).
