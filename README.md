@@ -113,7 +113,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 
 ## What ships today
 
-- `@noma/parser` — hand-written, no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown.
+- `@noma/cli` (this package) — hand-written parser with no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown. The parser is exported alongside the CLI; `import { parse } from "@noma/cli"` works in any Node 20+ project.
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively switched everywhere.
 - HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, real inline-data plots (line + bar SVG, no JS), agent tasks, export buttons, controls, tables, the new `::table` directive, and `::state_change` deltas. `::html` / `::svg` / `::script` escape hatches with `--no-unsafe` to block them.
 - LLM renderer — deterministic plain-text output for context windows; escape-hatch bodies always stripped.
