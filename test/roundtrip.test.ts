@@ -89,6 +89,29 @@ test("roundtrip: every file in examples/ and docs/", () => {
   }
 });
 
+test("roundtrip: heading with explicit id and aliases", () => {
+  const src = `# Chapter Title {id="custom-id" aliases="old-name,legacy"}\n\nbody.\n\n## Sub {id="explicit-sub"}\n\nmore.\n`;
+  roundtripEquals(src);
+});
+
+test("renderNoma emits heading id when non-slug", () => {
+  const doc = parse(`# Cover {id="custom-id"}\n\ntext.\n`);
+  const out = renderNoma(doc);
+  assert.match(out, /^# Cover \{id="custom-id"\}/m);
+});
+
+test("renderNoma omits heading attrs when id matches slug and no aliases", () => {
+  const doc = parse(`# Plain Title\n\ntext.\n`);
+  const out = renderNoma(doc);
+  assert.match(out, /^# Plain Title$/m);
+});
+
+test("renderNoma emits aliases attr on heading", () => {
+  const doc = parse(`# Title {aliases="foo,bar"}\n\nx.\n`);
+  const out = renderNoma(doc);
+  assert.match(out, /aliases="foo,bar"/);
+});
+
 test("printer escapes attr values containing quotes", () => {
   const doc = parse(`::callout{tone="info"}\nhi\n::\n`);
   const out = renderNoma(doc);

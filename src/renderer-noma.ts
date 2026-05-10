@@ -1,4 +1,5 @@
 import yaml from "js-yaml";
+import { slugify } from "./parser.js";
 import type {
   Attrs,
   AttrValue,
@@ -79,10 +80,26 @@ function renderNode(node: Node, colons: number): string {
 
 function renderSection(node: SectionNode, colons: number): string {
   const hashes = "#".repeat(Math.max(1, Math.min(6, node.level)));
-  const head = `${hashes} ${node.title}`;
+  const attrs = headingAttrs(node);
+  const head = attrs ? `${hashes} ${node.title} ${attrs}` : `${hashes} ${node.title}`;
   if (node.children.length === 0) return head;
   const inner = node.children.map((c) => renderNode(c, colons)).join("\n\n");
   return `${head}\n\n${inner}`;
+}
+
+function headingAttrs(node: SectionNode): string {
+  // Drop the auto-attached chapter-filename / book-scope aliases — those are
+  // re-derived on parse, not source-of-truth. Keep only aliases that wouldn't
+  // be regenerated, plus a non-slug explicit id.
+  const explicitId =
+    node.id && node.id !== slugify(node.title) ? node.id : undefined;
+  const aliases = node.aliases ?? [];
+  const parts: string[] = [];
+  if (explicitId) parts.push(`id="${explicitId}"`);
+  if (aliases.length > 0) {
+    parts.push(`aliases="${aliases.join(",")}"`);
+  }
+  return parts.length > 0 ? `{${parts.join(" ")}}` : "";
 }
 
 function renderParagraph(node: ParagraphNode): string {
