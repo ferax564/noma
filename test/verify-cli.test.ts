@@ -51,3 +51,38 @@ test("verifyFixtureDir throws ENOENT when fixture dir does not exist", () => {
   const ghost = "/tmp/noma-verify-nonexistent-" + Math.random().toString(36).slice(2);
   assert.throws(() => verifyFixtureDir(ghost), /ENOENT|no such file/);
 });
+
+test("verifyFixtureDir checks expected.spans.json when present", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-verify-"));
+  try {
+    const fixDir = join(dir, "valid/spans");
+    mkdirSync(fixDir, { recursive: true });
+    writeFileSync(join(fixDir, "input.noma"), `# Heading\n\nparagraph.\n`);
+    writeFileSync(join(fixDir, "expected.spans.json"), JSON.stringify({
+      "heading": { startLine: 1, endLine: 3 },
+    }));
+    const report = verifyFixtureDir(dir);
+    assert.equal(report.ok, true);
+    assert.equal(report.fixtures[0]?.status, "pass");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("verifyFixtureDir fails when expected.spans.json mismatches", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-verify-"));
+  try {
+    const fixDir = join(dir, "valid/spans");
+    mkdirSync(fixDir, { recursive: true });
+    writeFileSync(join(fixDir, "input.noma"), `# Heading\n\nparagraph.\n`);
+    writeFileSync(join(fixDir, "expected.spans.json"), JSON.stringify({
+      "heading": { startLine: 1, endLine: 999 },
+    }));
+    const report = verifyFixtureDir(dir);
+    assert.equal(report.ok, false);
+    assert.equal(report.fixtures[0]?.status, "fail");
+    assert.match(report.fixtures[0]?.error ?? "", /span/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

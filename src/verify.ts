@@ -84,6 +84,24 @@ function checkRoundtrip(source: string, expectedPath: string): string | null {
   return null;
 }
 
+function checkSpans(doc: ReturnType<typeof parse>, expectedPath: string): string | null {
+  const expected = JSON.parse(readFileSync(expectedPath, "utf8")) as Record<
+    string,
+    { startLine: number; endLine: number }
+  >;
+  for (const node of walk(doc)) {
+    if (!("id" in node) || !node.id) continue;
+    const want = expected[node.id];
+    if (!want) continue;
+    const gotStart = node.pos?.line;
+    const gotEnd = node.endLine;
+    if (gotStart !== want.startLine || gotEnd !== want.endLine) {
+      return `span mismatch for "${node.id}": got [${gotStart}, ${gotEnd}], expected [${want.startLine}, ${want.endLine}]`;
+    }
+  }
+  return null;
+}
+
 function checkOne(fixturePath: string): FixtureReport {
   const name = relative(process.cwd(), fixturePath);
   const inputPath = join(fixturePath, "input.noma");
@@ -103,6 +121,11 @@ function checkOne(fixturePath: string): FixtureReport {
   const rtPath = join(fixturePath, "expected.roundtrip.noma");
   if (existsSync(rtPath)) {
     const err = checkRoundtrip(source, rtPath);
+    if (err) return { name, status: "fail", error: err };
+  }
+  const spansPath = join(fixturePath, "expected.spans.json");
+  if (existsSync(spansPath)) {
+    const err = checkSpans(doc, spansPath);
     if (err) return { name, status: "fail", error: err };
   }
   return { name, status: "pass" };
