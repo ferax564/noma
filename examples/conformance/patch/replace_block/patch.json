@@ -1,0 +1,1 @@
+{ "op": "replace_block", "id": "c1", "content": "::claim{id=\"c1\" confidence=0.9}\nNew body.\n::" }
