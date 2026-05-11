@@ -1472,12 +1472,18 @@ Closes the two items deferred from review fixes #5 and #6.
   per page; functional but doubles output size on large books).
 - ⏳ Trusted-publishing context (auto-set `--no-unsafe` based on
   manifest config).
-- ⏳ Parser fix: `::` inside fenced code regions inside a parent
-  directive currently confuses the directive close-search. Workaround:
-  keep fenced examples at top level. Surfaced while writing v0.3 spec
-  docs.
 - ⏳ `noma diff a.noma b.noma` — emit `::state_change` blocks for
   attribute drift between two versions of the same document.
 - ⏳ Publish `noma-language` to the VS Code marketplace once the
   grammar has soaked against external `.noma` files (currently
   ships in-repo only).
+
+### §24.10 — v0.6.0 (Phase 1: Agent Protocol v1.0)
+
+Shipped on 2026-05-11.
+
+- v1.0 RFC: `docs/spec-agent-protocol-v1.noma` (sections 1–6 normative, Annexes A/B/C provisional/conformance)
+- Reference impl alignment: v1.0 transcript writer, `FrontmatterNode` + `DocumentNode` spans, parser fence-suppression fix (closes ⏳ from §24.9), `PatchError` taxonomy, validator `duplicate-id` rule
+- `noma verify` CLI + 14-fixture minimum corpus (`examples/conformance/`)
+- Legacy `docs/agent-protocol.noma` superseded; cross-refs updated in `docs/spec.noma`
+- `@noma/mcp-server` bumped to v0.6.0 (matching CLI); transcript writer updated to v1.0 protocol shape

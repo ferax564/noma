@@ -4,13 +4,28 @@ All notable changes to Noma are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] — 2026-05-11
 
 ### Added
+- **Noma Agent Protocol v1.0 RFC** — single canonical spec for block identity, patch operations, validation, transcript records, and source spans. Provisional annexes for capability descriptors (sidecar) and MCP-over-stdio binding. (`docs/spec-agent-protocol-v1.noma`)
+- **`noma verify` CLI** — conformance harness running ID, diagnostic, roundtrip, span, and patch-application checks against a fixture directory. Exit codes: 0 all-pass, 1 any-fail, 2 missing dir.
+- **14-fixture conformance corpus** under `examples/conformance/` exercising every locked decision in the RFC: 6 valid, 6 patch, 2 invalid fixtures.
+- **Explicit `FrontmatterNode` AST variant** with `raw`, `data`, `pos`, and `endLine` fields. Document node now carries `pos` and `endLine` spanning the entire source.
+- **`PatchError.code` field** — machine-readable taxonomy (`target_missing`, `id_conflict`, `id_attribute_protected`, `parent_missing`, `invalid_content`, `sha_mismatch`, `pre_validation_blocked`, `op_list_aborted`, `unsupported_op`).
+- **Validator `duplicate-id` test coverage** — explicit collisions emit error diagnostic; slug-derived collisions auto-suffix `-2`, `-3` (no diagnostic).
 - `@noma/mcp-server` (Phase 0): MCP server for block-level agent editing via stdio transport.
   Four tools: `read_doc`, `list_ids`, `validate_doc`, `patch_block`. Byte-preserving
   `patchSource()` write path. Append-only `.noma.patches` JSONL transcript with
   `pre_sha`/`post_sha` and `expected_sha` concurrency guard.
+
+### Changed
+- **Transcript schema** rewritten to v1.0 protocol shape (`packages/mcp-server/src/transcript.ts`): drops `v: 1` literal, adds `protocol_version`, `op_id` (UUID), `tool_version`, `doc_uri`, full `pre_sha256`/`post_sha256` (8-char `pre_sha`/`post_sha` now display-only), structured `actor` object, `patch_result` enum (`applied | rejected | noop`), structured `TranscriptDiagnostic[]` with `phase`, optional `base_sha256` with drift detection (`base_sha_drift` warning).
+- **Phase 0 transcripts (`v: 1` format) are legacy-only** and not retroactively v1.0 compatible.
+- **`docs/agent-protocol.noma`** superseded by the v1.0 RFC. Carries `superseded-by:` frontmatter pointer.
+- **`docs/spec.noma`** version field bumped to `0.6.0`; cross-references the new RFC for normative agent-protocol content.
+
+### Fixed
+- Parser: `::` lines inside fenced code blocks no longer trigger directive recognition (PLAN.md §24.9). Fixed in `parseDirective` close-marker scan.
 
 ## [0.5.1] — 2026-05-10
 
