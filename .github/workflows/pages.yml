@@ -33,6 +33,9 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
 
+      - name: Run conformance suite
+        run: npm run verify:conformance
+
       - name: Build site (render HTML, copy landing, generate PDFs)
         run: |
           mkdir -p dist/examples dist/docs
