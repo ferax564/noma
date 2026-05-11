@@ -314,6 +314,12 @@ function parseDirective(
 
   let close = -1;
   for (let j = i + 1; j < to; j++) {
+    const fence = matchOnce(FENCE_RE, lines[j] ?? "");
+    if (fence) {
+      j++;
+      while (j < to && !FENCE_RE.test(lines[j] ?? "")) j++;
+      continue;
+    }
     const m = matchOnce(DIRECTIVE_CLOSE_RE, lines[j] ?? "");
     if (m && m[1]!.length === colons) {
       close = j;
