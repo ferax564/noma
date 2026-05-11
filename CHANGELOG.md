@@ -6,6 +6,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `@noma/mcp-server` (Phase 0): MCP server for block-level agent editing via stdio transport.
+  Four tools: `read_doc`, `list_ids`, `validate_doc`, `patch_block`. Byte-preserving
+  `patchSource()` write path. Append-only `.noma.patches` JSONL transcript with
+  `pre_sha`/`post_sha` and `expected_sha` concurrency guard.
+
 ## [0.5.1] — 2026-05-10
 
 Closes the two items deferred from the executive-read review (#5 and #6).
