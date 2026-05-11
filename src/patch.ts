@@ -26,8 +26,20 @@ export type PatchOp =
   | { op: "update_attribute"; id: string; key: string; value: AttrValue }
   | { op: "rename_id"; from: string; to: string };
 
+export type PatchErrorCode =
+  | "target_missing"
+  | "parent_missing"
+  | "id_conflict"
+  | "invalid_content"
+  | "id_attribute_protected"
+  | "sha_mismatch"
+  | "pre_validation_blocked"
+  | "op_list_aborted"
+  | "unsupported_op";
+
 export class PatchError extends Error {
   constructor(
+    public readonly code: PatchErrorCode,
     message: string,
     public readonly op: PatchOp,
   ) {
@@ -74,7 +86,7 @@ function applyReplace(
 ): void {
   const parsed = parseFragment(op.content, op);
   const found = findParent(doc, op.id);
-  if (!found) throw new PatchError(`block "${op.id}" not found`, op);
+  if (!found) throw new PatchError("target_missing", `block "${op.id}" not found`, op);
   found.list[found.index] = parsed;
 }
 
@@ -84,9 +96,9 @@ function applyAdd(
 ): void {
   const parsed = parseFragment(op.content, op);
   const parent = findById(doc, op.parent);
-  if (!parent) throw new PatchError(`parent "${op.parent}" not found`, op);
+  if (!parent) throw new PatchError("parent_missing", `parent "${op.parent}" not found`, op);
   if (!hasChildren(parent)) {
-    throw new PatchError(`parent "${op.parent}" cannot have children`, op);
+    throw new PatchError("parent_missing", `parent "${op.parent}" cannot have children`, op);
   }
   const arr = parent.children;
   const pos = op.position ?? arr.length;
@@ -98,7 +110,7 @@ function applyDelete(
   op: Extract<PatchOp, { op: "delete_block" }>,
 ): void {
   const found = findParent(doc, op.id);
-  if (!found) throw new PatchError(`block "${op.id}" not found`, op);
+  if (!found) throw new PatchError("target_missing", `block "${op.id}" not found`, op);
   found.list.splice(found.index, 1);
 }
 
@@ -107,12 +119,12 @@ function applyUpdateAttr(
   op: Extract<PatchOp, { op: "update_attribute" }>,
 ): void {
   const node = findById(doc, op.id);
-  if (!node) throw new PatchError(`block "${op.id}" not found`, op);
+  if (!node) throw new PatchError("target_missing", `block "${op.id}" not found`, op);
   if (!isDirective(node)) {
-    throw new PatchError(`block "${op.id}" is not a directive`, op);
+    throw new PatchError("target_missing", `block "${op.id}" is not a directive`, op);
   }
   if (op.key === "id") {
-    throw new PatchError(`use rename_id to change a block's id`, op);
+    throw new PatchError("id_attribute_protected", `use rename_id to change a block's id`, op);
   }
   node.attrs[op.key] = op.value;
 }
@@ -122,9 +134,9 @@ function applyRenameId(
   op: Extract<PatchOp, { op: "rename_id" }>,
 ): void {
   const node = findById(doc, op.from);
-  if (!node) throw new PatchError(`block "${op.from}" not found`, op);
+  if (!node) throw new PatchError("target_missing", `block "${op.from}" not found`, op);
   if (findById(doc, op.to)) {
-    throw new PatchError(`target id "${op.to}" already exists`, op);
+    throw new PatchError("id_conflict", `target id "${op.to}" already exists`, op);
   }
   node.id = op.to;
   if (isDirective(node) && "id" in node.attrs) {
@@ -214,15 +226,20 @@ function hasChildren(node: Node): node is Node & { children: Node[] } {
 function parseFragment(content: string, op: PatchOp): Node {
   const doc = parse(content);
   if (doc.children.length === 0) {
-    throw new PatchError(`fragment parsed to no blocks`, op);
+    throw new PatchError("invalid_content", `fragment parsed to no blocks`, op);
   }
   if (doc.children.length > 1) {
     throw new PatchError(
+      "invalid_content",
       `fragment must contain exactly one top-level block (got ${doc.children.length})`,
       op,
     );
   }
-  return doc.children[0]!;
+  const node = doc.children[0]!;
+  if (!isDirective(node)) {
+    throw new PatchError("invalid_content", `fragment must be a directive block (got ${node.type})`, op);
+  }
+  return node;
 }
 
 function clone<T>(value: T): T {
@@ -272,11 +289,11 @@ function applyToSource(source: string, op: PatchOp): string {
 function locate(source: string, id: string, op: PatchOp): { node: Node; start: number; end: number } {
   const doc = parse(source);
   const node = findById(doc, id);
-  if (!node) throw new PatchError(`block "${id}" not found`, op);
+  if (!node) throw new PatchError("target_missing", `block "${id}" not found`, op);
   const start = node.pos?.line;
   const end = node.endLine;
   if (!start || !end) {
-    throw new PatchError(`block "${id}" has no source span`, op);
+    throw new Error(`block "${id}" has no source span`);
   }
   return { node, start, end };
 }
@@ -286,11 +303,11 @@ function applySrcUpdateAttr(
   op: Extract<PatchOp, { op: "update_attribute" }>,
 ): string {
   if (op.key === "id") {
-    throw new PatchError(`use rename_id to change a block's id`, op);
+    throw new PatchError("id_attribute_protected", `use rename_id to change a block's id`, op);
   }
   const { node, start } = locate(source, op.id, op);
   if (!isDirective(node)) {
-    throw new PatchError(`block "${op.id}" is not a directive`, op);
+    throw new PatchError("target_missing", `block "${op.id}" is not a directive`, op);
   }
   const lines = source.split("\n");
   const lineIdx = start - 1;
@@ -303,6 +320,7 @@ function applySrcReplace(
   source: string,
   op: Extract<PatchOp, { op: "replace_block" }>,
 ): string {
+  parseFragment(op.content, op);
   const { start, end } = locate(source, op.id, op);
   const lines = source.split("\n");
   const replacement = op.content.replace(/\n+$/, "").split("\n");
@@ -331,9 +349,9 @@ function applySrcAdd(
 ): string {
   const doc = parse(source);
   const parent = findById(doc, op.parent);
-  if (!parent) throw new PatchError(`parent "${op.parent}" not found`, op);
+  if (!parent) throw new PatchError("parent_missing", `parent "${op.parent}" not found`, op);
   if (!hasChildren(parent)) {
-    throw new PatchError(`parent "${op.parent}" cannot have children`, op);
+    throw new PatchError("parent_missing", `parent "${op.parent}" cannot have children`, op);
   }
   const children = parent.children;
   const pos = Math.max(0, Math.min(op.position ?? children.length, children.length));
@@ -344,13 +362,13 @@ function applySrcAdd(
   if (pos < children.length) {
     const next = children[pos]!;
     const nextStart = next.pos?.line;
-    if (!nextStart) throw new PatchError(`sibling has no source span`, op);
+    if (!nextStart) throw new Error(`sibling has no source span`);
     insertAt = nextStart - 1;
     fragmentLines.push("");
   } else if (children.length > 0) {
     const last = children[children.length - 1]!;
     const lastEnd = last.endLine;
-    if (!lastEnd) throw new PatchError(`sibling has no source span`, op);
+    if (!lastEnd) throw new Error(`sibling has no source span`);
     insertAt = lastEnd;
     fragmentLines.unshift("");
   } else {
@@ -373,13 +391,13 @@ function applySrcRenameId(
 ): string {
   const doc = parse(source);
   const node = findById(doc, op.from);
-  if (!node) throw new PatchError(`block "${op.from}" not found`, op);
+  if (!node) throw new PatchError("target_missing", `block "${op.from}" not found`, op);
   if (findById(doc, op.to)) {
-    throw new PatchError(`target id "${op.to}" already exists`, op);
+    throw new PatchError("id_conflict", `target id "${op.to}" already exists`, op);
   }
   const lines = source.split("\n");
   const startLine = node.pos?.line;
-  if (!startLine) throw new PatchError(`block has no source span`, op);
+  if (!startLine) throw new Error(`block has no source span`);
   const lineIdx = startLine - 1;
   const open = lines[lineIdx] ?? "";
 
@@ -440,7 +458,7 @@ function rewriteOpenLineAttr(
 ): string {
   const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*)(\s*\{)?(.*?)(\}\s*)?$/);
   if (!openMatch) {
-    throw new PatchError(`malformed open line for "${(op as { id?: string }).id}"`, op);
+    throw new PatchError("invalid_content", `malformed open line for "${(op as { id?: string }).id}"`, op);
   }
   const head = openMatch[1] ?? "";
   const inner = openMatch[3] ?? "";
