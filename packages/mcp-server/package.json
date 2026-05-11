@@ -12,7 +12,7 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.11.0",
+    "@modelcontextprotocol/sdk": "1.11.0",
     "@noma/cli": "file:../..",
     "zod": "^3.24.0"
   },
