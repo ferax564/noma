@@ -1,139 +1,20 @@
 ---
-title: Noma Agent Patch Protocol
+title: Noma Agent Patch Protocol (superseded)
+superseded-by: spec-agent-protocol-v1.noma
 version: 0.5.1
+date: 2026-05-11
 ---
 
-# Agent Patch Protocol
-
-::summary
-Five structured operations agents use to edit Noma documents at the block level. Shipped in v0.2 as `noma patch`. Designed to be safe, minimal, and round-trippable.
-::
-
-## Why a patch protocol
-
-Agents that edit documents by full-file rewrite are unsafe: they re-emit unrelated blocks, introduce drift, and lose stable references. The patch protocol replaces full-file rewrites with addressable, reviewable operations.
-
-::claim{id="claim-block-edits-safer" confidence=0.85 noverify}
-Block-level patch operations are strictly safer than full-file agent rewrites: they are smaller, easier to review, and they preserve identifiers across edits.
-::
-
-## CLI
-
-```bash
-noma patch <file.noma> --op '<json-op>' [--inplace | --out path]
-noma patch <file.noma> --ops <file.json>          # one op or a JSON array of ops
-```
-
-The CLI rewrites only the targeted source span (`patchSource` in `src/patch.ts`). Unrelated bytes — frontmatter quoting, sibling blocks, blank-line padding, attribute order on unchanged lines — survive verbatim. Programmatic callers that want the AST-level transform can keep using `patch(doc, op)`; that path round-trips through the source printer.
-
-## Operations
-
-### replace_block
-
-Swap a single block by id. The `content` field is a `.noma` fragment containing exactly one top-level block — typically the same `id` and `name`, with new attributes or body.
-
-```json
-{
-  "op": "replace_block",
-  "id": "asml-euv-moat",
-  "content": "::claim{id=\"asml-euv-moat\" confidence=0.9}\nASML has a durable moat because EUV lithography requires unmatched optical, mechanical, and supply-chain capabilities.\n::"
-}
-```
-
-### add_block
-
-Insert a new block under an existing parent. `position` is the 0-based index in `parent.children`; omit for "append at the end".
-
-```json
-{
-  "op": "add_block",
-  "parent": "risks",
-  "position": 0,
-  "content": "::risk{id=\"risk-china-restrictions\" severity=\"high\" owner=\"ferax564\"}\nFurther export restrictions could reduce ASML's China revenue.\n::"
-}
-```
-
-### delete_block
-
-Remove a block by id.
-
-```json
-{ "op": "delete_block", "id": "stale-claim-2024" }
-```
-
-### update_attribute
-
-Change one attribute on a directive block. The special `id` attribute is rejected here — use `rename_id` instead, so references stay consistent.
-
-```json
-{
-  "op": "update_attribute",
-  "id": "asml-euv-moat",
-  "key": "confidence",
-  "value": 0.78
-}
-```
-
-### rename_id
-
-Move an id, retargeting every reference to it: `for=`, `parent=`, and `[[wikilink]]` syntax across the entire document. The new id must not already exist.
-
-```json
-{ "op": "rename_id", "from": "claim-x", "to": "claim-x-2026" }
-```
-
-## Choosing the right op
-
-For most edits the choice is obvious; the awkward case is "this block has both a body change and an attribute change". The tree below removes the ambiguity so two agents editing the same document make the same call.
-
-```
-Need to add a brand-new block?            → add_block
-Need to remove an existing block?         → delete_block
-Renaming an id (or splitting one)?        → rename_id
-Editing only attributes (no body change)? → update_attribute (one op per attr)
-Anything that touches the body?           → replace_block
-```
-
-**Rules of thumb.**
-
-- **Prefer the narrowest op.** `update_attribute` mutates one field; `replace_block` rewrites the whole node. Reviewers should always see the smallest legible diff. Multiple `update_attribute` ops on the same id are fine and preferred over a single `replace_block` if no body text changes.
-- **Body content is `replace_block` territory.** Once a paragraph, list, or nested child changes, use `replace_block`. Mixing `update_attribute` calls with manual body edits is forbidden — there is no `update_body` op on purpose.
-- **Never amend an `id` with `update_attribute`.** The runtime rejects it. Use `rename_id` so wikilinks and `for=` references migrate atomically.
-- **One semantic change per op list.** Splitting a single change across N ops is fine for clarity; bundling N unrelated changes into one op list makes review harder. If you find yourself writing 6+ ops, consider whether they should be a single `replace_block` of a parent.
-
-## Validation contract
-
-Every patch must:
-
-1. Resolve all referenced IDs against the **current** document. Operations against missing IDs throw `PatchError`.
-2. Preserve schema invariants: the validator runs after application; document-level errors should be surfaced (today via `noma check`, in future as part of `noma patch`).
-3. Apply atomically per op. The CLI applies a list of ops sequentially; if an op throws, the previously-applied ops are kept in memory but only written to disk if the full sequence succeeds (current implementation: ops mutate a cloned doc; the writer never sees a partial state).
+# Agent Patch Protocol (superseded)
 
 ::callout{tone="warning"}
-A patch that targets a non-existent id is an error, not a no-op. Agents must verify the document state (e.g., via `noma parse`) before issuing patches.
-::
+This document was the v0.x draft of the agent patch protocol. As of v0.6.0 it is
+**superseded by [Noma Agent Protocol v1.0](spec-agent-protocol-v1.noma)**.
 
-## Provenance
+Folded into the v1.0 RFC as:
+- Patch operation semantics → §3
+- Annex B (MCP-over-stdio binding) → existing MCP content
+- Open questions resolved or moved to v1.1 backlog
 
-Every applied patch should attach a `provenance` block annotation:
-
-```noma
-::provenance{by="claude-opus-4.7" at="2026-05-09T14:32:00Z" patch="patch-abc123"}
-::
-```
-
-This makes agent edits auditable in the source itself, not in a separate ledger.
-
-## Open questions
-
-::open_question{id="oq-conflict-resolution"}
-What is the right merge strategy when two agents propose patches that touch the same block ID concurrently? Options: last-writer-wins, three-way merge with a designated reviewer, or a CRDT-style block log.
-::
-
-::open_question{id="oq-patch-format"}
-Should patches be expressed as JSON (current shipped form), as a Noma directive block (`::patch ... ::`), or both?
-::
-
-::open_question{id="oq-move-block"}
-v0.2 ships five ops; `move_block` (and `add_comment` / `resolve_comment`) are intentionally deferred. Are they better as first-class operations, or as compositions of the five existing ops driven by a CLI helper?
+Refer to the v1.0 RFC for normative content.
 ::
