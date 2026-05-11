@@ -709,7 +709,210 @@ Removing a code requires a major version bump.
 
 ## 5. Transcript record
 
-(draft in Task 32)
+This section is normative. It specifies the file format for transcript records, the
+complete required and optional field schemas, the hash semantics that underpin integrity
+and replay, the replay-determinism guarantee, and the compatibility rules for readers and
+writers.
+
+### 5.1 JSONL append-only, one record per attempted op
+
+A transcript is a **JSON Lines** file: each line is a single, self-contained valid JSON
+object terminated by `\n`. The file is **append-only** — records are never modified or
+deleted after they are written.
+
+**Conventional path.** The transcript file lives alongside the source document, named by
+appending `.patches` to the document filename. For example: `thesis.noma` → `thesis.noma.patches`.
+Implementations MAY use a different path if the caller specifies one; the conventional
+name is the default.
+
+**One record per attempted op.** A transcript record MUST be emitted for every op that
+was **attempted**, regardless of outcome. This includes:
+
+- `applied` — the op resolved, policy did not block, and new bytes were written.
+- `rejected` — the op did not produce written bytes (target missing, id conflict, strict
+  mode blocked, op-list abort, etc.).
+- `noop` — the op resolved cleanly but produced byte-identical output.
+
+No attempted op is silently omitted. Audit integrity depends on the completeness of the
+append-only log.
+
+### 5.2 Required field schema
+
+Every v1.0 transcript record MUST include all of the following fields. A record missing
+any required field is not a valid v1.0 record.
+
+```ts
+{
+  protocol_version: "1.0",          // literal string — ONLY transcript version field
+  tool_version: string,             // semver of the tool that wrote the record
+  op_id: string,                    // UUID v4, unique per record
+  ts: string,                       // ISO 8601 UTC timestamp (e.g. "2026-05-11T14:32:00.000Z")
+  actor: {
+    kind: "human" | "agent" | "tool",
+    name: string,                   // display name of the actor (human username, agent ID, etc.)
+    model?: string,                 // e.g. "gpt-5.5" — present when kind is "agent"
+    version?: string                // version of the agent/tool, if known
+  },
+  doc_uri: string,                  // file:// URI of the document being patched
+  pre_sha256: string,               // full sha256 hex of doc before op (integrity-grade)
+  post_sha256: string,              // full sha256 hex of doc after op (integrity-grade)
+  pre_sha: string,                  // first 8 lowercase hex chars of pre_sha256 (display only)
+  post_sha: string,                 // first 8 lowercase hex chars of post_sha256 (display only)
+  op: PatchOp,                      // the patch operation object (one of the §3.1 set)
+  patch_result: "applied" | "rejected" | "noop",
+  pre_validation: "ok" | "warn" | "error",
+  post_validation: "ok" | "warn" | "error"
+}
+```
+
+`protocol_version` is the sole transcript version discriminator. The Phase 0 `v: 1` field
+is dropped. Readers MUST reject records claiming `protocol_version: "1.0"` that are
+missing other required fields.
+
+`partial` is NOT a valid `patch_result` value. Op-list atomicity (§3.2) ensures that a
+list never partially commits. A multi-op failure produces one transcript record per
+attempted op: the failing op carries its own error, and each preceding op is marked
+`rejected` with `code: "op_list_aborted"` (§3.5).
+
+### 5.3 Optional ledger fields
+
+Implementations MAY include any of the following fields. Readers MUST ignore optional
+fields they do not recognise (extension model, §1.3).
+
+```ts
+{
+  reason?: string,                  // human narrative: why this patch was applied
+  parent_op_id?: string,            // op_id of a causally prior record (causation chain)
+  base_sha256?: string,             // actor's claim: sha256 of the doc state it patched against
+  diagnostics?: Diagnostic[],       // structured; each entry carries phase: "pre" | "post"
+  elapsed_ms?: number,              // wall-clock time in milliseconds for this op
+  prev_entry_sha256?: string,       // sha256 of the previous line in the transcript (tamper evidence)
+  signature?: null | Signature      // RESERVED — emit null in v1.0; shape undefined until v1.1
+}
+```
+
+**`base_sha256`.** The actor computes this over the bytes it read before preparing the
+patch. When `base_sha256` ≠ `pre_sha256`, the document was modified between when the
+actor read it and when the patch arrived. This is a concurrency signal. See §5.4 for
+hash semantics. See §3.4 for the `base_sha_drift` diagnostic.
+
+**`diagnostics`.** Structured `Diagnostic` records as defined in §4.3. In transcript
+context, each entry MUST carry `phase: "pre"` (from pre-validation) or `phase: "post"`
+(from post-validation). When present, `diagnostics` is the source of truth and the
+`pre_validation` / `post_validation` summary strings MUST be derivable from it (§4.2).
+
+**`prev_entry_sha256`.** The sha256 of the previous line in the transcript file (raw
+bytes including the terminating `\n`). This chains entries for tamper-evidence audits.
+Absence is permitted and common.
+
+**`signature`.** RESERVED. The `Signature` shape (algorithm, key id, encoded value) is
+not defined in v1.0. Implementations MUST emit `null` when including this field, or omit
+it entirely. Forward-compatible: the field slot is reserved so v1.1 can define it without
+a schema conflict.
+
+### 5.4 Hash semantics
+
+`pre_sha256` and `post_sha256` are SHA-256 computed over the document's **UTF-8 byte
+sequence as read or written by the patch engine**. No normalization is applied:
+
+- Line endings are preserved as found in the source. LF is assumed; CRLF is preserved
+  if present. The spec does not promise normalization between platforms.
+- A byte-order mark (BOM), if present, is included in the hash.
+- Trailing newlines are preserved exactly as in the source.
+
+**Timing.**
+
+- `pre_sha256` is computed **immediately before** applying the first op in the list (or
+  the single op). No read or mutation occurs between this computation and the first op.
+- `post_sha256` is computed **immediately after** the new bytes are written to disk. No
+  further mutation occurs between the write and this computation.
+
+**Display aliases.**
+
+- `pre_sha` is the first 8 lowercase hex characters of `pre_sha256`. Display only.
+- `post_sha` is the first 8 lowercase hex characters of `post_sha256`. Display only.
+
+Implementations MUST use the full `_sha256` fields for all integrity comparisons. The
+8-char `_sha` aliases MUST NOT be used for integrity decisions; they are for human
+display (log lines, review UIs) only.
+
+**`base_sha256` (optional, actor-supplied).** The actor computes this over the bytes it
+read, using the same algorithm (SHA-256, no normalization, raw UTF-8 bytes). When both
+`base_sha256` and `pre_sha256` are present, a reader can determine whether the document
+changed between when the actor prepared the patch and when it was applied.
+
+For a rejected op, `post_sha256` MUST equal `pre_sha256` — no bytes were written, so
+the post-state hash equals the pre-state hash.
+
+For a noop op, `post_sha256` MUST equal `pre_sha256` — the op resolved but produced
+byte-identical output.
+
+### 5.5 Replay determinism
+
+Transcripts serve two purposes: **audit** and **replay**.
+
+**Audit.** Every record establishes provenance: who acted, when, against which exact
+document state, with what op, and with what result. Human reviewers and automated policy
+tools use the transcript as an immutable history.
+
+**Replay.** Given:
+
+1. A base `.noma` source file whose SHA-256 equals the `pre_sha256` of the first
+   `applied` record in the transcript, and
+2. An ordered list of transcript records,
+
+then applying each `applied` record's `op` in document order MUST produce a result whose
+SHA-256 equals the `post_sha256` of the last applied record processed.
+
+`rejected` and `noop` records are **audit-only**. Replay MUST skip them: they produced
+no bytes and carry no state change. Applying a `rejected` op during replay would
+corrupt the replay state.
+
+**Replay determinism is part of the conformance contract.** The conformance fixture
+`patch/replay-chain` (§Annex C) exercises a three-op transcript chain and verifies that
+replay reproduces the final sha256 byte-exactly.
+
+### 5.6 Compatibility rules
+
+The following rules govern both emitters and readers of v1.0 transcript records.
+
+**Emitters (writers) MUST:**
+- Include all required fields defined in §5.2.
+- Emit `protocol_version: "1.0"` on every record.
+- Compute `pre_sha256` and `post_sha256` using the algorithm in §5.4 (no normalization,
+  raw UTF-8 bytes, timing as specified).
+- Emit `post_sha256` equal to `pre_sha256` for `rejected` and `noop` records.
+- Emit `patch_result` as one of `"applied"`, `"rejected"`, or `"noop"` only.
+- Emit `signature: null` if including the `signature` field at all.
+
+**Emitters MAY:**
+- Include any optional field from §5.3.
+- Include additional implementation-specific fields not listed in this spec.
+
+**Readers MUST:**
+- Ignore unknown fields (§1.3 extension model).
+- Use `pre_sha256` / `post_sha256` (full 64-char hex) for all integrity comparisons.
+- Treat `pre_sha` / `post_sha` as display-only values and MUST NOT use them for
+  integrity decisions.
+- Recognise `protocol_version: "1.0"` as the v1.0 discriminator.
+
+### 5.7 Phase 0 migration
+
+Phase 0 transcripts (the format emitted by the v0.5.x reference implementation, using the
+`v: 1` field) are legacy-only and are **NOT** retroactively compatible with v1.0.
+
+Phase 0 records lack the following required v1.0 fields: `op_id`, `pre_sha256`,
+`post_sha256`, `doc_uri`, structured `actor`, `tool_version`, and `patch_result`.
+Reconstructing these fields from a Phase 0 record would require fabrication, which would
+defeat the audit and replay guarantees of the transcript.
+
+**Migration policy:**
+
+- A converter MAY wrap Phase 0 lines in a separate `legacy_phase0` import format. Such a
+  wrapper MUST carry a clear non-v1.0 marker and MUST NOT set `protocol_version: "1.0"`.
+- A converter MUST NOT claim v1.0 transcript compatibility for a migrated Phase 0 record.
+- Tooling that needs v1.0 records starts emitting them fresh. There is no automatic
+  upgrade path from Phase 0 to v1.0.
 
 ## 6. Source span guarantees
 
