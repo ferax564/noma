@@ -71,9 +71,17 @@ server.tool(
     op: PatchOpSchema.describe("Patch operation to apply"),
     reason: z.string().optional().describe("Agent-provided justification stored in transcript"),
     expected_sha: z.string().length(8).optional().describe("SHA-256[:8] of file before patch — prevents lost updates"),
+    actor: z.object({
+      kind: z.enum(["human", "agent", "tool"]),
+      name: z.string(),
+      model: z.string().optional(),
+      version: z.string().optional(),
+    }).optional().describe("Caller identity recorded in transcript"),
+    base_sha256: z.string().length(64).optional().describe("SHA-256 of doc state the agent prepared against; mismatch surfaces base_sha_drift warning"),
+    parent_op_id: z.string().uuid().optional().describe("Previous op_id for causation chains"),
   },
-  async ({ file, op, reason, expected_sha }) => {
-    const result = patchBlock({ file, op: op as PatchOp, reason, expected_sha });
+  async ({ file, op, reason, expected_sha, actor, base_sha256, parent_op_id }) => {
+    const result = patchBlock({ file, op: op as PatchOp, reason, expected_sha, actor, base_sha256, parent_op_id });
     if (!result.ok) {
       const { system, ...body } = result;
       if (system) {

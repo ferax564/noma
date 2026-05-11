@@ -57,11 +57,40 @@ describe("patchBlock — update_attribute", () => {
     const transcriptPath = file + ".patches";
     const raw = readFileSync(transcriptPath, "utf8");
     const entry = JSON.parse(raw.trim());
-    assert.equal(entry.v, 1);
+    assert.equal(entry.protocol_version, "1.0");
     assert.equal(entry.reason, "test");
     assert.ok(entry.pre_sha, "pre_sha must be set");
     assert.ok(entry.post_sha, "post_sha must be set");
     assert.notEqual(entry.pre_sha, entry.post_sha);
+    assert.ok(entry.pre_sha256, "pre_sha256 must be set");
+    assert.ok(entry.post_sha256, "post_sha256 must be set");
+    assert.notEqual(entry.pre_sha256, entry.post_sha256);
+    assert.equal(entry.patch_result, "applied");
+    assert.ok(entry.actor, "actor must be set");
+    assert.equal(entry.actor.kind, "agent");
+    assert.equal(entry.actor.name, "unknown");
+    assert.ok(entry.op_id, "op_id must be set");
+    assert.ok(entry.doc_uri, "doc_uri must be set");
+  });
+});
+
+describe("patchBlock — noop", () => {
+  it("detects noop when update_attribute sets the same value", () => {
+    const file = writeNoma("doc-noop.noma", DOC);
+    const result = patchBlock({
+      file,
+      op: { op: "update_attribute", id: "c1", key: "confidence", value: 0.7 },
+      reason: "no change intended",
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.transcript_entry.patch_result, "noop");
+    assert.equal(result.transcript_entry.pre_sha256, result.transcript_entry.post_sha256);
+    const transcriptPath = file + ".patches";
+    const raw = readFileSync(transcriptPath, "utf8");
+    const entry = JSON.parse(raw.trim());
+    assert.equal(entry.patch_result, "noop");
+    assert.equal(entry.pre_sha256, entry.post_sha256);
   });
 });
 
@@ -76,7 +105,7 @@ describe("patchBlock — concurrency guard", () => {
     });
     assert.equal(result.ok, false);
     if (!result.ok) {
-      assert.equal(result.error, "precondition_failed");
+      assert.equal(result.error, "sha_mismatch");
     }
   });
 
@@ -95,10 +124,20 @@ describe("patchBlock — concurrency guard", () => {
 });
 
 describe("patchBlock — error cases", () => {
-  it("returns ok:false for unknown block ID", () => {
+  it("returns ok:false for unknown block ID and records rejected transcript", () => {
     const file = writeNoma("doc6.noma", DOC);
     const result = patchBlock({ file, op: { op: "delete_block", id: "no-such-id" }, reason: "" });
     assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.code, "target_missing");
+    }
+    const transcriptPath = file + ".patches";
+    const raw = readFileSync(transcriptPath, "utf8");
+    const entry = JSON.parse(raw.trim());
+    assert.equal(entry.patch_result, "rejected");
+    assert.ok(Array.isArray(entry.diagnostics), "diagnostics must be an array");
+    const hasMissing = (entry.diagnostics as Array<{ code: string }>).some(d => d.code === "target_missing");
+    assert.ok(hasMissing, "diagnostics must contain target_missing code");
   });
 
   it("returns ok:false for book manifest", () => {
