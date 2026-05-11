@@ -1080,7 +1080,131 @@ prohibition on using an un-resolved alias or pre-suffix slug in patch operations
 **status: provisional.** Shape may change before enforcement code ships in v1.1.
 ::
 
-(draft in Task 34)
+### A.1 Sidecar location and frontmatter pointer
+
+The capability descriptor lives in a **sidecar file** adjacent to the `.noma` source. The
+sidecar filename is the document filename with `.capabilities.yml` appended:
+
+```
+thesis.noma  →  thesis.noma.capabilities.yml
+```
+
+A document's frontmatter MAY declare a pointer to the sidecar:
+
+```yaml
+agent_capabilities: ./thesis.noma.capabilities.yml
+```
+
+The pointer is **advisory** — it assists discovery tools and editors. Implementations MUST
+resolve the descriptor from the sidecar path regardless of whether the pointer is present
+in frontmatter. The pointer MUST NOT be used as the authoritative capability source, and
+its absence MUST NOT be interpreted as "no capabilities file exists." The canonical
+lookup is always `<document-filename>.capabilities.yml` relative to the document.
+
+### A.2 Why sidecar, not frontmatter
+
+Frontmatter is document content. Agents patch content. Embedding a capability declaration
+inside content creates a self-modifying authority surface: an agent could issue a
+`replace_block` or `update_attribute` operation that overwrites the rules governing its own
+operations. That is not a permission system.
+
+::callout{tone="info"}
+The sidecar is the wall between editable content and policy declarations. Agents MUST NOT
+be given patch operations that target the sidecar file. The sidecar lives outside the
+`.noma` document boundary and is therefore outside the v1.0 patch wire scope (§2.3, §3).
+::
+
+**Default policy is read-only / unspecified, not "all."** The descriptor uses **allowlist
+semantics**: an absent descriptor, or a descriptor that does not mention a block type,
+grants no patch permissions to agents. Agents can only perform operations that the
+descriptor explicitly permits.
+
+Implementations MUST NOT default to "permit everything" when no sidecar is found. The
+absence of a capability descriptor MUST be treated as equivalent to a descriptor that
+grants no ops.
+
+### A.3 Sidecar schema (provisional)
+
+The sidecar is a YAML file with a single top-level key `nomaAgent`. The following example
+illustrates the full v1 descriptor shape:
+
+```yaml
+nomaAgent:
+  version: 1
+  profile: default
+  blocks:
+    claim:
+      ops: [replace_block, update_attribute]
+      attrs:
+        confidence:
+          type: number
+          min: 0
+          max: 1
+    evidence:
+      ops: [add_block, replace_block, delete_block]
+  ids:
+    rename: false
+  validation:
+    required: true
+```
+
+Field reference:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `nomaAgent.version` | integer | Yes | Descriptor schema version. MUST be `1` for v1.0 descriptors. Implementations SHOULD reject descriptors with an unrecognised version number. |
+| `nomaAgent.profile` | string | No | Named profile for this descriptor, e.g. `default`, `research`, `engineering`. Implementations MAY ship preset profiles that agents can reference. Has no effect on allowlist evaluation — the `blocks` map is always the authoritative grant. |
+| `nomaAgent.blocks` | object | No | Map from directive name to per-block policy object. A directive name absent from this map has no granted ops. |
+| `nomaAgent.blocks.<name>.ops` | list | No | Permitted patch ops on this block type. Each entry MUST be a value from the §3.1 op set: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. Ops absent from the list are denied. An empty list is equivalent to no entry for this block name. |
+| `nomaAgent.blocks.<name>.attrs` | object | No | Optional per-attribute schema for `update_attribute` calls targeting this block type. A key absent from this map carries no constraint beyond the `ops` grant. |
+| `nomaAgent.blocks.<name>.attrs.<key>.type` | string | No | Expected value type: `string`, `number`, or `boolean`. Implementations MAY validate the proposed value against this type and reject mismatches. |
+| `nomaAgent.blocks.<name>.attrs.<key>.min` | number | No | Minimum inclusive value (applies when `type` is `number`). |
+| `nomaAgent.blocks.<name>.attrs.<key>.max` | number | No | Maximum inclusive value (applies when `type` is `number`). |
+| `nomaAgent.blocks.<name>.attrs.<key>.enum` | list | No | Enumerated allowed values (applies when `type` is `string` or `number`). A proposed value not in this list SHOULD be rejected. |
+| `nomaAgent.ids.rename` | boolean | No | Whether `rename_id` is permitted across all block types. Default `false`. Even if `rename_id` appears in a block's `ops` list, it MUST also be enabled here. |
+| `nomaAgent.validation.required` | boolean | No | If `true`, post-patch validation errors SHOULD be surfaced as a warning to the caller. Equivalent to requesting strict-mode post-validation reporting (see §3.4). Does NOT block writes; informational only in v1.0. |
+
+::callout{tone="info"}
+**Allowlist semantics recap.** A grant is required at two levels for `update_attribute`:
+the op must appear in `blocks.<name>.ops`, and if `attrs.<key>` is present, the proposed
+value must satisfy its type and constraint fields. Implementations MAY enforce both levels;
+they MUST NOT permit an op that has no matching `ops` entry.
+::
+
+### A.4 Enforcement (deferred to v1.1)
+
+v1.0 defines the descriptor **shape** only. No runtime enforcement is implemented in the
+v1.0 reference implementation.
+
+Specifically:
+- The `patch_block` MCP tool (Annex B) does NOT consult the sidecar before applying a
+  patch in v1.0. All five ops remain available to any caller regardless of what the
+  descriptor says.
+- Implementations MAY parse and validate the descriptor's YAML structure for early
+  feedback (e.g., reject malformed YAML or unknown `version` values) but MUST NOT block
+  patch operations based on descriptor content in v1.0.
+
+v1.1 will gate `patch_block` operations against the descriptor. Operations that violate
+the descriptor will produce `patch_result: "rejected"` with a new error code. The
+reserved name suggestion for that code is `capability_denied`; its exact definition and
+the full enforcement semantics are **to be defined in v1.1** and are not part of the
+§3.5 v1.0 error taxonomy.
+
+Implementers planning ahead MAY parse the descriptor and surface advisory warnings when
+a proposed op has no matching grant. They MUST label such warnings as advisory only and
+MUST NOT reject the patch on their basis in a v1.0-conforming implementation.
+
+### A.5 Provisional shape warning
+
+The schema defined in A.3 is the v1.0 design intent. It MAY change — including in
+backward-incompatible ways — before v1.1 enforcement code ships, based on feedback from
+real consumers (the Phase 3 Agent SDK and any third-party implementations).
+
+Implementations that consume the descriptor SHOULD pin to a specific `nomaAgent.version`
+value and treat an unexpected version number as a signal to fall back to the default
+read-only / unspecified policy rather than attempting to interpret an unknown schema.
+
+No compatibility promise applies to this annex. See §1.4.
 
 ## Annex B — MCP-over-stdio binding (provisional)
 
