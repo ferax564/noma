@@ -159,7 +159,358 @@ Multi-chapter patches and book-scoped wire identity are deferred to v1.1.
 
 ## 3. Patch operation semantics
 
-(draft in Task 30)
+This section is normative. It defines the five patch operations that constitute the v1.0 op
+set, their atomicity guarantees, the reference-retargeting contract for `rename_id`, the
+validation failure policy, and the complete error-code taxonomy.
+
+### 3.1 The five operations
+
+v1.0 locks the op set at five. Implementations MUST support all five. Operations NOT in this
+set MUST be rejected with `code: "unsupported_op"` (§3.5). No additional ops are added in
+v1.0.
+
+All operations address blocks by **canonical id only** (see §2.1). Addressing a block by
+alias is a protocol violation; conforming implementations SHOULD reject such requests.
+
+#### 3.1.1 `replace_block`
+
+Replaces the entire content and attributes of an existing directive block with new source.
+
+**Required fields:**
+
+- `op`: `"replace_block"`
+- `id`: canonical id of the block to replace.
+- `content`: a `.noma` source fragment that MUST parse to exactly ONE top-level directive
+  block. Paragraphs, sections, headings, and any other non-directive content are rejected.
+
+**Semantics:** the target block — its opening fence, attributes, body, and closing fence — is
+removed from the document and replaced with the parsed directive from `content`. The block's
+position among its siblings is preserved. All other nodes in the document are unchanged.
+
+The replacement block's `id=` (if declared in `content`) becomes the new canonical id of
+that position. If no `id=` is present in `content`, the block has no id after replacement
+(the old id is gone).
+
+**Error conditions:**
+
+- `target_missing` (§3.5) — `id` does not exist in the document, or resolves to a
+  non-directive node.
+- `invalid_content` (§3.5) — `content` does not parse to exactly one top-level directive
+  block.
+- `id_conflict` (§3.5) — the `id=` declared inside `content` is already taken by another
+  block in the document (other than the block being replaced).
+
+**Example:**
+
+```json
+{
+  "op": "replace_block",
+  "id": "main-claim",
+  "content": "::claim{id=\"main-claim\" confidence=0.9}\nRevised claim text.\n::"
+}
+```
+
+#### 3.1.2 `add_block`
+
+Inserts a new directive block as a child of an existing parent block.
+
+**Required fields:**
+
+- `op`: `"add_block"`
+- `parent`: canonical id of the block that will receive the new child.
+- `content`: a `.noma` source fragment that MUST parse to exactly ONE top-level directive
+  block. Same constraint as `replace_block.content`.
+
+**Optional fields:**
+
+- `position`: 0-based integer index in `parent.children` at which to insert the new block.
+  If omitted, the block is appended at the end of `parent.children`.
+
+**Semantics:** the parsed directive from `content` is inserted into `parent.children` at
+index `position` (or appended if `position` is absent). Existing children at index ≥
+`position` are shifted right by one. All other nodes in the document are unchanged.
+
+**Range check.** If `position` is present and is out of range (negative, or greater than
+`parent.children.length`), the operation is rejected with `code: "parent_missing"`. This
+reuse of `parent_missing` for an out-of-range index matches the shipped reference
+implementation behavior and is intentional; it signals that the addressed insertion point
+does not exist.
+
+**Error conditions:**
+
+- `parent_missing` (§3.5) — `parent` id does not exist in the document, does not accept
+  children, or `position` is out of the valid range `[0, parent.children.length]`.
+- `invalid_content` (§3.5) — `content` does not parse to exactly one top-level directive
+  block.
+- `id_conflict` (§3.5) — the `id=` declared inside `content` is already taken by another
+  block in the document.
+
+**Example:**
+
+```json
+{
+  "op": "add_block",
+  "parent": "evidence-list",
+  "position": 0,
+  "content": "::evidence{id=\"ev-new\" for=\"main-claim\"}\nNew supporting evidence.\n::"
+}
+```
+
+#### 3.1.3 `delete_block`
+
+Removes a directive block from the document.
+
+**Required fields:**
+
+- `op`: `"delete_block"`
+- `id`: canonical id of the block to remove.
+
+**Semantics:** the target block — including its entire subtree of child blocks — is removed
+from the document. Its position among siblings is vacated; remaining siblings close the gap.
+Deletion is non-cascading: references to the deleted block's id in other blocks (e.g., a
+`for=` attribute pointing to the deleted block) are NOT updated. The caller is responsible
+for cleaning up dangling references, or they will surface as validator diagnostics after
+the patch is applied.
+
+**Error conditions:**
+
+- `target_missing` (§3.5) — `id` does not exist in the document, or resolves to a
+  non-directive node.
+
+**Example:**
+
+```json
+{
+  "op": "delete_block",
+  "id": "stale-evidence"
+}
+```
+
+#### 3.1.4 `update_attribute`
+
+Sets or removes a single named attribute on an existing directive block.
+
+**Required fields:**
+
+- `op`: `"update_attribute"`
+- `id`: canonical id of the block to modify.
+- `key`: attribute name. MUST NOT be `"id"` — use `rename_id` to change a block's id.
+- `value`: the new attribute value (string, number, or boolean), or `null` to remove the
+  attribute entirely.
+
+**Semantics:** the attribute named `key` on the target block is set to `value`. If `value`
+is `null` and the attribute is not present, the operation is a noop (see §3.2 for noop
+handling). All other attributes and the block's body content are unchanged.
+
+**Protected key.** Setting `key: "id"` is always an error regardless of the proposed value.
+The block id is the on-wire identity and MUST be changed only through `rename_id`, which
+applies reference retargeting atomically.
+
+**Error conditions:**
+
+- `target_missing` (§3.5) — `id` does not exist in the document, or resolves to a
+  non-directive node.
+- `id_attribute_protected` (§3.5) — `key` is `"id"`.
+
+**Example — updating a numeric attribute:**
+
+```json
+{
+  "op": "update_attribute",
+  "id": "main-claim",
+  "key": "confidence",
+  "value": 0.95
+}
+```
+
+**Example — removing an attribute:**
+
+```json
+{
+  "op": "update_attribute",
+  "id": "main-claim",
+  "key": "draft",
+  "value": null
+}
+```
+
+#### 3.1.5 `rename_id`
+
+Changes the canonical id of a directive block and retargets all in-document references to
+that id atomically.
+
+**Required fields:**
+
+- `op`: `"rename_id"`
+- `from`: the current canonical id of the block to rename.
+- `to`: the new canonical id. MUST NOT already exist in the document.
+
+**Semantics:** the following changes are applied atomically:
+
+1. The `id=` attribute on the target block is changed from `from` to `to`.
+2. Every occurrence of `from` in the following reference positions is rewritten to `to`:
+   - `for="<from>"` attributes on any directive block.
+   - `parent="<from>"` attributes on any directive block.
+   - `dataset="<from>"` attributes on any directive block.
+   - `[[from]]` wikilinks in inline content throughout the document.
+
+No other content is modified. See §3.3 for what `rename_id` explicitly does NOT touch.
+
+**Error conditions:**
+
+- `target_missing` (§3.5) — `from` does not exist in the document, or resolves to a
+  non-directive node.
+- `id_conflict` (§3.5) — `to` already exists in the document.
+
+**Example — rename and see reference retargeting:**
+
+The following operation renames `old-claim` to `claim-v2`. Before the patch, another block
+carries `for="old-claim"`. After the patch, both the target block's `id=` and the `for=`
+reference are rewritten:
+
+```json
+{
+  "op": "rename_id",
+  "from": "old-claim",
+  "to": "claim-v2"
+}
+```
+
+Before:
+
+```
+::claim{id="old-claim" confidence=0.8}
+Original claim text.
+::
+
+::evidence{id="ev-1" for="old-claim"}
+Supporting data.
+::
+```
+
+After:
+
+```
+::claim{id="claim-v2" confidence=0.8}
+Original claim text.
+::
+
+::evidence{id="ev-1" for="claim-v2"}
+Supporting data.
+::
+```
+
+### 3.2 Atomicity per op-list
+
+A patch request MAY carry a list of operations. The list is atomic: either every operation
+in the list is applied and the new bytes are written, or no bytes are written at all.
+
+**Success path.** If all ops in the list resolve and all validation policy checks pass (§3.4),
+the changes are written as a single update. One transcript record is emitted per op.
+
+**Failure path.** If any op in the list fails:
+
+1. No bytes are written. The document on disk is unchanged.
+2. The failing op is recorded with `patch_result: "rejected"` and the relevant error code
+   in `diagnostics`.
+3. Every op that was virtually applied before the failing op is also recorded with
+   `patch_result: "rejected"` and `code: "op_list_aborted"` in its `diagnostics`. These
+   are rollback notifications, not new failures.
+4. The result is one transcript record per op that was attempted. There is no `partial`
+   result value; §5 specifies that `partial` is not a valid `patch_result`.
+
+Implementations MUST NOT commit partial writes. If the underlying I/O layer allows partial
+writes, the implementation MUST buffer the full result before committing to disk.
+
+### 3.3 `rename_id` — what is and is not retargeted
+
+`rename_id` retargets the following reference positions (and only these):
+
+| Reference type | Retargeted |
+|----------------|-----------|
+| `id=` on the target block itself | Yes |
+| `for="<from>"` on any block | Yes |
+| `parent="<from>"` on any block | Yes |
+| `dataset="<from>"` on any block | Yes |
+| `[[from]]` wikilinks in inline content | Yes |
+
+The following are explicitly NOT retargeted by `rename_id`:
+
+| Content | Not retargeted — reason |
+|---------|------------------------|
+| `aliases=` attribute on the target block | Aliases are human-curated metadata, not a reference graph. Renaming `claim-x` to `claim-y` does not make `claim-x` an alias of `claim-y`. |
+| `aliases=` on any other block | Same reason. |
+| String literals in prose that happen to match `from` | Plain text is not a reference; the parser has no way to distinguish an intentional reference from coincidental text. |
+| `id=` attributes on blocks other than the target | Those are their own canonical ids; renaming one does not affect others. |
+
+**Retaining the old id as an alias.** If the caller wants the old id to remain resolvable
+after the rename, they MUST emit an explicit `update_attribute` on the renamed block setting
+its `aliases=` attribute to include the old id. `rename_id` never does this automatically.
+
+### 3.4 Validation failure policy
+
+Two validation runs are associated with every patch attempt: **pre-validation** and
+**post-validation**. Both run the full document validator. The policy determines whether
+each run can block the patch.
+
+**Pre-validation.** Runs against the document state before applying any op. The result is
+recorded in the transcript as `pre_validation: "ok" | "warn" | "error"`. By default,
+pre-validation errors do NOT block the patch. The rationale: refusing to apply a patch to a
+document that already has validator errors would prevent agents from fixing those errors.
+
+A **strict mode** MAY be offered by implementations. When strict mode is active:
+- If `pre_validation` resolves to `"error"`, the entire op-list is rejected without applying
+  any op.
+- The transcript records `patch_result: "rejected"` with `code: "pre_validation_blocked"` in
+  `diagnostics`.
+
+**Post-validation.** Runs against the document state after applying all ops. The result is
+recorded as `post_validation: "ok" | "warn" | "error"`. Post-validation is always
+informational: the patch IS written regardless of result. The caller decides whether to act
+on `post_validation: "error"` (e.g., by emitting a follow-up corrective patch).
+
+**`expected_sha` mismatch.** If the caller supplies an `expected_sha` field (8-char display
+hash, Phase 0 compatibility), and it does not match `pre_sha` of the document when the
+patch is received, the entire op-list is rejected without applying any op. The transcript
+records `patch_result: "rejected"` with `code: "sha_mismatch"` in `diagnostics`.
+
+**`base_sha256` divergence.** If the caller supplies `base_sha256` (the full hash of the
+document state the caller prepared the patch against) and it differs from `pre_sha256` (the
+engine's observed pre-state), the patch is still applied. The transcript carries a
+`diagnostics` entry with `severity: "warning"` and `code: "base_sha_drift"`. This is a
+concurrency signal — it tells reviewers that the document was modified between when the
+agent read it and when the patch arrived. It does not block.
+
+Summary:
+
+| Condition | Default behavior | Strict mode |
+|-----------|-----------------|-------------|
+| Pre-existing validator errors | Apply, warn in transcript | Reject (`pre_validation_blocked`) |
+| Post-apply validator errors | Always informational; patch written | Same |
+| `expected_sha` mismatch (Phase 0) | Reject (`sha_mismatch`) | Same |
+| `base_sha256` ≠ `pre_sha256` | Apply, warning diagnostic (`base_sha_drift`) | Same |
+
+### 3.5 Error taxonomy
+
+The following codes are the complete v1.0 `PatchError` set. Implementations MUST surface
+errors as machine-readable `code` values in the `diagnostics` array of the transcript record
+(see §5 for the `Diagnostic` shape). Human-readable descriptions are in the `message` field.
+
+| Code | Meaning |
+|------|---------|
+| `target_missing` | The operation references an `id` (or `from`) that does not exist in the document. Also applies when the referenced id resolves to a non-directive node — patches operate on directive blocks only. |
+| `parent_missing` | `add_block.parent` references an id that does not exist, does not accept children, or `add_block.position` is out of range for the parent's children list. |
+| `id_conflict` | `rename_id.to` already exists in the document, or `add_block.content` declares an id that is already taken. |
+| `invalid_content` | `replace_block.content` or `add_block.content` is not a single parseable top-level directive block. Paragraphs, sections, headings, and other non-directive content are rejected with this code. |
+| `id_attribute_protected` | `update_attribute` was called with `key: "id"`. The block id MUST be changed only through `rename_id`. |
+| `sha_mismatch` | The caller-supplied `expected_sha` (8-char, Phase 0 field) did not match the document's pre-state hash. Also emitted when strict-mode `base_sha256` is checked and does not match. |
+| `pre_validation_blocked` | Strict mode is active and pre-validation returned `"error"`. The op-list was not applied. |
+| `op_list_aborted` | This op was virtually applied in memory before a later op in the same list failed. The list was rolled back; no bytes were written. Emitted in the transcript record for each preceding op in the failed list. |
+| `unsupported_op` | The `op` value is not in the §3.1 set, or the operation targets a book manifest (`.noma.yml`). Book manifests are not valid patch targets in v1.0. |
+
+New codes MAY be added in a minor version without breaking conforming implementations (the
+extension model in §1.3 applies: unknown codes in transcript records MUST be tolerated by
+readers). Removing a code from this table requires a major version bump.
 
 ## 4. Validation contract
 
