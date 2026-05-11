@@ -72,7 +72,8 @@ test("issue #5: frontmatter aliases attach to chapter root", () => {
   const doc = parse(
     `---\naliases:\n  - rp3\n  - risk-premia-3\n---\n# Risk Premia 3 (RP3)\n`,
   );
-  const root = doc.children[0] as SectionNode;
+  const root = doc.children.find((n): n is SectionNode => n.type === "section" && n.level === 1);
+  assert.ok(root, "expected a level-1 section");
   assert.deepEqual(
     [...new Set(root.aliases)].sort(),
     ["rp3", "risk-premia-3"].sort(),

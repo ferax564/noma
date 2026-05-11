@@ -79,6 +79,8 @@ function emit(node: Node, out: string[], depth: number): void {
     case "directive":
       emitDirective(node, out, depth);
       return;
+    case "frontmatter":
+      return;
     default: {
       const _exhaustive: never = node;
       void _exhaustive;

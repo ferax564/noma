@@ -360,6 +360,8 @@ function renderNode(node: Node, ctx: RenderCtx): string {
     }
     case "directive":
       return renderDirective(node, ctx);
+    case "frontmatter":
+      return "";
     default: {
       const _exhaustive: never = node;
       void _exhaustive;

@@ -6,6 +6,7 @@ import type {
   CodeNode,
   DirectiveNode,
   DocumentNode,
+  FrontmatterNode,
   ListNode,
   Node,
   ParagraphNode,
@@ -31,14 +32,17 @@ export function renderNoma(doc: DocumentNode, options: NomaRenderOptions = {}): 
   const out: string[] = [];
   const ctx = buildContext(doc);
 
-  const metaEntries = Object.entries(doc.meta).filter(
-    ([k]) => !stripInternal || !INTERNAL_META_KEYS.has(k),
-  );
-  if (metaEntries.length > 0) {
-    out.push("---");
-    out.push(yaml.dump(Object.fromEntries(metaEntries)).trimEnd());
-    out.push("---");
-    out.push("");
+  const hasFrontmatterNode = doc.children[0]?.type === "frontmatter";
+  if (!hasFrontmatterNode) {
+    const metaEntries = Object.entries(doc.meta).filter(
+      ([k]) => !stripInternal || !INTERNAL_META_KEYS.has(k),
+    );
+    if (metaEntries.length > 0) {
+      out.push("---");
+      out.push(yaml.dump(Object.fromEntries(metaEntries)).trimEnd());
+      out.push("---");
+      out.push("");
+    }
   }
 
   for (const child of doc.children) {
@@ -93,6 +97,8 @@ function renderNode(node: Node, colons: number, ctx: RenderCtx): string {
       return renderTable(node);
     case "directive":
       return renderDirective(node, colons, ctx);
+    case "frontmatter":
+      return `---\n${node.raw}\n---`;
     default: {
       const _exhaustive: never = node;
       void _exhaustive;

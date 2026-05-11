@@ -40,6 +40,14 @@ export interface DocumentNode extends NodeBase {
   children: Node[];
 }
 
+export interface FrontmatterNode extends NodeBase {
+  type: "frontmatter";
+  /** Parsed YAML object (string keys → arbitrary values). */
+  data: Record<string, unknown>;
+  /** Raw frontmatter source text (between the --- fences, exclusive). */
+  raw: string;
+}
+
 export interface SectionNode extends NodeBase {
   type: "section";
   level: number;
@@ -107,6 +115,7 @@ export interface DirectiveNode extends NodeBase {
 export type Node =
   | DocumentNode
   | SectionNode
+  | FrontmatterNode
   | ParagraphNode
   | CodeNode
   | ListNode
@@ -116,7 +125,7 @@ export type Node =
   | TableNode
   | DirectiveNode;
 
-export type BlockNode = Exclude<Node, ListItemNode>;
+export type BlockNode = Exclude<Node, ListItemNode | FrontmatterNode>;
 
 export interface Diagnostic {
   severity: "error" | "warning" | "info";

@@ -6,6 +6,7 @@ import type {
   CodeNode,
   DirectiveNode,
   DocumentNode,
+  FrontmatterNode,
   ListItemNode,
   ListNode,
   Node,
@@ -40,10 +41,21 @@ export function parse(source: string, options: ParseOptions = {}): DocumentNode 
   const normalized = source.replace(/\r\n?/g, "\n");
   const lines = normalized.split("\n");
 
-  const { meta, startLine } = extractFrontmatter(lines);
+  const { meta, raw, startLine, endLine: fmEnd } = extractFrontmatter(lines);
   const flatChildren = parseBlocks(lines, startLine, lines.length, 0);
-  const children = foldSections(flatChildren);
+  const children: Node[] = foldSections(flatChildren);
   for (const c of children) computeSectionEndLines(c);
+
+  if (raw !== "") {
+    const fmNode: FrontmatterNode = {
+      type: "frontmatter",
+      data: meta,
+      raw,
+      pos: { line: 1, column: 1 },
+      endLine: fmEnd,
+    };
+    children.unshift(fmNode);
+  }
 
   attachChapterAliases(children, meta, options.filename);
 
@@ -85,23 +97,25 @@ function attachChapterAliases(
 
 function extractFrontmatter(lines: string[]): {
   meta: Record<string, unknown>;
+  raw: string;
   startLine: number;
+  endLine: number;
 } {
   if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) {
-    return { meta: {}, startLine: 0 };
+    return { meta: {}, raw: "", startLine: 0, endLine: 0 };
   }
   for (let i = 1; i < lines.length; i++) {
     if (FRONTMATTER_RE.test(lines[i] ?? "")) {
-      const yamlText = lines.slice(1, i).join("\n");
-      const parsed = yaml.load(yamlText);
+      const raw = lines.slice(1, i).join("\n");
+      const parsed = yaml.load(raw);
       const meta =
         parsed && typeof parsed === "object" && !Array.isArray(parsed)
           ? (parsed as Record<string, unknown>)
           : {};
-      return { meta, startLine: i + 1 };
+      return { meta, raw, startLine: i + 1, endLine: i + 1 };
     }
   }
-  return { meta: {}, startLine: 0 };
+  return { meta: {}, raw: "", startLine: 0, endLine: 0 };
 }
 
 function parseBlocks(
