@@ -15,7 +15,73 @@ are provisional and may change before they reach stability in v1.1.
 
 ## 1. Conformance and versioning
 
-(draft in Task 28)
+### 1.1 What v1.0 stabilizes
+
+v1.0 locks the following five invariants. Downstream consumers (agent SDKs, third-party
+tools) MAY depend on these without expecting breaking changes within the v1.x line.
+
+- **Block identity on the wire.** Patch operations address blocks by canonical `id` only.
+  Aliases are resolution aids; they are not patch identity.
+- **Patch operation semantics.** The five ops — `replace_block`, `add_block`,
+  `delete_block`, `update_attribute`, `rename_id` — have stable names, required fields,
+  and observable effects as specified in §3. No new ops are added in v1.0.
+- **Validation contract (pre/post).** Every patch attempt yields a `pre_validation` and
+  `post_validation` summary (`ok` | `warn` | `error`). The conditions under which each
+  value is assigned are normative (§4).
+- **Transcript record shape.** The required and optional fields of a transcript entry, the
+  type of each field, and the rules for when each MUST or MAY be emitted are normative
+  (§5).
+- **Source span guarantees.** For valid (Tier-1) documents, spans are exact: 1-based
+  inclusive `[startLine, endLine]` on each node type as listed in §6. For invalid or
+  parser-recovered documents, spans are diagnostic hints only.
+
+### 1.2 Compatibility promises
+
+This spec follows [Semantic Versioning](https://semver.org) for the normative core (§§1–6).
+
+**Major version bump** — a breaking change that implementations MUST handle explicitly:
+- Removing a required field from the transcript record.
+- Changing the type of a required field.
+- Removing a patch op from the normative op set.
+- Changing an op's semantics in a way that alters previously-correct behavior.
+
+**Minor version bump** — backward-compatible additions:
+- Adding optional transcript fields.
+- Adding new op codes (expected to be rare; any new op ships with full §3 coverage).
+- Expanding the error-code taxonomy in §4.
+
+**Patch version bump** — clarifications and documentation only. No normative changes.
+
+::callout{tone="info"}
+Provisional annexes (A and B) are NOT covered by these promises. They may change in any
+v1.x release. See §1.4.
+::
+
+### 1.3 Extension model
+
+Implementations MUST ignore unknown fields in transcript records. A record carrying fields
+not listed in §5 is still a valid v1.0 transcript. This rule enables forward-compatible
+tooling: newer emitters can enrich records without breaking older readers.
+
+Implementations MUST ignore unknown attributes on Noma directive blocks. An attribute not
+recognized by a renderer or validator is passed through silently. This is the mechanism by
+which new attribute-based features (e.g., future `::claim{reviewed-by="…"}`) stay
+backward-compatible with implementations that pre-date them.
+
+Adding optional fields — to transcript records or to directive syntax — is always a
+backward-compatible change under this model.
+
+### 1.4 Provisional annexes
+
+Annex A (capability descriptor) and Annex B (MCP-over-stdio binding) are included in this
+RFC for discoverability. Each carries its own `status: provisional` marker and is versioned
+independently of the normative core.
+
+No compatibility promise applies to either annex. They MAY change — including in
+backward-incompatible ways — in any v1.x release. Provisional status reflects that real
+consumer pressure has not yet shaped these schemas into a stable form. The current expectation
+is that both will stabilize in v1.1 once the reference SDK (Phase 3) and at least one
+third-party binding exercise them under production conditions.
 
 ## 2. Document model
 
