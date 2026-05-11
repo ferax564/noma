@@ -4,6 +4,7 @@ import { parse } from "./parser.js";
 import { renderNoma } from "./renderer-noma.js";
 import { validate } from "./validator.js";
 import { walk } from "./ast.js";
+import { patchSource, type PatchOp } from "./patch.js";
 
 export interface FixtureReport {
   name: string;
@@ -102,6 +103,23 @@ function checkSpans(doc: ReturnType<typeof parse>, expectedPath: string): string
   return null;
 }
 
+function checkPatch(source: string, fixturePath: string): string | null {
+  const patchPath = join(fixturePath, "patch.json");
+  const postPath = join(fixturePath, "expected.post.noma");
+  if (!existsSync(patchPath) || !existsSync(postPath)) return null;
+  const raw = JSON.parse(readFileSync(patchPath, "utf8")) as PatchOp | PatchOp[];
+  const ops = Array.isArray(raw) ? raw : [raw];
+  let cur = source;
+  for (const op of ops) {
+    cur = patchSource(cur, op);
+  }
+  const expected = readFileSync(postPath, "utf8");
+  if (cur !== expected) {
+    return `patch output mismatch: got\n${cur}\n--- expected ---\n${expected}`;
+  }
+  return null;
+}
+
 function checkOne(fixturePath: string): FixtureReport {
   const name = relative(process.cwd(), fixturePath);
   const inputPath = join(fixturePath, "input.noma");
@@ -128,6 +146,8 @@ function checkOne(fixturePath: string): FixtureReport {
     const err = checkSpans(doc, spansPath);
     if (err) return { name, status: "fail", error: err };
   }
+  const err = checkPatch(source, fixturePath);
+  if (err) return { name, status: "fail", error: err };
   return { name, status: "pass" };
 }
 

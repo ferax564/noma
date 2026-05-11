@@ -86,3 +86,20 @@ test("verifyFixtureDir fails when expected.spans.json mismatches", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("verifyFixtureDir applies patch.json and checks expected.post.noma", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-verify-"));
+  try {
+    const fixDir = join(dir, "patch/replace");
+    mkdirSync(fixDir, { recursive: true });
+    writeFileSync(join(fixDir, "input.noma"), `::claim{id="x" confidence=0.5}\nhello\n::\n`);
+    writeFileSync(join(fixDir, "patch.json"), JSON.stringify([
+      { op: "update_attribute", id: "x", key: "confidence", value: 0.9 }
+    ]));
+    writeFileSync(join(fixDir, "expected.post.noma"), `::claim{id="x" confidence=0.9}\nhello\n::\n`);
+    const report = verifyFixtureDir(dir);
+    assert.equal(report.ok, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
