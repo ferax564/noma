@@ -1212,7 +1212,248 @@ No compatibility promise applies to this annex. See §1.4.
 **status: provisional.** One binding among future bindings; shape may change.
 ::
 
-(draft in Task 35)
+### B.1 What this binding is
+
+This annex specifies the **MCP-over-stdio binding** — one concrete realization of the
+Noma agent protocol carried over the [Model Context Protocol](https://modelcontextprotocol.io)
+(MCP) using the stdio transport. The tool package is published as `@noma/mcp-server`.
+
+The binding exposes four MCP tools: `read_doc`, `list_ids`, `validate_doc`, and
+`patch_block`. Each tool accepts a JSON input object and returns a JSON-encoded body in the
+MCP text content array. All four tools are grounded in the reference implementation at
+`packages/mcp-server/src/index.ts`.
+
+This is **one binding among future bindings**. HTTP and WebSocket bindings are v1.1+
+items (§B.8). The binding does not define new protocol semantics — patch operations,
+validation, and transcript records all follow the normative core (§§2–5).
+
+### B.2 Authentication and transport
+
+The stdio binding carries no authentication surface. The server process runs under the
+caller's process identity: filesystem access, file permissions, and OS-level credentials
+govern what operations succeed.
+
+This is acceptable for **local-agent integration** — e.g., Claude Code, single-machine
+MCP clients — where the calling process is already trusted. It is NOT acceptable as a
+network service or multi-tenant deployment.
+
+Future bindings (HTTP, WebSocket) WILL have authentication requirements. Those bindings
+are out of v1.0 scope; see §B.8.
+
+### B.3 Tool: `read_doc`
+
+**Purpose.** Parse a `.noma` file and return a shallow block summary of the full document
+tree. Agents use this to orient themselves before issuing patch operations.
+
+**Input schema.**
+
+```json
+{ "file": "string — absolute path to the .noma file" }
+```
+
+**Output.** JSON-encoded object. Each block summary in the `blocks` array reflects a node
+in the document tree, in document order, including nested children:
+
+```ts
+{
+  blocks: Array<{
+    id?:         string;         // canonical id, if present
+    type:        string;         // "directive", "section", "paragraph", "code", etc.
+    name?:       string;         // directive name (present only when type = "directive")
+    attrs?:      Record<string, string | number | boolean>;  // directive attributes (excludes id)
+    title?:      string;         // section title (present when type = "section")
+    level?:      number;         // heading depth (present when type = "section")
+    aliases?:    string[];       // alias list, if any
+    childCount:  number;         // number of direct children
+    lines:       [number, number];  // 1-based inclusive [startLine, endLine]
+    patchable:   boolean;        // true iff the block has a non-empty canonical id
+  }>
+}
+```
+
+`patchable: true` means the block carries a canonical id and MAY be addressed by patch
+operations. `patchable: false` blocks (anonymous paragraphs, auto-unlabeled code fences,
+etc.) MUST NOT be targeted by patch operations.
+
+**System errors** (file not found, permission denied, book manifest path) are returned
+with `isError: true` in the MCP response. Book manifests (`.noma.yml`) are not valid
+targets for this tool.
+
+### B.4 Tool: `list_ids`
+
+**Purpose.** Enumerate the canonical IDs present in a `.noma` file and the complete alias
+map. Agents use this to resolve an alias to its canonical id before constructing a patch
+(§2.2).
+
+**Input schema.**
+
+```json
+{ "file": "string — absolute path to the .noma file" }
+```
+
+**Output.**
+
+```ts
+{
+  ids:     string[];                  // ordered list of all canonical ids in the document
+  aliases: Record<string, string>;    // alias → canonical id (one entry per alias)
+}
+```
+
+The `aliases` map is keyed by alias value; each value is the canonical id of the node
+that alias resolves to. An agent that encounters `[[risks]]` SHOULD look up `"risks"` in
+this map to obtain the canonical id before emitting a `patch_block` call.
+
+**System errors** are returned with `isError: true`. Book manifests are not valid targets.
+
+### B.5 Tool: `validate_doc`
+
+**Purpose.** Run the Noma validator against a `.noma` file. The validation profile is
+read from the document frontmatter (`profile:` / `profiles:` key). This is equivalent to
+`noma check` but returns machine-readable JSON rather than terminal output.
+
+**Input schema.**
+
+```json
+{ "file": "string — absolute path to the .noma file" }
+```
+
+**Output.**
+
+```ts
+{
+  ok:          boolean;       // true iff no "error" severity diagnostics are present
+  diagnostics: Diagnostic[];  // full structured array; shape follows §4.3
+}
+```
+
+The `ok` field is `true` when no diagnostic carries `severity: "error"`. Warning-only
+documents return `ok: true`. Agents SHOULD inspect the `diagnostics` array for warnings
+before issuing corrective patches.
+
+Note: `ok` is boolean, not the `"ok" | "warn" | "error"` summary string used in the
+transcript record (§5.2). The boolean form is sufficient for this read-only tool because
+the transcript summary string is a patch-flow concept. Callers that need the three-value
+form MAY derive it from `diagnostics` using the §4.2 derivation rule.
+
+**System errors** are returned with `isError: true`. Book manifests are not valid targets.
+
+### B.6 Tool: `patch_block`
+
+**Purpose.** Apply a block-level patch operation to a `.noma` file. Implements the §3
+semantics. Appends one v1.0 transcript record to `<file>.patches` (§5) regardless of
+outcome.
+
+**Input schema.** All fields follow the Zod schema in `packages/mcp-server/src/index.ts`.
+
+```ts
+{
+  file:           string;          // absolute path to the .noma file (required)
+  op:             PatchOp;         // discriminated union of the five §3.1 ops (required)
+  reason?:        string;          // agent-provided justification; stored in transcript
+  expected_sha?:  string;          // SHA-256[:8] of file before patch — prevents lost updates
+  actor?: {
+    kind:     "human" | "agent" | "tool";
+    name:     string;
+    model?:   string;
+    version?: string;
+  };                               // caller identity recorded in transcript; defaults to
+                                   // { kind: "agent", name: "unknown" } if absent
+  base_sha256?:   string;          // 64-char SHA-256 of the doc state the agent prepared against
+  parent_op_id?:  string;          // UUID of a causally prior transcript record
+}
+```
+
+The `op` field MUST be one of the five v1.0 op objects defined in §3.1. Book manifest
+paths (`.noma.yml`) are rejected as `unsupported_op`.
+
+**Output — success.** When the patch engine completes without a system fault:
+
+```ts
+{
+  ok:               true;
+  post_validation:  "ok" | "warn" | "error";   // derived from postDoc diagnostics
+  transcript_entry: TranscriptLine;             // the complete v1.0 record written to .patches
+  diagnostics:      Diagnostic[];               // post-apply diagnostic array (§4.3 shape)
+}
+```
+
+`post_validation` and `diagnostics` always reflect the post-apply state. When `patch_result`
+in `transcript_entry` is `"noop"` (the op resolved but produced byte-identical output),
+the file is NOT rewritten; `post_validation` still reflects the validated (unchanged)
+document.
+
+**Output — failure.**
+
+```ts
+{ ok: false; error: string; code?: string }
+```
+
+`code` is a §3.5 error code when the failure is a patch engine error (e.g., `target_missing`,
+`sha_mismatch`). `code` is absent when the failure is a system fault (filesystem error,
+unexpected exception).
+
+**MCP error envelope.** The tool uses `isError: true` **only** for system faults
+(filesystem read/write failure, unexpected exception, book manifest path). User-facing
+patch errors — `target_missing`, `sha_mismatch`, `id_conflict`, `invalid_content`, and
+all other §3.5 codes — are returned as normal MCP content with `ok: false` in the body.
+This separation lets agents inspect `code` and branch on failure type without unwinding
+the MCP call stack.
+
+**Side effects:**
+
+- The file IS rewritten when `patch_result: "applied"`.
+- The file is NOT rewritten when `patch_result: "noop"` or `"rejected"`.
+- The transcript file `<file>.patches` is appended in ALL cases, including rejections and
+  noops. Transcript writes that fail are silently swallowed — a transcript failure MUST
+  NOT propagate as a tool error.
+
+### B.7 Error envelope
+
+The MCP error envelope (`isError: true`) is reserved for **system errors** — conditions
+the caller cannot inspect or recover from by examining the patch body:
+
+- Filesystem errors: file not found, permission denied, write failure.
+- Transport or unexpected runtime exceptions.
+- Book manifest path supplied as `file` (the book manifest is not a valid patch target
+  per §2.3; this is treated as a system boundary error, not a user-facing patch error).
+
+All other failures — every §3.5 `PatchError` code — are returned as normal MCP content
+(`isError` absent or `false`) with `{ ok: false, error: string, code: string }`. This
+two-tier distinction means:
+
+- **System error path** (`isError: true`): the caller knows something went wrong at the
+  infrastructure level; no `code` value to inspect; the tool cannot be retried without
+  changing the environment.
+- **User error path** (`ok: false` body): the caller receives a machine-readable `code`
+  value from §3.5 and MAY take corrective action (resolve the target id, fix the content
+  fragment, update `expected_sha`, etc.).
+
+Implementations MUST NOT surface user-facing patch errors as `isError: true`. Doing so
+would collapse the distinction and force callers to parse error strings for `code` values.
+
+### B.8 Provisional notes
+
+This binding is `status: provisional`. The following items are known to be subject to
+change before v1.1 freezes the binding shape:
+
+- **Non-functional fixes.** The binding MAY receive patch releases (v1.0.x) for
+  documentation corrections, field rename clarity, or schema alignment with the normative
+  core. No semantic changes will ship as patch releases.
+- **HTTP binding.** A future `@noma/http-server` binding over HTTP/1.1 or HTTP/2 will
+  expose the same four tools plus authentication requirements. HTTP binding is a v1.1
+  item. It will define session tokens, per-request identity, and transport-layer security
+  requirements not present in the stdio binding.
+- **WebSocket binding.** A persistent-session WebSocket binding is v1.1+. It MAY support
+  server-sent events for live validation feedback and multi-op transaction grouping.
+- **New tools.** v1.1 MAY add: `patch_block_list` (batched atomic op list), `transcript_read`
+  (read-only transcript introspection), and `describe_capabilities` (sidecar descriptor
+  query). These are not in scope for v1.0.
+- **Capability enforcement.** The `patch_block` tool does NOT consult the capability
+  descriptor sidecar (Annex A) in v1.0. All five ops remain available to any caller. See
+  Annex A.4 for the enforcement deferral rationale.
+
+No compatibility promise applies to this annex. See §1.4.
 
 ## Annex C — Conformance suite
 
