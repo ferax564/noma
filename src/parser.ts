@@ -49,6 +49,8 @@ export function parse(source: string, options: ParseOptions = {}): DocumentNode 
 
   return {
     type: "document",
+    pos: { line: 1, column: 1 },
+    endLine: Math.max(1, lines.length - (normalized.endsWith("\n") ? 1 : 0)),
     meta: { ...(options.filename ? { filename: options.filename } : {}), ...meta },
     children,
   };
