@@ -193,7 +193,12 @@ function main(): void {
   if (cmd === "verify") {
     const dir = args.file;
     if (!dir) { console.error("noma verify: <fixture-dir> required"); process.exit(2); }
-    const report = verifyFixtureDir(resolve(dir));
+    const resolvedDir = resolve(dir);
+    if (!existsSync(resolvedDir)) {
+      console.error(`noma verify: ${dir} does not exist`);
+      process.exit(2);
+    }
+    const report = verifyFixtureDir(resolvedDir);
     for (const f of report.fixtures) {
       const tag = f.status === "pass" ? "PASS" : f.status === "fail" ? "FAIL" : "SKIP";
       console.log(`${tag}  ${f.name}${f.error ? `  — ${f.error}` : ""}`);

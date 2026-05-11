@@ -46,3 +46,8 @@ test("verifyFixtureDir fails when expected.ids.json mismatches", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("verifyFixtureDir throws ENOENT when fixture dir does not exist", () => {
+  const ghost = "/tmp/noma-verify-nonexistent-" + Math.random().toString(36).slice(2);
+  assert.throws(() => verifyFixtureDir(ghost), /ENOENT|no such file/);
+});
