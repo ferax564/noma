@@ -1457,4 +1457,210 @@ No compatibility promise applies to this annex. See §1.4.
 
 ## Annex C — Conformance suite
 
-(draft in Task 36)
+### C.1 Purpose and scope
+
+The conformance suite is the v1.0 specification's executable validator. Any implementation
+claiming "Noma Agent Protocol v1.0 compliant" MUST pass every fixture in the corpus defined
+in §C.5.
+
+The suite exercises the following areas of the protocol:
+
+- **Parsing.** Input files MUST produce the expected canonical ID set and alias map.
+- **Validation.** Inputs that violate protocol invariants MUST produce the expected
+  diagnostic codes at the expected severities.
+- **Source-to-source roundtrip.** For valid inputs, `renderNoma(parse(x))` MUST produce
+  the expected bytes, and `parse(renderNoma(parse(x)))` MUST produce a structurally
+  identical AST to `parse(x)`.
+- **Span fidelity.** For fixtures that declare `expected.spans.json`, every node-with-id
+  MUST have `startLine` and `endLine` matching the fixture's declared values.
+- **Patch op semantics.** Applying the op(s) in `patch.json` to `input.noma` MUST produce
+  byte-exact output matching `expected.post.noma`.
+
+Passing the corpus confirms that the five locked patch operations (§3.4), the validation
+contract (§4), the span guarantees (§6), and the roundtrip property all behave as
+specified.
+
+### C.2 Fixture directory layout
+
+All fixtures live under `examples/conformance/`, organized into three tracks:
+
+```
+examples/conformance/
+  valid/<name>/    — happy-path inputs; no validator errors expected
+  invalid/<name>/  — inputs that exercise validator diagnostics
+  patch/<name>/    — patch op application; at least one op in patch.json
+```
+
+A fixture is a **directory** containing `input.noma` plus zero or more expected-output
+files (see §C.3). The `noma verify` harness discovers fixtures by walking the corpus root
+and treating any directory that contains `input.noma` as a fixture.
+
+Fixture names MUST be unique within the corpus (across all three tracks). Names MUST use
+lowercase ASCII letters, digits, and hyphens only. Fixture directories MUST NOT be nested
+more than one level below their track directory.
+
+### C.3 Expected-file vocabulary
+
+Each expected-output file is optional unless otherwise noted. An implementation claiming
+v1.0 conformance MUST check every expected-output file present in a fixture.
+
+**`input.noma` — REQUIRED.**
+The fixture's `.noma` source, read verbatim as UTF-8. The verify harness parses this file
+to produce the document AST used by all subsequent checks within the fixture.
+
+**`expected.ids.json` — OPTIONAL.**
+A JSON object with schema:
+
+```json
+{ "canonical": ["id1", "id2"], "aliases": { "id1": ["alias-a"] } }
+```
+
+`canonical` is the full list of canonical IDs in document-walk order (sorted before
+comparison). `aliases` is a map from canonical ID to the list of alias strings registered
+on that node. When present, the verify harness MUST compare the parsed document's ID set
+and alias map against this file. Order within each list is not significant; both sides are
+sorted before comparison.
+
+**`expected.diagnostics.json` — OPTIONAL.**
+A JSON array of objects with schema:
+
+```json
+[{ "code": "duplicate-id", "severity": "error" }]
+```
+
+When present, the verify harness runs the validator on the parsed document and MUST
+compare the resulting `{ code, severity }` pairs against this array. Message text and
+source positions are NOT asserted — only `code` and `severity`. Both sides are sorted
+before comparison.
+
+**`expected.roundtrip.noma` — OPTIONAL.**
+The exact byte sequence of `renderNoma(parse(input.noma))`. When present, the verify
+harness MUST:
+
+1. Compare the rendered output against this file byte-exactly.
+2. Re-parse the rendered output and compare the resulting AST against `parse(input.noma)`
+   structurally. This asserts the roundtrip property:
+   `parse(renderNoma(parse(x))) ≡ parse(x)`.
+
+**`expected.spans.json` — OPTIONAL.**
+A JSON object mapping node ID to span:
+
+```json
+{ "intro": { "startLine": 3, "endLine": 7 } }
+```
+
+Line numbers are 1-based and inclusive. When present, the verify harness MUST check
+every node-with-id against this map using the node's `pos.line` (startLine) and
+`endLine` fields. Nodes whose IDs are absent from the map are skipped — partial span
+assertions are valid.
+
+**`patch.json` — OPTIONAL.**
+A single `PatchOp` object or a JSON array of `PatchOp` objects. When present (and
+`expected.post.noma` is also present), the verify harness MUST apply the op(s) to
+`input.noma` in order using the reference `patchSource` implementation, then compare
+the result against `expected.post.noma` byte-exactly.
+
+**`expected.post.noma` — OPTIONAL, REQUIRED if `patch.json` is present.**
+The exact byte sequence of the document after all patch ops in `patch.json` have been
+applied. The verify harness MUST NOT pass a fixture that declares `patch.json` but
+omits `expected.post.noma`.
+
+### C.4 The `noma verify` CLI
+
+**Invocation:**
+
+```
+noma verify <fixture-dir>
+```
+
+`<fixture-dir>` is the path to the corpus root (typically `examples/conformance/`).
+Nested discovery is recursive — the harness walks all subdirectories and treats any
+directory containing `input.noma` as a fixture.
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | All discovered fixtures pass. |
+| 1 | At least one fixture fails. |
+| 2 | `<fixture-dir>` argument is absent or the path does not exist. |
+
+**Output format:**
+
+The harness emits one line per fixture, then a summary line:
+
+```
+PASS  examples/conformance/valid/basic-section
+FAIL  examples/conformance/patch/rename_id  — span mismatch for "intro": got [3, 9], expected [3, 7]
+SKIP  examples/conformance/valid/aliases
+
+14 fixtures, 13 passed
+```
+
+Fixtures are sorted alphabetically by path before output. Output MUST be deterministic:
+given the same corpus, the same invocation MUST produce byte-identical output across runs.
+
+The `SKIP` status is reserved for fixtures the harness cannot evaluate (e.g., a fixture
+directory that is missing `input.noma` entirely). Skipped fixtures are NOT counted as
+passed. A corpus with any skipped fixture SHOULD be treated as a configuration error by
+CI.
+
+**Wiring into CI:**
+
+Implementations MUST run `noma verify examples/conformance` as part of their standard
+test suite. The `pages.yml` workflow runs `npm test` which invokes the verify harness via
+the test suite. A non-zero exit code MUST fail the build.
+
+### C.5 Minimum corpus (v1.0)
+
+v1.0 ships 14 fixtures. Implementations claiming v1.0 conformance MUST pass all 14.
+
+::table{align="l,l"}
+| Fixture | Exercises |
+| `valid/basic-section` | Implicit section IDs derived from heading slugs; paragraph spans. |
+| `valid/explicit-section` | `::section{}` directive with an explicit `id=` attribute; span exactness. |
+| `valid/aliases` | Alias registration via heading `{aliases="..."}` and frontmatter; `expected.ids.json` alias map comparison. |
+| `valid/inline-table` | Pipe-table parsing, column alignment, inline markdown inside cells. |
+| `valid/code-fence-with-colons` | Fenced code blocks suppress `::` directive detection inside their body (§3.9). |
+| `valid/frontmatter-only` | YAML frontmatter sub-node; document span when no block content follows. |
+| `patch/replace_block` | `replace_block` op: target resolves, content replaces the addressed block byte-exactly. |
+| `patch/add_block` | `add_block` op: new block inserted at the declared position relative to `parent`. |
+| `patch/delete_block` | `delete_block` op: addressed block and its children removed; surrounding whitespace normalized. |
+| `patch/update_attribute` | `update_attribute` op: named attribute updated on target node; `id` attribute is protected (`id_attribute_protected`). |
+| `patch/rename_id` | `rename_id` op: canonical ID changed; `for=`, `parent=`, `dataset=`, and `[[wikilink]]` references retargeted; `aliases=` attribute untouched. |
+| `patch/replay-chain` | Three-op list applied in order; final state matches `expected.post.noma`; establishes transcript-replay equivalence. |
+| `invalid/duplicate-id` | Two nodes carry the same canonical `id`; validator emits `duplicate-id` at `error` severity. |
+| `invalid/missing-evidence-target` | An `evidence` directive references a non-existent `claim` ID via `for=`; validator emits a broken-reference diagnostic at `error` severity. |
+::
+
+The 6 valid fixtures cover core parsing properties. The 6 patch fixtures cover one fixture
+per op plus a multi-op replay chain. The 2 invalid fixtures cover the two most common
+validator error classes.
+
+**Corpus evolution rules:**
+
+- Adding fixtures in a v1.x minor release is backward-compatible. Existing conformant
+  implementations remain conformant.
+- Removing fixtures from the minimum corpus requires a major version bump.
+- Fixture contents (expected-output files) MUST NOT change in a patch release. A
+  content change is at minimum a minor release; a change that causes a previously-passing
+  conformant implementation to fail is a major release.
+
+### C.6 Adding a new fixture
+
+To extend the corpus:
+
+1. Choose the appropriate track (`valid/`, `invalid/`, or `patch/`) based on what the
+   fixture exercises.
+2. Create a directory with a descriptive, lowercase-hyphenated name under that track.
+3. Add `input.noma` containing the fixture's source.
+4. Add the expected-output files (§C.3) relevant to what the fixture exercises. A fixture
+   MAY contain a subset of expected-output files — it need only assert the properties
+   germane to its purpose.
+5. Run `npm run noma -- verify examples/conformance` to confirm the new fixture passes.
+6. Submit via pull request. Every corpus change MUST include a CHANGELOG entry under
+   `[Unreleased]` describing the fixture and what property it covers.
+
+Fixture authors SHOULD prefer narrow fixtures: each fixture SHOULD exercise one protocol
+property clearly. Fixtures that attempt to cover many properties at once are harder to
+diagnose when they fail and harder to keep synchronized as the spec evolves.
