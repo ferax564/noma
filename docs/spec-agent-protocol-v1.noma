@@ -1,0 +1,58 @@
+---
+title: Noma Agent Protocol
+version: 1.0
+status: stable
+date: 2026-05-11
+---
+
+# Noma Agent Protocol v1.0
+
+::summary
+The contract agents follow when editing Noma documents. Covers block identity, patch
+operations, validation, transcript records, and source-span guarantees. Annexes (A, B)
+are provisional and may change before they reach stability in v1.1.
+::
+
+## 1. Conformance and versioning
+
+(draft in Task 28)
+
+## 2. Document model
+
+(draft in Task 29)
+
+## 3. Patch operation semantics
+
+(draft in Task 30)
+
+## 4. Validation contract
+
+(draft in Task 31)
+
+## 5. Transcript record
+
+(draft in Task 32)
+
+## 6. Source span guarantees
+
+(draft in Task 33)
+
+## Annex A — Capability descriptor (provisional)
+
+::callout{tone="warning"}
+**status: provisional.** Shape may change before enforcement code ships in v1.1.
+::
+
+(draft in Task 34)
+
+## Annex B — MCP-over-stdio binding (provisional)
+
+::callout{tone="warning"}
+**status: provisional.** One binding among future bindings; shape may change.
+::
+
+(draft in Task 35)
+
+## Annex C — Conformance suite
+
+(draft in Task 36)
