@@ -1,0 +1,9 @@
+# Demo
+
+```
+::not-a-directive{id="x"}
+inside code
+::
+```
+
+After the fence.
