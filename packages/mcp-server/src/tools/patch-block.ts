@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import { parse, patchSource, validate, isBookManifestPath, PatchError } from "@noma/cli";
-import type { PatchOp } from "@noma/cli";
+import type { Diagnostic, PatchOp } from "@noma/cli";
 import { sha256hex } from "../sha.js";
 import { appendTranscript } from "../transcript.js";
 import { summarizeValidation } from "./validate-doc.js";
@@ -18,14 +18,14 @@ export interface PatchBlockArgs {
 }
 
 type PatchBlockResult =
-  | { ok: true; post_validation: ValidationSummary; transcript_entry: TranscriptLine }
-  | { ok: false; error: string };
+  | { ok: true; post_validation: ValidationSummary; transcript_entry: TranscriptLine; diagnostics: Diagnostic[] }
+  | { ok: false; error: string; system?: true };
 
 export function patchBlock(args: PatchBlockArgs): PatchBlockResult {
   const { file, op, reason = "", expected_sha } = args;
 
   if (isBookManifestPath(file)) {
-    return { ok: false, error: "book manifests are not supported by patch_block" };
+    return { ok: false, error: "book manifests are not supported by patch_block", system: true };
   }
 
   if ("content" in op && typeof op.content === "string" && Buffer.byteLength(op.content, "utf8") > MAX_CONTENT_BYTES) {
@@ -36,7 +36,7 @@ export function patchBlock(args: PatchBlockArgs): PatchBlockResult {
   try {
     source = readFileSync(file, "utf8");
   } catch (e) {
-    return { ok: false, error: String(e) };
+    return { ok: false, error: String(e), system: true };
   }
 
   const preBytes = Buffer.from(source, "utf8");
@@ -66,11 +66,12 @@ export function patchBlock(args: PatchBlockArgs): PatchBlockResult {
     renameSync(tmp, file);
   } catch (e) {
     try { unlinkSync(tmp); } catch {}
-    return { ok: false, error: String(e) };
+    return { ok: false, error: String(e), system: true };
   }
 
   const postDoc = parse(patched);
-  const post_validation = summarizeValidation(validate(postDoc));
+  const postDiagnostics = validate(postDoc);
+  const post_validation = summarizeValidation(postDiagnostics);
 
   const transcript_entry: TranscriptLine = {
     v: 1,
@@ -84,7 +85,7 @@ export function patchBlock(args: PatchBlockArgs): PatchBlockResult {
     post_sha,
   };
 
-  appendTranscript(file + ".patches", transcript_entry);
+  try { appendTranscript(file + ".patches", transcript_entry); } catch {}
 
-  return { ok: true, post_validation, transcript_entry };
+  return { ok: true, post_validation, transcript_entry, diagnostics: postDiagnostics };
 }

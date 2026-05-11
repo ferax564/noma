@@ -34,7 +34,7 @@ function nodeChildren(node: Node): Node[] {
 
 function collectBlocks(nodes: Node[], out: BlockSummary[]): void {
   for (const node of nodes) {
-    const startLine = node.pos?.line ?? 0;
+    const startLine = node.pos?.line ?? 1;
     const endLine = node.endLine ?? startLine;
     const children = nodeChildren(node);
     const base: BlockSummary = {

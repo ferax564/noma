@@ -75,7 +75,11 @@ server.tool(
   async ({ file, op, reason, expected_sha }) => {
     const result = patchBlock({ file, op: op as PatchOp, reason, expected_sha });
     if (!result.ok) {
-      return { isError: true, content: [{ type: "text", text: JSON.stringify(result) }] };
+      const { system, ...body } = result;
+      if (system) {
+        return { isError: true, content: [{ type: "text", text: JSON.stringify(body) }] };
+      }
+      return { content: [{ type: "text", text: JSON.stringify(body) }] };
     }
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   },
