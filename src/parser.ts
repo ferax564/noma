@@ -164,7 +164,7 @@ function parseBlocks(
       const headingAttrs = heading[3] ? parseAttrs(`{${heading[3]}}`) : {};
       const explicitId =
         typeof headingAttrs.id === "string" ? headingAttrs.id : undefined;
-      const section: SectionNode = {
+      const section: SectionNode & { _idIsExplicit?: boolean } = {
         type: "section",
         id: explicitId ?? slugify(title),
         level,
@@ -172,6 +172,8 @@ function parseBlocks(
         children: [],
         pos: { line: i + 1, column: 1 },
       };
+      if (!explicitId) section._idIsExplicit = false;
+      else section._idIsExplicit = true;
       const aliasesAttr = headingAttrs.aliases;
       if (typeof aliasesAttr === "string") {
         const list = aliasesAttr
@@ -441,6 +443,7 @@ function computeSectionEndLines(node: Node): number {
 function foldSections(nodes: Node[]): Node[] {
   const root: Node[] = [];
   const stack: SectionNode[] = [];
+  const seenSlugSections = new Set<string>();
 
   const push = (node: Node) => {
     const parent = stack[stack.length - 1];
@@ -450,15 +453,32 @@ function foldSections(nodes: Node[]): Node[] {
 
   for (const node of nodes) {
     if (node.type === "section") {
-      while (stack.length > 0 && stack[stack.length - 1]!.level >= node.level) {
+      const section = node as SectionNode & { _idIsExplicit?: boolean };
+      const isExplicit = section._idIsExplicit === true;
+
+      if (!isExplicit) {
+        const slug = section.id!;
+        if (seenSlugSections.has(slug)) {
+          let n = 2;
+          while (seenSlugSections.has(`${slug}-${n}`)) n++;
+          section.id = `${slug}-${n}`;
+          seenSlugSections.add(section.id);
+        } else {
+          seenSlugSections.add(slug);
+        }
+      }
+
+      while (stack.length > 0 && stack[stack.length - 1]!.level >= section.level) {
         stack.pop();
       }
       push(node);
-      stack.push(node);
+      stack.push(section);
+      delete section._idIsExplicit;
       continue;
     }
     push(node);
   }
+
   return root;
 }
 
