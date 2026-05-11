@@ -13,6 +13,7 @@ import { inlineDatasetSources } from "./loader.js";
 import { renderSite } from "./renderer-site.js";
 import { validate, formatDiagnostics } from "./validator.js";
 import { formatSource } from "./fmt.js";
+import { verifyFixtureDir } from "./verify.js";
 
 const HELP = `noma — readable document format for humans and agents
 
@@ -23,6 +24,7 @@ Usage:
   noma export <file.noma|book.yml> [opts]    Alias for render --to json
   noma patch <file.noma> [opts]              Apply block-level patch ops
   noma fmt   <file.noma> [--inplace|--out p] Re-align pipe tables in source
+  noma verify <fixture-dir>                  Run conformance suite against fixtures
   noma --help                                Show this help
 
 Render options:
@@ -186,6 +188,18 @@ function main(): void {
       "Run `npx degit ferax564/noma/templates/starter my-doc` to scaffold a new Noma project.\n",
     );
     return;
+  }
+
+  if (cmd === "verify") {
+    const dir = args.file;
+    if (!dir) { console.error("noma verify: <fixture-dir> required"); process.exit(2); }
+    const report = verifyFixtureDir(resolve(dir));
+    for (const f of report.fixtures) {
+      const tag = f.status === "pass" ? "PASS" : f.status === "fail" ? "FAIL" : "SKIP";
+      console.log(`${tag}  ${f.name}${f.error ? `  — ${f.error}` : ""}`);
+    }
+    console.log(`\n${report.fixtures.length} fixtures, ${report.fixtures.filter((f) => f.status === "pass").length} passed`);
+    process.exit(report.ok ? 0 : 1);
   }
 
   if (!args.file) {
