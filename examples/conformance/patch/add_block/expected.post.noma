@@ -1,0 +1,9 @@
+::section{id="risks"}
+::risk{id="r0" severity="high"}
+New top risk.
+::
+
+::risk{id="r1" severity="low"}
+First risk.
+::
+::

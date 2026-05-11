@@ -1,0 +1,5 @@
+::section{id="risks"}
+::risk{id="r1" severity="low"}
+First risk.
+::
+::
