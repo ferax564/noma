@@ -38,7 +38,7 @@ server.tool(
 server.tool(
   "list_ids",
   "Return all canonical block IDs and alias map for a .noma file.",
-  { file: z.string() },
+  { file: z.string().describe("Absolute path to the .noma file") },
   async ({ file }) => {
     try {
       const result = listIds(file);

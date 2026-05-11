@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import { parse, patchSource, validate, isBookManifestPath, PatchError } from "@noma/cli";
@@ -65,7 +65,7 @@ export function patchBlock(args: PatchBlockArgs): PatchBlockResult {
     writeFileSync(tmp, patched, "utf8");
     renameSync(tmp, file);
   } catch (e) {
-    try { renameSync(tmp, tmp + ".dead"); } catch {}
+    try { unlinkSync(tmp); } catch {}
     return { ok: false, error: String(e) };
   }
 
