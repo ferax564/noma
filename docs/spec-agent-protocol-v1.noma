@@ -85,7 +85,77 @@ third-party binding exercise them under production conditions.
 
 ## 2. Document model
 
-(draft in Task 29)
+### 2.1 Addressable blocks — canonical IDs only on wire
+
+Every addressable node in a Noma document carries a **canonical ID**. Canonical IDs are
+the sole block identity on the wire: patch operations MUST address blocks by canonical ID.
+
+A canonical ID originates from one of two sources:
+
+- **Explicit:** `::block{id="my-id"}` — the value of the `id=` attribute as written.
+- **Implicit (heading slugs):** `# My Heading` auto-generates a section with `id="my-heading"`.
+  Slug derivation is deterministic and stable across re-parses of unchanged content.
+
+**Collision suffixing.** When two or more headings slugify to the same id, the second
+occurrence receives the suffix `-2`, the third `-3`, and so on. The suffix is applied
+deterministically in document order. The canonical id after suffixing (e.g., `my-heading-2`)
+is the value that MUST appear on the wire.
+
+Explicit `{id="…"}` overrides are NOT suffixed. If two explicit-id directives carry the
+same id, the validator emits a `duplicate-id` diagnostic (`error` severity). Agents MUST
+NOT emit patches addressing a document with known `duplicate-id` errors, as block identity
+is ambiguous.
+
+Implementations MUST use the post-suffix canonical id in all patch operations. Using a
+pre-suffix slug or a guess at the suffix value without resolving against the parsed document
+is a protocol violation.
+
+### 2.2 Aliases as resolution aids
+
+A block may carry one or more **aliases** — alternative identifiers that resolve to the
+same node. Aliases arise from four sources:
+
+- `aliases=` attribute on a directive block: `::section{id="overview" aliases="intro,summary"}`.
+- `aliases:` list in document frontmatter (attached to the root section).
+- Filename slug in book mode: the chapter filename without extension is auto-attached as an
+  alias of the root section.
+- Legacy unscoped slug in book mode: when scoping elevates an ID to `chapter/original`,
+  `original` is retained as an alias so pre-scoping references continue to resolve.
+
+Aliases are valid for: **discovery** (exploring a document's structure), **wikilink
+resolution** (`[[alias]]` links), **validator cross-reference checks**, and **UI lookups**.
+Aliases are NOT patch identity.
+
+If an agent begins discovery from an alias — for example, navigating a `[[risks]]` wikilink
+— it MUST resolve the alias to the canonical id before emitting a patch. Patches carrying
+an alias value in an `id` field SHOULD be rejected by conforming implementations, since
+aliases may be non-unique across future edits and do not carry the suffix-safety guarantees
+of canonical ids.
+
+::callout{tone="info"}
+Resolving alias → canonical is a read operation against the parsed document, not a
+network call. Conforming SDKs expose this as a synchronous lookup before constructing
+the patch payload.
+::
+
+### 2.3 Book-mode scoping is a parser concept, not a wire concept
+
+In **book mode** (`noma render book.noma.yml`), the parser applies ID scoping: every
+level-≥2 section id in a chapter becomes `<chapter-slug>/<original-id>` at parse time.
+This avoids cross-chapter id collisions inside the assembled document tree.
+
+Scoping is a parsing operation only. It does not extend to the patch wire. v1.0 patches
+operate on a single `.noma` source file. A book manifest is NOT a valid patch target.
+
+To edit a chapter, an agent MUST:
+1. Address the chapter's `.noma` source file directly.
+2. Use that file's **unscoped** canonical IDs (e.g., `risks`, not `chapter-2/risks`).
+
+The unscoped form is the canonical id inside the individual chapter file. The scoped form
+(`chapter-2/risks`) is a parse-time artifact of book assembly and MUST NOT appear in
+patch operations.
+
+Multi-chapter patches and book-scoped wire identity are deferred to v1.1.
 
 ## 3. Patch operation semantics
 
