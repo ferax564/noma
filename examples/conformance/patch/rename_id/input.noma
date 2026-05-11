@@ -1,0 +1,9 @@
+::claim{id="old" aliases="legacy"}
+the claim.
+::
+
+::evidence{for="old"}
+supports it.
+::
+
+See [[old]].
