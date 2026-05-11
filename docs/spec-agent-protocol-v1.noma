@@ -916,7 +916,163 @@ defeat the audit and replay guarantees of the transcript.
 
 ## 6. Source span guarantees
 
-(draft in Task 33)
+This section is normative. It specifies the line-span guarantees that conforming parsers
+MUST provide for the nodes they emit, the two-tier trust model for valid versus recovered
+documents, per-node-type span rules, and two hard rules — code-fence directive suppression
+and section-id collision suffixing — that are prerequisites for correct span computation.
+
+### 6.1 Tier 1 — valid documents
+
+For documents that parse without errors (no recovery needed), **spans are exact and
+normative**. The `pos.line` and `endLine` fields on every AST node are 1-based and
+inclusive: a node that starts on line 3 and ends on line 7 carries `pos.line: 3,
+endLine: 7`.
+
+Conforming implementations MUST produce spans that satisfy the per-node-type rules in §6.3
+for all Tier-1 inputs. Span precision is part of the conformance contract: the conformance
+suite fixture `valid/basic-section` and `valid/frontmatter-only` (Annex C) include span
+assertions that a conforming parser MUST pass.
+
+### 6.2 Tier 2 — invalid or recovered documents
+
+When the parser encounters malformed input and applies error recovery — unclosed fences,
+mismatched colon depths, truncated frontmatter, or any input that triggers a best-effort
+reconstruction — spans on the recovered subtree are **diagnostic hints, not normative**.
+
+Implementations SHOULD still emit the most accurate span they can compute. Tools MAY use
+Tier-2 spans in error messages and editor highlights. However:
+
+- Implementations MUST NOT rely on Tier-2 spans for patch addressing. Canonical block ids
+  are always the correct addressing mechanism (§2.1).
+- Implementations MUST NOT use Tier-2 spans for transcript replay. Replay depends on
+  `pre_sha256` and `post_sha256` (§5.5), not on line numbers.
+
+Tier classification is implicit: a document is Tier 1 if and only if `noma check` produces
+no `"error"` severity diagnostics with a `parse` origin. Tier 2 covers everything else.
+
+### 6.3 Per-node-type span specification
+
+The following table gives the normative span rule for every node type in the v1.0 AST
+union. All line numbers are 1-based and inclusive. "Closing fence line" refers to the line
+containing the matching `::` or ` ``` ` that closes the block.
+
+Inline content (inline markdown, inline math, inline code spans within a paragraph, table
+cell text) does NOT receive sub-spans in v1.0. Spans are block-granularity only.
+
+| Node type | `startLine` | `endLine` |
+|-----------|-------------|-----------|
+| `document` | 1 (always) | Last physical line of the source file, excluding any trailing-newline artifact that produces a spurious empty final line |
+| `frontmatter` | 1 (always) | Line of the closing `---` fence, inclusive |
+| `section` (implicit, heading-derived) | Line of the `#` heading that opens the section | Line before the next heading at the same or shallower depth, or the last line of the document if no such heading follows |
+| `section` (explicit, `::section{}` … `::`) | Opening fence line | Closing fence line, inclusive |
+| `directive` (any `::name{}` … `::`) | Opening fence line | Closing fence line, inclusive |
+| `code` (fenced, ` ``` ` … ` ``` `) | Opening fence line | Closing fence line, inclusive |
+| `paragraph` | First line of prose in the paragraph | Last line of prose in the paragraph |
+| `list` | Line of the first list item | Line of the last list item (including any continuation lines of a multi-line item) |
+| `list_item` | The item's own line | The item's own line for single-line items; last continuation line for multi-line items |
+| `quote` | Line of the first `>` prefix | Line of the last `>` prefix in the block |
+| `thematic_break` | Its line | Its line |
+| `table` | Header row line | Last body row line |
+
+::callout{tone="info"}
+**Empty body.** A directive block with no body lines (opening and closing fence are
+adjacent) carries `startLine` = opening fence line and `endLine` = closing fence line. A
+single-line block (` ::name{} ` on one line with an implicit close) carries
+`startLine` = `endLine` = that line. When there are no body lines, `endLine` equals
+`startLine + 1` for a two-line form.
+::
+
+### 6.4 Code-fence directive suppression rule
+
+Code fences (`` ``` `` … `` ``` ``) MUST suppress directive recognition for their entire
+interior. A `::` pattern on any line between the opening and closing fence is treated as
+literal content belonging to the `CodeNode`; it MUST NOT be interpreted as a block
+boundary, a directive open, or a directive close.
+
+This rule is normative for v1.0 parsers. A parser that triggers directive recognition
+inside a fenced code block is non-conforming.
+
+**Example — `::` inside a fenced code block is content, not a block boundary:**
+
+The following is a single `code` node whose content includes two `::` lines. The parser
+MUST NOT start a new directive at line 3 or treat line 5 as a closing fence for any
+directive:
+
+```
+# Section
+
+(backtick-fence noma)
+::claim{id="example" confidence=0.9}
+Illustrative claim text.
+::
+(closing backtick-fence)
+```
+
+After parsing, the section contains exactly one `code` node. No `directive` node is created.
+The `code` node's span covers the opening fence through the closing fence, inclusive.
+
+The same rule applies inside `::directive` bodies: a code fence opened within a directive
+body suppresses `::` recognition until the matching closing fence for the code block.
+
+### 6.5 Section-id collision suffixing rule
+
+When two or more headings produce the same slug under the deterministic slugification
+algorithm, the parser MUST resolve the collision by appending a numeric suffix in document
+order:
+
+- The **first** occurrence keeps the bare slug (e.g., `overview`).
+- The **second** occurrence receives suffix `-2` (e.g., `overview-2`).
+- The **third** receives `-3`, and so on.
+
+Suffixing is **deterministic**: the result depends only on document order and is stable
+across re-parses of unchanged content. The suffixed value is the canonical id for all patch
+operations (§2.1).
+
+**Example — duplicate implicit headings:**
+
+```
+## Overview
+
+First overview section. Its id is "overview".
+
+## Overview
+
+Second section with the same heading. Its id is "overview-2".
+```
+
+The patch wire MUST use `overview-2` to address the second section. Using the bare slug
+`overview` in that position would address the first.
+
+**Explicit `{id="…"}` overrides are never auto-suffixed.** If two directive blocks carry
+the same explicit `id=` value, the parser does not disambiguate them. The validator emits a
+`duplicate-id` diagnostic (`error` severity; see §4.4). Agents MUST NOT emit patches
+addressing a document with known `duplicate-id` errors because block identity is ambiguous
+in that state (see §2.1).
+
+**Example — duplicate explicit ids produce a diagnostic, not a suffix:**
+
+```
+::claim{id="main-claim"}
+First claim.
+::
+
+::claim{id="main-claim"}
+Second claim with the same explicit id.
+::
+```
+
+Running `noma check` on the above produces:
+
+```
+error  duplicate-id  Two or more nodes carry the same canonical id "main-claim".
+```
+
+No suffix is applied. The document is invalid until one of the ids is changed.
+
+::callout{tone="info"}
+Cross-reference: §2.1 covers the wire-identity consequences of collision suffixing and the
+prohibition on using an un-resolved alias or pre-suffix slug in patch operations.
+::
 
 ## Annex A — Capability descriptor (provisional)
 
