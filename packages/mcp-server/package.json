@@ -1,0 +1,27 @@
+{
+  "name": "@noma/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for @noma/cli — block-level agent editing",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "noma-mcp-server": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "@noma/cli": "file:../..",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
