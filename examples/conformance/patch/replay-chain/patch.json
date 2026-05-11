@@ -1,0 +1,5 @@
+[
+  { "op": "update_attribute", "id": "c1", "key": "confidence", "value": 0.8 },
+  { "op": "rename_id", "from": "c1", "to": "c2" },
+  { "op": "update_attribute", "id": "c2", "key": "confidence", "value": 0.9 }
+]
