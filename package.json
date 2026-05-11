@@ -48,6 +48,7 @@
   ],
   "author": "ferax564",
   "license": "MIT",
+  "workspaces": ["packages/*"],
   "engines": {
     "node": ">=20"
   },
