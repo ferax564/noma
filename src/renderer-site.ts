@@ -43,15 +43,16 @@ export function renderSite(
     "Noma Book";
 
   for (const ch of chapters) {
+    const prefix = pagePrefix(ch.slug);
     const html = renderHtml(ch.doc, {
       standalone: true,
-      ...(hasTheme ? { stylesheetHref: themeHrefFor(ch.slug) } : { themeCss: "" }),
+      ...(hasTheme ? { stylesheetHref: `${prefix}${THEME_HREF}` } : { themeCss: "" }),
       title: chapterTitle(ch) || bookTitle,
       allowEscapeHatches: options.allowEscapeHatches !== false,
       ...(options.math ? { math: options.math } : {}),
     });
-    const rewritten = rewriteWikilinks(html, ch.slug, idMap);
-    const withNav = injectNav(rewritten, chapters, ch.slug, bookTitle);
+    const rewritten = rewriteWikilinks(html, ch.slug, idMap, prefix);
+    const withNav = injectNav(rewritten, chapters, ch.slug, bookTitle, prefix);
     const target = join(absOut, `${ch.slug}.html`);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, withNav, "utf8");
@@ -59,6 +60,12 @@ export function renderSite(
 
   const indexHtml = renderIndex(bookTitle, manifest, chapters, hasTheme, idMap);
   writeFileSync(join(absOut, "index.html"), indexHtml, "utf8");
+}
+
+function pagePrefix(slug: string | null): string {
+  if (!slug) return "";
+  const depth = (slug.match(/\//g) ?? []).length;
+  return "../".repeat(depth);
 }
 
 function chapterTitle(ch: LoadedChapter): string | undefined {
@@ -87,11 +94,6 @@ function buildIdMap(chapters: LoadedChapter[]): Map<string, IdLocation> {
 
 const THEME_HREF = "_assets/theme.css";
 
-function themeHrefFor(slug: string): string {
-  const depth = (slug.match(/\//g) ?? []).length;
-  return depth === 0 ? THEME_HREF : `${"../".repeat(depth)}${THEME_HREF}`;
-}
-
 const WIKILINK_HREF_RE =
   /<a\s+class="noma-ref"\s+href="#([^"]+)">([^<]+)<\/a>/g;
 
@@ -99,11 +101,12 @@ function rewriteWikilinks(
   html: string,
   currentSlug: string,
   idMap: Map<string, IdLocation>,
+  prefix: string,
 ): string {
   return html.replace(WIKILINK_HREF_RE, (match, id: string, label: string) => {
     const loc = idMap.get(id);
     if (!loc || loc.chapterSlug === currentSlug) return match;
-    return `<a class="noma-ref noma-xchapter" href="${escapeAttr(loc.chapterSlug)}.html#${escapeAttr(loc.anchor)}">${label}</a>`;
+    return `<a class="noma-ref noma-xchapter" href="${escapeAttr(prefix + loc.chapterSlug)}.html#${escapeAttr(loc.anchor)}">${label}</a>`;
   });
 }
 
@@ -112,8 +115,9 @@ function injectNav(
   chapters: LoadedChapter[],
   currentSlug: string,
   bookTitle: string,
+  prefix: string,
 ): string {
-  const nav = buildNav(chapters, currentSlug, bookTitle);
+  const nav = buildNav(chapters, currentSlug, bookTitle, prefix);
   return html.replace(
     /<main class="noma-doc">/,
     `${nav}\n<main class="noma-doc">`,
@@ -124,6 +128,7 @@ function buildNav(
   chapters: LoadedChapter[],
   currentSlug: string | null,
   bookTitle: string,
+  prefix: string,
 ): string {
   const items = chapters
     .map((c) => {
@@ -131,13 +136,13 @@ function buildNav(
       const label = chapterTitle(c) ?? c.slug;
       return isCurrent
         ? `<li class="noma-nav-current"><span>${escapeHtml(label)}</span></li>`
-        : `<li><a href="${escapeAttr(c.slug)}.html">${escapeHtml(label)}</a></li>`;
+        : `<li><a href="${escapeAttr(prefix + c.slug)}.html">${escapeHtml(label)}</a></li>`;
     })
     .join("");
   const homeMarkup =
     currentSlug === null
       ? `<span class="noma-site-home noma-nav-current">${escapeHtml(bookTitle)}</span>`
-      : `<a class="noma-site-home" href="index.html">${escapeHtml(bookTitle)}</a>`;
+      : `<a class="noma-site-home" href="${escapeAttr(prefix)}index.html">${escapeHtml(bookTitle)}</a>`;
   return `<nav class="noma-site-nav" aria-label="Chapters">
 ${homeMarkup}
 <ol>${items}</ol>
@@ -153,7 +158,7 @@ function renderIndex(
 ): string {
   const author =
     typeof manifest.author === "string" ? manifest.author : undefined;
-  const nav = buildNav(chapters, null, bookTitle);
+  const nav = buildNav(chapters, null, bookTitle, "");
   const items = chapters
     .map((c) => {
       const label = chapterTitle(c) ?? c.slug;

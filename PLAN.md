@@ -1502,3 +1502,12 @@ Shipped on 2026-05-12. Closes three ⏳ items from §24.9; VS Code marketplace i
 Shipped on 2026-05-12. Single-bug patch caught by Codex review of v0.7.0.
 
 - `--to site` no longer emits a root-relative stylesheet `href` from chapter pages that sit in subdirectories (level-1 section with explicit `id="foo/bar"`). The renderer now computes depth-aware `../` prefixes per chapter; the index page stays root-relative. Regression test in `test/renderer-site-assets.test.ts`. Existing demo books used plain filename slugs and were unaffected. Nav links and cross-chapter wikilinks from nested-slug pages have a pre-existing equivalent issue (predates v0.7), tracked for v0.8.
+
+### §24.13 — v0.8.0 (memory profile + nested-slug links)
+
+Shipped on 2026-05-12. Bundles the agent-memory work that landed on `main` after v0.7.1 with the residual nested-slug link bug called out in §24.12.
+
+- **`memory` validator profile + `::memory` / `::memory_index` directives** — six rules enforce canonical `id`, `type ∈ {user, feedback, project, reference}`, `confidence ∈ [0, 1]` (rejects boolean / empty-string coercion), strict ISO `last_seen` (rejects impossible calendars), and wikilink targets that resolve to a `::memory` directive via `ids ∪ aliasIds`.
+- **Type-aware stale-recall** — `noma render --to llm --exclude-stale-days <n>` with optional `--now <iso>`. Durable `user` / `feedback` rules are pinned by default unless they carry `expired=true`; only `project` and `reference` memories age out. `::memory_index` body lines whose wikilinks resolve only to excluded memories are dropped from the LLM output so the context has no dangling references.
+- **Runnable demo** — `examples/agent-memory/` (`npm run demo:agent-memory`) converts six real Claude Code Markdown memories into a single `.noma` file, applies four surgical patches, re-validates, and renders both full and stale-excluded LLM recalls. 90.7% of bytes survive the patch; 30-day recall four months later shrinks 9033B → 4551B.
+- **Closes the §24.12 nested-slug residual.** Nav chapter links, the home link, and cross-chapter wikilinks from nested-slug pages now apply the same depth-aware `../` prefix as the stylesheet href. Regression coverage added in `test/renderer-site-assets.test.ts`.

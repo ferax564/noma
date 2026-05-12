@@ -1,13 +1,13 @@
 ---
-title: Noma — Format Specification (v0.7.1)
-version: 0.7.1
+title: Noma — Format Specification (v0.8.0)
+version: 0.8.0
 status: stable
 ---
 
 # Noma Format Specification
 
 ::summary
-This document defines the **Noma** plain-text document format at version 0.7. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+This document defines the **Noma** plain-text document format at version 0.8. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
 ::
 
 ## Conventions
@@ -311,7 +311,7 @@ noma check chapters/03-risks.noma --ignore-rule broken-reference
 
 Unknown rule names produce an `info` note; they do not fail the run.
 
-## Memory profile
+## Memory profile (v0.8)
 
 The `memory` profile turns a `.noma` file into an agent memory store — a typed, validated, patch-addressable replacement for the loose Markdown-plus-frontmatter convention most coding agents use today.
 
@@ -461,6 +461,21 @@ The loader concatenates each chapter's parsed AST into a single `DocumentNode` (
   After this, `[[rp3]]`, `[[risk-premia-3]]`, and `[[risk-premia-3-rp3]]` all resolve to the same section.
 
 Resolution order: explicit `id=` on the heading → auto-slug from the title → frontmatter `aliases:` → filename slug. Any of those paths matching the wikilink target counts as resolved.
+
+## Compatibility promises (v0.8)
+
+- The `memory` profile is stable. `::memory` requires `id=` + `type=` (one of
+  `user`, `feedback`, `project`, `reference`); `confidence` must be a number in
+  `[0, 1]`; `last_seen` must be an ISO date. The four type names will not be
+  removed within 0.x — additive new types may be added.
+- `noma render --to llm --exclude-stale-days N` is additive. Durable types
+  (`user`, `feedback`) stay pinned regardless of `last_seen` unless they carry
+  `expired=true`; only `project` and `reference` memories age out of the recall
+  window. `--now <iso>` overrides "today" for tests.
+- `--to site` from a nested-slug chapter (level-1 `id` containing `/`) now
+  emits depth-aware `../` prefixes on nav chapter links, the home link, and
+  cross-chapter wikilink hrefs — matching the v0.7.1 stylesheet behaviour.
+  Flat-slug books are byte-identical to v0.7.1.
 
 ## Compatibility promises (v0.7)
 

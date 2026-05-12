@@ -76,3 +76,77 @@ test("renderSite computes a relative theme href for nested chapter slugs", () =>
     `index must link root-relative _assets/theme.css`,
   );
 });
+
+test("renderSite nav links from a nested chapter use depth-aware prefixes", () => {
+  const dir = scratch();
+  writeFileSync(join(dir, "a.noma"), `# Nested {id="part/intro"}\n\nHi.\n`);
+  writeFileSync(join(dir, "b.noma"), `# Flat\n\nHi.\n`);
+  writeFileSync(
+    join(dir, "c.noma"),
+    `# OtherNested {id="other/page"}\n\nHi.\n`,
+  );
+  writeFileSync(
+    join(dir, "book.yml"),
+    "title: T\nchapters:\n  - a.noma\n  - b.noma\n  - c.noma\n",
+  );
+  const out = join(dir, "site");
+  const { manifest, chapters } = loadBookChapters(join(dir, "book.yml"));
+  renderSite(manifest, chapters, out, { themeCss: "x" });
+
+  const nestedHtml = readFileSync(join(out, "part", "intro.html"), "utf8");
+  assert.ok(
+    nestedHtml.includes(`href="../flat.html"`),
+    `nested → flat sibling link must climb up; got nav fragment: ${nestedHtml.slice(0, 800)}`,
+  );
+  assert.ok(
+    nestedHtml.includes(`href="../other/page.html"`),
+    `nested → nested sibling link must climb up; got nav fragment: ${nestedHtml.slice(0, 800)}`,
+  );
+  assert.ok(
+    nestedHtml.includes(`href="../index.html"`),
+    `nested home link must climb up; got nav fragment: ${nestedHtml.slice(0, 800)}`,
+  );
+
+  const flatHtml = readFileSync(join(out, "flat.html"), "utf8");
+  assert.ok(
+    flatHtml.includes(`href="part/intro.html"`),
+    `flat → nested sibling link must descend; got: ${flatHtml.slice(0, 800)}`,
+  );
+  assert.ok(
+    flatHtml.includes(`href="index.html"`),
+    `flat home link stays root-relative`,
+  );
+});
+
+test("renderSite cross-chapter wikilinks from a nested page use depth-aware prefixes", () => {
+  const dir = scratch();
+  writeFileSync(
+    join(dir, "a.noma"),
+    `# Nested {id="part/intro"}\n\nSee [[target-claim]] and [[deep-claim]].\n`,
+  );
+  writeFileSync(
+    join(dir, "b.noma"),
+    `# Flat\n\n::claim{id="target-claim"}\nThis is flat.\n::\n`,
+  );
+  writeFileSync(
+    join(dir, "c.noma"),
+    `# OtherNested {id="other/page"}\n\n::claim{id="deep-claim"}\nThis is nested.\n::\n`,
+  );
+  writeFileSync(
+    join(dir, "book.yml"),
+    "title: T\nchapters:\n  - a.noma\n  - b.noma\n  - c.noma\n",
+  );
+  const out = join(dir, "site");
+  const { manifest, chapters } = loadBookChapters(join(dir, "book.yml"));
+  renderSite(manifest, chapters, out, { themeCss: "x" });
+
+  const nestedHtml = readFileSync(join(out, "part", "intro.html"), "utf8");
+  assert.ok(
+    nestedHtml.includes(`href="../flat.html#target-claim"`),
+    `nested → flat wikilink must climb up; got: ${nestedHtml.slice(0, 1200)}`,
+  );
+  assert.ok(
+    nestedHtml.includes(`href="../other/page.html#deep-claim"`),
+    `nested → nested wikilink must climb up; got: ${nestedHtml.slice(0, 1200)}`,
+  );
+});
