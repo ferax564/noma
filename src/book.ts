@@ -6,6 +6,18 @@ import { walk } from "./ast.js";
 import { parse } from "./parser.js";
 import { inlineDatasetSources } from "./loader.js";
 
+/**
+ * Shape of `book.yml` manifests. Note: YAML keys are snake_case (`trusted_publishing`),
+ * read directly from the manifest map. The typed shape below covers fields the
+ * loader/renderer consume by name; unrecognised keys pass through untouched.
+ *
+ * Recognised security-posture keys (read at the render path, not surfaced as
+ * typed fields):
+ * - `trusted_publishing: true` — implies `--no-unsafe` for every render driven
+ *   by this manifest. Disables `::html`, `::svg`, `::script` escape hatches.
+ *   The manifest is the final word; no CLI flag re-enables them once the
+ *   manifest forbids them.
+ */
 export interface BookManifest {
   title?: string;
   author?: string;

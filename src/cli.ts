@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import yaml from "js-yaml";
 import { parse } from "./parser.js";
 import { renderHtml } from "./renderer-html.js";
 import { renderLlm } from "./renderer-llm.js";
@@ -235,15 +236,22 @@ function main(): void {
     }
     const themeCss = loadTheme(args.theme);
     const { manifest, chapters } = loadBookChapters(filePath);
+    const allowEscapeHatches = args.allowEscapeHatches && manifest.trusted_publishing !== true;
     renderSite(manifest, chapters, args.out, {
       themeCss,
       title: args.title,
-      allowEscapeHatches: args.allowEscapeHatches,
+      allowEscapeHatches,
       ...(args.math ? { math: args.math } : {}),
     });
     process.stderr.write(`✓ wrote ${chapters.length + 1} pages to ${args.out}\n`);
     return;
   }
+
+  const manifestForTrust = isBookManifestPath(filePath)
+    ? (yaml.load(readFileSync(filePath, "utf8")) as Record<string, unknown> | null)
+    : null;
+  const allowEscapeHatches =
+    args.allowEscapeHatches && manifestForTrust?.trusted_publishing !== true;
 
   const doc = isBookManifestPath(filePath)
     ? loadBook(filePath)
@@ -265,7 +273,7 @@ function main(): void {
             standalone: args.standalone,
             title: args.title,
             themeCss,
-            allowEscapeHatches: args.allowEscapeHatches,
+            allowEscapeHatches,
             ...(args.math ? { math: args.math } : {}),
           });
           output(html, args.out);
