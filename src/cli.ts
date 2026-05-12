@@ -15,6 +15,8 @@ import { renderSite } from "./renderer-site.js";
 import { validate, formatDiagnostics } from "./validator.js";
 import { formatSource } from "./fmt.js";
 import { verifyFixtureDir } from "./verify.js";
+import { diffDocs } from "./diff.js";
+import type { DocumentNode } from "./ast.js";
 
 const HELP = `noma — readable document format for humans and agents
 
@@ -26,6 +28,7 @@ Usage:
   noma patch <file.noma> [opts]              Apply block-level patch ops
   noma fmt   <file.noma> [--inplace|--out p] Re-align pipe tables in source
   noma verify <fixture-dir>                  Run conformance suite against fixtures
+  noma diff <before.noma> <after.noma> --at <date>  Emit ::state_change for attribute drift
   noma --help                                Show this help
 
 Render options:
@@ -50,17 +53,27 @@ Patch options:
   --inplace                 Write the result back to <file.noma>
   --out <path>              Write to file instead of stdout
 
+Diff options:
+  --at <YYYY-MM-DD>         Required. Timestamp written as at="..." on each delta.
+                            Required so output is deterministic.
+  --reason <text>           Embed reason="..." on every emitted state_change
+  --out <path>              Write to file instead of stdout
+
 Examples:
   noma parse examples/thesis.noma
   noma render examples/thesis.noma --to html --out dist/thesis.html
   noma render examples/thesis.noma --to llm
   noma check examples/thesis.noma
   noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
+  noma diff before.noma after.noma --at 2026-05-12 --reason "Q1 refresh"
 `;
 
 interface CliArgs {
   command: string;
   file?: string;
+  fileB?: string;
+  diffReason?: string;
+  diffAt?: string;
   to: string;
   out?: string;
   standalone: boolean;
@@ -135,8 +148,17 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--inplace") {
       args.inplace = true;
       i++;
+    } else if (a === "--reason") {
+      args.diffReason = argv[++i];
+      i++;
+    } else if (a === "--at") {
+      args.diffAt = argv[++i];
+      i++;
     } else if (!a.startsWith("--") && !args.file) {
       args.file = a;
+      i++;
+    } else if (!a.startsWith("--") && !args.fileB) {
+      args.fileB = a;
       i++;
     } else {
       i++;
@@ -206,6 +228,29 @@ function main(): void {
     }
     console.log(`\n${report.fixtures.length} fixtures, ${report.fixtures.filter((f) => f.status === "pass").length} passed`);
     process.exit(report.ok ? 0 : 1);
+  }
+
+  if (cmd === "diff") {
+    if (!args.file || !args.fileB) {
+      process.stderr.write("noma diff: <before.noma> <after.noma> required\n");
+      process.exit(2);
+    }
+    if (!args.diffAt) {
+      process.stderr.write("noma diff: --at <YYYY-MM-DD> is required (output must be deterministic)\n");
+      process.exit(2);
+    }
+    const a = parse(readFileSync(resolve(args.file), "utf8"), { filename: args.file });
+    const b = parse(readFileSync(resolve(args.fileB), "utf8"), { filename: args.fileB });
+    const deltas = diffDocs(a, b, {
+      at: args.diffAt,
+      ...(args.diffReason !== undefined ? { reason: args.diffReason } : {}),
+    });
+    if (deltas.length === 0) {
+      return;
+    }
+    const deltaDoc: DocumentNode = { type: "document", meta: {}, children: deltas };
+    output(renderNoma(deltaDoc), args.out);
+    return;
   }
 
   if (!args.file) {
