@@ -48,3 +48,31 @@ test("renderSite with empty themeCss does not emit _assets/theme.css", () => {
   renderSite(manifest, chapters, out, { themeCss: "" });
   assert.ok(!existsSync(join(out, "_assets", "theme.css")));
 });
+
+test("renderSite computes a relative theme href for nested chapter slugs", () => {
+  // Regression: a level-1 section with an explicit id containing `/` writes
+  // the page into a subdirectory. The shared-asset link must climb up.
+  const dir = scratch();
+  writeFileSync(
+    join(dir, "ch.noma"),
+    `# Nested {id="part/intro"}\n\nHello.\n`,
+  );
+  writeFileSync(join(dir, "book.yml"), "title: T\nchapters:\n  - ch.noma\n");
+  const out = join(dir, "site");
+  const { manifest, chapters } = loadBookChapters(join(dir, "book.yml"));
+  renderSite(manifest, chapters, out, { themeCss: "body { color: red; }" });
+
+  const nestedPath = join(out, "part", "intro.html");
+  assert.ok(existsSync(nestedPath), "nested chapter page must exist");
+  const html = readFileSync(nestedPath, "utf8");
+  assert.ok(
+    html.includes(`<link rel="stylesheet" href="../_assets/theme.css"`),
+    `nested chapter must link ../_assets/theme.css; got: ${html.slice(0, 400)}`,
+  );
+
+  const indexHtml = readFileSync(join(out, "index.html"), "utf8");
+  assert.ok(
+    indexHtml.includes(`<link rel="stylesheet" href="_assets/theme.css"`),
+    `index must link root-relative _assets/theme.css`,
+  );
+});

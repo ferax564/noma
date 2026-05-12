@@ -45,7 +45,7 @@ export function renderSite(
   for (const ch of chapters) {
     const html = renderHtml(ch.doc, {
       standalone: true,
-      ...(hasTheme ? { stylesheetHref: THEME_HREF } : { themeCss: "" }),
+      ...(hasTheme ? { stylesheetHref: themeHrefFor(ch.slug) } : { themeCss: "" }),
       title: chapterTitle(ch) || bookTitle,
       allowEscapeHatches: options.allowEscapeHatches !== false,
       ...(options.math ? { math: options.math } : {}),
@@ -86,6 +86,11 @@ function buildIdMap(chapters: LoadedChapter[]): Map<string, IdLocation> {
 }
 
 const THEME_HREF = "_assets/theme.css";
+
+function themeHrefFor(slug: string): string {
+  const depth = (slug.match(/\//g) ?? []).length;
+  return depth === 0 ? THEME_HREF : `${"../".repeat(depth)}${THEME_HREF}`;
+}
 
 const WIKILINK_HREF_RE =
   /<a\s+class="noma-ref"\s+href="#([^"]+)">([^<]+)<\/a>/g;
