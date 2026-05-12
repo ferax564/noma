@@ -1496,3 +1496,9 @@ Shipped on 2026-05-12. Closes three ⏳ items from §24.9; VS Code marketplace i
 - `book.yml` `trusted_publishing: true` — manifest-level implicit `--no-unsafe` for both single-page and `--to site` renders. No CLI override (security posture is final once the manifest sets it).
 - Shared `_assets/theme.css` for `--to site` — `renderHtml` gained a `stylesheetHref` option; the site renderer writes theme once and points every page at it. Per-page output drops ~15 KB on 30-chapter books.
 - `noma-language` v0.2.0 — marketplace publish prep (metadata, README, .vscodeignore, extension-local CHANGELOG, LICENSE). Live marketplace listing follows when the maintainer runs `vsce publish`.
+
+### §24.12 — v0.7.1 (nested-slug stylesheet fix)
+
+Shipped on 2026-05-12. Single-bug patch caught by Codex review of v0.7.0.
+
+- `--to site` no longer emits a root-relative stylesheet `href` from chapter pages that sit in subdirectories (level-1 section with explicit `id="foo/bar"`). The renderer now computes depth-aware `../` prefixes per chapter; the index page stays root-relative. Regression test in `test/renderer-site-assets.test.ts`. Existing demo books used plain filename slugs and were unaffected. Nav links and cross-chapter wikilinks from nested-slug pages have a pre-existing equivalent issue (predates v0.7), tracked for v0.8.

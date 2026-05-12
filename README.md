@@ -136,7 +136,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.7.0 — Noma now ships `noma diff` (attribute-drift detector emitting `::state_change` blocks), manifest-level `trusted_publishing` (implies `--no-unsafe`), a shared `_assets/theme.css` for `--to site` builds, and `tools/vscode-noma` v0.2.0 marketplace prep. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24 for the full per-version tracker.
+**Status:** v0.7.1 — patches a `--to site` regression where nested chapter slugs (level-1 `id="part/intro"`) linked to the wrong relative theme path; theme href is now depth-aware. Carries everything from v0.7.0: `noma diff` (attribute-drift detector emitting `::state_change` blocks), manifest-level `trusted_publishing` (implies `--no-unsafe`), a shared `_assets/theme.css` for `--to site` builds, and `tools/vscode-noma` v0.2.0 marketplace prep. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24 for the full per-version tracker.
 
 ## License
 

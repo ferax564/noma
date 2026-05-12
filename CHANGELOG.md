@@ -4,6 +4,12 @@ All notable changes to Noma are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] — 2026-05-12
+
+### Fixed
+
+- **`--to site` linked the wrong theme path from nested chapter pages.** When a level-1 section uses an explicit `id` containing `/` (e.g., `# Title {id="part/intro"}`), the chapter was written to `part/intro.html` but the stylesheet link still pointed at the root-relative `_assets/theme.css` — which the browser resolved against the subdirectory, producing a broken `part/_assets/theme.css` request and an unstyled page. The site renderer now computes a depth-aware `href` per chapter (e.g., `../_assets/theme.css` for a 1-deep slug). Regression caught by Codex review of v0.7.0; the existing demo book uses plain filename slugs and was unaffected. Note: nav links and cross-chapter wikilinks from nested-slug pages have a pre-existing equivalent issue, tracked separately for v0.8.
+
 ## [0.7.0] — 2026-05-12
 
 ### Added
