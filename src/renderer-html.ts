@@ -11,6 +11,12 @@ export interface HtmlRenderOptions {
   /** Inline CSS injected into <head> when standalone. */
   themeCss?: string;
   /**
+   * When set, the standalone HTML head emits `<link rel="stylesheet" href="...">`
+   * pointing here, and `themeCss` is ignored. Used by multi-page site rendering
+   * to deduplicate theme bytes across pages.
+   */
+  stylesheetHref?: string;
+  /**
    * Allow `::html`, `::svg`, `::script` escape hatches to emit raw markup.
    * Default: `true` (artifact mode). Set `false` for trusted-publishing
    * contexts where unfiltered HTML is unsafe.
@@ -181,6 +187,10 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
     "Noma Document";
 
   const themeCss = options.themeCss ?? "";
+  const stylesheetHref = options.stylesheetHref;
+  const styleHead = stylesheetHref
+    ? `<link rel="stylesheet" href="${escapeAttr(stylesheetHref)}" />`
+    : `<style>${themeCss}</style>`;
   const mathMode = resolveMathMode(doc, options.math);
   const mathHead = mathMode === "katex" ? KATEX_HEAD : "";
   const mathFoot = mathMode === "katex" ? KATEX_FOOT : "";
@@ -195,7 +205,7 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="generator" content="noma" />
 <title>${escapeHtml(title)}</title>
-<style>${themeCss}</style>${mathHead}
+${styleHead}${mathHead}
 </head>
 <body>
 <main class="noma-doc">

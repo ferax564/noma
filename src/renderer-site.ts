@@ -28,6 +28,14 @@ export function renderSite(
   const absOut = resolve(outDir);
   mkdirSync(absOut, { recursive: true });
 
+  const themeCss = options.themeCss ?? "";
+  const hasTheme = themeCss.length > 0;
+  if (hasTheme) {
+    const assetsDir = join(absOut, "_assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(join(assetsDir, "theme.css"), themeCss, "utf8");
+  }
+
   const idMap = buildIdMap(chapters);
   const bookTitle =
     options.title ||
@@ -37,7 +45,7 @@ export function renderSite(
   for (const ch of chapters) {
     const html = renderHtml(ch.doc, {
       standalone: true,
-      themeCss: options.themeCss ?? "",
+      ...(hasTheme ? { stylesheetHref: THEME_HREF } : { themeCss: "" }),
       title: chapterTitle(ch) || bookTitle,
       allowEscapeHatches: options.allowEscapeHatches !== false,
       ...(options.math ? { math: options.math } : {}),
@@ -49,7 +57,7 @@ export function renderSite(
     writeFileSync(target, withNav, "utf8");
   }
 
-  const indexHtml = renderIndex(bookTitle, manifest, chapters, options.themeCss ?? "", idMap);
+  const indexHtml = renderIndex(bookTitle, manifest, chapters, hasTheme, idMap);
   writeFileSync(join(absOut, "index.html"), indexHtml, "utf8");
 }
 
@@ -76,6 +84,8 @@ function buildIdMap(chapters: LoadedChapter[]): Map<string, IdLocation> {
   }
   return map;
 }
+
+const THEME_HREF = "_assets/theme.css";
 
 const WIKILINK_HREF_RE =
   /<a\s+class="noma-ref"\s+href="#([^"]+)">([^<]+)<\/a>/g;
@@ -133,7 +143,7 @@ function renderIndex(
   bookTitle: string,
   manifest: Record<string, unknown>,
   chapters: LoadedChapter[],
-  themeCss: string,
+  hasTheme: boolean,
   idMap: Map<string, IdLocation>,
 ): string {
   const author =
@@ -153,6 +163,9 @@ function renderIndex(
     })
     .join("\n");
 
+  const themeLink = hasTheme
+    ? `<link rel="stylesheet" href="${THEME_HREF}" />`
+    : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -160,7 +173,7 @@ function renderIndex(
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="generator" content="noma" />
 <title>${escapeHtml(bookTitle)}</title>
-<style>${themeCss}</style>
+${themeLink}
 </head>
 <body>
 ${nav}
