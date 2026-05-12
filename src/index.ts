@@ -14,3 +14,5 @@ export { loadBook, isBookManifestPath, listChapters } from "./book.js";
 export type { BookManifest } from "./book.js";
 export { validate, formatDiagnostics } from "./validator.js";
 export type { ValidateOptions } from "./validator.js";
+export { diffDocs } from "./diff.js";
+export type { DiffOptions } from "./diff.js";
