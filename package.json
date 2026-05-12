@@ -26,7 +26,8 @@
     "render:pdf": "tsx scripts/render-pdf.ts dist/thesis.html dist/thesis.pdf",
     "render:pdf:demos": "tsx scripts/render-demo-pdfs.ts",
     "demo:stale-memo": "tsx scripts/agent-stale-memo.ts",
-    "build:site": "npm run render:examples && npm run render:docs && tsx src/cli.ts render examples/index.noma --to html --out dist/_index-noma.html && tsx src/cli.ts render examples/research-thesis.noma --to html --theme dark --out dist/examples/research-thesis-dark.html && tsx src/cli.ts render examples/book/book.noma.yml --to html --out dist/examples/book.html && tsx src/cli.ts render examples/book/book.noma.yml --to llm --out dist/examples/book.llm.txt && tsx src/cli.ts render examples/book/book.noma.yml --to site --out dist/examples/book-site && npm run demo:stale-memo && cp -r site/. dist/ && npm run render:pdf:demos",
+    "demo:agent-memory": "tsx scripts/agent-memory-demo.ts",
+    "build:site": "npm run render:examples && npm run render:docs && tsx src/cli.ts render examples/index.noma --to html --out dist/_index-noma.html && tsx src/cli.ts render examples/research-thesis.noma --to html --theme dark --out dist/examples/research-thesis-dark.html && tsx src/cli.ts render examples/book/book.noma.yml --to html --out dist/examples/book.html && tsx src/cli.ts render examples/book/book.noma.yml --to llm --out dist/examples/book.llm.txt && tsx src/cli.ts render examples/book/book.noma.yml --to site --out dist/examples/book-site && npm run demo:stale-memo && npm run demo:agent-memory && cp -r site/. dist/ && npm run render:pdf:demos",
     "demo": "npm run render:examples && npm run render:pdf"
   },
   "files": [

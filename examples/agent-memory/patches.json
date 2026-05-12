@@ -1,0 +1,24 @@
+[
+  {
+    "op": "update_attribute",
+    "id": "user_handle",
+    "key": "last_seen",
+    "value": "2026-05-13"
+  },
+  {
+    "op": "update_attribute",
+    "id": "feedback_codex_review_value",
+    "key": "confidence",
+    "value": 0.95
+  },
+  {
+    "op": "add_block",
+    "parent": "memories",
+    "content": "::memory{id=\"feedback_caveman_terse\" type=\"feedback\" confidence=0.9 last_seen=\"2026-05-13\"}\nUser explicitly enables caveman mode mid-session. Treat that as durable preference for the conversation: drop articles, fragments OK, short synonyms, technical terms exact. Code blocks and error quotes stay verbatim.\n\n**Why:** caveman mode is the user's stated efficiency setting; reverting silently to verbose prose wastes tokens and trust.\n\n**How to apply:** stay caveman until the user types \"stop caveman\" or \"normal mode\". Auto-clarity exceptions remain: write normal prose for destructive-op warnings, multi-step sequences where fragment order risks misread, and when the user asks to repeat or clarify.\n::\n"
+  },
+  {
+    "op": "replace_block",
+    "id": "index",
+    "content": "::memory_index{id=\"index\"}\n- [[user_handle]] — ferax564 authorship alias\n- [[feedback_release_scope]] — full ship pipeline on \"make a release\"\n- [[project_noma_v07_scope]] — v0.7.0 SHIPPED 2026-05-12 (papercut bundle)\n- [[feedback_codex_review_value]] — run `/codex review` on substantial plans\n- [[project_noma_v08_target]] — reference agent SDK target (deferred to v0.8+)\n- [[reference_noma_plans]] — plan + doc source-of-truth map\n- [[feedback_caveman_terse]] — caveman mode is durable until user reverts\n::\n"
+  }
+]

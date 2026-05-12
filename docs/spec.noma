@@ -251,8 +251,8 @@ Renderers exhaustively switch on `type`. Adding a new variant is a typed change:
 
 The default validator detects:
 
-- **errors** — duplicate IDs, references (`for=`, `[[id]]`) pointing to unknown IDs, `plot` blocks with no `data=` or `dataset=`.
-- **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, and `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days).
+- **errors** — duplicate IDs, references (`for=`, `[[id]]`) pointing to unknown IDs, `plot` blocks with no `data=` or `dataset=`, `::memory` blocks missing `type=` / `id=` or carrying an invalid `type` / `confidence` / `last_seen`.
+- **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days), and `[[wikilinks]]` inside a `memory`-profile document that resolve to a non-`::memory` target.
 
 Per-block opt-out: add the `noverify` flag attribute to silence rules on a single block (e.g. rhetorical claims that aren't expected to carry their own evidence chain).
 
@@ -287,6 +287,7 @@ Built-in profiles:
 | `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `figure`, `citation`, `math`, `table`                                                                                                                                                                                                |
 | `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `plot`, `dataset`, `code_cell`, `output`, `control`, `export_button`, `agent_task`, `todo`                                                                                                             |
 | `research`  | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence`                |
+| `memory`    | Agent memory stores (per-project, per-user) | `memory`, `memory_index` only. Strict: each `::memory` must declare `id` + `type` (one of `user`, `feedback`, `project`, `reference`). `confidence` must be a number in `[0, 1]`; `last_seen` must be an ISO date.                                                                            |
 
 `math` and `table` are content-neutral and shipped in every profile from v0.4 onward — they were the most common "out-of-profile" warnings authors hit before they learned the workaround.
 
@@ -309,6 +310,54 @@ noma check chapters/03-risks.noma --ignore-rule broken-reference
 ```
 
 Unknown rule names produce an `info` note; they do not fail the run.
+
+## Memory profile
+
+The `memory` profile turns a `.noma` file into an agent memory store — a typed, validated, patch-addressable replacement for the loose Markdown-plus-frontmatter convention most coding agents use today.
+
+```noma
+---
+profile: memory
+---
+
+::memory_index{id="index"}
+- [[user_handle]] — ferax564 authorship alias
+- [[feedback_release_scope]] — full ship pipeline on "make a release"
+::
+
+::memory{id="user_handle" type="user" confidence=0.95 last_seen="2026-05-09"}
+ferax564 is the user's public authorship handle. Not a separate GitHub account.
+::
+
+::memory{id="feedback_release_scope" type="feedback" confidence=0.95 last_seen="2026-05-10"}
+"Make a release" = the complete ship pipeline, not just tag + push.
+::
+```
+
+**Why a profile rather than free directives.** Memory is high-stakes context: an agent reading a malformed memory file is more dangerous than rendering a malformed thesis. The profile narrows the allowed directives to `::memory` and `::memory_index`, then layers stricter rules on top.
+
+**`::memory` attributes.**
+
+| Attribute    | Required | Notes                                                                                                    |
+| ------------ | -------- | -------------------------------------------------------------------------------------------------------- |
+| `id`         | yes      | Canonical, stable, patch-addressable. Treat as immutable — use `rename_id` only when truly necessary.    |
+| `type`       | yes      | One of `user`, `feedback`, `project`, `reference`. Maps to the same taxonomy Claude Code's memory uses.  |
+| `confidence` | no       | Numeric in `[0, 1]`. Use it to gate dump-time recall or to skip low-confidence memories during planning. |
+| `last_seen`  | no       | ISO date (`YYYY-MM-DD`) or full ISO 8601. Drives `noma render --to llm --exclude-stale-days N`.          |
+
+**`::memory_index`.** A single block whose body links every memory via `[[id]]` wikilinks. The validator does not yet enforce index completeness, but `noma check --profile memory` warns whenever an index wikilink resolves to a non-`::memory` target — catching the most common mistake of pointing the index at a heading or section.
+
+**Canonical id ≠ display title.** A memory's `id=` is an immutable key that agents patch against — treat it like a database primary key, not like the title of the memory. Use the body for human phrasing; if a memory needs a renamable handle, use `aliases=` (which the validator also resolves for wikilink targeting).
+
+**Stale-aware recall.** `noma render --to llm --exclude-stale-days N` (optionally with `--now <ISO>` for tests) drops `::memory` blocks whose `last_seen` is older than the window before emitting the LLM context dump, AND drops `::memory_index` body lines whose wikilinks resolve only to omitted memories (no dangling refs in the LLM context). Time-window staleness applies **only to `project` and `reference` memories by default** — durable rules (`user`, `feedback`) are kept regardless of `last_seen` unless they explicitly carry `expired=true`. This is a useful first cut at bounded recall; it is **not** a general retrieval system. `last_seen` measures observation freshness, not content freshness, so a memory can be recently seen yet factually superseded — richer recall (relevance to current task, wikilink-graph expansion, `valid_until` / `superseded_by` attributes) is future work.
+
+**Surgical edits.** `noma patch memory.noma --op '{"op":"update_attribute","id":"...","key":"last_seen","value":"..."}'` rewrites only the targeted block. Sibling memories, the index, and frontmatter survive byte-for-byte. The same applies to `add_block`, `delete_block`, `replace_block`, and `rename_id` (the last also rewrites `[[wikilinks]]` and reference attributes — see `docs/spec-agent-protocol-v1.noma`).
+
+**Single-writer assumption.** Current memory patching has no `expected_sha` precondition or atomic-write story — concurrent writers will race at file write time. Wrap the memory file in an external lock (or a queue) if more than one agent can patch it simultaneously.
+
+**Deferred schema work.** The profile validates the attributes listed above. Future MVP increments should add `source`, `scope` (so a memory written for one project doesn't bleed into another's recall), `valid_until` / `superseded_by` for status memories that go factually stale, body-non-empty enforcement, and alias uniqueness once aliases are in common use. Tombstone semantics for `forget` operations are also future work.
+
+See `examples/agent-memory/` for the runnable demo and `npm run demo:agent-memory` for the trace.
 
 ## Diagrams, plotly, external datasets (v0.5)
 

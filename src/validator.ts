@@ -113,7 +113,12 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "math",
     "table",
   ]),
+  memory: new Set(["memory", "memory_index"]),
 };
+
+const MEMORY_TYPES = new Set(["user", "feedback", "project", "reference"]);
+const ISO_DATE_RE =
+  /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
 export const KNOWN_PROFILES = Object.keys(PROFILES);
 
@@ -133,6 +138,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   const datasetIds = new Map<string, DirectiveNode>();
   const datasetColumns = new Map<string, Set<string>>();
 
+  const aliasToNode = new Map<string, Node>();
   const declaredProfiles = readDeclaredProfiles(doc.meta);
   const profileSet: Set<string> | undefined = (() => {
     if (declaredProfiles.length === 0) return undefined;
@@ -156,9 +162,13 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   const profileLabel = declaredProfiles.join("+");
 
   const wikilinkRe = /\[\[([a-zA-Z_][\w\-./:]*)\]\]/g;
+  const wikilinkRefs = new Set<string>();
   const collectWikilinks = (text: string): void => {
     const stripped = text.replace(/`[^`]*`/g, "");
-    for (const m of stripped.matchAll(wikilinkRe)) referenced.add(m[1]!);
+    for (const m of stripped.matchAll(wikilinkRe)) {
+      referenced.add(m[1]!);
+      wikilinkRefs.add(m[1]!);
+    }
   };
 
   for (const node of walk(doc)) {
@@ -184,7 +194,10 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       }
     }
     if (node.aliases) {
-      for (const a of node.aliases) aliasIds.add(a);
+      for (const a of node.aliases) {
+        aliasIds.add(a);
+        if (!aliasToNode.has(a)) aliasToNode.set(a, node);
+      }
     }
 
     if (node.type !== "directive") continue;
@@ -432,6 +445,67 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       });
     }
 
+    if (node.name === "memory" && !suppressed(node)) {
+      const t = node.attrs.type;
+      if (typeof t !== "string" || !t) {
+        diagnostics.push({
+          severity: "error",
+          code: "memory-missing-type",
+          message: `Memory "${node.id ?? "?"}" has no \`type=\` attribute.`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      } else if (!MEMORY_TYPES.has(t)) {
+        diagnostics.push({
+          severity: "error",
+          code: "memory-invalid-type",
+          message: `Memory "${node.id ?? "?"}" has type="${t}". Must be one of: ${[...MEMORY_TYPES].join(", ")}.`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
+      if ("confidence" in node.attrs) {
+        const c = node.attrs.confidence;
+        let num: number | null = null;
+        if (typeof c === "number" && Number.isFinite(c)) {
+          num = c;
+        } else if (typeof c === "string" && c.trim() !== "") {
+          const n = Number(c);
+          if (Number.isFinite(n)) num = n;
+        }
+        if (num === null || num < 0 || num > 1) {
+          diagnostics.push({
+            severity: "error",
+            code: "memory-invalid-confidence",
+            message: `Memory "${node.id ?? "?"}" confidence="${c}" must be a number in [0, 1].`,
+            pos: node.pos,
+            nodeId: node.id,
+          });
+        }
+      }
+      if ("last_seen" in node.attrs) {
+        const ls = node.attrs.last_seen;
+        const s = typeof ls === "string" ? ls : "";
+        if (!s || !ISO_DATE_RE.test(s) || !isValidIsoDate(s)) {
+          diagnostics.push({
+            severity: "error",
+            code: "memory-invalid-last-seen",
+            message: `Memory "${node.id ?? "?"}" last_seen="${ls}" must be ISO date (YYYY-MM-DD or full ISO 8601).`,
+            pos: node.pos,
+            nodeId: node.id,
+          });
+        }
+      }
+      if (!node.id) {
+        diagnostics.push({
+          severity: "error",
+          code: "memory-missing-id",
+          message: `Memory block has no \`id=\` attribute.`,
+          pos: node.pos,
+        });
+      }
+    }
+
     if (node.name === "citation" && !suppressed(node) && node.attrs.accessed) {
       const perBlock = readPositiveNumber(node.attrs.stale_after_days);
       const window = perBlock ?? staleDays;
@@ -455,6 +529,22 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
         code: "broken-reference",
         message: `Reference to unknown block ID "${target}".`,
       });
+    }
+  }
+
+  if (declaredProfiles.includes("memory")) {
+    for (const target of wikilinkRefs) {
+      const node = ids.get(target) ?? aliasToNode.get(target);
+      if (!node) continue;
+      const isMemory =
+        node.type === "directive" && (node as DirectiveNode).name === "memory";
+      if (!isMemory) {
+        diagnostics.push({
+          severity: "warning",
+          code: "memory-wikilink-non-memory-target",
+          message: `Wikilink [[${target}]] points at a non-::memory block. Memory profile expects wikilinks to resolve to ::memory directives.`,
+        });
+      }
     }
   }
 
@@ -530,6 +620,12 @@ const KNOWN_RULES = [
   "plotly-missing-spec",
   "plotly-invalid-json",
   "dataset-src-missing",
+  "memory-missing-type",
+  "memory-invalid-type",
+  "memory-invalid-confidence",
+  "memory-invalid-last-seen",
+  "memory-missing-id",
+  "memory-wikilink-non-memory-target",
 ];
 
 function collectRuleCodes(): Set<string> {
@@ -601,6 +697,22 @@ function readPositiveNumber(v: unknown): number | undefined {
     if (Number.isFinite(n) && n > 0) return n;
   }
   return undefined;
+}
+
+function isValidIsoDate(s: string): boolean {
+  const t = Date.parse(s);
+  if (Number.isNaN(t)) return false;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return true;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === mo - 1 &&
+    dt.getUTCDate() === d
+  );
 }
 
 function isStale(accessed: string, now: Date, days: number): boolean {

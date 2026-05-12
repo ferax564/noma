@@ -42,6 +42,10 @@ Render options:
   --math <katex|none>       Math rendering: enable KaTeX assets in standalone HTML
                             (default: auto-detect from doc / book manifest)
   --ignore-rule <name>      Suppress a validator rule (repeatable)
+  --exclude-stale-days <n>  LLM: omit ::memory blocks whose last_seen is older
+                            than <n> days from --now (or system clock).
+  --now <ISO>               LLM: fix the clock used by --exclude-stale-days
+                            (default: system clock). Useful for tests.
 
 Check options:
   --stale-days <n>          Override the citation staleness window (days)
@@ -87,6 +91,8 @@ interface CliArgs {
   staleDays?: number;
   ignoreRules: string[];
   math?: "katex" | "none";
+  excludeStaleDays?: number;
+  now?: string;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -138,6 +144,13 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--math") {
       const v = argv[++i];
       args.math = v === "none" ? "none" : "katex";
+      i++;
+    } else if (a === "--exclude-stale-days") {
+      const v = Number(argv[++i]);
+      if (Number.isFinite(v) && v > 0) args.excludeStaleDays = v;
+      i++;
+    } else if (a === "--now") {
+      args.now = argv[++i];
       i++;
     } else if (a === "--op") {
       args.op = argv[++i];
@@ -325,7 +338,16 @@ function main(): void {
           return;
         }
         case "llm": {
-          output(renderLlm(doc), args.out);
+          const llmOpts: { excludeStale?: { now: Date; days: number } } = {};
+          if (args.excludeStaleDays !== undefined) {
+            const now = args.now ? new Date(args.now) : new Date();
+            if (Number.isNaN(now.getTime())) {
+              process.stderr.write(`error: --now value is not a valid date\n`);
+              process.exit(2);
+            }
+            llmOpts.excludeStale = { now, days: args.excludeStaleDays };
+          }
+          output(renderLlm(doc, llmOpts), args.out);
           return;
         }
         case "json": {

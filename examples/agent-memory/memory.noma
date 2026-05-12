@@ -1,0 +1,108 @@
+---
+title: Claude project memory — Noma-backed
+profile: memory
+math: none
+description: >
+  Agent memory for the Noma project, expressed as ::memory directives instead
+  of an Obsidian-style folder of Markdown files. Each block is patch-addressable
+  by stable id, type-validated under the `memory` profile, and reachable via
+  [[wikilink]] from the index.
+---
+
+# Memories {id="memories"}
+
+::memory_index{id="index"}
+- [[user_handle]] — ferax564 authorship alias
+- [[feedback_release_scope]] — full ship pipeline on "make a release"
+- [[project_noma_v07_scope]] — v0.7.0 SHIPPED 2026-05-12 (papercut bundle)
+- [[feedback_codex_review_value]] — run `/codex review` on substantial plans
+- [[project_noma_v08_target]] — reference agent SDK target (deferred to v0.8+)
+- [[reference_noma_plans]] — plan + doc source-of-truth map
+::
+
+::memory{id="user_handle" type="user" confidence=0.95 last_seen="2026-05-09"}
+`ferax564` is the user's public authorship and citation handle across projects. It is **not a separate GitHub account** — the gh OAuth token labelled `aferrarelli` locally authenticates as `ferax564` on github.com (`gh api user` confirms).
+
+When committing or creating repos for this user:
+- set `git config user.name "ferax564"` and `user.email "19576696+ferax564@users.noreply.github.com"`
+- push public repos to `github.com/ferax564/<name>`
+- replace any internal name in committed files (PLAN.md, READMEs, etc.) with `ferax564`
+
+Their phrasing for this: "I'm undercover."
+::
+
+::memory{id="feedback_release_scope" type="feedback" confidence=0.95 last_seen="2026-05-10"}
+"Make a release" on the Noma repo means the **complete** ship pipeline, not just `git commit && git push && git tag`.
+
+1. Implement every issue per its written acceptance criteria.
+2. Bump version in every location in `CLAUDE.md > Versioned Locations` (package.json, docs/spec.noma frontmatter + section headings, docs/agent-protocol.noma, CHANGELOG.md, README Status paragraph, PLAN.md §24.X).
+3. Run the verification triad locally: `npx tsc --noEmit && npm test && npm run build:site` — all three green.
+4. Commit (Conventional Commits, author ferax564), push to main.
+5. Tag `vN.N.N` locally and push the tag. Never let CI cut the tag — `GITHUB_TOKEN`-created tags don't trigger downstream workflows.
+6. `gh release create` with notes sliced from the CHANGELOG entry.
+7. Close shipped issues: `gh issue close <n> --comment "Shipped in vN.N.N — <release-url>"`.
+
+**Why:** Noma project memory lives in CHANGELOG + PLAN.md §24 + spec version, not commit messages alone. A bare push+tag leaves docs out of sync and forces the user to do the issue-close manually. Pattern established by v0.3.0 (one issue → one release) and v0.4.0 (#2 → #8 → one release).
+
+**How to apply:** trigger on any short release phrasing ("ship it", "make a release", "close these"). Confirm only the first time per session, then proceed without re-asking. See [[reference_noma_plans]] for the doc source-of-truth map this ritual touches.
+::
+
+::memory{id="project_noma_v07_scope" type="project" confidence=1.0 last_seen="2026-05-12"}
+**STATUS: SHIPPED on 2026-05-12.** Release: `https://github.com/ferax564/noma/releases/tag/v0.7.0`. Tag v0.7.0 pushed; main at 196d6f2 (11 commits ahead of v0.6.0). All 177 tests pass; build:site green.
+
+**Open follow-up:** Task 5 Step 12 — interactive `vsce publish` from `tools/vscode-noma/`. Marketplace listing not yet live. When publish completes, flip PLAN.md §24.11 marketplace bullet to ✅ and commit.
+
+v0.7.0 is the "papercut bundle" release. Scope = the four §24.9 items still ⏳ as of 2026-05-11:
+
+1. `noma diff a.noma b.noma` → emits `::state_change` blocks for attribute drift between two snapshots.
+2. Shared `_assets/theme.css` for `--to site` (dedupe per-page CSS on multi-chapter books).
+3. Manifest `trusted_publishing: true` → implies `--no-unsafe` for renders driven by that manifest.
+4. Publish `noma-language` to the VS Code marketplace (currently in-repo only at `tools/vscode-noma/`).
+
+**Why:** picked over starting a reference agent SDK (see [[project_noma_v08_target]]). The four papercuts ship together cleanly in one release and close out §24.9 entirely; the SDK is multi-week consumer-pressure work and is the natural v0.8 target.
+
+**Locked-in v0.7 decisions (post codex review, 2026-05-12):**
+- `noma diff` v0.7 scope = attribute-value drift only on `id`'d directives present in BOTH snapshots. Attribute add/delete, block add/delete/rename, prose changes, ID-less directives → v0.7.1+.
+- `noma diff --at <date>` is REQUIRED, no default — output must be deterministic.
+- `diffDocs` throws on duplicate IDs.
+- `trusted_publishing: true` in `book.yml` is FINAL — no CLI flag re-enables escape hatches.
+- `renderHtml` gained `stylesheetHref?: string` for site-renderer dedup.
+
+See [[feedback_release_scope]] for the ship ritual that landed it.
+::
+
+::memory{id="feedback_codex_review_value" type="feedback" confidence=0.9 last_seen="2026-05-12"}
+Run `/codex review <plan-path>` on substantial implementation plans before handing them to an executor. On the v0.7.0 papercut bundle (2026-05-12), codex returned 14 findings; 3 were P1-blocking and 9 were P2 fix-before-ship. The most important catch: `makeStateChange` omitted `from`/`to` when undefined, but the validator at `src/validator.ts:237` requires both keys — meaning the diff CLI would have emitted invalid Noma in two of its four supported cases.
+
+**Why:** self-review catches missing tasks and structural gaps. Codex catches code-shape correctness, reads existing source carefully, and finds contradictions between plan prose and plan code. The two are complementary, not redundant.
+
+**How to apply:** invoke for plans involving new CLI commands, new modules, or output that must satisfy existing validators/parsers. Treat P1 blocking, P2 fix-before-ship, P3 v0.X.1 cleanup. Cost ~400K tokens + 5–10 min — cheap vs. discovering the bug post-merge.
+
+Don't use codex for: small one-task changes, doc/CHANGELOG/version-bump plans, plans an executor will obviously catch during TDD red-step. Use it for plans with multiple new exports, plans touching multiple modules, or plans whose output must round-trip through other components.
+::
+
+::memory{id="project_noma_v08_target" type="project" confidence=0.8 last_seen="2026-05-12"}
+**Deferred until v0.7.0 ships.** Per Agent Protocol v1.0 RFC §1.4 (`docs/spec-agent-protocol-v1.noma`), Annexes A (capability descriptor sidecar) and B (MCP-over-stdio binding) ship **provisional** and stabilize in v1.1 only after:
+
+> "the reference SDK (Phase 3) and at least one third-party binding exercise them under production conditions."
+
+**The gap:** there is no reference agent SDK that drives `@noma/mcp-server` end-to-end. Without one, the RFC annexes can't graduate from provisional to normative.
+
+**Why:** the four §24.9 papercuts ship cleanly as v0.7.0 (see [[project_noma_v07_scope]]). The SDK is multi-week consumer-pressure work that doesn't fit that release. Natural slot: v0.8.
+
+**How to apply:** when v0.7 lands and the user asks "what's next?", surface: (a) TS SDK only (TypeScript ecosystem first), (b) TS + Python SDK (broader binding coverage), (c) integrate with an existing agent framework (Claude Agent SDK, OpenAI Agents SDK, MCP clients) as the "first third-party binding" the RFC requires. Don't volunteer SDK work mid-v0.7.
+::
+
+::memory{id="reference_noma_plans" type="reference" confidence=0.95 last_seen="2026-05-12"}
+**Plans:** `docs/superpowers/plans/YYYY-MM-DD-<slug>.md` — one plan per planned release or major feature. Generated by the `superpowers:writing-plans` skill. Use checkbox steps; pair with `subagent-driven-development` or `executing-plans` to run them.
+
+**Source of truth hierarchy:**
+- `PLAN.md` — full product vision. §17 = MVP boundary. §23 = revised direction. §24 = shipped tracker (one subsection per release). §24.N "Still ahead" lists ⏳ items waiting to ship.
+- `docs/superpowers/plans/<file>.md` — step-by-step impl plan for a specific release. Per-task TDD, exact paths, exact commands.
+- `CHANGELOG.md` — Keep-a-Changelog. `[Unreleased]` accumulates as features ship; promoted to a real version on tag.
+- `docs/spec.noma` — block-type and AST reference. Frontmatter `version:` + "Compatibility promises (vN)" headings bump in lockstep with `package.json`.
+- `docs/spec-agent-protocol-v1.noma` — v1.0 normative RFC. Annexes A+B provisional, stabilize v1.1 (see [[project_noma_v08_target]]).
+- `docs/agent-protocol.noma` — legacy, superseded by the v1.0 RFC.
+
+**Release ritual** — see [[feedback_release_scope]]. Tag locally and push the tag manually (GH Actions can't trigger downstream workflows from `GITHUB_TOKEN`-created tags).
+::
