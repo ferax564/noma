@@ -1468,13 +1468,13 @@ Closes the two items deferred from review fixes #5 and #6.
 
 ### 24.9 Still ahead
 
-- ⏳ Shared `_assets/theme.css` for `--to site` (currently inlines CSS
+- ✅ Shared `_assets/theme.css` for `--to site` (currently inlines CSS
   per page; functional but doubles output size on large books).
-- ⏳ Trusted-publishing context (auto-set `--no-unsafe` based on
+- ✅ Trusted-publishing context (auto-set `--no-unsafe` based on
   manifest config).
-- ⏳ `noma diff a.noma b.noma` — emit `::state_change` blocks for
+- ✅ `noma diff a.noma b.noma` — emit `::state_change` blocks for
   attribute drift between two versions of the same document.
-- ⏳ Publish `noma-language` to the VS Code marketplace once the
+- ✅ prep ready / ⏳ live publish pending maintainer step — Publish `noma-language` to the VS Code marketplace once the
   grammar has soaked against external `.noma` files (currently
   ships in-repo only).
 
@@ -1487,3 +1487,12 @@ Shipped on 2026-05-11.
 - `noma verify` CLI + 14-fixture minimum corpus (`examples/conformance/`)
 - Legacy `docs/agent-protocol.noma` superseded; cross-refs updated in `docs/spec.noma`
 - `@noma/mcp-server` bumped to v0.6.0 (matching CLI); transcript writer updated to v1.0 protocol shape
+
+### §24.11 — v0.7.0 (papercut bundle)
+
+Shipped on 2026-05-12. Closes three ⏳ items from §24.9; VS Code marketplace is prep-only in this release (live publish is a maintainer-run follow-up).
+
+- `noma diff <before.noma> <after.noma> --at <date>` — attribute-drift detector emitting `::state_change` directives. v0.7 scope is attribute-value changes only; add/delete and structural diffs tracked for v0.7.1. Programmatic API exported as `diffDocs` from `@noma/cli`. `--at` is required so output is deterministic.
+- `book.yml` `trusted_publishing: true` — manifest-level implicit `--no-unsafe` for both single-page and `--to site` renders. No CLI override (security posture is final once the manifest sets it).
+- Shared `_assets/theme.css` for `--to site` — `renderHtml` gained a `stylesheetHref` option; the site renderer writes theme once and points every page at it. Per-page output drops ~15 KB on 30-chapter books.
+- `noma-language` v0.2.0 — marketplace publish prep (metadata, README, .vscodeignore, extension-local CHANGELOG, LICENSE). Live marketplace listing follows when the maintainer runs `vsce publish`.

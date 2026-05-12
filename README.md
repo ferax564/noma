@@ -136,7 +136,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.6.0 — Noma now ships the v1.0 Agent Patch Protocol RFC ([`docs/spec-agent-protocol-v1.noma`](docs/spec-agent-protocol-v1.noma)), a 14-fixture conformance corpus under [`examples/conformance/`](examples/conformance/), and the `noma verify` CLI. The reference implementation matches the spec: v1.0 transcripts, source-span guarantees, explicit `FrontmatterNode` AST, and `PatchError.code` taxonomy. The `@noma/mcp-server` package ships at the same version with the updated transcript writer. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24 for the full per-version tracker.
+**Status:** v0.7.0 — Noma now ships `noma diff` (attribute-drift detector emitting `::state_change` blocks), manifest-level `trusted_publishing` (implies `--no-unsafe`), a shared `_assets/theme.css` for `--to site` builds, and `tools/vscode-noma` v0.2.0 marketplace prep. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24 for the full per-version tracker.
 
 ## License
 

@@ -27,7 +27,7 @@ src/                       TypeScript source for parser, AST, renderers, validat
   patch.ts                 Block-level patch ops (replace/add/delete/update_attr/rename_id)
   book.ts                  YAML manifest loader. `loadBook` (concat) + `loadBookChapters` (per-chapter, scoped IDs)
   fmt.ts                   Source formatter; re-aligns pipe tables, leaves rest byte-identical
-  cli.ts                   `noma parse|render|check|export|patch|fmt` (`--to site`, `--math`, `--ignore-rule`)
+  cli.ts                   `noma parse|render|check|export|patch|fmt|diff|verify` (`--to site`, `--math`, `--ignore-rule`)
 bin/noma.mjs               Node CLI shim
 themes/default.css         Default HTML theme (tables, export buttons, controls, variants)
 themes/dark.css            Alternate dark theme — `noma render --theme dark`

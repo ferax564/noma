@@ -4,6 +4,20 @@ All notable changes to Noma are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-05-12
+
+### Added
+
+- **`noma diff <before.noma> <after.noma> --at <date>`** — emits a flat list of `::state_change` blocks for scalar attribute drift on directives identified by `id` and present in both snapshots. Flags: `--at YYYY-MM-DD` (required, for deterministic output), `--reason "..."`, `--out <path>`. v0.7 scope is attribute-value changes only; attribute add/delete, block add/delete/rename, and prose/heading changes are tracked for v0.7.1. Closes the last item from the v0.3 state_change story.
+- **`book.yml` `trusted_publishing: true`** — manifest-level flag that implies `--no-unsafe` for every render driven by the manifest (single-page or `--to site`). The manifest is the final word: no CLI flag re-enables escape hatches once the manifest forbids them.
+- **`stylesheetHref` option on `renderHtml`** — when set, the standalone HTML head emits `<link rel="stylesheet" href="...">` instead of `<style>...</style>`. Used by the site renderer; the single-page path is unchanged.
+- **`tools/vscode-noma` v0.2.0 — marketplace publish prep.** Metadata, `.vscodeignore`, `CHANGELOG.md`, README rewrite, LICENSE bundled into the extension folder. Live marketplace publish is a follow-up step the maintainer runs; verify the live listing at https://marketplace.visualstudio.com/items?itemName=ferax564.noma-language after publish.
+- **`diffDocs(before, after, options)`** programmatic export from `@noma/cli`.
+
+### Changed
+
+- **`--to site` deduplicates theme CSS.** Chapter and index pages now `<link rel="stylesheet" href="_assets/theme.css" />` instead of inlining the full theme body. Output size on a 30-chapter book drops by ~15 KB per page. Output for `renderHtml` (single-page) is unchanged unless the caller opts in via `stylesheetHref`.
+
 ## [0.6.0] — 2026-05-11
 
 ### Added

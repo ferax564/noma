@@ -1,6 +1,6 @@
 ---
-title: Noma — Format Specification (v0.6.0)
-version: 0.6.0
+title: Noma — Format Specification (v0.7.0)
+version: 0.7.0
 status: stable
 ---
 
@@ -349,7 +349,7 @@ unchanged lines all survive intact. The programmatic API exposes the
 new function as `patchSource(source, ops)`; the AST-level
 `patch(doc, op)` stays for callers that already work in AST space. For normative schema and semantics, see the [Noma Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 
-## Render targets (v0.6.0)
+## Render targets (v0.7.0)
 
 | Target   | Status  | Notes                                                                         |
 | -------- | ------- | ----------------------------------------------------------------------------- |
@@ -412,6 +412,18 @@ The loader concatenates each chapter's parsed AST into a single `DocumentNode` (
   After this, `[[rp3]]`, `[[risk-premia-3]]`, and `[[risk-premia-3-rp3]]` all resolve to the same section.
 
 Resolution order: explicit `id=` on the heading → auto-slug from the title → frontmatter `aliases:` → filename slug. Any of those paths matching the wikilink target counts as resolved.
+
+## Compatibility promises (v0.7)
+
+- `noma diff a.noma b.noma` is additive and pure: same inputs always produce
+  the same `::state_change` block list. Output schema matches v0.3's
+  `::state_change` directive (`block`, `attribute`, `from`, `to`, `at`, optional
+  `reason`).
+- `book.yml` `trusted_publishing: true` implies `--no-unsafe` for all renders
+  driven by that manifest. Existing manifests without the field are unchanged.
+- `--to site` emits `_assets/theme.css` once and links it from every page.
+  Output of `renderHtml` (single-page) is unchanged unless the caller opts in
+  via `stylesheetHref`.
 
 ## Compatibility promises (v0.6.0)
 
