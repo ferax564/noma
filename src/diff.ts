@@ -34,7 +34,7 @@ export function diffDocs(
   after: DocumentNode,
   options: DiffOptions,
 ): DirectiveNode[] {
-  if (!options || typeof options.at !== "string" || options.at.length === 0) {
+  if (typeof options.at !== "string" || options.at.length === 0) {
     throw new Error("diffDocs: options.at is required (YYYY-MM-DD)");
   }
   const at = options.at;
@@ -67,7 +67,7 @@ function diffAttrs(a: Attrs, b: Attrs): AttrDelta[] {
     const av = a[k];
     const bv = b[k];
     if (av === undefined || bv === undefined) continue;
-    if (av === bv) continue;
+    if (Object.is(av, bv)) continue;
     out.push({ attribute: k, from: av, to: bv });
   }
   return out;

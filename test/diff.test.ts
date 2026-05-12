@@ -25,8 +25,8 @@ test("identical docs produce no deltas", () => {
   assert.deepEqual(diffDocs(parse(src), parse(src), { at: AT }), []);
 });
 
-test("diffDocs without options.at throws", () => {
+test("diffDocs with empty options.at throws", () => {
   const before = parse(`::claim{id="c1" confidence=0.6}\nx\n::\n`);
   const after = parse(`::claim{id="c1" confidence=0.9}\nx\n::\n`);
-  assert.throws(() => diffDocs(before, after), /at/i);
+  assert.throws(() => diffDocs(before, after, { at: "" }), /at/i);
 });
