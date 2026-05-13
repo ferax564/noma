@@ -41,7 +41,9 @@ export class NomaTools {
   }
 
   async listIds(file: string): Promise<{ ids: string[]; aliases: Record<string, string> }> {
-    throw new Error("not implemented");
+    const res = await this.client.callTool("list_ids", { file });
+    if (res.isError) throw new NomaSystemError(res.text);
+    return JSON.parse(res.text) as { ids: string[]; aliases: Record<string, string> };
   }
 
   async validateDoc(file: string): Promise<{ ok: boolean; diagnostics: Diagnostic[] }> {

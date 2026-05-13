@@ -47,3 +47,13 @@ test("readDoc throws NomaSystemError on book manifest path", async () => {
 test("readDoc throws NomaSystemError on missing file", async () => {
   await assert.rejects(() => tools.readDoc("/no/such/file.noma"), NomaSystemError);
 });
+
+test("listIds returns canonical ids + aliases", async () => {
+  const path = scratchDoc(
+    `# Top {aliases="root"}\n\n::claim{id="c1"}\nbody\n::\n\n::evidence{id="e1" for="c1"}\nbody\n::\n`,
+  );
+  const { ids, aliases } = await tools.listIds(path);
+  assert.ok(ids.includes("c1"));
+  assert.ok(ids.includes("e1"));
+  assert.equal(aliases["root"], "top");
+});
