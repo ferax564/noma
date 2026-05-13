@@ -26,3 +26,24 @@ function scratchDoc(content: string, name = "doc.noma"): string {
 test("NomaTools.spawn yields a usable client; close shuts it down", async () => {
   assert.ok(tools);
 });
+
+test("readDoc returns block summaries with patchable flag", async () => {
+  const path = scratchDoc(
+    `# Hello\n\nA paragraph.\n\n::claim{id="c1" confidence=0.7}\nClaim body.\n::\n`,
+  );
+  const { blocks } = await tools.readDoc(path);
+  assert.ok(blocks.length >= 2, `expected >=2 blocks, got ${blocks.length}`);
+  const claim = blocks.find((b) => b.name === "claim");
+  assert.ok(claim, "claim block must surface");
+  assert.equal(claim.id, "c1");
+  assert.equal(claim.patchable, true);
+});
+
+test("readDoc throws NomaSystemError on book manifest path", async () => {
+  const yml = scratchDoc("title: T\nchapters:\n  - x.noma\n", "book.noma.yml");
+  await assert.rejects(() => tools.readDoc(yml), NomaSystemError);
+});
+
+test("readDoc throws NomaSystemError on missing file", async () => {
+  await assert.rejects(() => tools.readDoc("/no/such/file.noma"), NomaSystemError);
+});

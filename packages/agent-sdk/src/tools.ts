@@ -35,7 +35,9 @@ export class NomaTools {
   }
 
   async readDoc(file: string): Promise<{ blocks: BlockSummary[] }> {
-    throw new Error("not implemented");
+    const res = await this.client.callTool("read_doc", { file });
+    if (res.isError) throw new NomaSystemError(res.text);
+    return JSON.parse(res.text) as { blocks: BlockSummary[] };
   }
 
   async listIds(file: string): Promise<{ ids: string[]; aliases: Record<string, string> }> {
