@@ -899,10 +899,20 @@ export class StdioMcpClient {
 
   static async spawn(options: StdioMcpClientOptions = {}): Promise<StdioMcpClient> {
     const bin = resolveServerBin(options.mcpServerBin);
+    // StdioClientTransport expects env as Record<string, string> — NodeJS.ProcessEnv
+    // is Record<string, string | undefined>, so we must drop undefined values
+    // before passing through (or the strict-TS build fails).
+    const env = options.env
+      ? Object.fromEntries(
+          Object.entries(options.env).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        )
+      : undefined;
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [bin],
-      ...(options.env ? { env: options.env } : {}),
+      ...(env ? { env } : {}),
     });
     const client = new Client(
       { name: "@noma/agent-sdk", version: "0.1.0" },
@@ -924,14 +934,23 @@ export class StdioMcpClient {
 
   async callTool(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {
     this.assertOpen();
-    const res = await this.withTimeout(
+    // The MCP SDK's callTool return type is a union: it can be the
+    // CallToolResult shape (`{ content, isError? }`) OR a legacy
+    // `{ toolResult }` envelope. Strict TS rejects direct field access.
+    // The @noma/mcp-server always emits the CallToolResult shape, but the
+    // SDK's static type doesn't know that — narrow by sniffing for
+    // `content`. Throw a transport error if the envelope is unexpected.
+    const raw = await this.withTimeout(
       this.client.callTool({ name, arguments: args }),
     );
-    const content = res.content;
+    if (!("content" in raw)) {
+      throw new NomaTransportError(`tool ${name} returned legacy toolResult envelope; expected CallToolResult`);
+    }
+    const content = raw.content;
     if (!Array.isArray(content) || content.length === 0 || content[0]?.type !== "text") {
       throw new NomaTransportError(`tool ${name} returned no text content`);
     }
-    return { isError: res.isError === true, text: String(content[0].text) };
+    return { isError: raw.isError === true, text: String(content[0].text) };
   }
 
   async close(): Promise<void> {
@@ -2128,7 +2147,7 @@ export {
   NomaWorkflow,
   type SafePatchOptions,
   type ApplyOpsOptions,
-} from "./workflow.ts";
+} from "./workflow.js";
 export {
   CapabilityDescriptor,
   type BlockPolicy,

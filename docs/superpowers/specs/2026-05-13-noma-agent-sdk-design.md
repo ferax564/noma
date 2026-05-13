@@ -145,9 +145,11 @@ type PatchFailure = {
 
 Method-to-tool mapping is 1:1 with Annex B §B.3–B.6. Each method awaits one MCP request/response. The class owns one subprocess for its lifetime.
 
-**Book manifest paths.** Passing a `.noma.yml` path:
-- to `readDoc`, `listIds`, `validateDoc` → throws `NomaSystemError("book manifest path is not a valid target")` (server returns `isError: true`).
-- to `patchBlock` → returns `{ ok: false, code: "unsupported_op" }` (server treats this as a user-facing error per Annex B §B.6).
+**Book manifest paths.** Passing a `.noma.yml` path to any of the four
+methods throws `NomaSystemError` — the server marks all four with
+`isError: true` (read/list/validate raise; patch sets `system: true` which
+the MCP envelope converts to `isError: true`). The patch error message
+carries `unsupported_op` for callers that want to discriminate.
 
 ### `NomaWorkflow` — composes tools into stress-test primitives
 
@@ -316,7 +318,7 @@ No validation beyond shape — the server is the source of truth for transcript 
 | Channel | When | Examples |
 |---------|------|----------|
 | **Throws** `NomaSystemError` (or subclass) | System fault — caller cannot recover by inspecting a body | Subprocess died, stdio framing broken, file I/O failure, capability YAML malformed, MCP `isError: true`, request timeout |
-| **Returns** `{ ok: false, code }` | User-recoverable patch error from §3.5 | `target_missing`, `sha_mismatch`, `id_conflict`, `invalid_content`, `unsupported_op`, `rename_collision`, `schema_violation` |
+| **Returns** `{ ok: false, code }` | User-recoverable patch error from §3.5 | `target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, `sha_mismatch` (note: book-manifest `unsupported_op` is thrown via `NomaSystemError`, not returned) |
 
 ### Error class hierarchy
 
