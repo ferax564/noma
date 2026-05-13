@@ -106,7 +106,7 @@ export class NomaWorkflow {
   }
 
   async readCapabilities(file: string): Promise<CapabilityDescriptor | null> {
-    throw new Error("not implemented");
+    return CapabilityDescriptor.fromFile(`${file}.capabilities.yml`);
   }
 
   async checkCapability(file: string, op: PatchOp): Promise<CapabilityCheckResult> {

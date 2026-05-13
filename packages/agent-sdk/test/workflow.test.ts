@@ -265,3 +265,22 @@ test("replayTranscript round-trips records written by applyOps", async () => {
   assert.equal(rec0.patch_result, "applied");
   assert.equal(rec1.parent_op_id, rec0.op_id);
 });
+
+test("readCapabilities returns null when sidecar absent", async () => {
+  const path = scratchDoc(`# H\n`);
+  const wf = new NomaWorkflow(tools);
+  const desc = await wf.readCapabilities(path);
+  assert.equal(desc, null);
+});
+
+test("readCapabilities parses sidecar when present", async () => {
+  const path = scratchDoc(`# H\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  profile: test\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const desc = await wf.readCapabilities(path);
+  assert.ok(desc);
+  assert.equal(desc.profile, "test");
+});
