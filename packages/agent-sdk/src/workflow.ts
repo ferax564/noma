@@ -92,7 +92,17 @@ export class NomaWorkflow {
   }
 
   async replayTranscript(file: string): Promise<TranscriptRecord[]> {
-    throw new Error("not implemented");
+    let raw: string;
+    try {
+      raw = await readFile(`${file}.patches`, "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw e;
+    }
+    return raw
+      .split("\n")
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line) as TranscriptRecord);
   }
 
   async readCapabilities(file: string): Promise<CapabilityDescriptor | null> {

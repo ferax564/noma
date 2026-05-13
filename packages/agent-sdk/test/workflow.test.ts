@@ -238,3 +238,30 @@ test("applyOps chains parent_op_id when parentChain=true", async () => {
   const parent = r0.transcriptEntry.op_id;
   assert.equal(r1.transcriptEntry.parent_op_id, parent);
 });
+
+test("replayTranscript returns [] when no .patches file exists", async () => {
+  const path = scratchDoc(`# H\n`);
+  const wf = new NomaWorkflow(tools);
+  const records = await wf.replayTranscript(path);
+  assert.deepEqual(records, []);
+});
+
+test("replayTranscript round-trips records written by applyOps", async () => {
+  const path = scratchDoc(
+    `# H\n\n::claim{id="c1" confidence=0.5}\nA\n::\n::claim{id="c2" confidence=0.5}\nB\n::\n`,
+  );
+  const wf = new NomaWorkflow(tools);
+  await wf.applyOps(path, [
+    { op: "update_attribute", id: "c1", key: "confidence", value: 0.7 },
+    { op: "update_attribute", id: "c2", key: "confidence", value: 0.8 },
+  ]);
+  const records = await wf.replayTranscript(path);
+  assert.equal(records.length, 2);
+  const rec0 = records[0];
+  const rec1 = records[1];
+  assert.ok(rec0);
+  assert.ok(rec1);
+  assert.equal(rec0.op.op, "update_attribute");
+  assert.equal(rec0.patch_result, "applied");
+  assert.equal(rec1.parent_op_id, rec0.op_id);
+});
