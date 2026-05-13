@@ -15,6 +15,7 @@
   "files": ["src", "dist", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "pretest": "cd ../.. && npm run build -w @noma/mcp-server && npm run demo:stale-memo && npm run demo:agent-memory",
     "test": "tsx --test test/*.test.ts",
     "demo:agent-stale-memo": "tsx scripts/agent-stale-memo-sdk.ts",
     "demo:agent-memory": "tsx scripts/agent-memory-demo-sdk.ts"

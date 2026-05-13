@@ -36,6 +36,12 @@ jobs:
       - name: Run conformance suite
         run: npm run verify:conformance
 
+      - name: Build agent-sdk types
+        run: npm run build:agent-sdk
+
+      - name: Run agent-sdk tests
+        run: npm run test:agent-sdk
+
       - name: Build site (render HTML, copy landing, generate PDFs)
         run: |
           mkdir -p dist/examples dist/docs
