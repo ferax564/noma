@@ -161,7 +161,7 @@ import {
   NomaTransportError,
   NomaCapabilityError,
   NomaTimeoutError,
-} from "../src/errors.ts";
+} from "../src/errors.js";
 
 test("NomaSystemError carries message and optional cause", () => {
   const cause = new Error("underlying");
@@ -428,8 +428,8 @@ Create `packages/agent-sdk/test/capabilities.test.ts`:
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CapabilityDescriptor } from "../src/capabilities.ts";
-import { NomaCapabilityError } from "../src/errors.ts";
+import { CapabilityDescriptor } from "../src/capabilities.js";
+import { NomaCapabilityError } from "../src/errors.js";
 
 const MINIMAL = `
 nomaAgent:
@@ -552,8 +552,8 @@ Expected: FAIL — `../src/capabilities.ts` missing.
 ```ts
 import { readFile } from "node:fs/promises";
 import yaml from "js-yaml";
-import { NomaCapabilityError } from "./errors.ts";
-import type { PatchOpName } from "./types.ts";
+import { NomaCapabilityError } from "./errors.js";
+import type { PatchOpName } from "./types.js";
 
 export type AttrConstraint = {
   type?: "string" | "number" | "boolean";
@@ -810,8 +810,8 @@ Create `packages/agent-sdk/test/transport.test.ts`:
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { StdioMcpClient } from "../src/transport.ts";
-import { NomaSpawnError } from "../src/errors.ts";
+import { StdioMcpClient } from "../src/transport.js";
+import { NomaSpawnError } from "../src/errors.js";
 
 test("StdioMcpClient.spawn resolves the bundled mcp-server binary and returns a client", async () => {
   const client = await StdioMcpClient.spawn();
@@ -857,7 +857,7 @@ Expected: FAIL — `../src/transport.ts` missing.
 import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { NomaSpawnError, NomaTimeoutError, NomaTransportError } from "./errors.ts";
+import { NomaSpawnError, NomaTimeoutError, NomaTransportError } from "./errors.js";
 
 const require_ = createRequire(import.meta.url);
 
@@ -998,8 +998,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { NomaTools } from "../src/tools.ts";
-import { NomaSystemError } from "../src/errors.ts";
+import { NomaTools } from "../src/tools.js";
+import { NomaSystemError } from "../src/errors.js";
 
 let tools: NomaTools;
 
@@ -1034,8 +1034,8 @@ cd packages/agent-sdk && npx tsx --test test/tools.test.ts
 Create `packages/agent-sdk/src/tools.ts`:
 
 ```ts
-import { StdioMcpClient, type StdioMcpClientOptions } from "./transport.ts";
-import { NomaSystemError } from "./errors.ts";
+import { StdioMcpClient, type StdioMcpClientOptions } from "./transport.js";
+import { NomaSystemError } from "./errors.js";
 import type {
   BlockSummary,
   Diagnostic,
@@ -1044,7 +1044,7 @@ import type {
   Actor,
   TranscriptRecord,
   PatchErrorCode,
-} from "./types.ts";
+} from "./types.js";
 
 export type PatchOptions = {
   reason?: string;
@@ -1422,8 +1422,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { NomaTools } from "../src/tools.ts";
-import { NomaWorkflow } from "../src/workflow.ts";
+import { NomaTools } from "../src/tools.js";
+import { NomaWorkflow } from "../src/workflow.js";
 
 let tools: NomaTools;
 
@@ -1456,15 +1456,15 @@ Create `packages/agent-sdk/src/workflow.ts`:
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
-import { NomaTools, type PatchOptions } from "./tools.ts";
-import { CapabilityDescriptor } from "./capabilities.ts";
+import { NomaTools, type PatchOptions } from "./tools.js";
+import { CapabilityDescriptor } from "./capabilities.js";
 import type {
   Actor,
   CapabilityCheckResult,
   PatchOp,
   PatchResult,
   TranscriptRecord,
-} from "./types.ts";
+} from "./types.js";
 
 export type SafePatchOptions = {
   retryOnShaMismatch?: number;
@@ -1628,10 +1628,16 @@ test("safePatch returns the last sha_mismatch after exhausting retries", async (
   const wf = new NomaWorkflow(tools);
 
   const originalPatch = tools.patchBlock.bind(tools);
+  // Use a deterministic monotonically-changing value so the file SHA always
+  // differs between attempts. Math.random() can collide with the existing
+  // value (no-op write → same SHA → patch unexpectedly succeeds), making
+  // the test flaky.
+  let mutationN = 0;
   (tools as { patchBlock: typeof tools.patchBlock }).patchBlock = async (f, op, opts) => {
+    const next = (++mutationN).toString().padStart(4, "0");
     writeFileSync(
       f,
-      readFileSync(f, "utf8").replace(/confidence=\d+\.\d+/, `confidence=${Math.random().toFixed(3)}`),
+      readFileSync(f, "utf8").replace(/confidence=\d+(?:\.\d+)?/, `confidence=0.${next}`),
     );
     return originalPatch(f, op, opts);
   };
@@ -2117,7 +2123,7 @@ git commit -m "feat(agent-sdk): NomaWorkflow.checkCapability with all four reaso
 - [ ] **Step 1: Replace the placeholder content**
 
 ```ts
-export { NomaTools, type PatchOptions } from "./tools.ts";
+export { NomaTools, type PatchOptions } from "./tools.js";
 export {
   NomaWorkflow,
   type SafePatchOptions,
@@ -2127,14 +2133,14 @@ export {
   CapabilityDescriptor,
   type BlockPolicy,
   type AttrConstraint,
-} from "./capabilities.ts";
+} from "./capabilities.js";
 export {
   NomaSystemError,
   NomaSpawnError,
   NomaTransportError,
   NomaCapabilityError,
   NomaTimeoutError,
-} from "./errors.ts";
+} from "./errors.js";
 export type {
   Actor,
   BlockSummary,
@@ -2146,7 +2152,7 @@ export type {
   PatchOpName,
   PatchResult,
   TranscriptRecord,
-} from "./types.ts";
+} from "./types.js";
 ```
 
 - [ ] **Step 2: Build and verify export shape**
@@ -2285,7 +2291,7 @@ Create `packages/agent-sdk/scripts/agent-stale-memo-sdk.ts`:
 import { resolve } from "node:path";
 import { copyFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { NomaTools, NomaWorkflow, type PatchOp } from "../src/index.ts";
+import { NomaTools, NomaWorkflow, type PatchOp } from "../src/index.js";
 
 const FIXTURE = resolve("examples/agent-stale-memo");
 const OUT_DIR = resolve("dist/examples/agent-stale-memo-sdk");
@@ -2327,7 +2333,12 @@ function renderTrace(results: Awaited<ReturnType<NomaWorkflow["applyOps"]>>): st
   return `<!doctype html><meta charset="utf-8"><title>agent-stale-memo-sdk</title><table border="1"><thead><tr><th>#</th><th>result</th><th>op</th><th>validation</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-if (import.meta.url === `file://${fileURLToPath(import.meta.url)}` || process.argv[1] === fileURLToPath(import.meta.url)) {
+// CLI entrypoint guard. Compares the file being invoked by `node`/`tsx`
+// against this module's path so importing the module from a test does NOT
+// run the demo as a side effect. The earlier `import.meta.url === \`file://...\``
+// form is tautological because `fileURLToPath(import.meta.url)` always
+// round-trips to the same URL — it fires on every import.
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   runDemo()
     .then((r) => console.log(`wrote ${r.outDir}/trace.html (${r.ops} ops)`))
     .catch((e) => {
@@ -2496,9 +2507,9 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, copyFileSync, mkdtempSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { NomaTools } from "../src/tools.ts";
-import { NomaWorkflow } from "../src/workflow.ts";
-import type { PatchOp } from "../src/types.ts";
+import { NomaTools } from "../src/tools.js";
+import { NomaWorkflow } from "../src/workflow.js";
+import type { PatchOp } from "../src/types.js";
 
 const ROOT = resolve("examples/conformance/patch");
 
@@ -2595,9 +2606,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { NomaTools } from "../src/tools.ts";
-import { NomaWorkflow } from "../src/workflow.ts";
-import type { PatchErrorCode } from "../src/types.ts";
+import { NomaTools } from "../src/tools.js";
+import { NomaWorkflow } from "../src/workflow.js";
+import type { PatchErrorCode } from "../src/types.js";
 
 // Source: src/patch.ts:29. Nine codes total; this aggregator covers the
 // seven that are reachable through a single patch_block call.
@@ -2701,13 +2712,41 @@ test("graduation metrics: error code coverage + descriptor shape + conformance c
       }
     }
 
+    // Re-run each conformance fixture inline so the metric reports an actual
+    // pass count, not just the corpus size. Skips fixtures missing input/patch/
+    // expected files (test/conformance.test.ts owns the strict assertion; this
+    // is an honest tally for the v1.1 graduation note).
     const confRoot = resolve("examples/conformance/patch");
     const confDirs = existsSync(confRoot) ? readdirSync(confRoot) : [];
+    let confPassed = 0;
+    let confEligible = 0;
+    for (const name of confDirs) {
+      const fx = join(confRoot, name);
+      if (
+        !existsSync(join(fx, "patch.json")) ||
+        !existsSync(join(fx, "expected.post.noma")) ||
+        !existsSync(join(fx, "input.noma"))
+      ) continue;
+      confEligible++;
+      const scratch2 = mkdtempSync(join(tmpdir(), `noma-grad-conf-${name}-`));
+      const workFile = join(scratch2, "input.noma");
+      const { copyFileSync, readFileSync: rfs } = await import("node:fs");
+      copyFileSync(join(fx, "input.noma"), workFile);
+      const raw = JSON.parse(rfs(join(fx, "patch.json"), "utf8")) as unknown;
+      const ops: unknown[] = Array.isArray(raw)
+        ? raw
+        : (raw as { ops?: unknown[] }).ops ?? [raw];
+      const results = await wf.applyOps(workFile, ops as never, { stopOnFirstError: true });
+      const allOk = results.every((r) => r.ok);
+      const got = rfs(workFile, "utf8");
+      const want = rfs(join(fx, "expected.post.noma"), "utf8");
+      if (allOk && got === want) confPassed++;
+    }
 
     const report = {
       errorCodes: { observed: [...seenCodes].sort(), total: ALL_CODES.length },
       descriptorShape: { observed: [...descShape].sort() },
-      conformanceCorpus: { fixtures: confDirs.length },
+      conformance: { passed: confPassed, total: confEligible },
     };
     console.log("\n=== Annex graduation metrics ===\n" + JSON.stringify(report, null, 2));
 
@@ -2726,7 +2765,15 @@ test("graduation metrics: error code coverage + descriptor shape + conformance c
     assert.ok(descShape.has("attrs.enum"));
     assert.ok(descShape.has("ids.rename"));
     assert.ok(descShape.has("validation.required"));
-    assert.equal(confDirs.length >= 5, true, `conformance corpus too small: ${confDirs.length}`);
+    // Honest graduation gate: at least 5 fixtures, ALL passing through the
+    // SDK. The pass count is the real third graduation metric — corpus size
+    // alone tells you nothing about whether the SDK handles those fixtures.
+    assert.equal(confEligible >= 5, true, `conformance corpus too small: ${confEligible}`);
+    assert.equal(
+      confPassed,
+      confEligible,
+      `conformance not 100%: ${confPassed}/${confEligible} passed`,
+    );
   } finally {
     await tools.close();
   }

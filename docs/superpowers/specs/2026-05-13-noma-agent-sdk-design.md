@@ -336,22 +336,14 @@ Shallow on purpose. `instanceof NomaSystemError` catches all four subclasses. Th
 
 ### PatchFailure shape
 
-```ts
-type PatchErrorCode =
-  | "target_missing"
-  | "sha_mismatch"
-  | "id_conflict"
-  | "invalid_content"
-  | "unsupported_op"
-  | "rename_collision"
-  | "schema_violation";
-
-type PatchFailure = {
-  ok: false;
-  error: string;
-  code?: PatchErrorCode | string;  // string passthrough for forward-compat with future server codes
-};
-```
+Plan §Task 1.2 carries the canonical `PatchErrorCode` union (mirrors `src/patch.ts`).
+The user-recoverable code set (returned as `{ ok: false, code }`) is:
+`target_missing`, `parent_missing`, `id_conflict`, `invalid_content`,
+`id_attribute_protected`, `sha_mismatch`. `unsupported_op` for a
+book-manifest path is server-marked `system: true` and surfaces as a thrown
+`NomaSystemError`, not a body. `pre_validation_blocked` and
+`op_list_aborted` are reserved in the union for forward-compat but only
+emitted by `patch_block_list` (Annex B.8, v1.1+).
 
 The `code` field is the type-narrowing primitive. Callers `switch (result.code)` with exhaustive cases for v1.0 codes plus a `default` branch for forward-compat.
 
@@ -375,8 +367,8 @@ Pure logic, no subprocess. YAML schema parser accepts/rejects every §A.3 field 
 
 Spawns real `@noma/mcp-server` subprocess per file (shared via `before()`). Asserts:
 - Each of the four tools returns the documented shape on a valid fixture.
-- Every §3.5 patch error code (`target_missing`, `sha_mismatch`, `id_conflict`, `invalid_content`, `unsupported_op`, `rename_collision`, `schema_violation`) surfaces as `{ ok: false, code }` via `patchBlock` — never as a thrown system error.
-- `isError: true` system faults (book manifest path on read/list/validate, file-not-found) throw `NomaSystemError`.
+- Every user-recoverable §3.5 patch error code (`target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, `sha_mismatch`) surfaces as `{ ok: false, code }` via `patchBlock`.
+- `isError: true` system faults (book manifest path on read/list/validate/patch, file-not-found) throw `NomaSystemError`. Book-manifest patch is the one `unsupported_op` that is thrown rather than returned — the server flags it `system: true`.
 - Transcript file `<file>.patches` is appended after every `patchBlock`, including rejections and noops.
 
 ### Tier 3 — Workflow tests (`test/workflow.test.ts`)
@@ -388,11 +380,11 @@ Spawns real `@noma/mcp-server` subprocess per file (shared via `before()`). Asse
 - `applyOps` short-circuits on first failure when `stopOnFirstError: true`; continues otherwise.
 - `applyOps` chains `parent_op_id` correctly when `parentChain: true`.
 - `replayTranscript` round-trips: `applyOps` writes N records → `replayTranscript` reads exactly N back.
-- `checkCapability` produces each of the four reason codes (`no_descriptor`, `block_not_listed`, `op_not_granted`, `attr_constraint_violated`) on tailored fixtures.
+- `checkCapability` produces each of the five reason codes (`no_descriptor`, `block_not_listed`, `op_not_granted`, `attr_constraint_violated`, `rename_globally_denied`) on tailored fixtures. The last codifies Annex A's global `ids.rename` gate.
 
 ### Tier 4 — Demo replay (`scripts/agent-stale-memo-sdk.ts`, `scripts/agent-memory-demo-sdk.ts`)
 
-Both existing demos rewritten on top of the SDK. Same patch sequences, same final document, but every patch flows through `NomaWorkflow.safePatch`. The trace HTML output is compared byte-for-byte against the non-SDK baseline (or with documented diffs explained). Production-conditions proxy: realistic multi-op workflows under the real wire format.
+Both existing demos rewritten on top of the SDK. Same patch sequences, same final document, but every patch flows through `NomaWorkflow.applyOps` (which composes `safePatch` per op with `parentChain: true`). The final `.noma` document is compared byte-for-byte against the non-SDK baseline (`*.after.noma`); the trace HTML is regenerated from `PatchResult[]` and is not asserted. Production-conditions proxy: realistic multi-op workflows under the real wire format.
 
 ### Tier 5 — Conformance reuse (`test/conformance.test.ts`)
 
@@ -402,9 +394,9 @@ Each fixture under `examples/conformance/patch/{add_block,delete_block,rename_id
 
 A single test report captures three numbers:
 
-1. **Error code coverage** — # of distinct §3.5 codes observed through the SDK at least once. Target: 7/7 (100%).
+1. **Error code coverage** — # of distinct single-call §3.5 codes observed through the SDK at least once. Target: 7/7 (the seven user-recoverable codes reachable from a single `patchBlock` call). Op-list codes (`pre_validation_blocked`, `op_list_aborted`) are out of scope until `patch_block_list` ships in v1.1.
 2. **Descriptor shape coverage** — # of `nomaAgent.blocks.*.ops`, `attrs.*.type`, `attrs.*.min/max`, `attrs.*.enum`, `ids.rename`, `validation.required` shapes exercised by `checkCapability`. Target: every documented field.
-3. **Conformance pass rate** — # of `examples/conformance/patch/*` fixtures passing via the SDK. Target: 6/6 (100%, current corpus size).
+3. **Conformance pass rate** — # of `examples/conformance/patch/*` fixtures driven through the SDK end-to-end where the post-patch document matches `expected.post.noma` byte-for-byte. Target: 100% of the eligible corpus (fixtures with `input.noma` + `patch.json` + `expected.post.noma` present).
 
 When all three hit target, Annexes A and B promote from `provisional` to `normative` in v1.1.
 
