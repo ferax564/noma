@@ -164,3 +164,77 @@ test("safePatch returns the last sha_mismatch after exhausting retries", async (
     (tools as { patchBlock: typeof tools.patchBlock }).patchBlock = originalPatch;
   }
 });
+
+test("applyOps runs ops sequentially and returns one result per op", async () => {
+  const path = scratchDoc(
+    `# H\n\n::claim{id="c1" confidence=0.5}\nA\n::\n::claim{id="c2" confidence=0.5}\nB\n::\n`,
+  );
+  const wf = new NomaWorkflow(tools);
+  const results = await wf.applyOps(path, [
+    { op: "update_attribute", id: "c1", key: "confidence", value: 0.7 },
+    { op: "update_attribute", id: "c2", key: "confidence", value: 0.8 },
+  ]);
+  assert.equal(results.length, 2);
+  const r0 = results[0];
+  const r1 = results[1];
+  assert.ok(r0);
+  assert.ok(r1);
+  assert.equal(r0.ok, true);
+  assert.equal(r1.ok, true);
+});
+
+test("applyOps short-circuits on first failure when stopOnFirstError=true", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  const wf = new NomaWorkflow(tools);
+  const results = await wf.applyOps(
+    path,
+    [
+      { op: "delete_block", id: "does-not-exist" },
+      { op: "update_attribute", id: "c1", key: "confidence", value: 0.9 },
+    ],
+    { stopOnFirstError: true },
+  );
+  assert.equal(results.length, 1);
+  const r0 = results[0];
+  assert.ok(r0);
+  assert.equal(r0.ok, false);
+});
+
+test("applyOps continues past failures when stopOnFirstError=false", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1" confidence=0.5}\nbody\n::\n`);
+  const wf = new NomaWorkflow(tools);
+  const results = await wf.applyOps(
+    path,
+    [
+      { op: "delete_block", id: "does-not-exist" },
+      { op: "update_attribute", id: "c1", key: "confidence", value: 0.9 },
+    ],
+    { stopOnFirstError: false },
+  );
+  assert.equal(results.length, 2);
+  const r0 = results[0];
+  const r1 = results[1];
+  assert.ok(r0);
+  assert.ok(r1);
+  assert.equal(r0.ok, false);
+  assert.equal(r1.ok, true);
+});
+
+test("applyOps chains parent_op_id when parentChain=true", async () => {
+  const path = scratchDoc(
+    `# H\n\n::claim{id="c1" confidence=0.5}\nA\n::\n::claim{id="c2" confidence=0.5}\nB\n::\n`,
+  );
+  const wf = new NomaWorkflow(tools);
+  const results = await wf.applyOps(path, [
+    { op: "update_attribute", id: "c1", key: "confidence", value: 0.7 },
+    { op: "update_attribute", id: "c2", key: "confidence", value: 0.8 },
+  ]);
+  assert.equal(results.every((r) => r.ok), true);
+  const r0 = results[0];
+  const r1 = results[1];
+  assert.ok(r0);
+  assert.ok(r1);
+  assert.ok(r0.ok && r1.ok);
+  const parent = r0.transcriptEntry.op_id;
+  assert.equal(r1.transcriptEntry.parent_op_id, parent);
+});

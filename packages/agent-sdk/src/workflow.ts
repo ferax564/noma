@@ -59,8 +59,36 @@ export class NomaWorkflow {
     });
   }
 
-  async applyOps(file: string, ops: PatchOp[], options: ApplyOpsOptions = {}): Promise<PatchResult[]> {
-    throw new Error("not implemented");
+  async applyOps(
+    file: string,
+    ops: PatchOp[],
+    options: ApplyOpsOptions = {},
+  ): Promise<PatchResult[]> {
+    const stopOnFirstError = options.stopOnFirstError ?? true;
+    const parentChain = options.parentChain ?? true;
+    const results: PatchResult[] = [];
+    let lastOpId: string | undefined;
+    for (const op of ops) {
+      const patchOptions: PatchOptions = {};
+      if (parentChain && lastOpId !== undefined) patchOptions.parentOpId = lastOpId;
+      if (options.actor !== undefined) patchOptions.actor = options.actor;
+      const res = await this.safePatchInternal(file, op, patchOptions);
+      results.push(res);
+      if (res.ok) lastOpId = res.transcriptEntry.op_id;
+      if (!res.ok && stopOnFirstError) break;
+    }
+    return results;
+  }
+
+  private async safePatchInternal(
+    file: string,
+    op: PatchOp,
+    extra: PatchOptions,
+  ): Promise<PatchResult> {
+    return this.withFileLock(file, async () => {
+      const sha = await sha8(file);
+      return this.tools.patchBlock(file, op, { expectedSha: sha, ...extra });
+    });
   }
 
   async replayTranscript(file: string): Promise<TranscriptRecord[]> {
