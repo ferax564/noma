@@ -110,7 +110,53 @@ export class NomaWorkflow {
   }
 
   async checkCapability(file: string, op: PatchOp): Promise<CapabilityCheckResult> {
-    throw new Error("not implemented");
+    const desc = await this.readCapabilities(file);
+    if (!desc) {
+      return {
+        allowed: false,
+        reason: "no_descriptor",
+        detail: `${file}.capabilities.yml`,
+      };
+    }
+    // Annex A.3: rename_id requires BOTH the per-block ops grant AND the
+    // global ids.rename: true. Check the global flag first so denying a
+    // rename always names the global gate, not the per-block one.
+    if (op.op === "rename_id" && !desc.idsRename) {
+      return { allowed: false, reason: "rename_globally_denied", detail: "ids.rename" };
+    }
+    const blockName = await this.inferBlockName(file, op);
+    if (blockName === undefined) {
+      return { allowed: false, reason: "block_not_listed", detail: "<unknown-target>" };
+    }
+    const policy = desc.blocks.get(blockName);
+    if (!policy) {
+      return { allowed: false, reason: "block_not_listed", detail: blockName };
+    }
+    if (!policy.ops.has(op.op)) {
+      return { allowed: false, reason: "op_not_granted", detail: op.op };
+    }
+    if (op.op === "update_attribute") {
+      const check = desc.validateAttr(blockName, op.key, op.value);
+      if (!check.ok) {
+        return { allowed: false, reason: "attr_constraint_violated", detail: check.reason };
+      }
+    }
+    return { allowed: true };
+  }
+
+  // For rename_id the target id lives in `op.from`, not `op.id`. For add_block
+  // there's no existing target id at all — we infer the block name from the
+  // first directive opener in the content string instead.
+  private async inferBlockName(file: string, op: PatchOp): Promise<string | undefined> {
+    if (op.op === "add_block") {
+      const match = /^\s*::([a-z_]+)/i.exec(op.content);
+      return match?.[1];
+    }
+    const targetId = op.op === "rename_id" ? op.from : (op as { id?: string }).id;
+    if (!targetId) return undefined;
+    const { blocks } = await this.tools.readDoc(file);
+    const hit = blocks.find((b) => b.id === targetId);
+    return hit?.name ?? hit?.type;
   }
 
   private async withFileLock<T>(file: string, fn: () => Promise<T>): Promise<T> {

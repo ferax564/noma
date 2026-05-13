@@ -284,3 +284,115 @@ test("readCapabilities parses sidecar when present", async () => {
   assert.ok(desc);
   assert.equal(desc.profile, "test");
 });
+
+test("checkCapability returns no_descriptor when sidecar absent", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "update_attribute",
+    id: "c1",
+    key: "confidence",
+    value: 0.9,
+  });
+  assert.equal(r.allowed, false);
+  if (!r.allowed) assert.equal(r.reason, "no_descriptor");
+});
+
+test("checkCapability returns block_not_listed when descriptor omits the block name", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    evidence:\n      ops: [replace_block]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "update_attribute",
+    id: "c1",
+    key: "confidence",
+    value: 0.9,
+  });
+  assert.equal(r.allowed, false);
+  if (!r.allowed) assert.equal(r.reason, "block_not_listed");
+});
+
+test("checkCapability returns op_not_granted when block lists the type but not the op", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    claim:\n      ops: [replace_block]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "update_attribute",
+    id: "c1",
+    key: "confidence",
+    value: 0.9,
+  });
+  assert.equal(r.allowed, false);
+  if (!r.allowed) assert.equal(r.reason, "op_not_granted");
+});
+
+test("checkCapability returns attr_constraint_violated when value violates range", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    claim:\n      ops: [update_attribute]\n      attrs:\n        confidence:\n          type: number\n          min: 0\n          max: 1\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "update_attribute",
+    id: "c1",
+    key: "confidence",
+    value: 1.5,
+  });
+  assert.equal(r.allowed, false);
+  if (!r.allowed) assert.equal(r.reason, "attr_constraint_violated");
+});
+
+test("checkCapability returns rename_globally_denied when ids.rename is false", async () => {
+  // Annex A.3 — per-block ops grant is necessary but not sufficient for rename_id.
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  ids:\n    rename: false\n  blocks:\n    claim:\n      ops: [rename_id]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "rename_id",
+    from: "c1",
+    to: "c2",
+  });
+  assert.equal(r.allowed, false);
+  if (!r.allowed) assert.equal(r.reason, "rename_globally_denied");
+});
+
+test("checkCapability allows rename_id when ids.rename=true AND ops includes it", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  ids:\n    rename: true\n  blocks:\n    claim:\n      ops: [rename_id]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "rename_id",
+    from: "c1",
+    to: "c-renamed",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability returns allowed=true when policy matches", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    claim:\n      ops: [update_attribute]\n      attrs:\n        confidence:\n          type: number\n          min: 0\n          max: 1\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "update_attribute",
+    id: "c1",
+    key: "confidence",
+    value: 0.5,
+  });
+  assert.equal(r.allowed, true);
+});
