@@ -1455,6 +1455,7 @@ Create `packages/agent-sdk/src/workflow.ts`:
 ```ts
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { resolve as resolvePath } from "node:path";
 import { NomaTools, type PatchOptions } from "./tools.ts";
 import { CapabilityDescriptor } from "./capabilities.ts";
 import type {
@@ -1685,18 +1686,22 @@ Replace the `safePatch` body and add helpers at the bottom of `src/workflow.ts`:
   }
 
   private async withFileLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
-    const previous = this.fileLocks.get(file) ?? Promise.resolve();
+    // Key by absolute path so `./doc.noma` and `/abs/doc.noma` map to the
+    // same mutex slot. Without this, two safePatch calls with different
+    // path spellings would bypass each other's serialization and race.
+    const key = resolvePath(file);
+    const previous = this.fileLocks.get(key) ?? Promise.resolve();
     let release: () => void;
     const next = new Promise<void>((r) => (release = r));
     const chained = previous.then(() => next);
-    this.fileLocks.set(file, chained);
+    this.fileLocks.set(key, chained);
     await previous;
     try {
       return await fn();
     } finally {
       release!();
-      if (this.fileLocks.get(file) === chained) {
-        this.fileLocks.delete(file);
+      if (this.fileLocks.get(key) === chained) {
+        this.fileLocks.delete(key);
       }
     }
   }
@@ -2222,10 +2227,15 @@ Two channels:
 - **Throws** `NomaSystemError` (and subclasses `NomaSpawnError`,
   `NomaTransportError`, `NomaCapabilityError`, `NomaTimeoutError`) for
   system faults the caller cannot recover from by reading a body.
-- **Returns** `{ ok: false, code, error }` for §3.5 patch errors:
-  `target_missing`, `parent_missing`, `id_conflict`, `invalid_content`,
-  `id_attribute_protected`, `sha_mismatch`, `pre_validation_blocked`,
-  `op_list_aborted`, `unsupported_op`.
+- **Returns** `{ ok: false, code, error }` for §3.5 patch errors that the
+  server marks as user-recoverable: `target_missing`, `parent_missing`,
+  `id_conflict`, `invalid_content`, `id_attribute_protected`, `sha_mismatch`.
+  Op-list-flow codes (`pre_validation_blocked`, `op_list_aborted`) are
+  emitted by `patch_block_list` (Annex B.8, v1.1+) and not reachable from
+  v0.1 SDK paths.
+- `unsupported_op` for a book-manifest path is a **throw**
+  (`NomaSystemError`), not a returned body — the server flags it as a
+  system error because the path itself is outside the v1.0 patch wire scope.
 
 ## Lifecycle
 
@@ -2590,9 +2600,15 @@ import { NomaWorkflow } from "../src/workflow.ts";
 import type { PatchErrorCode } from "../src/types.ts";
 
 // Source: src/patch.ts:29. Nine codes total; this aggregator covers the
-// seven that are reachable through a single patch_block call. The remaining
-// two — pre_validation_blocked and op_list_aborted — surface from op-list
-// flows and are observed in Phase 5 workflow tests.
+// seven that are reachable through a single patch_block call.
+//
+// pre_validation_blocked and op_list_aborted are emitted by the in-process
+// patchAll() flow that v1.1's patch_block_list tool will expose (Annex B.8).
+// v0.1 SDK does NOT expose batched atomic ops — applyOps is client-side
+// sequential and short-circuits via PatchFailure, not via op_list_aborted.
+// Codes are listed in PatchErrorCode for forward-compat but are NOT in
+// the v0.1 graduation metric. When patch_block_list lands (v1.1), the
+// aggregator gets an applyOpsList test that exercises both codes.
 const ALL_CODES: PatchErrorCode[] = [
   "target_missing",
   "parent_missing",
@@ -2738,46 +2754,76 @@ git commit -m "test(agent-sdk): aggregator surfaces Annex A+B graduation metrics
 
 ## Phase 9 — Wire into root + release notes
 
-### Task 9.1: Add `test:agent-sdk` to root + run full triad
+### Task 9.1: Wire `@noma/agent-sdk` into root test/build + CI
 
 **Files:**
 - Modify: `package.json` (root)
+- Modify: `packages/agent-sdk/package.json` — add pretest hook
+- Modify: `.github/workflows/pages.yml` — run SDK tests on CI
 
-- [ ] **Step 1: Append to root `scripts`**
+The integration test (Task 7.3) reads baselines from `dist/examples/agent-stale-memo/memo.after.noma` and `dist/examples/agent-memory/memory.after.noma`. Those files only exist after `npm run demo:stale-memo` and `npm run demo:agent-memory` run. A `pretest` script in the workspace package makes that happen automatically — without it, CI would either fail (no baseline) or skip a meaningful comparison.
 
-In root `package.json`, add to the `scripts` block:
+- [ ] **Step 1: Append a pretest hook to `packages/agent-sdk/package.json`**
+
+Add to the `scripts` block (next to the existing `"test"`):
 
 ```json
-"test:agent-sdk": "tsx --test packages/agent-sdk/test/*.test.ts",
+"pretest": "cd ../.. && npm run build -w @noma/mcp-server && npm run demo:stale-memo && npm run demo:agent-memory"
+```
+
+This builds the MCP server (so Phase 3 transport tests can resolve the binary) AND generates the baseline `*.after.noma` files (so Phase 7 integration tests can compare). Pretest runs automatically before `npm test` in this workspace; explicit invocations of `npx tsx --test ...` skip it, which is fine for local TDD on a single file.
+
+- [ ] **Step 2: Append to root `scripts` in `package.json`**
+
+Add to the `scripts` block:
+
+```json
+"test:agent-sdk": "npm run test -w @noma/agent-sdk",
 "build:agent-sdk": "tsc -p packages/agent-sdk/tsconfig.json"
 ```
 
-If the repo's root `test` script does not currently fan out to workspace packages, leave it unchanged — CI will invoke both `npm test` and `npm run test:agent-sdk -w @noma/agent-sdk` separately.
+Note: the workspace's own `test` script is the canonical entry point. The root alias just invokes the workspace one — keeps a single source of truth for what "agent-sdk tests" means.
 
-- [ ] **Step 2: Build mcp-server, then run the SDK test suite**
+- [ ] **Step 3: Verify root `tsc --noEmit` covers the new package, or document why it does not**
 
-```bash
-npm run build -w @noma/mcp-server
-npm run test:agent-sdk -w @noma/agent-sdk
-```
-
-Expected: all SDK tests pass.
-
-- [ ] **Step 3: Run the full verification triad**
+Run from repo root:
 
 ```bash
 npx tsc --noEmit
-npm test
-npm run build:site
+```
+
+If the output shows zero `packages/agent-sdk/**` files were checked, that's expected — root `tsconfig.json` does not currently include workspace packages. The workspace package has its own `tsc` invoked via `npm run build:agent-sdk`. Add this command to the verification triad below.
+
+- [ ] **Step 4: Run the full verification triad (now four commands)**
+
+```bash
+npx tsc --noEmit                                # root types
+npm run build:agent-sdk                         # workspace types
+npm test                                        # root tests
+npm run test:agent-sdk                          # workspace tests (auto-runs pretest)
+npm run build:site                              # full site build
 ```
 
 Expected: zero errors, all tests pass, build:site green.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Add the SDK gate to `.github/workflows/pages.yml`**
+
+Insert before the existing `npm run build:site` step:
+
+```yaml
+      - name: Build agent-sdk types
+        run: npm run build:agent-sdk
+      - name: Run agent-sdk tests
+        run: npm run test:agent-sdk
+```
+
+`pretest` handles the MCP-server build + demo baseline generation inside `npm run test:agent-sdk`, so no extra workflow steps are needed for those.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add package.json
-git commit -m "build: wire @noma/agent-sdk into root test + build scripts"
+git add package.json packages/agent-sdk/package.json .github/workflows/pages.yml
+git commit -m "build: wire @noma/agent-sdk into root test + CI gate"
 ```
 
 ### Task 9.2: CHANGELOG, README Status, PLAN.md §24.14
@@ -2798,7 +2844,7 @@ Above the most recent version heading, insert:
 
 ### Added
 
-- **`@noma/agent-sdk` v0.1.0 — reference Agent SDK (experimental).** TypeScript-only, stdio-only via `@noma/mcp-server`. Public surface: `NomaTools` (1:1 wrapper over `read_doc`, `list_ids`, `validate_doc`, `patch_block`) and `NomaWorkflow` (composes tools into `safePatch` with per-file mutex + retry, `applyOps` with parent-chain transcripts, `replayTranscript`, `readCapabilities`, `checkCapability` with advisory denials). `CapabilityDescriptor` parses Annex A v1 sidecars (`<file>.capabilities.yml`) and validates against the §A.3 schema. Errors split into a `NomaSystemError` hierarchy (thrown) for system faults and a `{ ok: false, code }` body for §3.5 patch errors. Five-tier test pyramid: unit, tools-vs-real-server, workflow, demo replay (`agent-stale-memo` + `agent-memory` ported to the SDK), and conformance (drives `examples/conformance/patch/*`). Graduation metrics aggregator captures the three numbers gating Annex A+B promotion in v1.1. Marked **experimental** — API freezes at v1.0 in lockstep with RFC v1.1 graduation.
+- **`@noma/agent-sdk` v0.1.0 — reference Agent SDK (experimental).** TypeScript-only, stdio-only via `@noma/mcp-server`. Public surface: `NomaTools` (1:1 wrapper over `read_doc`, `list_ids`, `validate_doc`, `patch_block`) and `NomaWorkflow` (composes tools into `safePatch` with per-file absolute-path mutex + clamped retry, `applyOps` with client-side parent-chain transcripts, `replayTranscript`, `readCapabilities`, `checkCapability` with advisory denials including the Annex A `ids.rename` global gate). `CapabilityDescriptor` parses Annex A v1 sidecars (`<file>.capabilities.yml`) and validates against the §A.3 schema. Errors split into a `NomaSystemError` hierarchy (thrown) for system faults — including book-manifest `unsupported_op` — and `{ ok: false, code }` bodies for user-recoverable §3.5 patch errors (`target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, `sha_mismatch`). Five-tier test pyramid: unit, tools-vs-real-server, workflow, demo replay (`agent-stale-memo` + `agent-memory` ported to the SDK), and conformance (drives `examples/conformance/patch/*`). Graduation metrics aggregator captures the three numbers gating Annex A+B promotion in v1.1 (7/7 single-call codes, every Annex A.3 descriptor field, full conformance corpus). Marked **experimental** — API freezes at v1.0 in lockstep with RFC v1.1 graduation.
 ```
 
 - [ ] **Step 2: Update README Status paragraph**

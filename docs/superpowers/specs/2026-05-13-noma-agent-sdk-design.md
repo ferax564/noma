@@ -90,6 +90,22 @@ The SDK uses the canonical MCP client library rather than hand-rolling JSON-RPC 
 
 ## Components
 
+> **Canonical types live in the implementation plan, not here.** The TypeScript
+> snippets in this section are *intent* — they communicate API shape and the
+> contracts between layers, not the literal type definitions. The plan's
+> Task 1.2 anchors every public type to its source-of-truth file
+> (`src/patch.ts`, `src/ast.ts`, `packages/mcp-server/src/transcript.ts`).
+> If a snippet here disagrees with the plan, the plan wins — it was revised
+> after a Codex round caught the drift.
+> 
+> Specifically: `PatchErrorCode` includes `parent_missing`,
+> `id_attribute_protected`, `pre_validation_blocked`, and `op_list_aborted`
+> (the last two emitted only by op-list flows that v0.1 does not expose).
+> `unsupported_op` for book-manifest paths is a thrown `NomaSystemError`,
+> not a returned `PatchFailure` body. `update_attribute.value: null` is RFC
+> intent but server-rejected today (deferred).
+
+
 ### `NomaTools` — wire-level wrapper (Annex B surface)
 
 ```ts
