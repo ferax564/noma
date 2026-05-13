@@ -124,3 +124,53 @@ test("patchBlock returns sha_mismatch when expectedSha disagrees with file", asy
   assert.equal(res.ok, false);
   if (!res.ok) assert.equal(res.code, "sha_mismatch");
 });
+
+test("patchBlock returns id_conflict on rename_id collision", async () => {
+  // Server uses `from` and `to` (NOT id/new_id) — see packages/mcp-server/src/index.ts:16.
+  const path = scratchDoc(
+    `# H\n\n::claim{id="c1"}\na\n::\n\n::claim{id="c2"}\nb\n::\n`,
+  );
+  const res = await tools.patchBlock(path, {
+    op: "rename_id",
+    from: "c1",
+    to: "c2",
+  });
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.code, "id_conflict");
+});
+
+test("patchBlock returns invalid_content when replace_block body is unparseable", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  const res = await tools.patchBlock(path, {
+    op: "replace_block",
+    id: "c1",
+    content: "::claim{id=\"c1\"\nunterminated attribute string",
+  });
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.code, "invalid_content");
+});
+
+test("patchBlock returns id_attribute_protected on update_attribute with reserved id key", async () => {
+  // src/patch.ts protects `id` from `update_attribute` — rename_id is the only path.
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  const res = await tools.patchBlock(path, {
+    op: "update_attribute",
+    id: "c1",
+    key: "id",
+    value: "c2",
+  });
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.code, "id_attribute_protected");
+});
+
+test("patchBlock returns parent_missing when add_block parent id does not exist", async () => {
+  // add_block requires a parent id that exists in the document.
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  const res = await tools.patchBlock(path, {
+    op: "add_block",
+    parent: "no-such-parent",
+    content: "::evidence{id=\"e1\" for=\"c1\"}\nbody\n::\n",
+  });
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.code, "parent_missing");
+});
