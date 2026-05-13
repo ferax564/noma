@@ -267,6 +267,8 @@ This task ships types only — no tests (types are erased at runtime; they're ex
 
 - [ ] **Step 1: Write `packages/agent-sdk/src/types.ts`**
 
+All shapes below mirror the source-of-truth definitions in `src/patch.ts` (`PatchOp`, `PatchErrorCode`), `src/ast.ts` (`AttrValue`, `Diagnostic`), and `packages/mcp-server/src/transcript.ts` (`TranscriptLine`). Re-defining here (not importing) keeps `@noma/agent-sdk` consumers from pulling `@noma/cli` at runtime; the cost is that anyone who edits `src/patch.ts` shapes must keep this file in sync. CI enforces this via a separate type-equivalence test in Task 9.1.
+
 ```ts
 export type PatchOpName =
   | "replace_block"
@@ -275,21 +277,34 @@ export type PatchOpName =
   | "update_attribute"
   | "rename_id";
 
+// AttrValue mirrors src/ast.ts — string | number | boolean ONLY. The RFC
+// reserves `value: null` for attribute removal (§3.1.4) but the current
+// server schema rejects null (packages/mcp-server/src/index.ts:15). Null
+// removal is tracked as future work; do NOT add `null` to this union until
+// the server schema accepts it.
+export type AttrValue = string | number | boolean;
+
 export type PatchOp =
   | { op: "replace_block"; id: string; content: string }
-  | { op: "add_block"; after_id?: string; before_id?: string; parent_id?: string; content: string }
+  | { op: "add_block"; parent: string; content: string; position?: number }
   | { op: "delete_block"; id: string }
-  | { op: "update_attribute"; id: string; key: string; value: string | number | boolean | null }
-  | { op: "rename_id"; id: string; new_id: string };
+  | { op: "update_attribute"; id: string; key: string; value: AttrValue }
+  | { op: "rename_id"; from: string; to: string };
 
+// Mirrors src/patch.ts PatchErrorCode exactly. Names like `rename_collision`
+// and `schema_violation` from earlier drafts do NOT exist on the server —
+// rename collisions surface as `id_conflict`, and reserved-key violations
+// surface as `id_attribute_protected`.
 export type PatchErrorCode =
   | "target_missing"
-  | "sha_mismatch"
+  | "parent_missing"
   | "id_conflict"
   | "invalid_content"
-  | "unsupported_op"
-  | "rename_collision"
-  | "schema_violation";
+  | "id_attribute_protected"
+  | "sha_mismatch"
+  | "pre_validation_blocked"
+  | "op_list_aborted"
+  | "unsupported_op";
 
 export type BlockSummary = {
   id?: string;
@@ -304,13 +319,14 @@ export type BlockSummary = {
   patchable: boolean;
 };
 
+// Mirrors src/ast.ts Diagnostic. NOT `rule`/`line`/`column`/`blockId` from
+// earlier drafts — those names never existed on the server.
 export type Diagnostic = {
   severity: "error" | "warning" | "info";
-  rule: string;
+  code: string;
   message: string;
-  line?: number;
-  column?: number;
-  blockId?: string;
+  pos?: { line: number; column: number };
+  nodeId?: string;
 };
 
 export type Actor = {
@@ -320,25 +336,41 @@ export type Actor = {
   version?: string;
 };
 
+export type ValidationSummary = "ok" | "warn" | "error";
+export type PatchResultStatus = "applied" | "rejected" | "noop";
+
+// Mirrors packages/mcp-server/src/transcript.ts TranscriptLine exactly.
+// All fields use snake_case to match the JSON the server emits — this is
+// the wire shape, not an internal API. Renamings to camelCase happen at
+// the SDK return boundary (see PatchResult below).
 export type TranscriptRecord = {
-  protocol: "noma-agent/1.0";
+  protocol_version: "1.0";
+  tool_version: string;
   op_id: string;
-  parent_op_id?: string;
-  at: string;
+  ts: string;
   actor: Actor;
+  doc_uri: string;
+  pre_sha256: string;
+  post_sha256: string;
+  pre_sha: string;
+  post_sha: string;
   op: PatchOp;
-  patch_result: "applied" | "noop" | "rejected";
+  patch_result: PatchResultStatus;
+  pre_validation: ValidationSummary;
+  post_validation: ValidationSummary;
   reason?: string;
-  expected_sha?: string;
-  post_sha?: string;
-  post_validation?: "ok" | "warn" | "error";
-  error_code?: PatchErrorCode | string;
+  parent_op_id?: string;
+  base_sha256?: string;
+  diagnostics?: Array<Diagnostic & { phase: "pre" | "post" }>;
+  elapsed_ms?: number;
+  prev_entry_sha256?: string;
+  signature?: null | { algorithm: string; key_id: string; value: string };
 };
 
 export type PatchResult =
   | {
       ok: true;
-      postValidation: "ok" | "warn" | "error";
+      postValidation: ValidationSummary;
       transcriptEntry: TranscriptRecord;
       diagnostics: Diagnostic[];
     }
@@ -354,7 +386,12 @@ export type CapabilityCheckResult =
   | { allowed: true }
   | {
       allowed: false;
-      reason: "no_descriptor" | "block_not_listed" | "op_not_granted" | "attr_constraint_violated";
+      reason:
+        | "no_descriptor"
+        | "block_not_listed"
+        | "op_not_granted"
+        | "attr_constraint_violated"
+        | "rename_globally_denied";
       detail: string;
     };
 ```
@@ -1212,11 +1249,17 @@ test("patchBlock returns target_missing for a non-existent id", async () => {
   if (!res.ok) assert.equal(res.code, "target_missing");
 });
 
-test("patchBlock returns unsupported_op for a book manifest path", async () => {
+test("patchBlock throws NomaSystemError on book manifest path", async () => {
+  // The server marks book-manifest rejection as `system: true` in
+  // packages/mcp-server/src/tools/patch-block.ts:58 — MCP surfaces that
+  // as `isError: true`, and our SDK throws NomaSystemError. The `body.code`
+  // is still "unsupported_op" but it lives in the error message string, not
+  // in a returned body.
   const yml = scratchDoc("title: T\nchapters:\n  - x.noma\n", "book.noma.yml");
-  const res = await tools.patchBlock(yml, { op: "delete_block", id: "x" });
-  assert.equal(res.ok, false);
-  if (!res.ok) assert.equal(res.code, "unsupported_op");
+  await assert.rejects(
+    () => tools.patchBlock(yml, { op: "delete_block", id: "x" }),
+    (e: unknown) => e instanceof NomaSystemError && /unsupported_op/.test((e as Error).message),
+  );
 });
 
 test("patchBlock returns sha_mismatch when expectedSha disagrees with file", async () => {
@@ -1286,25 +1329,23 @@ git commit -m "feat(agent-sdk): NomaTools.patchBlock with apply/reject/sha-misma
 
 ### Task 4.6: §3.5 error-code coverage (remaining codes)
 
-- [ ] **Step 1: Append the three remaining error-code tests**
+The corpus this task covers is the source-of-truth set in `src/patch.ts:29`: `target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, `sha_mismatch`, `pre_validation_blocked`, `op_list_aborted`, `unsupported_op` (nine codes). `target_missing`, `sha_mismatch`, and `unsupported_op` are already covered in Task 4.5. This task adds tests for `id_conflict`, `invalid_content`, `id_attribute_protected`, and `parent_missing`. `pre_validation_blocked` and `op_list_aborted` are exercised by the workflow tests in Phase 5 (op-list flows) — they don't surface from a single `patchBlock` call.
+
+- [ ] **Step 1: Append the four remaining error-code tests**
 
 ```ts
-test("patchBlock returns rename_collision (or id_conflict) on rename_id collision", async () => {
+test("patchBlock returns id_conflict on rename_id collision", async () => {
+  // Server uses `from` and `to` (NOT id/new_id) — see packages/mcp-server/src/index.ts:16.
   const path = scratchDoc(
     `# H\n\n::claim{id="c1"}\na\n::\n\n::claim{id="c2"}\nb\n::\n`,
   );
   const res = await tools.patchBlock(path, {
     op: "rename_id",
-    id: "c1",
-    new_id: "c2",
+    from: "c1",
+    to: "c2",
   });
   assert.equal(res.ok, false);
-  if (!res.ok) {
-    assert.ok(
-      res.code === "rename_collision" || res.code === "id_conflict",
-      `expected rename_collision or id_conflict, got ${String(res.code)}`,
-    );
-  }
+  if (!res.ok) assert.equal(res.code, "id_conflict");
 });
 
 test("patchBlock returns invalid_content when replace_block body is unparseable", async () => {
@@ -1318,7 +1359,8 @@ test("patchBlock returns invalid_content when replace_block body is unparseable"
   if (!res.ok) assert.equal(res.code, "invalid_content");
 });
 
-test("patchBlock returns schema_violation on update_attribute with reserved id key", async () => {
+test("patchBlock returns id_attribute_protected on update_attribute with reserved id key", async () => {
+  // src/patch.ts protects `id` from `update_attribute` — rename_id is the only path.
   const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
   const res = await tools.patchBlock(path, {
     op: "update_attribute",
@@ -1327,16 +1369,23 @@ test("patchBlock returns schema_violation on update_attribute with reserved id k
     value: "c2",
   });
   assert.equal(res.ok, false);
-  if (!res.ok) {
-    assert.ok(
-      res.code === "schema_violation" || res.code === "unsupported_op",
-      `expected schema_violation or unsupported_op, got ${String(res.code)}`,
-    );
-  }
+  if (!res.ok) assert.equal(res.code, "id_attribute_protected");
+});
+
+test("patchBlock returns parent_missing when add_block parent id does not exist", async () => {
+  // add_block requires a parent id that exists in the document.
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  const res = await tools.patchBlock(path, {
+    op: "add_block",
+    parent: "no-such-parent",
+    content: "::evidence{id=\"e1\" for=\"c1\"}\nbody\n::\n",
+  });
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.code, "parent_missing");
 });
 ```
 
-If any of these tests do not produce the expected code, **inspect the actual code returned, then update the test to match** — these are documentation of the server's real behaviour, not a redefinition of it. Open an issue if the server returns an unexpected code.
+If any test produces a different code, **inspect the server's actual response, update the test to match, and open an issue documenting the gap between the RFC and the implementation**. The plan is built around the codes `src/patch.ts` actually throws, not aspirational ones.
 
 - [ ] **Step 2: Run all tools tests**
 
@@ -1482,20 +1531,50 @@ test("safePatch succeeds on first try when SHA matches", async () => {
   assert.equal(res.ok, true);
 });
 
-test("safePatch serializes concurrent same-file calls (mutex correctness)", async () => {
+test("safePatch serializes concurrent same-file calls (mutex ordering)", async () => {
+  // Without a mutex, both calls would read the same SHA, one would patch,
+  // the other would hit sha_mismatch and retry. With a mutex, the second
+  // call waits for the first to finish before reading SHA — so we observe:
+  //  (a) no patchBlock call sees sha_mismatch (no retries), AND
+  //  (b) the two patchBlock invocations do not overlap in time.
+  // Pure value-equality on the final document would pass without a mutex
+  // (retry would still converge), which is why this test instruments timing
+  // and retry-count rather than final state.
   const path = scratchDoc(
     `# H\n\n::claim{id="c1" confidence=0.5}\nbody\n::\n::claim{id="c2" confidence=0.5}\nb\n::\n`,
   );
   const wf = new NomaWorkflow(tools);
-  const [a, b] = await Promise.all([
-    wf.safePatch(path, { op: "update_attribute", id: "c1", key: "confidence", value: 0.7 }),
-    wf.safePatch(path, { op: "update_attribute", id: "c2", key: "confidence", value: 0.8 }),
-  ]);
-  assert.equal(a.ok, true);
-  assert.equal(b.ok, true);
-  const final = readFileSync(path, "utf8");
-  assert.ok(final.includes("confidence=0.7"));
-  assert.ok(final.includes("confidence=0.8"));
+
+  const originalPatch = tools.patchBlock.bind(tools);
+  const spans: Array<{ start: number; end: number }> = [];
+  let shaMismatchSeen = 0;
+  (tools as { patchBlock: typeof tools.patchBlock }).patchBlock = async (f, op, opts) => {
+    const start = Date.now();
+    const res = await originalPatch(f, op, opts);
+    spans.push({ start, end: Date.now() });
+    if (!res.ok && res.code === "sha_mismatch") shaMismatchSeen++;
+    return res;
+  };
+
+  try {
+    const [a, b] = await Promise.all([
+      wf.safePatch(path, { op: "update_attribute", id: "c1", key: "confidence", value: 0.7 }),
+      wf.safePatch(path, { op: "update_attribute", id: "c2", key: "confidence", value: 0.8 }),
+    ]);
+    assert.equal(a.ok, true);
+    assert.equal(b.ok, true);
+    assert.equal(shaMismatchSeen, 0, "mutex should prevent sha_mismatch retries on concurrent same-file calls");
+    // Sort spans by start time; assert no overlap.
+    spans.sort((x, y) => x.start - y.start);
+    for (let i = 1; i < spans.length; i++) {
+      assert.ok(
+        spans[i].start >= spans[i - 1].end,
+        `patchBlock invocations overlapped: ${JSON.stringify(spans)}`,
+      );
+    }
+  } finally {
+    (tools as { patchBlock: typeof tools.patchBlock }).patchBlock = originalPatch;
+  }
 });
 
 test("safePatch retries after an external writer changes the file, then succeeds", async () => {
@@ -1522,6 +1601,25 @@ test("safePatch retries after an external writer changes the file, then succeeds
   } finally {
     (tools as { patchBlock: typeof tools.patchBlock }).patchBlock = originalPatch;
   }
+});
+
+test("safePatch clamps negative/huge retryOnShaMismatch values", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1" confidence=0.5}\nbody\n::\n`);
+  const wf = new NomaWorkflow(tools);
+  // Negative: clamped to 0 → exactly one attempt.
+  const r1 = await wf.safePatch(
+    path,
+    { op: "update_attribute", id: "c1", key: "confidence", value: 0.91 },
+    { retryOnShaMismatch: -5 },
+  );
+  assert.equal(r1.ok, true);
+  // NaN: falls through to default (3 retries).
+  const r2 = await wf.safePatch(
+    path,
+    { op: "update_attribute", id: "c1", key: "confidence", value: 0.92 },
+    { retryOnShaMismatch: Number.NaN },
+  );
+  assert.equal(r2.ok, true);
 });
 
 test("safePatch returns the last sha_mismatch after exhausting retries", async () => {
@@ -1560,8 +1658,19 @@ Replace the `safePatch` body and add helpers at the bottom of `src/workflow.ts`:
 ```ts
   async safePatch(file: string, op: PatchOp, options: SafePatchOptions = {}): Promise<PatchResult> {
     return this.withFileLock(file, async () => {
-      const retries = options.retryOnShaMismatch ?? 3;
-      let last: PatchResult | undefined;
+      // Clamp retries to [0, MAX_RETRIES]. Negative or non-finite values
+      // would skip the loop entirely (returning `undefined as PatchResult`,
+      // a type lie); huge values would burn API budget against a server
+      // that keeps returning sha_mismatch. 10 is an arbitrary but sufficient
+      // cap — concurrent same-process races are serialized by the mutex;
+      // anything past ~3 retries means a different process is contending.
+      const requested = options.retryOnShaMismatch ?? 3;
+      const retries = Number.isFinite(requested) ? Math.max(0, Math.min(10, Math.floor(requested))) : 3;
+      let last: PatchResult = {
+        ok: false,
+        error: "no attempts made",
+        code: "sha_mismatch",
+      };
       for (let attempt = 0; attempt <= retries; attempt++) {
         const sha = await sha8(file);
         const patchOptions: PatchOptions = { expectedSha: sha };
@@ -1571,7 +1680,7 @@ Replace the `safePatch` body and add helpers at the bottom of `src/workflow.ts`:
         if (last.ok) return last;
         if (last.code !== "sha_mismatch") return last;
       }
-      return last as PatchResult;
+      return last;
     });
   }
 
@@ -1884,6 +1993,38 @@ test("checkCapability returns attr_constraint_violated when value violates range
   if (!r.allowed) assert.equal(r.reason, "attr_constraint_violated");
 });
 
+test("checkCapability returns rename_globally_denied when ids.rename is false", async () => {
+  // Annex A.3 — per-block ops grant is necessary but not sufficient for rename_id.
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  ids:\n    rename: false\n  blocks:\n    claim:\n      ops: [rename_id]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "rename_id",
+    from: "c1",
+    to: "c2",
+  });
+  assert.equal(r.allowed, false);
+  if (!r.allowed) assert.equal(r.reason, "rename_globally_denied");
+});
+
+test("checkCapability allows rename_id when ids.rename=true AND ops includes it", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  ids:\n    rename: true\n  blocks:\n    claim:\n      ops: [rename_id]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "rename_id",
+    from: "c1",
+    to: "c-renamed",
+  });
+  assert.equal(r.allowed, true);
+});
+
 test("checkCapability returns allowed=true when policy matches", async () => {
   const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
   writeFileSync(
@@ -1913,6 +2054,12 @@ test("checkCapability returns allowed=true when policy matches", async () => {
         detail: `${file}.capabilities.yml`,
       };
     }
+    // Annex A.3: rename_id requires BOTH the per-block ops grant AND the
+    // global ids.rename: true. Check the global flag first so denying a
+    // rename always names the global gate, not the per-block one.
+    if (op.op === "rename_id" && !desc.idsRename) {
+      return { allowed: false, reason: "rename_globally_denied", detail: "ids.rename" };
+    }
     const blockName = await this.inferBlockName(file, op);
     if (!blockName) {
       return { allowed: false, reason: "block_not_listed", detail: "<unknown-target>" };
@@ -1933,12 +2080,15 @@ test("checkCapability returns allowed=true when policy matches", async () => {
     return { allowed: true };
   }
 
+  // For rename_id the target id lives in `op.from`, not `op.id`. For add_block
+  // there's no existing target id at all — we infer the block name from the
+  // first directive opener in the content string instead.
   private async inferBlockName(file: string, op: PatchOp): Promise<string | undefined> {
     if (op.op === "add_block") {
       const match = /^\s*::([a-z_]+)/i.exec(op.content);
       return match?.[1];
     }
-    const targetId = (op as { id?: string }).id;
+    const targetId = op.op === "rename_id" ? op.from : (op as { id?: string }).id;
     if (!targetId) return undefined;
     const { blocks } = await this.tools.readDoc(file);
     const hit = blocks.find((b) => b.id === targetId);
@@ -2072,9 +2222,10 @@ Two channels:
 - **Throws** `NomaSystemError` (and subclasses `NomaSpawnError`,
   `NomaTransportError`, `NomaCapabilityError`, `NomaTimeoutError`) for
   system faults the caller cannot recover from by reading a body.
-- **Returns** `{ ok: false, code, error }` for §3.5 patch errors like
-  `sha_mismatch`, `target_missing`, `id_conflict`, `invalid_content`,
-  `unsupported_op`, `rename_collision`, `schema_violation`.
+- **Returns** `{ ok: false, code, error }` for §3.5 patch errors:
+  `target_missing`, `parent_missing`, `id_conflict`, `invalid_content`,
+  `id_attribute_protected`, `sha_mismatch`, `pre_validation_blocked`,
+  `op_list_aborted`, `unsupported_op`.
 
 ## Lifecycle
 
@@ -2261,9 +2412,13 @@ import { resolve } from "node:path";
 import { runDemo as runStaleMemoSdk } from "../scripts/agent-stale-memo-sdk.ts";
 import { runDemo as runAgentMemorySdk } from "../scripts/agent-memory-demo-sdk.ts";
 
-// Adapt these constants to match the paths your existing non-SDK demos write to:
-const BASELINE_STALE = resolve("dist/examples/agent-stale-memo/memo.noma");
-const BASELINE_MEMORY = resolve("dist/examples/agent-memory/memo.noma");
+// Baseline paths come from the existing non-SDK demos. agent-stale-memo
+// writes `memo.after.noma` (scripts/agent-stale-memo.ts:213); agent-memory
+// writes `memory.after.noma` (scripts/agent-memory-demo.ts:264). Don't
+// confuse with the unmutated `memo.noma`/`memory.noma` fixtures the demos
+// copy as input.
+const BASELINE_STALE = resolve("dist/examples/agent-stale-memo/memo.after.noma");
+const BASELINE_MEMORY = resolve("dist/examples/agent-memory/memory.after.noma");
 
 before(() => {
   if (!existsSync(BASELINE_STALE)) {
@@ -2349,16 +2504,25 @@ after(async () => {
 
 const fixtures = readdirSync(ROOT).filter((f) => {
   const dir = join(ROOT, f);
-  return existsSync(join(dir, "patch.json")) && existsSync(join(dir, "expected.post.noma"));
+  return (
+    existsSync(join(dir, "patch.json")) &&
+    existsSync(join(dir, "expected.post.noma")) &&
+    existsSync(join(dir, "input.noma"))
+  );
 });
 
 for (const name of fixtures) {
   test(`conformance: ${name} produces expected.post.noma`, async () => {
     const fixtureDir = join(ROOT, name);
-    const inputName = readdirSync(fixtureDir).find(
-      (f) => f.endsWith(".noma") && f !== "expected.post.noma",
+    // The conformance corpus uses the exact filename `input.noma` for the
+    // input document. Glob-style "first .noma that isn't expected.post.noma"
+    // would silently pick up future sibling .noma files (e.g., a `notes.noma`
+    // someone drops in). Require the exact name so missing inputs fail loudly.
+    const inputName = "input.noma";
+    assert.ok(
+      existsSync(join(fixtureDir, inputName)),
+      `fixture ${name} missing ${inputName}`,
     );
-    assert.ok(inputName, `fixture ${name} missing an input .noma`);
 
     const scratch = mkdtempSync(join(tmpdir(), `noma-conf-${name}-`));
     const workFile = join(scratch, inputName);
@@ -2425,14 +2589,18 @@ import { NomaTools } from "../src/tools.ts";
 import { NomaWorkflow } from "../src/workflow.ts";
 import type { PatchErrorCode } from "../src/types.ts";
 
+// Source: src/patch.ts:29. Nine codes total; this aggregator covers the
+// seven that are reachable through a single patch_block call. The remaining
+// two — pre_validation_blocked and op_list_aborted — surface from op-list
+// flows and are observed in Phase 5 workflow tests.
 const ALL_CODES: PatchErrorCode[] = [
   "target_missing",
-  "sha_mismatch",
+  "parent_missing",
   "id_conflict",
   "invalid_content",
+  "id_attribute_protected",
+  "sha_mismatch",
   "unsupported_op",
-  "rename_collision",
-  "schema_violation",
 ];
 
 test("graduation metrics: error code coverage + descriptor shape + conformance corpus size", async () => {
@@ -2448,31 +2616,50 @@ test("graduation metrics: error code coverage + descriptor shape + conformance c
       `# H\n\n::claim{id="c1" confidence=0.5}\nbody\n::\n::claim{id="c2"}\nb\n::\n`,
     );
 
+    // target_missing
     let r = await tools.patchBlock(fixture, { op: "delete_block", id: "nope" });
     if (!r.ok && r.code) seenCodes.add(r.code);
+    // sha_mismatch
     r = await tools.patchBlock(
       fixture,
       { op: "update_attribute", id: "c1", key: "confidence", value: 0.7 },
       { expectedSha: "deadbeef" },
     );
     if (!r.ok && r.code) seenCodes.add(r.code);
-    r = await tools.patchBlock(fixture, { op: "rename_id", id: "c1", new_id: "c2" });
+    // id_conflict (rename_id collision; from/to per server schema)
+    r = await tools.patchBlock(fixture, { op: "rename_id", from: "c1", to: "c2" });
     if (!r.ok && r.code) seenCodes.add(r.code);
+    // unsupported_op via book manifest. Server returns isError; SDK throws.
+    // The aggregator catches the throw and parses the code from the message
+    // so the metric stays honest about what the server emitted.
     const yml = join(dir, "book.noma.yml");
     writeFileSync(yml, "title: t\nchapters: []\n");
-    r = await tools.patchBlock(yml, { op: "delete_block", id: "x" });
-    if (!r.ok && r.code) seenCodes.add(r.code);
+    try {
+      await tools.patchBlock(yml, { op: "delete_block", id: "x" });
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (/unsupported_op/.test(msg)) seenCodes.add("unsupported_op");
+    }
+    // invalid_content
     r = await tools.patchBlock(fixture, {
       op: "replace_block",
       id: "c1",
       content: "::claim{id=\"c1\"\nunterminated",
     });
     if (!r.ok && r.code) seenCodes.add(r.code);
+    // id_attribute_protected
     r = await tools.patchBlock(fixture, {
       op: "update_attribute",
       id: "c1",
       key: "id",
       value: "c2",
+    });
+    if (!r.ok && r.code) seenCodes.add(r.code);
+    // parent_missing
+    r = await tools.patchBlock(fixture, {
+      op: "add_block",
+      parent: "no-such-parent",
+      content: "::evidence{id=\"e9\"}\nbody\n::\n",
     });
     if (!r.ok && r.code) seenCodes.add(r.code);
 
@@ -2508,10 +2695,13 @@ test("graduation metrics: error code coverage + descriptor shape + conformance c
     };
     console.log("\n=== Annex graduation metrics ===\n" + JSON.stringify(report, null, 2));
 
+    // Target: all 7 single-call-reachable codes from src/patch.ts. The
+    // remaining 2 (pre_validation_blocked, op_list_aborted) come from
+    // workflow-level paths and are observed in Phase 5 tests.
     assert.equal(
-      seenCodes.size >= 6,
-      true,
-      `expected >=6 §3.5 codes observed, got ${seenCodes.size}: ${[...seenCodes].join(", ")}`,
+      seenCodes.size,
+      ALL_CODES.length,
+      `expected all ${ALL_CODES.length} single-call codes, got ${seenCodes.size}: ${[...seenCodes].sort().join(", ")}`,
     );
     assert.ok(descShape.has("blocks.ops"));
     assert.ok(descShape.has("attrs.type"));
@@ -2527,7 +2717,7 @@ test("graduation metrics: error code coverage + descriptor shape + conformance c
 });
 ```
 
-The `>=6` threshold instead of `=== 7` acknowledges that `id_conflict` and `rename_collision` may map to the same server response. Tighten to `=== 7` after CI confirms all 7 codes appear in the printed report.
+The threshold is `=== ALL_CODES.length` (currently 7). The aggregator induces every single-call-reachable code from `src/patch.ts` directly; if the test fails, the printed `observed` array tells you exactly which code the server failed to emit. Two codes (`pre_validation_blocked`, `op_list_aborted`) are tested separately in Phase 5 workflow tests because they only surface from op-list flows.
 
 - [ ] **Step 2: Run**
 
