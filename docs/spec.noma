@@ -1,13 +1,13 @@
 ---
-title: Noma — Format Specification (v0.8.0)
-version: 0.8.0
+title: Noma — Format Specification (v0.9.0)
+version: 0.9.0
 status: stable
 ---
 
 # Noma Format Specification
 
 ::summary
-This document defines the **Noma** plain-text document format at version 0.8. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+This document defines the **Noma** plain-text document format at version 0.9. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
 ::
 
 ## Conventions
