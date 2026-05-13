@@ -70,3 +70,57 @@ test("validateDoc returns ok=true for a clean doc and ok=false for one with erro
   assert.equal(badRes.ok, false);
   assert.ok(badRes.diagnostics.some((d) => d.severity === "error"));
 });
+
+test("patchBlock applies update_attribute and writes a transcript record", async () => {
+  const path = scratchDoc(
+    `# H\n\n::claim{id="c1" confidence=0.5}\nbody\n::\n`,
+  );
+  const res = await tools.patchBlock(path, {
+    op: "update_attribute",
+    id: "c1",
+    key: "confidence",
+    value: 0.9,
+  });
+  assert.equal(res.ok, true);
+  if (res.ok) {
+    assert.equal(res.transcriptEntry.op.op, "update_attribute");
+    assert.equal(res.transcriptEntry.patch_result, "applied");
+  }
+  const content = readFileSync(path, "utf8");
+  assert.ok(content.includes("confidence=0.9"));
+  assert.ok(existsSync(`${path}.patches`));
+});
+
+test("patchBlock returns target_missing for a non-existent id", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  const res = await tools.patchBlock(path, {
+    op: "delete_block",
+    id: "does-not-exist",
+  });
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.code, "target_missing");
+});
+
+test("patchBlock throws NomaSystemError on book manifest path", async () => {
+  // The server marks book-manifest rejection as `system: true` in
+  // packages/mcp-server/src/tools/patch-block.ts:58 — MCP surfaces that
+  // as `isError: true`, and our SDK throws NomaSystemError. The `body.code`
+  // is still "unsupported_op" but it lives in the error message string, not
+  // in a returned body.
+  const yml = scratchDoc("title: T\nchapters:\n  - x.noma\n", "book.noma.yml");
+  await assert.rejects(
+    () => tools.patchBlock(yml, { op: "delete_block", id: "x" }),
+    (e: unknown) => e instanceof NomaSystemError && /unsupported_op/.test((e as Error).message),
+  );
+});
+
+test("patchBlock returns sha_mismatch when expectedSha disagrees with file", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  const res = await tools.patchBlock(
+    path,
+    { op: "update_attribute", id: "c1", key: "confidence", value: 0.5 },
+    { expectedSha: "deadbeef" },
+  );
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.code, "sha_mismatch");
+});

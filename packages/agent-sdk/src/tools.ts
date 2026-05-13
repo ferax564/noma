@@ -53,6 +53,38 @@ export class NomaTools {
   }
 
   async patchBlock(file: string, op: PatchOp, options: PatchOptions = {}): Promise<PatchResult> {
-    throw new Error("not implemented");
+    const args: Record<string, unknown> = { file, op };
+    if (options.reason !== undefined) args["reason"] = options.reason;
+    if (options.expectedSha !== undefined) args["expected_sha"] = options.expectedSha;
+    if (options.actor !== undefined) args["actor"] = options.actor;
+    if (options.baseSha256 !== undefined) args["base_sha256"] = options.baseSha256;
+    if (options.parentOpId !== undefined) args["parent_op_id"] = options.parentOpId;
+
+    const res = await this.client.callTool("patch_block", args);
+    if (res.isError) throw new NomaSystemError(res.text);
+
+    const body = JSON.parse(res.text) as
+      | {
+          ok: true;
+          post_validation: "ok" | "warn" | "error";
+          transcript_entry: TranscriptRecord;
+          diagnostics: Diagnostic[];
+        }
+      | { ok: false; error: string; code?: string };
+
+    if (body.ok) {
+      return {
+        ok: true,
+        postValidation: body.post_validation,
+        transcriptEntry: body.transcript_entry,
+        diagnostics: body.diagnostics,
+      };
+    }
+    const failure: { ok: false; error: string; code?: PatchErrorCode | string } = {
+      ok: false,
+      error: body.error,
+    };
+    if (body.code !== undefined) failure.code = body.code;
+    return failure;
   }
 }
