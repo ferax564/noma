@@ -109,3 +109,34 @@ nomaAgent:
   const bad = d.validateAttr("decision", "status", "pending");
   assert.equal(bad.ok, false);
 });
+
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+function scratch(): string {
+  return mkdtempSync(join(tmpdir(), "noma-cap-"));
+}
+
+test("fromFile returns null when sidecar is absent", async () => {
+  const d = await CapabilityDescriptor.fromFile(
+    join(scratch(), "does-not-exist.noma.capabilities.yml"),
+  );
+  assert.equal(d, null);
+});
+
+test("fromFile parses a real sidecar from disk", async () => {
+  const dir = scratch();
+  const path = join(dir, "doc.noma.capabilities.yml");
+  writeFileSync(path, "nomaAgent:\n  version: 1\n  profile: r\n");
+  const d = await CapabilityDescriptor.fromFile(path);
+  assert.ok(d);
+  assert.equal(d.profile, "r");
+});
+
+test("fromFile throws NomaCapabilityError on bad YAML on disk", async () => {
+  const dir = scratch();
+  const path = join(dir, "bad.noma.capabilities.yml");
+  writeFileSync(path, ": : :\n");
+  await assert.rejects(() => CapabilityDescriptor.fromFile(path), NomaCapabilityError);
+});
