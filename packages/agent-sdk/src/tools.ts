@@ -47,7 +47,9 @@ export class NomaTools {
   }
 
   async validateDoc(file: string): Promise<{ ok: boolean; diagnostics: Diagnostic[] }> {
-    throw new Error("not implemented");
+    const res = await this.client.callTool("validate_doc", { file });
+    if (res.isError) throw new NomaSystemError(res.text);
+    return JSON.parse(res.text) as { ok: boolean; diagnostics: Diagnostic[] };
   }
 
   async patchBlock(file: string, op: PatchOp, options: PatchOptions = {}): Promise<PatchResult> {

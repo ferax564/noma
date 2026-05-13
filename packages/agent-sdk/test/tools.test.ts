@@ -57,3 +57,16 @@ test("listIds returns canonical ids + aliases", async () => {
   assert.ok(ids.includes("e1"));
   assert.equal(aliases["root"], "top");
 });
+
+test("validateDoc returns ok=true for a clean doc and ok=false for one with errors", async () => {
+  const clean = scratchDoc(`# H\n\n::claim{id="c1" noverify}\nbody\n::\n`);
+  const goodRes = await tools.validateDoc(clean);
+  assert.equal(goodRes.ok, true);
+
+  const dup = scratchDoc(
+    `# H\n\n::claim{id="x"}\nA\n::\n\n::claim{id="x"}\nB\n::\n`,
+  );
+  const badRes = await tools.validateDoc(dup);
+  assert.equal(badRes.ok, false);
+  assert.ok(badRes.diagnostics.some((d) => d.severity === "error"));
+});
