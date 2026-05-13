@@ -4,6 +4,12 @@ All notable changes to Noma are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`@noma/agent-sdk` v0.1.0 — reference Agent SDK (experimental).** TypeScript-only, stdio-only via `@noma/mcp-server`. Public surface: `NomaTools` (1:1 wrapper over `read_doc`, `list_ids`, `validate_doc`, `patch_block`) and `NomaWorkflow` (composes tools into `safePatch` with per-file absolute-path mutex + clamped retry, `applyOps` with client-side parent-chain transcripts, `replayTranscript`, `readCapabilities`, `checkCapability` with advisory denials including the Annex A `ids.rename` global gate). `CapabilityDescriptor` parses Annex A v1 sidecars (`<file>.capabilities.yml`) and validates against the §A.3 schema. Errors split into a `NomaSystemError` hierarchy (thrown) for system faults — including book-manifest `unsupported_op` — and `{ ok: false, code }` bodies for user-recoverable §3.5 patch errors (`target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, `sha_mismatch`). Five-tier test pyramid: unit, tools-vs-real-server, workflow, demo replay (`agent-stale-memo` + `agent-memory` ported to the SDK), and conformance (drives `examples/conformance/patch/*`). Graduation metrics aggregator captures the three numbers gating Annex A+B promotion in v1.1 (7/7 single-call codes, every Annex A.3 descriptor field, full conformance corpus). Marked **experimental** — API freezes at v1.0 in lockstep with RFC v1.1 graduation.
+
 ## [0.8.0] — 2026-05-12
 
 ### Added
