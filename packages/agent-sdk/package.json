@@ -15,7 +15,9 @@
   "files": ["src", "dist", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "demo:agent-stale-memo": "tsx scripts/agent-stale-memo-sdk.ts",
+    "demo:agent-memory": "tsx scripts/agent-memory-demo-sdk.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.11.0",
