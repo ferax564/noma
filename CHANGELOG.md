@@ -6,6 +6,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-05-14
+
+### Fixed
+
+- **npm package identity:** the public package names now use the `@ferax564` npm scope (`@ferax564/noma-cli`, `@ferax564/noma-mcp-server`, `@ferax564/noma-agent-sdk`). The `@noma/*` scope belongs to another project, so install docs, workspace metadata, imports, and Action override examples no longer point at it.
+
 ## [0.10.1] — 2026-05-14
 
 ### Fixed
@@ -21,7 +27,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **Scoped LLM context export:** `noma render --to llm` now supports `--select`, `--exclude`, and `--budget` to emit only the node types or directive names an agent needs.
 - **`noma ids <file.noma|book.yml>`** prints a JSON canonical ID, alias, and record registry for agent discovery, including book-scoped IDs when run against a manifest.
 - **Patch transactions:** `noma patch --ops` now accepts `{ "ops": [...], "prevalidate": true, "postvalidate": true }` payloads and refuses to write invalid post-states.
-- **Reusable GitHub Action:** `uses: ferax564/noma@main` installs `@noma/cli`, optionally validates, renders HTML/LLM/JSON/Noma/site artifacts, and uploads the output.
+- **Reusable GitHub Action:** `uses: ferax564/noma@main` installs `@ferax564/noma-cli`, optionally validates, renders HTML/LLM/JSON/Noma/site artifacts, and uploads the output.
 
 ### Fixed
 
@@ -33,7 +39,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **`@noma/agent-sdk` v0.1.0 — reference Agent SDK (experimental).** TypeScript-only, stdio-only via `@noma/mcp-server`. Public surface: `NomaTools` (1:1 wrapper over `read_doc`, `list_ids`, `validate_doc`, `patch_block`) and `NomaWorkflow` (composes tools into `safePatch` with per-file absolute-path mutex + clamped retry, `applyOps` with client-side parent-chain transcripts, `replayTranscript`, `readCapabilities`, `checkCapability` with advisory denials including the Annex A `ids.rename` global gate). `CapabilityDescriptor` parses Annex A v1 sidecars (`<file>.capabilities.yml`) and validates against the §A.3 schema. Errors split into a `NomaSystemError` hierarchy (thrown) for system faults — including book-manifest `unsupported_op` — and `{ ok: false, code }` bodies for user-recoverable §3.5 patch errors (`target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, `sha_mismatch`). Five-tier test pyramid: unit, tools-vs-real-server, workflow, demo replay (`agent-stale-memo` + `agent-memory` ported to the SDK), and conformance (drives `examples/conformance/patch/*`). Graduation metrics aggregator captures the three numbers gating Annex A+B promotion in v1.1 (7/7 single-call codes, every Annex A.3 descriptor field, full conformance corpus). Marked **experimental** — API freezes at v1.0 in lockstep with RFC v1.1 graduation.
+- **`@ferax564/noma-agent-sdk` v0.1.0 — reference Agent SDK (experimental).** TypeScript-only, stdio-only via `@ferax564/noma-mcp-server`. Public surface: `NomaTools` (1:1 wrapper over `read_doc`, `list_ids`, `validate_doc`, `patch_block`) and `NomaWorkflow` (composes tools into `safePatch` with per-file absolute-path mutex + clamped retry, `applyOps` with client-side parent-chain transcripts, `replayTranscript`, `readCapabilities`, `checkCapability` with advisory denials including the Annex A `ids.rename` global gate). `CapabilityDescriptor` parses Annex A v1 sidecars (`<file>.capabilities.yml`) and validates against the §A.3 schema. Errors split into a `NomaSystemError` hierarchy (thrown) for system faults — including book-manifest `unsupported_op` — and `{ ok: false, code }` bodies for user-recoverable §3.5 patch errors (`target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, `sha_mismatch`). Five-tier test pyramid: unit, tools-vs-real-server, workflow, demo replay (`agent-stale-memo` + `agent-memory` ported to the SDK), and conformance (drives `examples/conformance/patch/*`). Graduation metrics aggregator captures the three numbers gating Annex A+B promotion in v1.1 (7/7 single-call codes, every Annex A.3 descriptor field, full conformance corpus). Marked **experimental** — API freezes at v1.0 in lockstep with RFC v1.1 graduation.
 
 ## [0.8.0] — 2026-05-12
 
@@ -45,7 +51,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **`@noma/mcp-server` bumped to v0.8.0** to restore lockstep with `@noma/cli` (the workspace package was inadvertently left at v0.6.0 across the v0.7.0 and v0.7.1 releases; no code changes to the MCP server itself in this bump).
+- **`@ferax564/noma-mcp-server` bumped to v0.8.0** to restore lockstep with `@ferax564/noma-cli` (the workspace package was inadvertently left at v0.6.0 across the v0.7.0 and v0.7.1 releases; no code changes to the MCP server itself in this bump).
 
 ### Fixed
 
@@ -65,7 +71,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **`book.yml` `trusted_publishing: true`** — manifest-level flag that implies `--no-unsafe` for every render driven by the manifest (single-page or `--to site`). The manifest is the final word: no CLI flag re-enables escape hatches once the manifest forbids them.
 - **`stylesheetHref` option on `renderHtml`** — when set, the standalone HTML head emits `<link rel="stylesheet" href="...">` instead of `<style>...</style>`. Used by the site renderer; the single-page path is unchanged.
 - **`tools/vscode-noma` v0.2.0 — marketplace publish prep.** Metadata, `.vscodeignore`, `CHANGELOG.md`, README rewrite, LICENSE bundled into the extension folder. Live marketplace publish is a follow-up step the maintainer runs; verify the live listing at https://marketplace.visualstudio.com/items?itemName=ferax564.noma-language after publish.
-- **`diffDocs(before, after, options)`** programmatic export from `@noma/cli`.
+- **`diffDocs(before, after, options)`** programmatic export from `@ferax564/noma-cli`.
 
 ### Changed
 
@@ -80,7 +86,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **Explicit `FrontmatterNode` AST variant** with `raw`, `data`, `pos`, and `endLine` fields. Document node now carries `pos` and `endLine` spanning the entire source.
 - **`PatchError.code` field** — machine-readable taxonomy (`target_missing`, `id_conflict`, `id_attribute_protected`, `parent_missing`, `invalid_content`, `sha_mismatch`, `pre_validation_blocked`, `op_list_aborted`, `unsupported_op`).
 - **Validator `duplicate-id` test coverage** — explicit collisions emit error diagnostic; slug-derived collisions auto-suffix `-2`, `-3` (no diagnostic).
-- `@noma/mcp-server` (Phase 0): MCP server for block-level agent editing via stdio transport.
+- `@ferax564/noma-mcp-server` (Phase 0): MCP server for block-level agent editing via stdio transport.
   Four tools: `read_doc`, `list_ids`, `validate_doc`, `patch_block`. Byte-preserving
   `patchSource()` write path. Append-only `.noma.patches` JSONL transcript with
   `pre_sha`/`post_sha` and `expected_sha` concurrency guard.
@@ -166,9 +172,9 @@ the AST.
   (`csv`, `tsv`, `json`, `yaml`) from extension or content. CLI calls the
   loader for both single files and book chapters (per-chapter directory
   resolution). Renderers stay pure.
-- **Programmatic API surface** (review fix #4). `@noma/cli` now exposes
+- **Programmatic API surface** (review fix #4). `@ferax564/noma-cli` now exposes
   `main`/`types`/`exports` so `import { parse, patchSource, renderHtml }
-  from "@noma/cli"` works in any Node 20+ project.
+  from "@ferax564/noma-cli"` works in any Node 20+ project.
 
 ### Changed
 
@@ -206,7 +212,7 @@ New rules: `diagram-missing-kind`, `diagram-missing-source`,
   external datasets, and source-preserving patch.
 - `docs/agent-protocol.noma` bumped to v0.5; clarifies that `noma patch`
   preserves bytes outside the targeted span.
-- README clarifies `@noma/cli` is the published name (was `@noma/parser`,
+- README clarifies `@ferax564/noma-cli` is the published name (was `@ferax564/noma-parser`,
   never published under that name).
 
 ### Known follow-ups
@@ -437,7 +443,7 @@ Six §23 / §8 items shipped, taking Noma from "renderable plain text" to
 
   CLI: `noma patch <file> --op '<json>' [--inplace | --out path]` or
   `--ops <file.json>` for batches. Public API: `patch`, `patchAll`,
-  `findById`, `PatchError` from `@noma/cli`. This closes PLAN.md §23.11
+  `findById`, `PatchError` from `@ferax564/noma-cli`. This closes PLAN.md §23.11
   and turns the agent-protocol doc from spec into shipped code.
 
 - **Three new demo artifacts** under `examples/`, exercising the full block
@@ -520,7 +526,7 @@ Initial public release.
 
 ### Added
 
-- `@noma/parser` — hand-written, no parser-combinator dependency.
+- `@ferax564/noma-parser` — hand-written, no parser-combinator dependency.
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively
   switched everywhere.
 - HTML renderer with default CSS theme and print stylesheet.

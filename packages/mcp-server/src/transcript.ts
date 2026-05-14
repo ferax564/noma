@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
-import type { PatchOp } from "@noma/cli";
-import type { Diagnostic } from "@noma/cli";
+import type { PatchOp } from "@ferax564/noma-cli";
+import type { Diagnostic } from "@ferax564/noma-cli";
 
 export type ValidationSummary = "ok" | "warn" | "error";
 export type PatchResult = "applied" | "rejected" | "noop";

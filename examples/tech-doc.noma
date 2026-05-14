@@ -16,9 +16,9 @@ reading and the deterministic LLM context an agent would consume.
 ## Install
 
 ```bash
-npm install -g @noma/cli
+npm install -g @ferax564/noma-cli
 # or one-off
-npx @noma/cli render path/to/file.noma --to html
+npx @ferax564/noma-cli render path/to/file.noma --to html
 ```
 
 ::callout{tone="tip"}
@@ -157,9 +157,7 @@ still passes — but the artifact won't have real data in it.
 ## Programmatic use
 
 ```ts
-import { parse } from "@noma/cli/parser";
-import { renderHtml } from "@noma/cli/renderer-html";
-import { validate } from "@noma/cli/validator";
+import { parse, renderHtml, validate } from "@ferax564/noma-cli";
 
 const source = await fs.readFile("doc.noma", "utf8");
 const ast = parse(source, { filename: "doc.noma" });

@@ -36,7 +36,7 @@ code --install-extension noma-language-0.2.0.vsix
 
 ## Companion CLI
 
-The [`@noma/cli`](https://github.com/ferax564/noma) package provides `noma parse|render|check|patch|diff|verify` on the same `.noma` sources this extension highlights.
+The [`@ferax564/noma-cli`](https://github.com/ferax564/noma) package provides `noma parse|render|check|patch|diff|verify` on the same `.noma` sources this extension highlights.
 
 ## License
 

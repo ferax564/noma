@@ -1,26 +1,26 @@
-# `@noma/agent-sdk` (experimental)
+# `@ferax564/noma-agent-sdk` (experimental)
 
 > **Status: experimental.** API surface may change in any v0.x release. The
 > SDK freezes at v1.0 in lockstep with Annex A+B graduation in the Noma
 > Agent Protocol RFC v1.1.
 
 TypeScript reference SDK for the [Noma Agent Protocol v1.0](../../docs/spec-agent-protocol-v1.noma).
-It drives `@noma/mcp-server` over stdio and adds a workflow layer for
+It drives `@ferax564/noma-mcp-server` over stdio and adds a workflow layer for
 safe-patch retry, capability descriptor reading, and transcript replay.
 
 ## Install
 
 ```bash
-npm install @noma/agent-sdk
+npm install @ferax564/noma-agent-sdk
 ```
 
-`@noma/agent-sdk` spawns `@noma/mcp-server` as a child process — they ship
+`@ferax564/noma-agent-sdk` spawns `@ferax564/noma-mcp-server` as a child process — they ship
 together in the workspace.
 
 ## Usage
 
 ```ts
-import { NomaTools, NomaWorkflow } from "@noma/agent-sdk";
+import { NomaTools, NomaWorkflow } from "@ferax564/noma-agent-sdk";
 
 const tools = await NomaTools.spawn();
 try {

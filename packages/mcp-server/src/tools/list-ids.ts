@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { parse, isBookManifestPath } from "@noma/cli";
-import type { Node } from "@noma/cli";
+import { parse, isBookManifestPath } from "@ferax564/noma-cli";
+import type { Node } from "@ferax564/noma-cli";
 
 export interface ListIdsResult {
   ids: string[];

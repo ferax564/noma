@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { parse, isBookManifestPath } from "@noma/cli";
-import type { AttrValue, Node } from "@noma/cli";
+import { parse, isBookManifestPath } from "@ferax564/noma-cli";
+import type { AttrValue, Node } from "@ferax564/noma-cli";
 
 export interface BlockSummary {
   id?: string;

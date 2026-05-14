@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { parse, validate, isBookManifestPath } from "@noma/cli";
-import type { Diagnostic } from "@noma/cli";
+import { parse, validate, isBookManifestPath } from "@ferax564/noma-cli";
+import type { Diagnostic } from "@ferax564/noma-cli";
 import type { ValidationSummary } from "../transcript.js";
 
 export interface ValidateDocResult {

@@ -1216,7 +1216,7 @@ No compatibility promise applies to this annex. See §1.4.
 
 This annex specifies the **MCP-over-stdio binding** — one concrete realization of the
 Noma agent protocol carried over the [Model Context Protocol](https://modelcontextprotocol.io)
-(MCP) using the stdio transport. The tool package is published as `@noma/mcp-server`.
+(MCP) using the stdio transport. The tool package is published as `@ferax564/noma-mcp-server`.
 
 The binding exposes four MCP tools: `read_doc`, `list_ids`, `validate_doc`, and
 `patch_block`. Each tool accepts a JSON input object and returns a JSON-encoded body in the
@@ -1440,7 +1440,7 @@ change before v1.1 freezes the binding shape:
 - **Non-functional fixes.** The binding MAY receive patch releases (v1.0.x) for
   documentation corrections, field rename clarity, or schema alignment with the normative
   core. No semantic changes will ship as patch releases.
-- **HTTP binding.** A future `@noma/http-server` binding over HTTP/1.1 or HTTP/2 will
+- **HTTP binding.** A future `@ferax564/noma-http-server` binding over HTTP/1.1 or HTTP/2 will
   expose the same four tools plus authentication requirements. HTTP binding is a v1.1
   item. It will define session tokens, per-request identity, and transport-layer security
   requirements not present in the stdio binding.

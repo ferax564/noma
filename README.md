@@ -57,7 +57,7 @@ That's the whole language — directive blocks (`::name{attrs} ... ::`), Markdow
 Published CLI:
 
 ```bash
-npm install -g @noma/cli
+npm install -g @ferax564/noma-cli
 noma --version
 noma init my-spec
 noma render my-spec/demo.noma --to html --out my-spec/demo.html
@@ -144,7 +144,7 @@ jobs:
           artifact-name: spec-preview
 ```
 
-The action installs the CLI from the checked-out action ref by default, runs `noma check`, renders the requested target, and uploads the result with `actions/upload-artifact`. Use `to: site` when `input` is a book manifest and `output` is a directory. For explicit dependency control, set `cli-package` to any npm package spec or `cli-version` to an `@noma/cli` npm version range.
+The action installs the CLI from the checked-out action ref by default, runs `noma check`, renders the requested target, and uploads the result with `actions/upload-artifact`. Use `to: site` when `input` is a book manifest and `output` is a directory. For explicit dependency control, set `cli-package` to any npm package spec or `cli-version` to an `@ferax564/noma-cli` npm version range.
 
 ## Demos
 
@@ -158,7 +158,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 
 ## What ships today
 
-- `@noma/cli` (this package) — hand-written parser with no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown. The parser is exported alongside the CLI; `import { parse } from "@noma/cli"` works in any Node 20+ project.
+- `@ferax564/noma-cli` (this package) — hand-written parser with no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown. The parser is exported alongside the CLI; `import { parse } from "@ferax564/noma-cli"` works in any Node 20+ project.
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively switched everywhere.
 - HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, real inline-data plots (line + bar SVG, no JS), agent tasks, export buttons, controls, tables, the new `::table` directive, and `::state_change` deltas. `::html` / `::svg` / `::script` escape hatches can be blocked with `--no-unsafe`; `--strict` also omits external CDN runtimes for math, diagrams, and Plotly.
 - LLM renderer — deterministic plain-text output for context windows; escape-hatch bodies always stripped. Supports `--select`, `--exclude`, and `--budget` for scoped agent context.
@@ -182,7 +182,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.10.1 — agent-safe workflow polish plus GitHub Action install hardening. v0.10 adds the boring install path (`noma --version`, `noma init`), strict HTML rendering for published/team contexts, scoped LLM context export (`--select`, `--exclude`, `--budget`), JSON ID registries via `noma ids`, transaction-shaped patch files via `noma patch --ops`, source-preserving `add_block` validation, and a reusable GitHub Action that validates, renders, and uploads artifacts in CI. v0.10.1 makes that action install the CLI from the checked-out action ref by default, avoiding npm registry `latest` drift. Carries the v0.9.0 experimental `@noma/agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.16 for the full release tracker.
+**Status:** v0.10.2 — agent-safe workflow polish plus corrected npm package identity. v0.10 adds the boring install path (`noma --version`, `noma init`), strict HTML rendering for published/team contexts, scoped LLM context export (`--select`, `--exclude`, `--budget`), JSON ID registries via `noma ids`, transaction-shaped patch files via `noma patch --ops`, source-preserving `add_block` validation, and a reusable GitHub Action that validates, renders, and uploads artifacts in CI. v0.10.1 makes that action install the CLI from the checked-out action ref by default, avoiding npm registry `latest` drift. v0.10.2 moves package metadata and install docs to the available `@ferax564/*` npm scope because `@noma/*` belongs to another project. Carries the v0.9.0 experimental `@ferax564/noma-agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.17 for the full release tracker.
 
 ## License
 

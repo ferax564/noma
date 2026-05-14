@@ -5,7 +5,7 @@ import { NomaTools, NomaWorkflow } from "../src/index.js";
 import type { PatchOp } from "../src/index.js";
 
 // Resolve relative to repo root, not process.cwd(). The npm workspace
-// (`npm run demo:agent-memory -w @noma/agent-sdk`) sets cwd to
+// (`npm run demo:agent-memory -w @ferax564/noma-agent-sdk`) sets cwd to
 // packages/agent-sdk/, so `resolve("examples/...")` would look under
 // the workspace, not the repo root. Walk up from this file's URL instead.
 const __dirname = dirname(fileURLToPath(import.meta.url));

@@ -14,7 +14,7 @@ Five minutes to your first rendered Noma document.
 Install the published CLI when you want to author documents outside this checkout:
 
 ```bash
-npm install -g @noma/cli
+npm install -g @ferax564/noma-cli
 noma --version
 noma init my-spec
 noma render my-spec/demo.noma --to html --out my-spec/demo.html
@@ -148,7 +148,7 @@ jobs:
           artifact-name: spec-preview
 ```
 
-The action installs the CLI from the checked-out action ref by default, runs `noma check`, renders the requested target, and uploads the output with `actions/upload-artifact`. For book manifests, set `to: site` and point `output` at a directory. If you need an explicit package source, set `cli-package` to any npm package spec or `cli-version` to an `@noma/cli` npm version range.
+The action installs the CLI from the checked-out action ref by default, runs `noma check`, renders the requested target, and uploads the output with `actions/upload-artifact`. For book manifests, set `to: site` and point `output` at a directory. If you need an explicit package source, set `cli-package` to any npm package spec or `cli-version` to an `@ferax564/noma-cli` npm version range.
 
 ## Re-align tables in source
 

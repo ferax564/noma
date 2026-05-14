@@ -86,7 +86,7 @@ Don't use codex for: small one-task changes, doc/CHANGELOG/version-bump plans, p
 
 > "the reference SDK (Phase 3) and at least one third-party binding exercise them under production conditions."
 
-**The gap:** there is no reference agent SDK that drives `@noma/mcp-server` end-to-end. Without one, the RFC annexes can't graduate from provisional to normative.
+**The gap:** there is no reference agent SDK that drives `@ferax564/noma-mcp-server` end-to-end. Without one, the RFC annexes can't graduate from provisional to normative.
 
 **Why:** the four §24.9 papercuts ship cleanly as v0.7.0 (see [[project_noma_v07_scope]]). The SDK is multi-week consumer-pressure work that doesn't fit that release. Natural slot: v0.8.
 

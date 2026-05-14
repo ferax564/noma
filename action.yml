@@ -18,7 +18,7 @@ inputs:
     required: false
     default: ""
   cli-version:
-    description: Deprecated npm version range for @noma/cli; ignored when cli-package is set.
+    description: Deprecated npm version range for @ferax564/noma-cli; ignored when cli-package is set.
     required: false
     default: ""
   node-version:
@@ -81,7 +81,7 @@ runs:
         if [[ -n "$NOMA_CLI_PACKAGE" ]]; then
           package_spec="$NOMA_CLI_PACKAGE"
         elif [[ -n "$NOMA_CLI_VERSION" ]]; then
-          package_spec="@noma/cli@$NOMA_CLI_VERSION"
+          package_spec="@ferax564/noma-cli@$NOMA_CLI_VERSION"
         else
           package_spec="$GITHUB_ACTION_PATH"
         fi

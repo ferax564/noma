@@ -6,7 +6,7 @@ import { readDoc } from "./tools/read-doc.js";
 import { listIds } from "./tools/list-ids.js";
 import { validateDoc } from "./tools/validate-doc.js";
 import { patchBlock } from "./tools/patch-block.js";
-import type { PatchOp } from "@noma/cli";
+import type { PatchOp } from "@ferax564/noma-cli";
 
 const PatchOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("replace_block"), id: z.string(), content: z.string() }),
@@ -17,7 +17,7 @@ const PatchOpSchema = z.discriminatedUnion("op", [
 ]);
 
 const server = new McpServer({
-  name: "@noma/mcp-server",
+  name: "@ferax564/noma-mcp-server",
   version: "0.1.0",
 });
 

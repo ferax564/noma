@@ -575,14 +575,14 @@ Later, consider Rust for performance-critical parsing.
 ### 14.2 Core packages
 
 ```txt
-@noma/parser
-@noma/ast
-@noma/renderer-html
-@noma/renderer-llm
-@noma/renderer-pdf
-@noma/validator
-@noma/cli
-@noma/vscode
+@ferax564/noma-parser
+@ferax564/noma-ast
+@ferax564/noma-renderer-html
+@ferax564/noma-renderer-llm
+@ferax564/noma-renderer-pdf
+@ferax564/noma-validator
+@ferax564/noma-cli
+@ferax564/noma-vscode
 ```
 
 ### 14.3 CLI
@@ -1421,9 +1421,9 @@ substrate without breaking the AST.
   Book-scoped IDs (`chapter/risks`), dotted metric IDs, namespaced
   IDs all resolve. Fixed uniformly across `inline.ts`, `patch.ts`,
   `validator.ts`.
-- ✅ `@noma/cli` programmatic API (review fix #4). Added `main`,
+- ✅ `@ferax564/noma-cli` programmatic API (review fix #4). Added `main`,
   `types`, `exports` so `import { parse, patchSource, renderHtml }
-  from "@noma/cli"` works in any Node 20+ project. Dropped `|| true`
+  from "@ferax564/noma-cli"` works in any Node 20+ project. Dropped `|| true`
   from `prepare` so broken builds fail loud.
 - ✅ `::diagram{kind="mermaid|graphviz|drawio"}` directive (issue #10).
   Body holds source verbatim. HTML auto-injects the matching CDN only
@@ -1486,13 +1486,13 @@ Shipped on 2026-05-11.
 - Reference impl alignment: v1.0 transcript writer, `FrontmatterNode` + `DocumentNode` spans, parser fence-suppression fix (closes ⏳ from §24.9), `PatchError` taxonomy, validator `duplicate-id` rule
 - `noma verify` CLI + 14-fixture minimum corpus (`examples/conformance/`)
 - Legacy `docs/agent-protocol.noma` superseded; cross-refs updated in `docs/spec.noma`
-- `@noma/mcp-server` bumped to v0.6.0 (matching CLI); transcript writer updated to v1.0 protocol shape
+- `@ferax564/noma-mcp-server` bumped to v0.6.0 (matching CLI); transcript writer updated to v1.0 protocol shape
 
 ### §24.11 — v0.7.0 (papercut bundle)
 
 Shipped on 2026-05-12. Closes three ⏳ items from §24.9; VS Code marketplace is prep-only in this release (live publish is a maintainer-run follow-up).
 
-- `noma diff <before.noma> <after.noma> --at <date>` — attribute-drift detector emitting `::state_change` directives. v0.7 scope is attribute-value changes only; add/delete and structural diffs tracked for v0.7.1. Programmatic API exported as `diffDocs` from `@noma/cli`. `--at` is required so output is deterministic.
+- `noma diff <before.noma> <after.noma> --at <date>` — attribute-drift detector emitting `::state_change` directives. v0.7 scope is attribute-value changes only; add/delete and structural diffs tracked for v0.7.1. Programmatic API exported as `diffDocs` from `@ferax564/noma-cli`. `--at` is required so output is deterministic.
 - `book.yml` `trusted_publishing: true` — manifest-level implicit `--no-unsafe` for both single-page and `--to site` renders. No CLI override (security posture is final once the manifest sets it).
 - Shared `_assets/theme.css` for `--to site` — `renderHtml` gained a `stylesheetHref` option; the site renderer writes theme once and points every page at it. Per-page output drops ~15 KB on 30-chapter books.
 - `noma-language` v0.2.0 — marketplace publish prep (metadata, README, .vscodeignore, extension-local CHANGELOG, LICENSE). Live marketplace listing follows when the maintainer runs `vsce publish`.
@@ -1514,12 +1514,12 @@ Shipped on 2026-05-12. Bundles the agent-memory work that landed on `main` after
 
 ### §24.14 — v0.9.0 (reference agent SDK)
 
-Shipped on 2026-05-13. Reference agent SDK (`@noma/agent-sdk` v0.1.0) lands in the workspace as the first of two v1.1 RFC Annex A+B graduation prerequisites (the other being ≥1 third-party binding, tracked separately).
+Shipped on 2026-05-13. Reference agent SDK (`@ferax564/noma-agent-sdk` v0.1.0) lands in the workspace as the first of two v1.1 RFC Annex A+B graduation prerequisites (the other being ≥1 third-party binding, tracked separately).
 
 - **Public surface.** `NomaTools` (1:1 wrapper over `read_doc`, `list_ids`, `validate_doc`, `patch_block` via stdio); `NomaWorkflow` (composes them into `safePatch` with per-file absolute-path mutex + clamped retry, `applyOps` with parent-chain transcripts, `replayTranscript`, `readCapabilities`, `checkCapability` with five reason codes including the Annex A `ids.rename` global gate); `CapabilityDescriptor` (Annex A.3 sidecar parser).
 - **Error channels.** Thrown `NomaSystemError` hierarchy (`NomaSpawnError`, `NomaTransportError`, `NomaCapabilityError`, `NomaTimeoutError`) for system faults — including the book-manifest `unsupported_op` — and `{ ok: false, code }` bodies for user-recoverable §3.5 patch errors.
 - **Annex graduation metrics at target.** 7/7 single-call §3.5 codes observed end-to-end; 8/8 Annex A.3 descriptor fields exercised; 6/6 `examples/conformance/patch/*` fixtures pass through the SDK with byte-identical output to the non-SDK baselines. Aggregator test prints the report on every CI run as the durable graduation gate evidence.
-- **Infrastructure.** `zod` pinned to `3.25.76` via root `overrides` to collapse three duplicate copies in `node_modules` that broke the MCP SDK's `instanceof ZodType` check. `@noma/mcp-server` bumped to v0.9.0 in lockstep with the CLI. CI workflow runs `build:agent-sdk` + `test:agent-sdk` before `build:site`.
+- **Infrastructure.** `zod` pinned to `3.25.76` via root `overrides` to collapse three duplicate copies in `node_modules` that broke the MCP SDK's `instanceof ZodType` check. `@ferax564/noma-mcp-server` bumped to v0.9.0 in lockstep with the CLI. CI workflow runs `build:agent-sdk` + `test:agent-sdk` before `build:site`.
 - **Authoring trail.** 28 commits, executed via subagent-driven flow from a plan refined through five rounds of `/codex review` (see `docs/superpowers/plans/2026-05-13-noma-agent-sdk.md` and `docs/superpowers/specs/2026-05-13-noma-agent-sdk-design.md`). Plan was written before any code shipped; codex caught every plan-vs-reality drift before a subagent ever ran.
 
 ### §24.15 — v0.10.0 (agent-safe workflow polish)
@@ -1540,4 +1540,10 @@ Shipped on `main` on 2026-05-14. Closes the first P0/P1 items from the revised a
 Shipped on 2026-05-14 after external consumer smoke testing of the v0.10 line.
 
 - **Action install hardening.** External registry checks showed `@noma/cli@latest` resolves to a different published package version than this repo's v0.10 line. The reusable GitHub Action now installs from `$GITHUB_ACTION_PATH` by default, preserving exact `uses: ferax564/noma@<ref>` behavior. `cli-package` and legacy `cli-version` remain opt-in overrides.
-- **Consumer smoke evidence.** A clean temp project installed the packed CLI tarball, ran `noma --version`, `noma init`, `noma check`, HTML/LLM rendering, `noma ids`, transaction patching, strict rendering, and programmatic `import { parse, renderLlm } from "@noma/cli"`. A separate temp npm prefix installed the action checkout globally and rendered a claim through the resulting `noma` binary.
+- **Consumer smoke evidence.** A clean temp project installed the packed CLI tarball, ran `noma --version`, `noma init`, `noma check`, HTML/LLM rendering, `noma ids`, transaction patching, strict rendering, and a programmatic parser/renderer import. A separate temp npm prefix installed the action checkout globally and rendered a claim through the resulting `noma` binary.
+
+### §24.17 — v0.10.2 (npm package identity correction)
+
+Shipped on 2026-05-14 after verifying the public npm package namespace.
+
+- **Moved public package identity to `@ferax564`.** Registry metadata confirms `@noma/cli` belongs to `github.com/getnoma/noma`, and `noma` is also taken. `@ferax564/noma-cli`, `@ferax564/noma-mcp-server`, and `@ferax564/noma-agent-sdk` returned 404 and are the intended publish targets. Package metadata, workspace dependencies, source imports, install docs, examples, and Action override docs now use the corrected scope.

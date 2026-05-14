@@ -1,5 +1,5 @@
 {
-  "name": "@noma/agent-sdk",
+  "name": "@ferax564/noma-agent-sdk",
   "version": "0.1.0",
   "description": "Reference agent SDK for the Noma Agent Protocol v1.0 (experimental)",
   "type": "module",
@@ -15,15 +15,15 @@
   "files": ["src", "dist", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "pretest": "cd ../.. && npm run build -w @noma/mcp-server && npm run demo:stale-memo && npm run demo:agent-memory",
+    "pretest": "cd ../.. && npm run build -w @ferax564/noma-mcp-server && npm run demo:stale-memo && npm run demo:agent-memory",
     "test": "tsx --test test/*.test.ts",
     "demo:agent-stale-memo": "tsx scripts/agent-stale-memo-sdk.ts",
     "demo:agent-memory": "tsx scripts/agent-memory-demo-sdk.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@noma/cli": "file:../..",
-    "@noma/mcp-server": "file:../mcp-server",
+    "@ferax564/noma-cli": "file:../..",
+    "@ferax564/noma-mcp-server": "file:../mcp-server",
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {

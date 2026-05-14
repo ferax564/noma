@@ -23,9 +23,9 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 function resolveServerBin(override?: string): string {
   if (override) return override;
   try {
-    return require_.resolve("@noma/mcp-server/dist/index.js");
+    return require_.resolve("@ferax564/noma-mcp-server/dist/index.js");
   } catch (cause) {
-    throw new NomaSpawnError("could not resolve @noma/mcp-server binary", cause);
+    throw new NomaSpawnError("could not resolve @ferax564/noma-mcp-server binary", cause);
   }
 }
 
@@ -59,7 +59,7 @@ export class StdioMcpClient {
       ...(env ? { env } : {}),
     });
     const client = new Client(
-      { name: "@noma/agent-sdk", version: "0.1.0" },
+      { name: "@ferax564/noma-agent-sdk", version: "0.1.0" },
       { capabilities: {} },
     );
     try {
@@ -81,7 +81,7 @@ export class StdioMcpClient {
     // The MCP SDK's callTool return type is a union: it can be the
     // CallToolResult shape (`{ content, isError? }`) OR a legacy
     // `{ toolResult }` envelope. Strict TS rejects direct field access.
-    // The @noma/mcp-server always emits the CallToolResult shape, but the
+    // The @ferax564/noma-mcp-server always emits the CallToolResult shape, but the
     // SDK's static type doesn't know that — narrow by sniffing for
     // `content`. Throw a transport error if the envelope is unexpected.
     const raw = await this.withTimeout(
