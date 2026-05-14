@@ -1,6 +1,6 @@
 {
   "name": "@ferax564/noma-mcp-server",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "description": "MCP server for @ferax564/noma-cli — block-level agent editing",
   "type": "module",
   "main": "dist/index.js",

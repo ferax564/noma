@@ -660,6 +660,7 @@
       <a href="#whats-new">What's new</a>
       <a href="#three-layers">Layers</a>
       <a href="#demos">Demos</a>
+      <a href="#guides">Guides</a>
       <a href="#compare">Compare</a>
       <a href="docs/direction.html">Docs</a>
       <a class="gh" href="https://github.com/ferax564/noma">GitHub</a>
@@ -670,7 +671,7 @@
 <a id="top"></a>
 <header class="hero">
   <div class="wrap">
-    <div class="pill"><span class="dot"></span>v0.3.0 · open source · MIT</div>
+    <div class="pill"><span class="dot"></span>v0.11.0 RC · open source · MIT</div>
     <h1>Readable source for <span class="accent">beautiful agent artifacts</span>.</h1>
     <p class="lead">
       Markdown is too weak for rich documents. HTML is too noisy as long-term source.
@@ -679,6 +680,7 @@
     </p>
     <div class="cta">
       <a class="btn btn-primary" href="#demos">See the demos</a>
+      <a class="btn btn-ghost" href="#guides">Read the guides</a>
       <a class="btn btn-ghost" href="https://github.com/ferax564/noma">Star on GitHub →</a>
     </div>
 
@@ -729,35 +731,66 @@ Research teams are the sharpest wedge.
 <section class="whatsnew" id="whats-new">
   <div class="wrap">
     <div class="whatsnew-head">
-      <h2><span class="version-tag">v0.3.0</span>Response to first real-world authoring pass</h2>
+      <h2><span class="version-tag">v0.11.0</span>Local v1-readiness release candidate</h2>
       <div class="meta">
-        Eight friction items + two design questions from <a href="https://github.com/ferax564/noma/issues/1">issue #1</a> · <a href="https://github.com/ferax564/noma/blob/main/CHANGELOG.md#030--2026-05-10">full changelog</a>
+        Packaged contracts, publish gates, and agent-safe docs · <a href="https://github.com/ferax564/noma/blob/main/CHANGELOG.md#0110--2026-05-14">full changelog</a>
       </div>
     </div>
     <div class="whatsnew-grid">
       <div class="whatsnew-item">
-        <h3><code>::table</code> directive + <code>noma fmt</code></h3>
-        <p>Tables without separator-row tax. <code>fmt</code> re-aligns pipe tables in source, respects code spans and <code>\|</code> escapes.</p>
+        <h3><code>noma schema &lt;name&gt;</code></h3>
+        <p>Bundled JSON Schemas for patch ops, transactions, AST JSON, transcript records, and capability sidecars.</p>
       </div>
       <div class="whatsnew-item">
-        <h3><code>::plot{dataset, column}</code></h3>
-        <p>Plots resolve their series against sibling <code>::dataset</code> blocks. No more authoring numbers twice.</p>
+        <h3>Source-preserving patch ops</h3>
+        <p><code>replace_body</code> and <code>update_heading</code> let agents make smaller edits while preserving wrappers, attrs, and stable IDs.</p>
       </div>
       <div class="whatsnew-item">
-        <h3><code>::state_change</code> directive</h3>
-        <p>Typed deltas for weekly/quarterly recap docs. Strike-through → bold in HTML, structured fields in LLM context.</p>
+        <h3>Packed CLI smoke gate</h3>
+        <p>The tarball install path now exercises version, init, check, render, IDs, patch transactions, strict mode, API import, and package shape.</p>
       </div>
       <div class="whatsnew-item">
-        <h3>Profile frontmatter</h3>
-        <p><code>profile: research | technical | minimal</code> as a contract about which directives the document uses. Validator warns on out-of-profile blocks.</p>
+        <h3>Compatibility policy</h3>
+        <p>Stable vs experimental surfaces are documented before the first public <code>@ferax564/*</code> npm publish line.</p>
       </div>
       <div class="whatsnew-item">
-        <h3>Citation staleness overrides</h3>
-        <p>Per-document <code>stale_citation_days</code>, per-citation <code>stale_after_days</code>, plus <code>noma check --stale-days N</code>.</p>
+        <h3>Agent guide + case studies</h3>
+        <p>New adoption docs explain the safe editing loop and the research memo / decision artifact / technical-doc workflows.</p>
       </div>
       <div class="whatsnew-item">
-        <h3>Wikilinks across chapters</h3>
-        <p><code>[[id]]</code> references resolve across an entire book manifest. Validator surfaces broken targets as <code>broken-reference</code> errors.</p>
+        <h3>Starter templates</h3>
+        <p>Copyable research memo, decision record, technical spec, and agent refresh pack templates live under <code>examples/templates/</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+<section id="guides">
+  <div class="wrap">
+    <h2><span class="small">Adoption guides</span>Start with the workflow, not the syntax.</h2>
+    <p class="section-lead">
+      The core wedge is agent-safe rich documents: source that humans can review,
+      artifacts stakeholders can read, and stable blocks agents can patch.
+    </p>
+    <div class="whatsnew-grid">
+      <div class="whatsnew-item">
+        <h3>Case studies</h3>
+        <p>Research refreshes, decision artifacts, strict technical docs, and agent memory workflows with concrete commands.</p>
+        <p style="margin-top: 10px;"><a href="docs/case-studies.html">Open case studies →</a></p>
+      </div>
+      <div class="whatsnew-item">
+        <h3>Comparison guide</h3>
+        <p>When to choose Noma instead of Markdown, MDX, raw HTML, or collaborative docs.</p>
+        <p style="margin-top: 10px;"><a href="docs/comparison.html">Compare formats →</a></p>
+      </div>
+      <div class="whatsnew-item">
+        <h3>Agent editing guide</h3>
+        <p>The safe loop: discover IDs, choose the smallest op, patch transactionally, validate, and render strictly.</p>
+        <p style="margin-top: 10px;"><a href="docs/agent-guide.html">Read the agent guide →</a></p>
+      </div>
+      <div class="whatsnew-item">
+        <h3>Starter templates</h3>
+        <p>Copyable templates for research memos, decision records, technical specs, and recurring agent refresh packs.</p>
+        <p style="margin-top: 10px;"><a href="docs/templates.html">Browse templates →</a></p>
       </div>
     </div>
   </div>
@@ -946,6 +979,8 @@ Research teams are the sharpest wedge.
     <div class="links">
       <a href="https://github.com/ferax564/noma">GitHub</a>
       <a href="docs/getting-started.html">Getting started</a>
+      <a href="docs/case-studies.html">Case studies</a>
+      <a href="docs/agent-guide.html">Agent guide</a>
       <a href="docs/direction.html">Direction</a>
       <a href="docs/spec.html">Spec</a>
       <a href="docs/architecture.html">Architecture</a>

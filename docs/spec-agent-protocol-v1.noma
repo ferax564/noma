@@ -89,7 +89,7 @@ The current reference implementation may expose additive patch operations before
 new normative protocol minor version is cut. These are implementation extensions, not
 part of the v1.0 conformance set in §§1–6.
 
-As of the post-v0.10.2 line, the reference implementation also supports:
+As of the post-v0.11.0 line, the reference implementation also supports:
 
 - `replace_body` — replace body text on a body-only directive or text node while
   preserving the wrapper, attributes, and sibling blocks.
@@ -1233,7 +1233,7 @@ No compatibility promise applies to this annex. See §1.4.
 
 This annex specifies the **MCP-over-stdio binding** — one concrete realization of the
 Noma agent protocol carried over the [Model Context Protocol](https://modelcontextprotocol.io)
-(MCP) using the stdio transport. The tool package is published as `@ferax564/noma-mcp-server`.
+(MCP) using the stdio transport. The tool package name is `@ferax564/noma-mcp-server`.
 
 The binding exposes four MCP tools: `read_doc`, `list_ids`, `validate_doc`, and
 `patch_block`. Each tool accepts a JSON input object and returns a JSON-encoded body in the

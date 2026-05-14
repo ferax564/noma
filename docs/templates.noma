@@ -1,0 +1,105 @@
+---
+title: Noma — Starter Templates
+version: 0.11.0
+status: stable
+tags: [docs, templates, starters]
+---
+
+# Noma Starter Templates
+
+::summary
+Copy these templates when starting a new artifact. Each one demonstrates the intended shape of a document that humans can review, agents can patch, and CI can render.
+::
+
+## Available templates
+
+::grid{columns=2}
+:::card{title="Research memo"}
+Use for claims, evidence, citations, risks, and periodic agent refreshes.
+
+[Source →](https://github.com/ferax564/noma/blob/main/examples/templates/research-memo.noma)
+:::
+
+:::card{title="Decision record"}
+Use for product or architecture decisions with options, accepted status, and follow-up tasks.
+
+[Source →](https://github.com/ferax564/noma/blob/main/examples/templates/decision-record.noma)
+:::
+
+:::card{title="Technical spec"}
+Use for API designs, implementation plans, diagrams, validation rules, and rollout notes.
+
+[Source →](https://github.com/ferax564/noma/blob/main/examples/templates/technical-spec.noma)
+:::
+
+:::card{title="Agent refresh pack"}
+Use when an agent should regularly check stale sources and update specific target blocks.
+
+[Source →](https://github.com/ferax564/noma/blob/main/examples/templates/agent-refresh.noma)
+:::
+::
+
+## Research memo skeleton
+
+```noma
+# Research Memo
+
+::summary
+One paragraph on the question, answer, and confidence.
+::
+
+::claim{id="core-claim" confidence=0.72}
+The central claim goes here.
+::
+
+::evidence{for="core-claim" source="source-id"}
+Evidence that supports the claim.
+::
+```
+
+## Decision record skeleton
+
+```noma
+# Decision Record
+
+::decision{id="decision" status="proposed" owner="team"}
+We propose option B because it maximizes learning while keeping rollback cheap.
+::
+
+::agent_task{id="decision-follow-up" scope="post-decision"}
+After two weeks, verify whether the decision criteria still hold.
+::
+```
+
+## Technical spec skeleton
+
+```noma
+# Technical Spec
+
+::summary
+What is being built, who it serves, and what is explicitly out of scope.
+::
+
+::diagram{kind="mermaid"}
+flowchart LR
+  Source --> Parser --> AST --> Renderer
+::
+```
+
+## Agent refresh skeleton
+
+```noma
+# Agent Refresh Pack
+
+::agent_task{id="refresh-task" scope="weekly"}
+Check citations, update stale evidence, and leave unrelated blocks byte-identical.
+::
+```
+
+## Template rules
+
+- Give every agent-targeted block an `id`.
+- Use `status`, `owner`, `confidence`, and `source` attributes instead of burying metadata in prose.
+- Keep raw HTML out of templates.
+- Include at least one `agent_task` when the document is expected to be maintained over time.
+- Run `noma check` before publishing the rendered artifact.

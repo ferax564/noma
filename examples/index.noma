@@ -92,6 +92,30 @@ How agents propose block-level patches without rewriting whole files.
 
 [Open →](./docs/agent-protocol.html)
 :::
+
+:::card{title="Case Studies"}
+Concrete workflows for research refreshes, decision artifacts, strict technical docs, and agent memory.
+
+[Open →](./docs/case-studies.html)
+:::
+
+:::card{title="Comparison Guide"}
+When to choose Noma instead of Markdown, MDX, raw HTML, or collaborative docs.
+
+[Open →](./docs/comparison.html)
+:::
+
+:::card{title="Agent Editing Guide"}
+The safe loop for ID discovery, patch transactions, validation, and strict rendering.
+
+[Open →](./docs/agent-guide.html)
+:::
+
+:::card{title="Starter Templates"}
+Copyable research memo, decision record, technical spec, and agent refresh templates.
+
+[Open →](./docs/templates.html)
+:::
 ::
 
 ## Why Noma

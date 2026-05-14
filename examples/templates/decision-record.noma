@@ -1,0 +1,35 @@
+---
+title: Decision Record Template
+---
+
+# Decision Record Template
+
+::summary
+Capture the decision, why it matters now, and the date or event that should trigger review.
+::
+
+::decision{id="decision" status="proposed" owner="team"}
+We propose option B because it best balances user value, implementation cost, and reversibility.
+::
+
+::grid{columns=3}
+:::card{title="Option A"}
+Describe the safest or simplest option.
+:::
+
+:::card{title="Option B"}
+Describe the recommended option.
+:::
+
+:::card{title="Option C"}
+Describe the high-upside or high-risk option.
+:::
+::
+
+::risk{id="decision-risk" owner="team" severity="medium"}
+Name the primary risk and the mitigation plan.
+::
+
+::agent_task{id="decision-review" scope="post-launch"}
+After the first milestone, check whether the decision criteria still hold and add a `::state_change` block if they changed.
+::
