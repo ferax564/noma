@@ -6,6 +6,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-05-14
+
+### Fixed
+
+- **GitHub Action install hardening:** the action now installs the CLI from the action checkout by default instead of `@noma/cli@latest`, avoiding registry-version drift while preserving explicit `cli-package` / `cli-version` overrides.
+
 ## [0.10.0] — 2026-05-14
 
 ### Added

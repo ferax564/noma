@@ -1,13 +1,13 @@
 ---
-title: Noma — Format Specification (v0.10.0)
-version: 0.10.0
+title: Noma — Format Specification (v0.10.1)
+version: 0.10.1
 status: stable
 ---
 
 # Noma Format Specification
 
 ::summary
-This document defines the **Noma** plain-text document format at version 0.10. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+This document defines the **Noma** plain-text document format at version 0.10.1. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
 ::
 
 ## Conventions
@@ -453,7 +453,7 @@ unchanged lines all survive intact. The programmatic API exposes the
 new function as `patchSource(source, ops)`; the AST-level
 `patch(doc, op)` stays for callers that already work in AST space. For normative schema and semantics, see the [Noma Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 
-## Render targets (v0.10.0)
+## Render targets (v0.10.1)
 
 | Target   | Status  | Notes                                                                         |
 | -------- | ------- | ----------------------------------------------------------------------------- |
@@ -516,6 +516,14 @@ The loader concatenates each chapter's parsed AST into a single `DocumentNode` (
   After this, `[[rp3]]`, `[[risk-premia-3]]`, and `[[risk-premia-3-rp3]]` all resolve to the same section.
 
 Resolution order: explicit `id=` on the heading → auto-slug from the title → frontmatter `aliases:` → filename slug. Any of those paths matching the wikilink target counts as resolved.
+
+## Compatibility promises (v0.10.1)
+
+- The root GitHub Action installs the CLI from the checked-out action ref by
+  default. This keeps `uses: ferax564/noma@vN.N.N` pinned to that release even
+  if the npm registry's `@noma/cli@latest` points somewhere else. Explicit
+  `cli-package` and deprecated `cli-version` overrides remain available for
+  advanced workflows.
 
 ## Compatibility promises (v0.10.0)
 

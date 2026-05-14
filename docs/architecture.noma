@@ -82,7 +82,7 @@ The `noma init|parse|render|ids|check|export|patch|fmt|verify|diff` command-line
 :::
 
 :::card{title="action.yml"}
-Reusable GitHub Action wrapper. Installs the published `@noma/cli`, optionally runs `noma check`, renders the requested target, and uploads the output as a workflow artifact.
+Reusable GitHub Action wrapper. Installs the CLI from the action checkout by default, optionally runs `noma check`, renders the requested target, and uploads the output as a workflow artifact.
 :::
 
 :::card{title="themes/default.css"}

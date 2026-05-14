@@ -144,7 +144,7 @@ jobs:
           artifact-name: spec-preview
 ```
 
-The action installs `@noma/cli`, runs `noma check` by default, renders the requested target, and uploads the result with `actions/upload-artifact`. Use `to: site` when `input` is a book manifest and `output` is a directory.
+The action installs the CLI from the checked-out action ref by default, runs `noma check`, renders the requested target, and uploads the result with `actions/upload-artifact`. Use `to: site` when `input` is a book manifest and `output` is a directory. For explicit dependency control, set `cli-package` to any npm package spec or `cli-version` to an `@noma/cli` npm version range.
 
 ## Demos
 
@@ -182,7 +182,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.10.0 — agent-safe workflow polish release. Adds the boring install path (`noma --version`, `noma init`), strict HTML rendering for published/team contexts, scoped LLM context export (`--select`, `--exclude`, `--budget`), JSON ID registries via `noma ids`, transaction-shaped patch files via `noma patch --ops`, source-preserving `add_block` validation, and a reusable GitHub Action (`uses: ferax564/noma@main`) that validates, renders, and uploads artifacts in CI. Carries the v0.9.0 experimental `@noma/agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.15 for the full release tracker.
+**Status:** v0.10.1 — agent-safe workflow polish plus GitHub Action install hardening. v0.10 adds the boring install path (`noma --version`, `noma init`), strict HTML rendering for published/team contexts, scoped LLM context export (`--select`, `--exclude`, `--budget`), JSON ID registries via `noma ids`, transaction-shaped patch files via `noma patch --ops`, source-preserving `add_block` validation, and a reusable GitHub Action that validates, renders, and uploads artifacts in CI. v0.10.1 makes that action install the CLI from the checked-out action ref by default, avoiding npm registry `latest` drift. Carries the v0.9.0 experimental `@noma/agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.16 for the full release tracker.
 
 ## License
 

@@ -8,7 +8,7 @@ interface ActionYaml {
   inputs?: Record<string, { required?: boolean; default?: string }>;
   runs?: {
     using?: string;
-    steps?: Array<{ name?: string; uses?: string; run?: string }>;
+    steps?: Array<{ name?: string; uses?: string; run?: string; env?: Record<string, string> }>;
   };
 }
 
@@ -18,11 +18,14 @@ test("root GitHub Action exposes render inputs and composite steps", () => {
   assert.equal(action.runs?.using, "composite");
   assert.equal(action.inputs?.input?.required, true);
   assert.equal(action.inputs?.to?.default, "html");
+  assert.equal(action.inputs?.["cli-package"]?.default, "");
+  assert.equal(action.inputs?.["cli-version"]?.default, "");
   assert.equal(action.inputs?.["upload-artifact"]?.default, "true");
 
   const steps = action.runs?.steps ?? [];
   assert.ok(steps.some((s) => s.uses === "actions/setup-node@v4"));
-  assert.ok(steps.some((s) => s.run?.includes("npm install -g")));
+  assert.ok(steps.some((s) => s.run?.includes('package_spec="$GITHUB_ACTION_PATH"')));
+  assert.ok(steps.some((s) => s.run?.includes('npm install -g "$package_spec"')));
   assert.ok(steps.some((s) => s.run?.includes("noma \"${args[@]}\"")));
   assert.ok(steps.some((s) => s.uses === "actions/upload-artifact@v4"));
 });

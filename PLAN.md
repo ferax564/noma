@@ -1532,5 +1532,12 @@ Shipped on `main` on 2026-05-14. Closes the first P0/P1 items from the revised a
 - **Agent-focused context export.** `noma render --to llm` now supports `--select`, `--exclude`, and `--budget`, so agents can request only the directive types and sections they need instead of ingesting whole artifacts.
 - **Repository ID registry.** `noma ids <file.noma|book.yml>` prints canonical IDs, aliases, and source records as JSON. Book manifests return scoped chapter IDs plus alias records, giving agents a discovery surface before patching.
 - **Patch transactions.** `noma patch --ops` accepts `{ "ops": [...], "prevalidate": true, "postvalidate": true }` and aborts the whole edit on validation failure. Source-preserving `add_block` now validates fragments before writing, matching `replace_block`.
-- **Reusable GitHub Action.** Root `action.yml` exposes `uses: ferax564/noma@main` for validation, strict rendering, render-target selection, and optional artifact upload. The README and getting-started docs now include copy-paste workflow snippets, with YAML regression coverage in `test/github-action.test.ts`.
+- **Reusable GitHub Action.** Root `action.yml` exposes `uses: ferax564/noma@main` for validation, strict rendering, render-target selection, and optional artifact upload. It installs the CLI from the action checkout by default so workflow runs do not drift to an unrelated npm registry `latest`; explicit `cli-package` / `cli-version` overrides remain available. The README and getting-started docs now include copy-paste workflow snippets, with YAML regression coverage in `test/github-action.test.ts`.
 - **MCP SDK security bump.** `@modelcontextprotocol/sdk` is upgraded to `1.29.0` in both MCP-facing workspaces; `npm audit` returns zero vulnerabilities after the lockfile refresh.
+
+### §24.16 — v0.10.1 (package value validation)
+
+Shipped on 2026-05-14 after external consumer smoke testing of the v0.10 line.
+
+- **Action install hardening.** External registry checks showed `@noma/cli@latest` resolves to a different published package version than this repo's v0.10 line. The reusable GitHub Action now installs from `$GITHUB_ACTION_PATH` by default, preserving exact `uses: ferax564/noma@<ref>` behavior. `cli-package` and legacy `cli-version` remain opt-in overrides.
+- **Consumer smoke evidence.** A clean temp project installed the packed CLI tarball, ran `noma --version`, `noma init`, `noma check`, HTML/LLM rendering, `noma ids`, transaction patching, strict rendering, and programmatic `import { parse, renderLlm } from "@noma/cli"`. A separate temp npm prefix installed the action checkout globally and rendered a claim through the resulting `noma` binary.
