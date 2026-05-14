@@ -1547,3 +1547,10 @@ Shipped on 2026-05-14 after external consumer smoke testing of the v0.10 line.
 Shipped on 2026-05-14 after verifying the public npm package namespace.
 
 - **Moved public package identity to `@ferax564`.** Registry metadata confirms `@noma/cli` belongs to `github.com/getnoma/noma`, and `noma` is also taken. `@ferax564/noma-cli`, `@ferax564/noma-mcp-server`, and `@ferax564/noma-agent-sdk` returned 404 and are the intended publish targets. Package metadata, workspace dependencies, source imports, install docs, examples, and Action override docs now use the corrected scope.
+
+### §24.18 — post-v0.10.2 npm publish readiness
+
+Landed on `main` after v0.10.2.
+
+- **Package manifest hardening.** Scoped packages declare `publishConfig.access=public`; the MCP server now has typed ESM exports; and the CLI npm `files` list targets compiled root modules instead of the whole `dist/` directory, so generated docs, demo sites, and PDFs do not leak into the published tarball.
+- **Regression coverage.** `test/packaging.test.ts` locks the package names, public publish metadata, root `files` shape, and MCP export contract before the first `@ferax564/*` npm publish.

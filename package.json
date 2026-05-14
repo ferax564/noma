@@ -12,6 +12,9 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "noma": "./bin/noma.mjs"
   },
@@ -34,7 +37,9 @@
   },
   "files": [
     "src",
-    "dist",
+    "dist/*.d.ts",
+    "dist/*.js",
+    "dist/*.js.map",
     "bin",
     "themes",
     "README.md",

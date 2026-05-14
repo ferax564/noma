@@ -1,4 +1,6 @@
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { NomaSpawnError, NomaTimeoutError, NomaTransportError } from "./errors.js";
@@ -23,7 +25,17 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 function resolveServerBin(override?: string): string {
   if (override) return override;
   try {
-    return require_.resolve("@ferax564/noma-mcp-server/dist/index.js");
+    const packageJsonPath = require_.resolve("@ferax564/noma-mcp-server/package.json");
+    const packageRoot = dirname(packageJsonPath);
+    const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+      bin?: string | Record<string, string>;
+    };
+    const bin =
+      typeof pkg.bin === "string"
+        ? pkg.bin
+        : pkg.bin?.["noma-mcp-server"];
+    if (!bin) throw new Error("missing noma-mcp-server bin entry");
+    return join(packageRoot, bin);
   } catch (cause) {
     throw new NomaSpawnError("could not resolve @ferax564/noma-mcp-server binary", cause);
   }

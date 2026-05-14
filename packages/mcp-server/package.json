@@ -4,9 +4,21 @@
   "description": "MCP server for @ferax564/noma-cli — block-level agent editing",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "noma-mcp-server": "./dist/index.js"
   },
+  "files": ["src", "dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
     "test": "tsx --test test/*.test.ts"

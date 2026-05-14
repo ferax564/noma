@@ -255,8 +255,9 @@ test("issue #9: card description truncates at sentence boundary", () => {
   assert.ok(!/Second sentence/.test(idx));
 });
 
-test("issue #8: package.json declares dist in files and prepare script", () => {
+test("issue #8: package.json declares compiled dist entries in files and prepare script", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-  assert.ok(pkg.files.includes("dist"), "dist must be in files");
+  assert.ok(pkg.files.includes("dist/*.js"), "compiled JS must be in files");
+  assert.ok(pkg.files.includes("dist/*.d.ts"), "compiled declarations must be in files");
   assert.ok(pkg.scripts.prepare, "prepare script must exist");
 });

@@ -6,6 +6,10 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **npm publish readiness:** package manifests now declare public scoped publish metadata, the MCP server exposes typed ESM exports, and the CLI package no longer includes generated site artifacts or PDFs through a broad `dist/` files entry. Regression coverage now locks those package-shape expectations.
+
 ## [0.10.2] — 2026-05-14
 
 ### Fixed
