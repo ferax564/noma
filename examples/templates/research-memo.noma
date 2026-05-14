@@ -1,0 +1,39 @@
+---
+title: Research Memo Template
+profile: research
+stale_citation_days: 90
+---
+
+# Research Memo Template
+
+::summary
+State the research question, the current answer, confidence, and what would change the conclusion.
+::
+
+::claim{id="core-claim" confidence=0.72}
+Write the central claim in one or two sentences.
+::
+
+::evidence{id="core-evidence" for="core-claim" source="source-primary"}
+Summarize the strongest supporting evidence and link it to the claim.
+::
+
+::counterevidence{id="core-counterevidence" for="core-claim" source="source-contrary"}
+Summarize the strongest evidence against the claim.
+::
+
+::risk{id="research-risk" owner="research-owner" severity="medium"}
+Name the biggest risk to the conclusion and who owns the next check.
+::
+
+::citation{id="source-primary" accessed="2026-05-14" href="https://example.com/source"}
+Primary source placeholder.
+::
+
+::citation{id="source-contrary" accessed="2026-05-14" href="https://example.com/contrary"}
+Contrary source placeholder.
+::
+
+::agent_task{id="refresh-research" scope="monthly"}
+Refresh citations, update stale evidence, and preserve unrelated blocks byte-for-byte.
+::

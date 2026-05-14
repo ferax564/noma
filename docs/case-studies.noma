@@ -1,0 +1,92 @@
+---
+title: Noma — Case Studies
+version: 0.11.0
+status: stable
+tags: [docs, case-studies, demos]
+---
+
+# Noma Case Studies
+
+::summary
+These case studies show the product wedge: a `.noma` file stays readable enough for humans, structured enough for agents, and rich enough to publish as a polished artifact. They are intentionally concrete so new users can copy a workflow rather than infer one from the spec.
+::
+
+## Case study 1 — Agent-refreshable research memo
+
+::grid{columns=2}
+:::card{title="Problem"}
+Research memos drift. Citations go stale, assumptions change, and agents tend to rewrite too much when asked to refresh the whole file.
+:::
+
+:::card{title="Noma workflow"}
+Write claims, evidence, citations, and review tasks as stable blocks. The agent runs validation, discovers IDs, applies a patch transaction, and re-validates before committing.
+:::
+::
+
+::table{header align="l,l"}
+| Step | Command or artifact |
+| Discover targets | `noma ids memo.noma` |
+| Validate before edit | `noma check memo.noma --stale-days 90` |
+| Apply targeted edits | `noma patch memo.noma --ops patches.json --inplace` |
+| Export agent context | `noma render memo.noma --to llm --select claim,evidence,citation` |
+| Publish artifact | `noma render memo.noma --to html --strict --out memo.html` |
+::
+
+::callout{tone="tip"}
+The demo runner `npm run demo:stale-memo` exercises this exact story: stale inputs, source-preserving patch operations, validation after edits, and an HTML trace in `dist/examples/agent-stale-memo/trace.html`.
+::
+
+## Case study 2 — Decision artifact that survives follow-up work
+
+A roadmap decision is not just prose. It needs options, tradeoffs, risks, evidence, a decision record, and follow-up tasks.
+
+::grid{columns=3}
+:::card{title="Source"}
+A single `.noma` document with `::decision`, `::risk`, `::grid`, `::card`, and `::agent_task` blocks.
+:::
+
+:::card{title="Artifact"}
+A standalone HTML page that stakeholders can read without installing anything.
+:::
+
+:::card{title="Agent layer"}
+A deterministic LLM export that keeps decisions and tasks visible while stripping unsafe escape-hatch bodies.
+:::
+::
+
+See the rendered planning demo at [examples/agent-plan.html](../examples/agent-plan.html) and its source at [examples/agent-plan.noma](https://github.com/ferax564/noma/blob/main/examples/agent-plan.noma).
+
+## Case study 3 — Technical docs with safe publishing defaults
+
+Technical docs need code blocks, warnings, diagrams, examples, cross-links, and CI previews. Noma keeps the source small while the GitHub Action validates and renders the artifact.
+
+```yaml
+- uses: ferax564/noma@main
+  with:
+    input: docs/spec.noma
+    output: dist/spec.html
+    to: html
+    strict: true
+```
+
+`strict: true` blocks raw HTML/SVG/script escape hatches and external CDN runtimes, which makes it a good default for team-published docs.
+
+## Case study 4 — Agent memory as source-controlled context
+
+The memory profile uses `::memory` and `::memory_index` blocks so project facts, feedback, and durable instructions can be validated and exported without dumping stale context.
+
+::table{header align="l,l"}
+| Need | Noma support |
+| Keep durable facts | `::memory{type="project"}` |
+| Mark confidence | `confidence=0.92` |
+| Filter old observations | `noma render --to llm --exclude-stale-days 30` |
+| Preserve audit trail | Patch transcript records and Git history |
+::
+
+Run `npm run demo:agent-memory` to see the full-memory and recent-memory exports side by side.
+
+## What to measure with real users
+
+::decision{id="case-study-success-metrics" status="accepted"}
+A Noma case study is convincing only when it shows all four numbers: percentage of unchanged source lines after an agent patch, validation diagnostics before and after, rendered artifact links, and the exact patch operations applied.
+::

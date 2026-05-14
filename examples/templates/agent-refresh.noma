@@ -1,0 +1,30 @@
+---
+title: Agent Refresh Pack Template
+stale_citation_days: 60
+---
+
+# Agent Refresh Pack Template
+
+::summary
+Use this template for documents that an agent should revisit on a fixed cadence without rewriting unrelated source.
+::
+
+::instruction{id="refresh-instructions" scope="agent"}
+Discover IDs first, patch only targeted blocks, preserve aliases, run validation after edits, and summarize changed blocks in the final response.
+::
+
+::claim{id="tracked-claim" confidence=0.68}
+Write the claim that should be checked repeatedly.
+::
+
+::evidence{id="tracked-evidence" for="tracked-claim" source="tracked-source"}
+Write the evidence that should be refreshed when the source changes.
+::
+
+::citation{id="tracked-source" accessed="2026-05-14" href="https://example.com/tracked"}
+Tracked source placeholder.
+::
+
+::agent_task{id="weekly-refresh" scope="weekly"}
+Check whether `tracked-source` changed, update `tracked-evidence` if needed, and leave all unrelated blocks unchanged.
+::

@@ -54,7 +54,7 @@ That's the whole language — directive blocks (`::name{attrs} ... ::`), Markdow
 
 ## Quick start
 
-Published CLI:
+Release-candidate CLI (after the `@ferax564/*` packages are published):
 
 ```bash
 npm install -g @ferax564/noma-cli
@@ -150,13 +150,20 @@ The action installs the CLI from the checked-out action ref by default, runs `no
 
 ## Demos
 
-Three artifacts that exercise the full block surface end-to-end. Each renders to HTML, PDF, LLM context, and JSON AST from a single `.noma` source.
+Three artifacts that exercise the full block surface end-to-end. Each renders to HTML, PDF, LLM context, and JSON AST from a single `.noma` source. For the workflow narrative behind them, see the [case studies](docs/case-studies.noma).
 
 | Demo | What it shows | Live |
 | ---- | ------------- | ---- |
 | **Agent planning artifact** ([source](examples/agent-plan.noma)) | Q3 roadmap decision — options, decision matrix, claims/evidence/risks, agent tasks, copy-as-prompt buttons | [HTML](https://ferax564.github.io/noma/examples/agent-plan.html) · [PDF](https://ferax564.github.io/noma/examples/agent-plan.pdf) · [LLM](https://ferax564.github.io/noma/examples/agent-plan.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/agent-plan.json) |
 | **Technical documentation** ([source](examples/tech-doc.noma)) | CLI reference page — tabs, callouts, code blocks, architecture diagram, cross-links | [HTML](https://ferax564.github.io/noma/examples/tech-doc.html) · [PDF](https://ferax564.github.io/noma/examples/tech-doc.pdf) · [LLM](https://ferax564.github.io/noma/examples/tech-doc.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/tech-doc.json) |
 | **Investment thesis** ([source](examples/research-thesis.noma)) | Vertical-AI thesis — claims with confidence scores, counterevidence, risks, datasets, plots, quarterly review tasks | [HTML](https://ferax564.github.io/noma/examples/research-thesis.html) · [PDF](https://ferax564.github.io/noma/examples/research-thesis.pdf) · [LLM](https://ferax564.github.io/noma/examples/research-thesis.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/research-thesis.json) |
+
+## Guides for adoption
+
+- [Case studies](docs/case-studies.noma) — agent-refreshable research memo, decision artifact, technical-doc publishing, and memory workflow.
+- [Comparison guide](docs/comparison.noma) — when to choose Noma vs Markdown, MDX, raw HTML, or collaborative docs.
+- [Agent editing guide](docs/agent-guide.noma) — the safe loop for ID discovery, patch transactions, validation, and strict rendering.
+- [Starter templates](docs/templates.noma) — copyable research memo, decision record, technical spec, and agent refresh templates under `examples/templates/`.
 
 ## What ships today
 
@@ -174,8 +181,9 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
 - GitHub Action — `uses: ferax564/noma@main` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
+- Starter templates under `examples/templates/` for research memos, decision records, technical specs, and agent refresh packs.
 - Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
-- Six docs (all written in Noma): direction, spec, compatibility, getting started, agent patch protocol, architecture.
+- Ten docs (all written in Noma): direction, spec, compatibility, getting started, agent patch protocol, architecture, comparison guide, case studies, agent editing guide, and starter templates.
 - Hand-crafted HTML landing page (`site/index.html`).
 - PDF demo exports via Puppeteer.
 - GitHub Pages deployment on every push to `main`.
@@ -184,7 +192,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.10.2 — agent-safe workflow polish plus corrected npm package identity. v0.10 adds the boring install path (`noma --version`, `noma init`), strict HTML rendering for published/team contexts, scoped LLM context export (`--select`, `--exclude`, `--budget`), JSON ID registries via `noma ids`, transaction-shaped patch files via `noma patch --ops`, source-preserving `add_block` validation, and a reusable GitHub Action that validates, renders, and uploads artifacts in CI. v0.10.1 makes that action install the CLI from the checked-out action ref by default, avoiding npm registry `latest` drift. v0.10.2 moves package metadata and install docs to the available `@ferax564/*` npm scope because `@noma/*` belongs to another project. Carries the v0.9.0 experimental `@ferax564/noma-agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.17 for the full release tracker.
+**Status:** v0.11.0 — local v1-readiness release candidate for the `@ferax564/*` npm publish line. v0.11 adds bundled JSON Schemas via `noma schema <name>`, source-preserving `replace_body` and `update_heading` patch ops, `parent=` retargeting for `rename_id`, package manifest hardening for public scoped publish, a packed-CLI smoke gate, the compatibility policy, and namespaced directive parsing groundwork for future community packs. Carries the v0.9.0 experimental `@ferax564/noma-agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.20 for the full release tracker.
 
 ## License
 

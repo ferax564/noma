@@ -6,6 +6,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Adoption docs and homepage refresh:** the landing page now points at case studies, a comparison guide, an agent editing guide, and starter templates. New Noma-authored docs cover the agent-refreshable research memo workflow, Noma-vs-Markdown/MDX/HTML tradeoffs, safe agent patch loops, and copyable document templates under `examples/templates/`.
+
+## [0.11.0] — 2026-05-14
+
 ### Changed
 
 - **npm publish readiness:** package manifests now declare public scoped publish metadata, the MCP server exposes typed ESM exports, and the CLI package no longer includes generated site artifacts or PDFs through a broad `dist/` files entry. Regression coverage now locks those package-shape expectations.

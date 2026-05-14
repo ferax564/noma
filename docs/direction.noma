@@ -152,10 +152,19 @@ A `.noma` source can render into:
 - a custom mini-tool
 
 ```bash
-noma artifact pr-review.noma --standalone
+noma render pr-review.noma --to html --strict --out pr-review.html
 ```
 
-Output: a single `.html` file that opens locally or uploads anywhere.
+Output: a single `.html` artifact that opens locally or uploads anywhere. Use `--strict` for team-published artifacts that should block unsafe escape hatches and external runtimes.
+
+## Adoption docs
+
+If you are evaluating Noma rather than extending it, start with these workflow documents:
+
+- [Case studies](case-studies.noma) — concrete research refresh, decision artifact, technical-doc, and agent-memory workflows.
+- [Comparison guide](comparison.noma) — when Noma is a better fit than Markdown, MDX, raw HTML, or collaborative docs.
+- [Agent editing guide](agent-guide.noma) — the safe patch loop agents should follow.
+- [Starter templates](templates.noma) — copyable document shapes for common artifacts.
 
 ## Themes, not inline styling
 

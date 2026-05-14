@@ -1,0 +1,40 @@
+---
+title: Technical Spec Template
+---
+
+# Technical Spec Template
+
+::summary
+Describe the problem, the users affected, the proposed solution, and the non-goals.
+::
+
+## Architecture
+
+::diagram{id="architecture-diagram" kind="mermaid"}
+flowchart LR
+  Source[.noma source] --> Parser
+  Parser --> AST[Typed AST]
+  AST --> HTML[HTML artifact]
+  AST --> LLM[LLM context]
+::
+
+## API sketch
+
+```ts
+export interface RenderOptions {
+  strict?: boolean;
+  theme?: "default" | "dark";
+}
+```
+
+::callout{tone="warning"}
+Document any unsafe escape hatches and make strict rendering the default in CI.
+::
+
+::decision{id="spec-decision" status="proposed" owner="engineering"}
+Use the smallest public API that supports the first production workflow.
+::
+
+::agent_task{id="spec-review" scope="pre-merge"}
+Validate examples, render the spec, and check that all public options are documented.
+::

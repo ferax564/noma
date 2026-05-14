@@ -1,0 +1,94 @@
+---
+title: Noma — Agent Editing Guide
+version: 0.11.0
+status: stable
+tags: [docs, agents, patching]
+---
+
+# Agent Editing Guide
+
+::summary
+This guide is the operational playbook for agents editing Noma documents. The rule is simple: discover IDs, patch the smallest stable block, validate the result, and never rewrite a whole file unless the user explicitly asks for a migration.
+::
+
+## The safe editing loop
+
+::table{header align="l,l,l"}
+| Step | Command | Purpose |
+| 1. Read | `noma render file.noma --to llm --budget 12000` | Get deterministic context without HTML noise. |
+| 2. Discover IDs | `noma ids file.noma` | Find canonical IDs and aliases before patching. |
+| 3. Validate | `noma check file.noma` | Record the pre-edit diagnostic state. |
+| 4. Patch | `noma patch file.noma --ops ops.json --inplace` | Apply a transaction of targeted operations. |
+| 5. Re-check | `noma check file.noma` | Confirm the edit did not introduce errors. |
+| 6. Render | `noma render file.noma --to html --strict --out artifact.html` | Produce a safe published artifact. |
+::
+
+## Choose the smallest operation
+
+::table{header align="l,l"}
+| User intent | Preferred op |
+| Replace an entire semantic block | `replace_block` |
+| Change only the prose/body | `replace_body` |
+| Rename a section title but keep links stable | `update_heading` |
+| Insert evidence, a task, or a new card | `add_block` |
+| Remove obsolete material | `delete_block` |
+| Change confidence, status, owner, or source | `update_attribute` |
+| Change a canonical ID and retarget references | `rename_id` |
+::
+
+## Transaction shape
+
+Patch files should use the transaction wrapper when an edit has more than one operation or when validation should guard the write.
+
+```json
+{
+  "prevalidate": true,
+  "postvalidate": true,
+  "ops": [
+    {
+      "op": "update_attribute",
+      "id": "launch-decision",
+      "key": "status",
+      "value": "accepted"
+    }
+  ]
+}
+```
+
+## Guardrails for agents
+
+::callout{tone="warning"}
+Do not patch by line number unless the user explicitly asks. Noma IDs are the public editing API; line spans are implementation evidence, not the primary target.
+::
+
+- Prefer `replace_body` over `replace_block` when attributes and children should survive.
+- Prefer `update_heading` over text replacement for section titles.
+- Use `rename_id` only when the user accepts a breaking ID change.
+- Preserve aliases unless the user asks to remove them.
+- Validate fragments before insertion.
+- Use `--strict` for published/team artifacts.
+- Keep raw `::html`, `::svg`, and `::script` out of agent-generated content unless explicitly requested.
+
+## Minimal agent prompt
+
+::export_button{format="prompt" target="agent-safe-edit-prompt"}
+Copy agent editing prompt
+::
+
+::code{id="agent-safe-edit-prompt" lang="text"}
+You are editing a Noma document. First discover IDs with `noma ids`. Choose the smallest patch operation. Apply edits with `noma patch --ops`. Run `noma check` after the patch. Do not rewrite the whole file unless explicitly requested.
+::
+
+## When to ask a human
+
+Ask before editing when:
+
+- The requested target has no stable ID.
+- Multiple aliases could refer to different sections.
+- A patch would delete evidence, citations, or accepted decisions.
+- The edit requires raw HTML/script escape hatches.
+- Validation fails after a patch and the fix is not mechanical.
+
+## MCP and SDK status
+
+The MCP server exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio. The Agent SDK wraps that server and remains experimental until the protocol annexes graduate. Treat the CLI and schemas as the stable contract; treat SDK ergonomics as subject to change during v0.x.

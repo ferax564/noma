@@ -11,7 +11,7 @@ Five minutes to your first rendered Noma document.
 
 ## Install
 
-Install the published CLI when you want to author documents outside this checkout:
+After the `@ferax564/*` packages are published, install the CLI when you want to author documents outside this checkout:
 
 ```bash
 npm install -g @ferax564/noma-cli
@@ -30,7 +30,7 @@ npm install
 
 ## Render an example
 
-The repo ships seven working examples in `examples/` — three full-surface demos plus the original three intro files plus a multi-file book:
+The repo ships working examples in `examples/` — three full-surface demos, starter templates, the original intro files, and a multi-file book:
 
 ```bash
 npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
@@ -39,6 +39,19 @@ npm run noma -- render examples/tech-doc.noma --to html --out dist/tech-doc.html
 ```
 
 Open any of the produced files in a browser — they are fully self-contained and include the default theme inline.
+
+## Choose a starter template
+
+Copy a template when you want a known-good document shape before adding project-specific content:
+
+```bash
+cp examples/templates/research-memo.noma my-research-memo.noma
+cp examples/templates/decision-record.noma my-decision.noma
+cp examples/templates/technical-spec.noma my-spec.noma
+cp examples/templates/agent-refresh.noma my-refresh-pack.noma
+```
+
+The rendered template guide explains when to use each one: [templates.noma](templates.noma).
 
 ## Render to LLM context
 
@@ -244,3 +257,10 @@ npm run noma -- render mydoc.noma --to html --out dist/mydoc.html
 - Read [docs/spec.noma](spec.noma) for the full format specification.
 - Read [PLAN.md](../PLAN.md) for the long-term vision.
 - Read `CLAUDE.md` if you are an agent contributing to this repo.
+
+## Next guides
+
+- [Case studies](case-studies.noma) for end-to-end workflow narratives.
+- [Comparison guide](comparison.noma) for when to choose Noma over Markdown, MDX, raw HTML, or collaborative docs.
+- [Agent editing guide](agent-guide.noma) for safe patch operations and validation.
+- [Starter templates](templates.noma) for copyable document shapes.

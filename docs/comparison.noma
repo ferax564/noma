@@ -1,0 +1,98 @@
+---
+title: Noma — Comparison Guide
+version: 0.11.0
+status: stable
+tags: [docs, comparison, positioning]
+---
+
+# Noma Comparison Guide
+
+::summary
+Use this guide to decide when Noma is the right source format and when Markdown, MDX, raw HTML, or collaborative docs are still the better choice. Noma wins when one file must be readable by humans, render into a polished artifact, and remain safe for agents to edit block by block.
+::
+
+## The short version
+
+::table{header align="l,l,l"}
+| If you need | Use | Why |
+| Simple prose, README notes, short docs | Markdown | Lowest ceremony and universal tooling. |
+| React components inside docs | MDX | Best when the source is already code-adjacent. |
+| Pixel-perfect handcrafted pages | HTML | The browser's native language is still the right escape hatch. |
+| Comments, approvals, and live co-editing | Google Docs / Notion | Human workflow beats source control for some teams. |
+| Agent-editable rich artifacts | Noma | Stable block IDs, typed directives, validation, HTML/PDF/LLM outputs. |
+::
+
+## Noma vs Markdown
+
+Markdown is still the best default for linear prose. Noma starts to pay for itself when the document needs semantic blocks, charts, validation, or agent-safe edits.
+
+::table{header align="l,c,c,l"}
+| Capability | Markdown | Noma | Why it matters |
+| Plain-text readability | ✓ | ✓ | Both review well in Git. |
+| Headings, lists, code | ✓ | ✓ | Noma keeps the familiar baseline. |
+| Cards, grids, tabs | — | ✓ | Rich docs do not need raw HTML. |
+| Claims, evidence, decisions | — | ✓ | Semantics become queryable and validated. |
+| Charts and datasets | — | ✓ | Numbers live with the narrative. |
+| Stable agent patch targets | — | ✓ | Agents can edit one block instead of rewriting the file. |
+| Deterministic LLM export | basic | ✓ | Context can omit unsafe escape hatches and preserve structure. |
+::
+
+## Noma vs MDX
+
+MDX is excellent when the author is comfortable writing JSX and the site already has a React build pipeline. Noma is better when the source should remain approachable to non-engineers and agents.
+
+::grid{columns=2}
+:::card{title="Choose MDX when"}
+- The document is part of a React app.
+- Components are the main authoring primitive.
+- Authors are comfortable debugging bundler/runtime errors.
+- The rendered site is more important than a stable plain-text document contract.
+:::
+
+:::card{title="Choose Noma when"}
+- The source must stay readable in any editor.
+- Agents need stable IDs and patch operations.
+- The same source should render to HTML, PDF, JSON, and LLM context.
+- Validation matters more than component expressiveness.
+:::
+::
+
+## Noma vs raw HTML
+
+HTML is a great output format and a poor long-term source format for agent collaboration. Noma keeps HTML as the artifact while making the source small, reviewable, and patchable.
+
+::table{header align="l,c,c"}
+| Need | Raw HTML | Noma |
+| Beautiful browser output | ✓ | ✓ |
+| Human-readable source | — | ✓ |
+| Small Git diffs | — | ✓ |
+| Agent-safe block updates | — | ✓ |
+| Built-in validation | custom | ✓ |
+| Escape hatches when needed | native | controlled |
+::
+
+## Noma vs collaborative docs
+
+Google Docs and Notion are better for live human collaboration, comments, and approvals. Noma is better when the document is source-controlled, rendered in CI, consumed by agents, or shipped as a durable artifact.
+
+::callout{tone="tip"}
+A practical split: use collaborative docs for messy early conversation, then move durable decisions, specs, research memos, and agent-maintained artifacts into Noma.
+::
+
+## Decision checklist
+
+Use Noma when at least three are true:
+
+- The artifact needs layout, tables, plots, callouts, or semantic blocks.
+- The source must remain readable in plain text.
+- An agent will update targeted sections over time.
+- You need deterministic LLM context export.
+- You want validation to catch stale citations, broken references, or malformed blocks.
+- You need HTML and PDF outputs from one source.
+
+Do not use Noma when:
+
+- A plain Markdown file is enough.
+- A WYSIWYG workflow is the real requirement.
+- The page needs arbitrary app logic as its primary purpose.
+- A live collaborative editor matters more than source control.
