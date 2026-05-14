@@ -9,6 +9,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **npm publish readiness:** package manifests now declare public scoped publish metadata, the MCP server exposes typed ESM exports, and the CLI package no longer includes generated site artifacts or PDFs through a broad `dist/` files entry. Regression coverage now locks those package-shape expectations.
+- **Packed CLI smoke gate:** `npm run smoke:package` now installs the packed CLI into a clean temp project and exercises version, init, check, HTML/LLM render, IDs, patch transactions, API import, strict rendering, and package artifact shape. CI runs it on every push.
 
 ## [0.10.2] — 2026-05-14
 

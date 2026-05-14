@@ -1554,3 +1554,4 @@ Landed on `main` after v0.10.2.
 
 - **Package manifest hardening.** Scoped packages declare `publishConfig.access=public`; the MCP server now has typed ESM exports; and the CLI npm `files` list targets compiled root modules instead of the whole `dist/` directory, so generated docs, demo sites, and PDFs do not leak into the published tarball.
 - **Regression coverage.** `test/packaging.test.ts` locks the package names, public publish metadata, root `files` shape, and MCP export contract before the first `@ferax564/*` npm publish.
+- **Packed CLI smoke gate.** `npm run smoke:package` installs the packed CLI into a clean temp project and proves the boring install path, starter workflow, ID registry, patch transactions, API import, strict rendering, and slim tarball shape. CI runs it before conformance and site build.
