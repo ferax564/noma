@@ -5,7 +5,7 @@ import type {
   ParagraphNode,
 } from "./ast.js";
 import { isDirective } from "./ast.js";
-import { parse } from "./parser.js";
+import { parse, slugify } from "./parser.js";
 
 /**
  * Block-level patch operations. Mutate a document by ID rather than rewriting
@@ -15,6 +15,8 @@ import { parse } from "./parser.js";
  */
 export type PatchOp =
   | { op: "replace_block"; id: string; content: string }
+  | { op: "replace_body"; id: string; content: string }
+  | { op: "update_heading"; id: string; title: string }
   | {
       op: "add_block";
       parent: string;
@@ -64,6 +66,10 @@ function apply(doc: DocumentNode, op: PatchOp): void {
   switch (op.op) {
     case "replace_block":
       return applyReplace(doc, op);
+    case "replace_body":
+      return applyReplaceBody(doc, op);
+    case "update_heading":
+      return applyUpdateHeading(doc, op);
     case "add_block":
       return applyAdd(doc, op);
     case "delete_block":
@@ -78,6 +84,44 @@ function apply(doc: DocumentNode, op: PatchOp): void {
       throw new Error(`unknown patch op`);
     }
   }
+}
+
+function applyReplaceBody(
+  doc: DocumentNode,
+  op: Extract<PatchOp, { op: "replace_body" }>,
+): void {
+  const node = findById(doc, op.id);
+  if (!node) throw new PatchError("target_missing", `block "${op.id}" not found`, op);
+  if (isDirective(node)) {
+    if (!isBodyOnlyDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" has child blocks; use replace_block`, op);
+    }
+    node.body = op.content;
+    node.children = op.content === "" ? [] : [bodyParagraph(op.content)];
+    return;
+  }
+  if (
+    node.type === "paragraph" ||
+    node.type === "quote" ||
+    node.type === "code" ||
+    node.type === "list_item"
+  ) {
+    node.content = op.content;
+    return;
+  }
+  throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
+}
+
+function applyUpdateHeading(
+  doc: DocumentNode,
+  op: Extract<PatchOp, { op: "update_heading" }>,
+): void {
+  const node = findById(doc, op.id);
+  if (!node) throw new PatchError("target_missing", `block "${op.id}" not found`, op);
+  if (node.type !== "section") {
+    throw new PatchError("invalid_content", `block "${op.id}" is not a section heading`, op);
+  }
+  node.title = op.title;
 }
 
 function applyReplace(
@@ -223,6 +267,20 @@ function hasChildren(node: Node): node is Node & { children: Node[] } {
   );
 }
 
+function isBodyOnlyDirective(node: Node): boolean {
+  return (
+    isDirective(node) &&
+    (node.children.length === 0 ||
+      (node.children.length === 1 &&
+        node.children[0]?.type === "paragraph" &&
+        node.body !== undefined))
+  );
+}
+
+function bodyParagraph(content: string): ParagraphNode {
+  return { type: "paragraph", content };
+}
+
 function parseFragment(content: string, op: PatchOp): Node {
   const doc = parse(content);
   if (doc.children.length === 0) {
@@ -272,6 +330,10 @@ function applyToSource(source: string, op: PatchOp): string {
       return applySrcUpdateAttr(source, op);
     case "replace_block":
       return applySrcReplace(source, op);
+    case "replace_body":
+      return applySrcReplaceBody(source, op);
+    case "update_heading":
+      return applySrcUpdateHeading(source, op);
     case "delete_block":
       return applySrcDelete(source, op);
     case "add_block":
@@ -296,6 +358,54 @@ function locate(source: string, id: string, op: PatchOp): { node: Node; start: n
     throw new Error(`block "${id}" has no source span`);
   }
   return { node, start, end };
+}
+
+function applySrcReplaceBody(
+  source: string,
+  op: Extract<PatchOp, { op: "replace_body" }>,
+): string {
+  const { node, start, end } = locate(source, op.id, op);
+  const lines = source.split("\n");
+  const bodyLines = op.content.replace(/\n+$/, "").split("\n");
+  if (isDirective(node)) {
+    if (!isBodyOnlyDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" has child blocks; use replace_block`, op);
+    }
+    lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
+    return lines.join("\n");
+  }
+  if (node.type === "paragraph") {
+    lines.splice(start - 1, end - start + 1, ...bodyLines);
+    return lines.join("\n");
+  }
+  if (node.type === "quote") {
+    const quoted = bodyLines.map((line) => (line ? `> ${line}` : ">"));
+    lines.splice(start - 1, end - start + 1, ...quoted);
+    return lines.join("\n");
+  }
+  if (node.type === "code") {
+    lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
+    return lines.join("\n");
+  }
+  if (node.type === "list_item") {
+    const marker = (lines[start - 1] ?? "").match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
+    lines[start - 1] = `${marker}${op.content.replace(/\n/g, " ")}`;
+    return lines.join("\n");
+  }
+  throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
+}
+
+function applySrcUpdateHeading(
+  source: string,
+  op: Extract<PatchOp, { op: "update_heading" }>,
+): string {
+  const { node, start } = locate(source, op.id, op);
+  if (node.type !== "section") {
+    throw new PatchError("invalid_content", `block "${op.id}" is not a section heading`, op);
+  }
+  const lines = source.split("\n");
+  lines[start - 1] = rewriteHeadingTitle(lines[start - 1] ?? "", op.title, node.id);
+  return lines.join("\n");
 }
 
 function applySrcUpdateAttr(
@@ -415,7 +525,7 @@ function applySrcRenameId(
   return result;
 }
 
-const REF_ATTRS = new Set(["for", "dataset", "block", "ref"]);
+const REF_ATTRS = new Set(["for", "parent", "dataset", "block", "ref"]);
 
 function rewriteAttrReferences(source: string, from: string, to: string): string {
   // Rewrite key="from", key='from', or key=from (bareword) inside any
@@ -457,7 +567,7 @@ function rewriteOpenLineAttr(
   value: AttrValue,
   op: PatchOp,
 ): string {
-  const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*)(\s*\{)?(.*?)(\}\s*)?$/);
+  const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)(\s*\{)?(.*?)(\}\s*)?$/);
   if (!openMatch) {
     throw new PatchError("invalid_content", `malformed open line for "${(op as { id?: string }).id}"`, op);
   }
@@ -499,6 +609,28 @@ function rewriteHeadingId(line: string, newId: string): string {
   });
   if (!replaced) return `${head} {${attrsInner} id="${newId}"}`;
   return `${head} {${updated.trim()}}`;
+}
+
+function rewriteHeadingTitle(line: string, newTitle: string, stableId?: string): string {
+  const m = line.match(/^(#+)(\s+)(.*?)(?:\s+\{([^}]*)\})?\s*$/);
+  if (!m) return line;
+  const hashes = m[1] ?? "#";
+  const space = m[2] ?? " ";
+  const attrsInner = (m[4] ?? "").trim();
+  const needsExplicitId =
+    stableId && stableId.length > 0 && slugify(newTitle) !== stableId;
+  if (!attrsInner) {
+    return needsExplicitId
+      ? `${hashes}${space}${newTitle} {id="${stableId}"}`
+      : `${hashes}${space}${newTitle}`;
+  }
+  let hasId = false;
+  attrsInner.replace(ATTR_TOKEN_RE, (_full, k) => {
+    if (k === "id") hasId = true;
+    return _full;
+  });
+  const attrs = needsExplicitId && !hasId ? `${attrsInner} id="${stableId}"` : attrsInner;
+  return `${hashes}${space}${newTitle} {${attrs.trim()}}`;
 }
 
 function serializeOneAttr(key: string, value: AttrValue): string {

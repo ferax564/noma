@@ -29,6 +29,7 @@ Usage:
   noma patch <file.noma> [opts]              Apply block-level patch ops
   noma init [dir]                            Create a starter .noma document
   noma ids <file.noma|book.yml>              Print canonical ID and alias registry
+  noma schema <name>                         Print bundled JSON Schema
   noma fmt   <file.noma> [--inplace|--out p] Re-align pipe tables in source
   noma verify <fixture-dir>                  Run conformance suite against fixtures
   noma diff <before.noma> <after.noma> --at <date>  Emit ::state_change for attribute drift
@@ -75,6 +76,7 @@ Diff options:
 
 Examples:
   noma parse examples/thesis.noma
+  noma schema patch-op
   noma render examples/thesis.noma --to html --out dist/thesis.html
   noma render examples/thesis.noma --to llm
   noma check examples/thesis.noma
@@ -227,6 +229,31 @@ function loadTheme(name = "default"): string {
   return "";
 }
 
+function loadSchema(name: string): string {
+  const safe = name.replace(/\.schema\.json$/i, "");
+  const filenames: Record<string, string> = {
+    ast: "ast.schema.json",
+    capability: "capability.schema.json",
+    "patch-op": "patch-op.schema.json",
+    "patch-transaction": "patch-transaction.schema.json",
+    transcript: "transcript.schema.json",
+  };
+  const filename = filenames[safe];
+  if (!filename) {
+    const names = Object.keys(filenames).sort().join(", ");
+    throw new Error(`unknown schema "${name}" (expected one of: ${names})`);
+  }
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve(here, "..", "schemas", filename),
+    resolve(here, "..", "..", "schemas", filename),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return readFileSync(c, "utf8");
+  }
+  throw new Error(`schema file not found: ${filename}`);
+}
+
 function packageVersion(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const packagePath = resolve(here, "..", "package.json");
@@ -368,6 +395,20 @@ function main(): void {
     }
     console.log(`\n${report.fixtures.length} fixtures, ${report.fixtures.filter((f) => f.status === "pass").length} passed`);
     process.exit(report.ok ? 0 : 1);
+  }
+
+  if (cmd === "schema") {
+    if (!args.file) {
+      process.stderr.write("noma schema: <ast|capability|patch-op|patch-transaction|transcript> required\n");
+      process.exit(2);
+    }
+    try {
+      output(loadSchema(args.file), args.out);
+    } catch (error) {
+      process.stderr.write(`error: ${(error as Error).message}\n`);
+      process.exit(2);
+    }
+    return;
   }
 
   if (cmd === "diff") {

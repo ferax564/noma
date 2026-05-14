@@ -1143,19 +1143,23 @@ Label: Copy summary
 
 ### 23.11 Agent Patch Protocol — Operations
 
-Confirmed operation set (extends §10):
+Launch operation set:
 
 ```txt
-add_block
 replace_block
+replace_body
+update_heading
+add_block
 delete_block
-move_block
 update_attribute
-add_evidence
-add_comment
-resolve_comment
 rename_id
 ```
+
+This set covers whole semantic-block replacement, body-only edits, heading
+renames that preserve stable IDs, insertion, deletion, scalar attribute updates,
+and canonical-ID renames with reference retargeting. Candidate future ops
+(`move_block`, `add_comment`, `resolve_comment`, table-cell edits) remain out of
+core until real design-partner documents prove the smaller set is insufficient.
 
 ### 23.12 Validation as Differentiator
 
@@ -1555,3 +1559,12 @@ Landed on `main` after v0.10.2.
 - **Package manifest hardening.** Scoped packages declare `publishConfig.access=public`; the MCP server now has typed ESM exports; and the CLI npm `files` list targets compiled root modules instead of the whole `dist/` directory, so generated docs, demo sites, and PDFs do not leak into the published tarball.
 - **Regression coverage.** `test/packaging.test.ts` locks the package names, public publish metadata, root `files` shape, and MCP export contract before the first `@ferax564/*` npm publish.
 - **Packed CLI smoke gate.** `npm run smoke:package` installs the packed CLI into a clean temp project and proves the boring install path, starter workflow, ID registry, patch transactions, API import, strict rendering, and slim tarball shape. CI runs it before conformance and site build.
+
+### §24.19 — local v1-readiness bundle before publishing
+
+Landed on `main` on 2026-05-14 while intentionally skipping npm/GitHub release publication.
+
+- **Machine-readable contracts.** Root `schemas/` now carries JSON Schemas for patch ops, patch transactions, AST JSON, transcript records, and capability sidecars, exposed through `noma schema <name>` and included in the CLI package files list.
+- **Patch surface expansion.** The implementation adds source-preserving `replace_body` and `update_heading`, with matching CLI schemas, MCP input validation, Agent SDK types, tests, and docs. `rename_id` now retargets `parent=` alongside `for=`, `dataset=`, `block=`, `ref=`, and wikilinks.
+- **Compatibility policy.** `docs/compatibility.noma` defines stable vs. experimental surfaces, SemVer expectations, schema evolution rules, deprecation rules, validator/render compatibility, and explicit exclusions for publishing/hosted workflow.
+- **Community-pack groundwork.** The parser and VS Code grammar accept namespaced directive names (`pack::name`), while renderer/validator plug-in loading stays explicitly future work.

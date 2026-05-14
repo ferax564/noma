@@ -213,7 +213,7 @@ Core Noma absorbs directives that are **shape-stable, domain-neutral, and useful
 
 **Pack contract.**
 
-1. **Namespacing.** Pack directive names use `pack::name` (e.g. `::finance::position{...}`). Parser change required to allow `::` inside the directive name token; until that lands, packs may use snake-case-prefixed names (`finance_position`) as a stop-gap.
+1. **Namespacing.** Pack directive names use `pack::name` (e.g. `::finance::position{...}`). The core parser accepts namespaced directive names; full renderer/validator plug-in loading is still future work.
 2. **Renderer plug-in.** Packs ship a function `render(node, ctx) → string` that the core HTML renderer falls back to when it sees an unknown directive name with a registered prefix.
 3. **Validator plug-in.** Same shape for validator rules — packs export `validate(node) → Diagnostic[]` for their owned namespace.
 4. **No reserved attribute names.** Packs may not redefine `id`, `variant`, `noverify`, `for`, or any attribute the core validator already inspects.
@@ -242,6 +242,7 @@ work that matters more.
 
 - `PLAN.md` — full vision, including §23 refinements
 - `docs/spec.noma` — block-type reference
+- `docs/compatibility.noma` — stability and schema policy
 - `docs/agent-protocol.noma` — patch protocol
 - `examples/agent-plan.noma` — Demo 1
 - `examples/tech-doc.noma` — Demo 2

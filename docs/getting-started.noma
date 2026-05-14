@@ -97,7 +97,12 @@ npm run noma -- patch examples/thesis.noma \
   --inplace
 ```
 
-Five ops cover the common editing flows: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. The source-preserving patch path rewrites only addressed line ranges or inserted blocks, so unrelated bytes stay byte-identical. See [agent-protocol.noma](agent-protocol.noma) for the schema.
+Seven ops cover the common editing flows: `replace_block`, `replace_body`,
+`update_heading`, `add_block`, `delete_block`, `update_attribute`,
+`rename_id`. The source-preserving patch path rewrites only addressed line
+ranges or inserted blocks, so unrelated bytes stay byte-identical. See
+[agent-protocol.noma](agent-protocol.noma) and [compatibility.noma](compatibility.noma)
+for the schema and compatibility policy.
 
 For multi-op agent edits, use a transaction-shaped `--ops` file:
 
@@ -116,6 +121,14 @@ npm run noma -- patch examples/thesis.noma --ops patch.json --inplace
 ```
 
 The CLI writes only after every operation applies to an in-memory candidate. If `postvalidate` finds errors, the original file is left unchanged.
+
+Print the bundled machine-readable schemas when an agent or CI integration
+needs to validate payloads before calling the CLI:
+
+```bash
+npm run noma -- schema patch-op
+npm run noma -- schema ast
+```
 
 ## Render with strict HTML safety
 

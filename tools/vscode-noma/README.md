@@ -4,7 +4,7 @@ Syntax highlighting and language configuration for the [Noma](https://ferax564.g
 
 ## Features
 
-- Directive blocks (`::name{...}` / `::`) with attribute highlighting for the patch-protocol-aware attrs (`id=`, `for=`, `parent=`, `block=`, `dataset=`, `column=`, `src=`, `href=`, `aliases=`).
+- Directive blocks (`::name{...}` and namespaced `::pack::name{...}` / `::`) with attribute highlighting for the patch-protocol-aware attrs (`id=`, `for=`, `parent=`, `block=`, `dataset=`, `column=`, `src=`, `href=`, `aliases=`).
 - Headings with optional `{id="..." aliases="a,b"}` suffix.
 - Wikilinks `[[block-id]]`.
 - Math: `$..$`, `$$..$$`, `\(..\)`, `\[..\]`, and `::math` (embedded LaTeX).

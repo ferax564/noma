@@ -63,6 +63,11 @@ if (version !== installedPkg.version) {
   throw new Error(`noma --version printed ${version}, expected ${installedPkg.version}`);
 }
 
+const patchSchema = JSON.parse(run(npx, ["noma", "schema", "patch-op"], { cwd: workDir, capture: true }));
+if (patchSchema.title !== "Noma Patch Operation") {
+  throw new Error("noma schema patch-op did not print the bundled patch schema");
+}
+
 run(npx, ["noma", "init", "demo"], { cwd: workDir });
 run(npx, ["noma", "check", "demo/demo.noma"], { cwd: workDir });
 run(npx, ["noma", "render", "demo/demo.noma", "--to", "html", "--out", "out/demo.html"], {

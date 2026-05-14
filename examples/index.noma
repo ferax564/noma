@@ -52,7 +52,7 @@ and counterevidence, risks, datasets, plots, quarterly review tasks.
 
 ## Project docs
 
-::grid{columns=2}
+::grid{columns=3}
 :::card{title="Direction"}
 The canonical statement of what Noma is, what it is not, and the central
 design test every feature must pass.
@@ -67,10 +67,24 @@ target.
 [Open →](./docs/spec.html)
 :::
 
+:::card{title="Compatibility"}
+The stability policy for the format, AST, patch ops, schemas, renderers,
+and deprecation rules.
+
+[Open →](./docs/compatibility.html)
+:::
+
 :::card{title="Architecture"}
 How the parser, AST, renderers, and validator fit together.
 
 [Open →](./docs/architecture.html)
+:::
+
+:::card{title="Getting Started"}
+The install, render, validate, patch, GitHub Action, and strict-render
+walkthrough.
+
+[Open →](./docs/getting-started.html)
 :::
 
 :::card{title="Agent Protocol"}

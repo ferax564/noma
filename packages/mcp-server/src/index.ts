@@ -10,9 +10,16 @@ import type { PatchOp } from "@ferax564/noma-cli";
 
 const PatchOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("replace_block"), id: z.string(), content: z.string() }),
-  z.object({ op: z.literal("add_block"), parent: z.string(), content: z.string(), position: z.number().int().optional() }),
+  z.object({ op: z.literal("replace_body"), id: z.string(), content: z.string() }),
+  z.object({ op: z.literal("update_heading"), id: z.string(), title: z.string() }),
+  z.object({ op: z.literal("add_block"), parent: z.string(), content: z.string(), position: z.number().int().nonnegative().optional() }),
   z.object({ op: z.literal("delete_block"), id: z.string() }),
-  z.object({ op: z.literal("update_attribute"), id: z.string(), key: z.string(), value: z.union([z.string(), z.number(), z.boolean()]) }),
+  z.object({
+    op: z.literal("update_attribute"),
+    id: z.string(),
+    key: z.string(),
+    value: z.union([z.string(), z.number(), z.boolean()]),
+  }),
   z.object({ op: z.literal("rename_id"), from: z.string(), to: z.string() }),
 ]);
 

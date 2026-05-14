@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferax564.github.io/noma/schemas/ast.schema.json",
+  "title": "Noma AST",
+  "description": "Machine-readable shape of `noma parse` / `noma render --to json` output.",
+  "$ref": "#/$defs/document",
+  "$defs": {
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "column"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "nodeBase": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "pos": { "$ref": "#/$defs/position" },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "attrValue": { "type": ["string", "number", "boolean"] },
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/document" },
+        { "$ref": "#/$defs/frontmatter" },
+        { "$ref": "#/$defs/section" },
+        { "$ref": "#/$defs/paragraph" },
+        { "$ref": "#/$defs/code" },
+        { "$ref": "#/$defs/list" },
+        { "$ref": "#/$defs/listItem" },
+        { "$ref": "#/$defs/quote" },
+        { "$ref": "#/$defs/thematicBreak" },
+        { "$ref": "#/$defs/table" },
+        { "$ref": "#/$defs/directive" }
+      ]
+    },
+    "document": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "meta", "children"],
+          "properties": {
+            "type": { "const": "document" },
+            "meta": { "type": "object" },
+            "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+          }
+        }
+      ]
+    },
+    "frontmatter": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "data", "raw"],
+          "properties": {
+            "type": { "const": "frontmatter" },
+            "data": { "type": "object" },
+            "raw": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "section": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "level", "title", "children"],
+          "properties": {
+            "type": { "const": "section" },
+            "level": { "type": "integer", "minimum": 1, "maximum": 6 },
+            "title": { "type": "string" },
+            "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+          }
+        }
+      ]
+    },
+    "paragraph": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "content"],
+          "properties": { "type": { "const": "paragraph" }, "content": { "type": "string" } }
+        }
+      ]
+    },
+    "code": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "content"],
+          "properties": {
+            "type": { "const": "code" },
+            "lang": { "type": "string" },
+            "content": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "list": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "ordered", "items"],
+          "properties": {
+            "type": { "const": "list" },
+            "ordered": { "type": "boolean" },
+            "items": { "type": "array", "items": { "$ref": "#/$defs/listItem" } }
+          }
+        }
+      ]
+    },
+    "listItem": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "content"],
+          "properties": { "type": { "const": "list_item" }, "content": { "type": "string" } }
+        }
+      ]
+    },
+    "quote": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "content"],
+          "properties": { "type": { "const": "quote" }, "content": { "type": "string" } }
+        }
+      ]
+    },
+    "thematicBreak": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        { "type": "object", "required": ["type"], "properties": { "type": { "const": "thematic_break" } } }
+      ]
+    },
+    "table": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "header", "align", "rows"],
+          "properties": {
+            "type": { "const": "table" },
+            "header": { "type": "array", "items": { "type": "string" } },
+            "align": {
+              "type": "array",
+              "items": { "enum": ["left", "center", "right", null] }
+            },
+            "rows": {
+              "type": "array",
+              "items": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      ]
+    },
+    "directive": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "name", "attrs", "children"],
+          "properties": {
+            "type": { "const": "directive" },
+            "name": { "type": "string" },
+            "attrs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/attrValue" } },
+            "body": { "type": "string" },
+            "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+          }
+        }
+      ]
+    }
+  }
+}

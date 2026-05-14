@@ -28,13 +28,13 @@
   ],
   "folding": {
     "markers": {
-      "start": "^::+[a-z_][a-z0-9_]*",
+      "start": "^::+[a-z_][a-z0-9_-]*(::[a-z_][a-z0-9_-]*)*",
       "end": "^::+\\s*$"
     }
   },
   "wordPattern": "(-?\\d*\\.\\d+)|([\\w\\-]+)",
   "indentationRules": {
-    "increaseIndentPattern": "^::+[a-z_][a-z0-9_]*(\\{[^}]*\\})?\\s*$",
+    "increaseIndentPattern": "^::+[a-z_][a-z0-9_-]*(::[a-z_][a-z0-9_-]*)*(\\{[^}]*\\})?\\s*$",
     "decreaseIndentPattern": "^::+\\s*$"
   }
 }

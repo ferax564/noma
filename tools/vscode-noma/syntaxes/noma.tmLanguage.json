@@ -144,12 +144,12 @@
       }
     },
     "directive-opener": {
-      "match": "^(::+)([a-z][a-z0-9_]*)(\\{([^}]*)\\})?\\s*$",
+      "match": "^(::+)([a-z][a-z0-9_-]*(::[a-z][a-z0-9_-]*)*)(\\{([^}]*)\\})?\\s*$",
       "name": "meta.directive.noma",
       "captures": {
         "1": { "name": "punctuation.definition.directive.begin.noma" },
         "2": { "name": "entity.name.directive.noma keyword.control.directive.noma" },
-        "3": {
+        "4": {
           "name": "meta.attributes.noma",
           "patterns": [{ "include": "#attribute-list" }]
         }

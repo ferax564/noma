@@ -60,6 +60,14 @@ content
 ::
 ```
 
+Directive names may be namespaced for future community packs:
+
+```noma
+::finance::position{id="holding-asml"}
+...
+::
+```
+
 Children are written with **strictly more colons** than the parent:
 
 ```noma
@@ -283,6 +291,36 @@ For book manifests, chapter loading applies the same book-scoped IDs and aliases
 
 The CLI writes only after every operation has applied to an in-memory candidate. When `prevalidate` is true, existing validation errors block the transaction before patching. When `postvalidate` is true, validation errors in the patched candidate block the write, leaving the source file unchanged.
 
+### Patch schemas
+
+The CLI ships machine-readable JSON Schemas for tools that want to validate
+patches, AST JSON, transcript records, and capability sidecars before calling
+Noma:
+
+```bash
+noma schema patch-op
+noma schema patch-transaction
+noma schema ast
+noma schema transcript
+noma schema capability
+```
+
+The shipped patch operation set is:
+
+| Operation          | Target                       | Purpose                                      |
+| ------------------ | ---------------------------- | -------------------------------------------- |
+| `replace_block`    | directive block              | Replace an entire semantic block.            |
+| `replace_body`     | body-only directive/text node | Replace body text while preserving wrapper.  |
+| `update_heading`   | section                      | Change heading title while preserving ID.    |
+| `add_block`        | document/section/directive   | Insert a directive child.                    |
+| `delete_block`     | ID-bearing block             | Remove a block.                              |
+| `update_attribute` | directive                    | Change one attribute except `id`.            |
+| `rename_id`        | ID-bearing block             | Rename canonical ID and retarget references. |
+
+`update_heading` preserves stable agent handles: when the new title would
+produce a different auto-slug, the source-preserving patcher adds an explicit
+`{id="old-id"}` heading attribute.
+
 ## AST shape
 
 Every node satisfies `Node` from `src/ast.ts`. The discriminated union has the following variants:
@@ -451,7 +489,7 @@ file. It now rewrites only the targeted line range — frontmatter
 quoting, sibling blocks, blank-line padding, and attribute order on
 unchanged lines all survive intact. The programmatic API exposes the
 new function as `patchSource(source, ops)`; the AST-level
-`patch(doc, op)` stays for callers that already work in AST space. For normative schema and semantics, see the [Noma Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
+`patch(doc, op)` stays for callers that already work in AST space. For compatibility rules and bundled schemas, see [Noma Compatibility Policy](compatibility.noma). For the locked v1.0 protocol core, see the [Noma Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 
 ## Render targets (v0.10.2)
 
@@ -590,5 +628,5 @@ Should the long-term canonical PDF engine be Typst (richer typography, native La
 ::
 
 ::open_question{id="oq-agent-protocol"}
-What is the smallest set of agent patch operations needed to cover real editing workflows? v0.2 ships five: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. Open question: do we need `move_block` and `add_comment` as first-class ops, or are they better expressed as compositions of the existing five?
+What is the smallest set of agent patch operations needed to cover real editing workflows? Current builds ship seven operations, adding `replace_body` and `update_heading` to the original five. Open question: do we need `move_block` and `add_comment` as first-class ops, or are they better expressed as compositions of the existing set?
 ::

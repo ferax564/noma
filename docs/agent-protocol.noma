@@ -18,3 +18,11 @@ Folded into the v1.0 RFC as:
 
 Refer to the v1.0 RFC for normative content.
 ::
+
+::callout{tone="info"}
+For the current implementation's machine-readable schemas, run
+`noma schema patch-op`, `noma schema patch-transaction`, `noma schema ast`,
+`noma schema transcript`, or `noma schema capability`. The implementation also
+ships additive post-v1.0 patch extensions (`replace_body`, `update_heading`);
+strict v1.0 tools should keep using the five RFC ops.
+::

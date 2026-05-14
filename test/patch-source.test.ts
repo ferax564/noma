@@ -60,6 +60,39 @@ test("patchSource: replace_block keeps surrounding bytes", () => {
   assert.match(out, /::evidence\{for="c1"\}\nev\n::/);
 });
 
+test("patchSource: replace_body rewrites only directive body lines", () => {
+  const out = patchSource(sample, {
+    op: "replace_body",
+    id: "c1",
+    content: "fresh body\nsecond line",
+  });
+  assert.match(out, /::claim\{id="c1" confidence=0\.5\}\nfresh body\nsecond line\n::/);
+  assert.match(out, /^---\ntitle: Demo\ndate: 2026-05-09\ntags: \[a, b\]\n---/);
+  assert.match(out, /::evidence\{for="c1"\}\nev\n::/);
+  assert.doesNotMatch(out, /old body/);
+});
+
+test("patchSource: replace_body rejects directives with child blocks", () => {
+  const src = `::grid{id="g"}\n:::card{id="a"}\na\n:::\n::\n`;
+  assert.throws(
+    () => patchSource(src, { op: "replace_body", id: "g", content: "x" }),
+    /has child blocks/,
+  );
+});
+
+test("patchSource: update_heading changes title and pins old slug as explicit id", () => {
+  const src = `# Old Title\n\n::claim{id="c"}\na\n::\n`;
+  const out = patchSource(src, { op: "update_heading", id: "old-title", title: "New Title" });
+  assert.match(out, /^# New Title \{id="old-title"\}/);
+  assert.match(out, /::claim\{id="c"\}\na\n::/);
+});
+
+test("patchSource: update_heading preserves existing heading aliases", () => {
+  const src = `# Old Title {aliases="legacy"}\n\nBody.\n`;
+  const out = patchSource(src, { op: "update_heading", id: "old-title", title: "New Title" });
+  assert.match(out, /^# New Title \{aliases="legacy" id="old-title"\}/);
+});
+
 test("patchSource: delete_block drops the block plus a duplicate blank", () => {
   const out = patchSource(sample, { op: "delete_block", id: "c1" });
   assert.doesNotMatch(out, /old body/);
@@ -182,10 +215,11 @@ test("patchSource: replace_block leaves frontmatter and sibling bytes identical"
 });
 
 test("patchSource: rename_id retargets bareword reference attrs", () => {
-  const src = `::claim{id="c1"}\nx\n::\n\n::evidence{for=c1}\ne\n::\n\n::plot{dataset=c1}\np\n::\n`;
+  const src = `::claim{id="c1"}\nx\n::\n\n::evidence{for=c1}\ne\n::\n\n::plot{dataset=c1}\np\n::\n\n::comment{parent=c1}\nnote\n::\n`;
   const out = patchSource(src, { op: "rename_id", from: "c1", to: "c2" });
   assert.match(out, /::evidence\{for="c2"\}/);
   assert.match(out, /::plot\{dataset="c2"\}/);
+  assert.match(out, /::comment\{parent="c2"\}/);
   assert.doesNotMatch(out, /=c1\b/);
 });
 

@@ -1,5 +1,7 @@
 export type PatchOpName =
   | "replace_block"
+  | "replace_body"
+  | "update_heading"
   | "add_block"
   | "delete_block"
   | "update_attribute"
@@ -14,6 +16,8 @@ export type AttrValue = string | number | boolean;
 
 export type PatchOp =
   | { op: "replace_block"; id: string; content: string }
+  | { op: "replace_body"; id: string; content: string }
+  | { op: "update_heading"; id: string; title: string }
   | { op: "add_block"; parent: string; content: string; position?: number }
   | { op: "delete_block"; id: string }
   | { op: "update_attribute"; id: string; key: string; value: AttrValue }

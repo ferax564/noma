@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferax564.github.io/noma/schemas/patch-transaction.schema.json",
+  "title": "Noma Patch Transaction",
+  "description": "A transaction-shaped patch payload accepted by `noma patch --ops`.",
+  "oneOf": [
+    { "$ref": "patch-op.schema.json" },
+    {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "patch-op.schema.json" }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ops"],
+      "properties": {
+        "ops": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "patch-op.schema.json" }
+        },
+        "prevalidate": { "type": "boolean", "default": false },
+        "postvalidate": { "type": "boolean", "default": false }
+      }
+    }
+  ]
+}

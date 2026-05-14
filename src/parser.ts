@@ -26,7 +26,7 @@ export interface ParseOptions {
 const FRONTMATTER_RE = /^---\s*$/;
 const HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
 const FENCE_RE = /^```(\w*)\s*$/;
-const DIRECTIVE_OPEN_RE = /^(:{2,})\s*([a-zA-Z_][\w-]*)\s*(\{.*\})?\s*$/;
+const DIRECTIVE_OPEN_RE = /^(:{2,})\s*([a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)\s*(\{.*\})?\s*$/;
 const DIRECTIVE_CLOSE_RE = /^(:{2,})\s*$/;
 const LIST_RE = /^([-*])\s+(.+)$/;
 const ORDERED_LIST_RE = /^(\d+)\.\s+(.+)$/;

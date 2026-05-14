@@ -60,6 +60,16 @@ test("directive block parses with attributes", () => {
   assert.equal(node.body, "Claim body.");
 });
 
+test("namespaced directive block parses for community packs", () => {
+  const doc = parse(`::finance::position{id="p1" ticker="ASML"}\nLong.\n::\n`);
+  const node = doc.children[0] as DirectiveNode;
+  assert.equal(node.type, "directive");
+  assert.equal(node.name, "finance::position");
+  assert.equal(node.id, "p1");
+  assert.equal(node.attrs.ticker, "ASML");
+  assert.equal(node.body, "Long.");
+});
+
 test("nested directives via colon counting", () => {
   const src = `::grid{columns=2}\n:::card{title="A"}\nleft\n:::\n\n:::card{title="B"}\nright\n:::\n::\n`;
   const doc = parse(src);

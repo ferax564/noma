@@ -25,6 +25,7 @@ describe("npm package manifests", () => {
     assert.ok(files.includes("dist/*.js"));
     assert.ok(files.includes("dist/*.d.ts"));
     assert.ok(files.includes("dist/*.js.map"));
+    assert.ok(files.includes("schemas"));
     assert.ok(!files.includes("dist"));
     assert.ok(!files.some((entry) => entry.startsWith("dist/examples") || entry.startsWith("dist/docs")));
   });

@@ -1,0 +1,137 @@
+---
+title: Noma — Compatibility Policy
+version: 0.10.2
+status: stable
+---
+
+# Noma Compatibility Policy
+
+::summary
+This document defines what Noma treats as stable infrastructure, what can
+change, and how future versions deprecate or extend the format. It exists so
+teams can adopt `.noma` files as source-of-truth documents without guessing
+which contracts are durable.
+::
+
+## Stability classes
+
+| Surface                    | Status       | Compatibility promise                                                       |
+| -------------------------- | ------------ | --------------------------------------------------------------------------- |
+| `.noma` core syntax        | stable       | Existing valid documents keep parsing across minor releases.                |
+| AST node discriminants     | stable       | Existing node `type` names are not renamed or removed in minor releases.    |
+| Patch op names             | stable       | Existing `op` names keep their semantics unless a major version says so.    |
+| CLI command names          | stable       | Existing commands keep working; new flags are additive.                     |
+| HTML class names           | best effort  | Semantic classes remain where practical; visual markup may evolve.          |
+| Agent SDK                  | experimental | API may change until the Agent Protocol v1.1 graduation criteria are met.   |
+| Community directive packs  | proposed     | Namespacing and plug-in contracts are not frozen yet.                       |
+| Hosted/team workflow       | future       | Not part of the open-source compatibility promise.                          |
+
+## Versioning
+
+Noma uses SemVer for npm packages and release tags.
+
+- **Patch releases** fix bugs, docs, package metadata, and CI behavior.
+- **Minor releases** add syntax, directives, patch ops, render targets, schema
+  fields, validator rules, or CLI flags in backward-compatible ways.
+- **Major releases** may remove deprecated behavior or change core syntax.
+
+The format version follows the CLI package version until a `1.0.0` format
+freeze. After that point, implementation packages may move faster than the
+format spec as long as they preserve the frozen contracts.
+
+## Core syntax promise
+
+These syntax forms are core and should be treated as long-lived:
+
+- YAML frontmatter between `---` fences.
+- Markdown-like headings, prose, lists, quotes, fenced code, and pipe tables.
+- Directive blocks: `::name{attrs}` ... `::`.
+- Nested directive fences via additional colons.
+- Heading attributes: `## Title {id="..." aliases="..."}`.
+- Wikilinks: `[[canonical-id]]`.
+
+Parser behavior remains forgiving: documents that look like Noma should produce
+a best-effort AST. The validator owns strictness.
+
+## Patch compatibility
+
+Patch operations are the most important agent-facing API. Each op is additive,
+source-preserving where possible, and addressable by canonical `id`.
+
+Current shipped operations:
+
+| Operation          | Target                         | Purpose                                      |
+| ------------------ | ------------------------------ | -------------------------------------------- |
+| `replace_block`    | directive block                | Replace an entire semantic block.            |
+| `replace_body`     | body-only directive/text node   | Replace body text while preserving wrapper.  |
+| `update_heading`   | section                        | Change heading title while preserving ID.    |
+| `add_block`        | document/section/directive     | Insert a directive child.                    |
+| `delete_block`     | any ID-bearing block           | Remove a block.                              |
+| `update_attribute` | directive                      | Change one attribute except `id`.            |
+| `rename_id`        | any ID-bearing block           | Rename canonical ID and retarget references. |
+
+`update_heading` pins the old section ID as an explicit `{id="..."}` attribute
+when the new title would otherwise generate a different slug. This preserves
+agent handles and existing links.
+
+## Schemas
+
+The CLI ships JSON Schemas under `schemas/` and exposes them through:
+
+```bash
+noma schema patch-op
+noma schema patch-transaction
+noma schema ast
+noma schema transcript
+noma schema capability
+```
+
+Schemas are a public contract. Minor releases may add optional fields or new
+union variants. Removing a field, changing a required field's type, or changing
+an existing patch op's meaning requires a major release.
+
+## Deprecation rules
+
+Deprecations must be visible before removal:
+
+1. Add a validator `warning` or CLI warning where possible.
+2. Document the replacement in `CHANGELOG.md`, `docs/spec.noma`, and this file.
+3. Keep the old behavior through at least one minor release.
+4. Remove only in a major release unless the behavior is a security issue.
+
+Security exceptions can be faster, but must fail closed and explain the trust
+boundary clearly.
+
+## Validator compatibility
+
+New validator rules may be added in minor releases. They should start as
+warnings unless the invalid state is clearly unsafe or makes a rendered artifact
+incorrect. Rules can be suppressed with `noverify` on a block or
+`--ignore-rule` at the CLI.
+
+Profiles (`research`, `technical`, `minimal`, `memory`) are additive contracts.
+Adding a directive to a profile is backward-compatible. Removing one is a major
+change.
+
+## Renderer compatibility
+
+Renderers should be pure and deterministic for the same AST and options.
+
+The HTML renderer may change its internal markup to improve accessibility,
+security, or layout, but semantic class names such as `noma-doc`,
+`noma-research`, `noma-table`, and `noma-card` should be kept where practical.
+The LLM renderer is stricter: output order and block labels should remain stable
+because agents and tests use them as context contracts.
+
+## Out of Scope
+
+These are not compatibility promises yet:
+
+- live VS Code Marketplace listing
+- npm registry publication
+- hosted previews or team workspaces
+- SSO, audit-log products, approval workflows
+- third-party community pack APIs
+- visual editor behavior
+
+They can be built later without changing the core format contract.

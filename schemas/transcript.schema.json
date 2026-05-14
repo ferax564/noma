@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferax564.github.io/noma/schemas/transcript.schema.json",
+  "title": "Noma Patch Transcript Record",
+  "description": "One JSONL entry emitted by the MCP patch writer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "tool_version",
+    "op_id",
+    "ts",
+    "actor",
+    "doc_uri",
+    "pre_sha256",
+    "post_sha256",
+    "pre_sha",
+    "post_sha",
+    "op",
+    "patch_result",
+    "pre_validation",
+    "post_validation"
+  ],
+  "properties": {
+    "protocol_version": { "const": "1.0" },
+    "tool_version": { "type": "string" },
+    "op_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "enum": ["human", "agent", "tool"] },
+        "name": { "type": "string" },
+        "model": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "doc_uri": { "type": "string" },
+    "pre_sha256": { "$ref": "#/$defs/sha256" },
+    "post_sha256": { "$ref": "#/$defs/sha256" },
+    "pre_sha": { "type": "string", "pattern": "^[a-f0-9]{8}$" },
+    "post_sha": { "type": "string", "pattern": "^[a-f0-9]{8}$" },
+    "op": { "$ref": "patch-op.schema.json" },
+    "patch_result": { "enum": ["applied", "rejected", "noop"] },
+    "pre_validation": { "$ref": "#/$defs/validationSummary" },
+    "post_validation": { "$ref": "#/$defs/validationSummary" },
+    "reason": { "type": "string" },
+    "parent_op_id": { "type": "string", "format": "uuid" },
+    "base_sha256": { "$ref": "#/$defs/sha256" },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["phase", "severity", "code", "message"],
+        "properties": {
+          "phase": { "enum": ["pre", "post"] },
+          "severity": { "enum": ["error", "warning", "info"] },
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "nodeId": { "type": "string" },
+          "pos": {
+            "type": "object",
+            "required": ["line", "column"],
+            "properties": {
+              "line": { "type": "integer", "minimum": 1 },
+              "column": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "elapsed_ms": { "type": "number", "minimum": 0 },
+    "prev_entry_sha256": { "$ref": "#/$defs/sha256" },
+    "signature": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["algorithm", "key_id", "value"],
+          "properties": {
+            "algorithm": { "type": "string" },
+            "key_id": { "type": "string" },
+            "value": { "type": "string" }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "validationSummary": { "enum": ["ok", "warn", "error"] }
+  }
+}

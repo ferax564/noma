@@ -83,6 +83,23 @@ consumer pressure has not yet shaped these schemas into a stable form. The curre
 is that both will stabilize in v1.1 once the reference SDK (Phase 3) and at least one
 third-party binding exercise them under production conditions.
 
+### 1.5 Implementation extensions after v1.0
+
+The current reference implementation may expose additive patch operations before a
+new normative protocol minor version is cut. These are implementation extensions, not
+part of the v1.0 conformance set in §§1–6.
+
+As of the post-v0.10.2 line, the reference implementation also supports:
+
+- `replace_body` — replace body text on a body-only directive or text node while
+  preserving the wrapper, attributes, and sibling blocks.
+- `update_heading` — change a section title while preserving the section's canonical
+  ID by adding an explicit heading `{id="..."}` when needed.
+
+Tools that need strict v1.0 interoperability SHOULD continue to emit only the five
+v1.0 ops. Tools targeting the reference implementation may discover the extended
+wire shape with `noma schema patch-op`.
+
 ## 2. Document model
 
 ### 2.1 Addressable blocks — canonical IDs only on wire
@@ -1155,7 +1172,7 @@ Field reference:
 | `nomaAgent.version` | integer | Yes | Descriptor schema version. MUST be `1` for v1.0 descriptors. Implementations SHOULD reject descriptors with an unrecognised version number. |
 | `nomaAgent.profile` | string | No | Named profile for this descriptor, e.g. `default`, `research`, `engineering`. Implementations MAY ship preset profiles that agents can reference. Has no effect on allowlist evaluation — the `blocks` map is always the authoritative grant. |
 | `nomaAgent.blocks` | object | No | Map from directive name to per-block policy object. A directive name absent from this map has no granted ops. |
-| `nomaAgent.blocks.<name>.ops` | list | No | Permitted patch ops on this block type. Each entry MUST be a value from the §3.1 op set: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. Ops absent from the list are denied. An empty list is equivalent to no entry for this block name. |
+| `nomaAgent.blocks.<name>.ops` | list | No | Permitted patch ops on this block type. For strict v1.0 descriptors, entries MUST be values from the §3.1 op set: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. The reference implementation also accepts the post-v1.0 extensions listed in §1.5. Ops absent from the list are denied. An empty list is equivalent to no entry for this block name. |
 | `nomaAgent.blocks.<name>.attrs` | object | No | Optional per-attribute schema for `update_attribute` calls targeting this block type. A key absent from this map carries no constraint beyond the `ops` grant. |
 | `nomaAgent.blocks.<name>.attrs.<key>.type` | string | No | Expected value type: `string`, `number`, or `boolean`. Implementations MAY validate the proposed value against this type and reject mismatches. |
 | `nomaAgent.blocks.<name>.attrs.<key>.min` | number | No | Minimum inclusive value (applies when `type` is `number`). |

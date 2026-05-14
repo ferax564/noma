@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferax564.github.io/noma/schemas/capability.schema.json",
+  "title": "Noma Agent Capability Descriptor",
+  "description": "Sidecar policy file shape for `<document>.capabilities.yml` after YAML-to-JSON parsing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nomaAgent"],
+  "properties": {
+    "nomaAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": { "const": 1 },
+        "profile": { "type": "string" },
+        "ids": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rename": { "type": "boolean", "default": false }
+          }
+        },
+        "validation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required": { "type": "boolean", "default": false }
+          }
+        },
+        "blocks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ops": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "replace_block",
+                    "replace_body",
+                    "update_heading",
+                    "add_block",
+                    "delete_block",
+                    "update_attribute",
+                    "rename_id"
+                  ]
+                }
+              },
+              "attrs": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": { "enum": ["string", "number", "boolean"] },
+                    "min": { "type": "number" },
+                    "max": { "type": "number" },
+                    "enum": { "type": "array", "items": { "type": ["string", "number", "boolean"] } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

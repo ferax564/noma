@@ -108,10 +108,12 @@ npm run noma -- fmt examples/research-thesis.noma --inplace
 
 ## Block-level edits
 
-Agents and CI pipelines patch single blocks instead of rewriting whole files. Five operations cover the editing flows that matter:
+Agents and CI pipelines patch single blocks instead of rewriting whole files. Seven operations cover the editing flows that matter:
 
 ```bash
 noma patch thesis.noma --op '{"op":"replace_block","id":"claim-x","content":"::claim{id=\"claim-x\" confidence=0.9}\nNew body.\n::"}'
+noma patch thesis.noma --op '{"op":"replace_body","id":"claim-x","content":"Sharper body text."}'
+noma patch thesis.noma --op '{"op":"update_heading","id":"risk-section","title":"Known Risks"}'
 noma patch thesis.noma --op '{"op":"add_block","parent":"risks","content":"::risk{id=\"r1\" severity=\"high\" owner=\"me\"}\nNew risk.\n::"}'
 noma patch thesis.noma --op '{"op":"delete_block","id":"deprecated"}'
 noma patch thesis.noma --op '{"op":"update_attribute","id":"claim-x","key":"confidence","value":0.85}'
@@ -119,7 +121,7 @@ noma patch thesis.noma --op '{"op":"rename_id","from":"claim-x","to":"claim-rena
 noma patch thesis.noma --ops patch-transaction.json --inplace
 ```
 
-`rename_id` retargets every `for=`, `parent=`, and `[[wikilink]]` reference across the document. The source-preserving patch path rewrites only the addressed line range or inserted block, so unrelated bytes stay byte-identical. See [`docs/agent-protocol.noma`](docs/agent-protocol.noma).
+`rename_id` retargets reference attributes such as `for=`, `parent=`, `dataset=`, `block=`, and `ref=`, plus `[[wikilink]]` references across the document. The source-preserving patch path rewrites only the addressed line range or inserted block, so unrelated bytes stay byte-identical. See [`docs/agent-protocol.noma`](docs/agent-protocol.noma) and [`docs/compatibility.noma`](docs/compatibility.noma).
 
 ## GitHub Action
 
@@ -169,11 +171,11 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Profiles — declare `profile: research | technical | minimal` in frontmatter as a contract about which directives the document uses; downstream tools can narrow safely.
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
-- CLI — `noma --version`, `noma init`, `noma parse | render | ids | check | export | patch | fmt`. Five patch ops (`replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`) plus transaction-shaped `--ops` files with optional pre/post validation.
+- CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
 - GitHub Action — `uses: ferax564/noma@main` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
 - Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
-- Five docs (all written in Noma): direction, spec, getting started, agent patch protocol, architecture.
+- Six docs (all written in Noma): direction, spec, compatibility, getting started, agent patch protocol, architecture.
 - Hand-crafted HTML landing page (`site/index.html`).
 - PDF demo exports via Puppeteer.
 - GitHub Pages deployment on every push to `main`.

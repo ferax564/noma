@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse } from "../src/parser.js";
+import { renderHtml } from "../src/renderer-html.js";
 import { renderNoma } from "../src/renderer-noma.js";
 import { patch, patchAll, findById, PatchError } from "../src/patch.js";
 import type { DirectiveNode } from "../src/ast.js";
@@ -70,6 +71,28 @@ test("patch: update_attribute mutates a single attr", () => {
   });
   const claim = findById(next, "c1") as DirectiveNode;
   assert.equal(claim.attrs.confidence, 0.99);
+});
+
+test("patch: replace_body updates directive body without touching attrs", () => {
+  const doc = parse(sample);
+  const next = patch(doc, {
+    op: "replace_body",
+    id: "c1",
+    content: "new body",
+  });
+  const claim = findById(next, "c1") as DirectiveNode;
+  assert.equal(claim.attrs.confidence, 0.5);
+  assert.equal(claim.body, "new body");
+  assert.match(renderNoma(next), /::claim\{id="c1" confidence=0\.5\}\nnew body\n::/);
+  assert.match(renderHtml(next), /new body/);
+});
+
+test("patch: update_heading preserves section id while changing title", () => {
+  const doc = parse(`# Old Title\n\n::claim{id="c"}\na\n::\n`);
+  const next = patch(doc, { op: "update_heading", id: "old-title", title: "New Title" });
+  const out = renderNoma(next);
+  assert.match(out, /^# New Title \{id="old-title"\}/);
+  assert.equal(findById(next, "old-title")?.type, "section");
 });
 
 test("patch: update_attribute rejects id changes", () => {

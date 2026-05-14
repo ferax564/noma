@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferax564.github.io/noma/schemas/patch-op.schema.json",
+  "title": "Noma Patch Operation",
+  "description": "A single source-preserving Noma patch operation.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "id", "content"],
+      "properties": {
+        "op": { "const": "replace_block" },
+        "id": { "$ref": "#/$defs/id" },
+        "content": { "type": "string", "minLength": 1 }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "id", "content"],
+      "properties": {
+        "op": { "const": "replace_body" },
+        "id": { "$ref": "#/$defs/id" },
+        "content": { "type": "string" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "id", "title"],
+      "properties": {
+        "op": { "const": "update_heading" },
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1 }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "parent", "content"],
+      "properties": {
+        "op": { "const": "add_block" },
+        "parent": { "$ref": "#/$defs/id" },
+        "content": { "type": "string", "minLength": 1 },
+        "position": { "type": "integer", "minimum": 0 }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "id"],
+      "properties": {
+        "op": { "const": "delete_block" },
+        "id": { "$ref": "#/$defs/id" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "id", "key", "value"],
+      "properties": {
+        "op": { "const": "update_attribute" },
+        "id": { "$ref": "#/$defs/id" },
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+          "not": { "const": "id" }
+        },
+        "value": { "$ref": "#/$defs/attrValue" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "from", "to"],
+      "properties": {
+        "op": { "const": "rename_id" },
+        "from": { "$ref": "#/$defs/id" },
+        "to": { "$ref": "#/$defs/id" }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_./:-]*$"
+    },
+    "attrValue": {
+      "type": ["string", "number", "boolean"]
+    }
+  }
+}
