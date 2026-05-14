@@ -1522,7 +1522,7 @@ Shipped on 2026-05-13. Reference agent SDK (`@noma/agent-sdk` v0.1.0) lands in t
 - **Infrastructure.** `zod` pinned to `3.25.76` via root `overrides` to collapse three duplicate copies in `node_modules` that broke the MCP SDK's `instanceof ZodType` check. `@noma/mcp-server` bumped to v0.9.0 in lockstep with the CLI. CI workflow runs `build:agent-sdk` + `test:agent-sdk` before `build:site`.
 - **Authoring trail.** 28 commits, executed via subagent-driven flow from a plan refined through five rounds of `/codex review` (see `docs/superpowers/plans/2026-05-13-noma-agent-sdk.md` and `docs/superpowers/specs/2026-05-13-noma-agent-sdk-design.md`). Plan was written before any code shipped; codex caught every plan-vs-reality drift before a subagent ever ran.
 
-### §24.15 — Unreleased (agent-safe workflow polish)
+### §24.15 — v0.10.0 (agent-safe workflow polish)
 
 Shipped on `main` on 2026-05-14. Closes the first P0/P1 items from the revised agent-safe-document wedge: boring install, strict publishing, agent-targeted exports, transaction-safe patching, and CI-ready rendering.
 
@@ -1533,3 +1533,4 @@ Shipped on `main` on 2026-05-14. Closes the first P0/P1 items from the revised a
 - **Repository ID registry.** `noma ids <file.noma|book.yml>` prints canonical IDs, aliases, and source records as JSON. Book manifests return scoped chapter IDs plus alias records, giving agents a discovery surface before patching.
 - **Patch transactions.** `noma patch --ops` accepts `{ "ops": [...], "prevalidate": true, "postvalidate": true }` and aborts the whole edit on validation failure. Source-preserving `add_block` now validates fragments before writing, matching `replace_block`.
 - **Reusable GitHub Action.** Root `action.yml` exposes `uses: ferax564/noma@main` for validation, strict rendering, render-target selection, and optional artifact upload. The README and getting-started docs now include copy-paste workflow snippets, with YAML regression coverage in `test/github-action.test.ts`.
+- **MCP SDK security bump.** `@modelcontextprotocol/sdk` is upgraded to `1.29.0` in both MCP-facing workspaces; `npm audit` returns zero vulnerabilities after the lockfile refresh.

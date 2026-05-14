@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-05-14
+
 ### Added
 
 - **CLI install polish:** `noma --version` / `noma -v` now prints the package version, `noma init [dir]` writes a renderable starter document, and `noma render --strict` blocks raw HTML/SVG/script escape hatches while omitting external CDN runtimes for math, diagrams, and Plotly.
@@ -17,6 +19,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **MCP SDK advisory coverage.** `@modelcontextprotocol/sdk` is bumped to `1.29.0` in the MCP server and Agent SDK workspaces to pick up upstream security fixes.
 - **HTML section IDs are emitted once.** Headed sections now keep the canonical `id` on `<section>` only instead of duplicating it on both `<section>` and the heading element.
 - **Source-preserving `add_block` validation.** `patchSource()` now rejects invalid `add_block` fragments before inserting them, matching the AST patch path and `replace_block` behavior.
 

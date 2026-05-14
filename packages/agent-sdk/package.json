@@ -21,7 +21,7 @@
     "demo:agent-memory": "tsx scripts/agent-memory-demo-sdk.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.11.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@noma/cli": "file:../..",
     "@noma/mcp-server": "file:../mcp-server",
     "js-yaml": "^4.1.0"

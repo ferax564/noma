@@ -1,13 +1,13 @@
 ---
-title: Noma — Format Specification (v0.9.0)
-version: 0.9.0
+title: Noma — Format Specification (v0.10.0)
+version: 0.10.0
 status: stable
 ---
 
 # Noma Format Specification
 
 ::summary
-This document defines the **Noma** plain-text document format at version 0.9. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+This document defines the **Noma** plain-text document format at version 0.10. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
 ::
 
 ## Conventions
@@ -453,7 +453,7 @@ unchanged lines all survive intact. The programmatic API exposes the
 new function as `patchSource(source, ops)`; the AST-level
 `patch(doc, op)` stays for callers that already work in AST space. For normative schema and semantics, see the [Noma Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 
-## Render targets (v0.7.0)
+## Render targets (v0.10.0)
 
 | Target   | Status  | Notes                                                                         |
 | -------- | ------- | ----------------------------------------------------------------------------- |
@@ -516,6 +516,22 @@ The loader concatenates each chapter's parsed AST into a single `DocumentNode` (
   After this, `[[rp3]]`, `[[risk-premia-3]]`, and `[[risk-premia-3-rp3]]` all resolve to the same section.
 
 Resolution order: explicit `id=` on the heading → auto-slug from the title → frontmatter `aliases:` → filename slug. Any of those paths matching the wikilink target counts as resolved.
+
+## Compatibility promises (v0.10.0)
+
+- `noma --version` / `noma -v`, `noma init`, `noma ids`, `noma render --strict`,
+  and scoped LLM export flags (`--select`, `--exclude`, `--budget`) are additive
+  CLI surface. Existing commands and render output remain compatible unless a
+  caller opts into one of the new flags.
+- `noma patch --ops` accepts transaction-shaped payloads with optional
+  `prevalidate` / `postvalidate`. Single-op `--op` payloads remain supported.
+  Transaction writes are all-or-nothing when validation fails.
+- Strict rendering blocks raw escape hatches and external runtime assets. The
+  default HTML renderer remains permissive for local artifact authoring; use
+  `--strict` or manifest trusted-publishing mode for team/published contexts.
+- The reusable GitHub Action is a distribution wrapper around the CLI, not a new
+  format contract. Pin `cli-version` in workflows that require reproducible CI
+  output.
 
 ## Compatibility promises (v0.8)
 
