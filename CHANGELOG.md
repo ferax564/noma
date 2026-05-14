@@ -13,6 +13,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **Scoped LLM context export:** `noma render --to llm` now supports `--select`, `--exclude`, and `--budget` to emit only the node types or directive names an agent needs.
 - **`noma ids <file.noma|book.yml>`** prints a JSON canonical ID, alias, and record registry for agent discovery, including book-scoped IDs when run against a manifest.
 - **Patch transactions:** `noma patch --ops` now accepts `{ "ops": [...], "prevalidate": true, "postvalidate": true }` payloads and refuses to write invalid post-states.
+- **Reusable GitHub Action:** `uses: ferax564/noma@main` installs `@noma/cli`, optionally validates, renders HTML/LLM/JSON/Noma/site artifacts, and uploads the output.
 
 ### Fixed
 

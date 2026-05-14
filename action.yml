@@ -1,0 +1,113 @@
+name: Render Noma artifact
+description: Validate and render a .noma file or book manifest with the Noma CLI.
+
+inputs:
+  input:
+    description: Path to a .noma source file or book manifest.
+    required: true
+  output:
+    description: Output file path, or directory path when rendering --to site.
+    required: false
+    default: noma-artifact.html
+  to:
+    description: "Render target: html, llm, json, noma, or site."
+    required: false
+    default: html
+  cli-version:
+    description: npm version range for @noma/cli.
+    required: false
+    default: latest
+  node-version:
+    description: Node.js version used to run the CLI.
+    required: false
+    default: "20"
+  check:
+    description: Run noma check before rendering.
+    required: false
+    default: "true"
+  strict:
+    description: Use strict HTML rendering; blocks escape hatches and external CDN runtimes.
+    required: false
+    default: "false"
+  theme:
+    description: HTML theme name.
+    required: false
+    default: default
+  math:
+    description: "Optional math mode override: katex or none."
+    required: false
+    default: ""
+  stale-days:
+    description: Optional stale-citation window for the validation step.
+    required: false
+    default: ""
+  ignore-rule:
+    description: Optional comma- or space-separated validator rules to ignore during validation.
+    required: false
+    default: ""
+  upload-artifact:
+    description: Upload the rendered output as a GitHub Actions artifact.
+    required: false
+    default: "true"
+  artifact-name:
+    description: Artifact name when upload-artifact is true.
+    required: false
+    default: noma-render
+
+outputs:
+  output:
+    description: Rendered output path.
+    value: ${{ steps.render.outputs.output }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install Noma CLI
+      shell: bash
+      run: npm install -g "@noma/cli@${{ inputs.cli-version }}"
+
+    - name: Validate Noma document
+      if: ${{ inputs.check == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        args=(check "${{ inputs.input }}")
+        if [[ -n "${{ inputs.stale-days }}" ]]; then
+          args+=(--stale-days "${{ inputs.stale-days }}")
+        fi
+        if [[ -n "${{ inputs.ignore-rule }}" ]]; then
+          IFS=', ' read -r -a rules <<< "${{ inputs.ignore-rule }}"
+          for rule in "${rules[@]}"; do
+            if [[ -n "$rule" ]]; then
+              args+=(--ignore-rule "$rule")
+            fi
+          done
+        fi
+        noma "${args[@]}"
+
+    - name: Render Noma artifact
+      id: render
+      shell: bash
+      run: |
+        set -euo pipefail
+        args=(render "${{ inputs.input }}" --to "${{ inputs.to }}" --out "${{ inputs.output }}" --theme "${{ inputs.theme }}")
+        if [[ "${{ inputs.strict }}" == "true" ]]; then
+          args+=(--strict)
+        fi
+        if [[ -n "${{ inputs.math }}" ]]; then
+          args+=(--math "${{ inputs.math }}")
+        fi
+        noma "${args[@]}"
+        echo "output=${{ inputs.output }}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload Noma artifact
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.output }}

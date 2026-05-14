@@ -92,6 +92,12 @@ npm run noma -- patch examples/thesis.noma \
 # validate a document
 npm run noma -- check examples/research-thesis.noma
 
+# render in GitHub Actions
+# - uses: ferax564/noma@main
+#   with:
+#     input: docs/spec.noma
+#     output: dist/spec.html
+
 # build the full site (examples + docs + book + dark-theme demo + landing + PDFs)
 npm run build:site
 open dist/index.html
@@ -114,6 +120,31 @@ noma patch thesis.noma --ops patch-transaction.json --inplace
 ```
 
 `rename_id` retargets every `for=`, `parent=`, and `[[wikilink]]` reference across the document. The source-preserving patch path rewrites only the addressed line range or inserted block, so unrelated bytes stay byte-identical. See [`docs/agent-protocol.noma`](docs/agent-protocol.noma).
+
+## GitHub Action
+
+Render and upload a Noma artifact from any repository:
+
+```yaml
+name: Render docs
+
+on: [push, pull_request]
+
+jobs:
+  noma:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ferax564/noma@main
+        with:
+          input: docs/spec.noma
+          output: dist/spec.html
+          to: html
+          strict: true
+          artifact-name: spec-preview
+```
+
+The action installs `@noma/cli`, runs `noma check` by default, renders the requested target, and uploads the result with `actions/upload-artifact`. Use `to: site` when `input` is a book manifest and `output` is a directory.
 
 ## Demos
 
@@ -139,6 +170,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
 - CLI — `noma --version`, `noma init`, `noma parse | render | ids | check | export | patch | fmt`. Five patch ops (`replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`) plus transaction-shaped `--ops` files with optional pre/post validation.
+- GitHub Action — `uses: ferax564/noma@main` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
 - Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
 - Five docs (all written in Noma): direction, spec, getting started, agent patch protocol, architecture.

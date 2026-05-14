@@ -81,6 +81,10 @@ Source formatter. Walks the file line-by-line, recognises GitHub-style pipe tabl
 The `noma init|parse|render|ids|check|export|patch|fmt|verify|diff` command-line entry. Glue around parser/renderer/validator/patch modules; transaction-shaped `--ops` payloads are validated here before writing.
 :::
 
+:::card{title="action.yml"}
+Reusable GitHub Action wrapper. Installs the published `@noma/cli`, optionally runs `noma check`, renders the requested target, and uploads the output as a workflow artifact.
+:::
+
 :::card{title="themes/default.css"}
 The HTML renderer is theme-agnostic — it only emits semantic class names. The default theme is a single CSS file with custom properties for easy reskinning.
 :::

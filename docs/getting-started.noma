@@ -125,6 +125,31 @@ npm run noma -- render examples/tech-doc.noma --to html --strict --out dist/tech
 
 `--strict` blocks raw `::html`, `::svg`, and browser `::script` escape hatches and omits external CDN runtimes for math, diagrams, and Plotly. Use it for review or publishing contexts where the artifact must not execute untrusted markup.
 
+## Render in GitHub Actions
+
+Add this workflow to another repository to validate, render, and upload a Noma artifact on every push and pull request:
+
+```yaml
+name: Render Noma docs
+
+on: [push, pull_request]
+
+jobs:
+  noma:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ferax564/noma@main
+        with:
+          input: docs/spec.noma
+          output: dist/spec.html
+          to: html
+          strict: true
+          artifact-name: spec-preview
+```
+
+The action installs `@noma/cli`, runs `noma check` by default, renders the requested target, and uploads the output with `actions/upload-artifact`. For book manifests, set `to: site` and point `output` at a directory.
+
 ## Re-align tables in source
 
 ```bash
