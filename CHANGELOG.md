@@ -4,6 +4,21 @@ All notable changes to Noma are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **CLI install polish:** `noma --version` / `noma -v` now prints the package version, `noma init [dir]` writes a renderable starter document, and `noma render --strict` blocks raw HTML/SVG/script escape hatches while omitting external CDN runtimes for math, diagrams, and Plotly.
+- **`renderHtml(..., { externalAssets: false })`** for callers that need CDN-free standalone HTML while keeping source placeholders visible.
+- **Scoped LLM context export:** `noma render --to llm` now supports `--select`, `--exclude`, and `--budget` to emit only the node types or directive names an agent needs.
+- **`noma ids <file.noma|book.yml>`** prints a JSON canonical ID, alias, and record registry for agent discovery, including book-scoped IDs when run against a manifest.
+- **Patch transactions:** `noma patch --ops` now accepts `{ "ops": [...], "prevalidate": true, "postvalidate": true }` payloads and refuses to write invalid post-states.
+
+### Fixed
+
+- **HTML section IDs are emitted once.** Headed sections now keep the canonical `id` on `<section>` only instead of duplicating it on both `<section>` and the heading element.
+- **Source-preserving `add_block` validation.** `patchSource()` now rejects invalid `add_block` fragments before inserting them, matching the AST patch path and `replace_block` behavior.
+
 ## [0.9.0] — 2026-05-13
 
 ### Added

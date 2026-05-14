@@ -29,6 +29,11 @@ export interface HtmlRenderOptions {
    * or `meta.math` is truthy.
    */
   math?: "katex" | "none";
+  /**
+   * When false, standalone HTML does not inject external CDN assets for math,
+   * diagrams, or Plotly. The source/placeholder markup still renders.
+   */
+  externalAssets?: boolean;
 }
 
 interface DatasetTable {
@@ -191,12 +196,13 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
   const styleHead = stylesheetHref
     ? `<link rel="stylesheet" href="${escapeAttr(stylesheetHref)}" />`
     : `<style>${themeCss}</style>`;
-  const mathMode = resolveMathMode(doc, options.math);
+  const allowExternalAssets = options.externalAssets !== false;
+  const mathMode = allowExternalAssets ? resolveMathMode(doc, options.math) : "none";
   const mathHead = mathMode === "katex" ? KATEX_HEAD : "";
   const mathFoot = mathMode === "katex" ? KATEX_FOOT : "";
 
   const diagramKinds = resolveDiagramKinds(doc);
-  const diagramFoot = diagramScripts(diagramKinds);
+  const diagramFoot = allowExternalAssets ? diagramScripts(diagramKinds) : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -385,7 +391,7 @@ function renderSection(node: SectionNode, ctx: RenderCtx): string {
   const aliasAnchors = (node.aliases ?? [])
     .map((a) => `<a class="noma-alias" id="${escapeAttr(a)}" aria-hidden="true"></a>`)
     .join("");
-  const heading = `<h${node.level}${idAttr}>${inlineToHtml(node.title)}</h${node.level}>`;
+  const heading = `<h${node.level}>${inlineToHtml(node.title)}</h${node.level}>`;
   const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
   return `<section${idAttr} data-level="${node.level}">\n${aliasAnchors}${heading}\n${inner}\n</section>`;
 }

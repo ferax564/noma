@@ -16,6 +16,7 @@ import { validate, formatDiagnostics } from "./validator.js";
 import { formatSource } from "./fmt.js";
 import { verifyFixtureDir } from "./verify.js";
 import { diffDocs } from "./diff.js";
+import { collectIdRegistry } from "./ids.js";
 import type { DocumentNode } from "./ast.js";
 
 const HELP = `noma — readable document format for humans and agents
@@ -26,10 +27,13 @@ Usage:
   noma check <file.noma|book.yml>            Validate the document
   noma export <file.noma|book.yml> [opts]    Alias for render --to json
   noma patch <file.noma> [opts]              Apply block-level patch ops
+  noma init [dir]                            Create a starter .noma document
+  noma ids <file.noma|book.yml>              Print canonical ID and alias registry
   noma fmt   <file.noma> [--inplace|--out p] Re-align pipe tables in source
   noma verify <fixture-dir>                  Run conformance suite against fixtures
   noma diff <before.noma> <after.noma> --at <date>  Emit ::state_change for attribute drift
   noma --help                                Show this help
+  noma --version                             Print the CLI version
 
 Render options:
   --to <html|llm|json|noma|site> Target format (default: html). 'site' renders
@@ -39,11 +43,15 @@ Render options:
   --title <text>            Override document title
   --theme <name>            HTML theme: default | dark (default: default)
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
+  --strict                  HTML: block escape hatches and external CDN assets
   --math <katex|none>       Math rendering: enable KaTeX assets in standalone HTML
                             (default: auto-detect from doc / book manifest)
   --ignore-rule <name>      Suppress a validator rule (repeatable)
   --exclude-stale-days <n>  LLM: omit ::memory blocks whose last_seen is older
                             than <n> days from --now (or system clock).
+  --select <a,b>            LLM: include only node types or directive names
+  --exclude <a,b>           LLM: omit node types or directive names
+  --budget <chars>          LLM: trim output to a maximum character count
   --now <ISO>               LLM: fix the clock used by --exclude-stale-days
                             (default: system clock). Useful for tests.
 
@@ -53,7 +61,9 @@ Check options:
 
 Patch options:
   --op <json>               One inline patch op (JSON object)
-  --ops <file.json>         File containing one op or an array of ops
+  --ops <file.json>         File containing one op, an array of ops, or
+                            { "ops": [...], "prevalidate": true,
+                              "postvalidate": true }
   --inplace                 Write the result back to <file.noma>
   --out <path>              Write to file instead of stdout
 
@@ -88,10 +98,14 @@ interface CliArgs {
   inplace: boolean;
   theme: string;
   allowEscapeHatches: boolean;
+  externalAssets: boolean;
   staleDays?: number;
   ignoreRules: string[];
   math?: "katex" | "none";
   excludeStaleDays?: number;
+  llmSelect: string[];
+  llmExclude: string[];
+  llmBudget?: number;
   now?: string;
 }
 
@@ -104,7 +118,10 @@ function parseArgs(argv: string[]): CliArgs {
     inplace: false,
     theme: "default",
     allowEscapeHatches: true,
+    externalAssets: true,
     ignoreRules: [],
+    llmSelect: [],
+    llmExclude: [],
   };
   let i = 1;
   while (i < argv.length) {
@@ -133,6 +150,10 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--no-unsafe") {
       args.allowEscapeHatches = false;
       i++;
+    } else if (a === "--strict") {
+      args.allowEscapeHatches = false;
+      args.externalAssets = false;
+      i++;
     } else if (a === "--stale-days") {
       const v = Number(argv[++i]);
       if (Number.isFinite(v) && v > 0) args.staleDays = v;
@@ -148,6 +169,18 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--exclude-stale-days") {
       const v = Number(argv[++i]);
       if (Number.isFinite(v) && v > 0) args.excludeStaleDays = v;
+      i++;
+    } else if (a === "--select") {
+      const v = argv[++i];
+      if (v) args.llmSelect.push(v);
+      i++;
+    } else if (a === "--exclude") {
+      const v = argv[++i];
+      if (v) args.llmExclude.push(v);
+      i++;
+    } else if (a === "--budget") {
+      const v = Number(argv[++i]);
+      if (Number.isFinite(v) && v > 0) args.llmBudget = v;
       i++;
     } else if (a === "--now") {
       args.now = argv[++i];
@@ -194,6 +227,17 @@ function loadTheme(name = "default"): string {
   return "";
 }
 
+function packageVersion(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const packagePath = resolve(here, "..", "package.json");
+  try {
+    const pkg = JSON.parse(readFileSync(packagePath, "utf8")) as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 function output(content: string, out?: string): void {
   if (!out) {
     process.stdout.write(content + (content.endsWith("\n") ? "" : "\n"));
@@ -205,10 +249,86 @@ function output(content: string, out?: string): void {
   process.stderr.write(`✓ wrote ${out}\n`);
 }
 
+function starterSource(): string {
+  return `---
+title: Agent-Safe Spec
+---
+
+# Agent-Safe Spec
+
+::summary
+A small Noma starter document with stable block IDs for agent-safe edits.
+::
+
+::claim{id="core-claim" confidence=0.8}
+Noma documents stay readable for humans while giving agents precise blocks to patch.
+::
+
+::evidence{for="core-claim" source="starter"}
+This claim can be updated with \`noma patch\` without rewriting the whole file.
+::
+
+::risk{id="first-risk" severity="medium" owner="you"}
+Replace this with the first risk your spec needs to track.
+::
+`;
+}
+
+interface PatchTransaction {
+  ops: PatchOp[];
+  prevalidate: boolean;
+  postvalidate: boolean;
+}
+
+function patchTransactionFromArgs(args: CliArgs): PatchTransaction {
+  const ops: PatchOp[] = [];
+  let prevalidate = false;
+  let postvalidate = false;
+  if (args.op) {
+    ops.push(JSON.parse(args.op) as PatchOp);
+  }
+  if (args.opsFile) {
+    const raw = JSON.parse(readFileSync(resolve(args.opsFile), "utf8")) as unknown;
+    if (isPatchTransactionPayload(raw)) {
+      ops.push(...raw.ops);
+      prevalidate = raw.prevalidate === true;
+      postvalidate = raw.postvalidate === true;
+    } else if (Array.isArray(raw)) {
+      ops.push(...(raw as PatchOp[]));
+    } else {
+      ops.push(raw as PatchOp);
+    }
+  }
+  return { ops, prevalidate, postvalidate };
+}
+
+function isPatchTransactionPayload(
+  value: unknown,
+): value is { ops: PatchOp[]; prevalidate?: unknown; postvalidate?: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "ops" in value &&
+    Array.isArray((value as { ops?: unknown }).ops)
+  );
+}
+
+function validatePatchSource(source: string, filename: string): string {
+  const doc = parse(source, { filename });
+  inlineDatasetSources(doc);
+  const diagnostics = validate(doc);
+  const errors = diagnostics.filter((d) => d.severity === "error");
+  return errors.length > 0 ? formatDiagnostics(errors, filename) : "";
+}
+
 function main(): void {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(HELP);
+    return;
+  }
+  if (argv[0] === "--version" || argv[0] === "-v") {
+    process.stdout.write(`${packageVersion()}\n`);
     return;
   }
 
@@ -220,9 +340,16 @@ function main(): void {
 
   const cmd = args.command;
   if (cmd === "init") {
-    process.stdout.write(
-      "Run `npx degit ferax564/noma/templates/starter my-doc` to scaffold a new Noma project.\n",
-    );
+    const targetDir = resolve(args.file ?? "noma-starter");
+    const targetFile = resolve(targetDir, "demo.noma");
+    if (existsSync(targetFile)) {
+      process.stderr.write(`error: ${targetFile} already exists\n`);
+      process.exit(2);
+    }
+    mkdirSync(targetDir, { recursive: true });
+    writeFileSync(targetFile, starterSource(), "utf8");
+    process.stderr.write(`✓ wrote ${targetFile}\n`);
+    process.stdout.write(`Next: noma render ${targetFile} --to html --out ${resolve(targetDir, "demo.html")}\n`);
     return;
   }
 
@@ -299,6 +426,7 @@ function main(): void {
       themeCss,
       title: args.title,
       allowEscapeHatches,
+      externalAssets: args.externalAssets,
       ...(args.math ? { math: args.math } : {}),
     });
     process.stderr.write(`✓ wrote ${chapters.length + 1} pages to ${args.out}\n`);
@@ -321,6 +449,10 @@ function main(): void {
       output(renderJson(doc, { pretty: true }), args.out);
       return;
     }
+    case "ids": {
+      output(JSON.stringify(collectIdRegistry(doc), null, 2), args.out);
+      return;
+    }
     case "export":
     case "render": {
       const to = cmd === "export" ? "json" : args.to;
@@ -332,13 +464,19 @@ function main(): void {
             title: args.title,
             themeCss,
             allowEscapeHatches,
+            externalAssets: args.externalAssets,
             ...(args.math ? { math: args.math } : {}),
           });
           output(html, args.out);
           return;
         }
         case "llm": {
-          const llmOpts: { excludeStale?: { now: Date; days: number } } = {};
+          const llmOpts: {
+            excludeStale?: { now: Date; days: number };
+            select?: string[];
+            exclude?: string[];
+            budget?: number;
+          } = {};
           if (args.excludeStaleDays !== undefined) {
             const now = args.now ? new Date(args.now) : new Date();
             if (Number.isNaN(now.getTime())) {
@@ -347,6 +485,9 @@ function main(): void {
             }
             llmOpts.excludeStale = { now, days: args.excludeStaleDays };
           }
+          if (args.llmSelect.length > 0) llmOpts.select = args.llmSelect;
+          if (args.llmExclude.length > 0) llmOpts.exclude = args.llmExclude;
+          if (args.llmBudget !== undefined) llmOpts.budget = args.llmBudget;
           output(renderLlm(doc, llmOpts), args.out);
           return;
         }
@@ -375,16 +516,8 @@ function main(): void {
       process.exit(hasError ? 1 : 0);
     }
     case "patch": {
-      const ops: PatchOp[] = [];
-      if (args.op) {
-        ops.push(JSON.parse(args.op) as PatchOp);
-      }
-      if (args.opsFile) {
-        const raw = JSON.parse(readFileSync(resolve(args.opsFile), "utf8"));
-        if (Array.isArray(raw)) ops.push(...(raw as PatchOp[]));
-        else ops.push(raw as PatchOp);
-      }
-      if (ops.length === 0) {
+      const tx = patchTransactionFromArgs(args);
+      if (tx.ops.length === 0) {
         process.stderr.write(`error: noma patch needs --op or --ops\n`);
         process.exit(2);
       }
@@ -392,7 +525,22 @@ function main(): void {
         process.stderr.write(`error: noma patch operates on .noma source files, not book manifests\n`);
         process.exit(2);
       }
-      const printed = patchSource(readFileSync(filePath, "utf8"), ops);
+      const before = readFileSync(filePath, "utf8");
+      if (tx.prevalidate) {
+        const preErrors = validatePatchSource(before, filePath);
+        if (preErrors) {
+          process.stderr.write(`error: pre-validation failed\n${preErrors}\n`);
+          process.exit(1);
+        }
+      }
+      const printed = patchSource(before, tx.ops);
+      if (tx.postvalidate) {
+        const postErrors = validatePatchSource(printed, filePath);
+        if (postErrors) {
+          process.stderr.write(`error: post-validation failed\n${postErrors}\n`);
+          process.exit(1);
+        }
+      }
       const target = args.inplace ? filePath : args.out;
       output(printed, target);
       return;

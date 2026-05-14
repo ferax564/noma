@@ -192,7 +192,7 @@ agent_task, todo, review, comment, change_request, provenance, confidence, citat
 math
 ```
 
-`::math{display="block|inline" id="..."}` carries a LaTeX expression. The HTML renderer wraps the body in `\[...\]` (display) or `\(...\)` (inline) and ships KaTeX assets from CDN automatically when the document contains math. Inline math written in prose with `$...$` or `$$...$$` delimiters renders too — KaTeX auto-render finds and replaces them in place. The LLM renderer passes the LaTeX source through untouched so structural addressability survives.
+`::math{display="block|inline" id="..."}` carries a LaTeX expression. The HTML renderer wraps the body in `\[...\]` (display) or `\(...\)` (inline) and ships KaTeX assets from CDN automatically when the document contains math, unless strict rendering disables external assets. Inline math written in prose with `$...$` or `$$...$$` delimiters renders too — KaTeX auto-render finds and replaces them in place. The LLM renderer passes the LaTeX source through untouched so structural addressability survives.
 
 ```noma
 ::math{id="vol-target"}
@@ -208,7 +208,7 @@ Force-disable assets with `--math=none` (or `meta.math: false`); force-enable wi
 html, svg, script
 ```
 
-Allowed but discouraged. The validator warns on every untrusted use. Add the `trusted` flag attribute to silence the warning on a single block; pass `--no-unsafe` to the CLI (or set `allowEscapeHatches: false` on the API) to block escape hatches entirely in trusted-publishing contexts. The LLM renderer always strips escape-hatch bodies and replaces them with a placeholder so agent context stays predictable.
+Allowed but discouraged. The validator warns on every untrusted use. Add the `trusted` flag attribute to silence the warning on a single block; pass `--no-unsafe` to the CLI (or set `allowEscapeHatches: false` on the API) to block escape hatches entirely in trusted-publishing contexts. Pass `--strict` to also omit external CDN runtimes for math, diagrams, and Plotly. The LLM renderer always strips escape-hatch bodies and replaces them with a placeholder so agent context stays predictable.
 
 ```noma
 ::svg{trusted}
@@ -227,6 +227,61 @@ v0.2 ships real chart rendering for `::plot`. Pass numeric data inline via `data
 **Dataset linkage.** A `::plot` may pull its data out of a sibling `::dataset` instead of duplicating numbers inline. Use a `dataset="<id>"` attribute on the plot together with `column="<name>"` to select the y-series and optionally `xcolumn="<name>"` for categorical labels. If `column` is omitted, the renderer picks the first numeric column from the dataset schema.
 
 The validator emits `plot-unknown-dataset` (error) when the referenced dataset id does not exist and `plot-unknown-column` (error) when the column is not declared in the dataset's schema. See `examples/research-thesis.noma` for the full pattern.
+
+### Agent context selection
+
+`noma render <file> --to llm` emits deterministic plain text for model context. Use `--select` and `--exclude` to scope that context by AST node type (`section`, `paragraph`, `table`, `code`, ...) or directive name (`claim`, `evidence`, `risk`, `dataset`, ...). Selection keeps ancestor sections so the extracted blocks retain document context; exclusion prunes the matched block and its children.
+
+```bash
+noma render report.noma --to llm --select claim,evidence,risk
+noma render report.noma --to llm --exclude dataset,plot --budget 12000
+```
+
+`--budget` is a maximum character count. When output exceeds the budget, the renderer trims at a line boundary when possible and appends a truncation marker.
+
+### ID registry
+
+`noma ids <file.noma|book.yml>` prints a JSON registry for agent discovery:
+
+```json
+{
+  "ids": ["spec", "claim-1"],
+  "aliases": { "intro": "spec" },
+  "records": [
+    { "id": "spec", "type": "section", "title": "Spec", "aliases": ["intro"], "line": 1 },
+    { "id": "claim-1", "type": "directive", "name": "claim", "line": 3 }
+  ]
+}
+```
+
+For book manifests, chapter loading applies the same book-scoped IDs and aliases used by rendering and validation, so the registry is global across chapters.
+
+### Patch transactions
+
+`noma patch --ops patch.json` accepts three payload shapes:
+
+```json
+{ "op": "update_attribute", "id": "claim-1", "key": "confidence", "value": 0.9 }
+```
+
+```json
+[
+  { "op": "update_attribute", "id": "claim-1", "key": "confidence", "value": 0.9 },
+  { "op": "add_block", "parent": "evidence", "content": "::evidence{id=\"ev-2\" for=\"claim-1\"}\n...\n::" }
+]
+```
+
+```json
+{
+  "ops": [
+    { "op": "update_attribute", "id": "claim-1", "key": "confidence", "value": 0.9 }
+  ],
+  "prevalidate": true,
+  "postvalidate": true
+}
+```
+
+The CLI writes only after every operation has applied to an in-memory candidate. When `prevalidate` is true, existing validation errors block the transaction before patching. When `postvalidate` is true, validation errors in the patched candidate block the write, leaving the source file unchanged.
 
 ## AST shape
 

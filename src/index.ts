@@ -16,3 +16,5 @@ export { validate, formatDiagnostics } from "./validator.js";
 export type { ValidateOptions } from "./validator.js";
 export { diffDocs } from "./diff.js";
 export type { DiffOptions } from "./diff.js";
+export { collectIdRegistry } from "./ids.js";
+export type { IdRecord, IdRegistry } from "./ids.js";

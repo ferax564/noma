@@ -15,10 +15,18 @@ export interface RenderLlmOptions {
    * those are the types whose facts go stale over calendar time.
    */
   excludeStale?: { now: Date; days: number };
+  /** Include only matching AST node types or directive names, plus ancestors. */
+  select?: string[];
+  /** Omit matching AST node types or directive names and their children. */
+  exclude?: string[];
+  /** Maximum output length in characters, trimmed at a line boundary when possible. */
+  budget?: number;
 }
 
 interface RenderCtx extends RenderLlmOptions {
   excludedMemoryIds: Set<string>;
+  selectSet: Set<string>;
+  excludeSet: Set<string>;
 }
 
 const STALE_OPT_IN_TYPES = new Set(["project", "reference"]);
@@ -31,11 +39,37 @@ export function renderLlm(doc: DocumentNode, options: RenderLlmOptions = {}): st
   const ctx: RenderCtx = {
     ...options,
     excludedMemoryIds: computeExcludedMemoryIds(doc, options),
+    selectSet: normalizeSelectors(options.select),
+    excludeSet: normalizeSelectors(options.exclude),
   };
   const out: string[] = [];
   if (doc.meta.title) out.push(`# ${String(doc.meta.title)}`);
-  for (const child of doc.children) emit(child, out, 0, ctx);
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  for (const child of doc.children) {
+    if (shouldEmit(child, ctx, false)) emit(child, out, 0, ctx, false);
+  }
+  const rendered = out.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  return applyBudget(rendered, options.budget);
+}
+
+function normalizeSelectors(values: string[] | undefined): Set<string> {
+  const out = new Set<string>();
+  for (const raw of values ?? []) {
+    for (const part of raw.split(/[,\s]+/)) {
+      const clean = part.trim().toLowerCase();
+      if (clean) out.add(clean);
+    }
+  }
+  return out;
+}
+
+function applyBudget(text: string, budget: number | undefined): string {
+  if (budget === undefined || !Number.isFinite(budget) || budget <= 0) return text;
+  if (text.length <= budget) return text;
+  const marker = `\n\n[LLM context truncated at ${budget} characters]\n`;
+  if (budget <= marker.length) return marker.slice(0, budget);
+  const limit = budget - marker.length;
+  const cut = text.lastIndexOf("\n", limit);
+  return text.slice(0, cut > 0 ? cut : limit).trimEnd() + marker;
 }
 
 function computeExcludedMemoryIds(
@@ -53,13 +87,21 @@ function computeExcludedMemoryIds(
   return excluded;
 }
 
-function emit(node: Node, out: string[], depth: number, opts: RenderCtx): void {
+function emit(
+  node: Node,
+  out: string[],
+  depth: number,
+  opts: RenderCtx,
+  forceSubtree: boolean,
+): void {
   switch (node.type) {
     case "document":
-      for (const child of node.children) emit(child, out, depth, opts);
+      for (const child of node.children) {
+        if (shouldEmit(child, opts, forceSubtree)) emit(child, out, depth, opts, forceSubtree);
+      }
       return;
     case "section":
-      emitSection(node, out, depth, opts);
+      emitSection(node, out, depth, opts, forceSubtree);
       return;
     case "paragraph":
       out.push(inlineToPlain(node.content));
@@ -118,7 +160,7 @@ function emit(node: Node, out: string[], depth: number, opts: RenderCtx): void {
       return;
     }
     case "directive":
-      emitDirective(node, out, depth, opts);
+      emitDirective(node, out, depth, opts, forceSubtree);
       return;
     case "frontmatter":
       return;
@@ -129,16 +171,31 @@ function emit(node: Node, out: string[], depth: number, opts: RenderCtx): void {
   }
 }
 
-function emitSection(node: SectionNode, out: string[], depth: number, opts: RenderCtx): void {
+function emitSection(
+  node: SectionNode,
+  out: string[],
+  depth: number,
+  opts: RenderCtx,
+  forceSubtree: boolean,
+): void {
   const hashes = "#".repeat(node.level);
   out.push(`${hashes} ${node.title}${node.id ? `  [#${node.id}]` : ""}`);
   out.push("");
-  for (const child of node.children) emit(child, out, depth, opts);
+  const childForce = forceSubtree || matchesSelector(node, opts.selectSet);
+  for (const child of node.children) {
+    if (shouldEmit(child, opts, childForce)) emit(child, out, depth, opts, childForce);
+  }
 }
 
 const VERBATIM_BODY = new Set(["diagram", "plotly", "math"]);
 
-function emitDirective(node: DirectiveNode, out: string[], depth: number, opts: RenderCtx): void {
+function emitDirective(
+  node: DirectiveNode,
+  out: string[],
+  depth: number,
+  opts: RenderCtx,
+  forceSubtree: boolean,
+): void {
   if (node.name === "html" || node.name === "svg" || node.name === "script") {
     out.push(`[${node.name.toUpperCase()} escape-hatch block omitted from LLM context]`);
     out.push("");
@@ -154,6 +211,7 @@ function emitDirective(node: DirectiveNode, out: string[], depth: number, opts: 
   out.push(`[${tag}${attrs ? " " + attrs : ""}]`);
   const isIndexWithExclusions =
     node.name === "memory_index" && opts.excludedMemoryIds.size > 0;
+  const childForce = forceSubtree || matchesSelector(node, opts.selectSet);
   if (VERBATIM_BODY.has(node.name) && node.body !== undefined) {
     out.push(node.body);
   } else if (node.children.length === 0 && node.body !== undefined) {
@@ -165,10 +223,42 @@ function emitDirective(node: DirectiveNode, out: string[], depth: number, opts: 
     for (const child of node.children)
       emitFilteredIndexChild(child, out, depth + 1, opts);
   } else {
-    for (const child of node.children) emit(child, out, depth + 1, opts);
+    for (const child of node.children) {
+      if (shouldEmit(child, opts, childForce)) emit(child, out, depth + 1, opts, childForce);
+    }
   }
   out.push(`[/${tag}]`);
   out.push("");
+}
+
+function shouldEmit(node: Node, opts: RenderCtx, forceSubtree: boolean): boolean {
+  if (matchesSelector(node, opts.excludeSet)) return false;
+  if (forceSubtree || opts.selectSet.size === 0) return true;
+  if (matchesSelector(node, opts.selectSet)) return true;
+  return hasSelectableDescendant(node, opts);
+}
+
+function hasSelectableDescendant(node: Node, opts: RenderCtx): boolean {
+  for (const child of childrenOf(node)) {
+    if (matchesSelector(child, opts.excludeSet)) continue;
+    if (matchesSelector(child, opts.selectSet)) return true;
+    if (hasSelectableDescendant(child, opts)) return true;
+  }
+  return false;
+}
+
+function matchesSelector(node: Node, selectors: Set<string>): boolean {
+  if (selectors.size === 0) return false;
+  if (selectors.has(node.type)) return true;
+  return node.type === "directive" && selectors.has(node.name.toLowerCase());
+}
+
+function childrenOf(node: Node): Node[] {
+  if (node.type === "document" || node.type === "section" || node.type === "directive") {
+    return node.children;
+  }
+  if (node.type === "list") return node.items;
+  return [];
 }
 
 const WIKILINK_RE = /\[\[([a-zA-Z_][\w\-./:]*)\]\]/g;
@@ -212,7 +302,7 @@ function emitFilteredIndexChild(
     out.push("");
     return;
   }
-  emit(node, out, depth, opts);
+  emit(node, out, depth, opts, false);
 }
 
 function isStale(

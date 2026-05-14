@@ -100,6 +100,19 @@ a
   assert.match(out, /id="z"[\s\S]*id="a"/);
 });
 
+test("patchSource: add_block rejects non-directive fragments before editing source", () => {
+  const src = `::grid{id="g"}\n::\n`;
+  assert.throws(
+    () =>
+      patchSource(src, {
+        op: "add_block",
+        parent: "g",
+        content: "just a paragraph\n",
+      }),
+    /fragment must be a directive block/,
+  );
+});
+
 test("patchSource: rename_id rewrites id attr, ref attrs, and wikilinks", () => {
   const out = patchSource(sample, { op: "rename_id", from: "c1", to: "claim-renamed" });
   assert.match(out, /::claim\{id="claim-renamed"/);

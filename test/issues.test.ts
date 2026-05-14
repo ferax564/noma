@@ -111,6 +111,14 @@ test("issue #5: HTML emits hidden anchors for aliases", () => {
   assert.match(html, /<a class="noma-alias" id="rp3"/);
 });
 
+test("review hardening: section IDs render once in HTML", () => {
+  const doc = parse(`# Title {id="stable-section"}\n\nbody\n`);
+  const html = renderHtml(doc);
+  assert.equal(html.match(/id="stable-section"/g)?.length, 1);
+  assert.match(html, /<section id="stable-section" data-level="1">/);
+  assert.match(html, /<h1>Title<\/h1>/);
+});
+
 test("issue #4: heading {id=...} attribute overrides slug", () => {
   const doc = parse(`# Title\n\n## Risks {id="rp3-risks"}\n\nbody\n`);
   const root = doc.children[0] as SectionNode;
@@ -179,6 +187,18 @@ test("issue #2: math assets disabled when --math=none", () => {
   const doc = parse(`::math\nx^2\n::\n`);
   const html = renderHtml(doc, { standalone: true, math: "none" });
   assert.ok(!/katex.min.css/.test(html));
+});
+
+test("review hardening: externalAssets=false omits CDN runtimes", () => {
+  const doc = parse(
+    `::math\nx^2\n::\n\n::diagram{kind="mermaid"}\ngraph TD; A-->B\n::\n\n::plotly\n{"data":[]}\n::\n`,
+  );
+  const html = renderHtml(doc, { standalone: true, externalAssets: false });
+  assert.ok(!/cdn\.jsdelivr\.net/.test(html));
+  assert.ok(!/cdn\.plot\.ly/.test(html));
+  assert.ok(!/katex\.min\.css/.test(html));
+  assert.match(html, /noma-diagram-source/);
+  assert.match(html, /noma-plotly/);
 });
 
 test("issue #9: site index card descriptions parse inline markdown", () => {

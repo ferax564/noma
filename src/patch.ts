@@ -347,6 +347,7 @@ function applySrcAdd(
   source: string,
   op: Extract<PatchOp, { op: "add_block" }>,
 ): string {
+  parseFragment(op.content, op);
   const doc = parse(source);
   const parent = findById(doc, op.parent);
   if (!parent) throw new PatchError("parent_missing", `parent "${op.parent}" not found`, op);

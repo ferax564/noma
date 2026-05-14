@@ -18,15 +18,17 @@ The whole codebase fits in one mental model: source → parser → AST → rende
 typed AST  ─────────►  validator.ts  ─►  diagnostics
    │
    ├──►  renderer-html.ts  ─►  HTML
-   ├──►  renderer-llm.ts   ─►  LLM context
+   ├──►  renderer-llm.ts   ─►  LLM context (optionally selected/budgeted)
    ├──►  renderer-json.ts  ─►  JSON
    └──►  renderer-noma.ts  ─►  .noma source        (roundtrip + patch)
+   │
+   ├──►  ids.ts            ─►  ID / alias registry
    │
    ▼  scripts/render-pdf.ts
 PDF
 ```
 
-Each arrow is a pure function. The parser does not validate. The renderers do not parse. The validator does not render. The patch tool (`patch.ts`) takes (AST, op[]) → AST and re-serialises through `renderer-noma.ts`, so unrelated blocks land byte-identical.
+Each arrow is a pure function. The parser does not validate. The renderers do not parse. The validator does not render. The patch layer has two paths: AST-level `patch(doc, op)` for callers already operating on a tree, and source-level `patchSource(source, ops)` for the CLI/MCP path that rewrites only the addressed source spans.
 
 ## Modules
 
@@ -48,11 +50,11 @@ AST → semantic HTML. Special-cases the typed blocks (claim, evidence, grid, ca
 :::
 
 :::card{title="src/renderer-llm.ts"}
-AST → deterministic plain text with `[TAG attr=value]` markers. Designed to maximize signal density inside LLM context windows.
+AST → deterministic plain text with `[TAG attr=value]` markers. Designed to maximize signal density inside LLM context windows. Supports selection by node type or directive name plus a character budget for agent context windows.
 :::
 
 :::card{title="src/renderer-noma.ts"}
-AST → `.noma` source. Roundtrip-safe printer that backs `noma render --to noma` and `noma patch`. `parse → renderNoma → parse` preserves the AST modulo positions.
+AST → `.noma` source. Roundtrip-safe printer that backs `noma render --to noma`. `parse → renderNoma → parse` preserves the AST modulo positions.
 :::
 
 :::card{title="src/validator.ts"}
@@ -60,7 +62,11 @@ AST → diagnostics list. Detects duplicate IDs, broken references (incl. `[[wik
 :::
 
 :::card{title="src/patch.ts"}
-Block-level patch ops: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. Returns a new AST; the input is never mutated. `rename_id` retargets `for=`, `parent=`, and `[[wikilink]]` references across the document.
+Block-level patch ops: `replace_block`, `add_block`, `delete_block`, `update_attribute`, `rename_id`. AST-level patching returns a new tree; source-level patching reparses between ops and splices only the target ranges. `rename_id` retargets reference attributes and `[[wikilink]]` references across the document.
+:::
+
+:::card{title="src/ids.ts"}
+AST → canonical ID registry. Used by `noma ids` to expose document-order IDs, alias mappings, source lines, and basic block metadata for agent discovery.
 :::
 
 :::card{title="src/book.ts"}
@@ -72,7 +78,7 @@ Source formatter. Walks the file line-by-line, recognises GitHub-style pipe tabl
 :::
 
 :::card{title="src/cli.ts"}
-The `noma parse|render|check|export|patch|fmt` command-line entry. Glue, no logic.
+The `noma init|parse|render|ids|check|export|patch|fmt|verify|diff` command-line entry. Glue around parser/renderer/validator/patch modules; transaction-shaped `--ops` payloads are validated here before writing.
 :::
 
 :::card{title="themes/default.css"}
