@@ -63,6 +63,20 @@ noma init my-spec
 noma render my-spec/demo.noma --to html --out my-spec/demo.html
 ```
 
+Install editor support:
+
+```text
+ext install ferax564.noma-language
+```
+
+Install the agent integration packages when you want MCP or a TypeScript
+workflow wrapper:
+
+```bash
+npm install @ferax564/noma-mcp-server
+npm install @ferax564/noma-agent-sdk
+```
+
 From a checkout:
 
 ```bash
@@ -180,6 +194,9 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
 - CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
 - GitHub Action — `uses: ferax564/noma@v0.11.0` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
+- VS Code extension — `ext install ferax564.noma-language` adds syntax highlighting, folding, embedded YAML/JSON/LaTeX/Mermaid/DOT scopes, and warning scopes for raw escape hatches.
+- MCP server — `@ferax564/noma-mcp-server` exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio.
+- Agent SDK — `@ferax564/noma-agent-sdk` wraps the MCP server with TypeScript helpers for safe patching, capability descriptors, and transcript replay. Experimental during v0.x.
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
 - Starter templates under `examples/templates/` for research memos, decision records, technical specs, and agent refresh packs.
 - Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.

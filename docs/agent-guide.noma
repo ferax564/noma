@@ -92,3 +92,55 @@ Ask before editing when:
 ## MCP and SDK status
 
 The MCP server exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio. The Agent SDK wraps that server and remains experimental until the protocol annexes graduate. Treat the CLI and schemas as the stable contract; treat SDK ergonomics as subject to change during v0.x.
+
+## MCP host setup
+
+Use the published stdio server from any MCP host that accepts command-based
+server definitions:
+
+```json
+{
+  "mcpServers": {
+    "noma": {
+      "command": "npx",
+      "args": ["-y", "@ferax564/noma-mcp-server"]
+    }
+  }
+}
+```
+
+The server should be pointed at absolute file paths by the caller. It does not
+invent edits: agents still need to discover IDs, choose a small patch operation,
+and validate after the patch.
+
+## SDK workflow
+
+Use the SDK when an agent integration needs a typed client and retry-aware
+source patches:
+
+```ts
+import { NomaTools, NomaWorkflow } from "@ferax564/noma-agent-sdk";
+
+const tools = await NomaTools.spawn();
+try {
+  const ids = await tools.listIds("/repo/memo.noma");
+  console.log(ids.ids);
+
+  const workflow = new NomaWorkflow(tools);
+  const result = await workflow.safePatch("/repo/memo.noma", {
+    op: "replace_body",
+    id: "summary",
+    content: "Updated summary text.",
+  });
+
+  if (!result.ok) {
+    throw new Error(`${result.code}: ${result.error}`);
+  }
+} finally {
+  await tools.close();
+}
+```
+
+`safePatch` reads the current SHA before patching and retries only on
+`sha_mismatch`. Same-file patches inside one workflow are serialized so two
+local agent tasks do not race each other.

@@ -50,6 +50,73 @@ and counterevidence, risks, datasets, plots, quarterly review tasks.
 :::
 ::
 
+## More examples
+
+::grid{columns=3}
+:::card{title="Multi-file book"}
+A manifest-driven book with three chapters, scoped heading IDs, alias-aware
+wikilinks, single-page HTML, LLM export, and multi-page site output.
+
+[Single page](./examples/book.html) · [Book site](./examples/book-site/index.html) · [LLM](./examples/book.llm.txt)
+:::
+
+:::card{title="Stale memo refresh"}
+A narrated trace where an agent refreshes citations, updates a claim, adds
+evidence, escalates a risk, and preserves unrelated bytes.
+
+[Open trace](./examples/agent-stale-memo/trace.html) · [Source](https://github.com/ferax564/noma/tree/main/examples/agent-stale-memo)
+:::
+
+:::card{title="Agent memory"}
+A memory-profile document that validates durable facts, applies block-level
+updates, and renders bounded LLM recall with stale exclusion.
+
+[Open trace](./examples/agent-memory/trace.html) · [Full recall](./examples/agent-memory/recall.full.txt) · [Recent recall](./examples/agent-memory/recall.recent.txt)
+:::
+
+:::card{title="Dark theme"}
+The research thesis rendered through the alternate dark theme without changing
+the source document.
+
+[Open dark theme](./examples/research-thesis-dark.html)
+:::
+
+:::card{title="Starter templates"}
+Research memo, decision record, technical spec, and agent refresh pack templates
+that parse and render cleanly before you customize them.
+
+[Browse templates](./docs/templates.html)
+:::
+
+:::card{title="Conformance corpus"}
+Machine-readable fixtures for IDs, diagnostics, roundtrip behavior, spans, and
+patch application.
+
+[Browse source](https://github.com/ferax564/noma/tree/main/examples/conformance)
+:::
+::
+
+## Install the toolchain
+
+```bash
+npm install -g @ferax564/noma-cli
+noma init my-spec
+noma render my-spec/demo.noma --to html --out my-spec/demo.html
+```
+
+Editor support:
+
+```text
+ext install ferax564.noma-language
+```
+
+Agent integrations:
+
+```bash
+npm install @ferax564/noma-mcp-server
+npm install @ferax564/noma-agent-sdk
+```
+
 ## Project docs
 
 ::grid{columns=3}

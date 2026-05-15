@@ -15,6 +15,15 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ferax564/noma.git",
+    "directory": "packages/agent-sdk"
+  },
+  "homepage": "https://ferax564.github.io/noma/docs/agent-guide.html",
+  "bugs": {
+    "url": "https://github.com/ferax564/noma/issues"
+  },
   "files": ["src", "dist", "README.md"],
   "scripts": {
     "prepack": "npm run build",

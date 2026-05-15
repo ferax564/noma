@@ -13,6 +13,10 @@ function assertPublicScopedPackage(pkg: Record<string, unknown>): void {
   assert.equal(typeof pkg.name, "string");
   assert.match(pkg.name as string, /^@ferax564\/noma-/);
   assert.deepEqual(pkg.publishConfig, { access: "public" });
+  assert.equal(pkg.license, "MIT");
+  assert.equal(typeof pkg.homepage, "string");
+  assert.equal(typeof (pkg.bugs as Record<string, unknown>).url, "string");
+  assert.equal(typeof (pkg.repository as Record<string, unknown>).url, "string");
 }
 
 function assertNoPublishLocalDeps(pkg: Record<string, unknown>): void {
@@ -53,9 +57,12 @@ describe("npm package manifests", () => {
       },
       "./package.json": "./package.json",
     });
-    assert.deepEqual(pkg.files, ["src", "dist"]);
+    assert.deepEqual(pkg.files, ["src", "dist", "README.md"]);
     assert.deepEqual(pkg.bin, { "noma-mcp-server": "dist/index.js" });
     assert.equal((pkg.scripts as Record<string, string>).prepack, "npm run build");
+
+    const source = readFileSync(join(root, "packages/mcp-server/src/index.ts"), "utf8");
+    assert.match(source, new RegExp(`version: "${pkg.version as string}"`));
   });
 
   it("Agent SDK package is public under the same scope", () => {

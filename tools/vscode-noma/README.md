@@ -20,19 +20,23 @@ Syntax highlighting and language configuration for the [Noma](https://ferax564.g
 
 ## Install
 
-Marketplace publishing is a maintainer follow-up. Until the live listing is verified, install from a local `.vsix`:
+Install from the VS Code Marketplace:
+
+```text
+ext install ferax564.noma-language
+```
+
+Or install from a local `.vsix` while developing the extension:
 
 ```bash
 cd tools/vscode-noma
 npx vsce package
-code --install-extension noma-language-0.2.0.vsix
+code --install-extension noma-language-0.2.1.vsix
 ```
 
-After marketplace publish, the install command will be:
+Marketplace listing:
 
-```
-ext install ferax564.noma-language
-```
+<https://marketplace.visualstudio.com/items?itemName=ferax564.noma-language>
 
 ## Companion CLI
 

@@ -20,6 +20,13 @@ noma init my-spec
 noma render my-spec/demo.noma --to html --out my-spec/demo.html
 ```
 
+Install the VS Code extension for syntax highlighting, folding, embedded YAML /
+JSON / LaTeX / Mermaid / DOT scopes, and warning scopes for raw escape hatches:
+
+```text
+ext install ferax564.noma-language
+```
+
 For contributor work, clone the repo and install dependencies:
 
 ```bash
@@ -71,6 +78,54 @@ npm run noma -- ids examples/book/book.noma.yml
 ```
 
 The registry includes canonical IDs in document order, alias-to-canonical mappings, source line numbers, and basic block metadata. On book manifests it uses the same scoped IDs and aliases as validation and rendering.
+
+## Use Noma from agents
+
+The CLI is the stable contract, but two public packages make agent integrations
+easier:
+
+```bash
+npm install @ferax564/noma-mcp-server
+npm install @ferax564/noma-agent-sdk
+```
+
+Use the MCP server from any stdio-capable MCP host:
+
+```json
+{
+  "mcpServers": {
+    "noma": {
+      "command": "npx",
+      "args": ["-y", "@ferax564/noma-mcp-server"]
+    }
+  }
+}
+```
+
+Use the TypeScript SDK when you want a small client wrapper and retry-aware
+patch workflow:
+
+```ts
+import { NomaTools, NomaWorkflow } from "@ferax564/noma-agent-sdk";
+
+const tools = await NomaTools.spawn();
+try {
+  const workflow = new NomaWorkflow(tools);
+  const result = await workflow.safePatch("memo.noma", {
+    op: "update_attribute",
+    id: "launch-decision",
+    key: "status",
+    value: "accepted",
+  });
+  if (!result.ok) throw new Error(result.error);
+} finally {
+  await tools.close();
+}
+```
+
+The server exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block`.
+The SDK remains experimental during v0.x; the patch schemas and CLI behavior are
+the stable surface.
 
 ## Validate
 

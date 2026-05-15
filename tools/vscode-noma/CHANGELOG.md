@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — 2026-05-15
+
+- README now points at the live Marketplace install path.
+
 ## 0.2.0 — 2026-05-12
 
 - First marketplace release prep — metadata, README rewrite, `.vscodeignore`, extension-local CHANGELOG.

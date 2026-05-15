@@ -6,6 +6,16 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Website and package polish:** landing page now has explicit install, workflow, toolchain, and extended example sections covering the CLI, VS Code extension, MCP server, Agent SDK, GitHub Action, book rendering, stale-memo trace, memory trace, and templates.
+- **Package trust metadata:** workspace package manifests now declare repository, homepage, and issue URLs for future npm publishes.
+
+### Fixed
+
+- **MCP server runtime metadata:** `@ferax564/noma-mcp-server` now reports `0.11.0` to MCP clients instead of the stale `0.1.0` server version string.
+- **VS Code extension README:** the extension docs now point at the live Marketplace install path and are ready for a `0.2.1` Marketplace patch.
+
 ## [0.11.0] — 2026-05-15
 
 ### Added

@@ -14,8 +14,9 @@ safe-patch retry, capability descriptor reading, and transcript replay.
 npm install @ferax564/noma-agent-sdk
 ```
 
-`@ferax564/noma-agent-sdk` spawns `@ferax564/noma-mcp-server` as a child process — they ship
-together in the workspace.
+`@ferax564/noma-agent-sdk` depends on `@ferax564/noma-mcp-server` and spawns it
+as a child process over stdio. Installing the SDK installs the server package
+too.
 
 ## Usage
 

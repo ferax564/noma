@@ -15,10 +15,21 @@
   "publishConfig": {
     "access": "public"
   },
+  "author": "ferax564",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ferax564/noma.git",
+    "directory": "packages/mcp-server"
+  },
+  "homepage": "https://ferax564.github.io/noma/",
+  "bugs": {
+    "url": "https://github.com/ferax564/noma/issues"
+  },
   "bin": {
     "noma-mcp-server": "dist/index.js"
   },
-  "files": ["src", "dist"],
+  "files": ["src", "dist", "README.md"],
   "scripts": {
     "prepack": "npm run build",
     "build": "tsc -p tsconfig.json && chmod +x dist/index.js",

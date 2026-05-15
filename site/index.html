@@ -9,6 +9,7 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://ferax564.github.io/noma/" />
 <title>Noma — Readable source for beautiful agent artifacts</title>
+<link rel="icon" href="data:," />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
 <style>
@@ -570,7 +571,7 @@
     border-radius: 5px;
     background: linear-gradient(135deg, var(--accent), var(--claim));
   }
-  footer .links { display: flex; align-items: center; gap: 20px; }
+	  footer .links { display: flex; align-items: center; gap: 14px 20px; flex-wrap: wrap; }
   footer .links a { color: var(--muted); }
 
   /* Code highlight (inline) */
@@ -643,28 +644,182 @@
     font-size: 0.95rem;
     font-weight: 700;
   }
-  .whatsnew-item p {
-    margin: 0;
-    font-size: 0.88rem;
-    line-height: 1.5;
-    color: var(--muted);
-  }
-</style>
+	  .whatsnew-item p {
+	    margin: 0;
+	    font-size: 0.88rem;
+	    line-height: 1.5;
+	    color: var(--muted);
+	  }
+	  .install-grid,
+	  .feature-grid,
+	  .example-grid,
+	  .docs-grid {
+	    display: grid;
+	    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+	    gap: 18px;
+	  }
+	  .install-card,
+	  .feature-card,
+	  .example-card,
+	  .docs-card {
+	    background: var(--card-bg);
+	    border: 1px solid var(--rule);
+	    border-radius: var(--radius);
+	    padding: 22px 24px;
+	    box-shadow: var(--shadow-sm);
+	  }
+	  .install-card h3,
+	  .feature-card h3,
+	  .example-card h3,
+	  .docs-card h3 {
+	    margin: 0 0 8px;
+	    font-size: 1.05rem;
+	    letter-spacing: -0.012em;
+	  }
+	  .install-card p,
+	  .feature-card p,
+	  .example-card p,
+	  .docs-card p {
+	    margin: 0 0 12px;
+	    color: var(--muted);
+	    font-size: 0.92rem;
+	    line-height: 1.52;
+	  }
+	  .codebox {
+	    background: var(--code-bg);
+	    border: 1px solid var(--rule);
+	    border-radius: 10px;
+	    padding: 12px 14px;
+	    overflow-x: auto;
+	    font-family: var(--mono);
+	    font-size: 0.82rem;
+	    line-height: 1.55;
+	    color: var(--fg);
+	    margin: 12px 0 0;
+	  }
+	  .mini-links {
+	    display: flex;
+	    flex-wrap: wrap;
+	    gap: 8px;
+	    margin-top: 12px;
+	    font-size: 0.8rem;
+	  }
+	  .mini-links a {
+	    border: 1px solid var(--rule);
+	    border-radius: 999px;
+	    padding: 4px 10px;
+	    color: var(--muted);
+	    background: var(--bg);
+	  }
+	  .mini-links a:hover {
+	    background: var(--fg);
+	    color: var(--bg);
+	    border-color: var(--fg);
+	    text-decoration: none;
+	  }
+	  .workflow {
+	    display: grid;
+	    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+	    gap: 24px;
+	    align-items: start;
+	  }
+	  .workflow .steps {
+	    background: var(--card-bg);
+	    border: 1px solid var(--rule);
+	    border-radius: var(--radius);
+	    box-shadow: var(--shadow-sm);
+	    overflow: hidden;
+	  }
+	  .step {
+	    display: grid;
+	    grid-template-columns: 48px 1fr;
+	    gap: 14px;
+	    padding: 18px 20px;
+	    border-bottom: 1px solid var(--rule);
+	  }
+	  .step:last-child { border-bottom: 0; }
+	  .step .step-num {
+	    width: 34px;
+	    height: 34px;
+	    border-radius: 50%;
+	    background: var(--claim-soft);
+	    color: var(--claim);
+	    display: flex;
+	    align-items: center;
+	    justify-content: center;
+	    font-family: var(--mono);
+	    font-size: 0.78rem;
+	    font-weight: 700;
+	  }
+	  .step h3 {
+	    margin: 0 0 3px;
+	    font-size: 0.98rem;
+	  }
+	  .step p {
+	    margin: 0;
+	    color: var(--muted);
+	    font-size: 0.9rem;
+	    line-height: 1.5;
+	  }
+	  .tool-strip {
+	    display: grid;
+	    grid-template-columns: repeat(5, 1fr);
+	    gap: 10px;
+	    margin-top: 22px;
+	  }
+	  .tool-pill {
+	    background: var(--card-bg);
+	    border: 1px solid var(--rule);
+	    border-radius: 10px;
+	    padding: 12px;
+	    font-size: 0.82rem;
+	    color: var(--muted);
+	  }
+	  .tool-pill strong {
+	    display: block;
+	    color: var(--fg);
+	    font-size: 0.84rem;
+	    margin-bottom: 2px;
+	  }
+	  @media (max-width: 920px) {
+	    nav.top .wrap {
+	      height: auto;
+	      min-height: 60px;
+	      padding-top: 12px;
+	      padding-bottom: 12px;
+	      align-items: flex-start;
+	    }
+	    nav.top .links {
+	      flex-wrap: wrap;
+	      justify-content: flex-end;
+	      gap: 10px 14px;
+	      line-height: 1.2;
+	    }
+	    .workflow { grid-template-columns: 1fr; }
+	    .tool-strip { grid-template-columns: repeat(2, 1fr); }
+	  }
+	  @media (max-width: 640px) {
+	    .wrap { padding: 0 18px; }
+	    nav.top .links a.optional { display: none; }
+	    header.hero { padding-top: 54px; }
+	    .tool-strip { grid-template-columns: 1fr; }
+	  }
+	</style>
 </head>
 <body>
 
 <nav class="top">
   <div class="wrap">
-    <a class="brand" href="#top"><span class="brand-mark"></span>Noma</a>
-    <div class="links">
-      <a href="#whats-new">What's new</a>
-      <a href="#three-layers">Layers</a>
-      <a href="#demos">Demos</a>
-      <a href="#guides">Guides</a>
-      <a href="#compare">Compare</a>
-      <a href="docs/direction.html">Docs</a>
-      <a class="gh" href="https://github.com/ferax564/noma">GitHub</a>
-    </div>
+	    <a class="brand" href="#top"><span class="brand-mark"></span>Noma</a>
+	    <div class="links">
+	      <a href="#whats-new">What's new</a>
+	      <a href="#install">Install</a>
+	      <a href="#what-it-does">What it does</a>
+	      <a href="#demos">Examples</a>
+	      <a href="#docs">Docs</a>
+	      <a class="optional" href="#compare">Compare</a>
+	      <a class="gh" href="https://github.com/ferax564/noma">GitHub</a>
+	    </div>
   </div>
 </nav>
 
@@ -678,11 +833,11 @@
       Noma is the missing middle: plain-text source, typed AST, beautiful HTML —
       and a stable structure agents can edit safely.
     </p>
-    <div class="cta">
-      <a class="btn btn-primary" href="#demos">See the demos</a>
-      <a class="btn btn-ghost" href="#guides">Read the guides</a>
-      <a class="btn btn-ghost" href="https://github.com/ferax564/noma">Star on GitHub →</a>
-    </div>
+	    <div class="cta">
+	      <a class="btn btn-primary" href="#demos">See the demos</a>
+	      <a class="btn btn-ghost" href="#docs">Read the docs</a>
+	      <a class="btn btn-ghost" href="https://github.com/ferax564/noma">Star on GitHub →</a>
+	    </div>
 
     <div class="preview">
       <div class="pane left">
@@ -762,38 +917,191 @@ Research teams are the sharpest wedge.
         <p>Copyable research memo, decision record, technical spec, and agent refresh pack templates live under <code>examples/templates/</code>.</p>
       </div>
     </div>
-  </div>
-</section>
-<section id="guides">
-  <div class="wrap">
-    <h2><span class="small">Adoption guides</span>Start with the workflow, not the syntax.</h2>
-    <p class="section-lead">
-      The core wedge is agent-safe rich documents: source that humans can review,
-      artifacts stakeholders can read, and stable blocks agents can patch.
-    </p>
-    <div class="whatsnew-grid">
-      <div class="whatsnew-item">
-        <h3>Case studies</h3>
-        <p>Research refreshes, decision artifacts, strict technical docs, and agent memory workflows with concrete commands.</p>
-        <p style="margin-top: 10px;"><a href="docs/case-studies.html">Open case studies →</a></p>
-      </div>
-      <div class="whatsnew-item">
-        <h3>Comparison guide</h3>
-        <p>When to choose Noma instead of Markdown, MDX, raw HTML, or collaborative docs.</p>
-        <p style="margin-top: 10px;"><a href="docs/comparison.html">Compare formats →</a></p>
-      </div>
-      <div class="whatsnew-item">
-        <h3>Agent editing guide</h3>
-        <p>The safe loop: discover IDs, choose the smallest op, patch transactionally, validate, and render strictly.</p>
-        <p style="margin-top: 10px;"><a href="docs/agent-guide.html">Read the agent guide →</a></p>
-      </div>
-      <div class="whatsnew-item">
-        <h3>Starter templates</h3>
-        <p>Copyable templates for research memos, decision records, technical specs, and recurring agent refresh packs.</p>
-        <p style="margin-top: 10px;"><a href="docs/templates.html">Browse templates →</a></p>
-      </div>
-    </div>
-  </div>
+	  </div>
+	</section>
+	<section id="install">
+	  <div class="wrap">
+	    <h2><span class="small">Install</span>Use only the pieces your workflow needs.</h2>
+	    <p class="section-lead">
+	      Noma now ships as a public CLI, a VS Code language extension, a stdio MCP server,
+	      an experimental TypeScript Agent SDK, and a reusable GitHub Action.
+	    </p>
+	    <div class="install-grid">
+	      <article class="install-card">
+	        <h3>CLI</h3>
+	        <p>Author, validate, render, export schemas, list IDs, and apply source-preserving patch operations.</p>
+	        <pre class="codebox">npm install -g @ferax564/noma-cli
+noma init my-spec
+noma render my-spec/demo.noma --to html</pre>
+	        <div class="mini-links">
+	          <a href="docs/getting-started.html">Getting started</a>
+	          <a href="docs/spec.html">Spec</a>
+	        </div>
+	      </article>
+	      <article class="install-card">
+	        <h3>VS Code</h3>
+	        <p>Syntax highlighting for directives, attributes, frontmatter, math, wikilinks, embedded languages, and escape-hatch warnings.</p>
+	        <pre class="codebox">ext install ferax564.noma-language</pre>
+	        <div class="mini-links">
+	          <a href="https://marketplace.visualstudio.com/items?itemName=ferax564.noma-language">Marketplace</a>
+	          <a href="https://github.com/ferax564/noma/tree/main/tools/vscode-noma">Source</a>
+	        </div>
+	      </article>
+	      <article class="install-card">
+	        <h3>MCP server</h3>
+	        <p>Expose <code>read_doc</code>, <code>list_ids</code>, <code>validate_doc</code>, and <code>patch_block</code> to agent hosts over stdio.</p>
+	        <pre class="codebox">npm install @ferax564/noma-mcp-server
+npx -y @ferax564/noma-mcp-server</pre>
+	        <div class="mini-links">
+	          <a href="docs/agent-guide.html">Agent guide</a>
+	          <a href="docs/spec-agent-protocol-v1.html">Protocol RFC</a>
+	        </div>
+	      </article>
+	      <article class="install-card">
+	        <h3>Agent SDK</h3>
+	        <p>TypeScript wrapper for the MCP server with retry-aware safe patches, capability descriptors, and transcript replay.</p>
+	        <pre class="codebox">npm install @ferax564/noma-agent-sdk</pre>
+	        <div class="mini-links">
+	          <a href="docs/agent-guide.html#mcp-and-sdk-status">SDK workflow</a>
+	          <a href="https://www.npmjs.com/package/@ferax564/noma-agent-sdk">npm</a>
+	        </div>
+	      </article>
+	      <article class="install-card">
+	        <h3>GitHub Action</h3>
+	        <p>Validate and render Noma artifacts in CI, then upload the output as an artifact for review.</p>
+	        <pre class="codebox">- uses: ferax564/noma@v0.11.0
+  with:
+    input: docs/spec.noma
+    output: dist/spec.html</pre>
+	        <div class="mini-links">
+	          <a href="docs/getting-started.html#render-in-github-actions">Action setup</a>
+	          <a href="https://github.com/ferax564/noma">Repository</a>
+	        </div>
+	      </article>
+	    </div>
+	  </div>
+	</section>
+
+	<section id="what-it-does">
+	  <div class="wrap">
+	    <h2><span class="small">What it does</span>A document pipeline built for people and agents.</h2>
+	    <p class="section-lead">
+	      Noma is small on purpose: human-readable source goes through a typed AST,
+	      then fans out to rich artifacts, validation, patch operations, and compact
+	      LLM context.
+	    </p>
+	    <div class="feature-grid">
+	      <article class="feature-card">
+	        <h3>Readable source</h3>
+	        <p>Write Markdown-like prose plus explicit directive blocks such as <code>::claim</code>, <code>::evidence</code>, <code>::grid</code>, <code>::plot</code>, and <code>::agent_task</code>.</p>
+	      </article>
+	      <article class="feature-card">
+	        <h3>Typed structure</h3>
+	        <p>The parser produces a stable AST with block IDs, aliases, positions, frontmatter, tables, lists, code, sections, and open-ended directives.</p>
+	      </article>
+	      <article class="feature-card">
+	        <h3>Beautiful outputs</h3>
+	        <p>Render standalone HTML, multi-page sites, PDFs, JSON AST, deterministic LLM text, and roundtrip-safe Noma source from the same file.</p>
+	      </article>
+	      <article class="feature-card">
+	        <h3>Validation</h3>
+	        <p>Catch duplicate IDs, broken wikilinks, stale citations, plot/data mismatches, unsafe escape hatches, missing evidence, incomplete risks, and profile violations.</p>
+	      </article>
+	      <article class="feature-card">
+	        <h3>Block-level patches</h3>
+	        <p>Agents can update one block, one body, one heading, or one attribute while preserving unrelated bytes and appending a transcript record.</p>
+	      </article>
+	      <article class="feature-card">
+	        <h3>Agent context</h3>
+	        <p>Export clean LLM context with <code>--select</code>, <code>--exclude</code>, <code>--budget</code>, and stale-aware memory filtering.</p>
+	      </article>
+	    </div>
+	    <div class="tool-strip" aria-label="Noma tool surfaces">
+	      <div class="tool-pill"><strong>Source</strong>.noma files</div>
+	      <div class="tool-pill"><strong>Renderers</strong>HTML · site · LLM · JSON</div>
+	      <div class="tool-pill"><strong>Validator</strong>rules + profiles</div>
+	      <div class="tool-pill"><strong>Patch</strong>ops + schemas</div>
+	      <div class="tool-pill"><strong>Agents</strong>MCP + SDK</div>
+	    </div>
+	  </div>
+	</section>
+
+	<section id="workflow">
+	  <div class="wrap">
+	    <h2><span class="small">Workflow</span>The safe loop for living documents.</h2>
+	    <p class="section-lead">
+	      The same commands work for one local memo, a book manifest, or an agent
+	      integration. Read structured context, discover IDs, patch the smallest
+	      target, validate, and render a publishable artifact.
+	    </p>
+	    <div class="workflow">
+	      <pre class="codebox">noma ids memo.noma
+noma render memo.noma --to llm --select claim,evidence,risk
+noma check memo.noma
+noma patch memo.noma --ops patch.json --inplace
+noma render memo.noma --to html --strict --out memo.html</pre>
+	      <div class="steps">
+	        <div class="step">
+	          <div class="step-num">01</div>
+	          <div><h3>Discover the stable surface</h3><p>IDs and aliases are the API. Agents target blocks by ID instead of guessing line numbers.</p></div>
+	        </div>
+	        <div class="step">
+	          <div class="step-num">02</div>
+	          <div><h3>Choose the smallest patch</h3><p>Use <code>replace_body</code>, <code>update_heading</code>, or <code>update_attribute</code> before replacing whole blocks.</p></div>
+	        </div>
+	        <div class="step">
+	          <div class="step-num">03</div>
+	          <div><h3>Validate before and after</h3><p>Diagnostics make stale sources, broken references, unsafe blocks, and incomplete semantic content explicit.</p></div>
+	        </div>
+	        <div class="step">
+	          <div class="step-num">04</div>
+	          <div><h3>Publish strict artifacts</h3><p>Render HTML, PDF, book sites, or LLM context with the same source and a clear safety mode for review.</p></div>
+	        </div>
+	      </div>
+	    </div>
+	  </div>
+	</section>
+
+	<section id="docs">
+	  <div class="wrap">
+	    <h2><span class="small">Docs</span>Start with the workflow, not the syntax.</h2>
+	    <p class="section-lead">
+	      The core wedge is agent-safe rich documents: source that humans can review,
+	      artifacts stakeholders can read, and stable blocks agents can patch.
+	    </p>
+	    <div class="docs-grid">
+	      <div class="docs-card">
+	        <h3>Getting started</h3>
+	        <p>Install, render, validate, patch, render in GitHub Actions, use VS Code, and connect MCP/SDK packages.</p>
+	        <p><a href="docs/getting-started.html">Start here →</a></p>
+	      </div>
+	      <div class="docs-card">
+	        <h3>Case studies</h3>
+	        <p>Research refreshes, decision artifacts, strict technical docs, and agent memory workflows with concrete commands.</p>
+	        <p><a href="docs/case-studies.html">Open case studies →</a></p>
+	      </div>
+	      <div class="docs-card">
+	        <h3>Comparison guide</h3>
+	        <p>When to choose Noma instead of Markdown, MDX, raw HTML, or collaborative docs.</p>
+	        <p><a href="docs/comparison.html">Compare formats →</a></p>
+	      </div>
+	      <div class="docs-card">
+	        <h3>Agent editing guide</h3>
+	        <p>The safe loop: discover IDs, choose the smallest op, patch transactionally, validate, and render strictly.</p>
+	        <p><a href="docs/agent-guide.html">Read the agent guide →</a></p>
+	      </div>
+	      <div class="docs-card">
+	        <h3>Format spec</h3>
+	        <p>Block syntax, AST variants, render targets, validation rules, profiles, books, math, memory, and compatibility promises.</p>
+	        <p><a href="docs/spec.html">Read the spec →</a></p>
+	      </div>
+	      <div class="docs-card">
+	        <h3>Starter templates</h3>
+	        <p>Copyable templates for research memos, decision records, technical specs, and recurring agent refresh packs.</p>
+	        <p><a href="docs/templates.html">Browse templates →</a></p>
+	      </div>
+	    </div>
+	  </div>
 </section>
 
 <section id="three-layers">
@@ -827,11 +1135,12 @@ Research teams are the sharpest wedge.
 
 <section id="demos">
   <div class="wrap">
-    <h2><span class="small">Three demo artifacts</span>Read the rendered HTML. Read the source. Read the LLM context.</h2>
-    <p class="section-lead">
-      Each demo ships as a single <code>.noma</code> file rendered to HTML, PDF,
-      LLM-friendly text, and JSON AST. Same source, four targets.
-    </p>
+	    <h2><span class="small">Three demo artifacts</span>Read the rendered HTML. Read the source. Read the LLM context.</h2>
+	    <p class="section-lead">
+	      Each demo ships as a single <code>.noma</code> file rendered to HTML, PDF,
+	      LLM-friendly text, and JSON AST. The extended examples show books,
+	      patch traces, memory recall, themes, and templates.
+	    </p>
 
     <div class="demos">
       <article class="demo demo-1">
@@ -908,9 +1217,60 @@ Research teams are the sharpest wedge.
           </div>
         </div>
       </article>
-    </div>
-  </div>
-</section>
+	    </div>
+	    <div class="example-grid" style="margin-top: 24px;">
+	      <article class="example-card">
+	        <h3>Multi-file book</h3>
+	        <p>A manifest-driven book with scoped chapter IDs, alias-aware wikilinks, single-page HTML, LLM export, and a multi-page site.</p>
+	        <div class="mini-links">
+	          <a href="examples/book.html">Single page</a>
+	          <a href="examples/book-site/index.html">Book site</a>
+	          <a href="examples/book.llm.txt">LLM</a>
+	        </div>
+	      </article>
+	      <article class="example-card">
+	        <h3>Stale research memo</h3>
+	        <p>A narrated trace where an agent refreshes stale citations, adds evidence, updates confidence, and preserves unrelated bytes.</p>
+	        <div class="mini-links">
+	          <a href="examples/agent-stale-memo/trace.html">Trace</a>
+	          <a href="https://github.com/ferax564/noma/tree/main/examples/agent-stale-memo">Source</a>
+	        </div>
+	      </article>
+	      <article class="example-card">
+	        <h3>Agent memory</h3>
+	        <p>A memory-profile document with validation, block patches, full recall, and stale-excluded recent recall for LLM context.</p>
+	        <div class="mini-links">
+	          <a href="examples/agent-memory/trace.html">Trace</a>
+	          <a href="examples/agent-memory/recall.full.txt">Full recall</a>
+	          <a href="examples/agent-memory/recall.recent.txt">Recent recall</a>
+	        </div>
+	      </article>
+	      <article class="example-card">
+	        <h3>Dark theme</h3>
+	        <p>The same research thesis rendered through the alternate dark theme without touching source content.</p>
+	        <div class="mini-links">
+	          <a href="examples/research-thesis-dark.html">Open dark render</a>
+	        </div>
+	      </article>
+	      <article class="example-card">
+	        <h3>Starter templates</h3>
+	        <p>Research memo, decision record, technical spec, and agent refresh pack templates that parse and render cleanly.</p>
+	        <div class="mini-links">
+	          <a href="docs/templates.html">Browse templates</a>
+	          <a href="https://github.com/ferax564/noma/tree/main/examples/templates">Source</a>
+	        </div>
+	      </article>
+	      <article class="example-card">
+	        <h3>Rendered gallery</h3>
+	        <p>A Noma-authored index page that links demos, project docs, comparisons, and the central design test.</p>
+	        <div class="mini-links">
+	          <a href="_index-noma.html">Open gallery</a>
+	          <a href="https://github.com/ferax564/noma/blob/main/examples/index.noma">Source</a>
+	        </div>
+	      </article>
+	    </div>
+	  </div>
+	</section>
 
 <section id="compare">
   <div class="wrap">

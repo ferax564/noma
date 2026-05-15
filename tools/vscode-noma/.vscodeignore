@@ -5,6 +5,7 @@ node_modules/**
 vsc-extension-quickstart.md
 **/*.map
 **/*.ts
+*.vsix
 **/tsconfig.json
 .eslintrc.json
 .git/**
