@@ -15,6 +15,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **npm publish readiness:** package manifests now declare public scoped publish metadata, the MCP server exposes typed ESM exports, and the CLI package no longer includes generated site artifacts or PDFs through a broad `dist/` files entry. Regression coverage now locks those package-shape expectations.
+- **Registry-safe workspace packages:** the MCP server and Agent SDK now depend on concrete public package versions instead of local `file:` specs and self-build during pack/publish, so their published tarballs install correctly in clean consumer projects.
 - **Packed CLI smoke gate:** `npm run smoke:package` now installs the packed CLI into a clean temp project and exercises version, init, check, HTML/LLM render, IDs, patch transactions, API import, strict rendering, and package artifact shape. CI runs it on every push.
 - **Formal local contracts:** `noma schema <name>` now prints bundled JSON Schemas for patch ops, patch transactions, AST JSON, transcript records, and capability sidecars. The CLI package includes `schemas/`, package smoke exercises schema output, and `test/schema.test.ts` validates the schemas against reference examples.
 - **Broader source-preserving patch ops:** `replace_body` and `update_heading` are now accepted by the core patcher, CLI schema surface, MCP server, and Agent SDK types. `update_heading` preserves stable section IDs by pinning the old slug when needed, and `rename_id` now also retargets `parent=` reference attributes.

@@ -35,14 +35,31 @@ function hasNestedDistEntry(dir: string): boolean {
 const tmp = mkdtempSync(join(tmpdir(), "noma-package-smoke-"));
 const packDir = join(tmp, "pack");
 const workDir = join(tmp, "work");
+const publishWorkDir = join(tmp, "publish-work");
 mkdirSync(packDir);
 mkdirSync(workDir);
+mkdirSync(publishWorkDir);
 
 const packOut = run(npm, ["pack", "--pack-destination", packDir, "--json"], { capture: true });
 const [packed] = JSON.parse(packOut) as Array<{ filename: string; size: number }>;
 if (!packed) throw new Error("npm pack produced no tarball metadata");
 
 const tarball = join(packDir, packed.filename);
+const mcpPackOut = run(npm, ["pack", "--pack-destination", packDir, "--json", "-w", "@ferax564/noma-mcp-server"], {
+  capture: true,
+});
+const [mcpPacked] = JSON.parse(mcpPackOut) as Array<{ filename: string; size: number }>;
+if (!mcpPacked) throw new Error("npm pack produced no MCP server tarball metadata");
+
+const agentPackOut = run(npm, ["pack", "--pack-destination", packDir, "--json", "-w", "@ferax564/noma-agent-sdk"], {
+  capture: true,
+});
+const [agentPacked] = JSON.parse(agentPackOut) as Array<{ filename: string; size: number }>;
+if (!agentPacked) throw new Error("npm pack produced no Agent SDK tarball metadata");
+
+const mcpTarball = join(packDir, mcpPacked.filename);
+const agentTarball = join(packDir, agentPacked.filename);
+
 run(npm, ["init", "-y"], { cwd: workDir, capture: true });
 run(npm, ["install", tarball], { cwd: workDir, capture: true });
 
@@ -147,5 +164,23 @@ if (strictHtml.includes("<script>alert") || strictHtml.includes("alert(1)")) {
   throw new Error("strict HTML output leaked unsafe script body");
 }
 
+run(npm, ["init", "-y"], { cwd: publishWorkDir, capture: true });
+run(npm, ["install", tarball, mcpTarball, agentTarball], { cwd: publishWorkDir, capture: true });
+run(
+  process.execPath,
+  [
+    "--input-type=module",
+    "-e",
+    [
+      'import { NomaTools } from "@ferax564/noma-agent-sdk";',
+      'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',
+      'if (typeof NomaTools !== "function") throw new Error("Agent SDK import failed");',
+      'if (typeof McpServer !== "function") throw new Error("MCP dependency import failed");',
+    ].join("\n"),
+  ],
+  { cwd: publishWorkDir },
+);
+
 console.log(`package smoke passed: ${installedPkg.name}@${installedPkg.version}`);
 console.log(`consumer-smoke-dir=${workDir}`);
+console.log(`publish-bundle-smoke-dir=${publishWorkDir}`);

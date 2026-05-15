@@ -16,16 +16,17 @@
     "access": "public"
   },
   "bin": {
-    "noma-mcp-server": "./dist/index.js"
+    "noma-mcp-server": "dist/index.js"
   },
   "files": ["src", "dist"],
   "scripts": {
+    "prepack": "npm run build",
     "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@ferax564/noma-cli": "file:../..",
+    "@ferax564/noma-cli": "0.11.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {

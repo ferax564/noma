@@ -16,7 +16,7 @@
     "access": "public"
   },
   "bin": {
-    "noma": "./bin/noma.mjs"
+    "noma": "bin/noma.mjs"
   },
   "scripts": {
     "noma": "tsx src/cli.ts",
