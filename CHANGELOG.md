@@ -6,11 +6,11 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-05-15
+
 ### Added
 
 - **Adoption docs and homepage refresh:** the landing page now points at case studies, a comparison guide, an agent editing guide, and starter templates. New Noma-authored docs cover the agent-refreshable research memo workflow, Noma-vs-Markdown/MDX/HTML tradeoffs, safe agent patch loops, and copyable document templates under `examples/templates/`.
-
-## [0.11.0] — 2026-05-14
 
 ### Changed
 

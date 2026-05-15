@@ -1569,18 +1569,18 @@ Landed on `main` on 2026-05-14 while intentionally skipping npm/GitHub release p
 - **Compatibility policy.** `docs/compatibility.noma` defines stable vs. experimental surfaces, SemVer expectations, schema evolution rules, deprecation rules, validator/render compatibility, and explicit exclusions for publishing/hosted workflow.
 - **Community-pack groundwork.** The parser and VS Code grammar accept namespaced directive names (`pack::name`), while renderer/validator plug-in loading stays explicitly future work.
 
-### §24.20 — v0.11.0 (local v1-readiness release candidate)
+### §24.20 — v0.11.0 (first public npm release line)
 
-Prepared on 2026-05-14 to turn the post-v0.10.2 local readiness bundle into a publishable release candidate. This release intentionally packages local contracts and publish gates before any npm/GitHub release publication.
+Shipped on 2026-05-15 to turn the post-v0.10.2 local readiness bundle into the first public `@ferax564/*` release line. This release packages local contracts, publish gates, and adoption docs before the next feature cycle.
 
 - **Versioned release surface.** Root CLI and MCP server packages, lockfile metadata, spec frontmatter/headings, compatibility docs, superseded protocol docs, README status, and changelog now carry v0.11.0.
 - **Machine-readable contracts.** `noma schema <name>` exposes bundled JSON Schemas for patch ops, transactions, AST JSON, transcript records, and capability sidecars, with schema validation tests and packed CLI smoke coverage.
 - **Patch and reference readiness.** Source-preserving `replace_body` and `update_heading` are part of the public CLI/MCP/SDK surface, and `rename_id` retargets `parent=` references along with existing reference-bearing attributes and wikilinks.
-- **Publish safety.** Public scoped package metadata, typed MCP exports, slim CLI tarball contents, packed install smoke tests, compatibility policy, and namespaced directive parsing are all documented as the release line that precedes the first `@ferax564/*` publish.
+- **Publish safety.** Public scoped package metadata, typed MCP exports, slim CLI tarball contents, packed install smoke tests, compatibility policy, and namespaced directive parsing are all documented for the first `@ferax564/*` publish.
 
 ### §24.21 — adoption surface follow-up
 
-Landed after the v0.11.0 release-candidate metadata to make the project easier to evaluate before the first public publish.
+Landed after the v0.11.0 release metadata to make the project easier to evaluate during the first public release.
 
 - **Homepage wedge sharpened.** `site/index.html` now leads with the v0.11.0 readiness story and links directly to adoption guides instead of only the demo gallery.
 - **Case studies and comparison docs.** New Noma-authored docs explain when to use Noma, how it compares with Markdown/MDX/raw HTML/collaborative docs, and which workflows prove the agent-safe artifact thesis.

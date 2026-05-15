@@ -54,7 +54,7 @@ That's the whole language — directive blocks (`::name{attrs} ... ::`), Markdow
 
 ## Quick start
 
-Release-candidate CLI (after the `@ferax564/*` packages are published):
+Install the public CLI:
 
 ```bash
 npm install -g @ferax564/noma-cli
@@ -93,7 +93,7 @@ npm run noma -- patch examples/thesis.noma \
 npm run noma -- check examples/research-thesis.noma
 
 # render in GitHub Actions
-# - uses: ferax564/noma@main
+# - uses: ferax564/noma@v0.11.0
 #   with:
 #     input: docs/spec.noma
 #     output: dist/spec.html
@@ -137,7 +137,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@main
+      - uses: ferax564/noma@v0.11.0
         with:
           input: docs/spec.noma
           output: dist/spec.html
@@ -179,7 +179,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
 - CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
-- GitHub Action — `uses: ferax564/noma@main` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
+- GitHub Action — `uses: ferax564/noma@v0.11.0` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
 - Starter templates under `examples/templates/` for research memos, decision records, technical specs, and agent refresh packs.
 - Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
@@ -192,7 +192,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.11.0 — local v1-readiness release candidate for the `@ferax564/*` npm publish line. v0.11 adds bundled JSON Schemas via `noma schema <name>`, source-preserving `replace_body` and `update_heading` patch ops, `parent=` retargeting for `rename_id`, package manifest hardening for public scoped publish, a packed-CLI smoke gate, the compatibility policy, and namespaced directive parsing groundwork for future community packs. Carries the v0.9.0 experimental `@ferax564/noma-agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.20 for the full release tracker.
+**Status:** v0.11.0 — first public `@ferax564/*` release line. v0.11 adds bundled JSON Schemas via `noma schema <name>`, source-preserving `replace_body` and `update_heading` patch ops, `parent=` retargeting for `rename_id`, package manifest hardening for public scoped publish, a packed-CLI smoke gate, the compatibility policy, adoption guides, and namespaced directive parsing groundwork for future community packs. Carries the v0.9.0 experimental `@ferax564/noma-agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.20 for the full release tracker.
 
 ## License
 

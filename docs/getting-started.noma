@@ -11,7 +11,7 @@ Five minutes to your first rendered Noma document.
 
 ## Install
 
-After the `@ferax564/*` packages are published, install the CLI when you want to author documents outside this checkout:
+Install the CLI when you want to author documents outside this checkout:
 
 ```bash
 npm install -g @ferax564/noma-cli
@@ -165,7 +165,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@main
+      - uses: ferax564/noma@v0.11.0
         with:
           input: docs/spec.noma
           output: dist/spec.html
