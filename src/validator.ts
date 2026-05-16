@@ -234,6 +234,25 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
     if (node.name === "claim" && node.id) claims.push(node);
 
+    if (node.name === "claim" && !suppressed(node) && "confidence" in node.attrs) {
+      const c = node.attrs.confidence;
+      let num: number | null = null;
+      if (typeof c === "number" && Number.isFinite(c)) num = c;
+      else if (typeof c === "string" && c.trim() !== "") {
+        const n = Number(c);
+        if (Number.isFinite(n)) num = n;
+      }
+      if (num === null || num < 0 || num > 1) {
+        diagnostics.push({
+          severity: "warning",
+          code: "claim-invalid-confidence",
+          message: `Claim "${node.id ?? "?"}" confidence="${c}" must be a number in [0, 1].`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
+    }
+
     if (node.name === "state_change" && !suppressed(node)) {
       const block = node.attrs.block;
       if (typeof block === "string") {
@@ -506,18 +525,29 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       }
     }
 
-    if (node.name === "citation" && !suppressed(node) && node.attrs.accessed) {
-      const perBlock = readPositiveNumber(node.attrs.stale_after_days);
-      const window = perBlock ?? staleDays;
-      const stale = isStale(String(node.attrs.accessed), now, window);
-      if (stale) {
+    if (node.name === "citation" && !suppressed(node)) {
+      if (!node.attrs.url && !node.attrs.source && !node.attrs.doi) {
         diagnostics.push({
           severity: "warning",
-          code: "stale-citation",
-          message: `Citation "${node.id ?? "?"}" was last accessed ${node.attrs.accessed} (>${window} days ago).`,
+          code: "citation-missing-source",
+          message: `Citation "${node.id ?? "?"}" has no \`url=\`, \`source=\`, or \`doi=\` attribute.`,
           pos: node.pos,
           nodeId: node.id,
         });
+      }
+      if (node.attrs.accessed) {
+        const perBlock = readPositiveNumber(node.attrs.stale_after_days);
+        const window = perBlock ?? staleDays;
+        const stale = isStale(String(node.attrs.accessed), now, window);
+        if (stale) {
+          diagnostics.push({
+            severity: "warning",
+            code: "stale-citation",
+            message: `Citation "${node.id ?? "?"}" was last accessed ${node.attrs.accessed} (>${window} days ago).`,
+            pos: node.pos,
+            nodeId: node.id,
+          });
+        }
       }
     }
   }
@@ -626,6 +656,8 @@ const KNOWN_RULES = [
   "memory-invalid-last-seen",
   "memory-missing-id",
   "memory-wikilink-non-memory-target",
+  "claim-invalid-confidence",
+  "citation-missing-source",
 ];
 
 function collectRuleCodes(): Set<string> {

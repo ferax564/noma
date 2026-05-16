@@ -1585,3 +1585,13 @@ Landed after the v0.11.0 release metadata to make the project easier to evaluate
 - **Homepage wedge sharpened.** `site/index.html` now leads with the v0.11.0 readiness story and links directly to adoption guides instead of only the demo gallery.
 - **Case studies and comparison docs.** New Noma-authored docs explain when to use Noma, how it compares with Markdown/MDX/raw HTML/collaborative docs, and which workflows prove the agent-safe artifact thesis.
 - **Agent and template guides.** New docs and `examples/templates/` files give agents a safe editing loop plus copyable research memo, decision record, technical spec, and recurring refresh pack shapes.
+
+### §24.22 — v0.11.1 (polish + two validator rules)
+
+Shipped on 2026-05-16. Patch release that absorbs the `[Unreleased]` slice queued after v0.11.0 and adds the residual §23.12 validator coverage.
+
+- **MCP server runtime version string.** `@ferax564/noma-mcp-server` now reports `0.11.1` to MCP clients instead of the stale `0.1.0` server version string that v0.11.0 left in `serverInfo`. The published `0.11.0` MCP package on npm was misadvertising its own identity over the wire; v0.11.1 makes the wire version match the npm version.
+- **Agent SDK lockstep dependency bump.** `@ferax564/noma-agent-sdk` stays experimental at `0.1.1`, but its declared deps on `noma-cli` and `noma-mcp-server` move to `0.11.1` so `npm install @ferax564/noma-agent-sdk` resolves a consistent v0.11.x toolchain (the published `0.1.0` still references the v0.9.0 CLI line).
+- **VS Code extension README + `0.2.1` package bump.** The in-tree extension is ready for the maintainer to run `vsce publish` against the Marketplace. README points at the live install path; `noma-language-0.2.1.vsix` is packaged in `tools/vscode-noma/`.
+- **Two new validator rules.** `claim-invalid-confidence` (warn on non-numeric or out-of-`[0, 1]` `confidence=` on `::claim`) and `citation-missing-source` (warn when a `::citation` has no `url=` / `source=` / `doi=`). Both are filterable via `--ignore-rule` and per-block `noverify`. Six new tests cover both, including silent paths for valid inputs.
+- **Status:** the §24.9 "live publish pending maintainer step" line for `noma-language` still applies — `vsce publish` is a manual maintainer action that v0.11.1 prepares but does not automate.

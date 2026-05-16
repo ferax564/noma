@@ -1,6 +1,6 @@
 {
   "name": "@ferax564/noma-cli",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Noma — readable document format for humans and agents",
   "type": "module",
   "main": "dist/index.js",

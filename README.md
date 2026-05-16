@@ -107,7 +107,7 @@ npm run noma -- patch examples/thesis.noma \
 npm run noma -- check examples/research-thesis.noma
 
 # render in GitHub Actions
-# - uses: ferax564/noma@v0.11.0
+# - uses: ferax564/noma@v0.11.1
 #   with:
 #     input: docs/spec.noma
 #     output: dist/spec.html
@@ -151,7 +151,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.11.0
+      - uses: ferax564/noma@v0.11.1
         with:
           input: docs/spec.noma
           output: dist/spec.html
@@ -188,12 +188,12 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - JSON renderer — full AST export.
 - `.noma` source printer — AST → `.noma` (roundtrip-safe). Backs `noma render --to noma`; source-preserving `noma patch` rewrites addressed spans directly.
 - `noma fmt` — re-aligns GitHub-style pipe tables in source; respects pipes inside `` `code spans` `` and `\|` escapes; leaves everything else byte-identical.
-- Validator — wikilink references resolve across paragraphs, quotes, list items, headings, table cells, and book chapters. Default rules: duplicate IDs, broken references (incl. wikilinks), plot/figure issues, plot/dataset linkage (`plot-unknown-dataset`, `plot-unknown-column`), `plot-mixed-delimiters`, claim-without-evidence, risk-without-owner, decision-without-status, agent-task-without-scope, stale-citation, escape-hatch-untrusted, evidence-missing-for, state_change shape rules, and `out-of-profile-directive` when a `profile` is declared. Per-block opt-out with the `noverify` flag.
+- Validator — wikilink references resolve across paragraphs, quotes, list items, headings, table cells, and book chapters. Default rules: duplicate IDs, broken references (incl. wikilinks), plot/figure issues, plot/dataset linkage (`plot-unknown-dataset`, `plot-unknown-column`), `plot-mixed-delimiters`, claim-without-evidence, `claim-invalid-confidence`, risk-without-owner, decision-without-status, agent-task-without-scope, stale-citation, `citation-missing-source`, escape-hatch-untrusted, evidence-missing-for, state_change shape rules, and `out-of-profile-directive` when a `profile` is declared. Per-block opt-out with the `noverify` flag.
 - Profiles — declare `profile: research | technical | minimal` in frontmatter as a contract about which directives the document uses; downstream tools can narrow safely.
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
 - CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
-- GitHub Action — `uses: ferax564/noma@v0.11.0` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
+- GitHub Action — `uses: ferax564/noma@v0.11.1` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
 - VS Code extension — `ext install ferax564.noma-language` adds syntax highlighting, folding, embedded YAML/JSON/LaTeX/Mermaid/DOT scopes, and warning scopes for raw escape hatches.
 - MCP server — `@ferax564/noma-mcp-server` exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio.
 - Agent SDK — `@ferax564/noma-agent-sdk` wraps the MCP server with TypeScript helpers for safe patching, capability descriptors, and transcript replay. Experimental during v0.x.
@@ -209,7 +209,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.11.0 — first public `@ferax564/*` release line. v0.11 adds bundled JSON Schemas via `noma schema <name>`, source-preserving `replace_body` and `update_heading` patch ops, `parent=` retargeting for `rename_id`, package manifest hardening for public scoped publish, a packed-CLI smoke gate, the compatibility policy, adoption guides, and namespaced directive parsing groundwork for future community packs. Carries the v0.9.0 experimental `@ferax564/noma-agent-sdk` v0.1.0 unchanged. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.20 for the full release tracker.
+**Status:** v0.11.1 — polish patch on the first public `@ferax564/*` release line. Fixes the MCP server runtime version string, ships the v0.2.1 VS Code extension README, lockstep-bumps the experimental `@ferax564/noma-agent-sdk` to v0.1.1 so its declared dependencies match the v0.11.1 CLI/MCP packages, and adds two new validator rules (`claim-invalid-confidence`, `citation-missing-source`). v0.11.0 first shipped bundled JSON Schemas via `noma schema <name>`, source-preserving `replace_body` and `update_heading` patch ops, `parent=` retargeting for `rename_id`, package manifest hardening for public scoped publish, a packed-CLI smoke gate, the compatibility policy, adoption guides, and namespaced directive parsing groundwork for future community packs. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.22 for the full release tracker.
 
 ## License
 

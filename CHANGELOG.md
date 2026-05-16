@@ -6,15 +6,22 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-05-16
+
+### Added
+
+- **Two new validator rules.** `claim-invalid-confidence` warns when a `::claim` block declares a `confidence=` attribute that is not a number in `[0, 1]` (rejects strings like `"high"` and out-of-range numerics). `citation-missing-source` warns when a `::citation` block has no `url=`, `source=`, or `doi=` attribute. Both rules are filterable via `--ignore-rule` and per-block `noverify`.
+
 ### Changed
 
+- **Lockstep version bumps.** `@ferax564/noma-cli` → `0.11.1`, `@ferax564/noma-mcp-server` → `0.11.1`, and `@ferax564/noma-agent-sdk` → `0.1.1`. The agent SDK stays on its 0.x experimental trail until v1.1 RFC graduation, but its declared dependencies on `noma-cli` and `noma-mcp-server` now pin to `0.11.1` so `npm install @ferax564/noma-agent-sdk` resolves a consistent v0.11.x toolchain.
 - **Website and package polish:** landing page now has explicit install, workflow, toolchain, and extended example sections covering the CLI, VS Code extension, MCP server, Agent SDK, GitHub Action, book rendering, stale-memo trace, memory trace, and templates.
 - **Package trust metadata:** workspace package manifests now declare repository, homepage, and issue URLs for future npm publishes.
 
 ### Fixed
 
-- **MCP server runtime metadata:** `@ferax564/noma-mcp-server` now reports `0.11.0` to MCP clients instead of the stale `0.1.0` server version string.
-- **VS Code extension README:** the extension docs now point at the live Marketplace install path and are ready for a `0.2.1` Marketplace patch.
+- **MCP server runtime metadata:** `@ferax564/noma-mcp-server` now reports `0.11.1` to MCP clients instead of the stale `0.1.0` server version string that v0.11.0 left in place.
+- **VS Code extension README:** the extension docs now point at the live Marketplace install path; the in-tree `noma-language` package is bumped to `0.2.1`, ready for the maintainer to run `vsce publish` against the Marketplace.
 
 ## [0.11.0] — 2026-05-15
 

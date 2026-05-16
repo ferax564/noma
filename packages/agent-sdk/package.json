@@ -1,6 +1,6 @@
 {
   "name": "@ferax564/noma-agent-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reference agent SDK for the Noma Agent Protocol v1.0 (experimental)",
   "type": "module",
   "main": "dist/index.js",
@@ -35,8 +35,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@ferax564/noma-cli": "0.11.0",
-    "@ferax564/noma-mcp-server": "0.11.0",
+    "@ferax564/noma-cli": "0.11.1",
+    "@ferax564/noma-mcp-server": "0.11.1",
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {

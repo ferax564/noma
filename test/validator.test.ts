@@ -110,9 +110,45 @@ test("plot-mixed-delimiters silent when both use commas", () => {
 });
 
 test("stale-citation flags old accessed dates", () => {
-  const doc = parse(`::citation{id="c1" accessed="2020-01-01"}\nx\n::\n`);
+  const doc = parse(`::citation{id="c1" url="x" accessed="2020-01-01"}\nx\n::\n`);
   const diags = validate(doc, { now: new Date("2026-05-09") });
   assert.ok(diags.some((d) => d.code === "stale-citation"));
+});
+
+test("claim-invalid-confidence flags values outside [0, 1]", () => {
+  const doc = parse(`::claim{id="c1" confidence=1.5}\nx\n::\n`);
+  const diags = validate(doc);
+  assert.ok(diags.some((d) => d.code === "claim-invalid-confidence"));
+});
+
+test("claim-invalid-confidence flags non-numeric values", () => {
+  const doc = parse(`::claim{id="c1" confidence="high"}\nx\n::\n`);
+  const diags = validate(doc);
+  assert.ok(diags.some((d) => d.code === "claim-invalid-confidence"));
+});
+
+test("claim-invalid-confidence silent on valid values", () => {
+  const doc = parse(`::claim{id="c1" confidence=0.82}\nx\n::\n`);
+  const diags = validate(doc);
+  assert.ok(!diags.some((d) => d.code === "claim-invalid-confidence"));
+});
+
+test("citation-missing-source warns when no url/source/doi", () => {
+  const doc = parse(`::citation{id="c1" accessed="2026-05-01"}\nx\n::\n`);
+  const diags = validate(doc, { now: new Date("2026-05-09") });
+  assert.ok(diags.some((d) => d.code === "citation-missing-source"));
+});
+
+test("citation-missing-source silent when url present", () => {
+  const doc = parse(`::citation{id="c1" url="https://example.com"}\nx\n::\n`);
+  const diags = validate(doc);
+  assert.ok(!diags.some((d) => d.code === "citation-missing-source"));
+});
+
+test("citation-missing-source silent when doi present", () => {
+  const doc = parse(`::citation{id="c1" doi="10.1000/xyz"}\nx\n::\n`);
+  const diags = validate(doc);
+  assert.ok(!diags.some((d) => d.code === "citation-missing-source"));
 });
 
 test("stale-citation honors frontmatter stale_citation_days", () => {
