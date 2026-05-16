@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ferax564-noma-agent-sdk"
+version = "0.1.0"
+description = "Python agent SDK for the Noma Agent Protocol v1.0 (starter — workflow layer lands in v0.2.0)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ferax564" }]
+keywords = ["noma", "agent", "mcp", "llm"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "mcp>=1.0",
+  "pyyaml",
+  "pydantic>=2",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=7",
+  "pytest-asyncio>=0.23",
+]
+
+[project.urls]
+Homepage = "https://ferax564.github.io/noma/"
+Repository = "https://github.com/ferax564/noma"
+Issues = "https://github.com/ferax564/noma/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/noma_agent_sdk"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
