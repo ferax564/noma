@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Noma is a plain-text document format and toolkit for structured docs, rendered artifacts, and agent-safe block edits." />
-<meta property="og:title" content="Noma - plain text documents agents can safely edit" />
-<meta property="og:description" content="Write .noma files, validate structure, render artifacts, and patch stable blocks without rewriting whole documents." />
+<meta name="description" content="Noma is readable source for rich HTML/PDF artifacts and agent-safe block edits." />
+<meta property="og:title" content="Noma - readable source for rich agent artifacts" />
+<meta property="og:description" content="Write .noma source, render HTML/PDF/LLM artifacts, validate structure, and patch stable blocks without rewriting whole documents." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://ferax564.github.io/noma/" />
-<title>Noma - Plain text documents agents can safely edit</title>
+<title>Noma - Readable source for rich agent artifacts</title>
 <link rel="icon" href="data:," />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
@@ -647,18 +647,18 @@
   <div class="wrap hero-grid">
     <div>
       <div class="release">v0.11.1 public release · MIT</div>
-      <h1>Noma is a document format for <span>agent-safe edits</span>.</h1>
+      <h1>Readable source for <span>rich agent artifacts</span>.</h1>
       <p class="lead">
-        Write plain-text <code>.noma</code> files. Noma parses them into a typed
-        document tree, validates the structure, renders useful outputs, and lets
-        agents patch named blocks without rewriting the whole file.
+        Markdown is great source for prose. HTML is great output for readers.
+        Noma is the durable layer between them: plain-text <code>.noma</code>
+        files that render rich artifacts and let agents patch named blocks.
       </p>
       <div class="plain-definition">
         <strong>Plain English version</strong>
-        <p>Noma is Markdown-like source with explicit blocks: claims, evidence,
-        risks, decisions, datasets, plots, cards, sections, and agent tasks.
-        Every important block can have a stable ID, so tools and agents can
-        refer to it exactly.</p>
+        <p>Use Noma when a document has to stay readable in Git, render as a
+        polished HTML/PDF artifact, and remain safe for agents to update later:
+        claims, evidence, risks, decisions, datasets, plots, tables, cards,
+        sections, and agent tasks all get explicit structure.</p>
       </div>
       <div class="actions">
         <a class="btn primary" href="#try">Install and render a file</a>
@@ -673,12 +673,12 @@
         <div class="source-pane">
 <pre># Roadmap Decision
 
-::claim{id="wedge" confidence=0.74}
-Research workflows are the best first wedge.
+::claim{id="source-artifact-split" confidence=0.9}
+Keep the source editable and render HTML as an artifact.
 ::
 
-::evidence{for="wedge" source="interviews"}
-Nine analyst teams asked for stale-source checks.
+::evidence{for="source-artifact-split" source="format-research"}
+Users want Markdown's diffs and HTML's visual density.
 ::
 
 ::risk{id="edit-risk" owner="andrea"}
@@ -698,12 +698,12 @@ List IDs, validate, and patch blocks.
           <h2>Rendered document</h2>
           <p class="render-note">The same source becomes a readable artifact and a structured editing surface.</p>
           <div class="render-block">
-            <strong>claim · confidence 0.74</strong>
-            Research workflows are the best first wedge.
+            <strong>claim · confidence 0.9</strong>
+            Keep the source editable and render HTML as an artifact.
           </div>
           <div class="render-block" style="border-left-color: var(--green);">
-            <strong style="color: var(--green);">evidence · interviews</strong>
-            Nine analyst teams asked for stale-source checks.
+            <strong style="color: var(--green);">evidence · format research</strong>
+            Users want Markdown's diffs and HTML's visual density.
           </div>
           <div class="render-grid">
             <div class="render-card"><b>Human artifact</b>HTML, PDF, or docs site.</div>
@@ -730,9 +730,9 @@ List IDs, validate, and patch blocks.
         <h2>A small format with a full document toolchain.</h2>
       </div>
       <p>
-        The goal is not to replace every editor. It is to make source documents
-        structured enough for validation and agent edits while staying readable
-        in Git, terminal output, pull requests, and plain text.
+        The goal is not to replace Markdown or HTML. It is to keep source
+        documents readable enough for review, structured enough for validation,
+        and rich enough to render into artifacts people actually use.
       </p>
     </div>
     <table class="wide-table">
@@ -745,6 +745,12 @@ List IDs, validate, and patch blocks.
           <td>Markdown-style text plus explicit blocks such as <code>::claim</code>, <code>::evidence</code>, <code>::plot</code>, and <code>::agent_task</code>.</td>
           <td>People can review the source directly. Agents get semantic handles instead of guessing from prose.</td>
           <td><a class="chip" href="docs/spec.html">Spec</a></td>
+        </tr>
+        <tr>
+          <td>Tables and data</td>
+          <td>Use pipe tables for small cases, <code>::table</code> for compact report tables, and <code>::dataset</code> plus <code>::plot</code> when values need reuse.</td>
+          <td>Table-heavy documents stop becoming walls of pipes while numbers remain close to the narrative.</td>
+          <td><a class="chip" href="docs/getting-started.html#choose-the-right-table-shape">Tables</a></td>
         </tr>
         <tr>
           <td>Validation</td>
@@ -940,6 +946,7 @@ open my-spec/demo.html</pre>
         <tr><td>Edit with agents</td><td>Agent Editing Guide</td><td>ID discovery, smallest patch operations, transactions, MCP host setup, and SDK workflow.</td><td><a class="chip" href="docs/agent-guide.html">Open</a></td></tr>
         <tr><td>Pick a use case</td><td>Case Studies</td><td>Research refreshes, decision artifacts, technical docs, and agent memory workflows.</td><td><a class="chip" href="docs/case-studies.html">Open</a></td></tr>
         <tr><td>Compare alternatives</td><td>Comparison Guide</td><td>When to use Noma instead of Markdown, MDX, raw HTML, or collaborative docs.</td><td><a class="chip" href="docs/comparison.html">Open</a></td></tr>
+        <tr><td>Understand the wedge</td><td>Research Memo</td><td>External Markdown/HTML pain research from X, Reddit, HN, specs, GitHub, and Stack Overflow.</td><td><a class="chip" href="docs/research-markdown-html-pains.html">Open</a></td></tr>
         <tr><td>Copy a starting point</td><td>Starter Templates</td><td>Research memo, decision record, technical spec, and agent refresh pack templates.</td><td><a class="chip" href="docs/templates.html">Open</a></td></tr>
       </tbody>
     </table>
@@ -954,9 +961,10 @@ open my-spec/demo.html</pre>
         <h2>Noma sits between Markdown and HTML.</h2>
       </div>
       <p>
-        Markdown is easy to write but structurally weak. HTML renders well but
-        is noisy source. Noma keeps the source readable and moves rendering,
-        validation, and agent edits into tools.
+        The practical split is source vs artifact. Markdown is still the right
+        call for short prose. Raw HTML is still the right call for bespoke pages.
+        Noma is for durable source that has to render richly and be patched
+        safely later.
       </p>
     </div>
     <div class="compare-grid">
@@ -967,6 +975,7 @@ open my-spec/demo.html</pre>
           <tbody>
             <tr><td>Readable plain text</td><td class="yes">Strong</td><td class="yes">Strong</td></tr>
             <tr><td>Rich blocks</td><td class="no">Ad hoc</td><td class="yes">Native</td></tr>
+            <tr><td>Complex tables</td><td class="maybe">Fragile</td><td class="yes">Structured</td></tr>
             <tr><td>Validation</td><td class="no">Weak</td><td class="yes">Built in</td></tr>
             <tr><td>Agent edits</td><td class="no">Fragile</td><td class="yes">ID-based</td></tr>
             <tr><td>LLM context</td><td class="maybe">Basic</td><td class="yes">Structured</td></tr>
@@ -981,6 +990,7 @@ open my-spec/demo.html</pre>
             <tr><td>Browser output</td><td class="yes">Strong</td><td class="yes">Strong</td></tr>
             <tr><td>Readable source</td><td class="no">Weak</td><td class="yes">Strong</td></tr>
             <tr><td>Clean diffs</td><td class="no">Weak</td><td class="yes">Strong</td></tr>
+            <tr><td>Durable co-authoring</td><td class="no">Weak</td><td class="yes">Strong</td></tr>
             <tr><td>Agent edits</td><td class="no">Fragile</td><td class="yes">Block ops</td></tr>
             <tr><td>LLM export</td><td class="no">Noisy</td><td class="yes">Clean</td></tr>
           </tbody>

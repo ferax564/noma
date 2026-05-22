@@ -47,6 +47,19 @@ npm run noma -- render examples/tech-doc.noma --to html --out dist/tech-doc.html
 
 Open any of the produced files in a browser — they are fully self-contained and include the default theme inline.
 
+## Understand the split
+
+Noma is easiest to use when you keep three surfaces separate:
+
+::table{header align="l,l,l"}
+| Surface | Command or file | What to check |
+| Source | `file.noma` | Is the text readable in a normal editor? Are important blocks named with stable IDs? |
+| Artifact | `noma render file.noma --to html` | Does the rendered page carry the layout, table, plot, or review surface people need? |
+| Agent | `noma ids`, `noma check`, `noma render --to llm`, `noma patch` | Can an agent discover targets, validate facts, get scoped context, and patch only the block that changed? |
+::
+
+This is the core wedge: Markdown is still great source for simple prose, HTML is still the right browser artifact, and Noma is the durable layer when a document needs both rich output and safe future edits.
+
 ## Choose a starter template
 
 Copy a template when you want a known-good document shape before adding project-specific content:
@@ -145,6 +158,45 @@ npm run noma -- render examples/research-thesis.noma --to html --theme dark
 ```
 
 Two themes ship with the CLI: `default` (warm cream paper) and `dark`. Inside a document, use `{variant="important|subtle|success|danger|info"}` on a card, callout, or claim/evidence/risk block to switch its emphasis without touching CSS.
+
+## Choose the right table shape
+
+Small tables can stay as Markdown-style pipe tables:
+
+```noma
+| Need | Format |
+| ---- | ------ |
+| Simple prose | Markdown |
+| Agent-editable artifact | Noma |
+```
+
+When the separator row and column padding start dominating the source, switch to the `::table` directive:
+
+```noma
+::table{header align="l,c,r"}
+| Vertical | Status | Score |
+| Legal | review | 3.4 |
+| Healthcare | watch | 2.9 |
+::
+```
+
+When values need validation or plots, store them as a dataset and point visual blocks at it:
+
+```noma
+::dataset{id="vertical-arr"}
+schema:
+  vertical: string
+  growth: number
+rows:
+  - [legal, 3.4]
+  - [healthcare, 2.9]
+::
+
+::plot{id="arr" type="bar" dataset="vertical-arr" column="growth" xcolumn="vertical"}
+::
+```
+
+The rule of thumb: pipe table for readable prose, `::table` for compact report tables, `::dataset` when the numbers should be reusable or checked.
 
 ## Render a multi-file book
 
@@ -321,5 +373,6 @@ npm run noma -- render mydoc.noma --to html --out dist/mydoc.html
 
 - [Case studies](case-studies.noma) for end-to-end workflow narratives.
 - [Comparison guide](comparison.noma) for when to choose Noma over Markdown, MDX, raw HTML, or collaborative docs.
+- [Research memo](research-markdown-html-pains.noma) for the external Markdown/HTML pain research behind the wedge.
 - [Agent editing guide](agent-guide.noma) for safe patch operations and validation.
 - [Starter templates](templates.noma) for copyable document shapes.

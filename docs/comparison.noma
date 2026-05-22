@@ -8,7 +8,7 @@ tags: [docs, comparison, positioning]
 # Noma Comparison Guide
 
 ::summary
-Use this guide to decide when Noma is the right source format and when Markdown, MDX, raw HTML, or collaborative docs are still the better choice. Noma wins when one file must be readable by humans, render into a polished artifact, and remain safe for agents to edit block by block.
+Use this guide to decide when Noma is the right source format and when Markdown, MDX, raw HTML, or collaborative docs are still the better choice. The short version: Markdown is still best for simple prose, HTML is still best as the browser artifact, and Noma wins when one durable source must stay readable, render richly, and remain safe for agents to edit block by block.
 ::
 
 ## The short version
@@ -22,19 +22,55 @@ Use this guide to decide when Noma is the right source format and when Markdown,
 | Agent-editable rich artifacts | Noma | Stable block IDs, typed directives, validation, HTML/PDF/LLM outputs. |
 ::
 
+## The source-artifact-agent split
+
+The format debate is easier when the three surfaces are separated.
+
+::grid{columns=3}
+:::card{title="Source"}
+What humans and agents edit. Markdown is strong here for prose; raw HTML is usually too noisy. Noma keeps the source plain text but adds explicit blocks and stable IDs.
+:::
+
+:::card{title="Artifact"}
+What readers consume. HTML is strong here: layout, navigation, diagrams, controls, and shareability. Noma renders HTML instead of asking authors or agents to hand-maintain it.
+:::
+
+:::card{title="Agent"}
+What tools need. Agents need predictable IDs, validation, scoped context, and patch operations. Noma exposes these directly instead of making agents infer structure from prose.
+:::
+::
+
+::decision{id="comparison-core-frame" status="accepted"}
+Noma should be compared as a source format, not as a replacement for every artifact format. Write durable source in Noma; render HTML/PDF/LLM/JSON from it; patch stable blocks when facts change.
+::
+
 ## Noma vs Markdown
 
-Markdown is still the best default for linear prose. Noma starts to pay for itself when the document needs semantic blocks, charts, validation, or agent-safe edits.
+Markdown is still the best default for linear prose. Noma starts to pay for itself when the document needs semantic blocks, table-heavy structure, charts, validation, or agent-safe edits.
 
 ::table{header align="l,c,c,l"}
 | Capability | Markdown | Noma | Why it matters |
 | Plain-text readability | ✓ | ✓ | Both review well in Git. |
 | Headings, lists, code | ✓ | ✓ | Noma keeps the familiar baseline. |
-| Cards, grids, tabs | — | ✓ | Rich docs do not need raw HTML. |
-| Claims, evidence, decisions | — | ✓ | Semantics become queryable and validated. |
-| Charts and datasets | — | ✓ | Numbers live with the narrative. |
-| Stable agent patch targets | — | ✓ | Agents can edit one block instead of rewriting the file. |
-| Deterministic LLM export | basic | ✓ | Context can omit unsafe escape hatches and preserve structure. |
+| Cards, grids, tabs | ad hoc | native | Rich docs do not need raw HTML. |
+| Complex tables | fragile | structured | Pipe tables work for small cases; `::table`, datasets, and plots cover larger ones. |
+| Claims, evidence, decisions | ad hoc | native | Semantics become queryable and validated. |
+| Charts and datasets | external | native | Numbers live with the narrative. |
+| Stable agent patch targets | weak | native | Agents can edit one block instead of rewriting the file. |
+| Deterministic LLM export | basic | scoped | Context can omit unsafe escape hatches and preserve structure. |
+::
+
+### Table-heavy documents
+
+Tables are where Markdown's readable-source promise breaks first. A small comparison table is fine. A 20-row API parameter table, research matrix, decision grid, or financial summary quickly becomes a pipe-and-padding maintenance problem.
+
+Noma keeps three levels:
+
+::table{header align="l,l,l"}
+| Shape | Use it when | Noma support |
+| Pipe table | The table is small and still readable in source | GitHub-style table parser and `noma fmt` |
+| `::table` directive | Separator rows and padding make the source noisy | Compact rows plus declared alignment |
+| `::dataset` + `::plot` | The values matter beyond one rendered table | Validated columns, reusable data, HTML plots, LLM export |
 ::
 
 ## Noma vs MDX
@@ -59,7 +95,9 @@ MDX is excellent when the author is comfortable writing JSX and the site already
 
 ## Noma vs raw HTML
 
-HTML is a great output format and a poor long-term source format for agent collaboration. Noma keeps HTML as the artifact while making the source small, reviewable, and patchable.
+HTML is a great output format and a poor long-term source format for agent collaboration. The 2026 agent-output debate made the tradeoff visible: HTML gives agents visual density, diagrams, navigation, and one-off tools, but it is harder to co-author by hand, review in diffs, and safely re-consume as context.
+
+Noma keeps the useful part: render HTML as the artifact. It avoids the weak part: making raw HTML the source of truth.
 
 ::table{header align="l,c,c"}
 | Need | Raw HTML | Noma |
@@ -69,6 +107,10 @@ HTML is a great output format and a poor long-term source format for agent colla
 | Agent-safe block updates | — | ✓ |
 | Built-in validation | custom | ✓ |
 | Escape hatches when needed | native | controlled |
+::
+
+::callout{tone="tip"}
+Use raw HTML for bespoke pages and throwaway interfaces. Use Noma when the source needs to survive review, refreshes, citations, agent edits, or multiple render targets.
 ::
 
 ## Noma vs collaborative docs

@@ -10,10 +10,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 - **First-class PDF render target:** `noma render report.noma --to pdf --out report.pdf` now renders standalone HTML and prints it through Chromium via Puppeteer. PDF flags cover page size, margins, print backgrounds, and appended custom CSS.
 - **Plot x-axis label controls:** `::plot` now accepts `xlabel_angle=`, `xlabel_wrap=`, `xlabel_abbrev=`, and `compact` for dense report/dashboard charts.
+- **Markdown/HTML pain research memo:** `docs/research-markdown-html-pains.noma` captures external research from X, Reddit, Hacker News, official Markdown docs, GitHub issues, and Stack Overflow to sharpen Noma's source/artifact/agent wedge.
 
 ### Changed
 
 - **Report print defaults:** the default and dark themes now avoid breaking plots, diagrams, datasets, and tables across pages, and use denser print table spacing for committee-style PDFs.
+- **Positioning wedge:** README, homepage, comparison guide, and getting-started docs now frame Noma as durable readable source that renders rich HTML/PDF artifacts and supports agent-safe block patches, rather than as a generic Markdown replacement.
 
 ## [0.11.1] — 2026-05-16
 

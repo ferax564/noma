@@ -1,0 +1,385 @@
+---
+title: Noma Research Memo -- Markdown and HTML Pain Points
+date: 2026-05-22
+status: draft
+profile: research
+stale_citation_days: 90
+tags: [research, positioning, markdown, html, agents]
+---
+
+# Noma Research Memo -- Markdown and HTML Pain Points
+
+::summary
+External research across X, Reddit, Hacker News, official Markdown
+specification material, GitHub issues, and Stack Overflow supports the
+current Noma wedge: Markdown remains the best low-ceremony source for
+simple prose, HTML remains the best artifact target, and the open gap is
+a readable, structured source format that renders rich artifacts and gives
+agents stable patch targets.
+::
+
+## Executive conclusion
+
+::claim{id="claim-source-artifact-split" confidence=0.9}
+The strongest positioning for Noma is not "better Markdown" or "HTML
+replacement." It is the missing source-to-artifact layer: readable source
+for humans and agents, typed structure for validation, and rich HTML/PDF/
+LLM outputs from the same file.
+::
+
+::evidence{id="evidence-x-html-debate" for="claim-source-artifact-split" source="source-x-thariq-html"}
+The May 2026 X debate around agent-generated HTML shows why people are
+reaching beyond Markdown: agent outputs increasingly need layout,
+navigation, diagrams, interactivity, and visual density. The same debate
+also shows why raw HTML is not enough: users worry about token cost,
+human co-authoring, reviewability, and diffs.
+::
+
+::evidence{id="evidence-markdown-origin-split" for="claim-source-artifact-split" source="source-gruber-markdown-syntax"}
+Markdown's original design already draws the boundary Noma should keep:
+Markdown is a writing format, HTML is a publishing format. The gap appears
+when modern documents need more structure than Markdown can express but
+should not make authors or agents hand-edit HTML.
+::
+
+::evidence{id="evidence-noma-internal-fit" for="claim-source-artifact-split" source="source-noma-direction"}
+Noma's existing direction doc already says the source, artifact, and agent
+layers are separate concerns. External research validates that this is the
+right frame to emphasize more strongly.
+::
+
+## Pain map
+
+::table{header align="l,l,l"}
+| Observed pain | Where it shows up | Noma answer |
+| Markdown tables are tedious, fragile, and ugly at scale | Reddit, Markdown Guide, GitHub/Stack Overflow issues | Keep pipe tables for simple cases; use `::table`, datasets, and plots for richer data |
+| Markdown dialects render differently | CommonMark/GFM docs, Obsidian/CommonMark Reddit thread | Own a typed parser and validator instead of relying on ambient Markdown flavor behavior |
+| Rich documents become Markdown plus HTML/CSS/Mermaid soup | Reddit technical-doc thread, X/HTML debate | Provide declarative layout and data directives with controlled escape hatches |
+| Long agent outputs become linear walls | X, HN, Reddit Claude Code threads | Render navigable HTML artifacts from structured source |
+| Raw HTML is hard to co-author, diff, and re-consume | HN and Reddit Claude Code threads | Treat HTML as generated artifact, not the source of truth |
+| Documentation gets stale and hard to verify | Reddit documentation discussions, Stack Overflow/industry research | Use typed claims, evidence, citations, owners, stale checks, and patch transcripts |
+| Agents rewrite too much | HN co-authoring concerns and Noma's own patch protocol work | Stable block IDs and patch operations |
+::
+
+## Findings
+
+### 1. Markdown tables are the loudest everyday pain
+
+::claim{id="claim-markdown-table-pain" confidence=0.88}
+Tables are the most repeated concrete Markdown complaint: users like the
+rendered result for small cases, but dislike authoring, maintaining,
+wrapping, aligning, and transporting table source.
+::
+
+::evidence{id="evidence-reddit-table-pain" for="claim-markdown-table-pain" source="source-reddit-markdown-pain"}
+A March 2026 r/Markdown thread about technical documentation called out
+API-doc synchronization and tables as the main pains. Commenters described
+raw table source as hard to scan, especially with many rows or columns,
+and noted that HTML/CSS/Mermaid mixed into Markdown can confuse rendering
+pipelines.
+::
+
+::evidence{id="evidence-markdown-guide-tables" for="claim-markdown-table-pain" source="source-markdown-guide-extended"}
+The Markdown Guide documents table syntax as extended, not universal,
+recommends generator tools because pipe tables are tedious, and notes that
+table cells cannot contain many block elements without falling back to
+HTML workarounds.
+::
+
+::evidence{id="evidence-github-table-rendering" for="claim-markdown-table-pain" source="source-github-table-width"}
+GitHub issue history shows table rendering can become a UI problem even
+after the source parses correctly: wide Markdown tables in issue comments
+have triggered horizontal scrolling and poor review ergonomics.
+::
+
+::evidence{id="evidence-stackoverflow-table-blank-line" for="claim-markdown-table-pain" source="source-stackoverflow-table-blank-line"}
+A Stack Overflow question shows a common parser surprise: a table rendered
+in VS Code preview but not on GitHub until the author inserted a blank line
+before the table.
+::
+
+::result{id="result-table-product-implication"}
+Noma should make tables a primary demo. The pitch is not "Markdown cannot
+do tables." The pitch is: simple pipe tables remain readable; richer
+tables should become structured blocks or datasets that render as clean
+HTML/PDF and export to LLM context without forcing users to hand-align
+source.
+::
+
+### 2. Markdown's extension story is still fractured
+
+::claim{id="claim-markdown-fragmentation" confidence=0.84}
+Markdown's core strength is portability for simple prose; its weakness is
+that richer features depend on dialects, processor configuration, and
+platform-specific rules.
+::
+
+::evidence{id="evidence-commonmark-need" for="claim-markdown-fragmentation" source="source-gfm-spec"}
+The GitHub Flavored Markdown spec explains that many implementations and
+extensions emerged after the original syntax description, and that a spec
+was needed because important parsing questions were not unambiguous.
+::
+
+::evidence{id="evidence-extended-not-universal" for="claim-markdown-fragmentation" source="source-markdown-guide-extended"}
+The Markdown Guide warns that extended syntax is not supported everywhere
+and authors need to check their processor or enable extensions manually.
+::
+
+::evidence{id="evidence-obsidian-commonmark" for="claim-markdown-fragmentation" source="source-reddit-obsidian-commonmark"}
+A 2026 Obsidian discussion shows advanced users running into CommonMark
+compatibility gaps, especially around blockquotes, indentation, autolinks,
+and list parsing. The thread reflects a broader user perception that
+"Markdown" means different things in different tools.
+::
+
+::result{id="result-fragmentation-product-implication"}
+Noma should lean into having one explicit AST contract and validator. The
+comparison should say that Noma borrows Markdown's readable baseline but
+does not inherit Markdown's implicit flavor negotiation for rich blocks.
+::
+
+### 3. People now want HTML because agent outputs became artifacts
+
+::claim{id="claim-html-artifact-demand" confidence=0.86}
+The renewed interest in HTML is real because AI agents are no longer only
+answering questions; they are producing review surfaces, explainers,
+dashboards, diagrams, custom editors, and shareable reports.
+::
+
+::evidence{id="evidence-simon-html" for="claim-html-artifact-demand" source="source-simon-html"}
+Simon Willison summarized the X thread as a reason to reconsider Markdown
+as the default output format for agents when the output benefits from SVG,
+widgets, navigation, and other browser-native affordances.
+::
+
+::evidence{id="evidence-thariq-gallery" for="claim-html-artifact-demand" source="source-thariq-gallery"}
+The companion gallery for the X thread lists twenty self-contained HTML
+artifacts across planning, code review, design, prototyping, diagrams,
+research, reports, and custom editing interfaces. The examples map closely
+to Noma's intended artifact categories.
+::
+
+::evidence{id="evidence-reddit-claudecode-case-by-case" for="claim-html-artifact-demand" source="source-reddit-claudecode-html"}
+Reddit discussion around Claude Code shows a practical split: some users
+prefer Markdown for plans and memory, then generate interactive HTML when
+the document is mostly comparisons, tables, or questions per row.
+::
+
+::result{id="result-html-demand-product-implication"}
+Noma should adopt the strongest part of the HTML argument: the final
+artifact should often be HTML. But it should reject the weaker part:
+humans and agents should not have to store, diff, and patch the raw HTML.
+::
+
+### 4. Raw HTML loses as durable source
+
+::claim{id="claim-html-source-pain" confidence=0.82}
+Raw HTML is a strong artifact format and a weak durable source format for
+agent collaboration because it is verbose, harder to review, easier to
+hide irrelevant or unsafe markup in, and less pleasant for direct human
+co-authoring.
+::
+
+::evidence{id="evidence-hn-coauthoring" for="claim-html-source-pain" source="source-hn-html-thread"}
+The Hacker News thread on the X post led with a human/LLM co-authoring
+concern: HTML explainers are fine when consumed once, but HTML specs are
+harder for a human to edit directly than Markdown.
+::
+
+::evidence{id="evidence-reddit-html-cost-diff" for="claim-html-source-pain" source="source-reddit-claudecode-html"}
+The Claude Code Reddit thread repeatedly raised token cost, unusable diffs,
+harder comments, prompt-injection hiding places, and raw HTML readability
+as reasons not to make HTML the default durable format.
+::
+
+::evidence{id="evidence-gruber-html-noise" for="claim-html-source-pain" source="source-gruber-markdown-syntax"}
+Markdown's own syntax documentation illustrates why raw HTML interrupts
+prose: links and examples require substantially more markup, and writing
+about HTML in raw HTML requires escaping common characters.
+::
+
+::counterevidence{id="counterevidence-html-good-artifact" for="claim-html-source-pain" source="source-thariq-gallery"}
+HTML clearly wins when the output is a disposable or shareable interface:
+annotated diffs, diagrams, sliders, tabs, timelines, and custom editors
+are native to the browser and awkward or impossible in plain Markdown.
+::
+
+::result{id="result-html-product-implication"}
+The durable claim should be: "Noma renders to HTML without making HTML your
+source of truth." This captures both sides of the debate and avoids an
+unnecessary Markdown-vs-HTML binary.
+::
+
+### 5. The agent-era gap is stable structure, not more formatting
+
+::claim{id="claim-agent-structure-gap" confidence=0.87}
+The unsolved agent-era document problem is stable, structured state:
+agents need IDs, typed blocks, validation rules, and deterministic context
+exports, not just prettier output.
+::
+
+::evidence{id="evidence-reddit-json-structure" for="claim-agent-structure-gap" source="source-reddit-claudecode-html"}
+In the Claude Code discussion, a user described storing research in JSON
+and converting it to Markdown, HTML, or PDF because the structure lets an
+agent merge, snip, insert, and rearrange sections more reliably than a
+flat Markdown or generated HTML file.
+::
+
+::evidence{id="evidence-hn-dsl-structure" for="claim-agent-structure-gap" source="source-hn-html-thread"}
+Hacker News comments also converged on the idea that the useful layer may
+be a small structured language or template process, with Markdown for text
+and HTML for rich output.
+::
+
+::evidence{id="evidence-noma-agent-protocol" for="claim-agent-structure-gap" source="source-noma-agent-protocol"}
+Noma already has the primitives the discussion keeps circling around:
+stable IDs, `noma ids`, validation, LLM export selection, and source-
+preserving patch operations.
+::
+
+::result{id="result-agent-product-implication"}
+Noma should present itself as a typed document state layer. The rendered
+HTML is the interface; the `.noma` file is the editable memory.
+::
+
+## Positioning recommendations
+
+::decision{id="decision-positioning-frame" status="proposed"}
+Use "Markdown for prose, HTML for artifacts, Noma for agent-editable
+source that renders rich artifacts" as the core comparison frame.
+::
+
+::table{header align="l,l"}
+| Recommendation | Why |
+| Stop saying "beats Markdown" without context | Users defend Markdown for good reasons: editability, Git diffs, portability, and model familiarity |
+| Say "HTML is an output, not the source" more often | The current X/HN/Reddit debate makes this immediately legible |
+| Lead with tables, research memos, PR reviews, and decision artifacts | These are the recurring pain clusters where Markdown is too flat and raw HTML is too noisy |
+| Show source and artifact side by side | The differentiator is the split: readable `.noma` source plus rich HTML/PDF/LLM output |
+| Treat agent patching as the wedge, not an extra feature | Stable IDs and source-preserving patches answer the co-authoring and diff objections to generated HTML |
+| Keep escape hatches controlled | Users already worry about hidden or unsafe HTML; strict mode and LLM stripping are positioning assets |
+::
+
+## What Noma can credibly solve
+
+- Rich tables without hand-maintained pipe alignment for every complex case.
+- Structured claims, evidence, risks, decisions, citations, and stale checks.
+- Agent-safe targeted edits through block IDs and patch operations.
+- Beautiful standalone HTML without making authors or agents hand-write HTML.
+- Deterministic LLM context that is less noisy than HTML and more structured than Markdown.
+- Multi-format output from one source: HTML, PDF, JSON, LLM context, and round-tripped Noma.
+
+## What Noma should not claim
+
+- It should not claim Markdown is obsolete. Markdown is still ideal for short, linear prose.
+- It should not claim HTML is bad. HTML is the right artifact target and the right escape hatch for bespoke pages.
+- It should not claim to solve live collaborative editing. Google Docs and Notion still own messy human collaboration.
+- It should not claim arbitrary app UI is core Noma. Pixel-perfect apps should remain HTML/React/etc.
+- It should not hide the adoption cost. A `.noma` document pays off only when structure, validation, rendering, or agent edits matter.
+
+## Next product work suggested by the research
+
+::agent_task{id="task-update-comparison-doc" scope="docs"}
+Revise `docs/comparison.noma` to frame the tradeoff as source layer vs
+artifact layer vs agent layer. Add a short note on the May 2026 HTML-vs-
+Markdown agent-output debate and why Noma chooses a split architecture.
+::
+
+::agent_task{id="task-demo-html-debate" scope="demo"}
+Create a demo that starts from one `.noma` source and renders: a dense
+HTML review artifact, a print-ready PDF, and a scoped LLM context. The
+demo should target a pain cluster visible in the research: PR review,
+research synthesis, or complex comparison tables.
+::
+
+::agent_task{id="task-table-story" scope="docs"}
+Add a table-focused section to the getting-started or comparison docs:
+simple pipe table, `::table` directive, dataset-backed plot, and why each
+exists.
+::
+
+::agent_task{id="task-agent-patching-story" scope="docs"}
+Make source-preserving patching more central in the homepage and README.
+The clearest external objection to HTML artifacts is that humans lose the
+ability to co-author and review diffs; this is exactly where Noma is
+strongest.
+::
+
+## Source notes
+
+::citation{id="source-x-thariq-html" url="https://x.com/trq212/status/2052809885763747935" accessed="2026-05-22"}
+Original X post/thread by Thariq Shihipar that triggered the May 2026
+HTML-vs-Markdown-for-agent-output discussion. X did not expose the post
+body in text mode during this research, so the memo cross-checks it via
+Simon Willison, Hacker News, Reddit, and the public companion gallery.
+::
+
+::citation{id="source-simon-html" url="https://simonwillison.net/2026/May/8/unreasonable-effectiveness-of-html/" accessed="2026-05-22"}
+Simon Willison link post summarizing Thariq Shihipar's X argument and
+explaining why HTML output can improve agent-generated explanations.
+::
+
+::citation{id="source-thariq-gallery" url="https://thariqs.github.io/html-effectiveness/" accessed="2026-05-22"}
+Companion gallery of twenty self-contained HTML artifacts grouped by
+agent-output use case.
+::
+
+::citation{id="source-hn-html-thread" url="https://news.ycombinator.com/item?id=48071940" accessed="2026-05-22"}
+Hacker News discussion of the X post, including objections around
+human/LLM co-authoring, Markdown source, templating, token cost, and local
+HTML ergonomics.
+::
+
+::citation{id="source-reddit-claudecode-html" url="https://www.reddit.com/r/ClaudeCode/comments/1t8vni3/html_markdown_for_claude_code_outputs_thariqs/" accessed="2026-05-22"}
+Reddit discussion of HTML vs Markdown for Claude Code outputs, including
+token cost, diffs, security, Markdown storage, JSON structure, and
+case-by-case use of HTML artifacts.
+::
+
+::citation{id="source-reddit-markdown-pain" url="https://www.reddit.com/r/Markdown/comments/1rswts2/whats_the_most_painful_part_of_writing_technical/" accessed="2026-05-22"}
+Reddit thread on technical-doc pain in Markdown, especially tables,
+documentation drift, and Markdown mixed with HTML/CSS/Mermaid.
+::
+
+::citation{id="source-reddit-markdown-vs-html" url="https://www.reddit.com/r/Markdown/comments/1tbvhw1/markdown_vs_html/" accessed="2026-05-22"}
+Reddit discussion of Markdown vs HTML in AI/document workflows, including
+token economics, editor needs, portability, and rich formatting.
+::
+
+::citation{id="source-gruber-markdown-syntax" url="https://daringfireball.net/projects/markdown/syntax" accessed="2026-05-22"}
+Original Markdown syntax documentation by John Gruber.
+::
+
+::citation{id="source-gfm-spec" url="https://github.github.com/gfm/" accessed="2026-05-22"}
+GitHub Flavored Markdown specification, including rationale for a spec and
+extended table support.
+::
+
+::citation{id="source-markdown-guide-extended" url="https://www.markdownguide.org/extended-syntax/" accessed="2026-05-22"}
+Markdown Guide extended syntax reference covering availability, tables,
+cell limitations, footnotes, heading IDs, and other non-core features.
+::
+
+::citation{id="source-github-table-width" url="https://github.com/isaacs/github/issues/694" accessed="2026-05-22"}
+GitHub issue about Markdown tables in GitHub issues rendering too wide and
+requiring horizontal scrolling.
+::
+
+::citation{id="source-stackoverflow-table-blank-line" url="https://stackoverflow.com/questions/51579966/markdown-tables-not-displayed-on-a-github-md-page/51580113" accessed="2026-05-22"}
+Stack Overflow question where a table rendered in VS Code preview but not
+on GitHub until the author added a blank line before the table.
+::
+
+::citation{id="source-reddit-obsidian-commonmark" url="https://www.reddit.com/r/ObsidianMD/comments/1s4zozn/obsidian_markdown_is_incompatible_with_commonmark/" accessed="2026-05-22"}
+Reddit thread about Obsidian Markdown and CommonMark compatibility,
+including user frustration around exact parsing behavior.
+::
+
+::citation{id="source-noma-direction" url="docs/direction.noma" accessed="2026-05-22"}
+Internal Noma direction document defining the source/artifact/agent layer
+model and the core positioning.
+::
+
+::citation{id="source-noma-agent-protocol" url="docs/agent-protocol.noma" accessed="2026-05-22"}
+Internal Noma agent protocol document covering stable IDs, patch
+operations, validation, and transcript-oriented agent collaboration.
+::

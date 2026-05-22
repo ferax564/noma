@@ -11,16 +11,30 @@ Noma is a plain-text format for books, docs, research, dashboards, and webpages.
 - editable by AI agents at the **block level** — not via full-file rewrites
 
 ```
-.noma  →  typed AST  →  HTML / PDF / JSON / LLM context
+.noma source  ->  typed AST  ->  HTML / PDF / JSON / LLM context
 ```
 
 **Live site:** <https://ferax564.github.io/noma/> — landing page, demo gallery, rendered HTML/PDF/LLM/JSON for every example, full docs.
 
 ## Why
 
-Markdown is excellent for prose, weak for grids, cards, claims, plots, citations, and stable agent edits. HTML is the opposite — great as a render target, unpleasant as long-term source. Noma sits between them: a small directive syntax that compiles to clean semantic HTML, prints cleanly to PDF, exports a deterministic LLM-friendly form, and gives agents stable block IDs they can patch without rewriting whole files.
+Markdown is excellent for prose and durable notes. HTML is excellent for browser artifacts. The painful gap is everything in between: research memos, PR reviews, decision records, technical docs, dashboards, and agent outputs that need tables, layout, validation, citations, and safe follow-up edits.
+
+Noma is that middle layer. Keep the source small and reviewable like Markdown; render the artifact as rich HTML/PDF; give agents typed blocks and stable IDs so they can patch the exact claim, table, risk, or citation that changed.
 
 See [`docs/direction.noma`](docs/direction.noma) for the full positioning and [PLAN.md §23](PLAN.md) for the three-layer model and the central design test every feature must pass.
+
+## The wedge
+
+Use Noma when a document needs all three surfaces at once:
+
+| Surface | What Noma keeps stable | Why Markdown or raw HTML alone gets awkward |
+| ------- | ---------------------- | ------------------------------------------- |
+| Source | readable `.noma` text with directive blocks | Markdown gets flat; HTML gets noisy to co-author and diff |
+| Artifact | standalone HTML, PDF, docs site, JSON | Markdown needs extra tooling for polished rich output |
+| Agent | IDs, validation, scoped LLM export, patch ops | Agents need structure instead of whole-file rewrites |
+
+The first sharp use cases are table-heavy research, PR/architecture review artifacts, decision records, stale-source refreshes, and agent memory files.
 
 ## Hello, Noma
 
@@ -177,6 +191,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 
 - [Case studies](docs/case-studies.noma) — agent-refreshable research memo, decision artifact, technical-doc publishing, and memory workflow.
 - [Comparison guide](docs/comparison.noma) — when to choose Noma vs Markdown, MDX, raw HTML, or collaborative docs.
+- [Markdown/HTML pain research](docs/research-markdown-html-pains.noma) — external evidence from X, Reddit, HN, specs, GitHub, and Stack Overflow behind the source/artifact/agent wedge.
 - [Agent editing guide](docs/agent-guide.noma) — the safe loop for ID discovery, patch transactions, validation, and strict rendering.
 - [Starter templates](docs/templates.noma) — copyable research memo, decision record, technical spec, and agent refresh templates under `examples/templates/`.
 
@@ -201,7 +216,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
 - Starter templates under `examples/templates/` for research memos, decision records, technical specs, and agent refresh packs.
 - Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
-- Ten docs (all written in Noma): direction, spec, compatibility, getting started, agent patch protocol, architecture, comparison guide, case studies, agent editing guide, and starter templates.
+- Eleven docs (all written in Noma): direction, spec, compatibility, getting started, agent patch protocol, architecture, comparison guide, case studies, agent editing guide, starter templates, and the Markdown/HTML pain research memo.
 - Hand-crafted HTML landing page (`site/index.html`).
 - PDF demo exports via Puppeteer.
 - GitHub Pages deployment on every push to `main`.
