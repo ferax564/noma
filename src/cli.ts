@@ -17,6 +17,7 @@ import { formatSource } from "./fmt.js";
 import { verifyFixtureDir } from "./verify.js";
 import { diffDocs } from "./diff.js";
 import { collectIdRegistry } from "./ids.js";
+import { writePdfFromHtml, type PdfMarginOptions } from "./pdf.js";
 import type { DocumentNode } from "./ast.js";
 
 const HELP = `noma — readable document format for humans and agents
@@ -37,16 +38,24 @@ Usage:
   noma --version                             Print the CLI version
 
 Render options:
-  --to <html|llm|json|noma|site> Target format (default: html). 'site' renders
+  --to <html|llm|json|noma|site|pdf> Target format (default: html). 'site' renders
                             a book manifest as a multi-page HTML site.
   --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
   --theme <name>            HTML theme: default | dark (default: default)
+  --css <path>              Append custom CSS to standalone HTML/site/PDF output
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
   --strict                  HTML: block escape hatches and external CDN assets
   --math <katex|none>       Math rendering: enable KaTeX assets in standalone HTML
                             (default: auto-detect from doc / book manifest)
+  --page-size <name>        PDF: page size passed to Chromium (default: A4)
+  --margin <length>         PDF: set all margins (default: 20mm/18mm/20mm/18mm)
+  --margin-top <length>     PDF: override top margin
+  --margin-right <length>   PDF: override right margin
+  --margin-bottom <length>  PDF: override bottom margin
+  --margin-left <length>    PDF: override left margin
+  --no-print-background     PDF: omit CSS backgrounds when printing
   --ignore-rule <name>      Suppress a validator rule (repeatable)
   --exclude-stale-days <n>  LLM: omit ::memory blocks whose last_seen is older
                             than <n> days from --now (or system clock).
@@ -78,6 +87,7 @@ Examples:
   noma parse examples/thesis.noma
   noma schema patch-op
   noma render examples/thesis.noma --to html --out dist/thesis.html
+  noma render examples/thesis.noma --to pdf --out dist/thesis.pdf
   noma render examples/thesis.noma --to llm
   noma check examples/thesis.noma
   noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
@@ -99,8 +109,16 @@ interface CliArgs {
   opsFile?: string;
   inplace: boolean;
   theme: string;
+  customCss?: string;
   allowEscapeHatches: boolean;
   externalAssets: boolean;
+  pdfPageSize: string;
+  pdfMargin?: string;
+  pdfMarginTop?: string;
+  pdfMarginRight?: string;
+  pdfMarginBottom?: string;
+  pdfMarginLeft?: string;
+  pdfPrintBackground: boolean;
   staleDays?: number;
   ignoreRules: string[];
   math?: "katex" | "none";
@@ -119,6 +137,8 @@ function parseArgs(argv: string[]): CliArgs {
     help: false,
     inplace: false,
     theme: "default",
+    pdfPageSize: "A4",
+    pdfPrintBackground: true,
     allowEscapeHatches: true,
     externalAssets: true,
     ignoreRules: [],
@@ -149,6 +169,9 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--theme") {
       args.theme = argv[++i] ?? "default";
       i++;
+    } else if (a === "--css") {
+      args.customCss = argv[++i];
+      i++;
     } else if (a === "--no-unsafe") {
       args.allowEscapeHatches = false;
       i++;
@@ -167,6 +190,30 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--math") {
       const v = argv[++i];
       args.math = v === "none" ? "none" : "katex";
+      i++;
+    } else if (a === "--page-size") {
+      args.pdfPageSize = argv[++i] ?? "A4";
+      i++;
+    } else if (a === "--margin") {
+      args.pdfMargin = argv[++i];
+      i++;
+    } else if (a === "--margin-top") {
+      args.pdfMarginTop = argv[++i];
+      i++;
+    } else if (a === "--margin-right") {
+      args.pdfMarginRight = argv[++i];
+      i++;
+    } else if (a === "--margin-bottom") {
+      args.pdfMarginBottom = argv[++i];
+      i++;
+    } else if (a === "--margin-left") {
+      args.pdfMarginLeft = argv[++i];
+      i++;
+    } else if (a === "--print-background") {
+      args.pdfPrintBackground = true;
+      i++;
+    } else if (a === "--no-print-background") {
+      args.pdfPrintBackground = false;
       i++;
     } else if (a === "--exclude-stale-days") {
       const v = Number(argv[++i]);
@@ -227,6 +274,26 @@ function loadTheme(name = "default"): string {
   }
   if (safe !== "default") return loadTheme("default");
   return "";
+}
+
+function loadThemeCss(args: CliArgs): string {
+  const themeCss = loadTheme(args.theme);
+  if (!args.customCss) return themeCss;
+  const customPath = resolve(args.customCss);
+  if (!existsSync(customPath)) {
+    throw new Error(`custom CSS not found: ${customPath}`);
+  }
+  return `${themeCss}\n\n${readFileSync(customPath, "utf8")}`;
+}
+
+function pdfMarginFromArgs(args: CliArgs): PdfMarginOptions {
+  const base = args.pdfMargin;
+  return {
+    top: args.pdfMarginTop ?? base ?? "20mm",
+    right: args.pdfMarginRight ?? base ?? "18mm",
+    bottom: args.pdfMarginBottom ?? base ?? "20mm",
+    left: args.pdfMarginLeft ?? base ?? "18mm",
+  };
 }
 
 function loadSchema(name: string): string {
@@ -348,7 +415,7 @@ function validatePatchSource(source: string, filename: string): string {
   return errors.length > 0 ? formatDiagnostics(errors, filename) : "";
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(HELP);
@@ -460,7 +527,7 @@ function main(): void {
       process.stderr.write(`error: --to site requires --out <directory>\n`);
       process.exit(2);
     }
-    const themeCss = loadTheme(args.theme);
+    const themeCss = loadThemeCss(args);
     const { manifest, chapters } = loadBookChapters(filePath);
     const allowEscapeHatches = args.allowEscapeHatches && manifest.trusted_publishing !== true;
     renderSite(manifest, chapters, args.out, {
@@ -499,7 +566,7 @@ function main(): void {
       const to = cmd === "export" ? "json" : args.to;
       switch (to) {
         case "html": {
-          const themeCss = loadTheme(args.theme);
+          const themeCss = loadThemeCss(args);
           const html = renderHtml(doc, {
             standalone: args.standalone,
             title: args.title,
@@ -509,6 +576,28 @@ function main(): void {
             ...(args.math ? { math: args.math } : {}),
           });
           output(html, args.out);
+          return;
+        }
+        case "pdf": {
+          if (!args.out) {
+            process.stderr.write(`error: --to pdf requires --out <file.pdf>\n`);
+            process.exit(2);
+          }
+          const themeCss = loadThemeCss(args);
+          const html = renderHtml(doc, {
+            standalone: true,
+            title: args.title,
+            themeCss,
+            allowEscapeHatches,
+            externalAssets: args.externalAssets,
+            ...(args.math ? { math: args.math } : {}),
+          });
+          await writePdfFromHtml(html, args.out, {
+            pageSize: args.pdfPageSize,
+            margin: pdfMarginFromArgs(args),
+            printBackground: args.pdfPrintBackground,
+          });
+          process.stderr.write(`✓ wrote ${args.out}\n`);
           return;
         }
         case "llm": {
@@ -592,4 +681,8 @@ function main(): void {
   }
 }
 
-main();
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`error: ${message}\n`);
+  process.exit(1);
+});

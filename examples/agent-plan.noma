@@ -119,8 +119,8 @@ agent-driven artifacts favor per-render. Decide before week 3.
 ::
 
 ::open_question{id="oq-pdf-engine"}
-Typst vs. Puppeteer for PDF. Typst gives better book output; Puppeteer is
-already in the build. Defer until first user actually asks for PDF.
+Keep Puppeteer as the report-PDF path or add Typst for longer books? Puppeteer
+now covers first-class PDFs; Typst may still be worth evaluating for book output.
 ::
 
 ## Agent tasks

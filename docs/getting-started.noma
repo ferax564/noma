@@ -273,13 +273,17 @@ Three built-in profiles ship: `minimal` (markdown-equivalent), `technical` (prod
 
 ## Render to PDF
 
-The PDF pipeline shells out to Chromium via Puppeteer:
+The PDF target renders through the HTML renderer, then prints with Chromium via
+Puppeteer:
 
 ```bash
-npm run demo
+npm run noma -- render examples/research-thesis.noma --to pdf --out dist/research-thesis.pdf
+npm run noma -- render examples/research-thesis.noma --to pdf --out dist/research-thesis.pdf --page-size Letter --margin 12mm
 ```
 
-This renders all examples to HTML and produces `dist/thesis.pdf`. On first run, Puppeteer downloads a Chromium build (~150 MB).
+Use `--css report.css` to append report-specific CSS to the selected theme and
+`--no-print-background` when the output must avoid filled backgrounds. On first
+install, Puppeteer may download a Chromium build.
 
 ## Write your own
 

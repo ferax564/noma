@@ -80,3 +80,14 @@ test("plot xlabels accept space or comma", () => {
     assert.match(h2, new RegExp(`>${lbl}<`));
   }
 });
+
+test("plot x-axis label controls rotate, wrap, abbreviate, and compact", () => {
+  const doc = parse(
+    `::plot{id="p1" type="bar" data="1,2" xlabels="crypto_long_short_carry,seasonality_eq_bond_reversion" xlabel_angle=45 xlabel_wrap=8 xlabel_abbrev=14 compact title="Strategies"}\n::\n`,
+  );
+  const html = renderHtml(doc);
+  assert.match(html, /data-compact="true"/);
+  assert.match(html, /rotate\(-45\)/);
+  assert.match(html, /<title>crypto_long_short_carry<\/title>/);
+  assert.match(html, /<tspan/);
+});

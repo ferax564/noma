@@ -1,5 +1,5 @@
 import yaml from "js-yaml";
-import type { DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
+import type { Attrs, DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
 import { escapeAttr, escapeHtml, inlineToHtml, splitPipeRow } from "./inline.js";
 
@@ -722,7 +722,9 @@ function renderPlotPlaceholder(
   const dataSrc = node.attrs.data ?? node.attrs.dataset ?? "—";
   const type = String(node.attrs.type ?? "line");
   const w = Number(node.attrs.width ?? 320);
-  const h = Number(node.attrs.height ?? 140);
+  const compact = attrBool(node.attrs.compact);
+  const h = Number(node.attrs.height ?? (compact ? 112 : 140));
+  const labelOptions = plotLabelOptionsFromAttrs(node.attrs, compact);
 
   // Multi-series via `columns="a,b,c"`. Falls back to single-series via
   // `column="a"` (legacy form) or inline body data.
@@ -744,7 +746,7 @@ function renderPlotPlaceholder(
 
   const totalPoints = seriesList.reduce((s, ser) => s + ser.values.length, 0);
   const svg = seriesList.length > 0 && seriesList[0]!.values.length >= 2
-    ? renderChartSvg(seriesList, type, w, h, labels)
+    ? renderChartSvg(seriesList, type, w, h, labels, labelOptions)
     : `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <polyline points="0,${h - 20} ${w * 0.13},${h - 40} ${w * 0.25},${h - 30} ${w * 0.38},${h - 60} ${w * 0.5},${h - 65} ${w * 0.63},${h - 80} ${w * 0.75},${h - 85} ${w * 0.88},${h - 100} ${w},${h - 105}"
         fill="none" stroke="currentColor" stroke-width="2" />
@@ -753,7 +755,8 @@ function renderPlotPlaceholder(
   const sourceLabel = totalPoints >= 2
     ? `${seriesList[0]!.values.length} points${seriesList.length > 1 ? ` × ${seriesList.length} series` : ""}`
     : String(dataSrc);
-  return `<figure class="noma-plot"${idAttr}>
+  const compactAttr = compact ? ` data-compact="true"` : "";
+  return `<figure class="noma-plot"${idAttr}${compactAttr}>
   <div class="noma-plot-canvas" data-type="${escapeAttr(type)}" data-source="${escapeAttr(String(dataSrc))}">
     ${svg}
   </div>
@@ -844,12 +847,115 @@ const PLOT_COLORS = [
   "#a8362e",
 ];
 
+interface PlotLabelOptions {
+  xLabelAngle?: number;
+  xLabelWrap?: number;
+  xLabelAbbrev?: number;
+  compact: boolean;
+}
+
+function plotLabelOptionsFromAttrs(attrs: Attrs, compact: boolean): PlotLabelOptions {
+  const angle = numericAttr(attrs, "xlabel_angle");
+  const wrap = numericAttr(attrs, "xlabel_wrap");
+  const abbrev = numericAttr(attrs, "xlabel_abbrev");
+  return {
+    ...(angle !== undefined ? { xLabelAngle: normalizeXLabelAngle(angle) } : {}),
+    ...(wrap !== undefined ? { xLabelWrap: Math.max(1, Math.floor(wrap)) } : {}),
+    ...(abbrev !== undefined ? { xLabelAbbrev: Math.max(4, Math.floor(abbrev)) } : {}),
+    compact,
+  };
+}
+
+function numericAttr(attrs: Attrs, key: string): number | undefined {
+  const raw = attrs[key];
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function attrBool(value: Attrs[string] | undefined): boolean {
+  if (value === true) return true;
+  if (typeof value === "string") return value === "true" || value === "yes";
+  return false;
+}
+
+function normalizeXLabelAngle(value: number): number {
+  if (value === 0) return 0;
+  return -Math.min(90, Math.abs(value));
+}
+
+interface PlotLabelText {
+  full: string;
+  lines: string[];
+  shortened: boolean;
+}
+
+function formatPlotLabel(label: string, options: PlotLabelOptions): PlotLabelText {
+  let text = label;
+  let shortened = false;
+  if (options.xLabelAbbrev !== undefined && text.length > options.xLabelAbbrev) {
+    text = `${text.slice(0, Math.max(1, options.xLabelAbbrev - 3))}...`;
+    shortened = true;
+  }
+  const lines = options.xLabelWrap !== undefined
+    ? wrapPlotLabel(text, options.xLabelWrap)
+    : [text];
+  return { full: label, lines, shortened };
+}
+
+function wrapPlotLabel(label: string, maxChars: number): string[] {
+  if (label.length <= maxChars) return [label];
+  const chunks: string[] = [];
+  const parts = label.split(/([_\-\s]+)/).filter(Boolean);
+  let line = "";
+  const pushLine = () => {
+    const trimmed = line.trim();
+    if (trimmed) chunks.push(trimmed);
+    line = "";
+  };
+  for (const part of parts) {
+    if (part.length > maxChars) {
+      pushLine();
+      for (let i = 0; i < part.length; i += maxChars) {
+        chunks.push(part.slice(i, i + maxChars));
+      }
+      continue;
+    }
+    if ((line + part).trim().length > maxChars) pushLine();
+    line += part;
+  }
+  pushLine();
+  return chunks.length > 0 ? chunks : [label];
+}
+
+function renderPlotLabel(
+  label: PlotLabelText,
+  x: number,
+  y: number,
+  angle: number,
+  anchor: string,
+  fontPx: number,
+  lineH: number,
+): string {
+  const transform = angle !== 0
+    ? ` transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${angle})"`
+    : ` x="${x.toFixed(1)}" y="${y.toFixed(1)}"`;
+  const tspanX = angle !== 0 ? "0" : x.toFixed(1);
+  const title = label.shortened ? `<title>${escapeHtml(label.full)}</title>` : "";
+  const tspans = label.lines
+    .map((line, idx) => `<tspan x="${tspanX}" dy="${idx === 0 ? 0 : lineH}">${escapeHtml(line)}</tspan>`)
+    .join("");
+  return `<text${transform} text-anchor="${anchor}" font-size="${fontPx}" fill="currentColor" opacity="0.7">${title}${tspans}</text>`;
+}
+
 function renderChartSvg(
   seriesList: Array<{ name: string; values: number[] }>,
   type: string,
   w: number,
   h: number,
   labels: string[],
+  labelOptions: PlotLabelOptions,
 ): string {
   // Bar plots reserve half a slot of margin so end bars don't run past the
   // data-area edge. Line/area plots anchor to the edges.
@@ -858,26 +964,31 @@ function renderChartSvg(
   const N = seriesList[0]?.values.length ?? 0;
   const showLegend = nSeries > 1;
 
-  // Decide bar-label rotation up-front: rotated labels need a taller bottom
-  // gutter. We rotate when the longest label is wider than the per-bar slot.
   const FONT_PX = 9;
+  const LINE_H = 11;
   const CHAR_W = 5.5; // approx avg width of a 9pt sans char
+  const labelTexts = labels.map((label) => formatPlotLabel(label, labelOptions));
   const innerWProbe = w - 28 - (isBar ? 12 : 6);
   const slotW = labels.length ? innerWProbe / Math.max(1, N) : 0;
-  const longest = labels.reduce(
-    (m, l) => Math.max(m, (l ?? "").length * CHAR_W),
+  const longest = labelTexts.reduce(
+    (m, l) => Math.max(m, l.lines.reduce((lineMax, line) => Math.max(lineMax, line.length * CHAR_W), 0)),
     0,
   );
-  const rotateBarLabels = isBar && labels.length > 1 && longest > slotW * 0.95;
+  const maxLabelLines = labelTexts.reduce((m, l) => Math.max(m, l.lines.length), 1);
+  const autoAngle = isBar && labels.length > 1 && longest > slotW * 0.95 ? -35 : 0;
+  const xLabelAngle = labelOptions.xLabelAngle ?? autoAngle;
+  const rotateLabels = xLabelAngle !== 0;
 
   const padL = 28;
   const padR = isBar ? 12 : 6;
-  const padT = showLegend ? 22 : 8;
+  const padT = showLegend ? 22 : labelOptions.compact ? 6 : 8;
+  const straightLabelH = maxLabelLines * LINE_H + 8;
+  const rotatedLabelH = Math.ceil(longest * Math.sin((Math.abs(xLabelAngle) * Math.PI) / 180)) + maxLabelLines * LINE_H + 8;
   const padB = labels.length
-    ? rotateBarLabels
-      ? Math.min(70, Math.ceil(longest * Math.sin(0.45)) + 16)
-      : 22
-    : 8;
+    ? rotateLabels
+      ? Math.min(labelOptions.compact ? 48 : 82, rotatedLabelH)
+      : Math.min(labelOptions.compact ? 36 : 64, straightLabelH)
+    : labelOptions.compact ? 6 : 8;
   const innerW = w - padL - padR;
   const innerH = h - padT - padB;
   const allValues = seriesList.flatMap((s) => s.values);
@@ -953,23 +1064,16 @@ function renderChartSvg(
     )
     .join("");
 
-  // X-axis labels.
-  // - bar: one label per bar, optionally rotated -35° to fit.
-  // - line: at most 6 evenly-spaced ticks sampled from the labels[] array
-  //   (typical case: dates from xcolumn). Suppress when labels are absent.
   let xLabels = "";
   if (labels.length) {
     if (isBar) {
       xLabels = Array.from({ length: N })
         .map((_, i) => {
-          const lbl = labels[i] ?? "";
-          if (!lbl) return "";
+          const label = labelTexts[i];
+          if (!label || label.lines.length === 0) return "";
           const cx = x(i);
           const yPos = padT + innerH + 12;
-          if (rotateBarLabels) {
-            return `<text transform="translate(${cx.toFixed(1)} ${yPos}) rotate(-35)" text-anchor="end" font-size="${FONT_PX}" fill="currentColor" opacity="0.7">${escapeHtml(lbl)}</text>`;
-          }
-          return `<text x="${cx.toFixed(1)}" y="${yPos}" text-anchor="middle" font-size="${FONT_PX}" fill="currentColor" opacity="0.7">${escapeHtml(lbl)}</text>`;
+          return renderPlotLabel(label, cx, yPos, rotateLabels ? xLabelAngle : 0, rotateLabels ? "end" : "middle", FONT_PX, LINE_H);
         })
         .join("");
     } else {
@@ -979,11 +1083,11 @@ function renderChartSvg(
       );
       xLabels = idxs
         .map((i, k) => {
-          const lbl = labels[i] ?? "";
-          if (!lbl) return "";
+          const label = labelTexts[i];
+          if (!label || label.lines.length === 0) return "";
           const cx = x(i);
           const anchor = k === 0 ? "start" : k === T - 1 ? "end" : "middle";
-          return `<text x="${cx.toFixed(1)}" y="${(padT + innerH + 12).toFixed(1)}" text-anchor="${anchor}" font-size="${FONT_PX}" fill="currentColor" opacity="0.7">${escapeHtml(lbl)}</text>`;
+          return renderPlotLabel(label, cx, padT + innerH + 12, rotateLabels ? xLabelAngle : 0, rotateLabels ? "end" : anchor, FONT_PX, LINE_H);
         })
         .join("");
     }

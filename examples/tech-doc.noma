@@ -53,17 +53,21 @@ Render a `.noma` file to one of the supported targets.
 | Target | Output                                               |
 | ------ | ---------------------------------------------------- |
 | `html` | Standalone HTML document with the default theme      |
+| `pdf`  | Report PDF printed from the HTML renderer            |
 | `llm`  | Deterministic plain-text context for LLM consumption |
 | `json` | The parsed AST (alias of `noma export`)              |
 
 ```bash
 noma render docs/spec.noma --to html --out dist/spec.html
+noma render docs/spec.noma --to pdf --out dist/spec.pdf
 noma render docs/spec.noma --to llm
 noma render docs/spec.noma --to json --out dist/spec.json
 ```
 
 Use `--no-standalone` to emit just the HTML body (for embedding inside an
-existing page). Use `--title "..."` to override the document title.
+existing page). Use `--title "..."` to override the document title. PDF output
+requires `--out` and accepts `--page-size`, `--margin`, `--no-print-background`,
+and `--css`.
 :::
 
 :::tab{title="check"}

@@ -6,6 +6,15 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **First-class PDF render target:** `noma render report.noma --to pdf --out report.pdf` now renders standalone HTML and prints it through Chromium via Puppeteer. PDF flags cover page size, margins, print backgrounds, and appended custom CSS.
+- **Plot x-axis label controls:** `::plot` now accepts `xlabel_angle=`, `xlabel_wrap=`, `xlabel_abbrev=`, and `compact` for dense report/dashboard charts.
+
+### Changed
+
+- **Report print defaults:** the default and dark themes now avoid breaking plots, diagrams, datasets, and tables across pages, and use denser print table spacing for committee-style PDFs.
+
 ## [0.11.1] — 2026-05-16
 
 ### Added

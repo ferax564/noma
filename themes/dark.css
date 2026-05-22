@@ -280,6 +280,13 @@ figure.noma-plot figcaption {
   color: var(--noma-muted);
   font-family: var(--noma-font-sans);
 }
+figure.noma-plot[data-compact="true"] {
+  padding: 0.65em 0.8em;
+}
+figure.noma-plot[data-compact="true"] figcaption {
+  margin-top: 0.35em;
+  font-size: 0.78rem;
+}
 
 details.noma-dataset {
   margin: 1.4em 0;
@@ -352,15 +359,31 @@ table.noma-table tbody tr:hover { background: rgba(255, 168, 116, 0.06); }
 [data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }
 
 @media print {
+  @page { margin: 20mm 18mm; }
   html, body { background: white; color: black; font-size: 11pt; }
   main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }
   section.noma-hero { background: none; border: 1px solid #ddd; }
   a { color: black; }
-  pre, article.noma-card, figure.noma-plot, aside.noma-research, details.noma-dataset {
+  pre, article.noma-card, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, details.noma-dataset, table.noma-table {
     box-shadow: none;
     page-break-inside: avoid;
+    break-inside: avoid;
   }
-  h1, h2, h3 { page-break-after: avoid; }
+  figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {
+    background: white;
+  }
+  table.noma-table {
+    font-size: 9.5pt;
+    box-shadow: none;
+  }
+  table.noma-table th,
+  table.noma-table td {
+    padding: 0.35em 0.55em;
+  }
+  h1, h2, h3 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
 }
 
 /* v0.4 — site nav + math (mirrors default.css; vars from :root cascade) */
@@ -379,4 +402,3 @@ a.noma-site-chapter:hover { border-color: var(--noma-accent); }
 .noma-site-chapter-summary { display: block; color: var(--noma-muted); margin-top: 0.4rem; font-size: 0.93rem; }
 .noma-math-display { margin: 1.4em auto; text-align: center; overflow-x: auto; }
 .noma-math-inline { display: inline; }
-

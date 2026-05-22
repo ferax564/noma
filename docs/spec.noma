@@ -234,6 +234,15 @@ v0.2 ships real chart rendering for `::plot`. Pass numeric data inline via `data
 
 **Dataset linkage.** A `::plot` may pull its data out of a sibling `::dataset` instead of duplicating numbers inline. Use a `dataset="<id>"` attribute on the plot together with `column="<name>"` to select the y-series and optionally `xcolumn="<name>"` for categorical labels. If `column` is omitted, the renderer picks the first numeric column from the dataset schema.
 
+**Plot label controls.** Dense categorical charts may opt into explicit x-axis label handling:
+
+```noma
+::plot{id="strategy-bars" type="bar" data="1,2,3" xlabels="crypto_long_short_carry,seasonality_eq_bond_reversion,vol_risk_premium" xlabel_angle=45 xlabel_wrap=12 xlabel_abbrev=18 compact}
+::
+```
+
+`xlabel_angle=N` rotates x-axis labels by `N` degrees upward, `xlabel_wrap=N` wraps long labels into SVG `<tspan>` lines, `xlabel_abbrev=N` truncates display labels while preserving the full label in an SVG `<title>`, and `compact` uses tighter plot height/styling for report pages. `height=` and `width=` remain available for direct SVG sizing.
+
 The validator emits `plot-unknown-dataset` (error) when the referenced dataset id does not exist and `plot-unknown-column` (error) when the column is not declared in the dataset's schema. See `examples/research-thesis.noma` for the full pattern.
 
 ### Agent context selection
@@ -500,9 +509,16 @@ new function as `patchSource(source, ops)`; the AST-level
 | `json`   | stable  | Full AST                                                                      |
 | `noma`   | stable  | AST → `.noma` source (roundtrip-safe; backs `noma patch`)                     |
 | `site`   | stable  | Multi-page HTML site for book manifests; one page per chapter + index         |
-| `pdf`    | shipped | Puppeteer (HTML → Chromium print). See `npm run render:pdf:demos`             |
+| `pdf`    | stable  | HTML → Chromium print via Puppeteer. Requires `--out <file.pdf>`              |
 | `epub`   | planned |                                                                               |
 | `slides` | planned |                                                                               |
+
+```bash
+noma render report.noma --to pdf --out report.pdf
+noma render report.noma --to pdf --out report.pdf --page-size Letter --margin 12mm --css report.css
+```
+
+PDF output uses the HTML renderer and theme first, then prints through Chromium with print media enabled. PDF flags: `--page-size`, `--margin`, individual `--margin-top/right/bottom/left`, `--no-print-background`, and `--css` for appending custom CSS to the selected theme.
 
 ### `--to site`
 

@@ -24,11 +24,11 @@ typed AST  ─────────►  validator.ts  ─►  diagnostics
    │
    ├──►  ids.ts            ─►  ID / alias registry
    │
-   ▼  scripts/render-pdf.ts
+   ▼  pdf.ts               ─►  Chromium print
 PDF
 ```
 
-Each arrow is a pure function. The parser does not validate. The renderers do not parse. The validator does not render. The patch layer has two paths: AST-level `patch(doc, op)` for callers already operating on a tree, and source-level `patchSource(source, ops)` for the CLI/MCP path that rewrites only the addressed source spans.
+The parser does not validate. The renderers do not parse. The validator does not render. HTML/LLM/JSON/Noma renderers are pure AST-to-string functions; PDF generation is the one render path that performs I/O because it writes a temporary HTML file and drives Chromium. The patch layer has two paths: AST-level `patch(doc, op)` for callers already operating on a tree, and source-level `patchSource(source, ops)` for the CLI/MCP path that rewrites only the addressed source spans.
 
 ## Modules
 

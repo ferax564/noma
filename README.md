@@ -91,6 +91,7 @@ npm run noma -- render examples/agent-plan.noma --to llm --select claim,evidence
 npm run noma -- render examples/agent-plan.noma --to json
 npm run noma -- render examples/agent-plan.noma --to noma     # AST → .noma roundtrip
 npm run noma -- ids examples/book/book.noma.yml               # global ID + alias map for agents
+npm run noma -- render examples/agent-plan.noma --to pdf --out dist/agent-plan.pdf
 
 # pick a theme
 npm run noma -- render examples/research-thesis.noma --to html --theme dark
@@ -183,7 +184,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 
 - `@ferax564/noma-cli` (this package) — hand-written parser with no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown. The parser is exported alongside the CLI; `import { parse } from "@ferax564/noma-cli"` works in any Node 20+ project.
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively switched everywhere.
-- HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, real inline-data plots (line + bar SVG, no JS), agent tasks, export buttons, controls, tables, the new `::table` directive, and `::state_change` deltas. `::html` / `::svg` / `::script` escape hatches can be blocked with `--no-unsafe`; `--strict` also omits external CDN runtimes for math, diagrams, and Plotly.
+- HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, real inline-data plots (line + bar SVG, no JS) with x-axis label controls, agent tasks, export buttons, controls, tables, the new `::table` directive, and `::state_change` deltas. `::html` / `::svg` / `::script` escape hatches can be blocked with `--no-unsafe`; `--strict` also omits external CDN runtimes for math, diagrams, and Plotly.
 - LLM renderer — deterministic plain-text output for context windows; escape-hatch bodies always stripped. Supports `--select`, `--exclude`, and `--budget` for scoped agent context.
 - JSON renderer — full AST export.
 - `.noma` source printer — AST → `.noma` (roundtrip-safe). Backs `noma render --to noma`; source-preserving `noma patch` rewrites addressed spans directly.
@@ -192,7 +193,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Profiles — declare `profile: research | technical | minimal` in frontmatter as a contract about which directives the document uses; downstream tools can narrow safely.
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
-- CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
+- CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. `noma render --to pdf --out report.pdf` prints through Chromium via Puppeteer and accepts `--page-size`, margin flags, `--no-print-background`, and `--css`. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
 - GitHub Action — `uses: ferax564/noma@v0.11.1` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
 - VS Code extension — `ext install ferax564.noma-language` adds syntax highlighting, folding, embedded YAML/JSON/LaTeX/Mermaid/DOT scopes, and warning scopes for raw escape hatches.
 - MCP server — `@ferax564/noma-mcp-server` exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio.

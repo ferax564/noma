@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -67,6 +67,35 @@ test("noma render --to llm supports select, exclude, and budget", () => {
   assert.doesNotMatch(res.stdout, /\[RISK/);
   assert.doesNotMatch(res.stdout, /\[DATASET/);
   assert.ok(res.stdout.length <= 120);
+});
+
+test("noma render --to pdf writes a PDF file", () => {
+  const dir = scratch();
+  const input = join(dir, "report.noma");
+  const output = join(dir, "report.pdf");
+  writeFileSync(input, `# Report\n\nA short report.\n`);
+  const res = spawnSync(
+    "npx",
+    [
+      "tsx",
+      "src/cli.ts",
+      "render",
+      input,
+      "--to",
+      "pdf",
+      "--out",
+      output,
+      "--page-size",
+      "Letter",
+      "--margin",
+      "12mm",
+      "--no-print-background",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 0, res.stderr);
+  assert.ok(existsSync(output), "expected PDF output file");
+  assert.equal(readFileSync(output).subarray(0, 4).toString("utf8"), "%PDF");
 });
 
 test("noma ids prints canonical IDs, aliases, and records", () => {
