@@ -9,6 +9,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **First-class PDF render target:** `noma render report.noma --to pdf --out report.pdf` now renders standalone HTML and prints it through Chromium via Puppeteer. PDF flags cover page size, margins, print backgrounds, and appended custom CSS.
+- **DOCX render target:** `noma render report.noma --to docx --out report.docx` now writes a Word-compatible OOXML package directly from the AST. The exporter preserves headings, prose, lists, tables, code blocks, semantic directive labels, block-ID bookmarks, wikilinks, and external hyperlinks without adding a runtime dependency.
 - **Plot x-axis label controls:** `::plot` now accepts `xlabel_angle=`, `xlabel_wrap=`, `xlabel_abbrev=`, and `compact` for dense report/dashboard charts.
 - **Markdown/HTML pain research memo:** `docs/research-markdown-html-pains.noma` captures external research from X, Reddit, Hacker News, official Markdown docs, GitHub issues, and Stack Overflow to sharpen Noma's source/artifact/agent wedge.
 

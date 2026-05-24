@@ -149,6 +149,7 @@ A `.noma` source can render into:
 - a book chapter
 - a project plan
 - a decision record
+- a Word-compatible review handoff
 - a custom mini-tool
 
 ```bash

@@ -510,15 +510,19 @@ new function as `patchSource(source, ops)`; the AST-level
 | `noma`   | stable  | AST → `.noma` source (roundtrip-safe; backs `noma patch`)                     |
 | `site`   | stable  | Multi-page HTML site for book manifests; one page per chapter + index         |
 | `pdf`    | stable  | HTML → Chromium print via Puppeteer. Requires `--out <file.pdf>`              |
+| `docx`   | experimental | WordprocessingML package for Word / Google Docs handoff. Requires `--out <file.docx>` |
 | `epub`   | planned |                                                                               |
 | `slides` | planned |                                                                               |
 
 ```bash
 noma render report.noma --to pdf --out report.pdf
 noma render report.noma --to pdf --out report.pdf --page-size Letter --margin 12mm --css report.css
+noma render report.noma --to docx --out report.docx
 ```
 
 PDF output uses the HTML renderer and theme first, then prints through Chromium with print media enabled. PDF flags: `--page-size`, `--margin`, individual `--margin-top/right/bottom/left`, `--no-print-background`, and `--css` for appending custom CSS to the selected theme.
+
+DOCX output is generated directly from the AST without external dependencies. It preserves headings, paragraphs, lists, tables, code blocks, directive labels, block-ID bookmarks, internal wikilinks, and external hyperlinks. Browser-only artifact blocks such as plots and figures render as labeled placeholders in the Word document for now.
 
 ### `--to site`
 

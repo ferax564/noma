@@ -20,7 +20,8 @@ typed AST  ─────────►  validator.ts  ─►  diagnostics
    ├──►  renderer-html.ts  ─►  HTML
    ├──►  renderer-llm.ts   ─►  LLM context (optionally selected/budgeted)
    ├──►  renderer-json.ts  ─►  JSON
-   └──►  renderer-noma.ts  ─►  .noma source        (roundtrip + patch)
+   ├──►  renderer-noma.ts  ─►  .noma source        (roundtrip + patch)
+   ├──►  renderer-docx.ts  ─►  DOCX
    │
    ├──►  ids.ts            ─►  ID / alias registry
    │
@@ -28,7 +29,7 @@ typed AST  ─────────►  validator.ts  ─►  diagnostics
 PDF
 ```
 
-The parser does not validate. The renderers do not parse. The validator does not render. HTML/LLM/JSON/Noma renderers are pure AST-to-string functions; PDF generation is the one render path that performs I/O because it writes a temporary HTML file and drives Chromium. The patch layer has two paths: AST-level `patch(doc, op)` for callers already operating on a tree, and source-level `patchSource(source, ops)` for the CLI/MCP path that rewrites only the addressed source spans.
+The parser does not validate. The renderers do not parse. The validator does not render. HTML/LLM/JSON/Noma renderers are pure AST-to-string functions; the DOCX renderer is pure AST-to-Buffer and writes no files itself. PDF generation is the one render path that performs I/O because it writes a temporary HTML file and drives Chromium. The patch layer has two paths: AST-level `patch(doc, op)` for callers already operating on a tree, and source-level `patchSource(source, ops)` for the CLI/MCP path that rewrites only the addressed source spans.
 
 ## Modules
 
@@ -55,6 +56,10 @@ AST → deterministic plain text with `[TAG attr=value]` markers. Designed to ma
 
 :::card{title="src/renderer-noma.ts"}
 AST → `.noma` source. Roundtrip-safe printer that backs `noma render --to noma`. `parse → renderNoma → parse` preserves the AST modulo positions.
+:::
+
+:::card{title="src/renderer-docx.ts"}
+AST → WordprocessingML package. Generates a minimal DOCX ZIP directly: document part, styles, numbering, content types, relationships, block-ID bookmarks, internal wikilinks, and external hyperlinks. Web-first blocks degrade to labeled placeholders for review handoff.
 :::
 
 :::card{title="src/validator.ts"}

@@ -8,6 +8,8 @@ export { renderJson } from "./renderer-json.js";
 export type { JsonRenderOptions } from "./renderer-json.js";
 export { renderNoma } from "./renderer-noma.js";
 export type { NomaRenderOptions } from "./renderer-noma.js";
+export { renderDocx } from "./renderer-docx.js";
+export type { DocxRenderOptions } from "./renderer-docx.js";
 export { patch, patchAll, patchSource, findById, PatchError } from "./patch.js";
 export type { PatchOp } from "./patch.js";
 export { loadBook, isBookManifestPath, listChapters } from "./book.js";

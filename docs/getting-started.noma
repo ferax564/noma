@@ -47,6 +47,16 @@ npm run noma -- render examples/tech-doc.noma --to html --out dist/tech-doc.html
 
 Open any of the produced files in a browser — they are fully self-contained and include the default theme inline.
 
+## Export to Word
+
+Use DOCX when a document needs to enter a Word, Google Docs import, or committee review workflow:
+
+```bash
+npm run noma -- render examples/agent-plan.noma --to docx --out dist/agent-plan.docx
+```
+
+The DOCX target preserves headings, prose, lists, pipe tables, `::table` directives, code blocks, semantic directive labels, block-ID bookmarks, internal wikilinks, and external hyperlinks. Web-first blocks such as plots and figures degrade to labeled placeholders so the handoff document stays readable.
+
 ## Understand the split
 
 Noma is easiest to use when you keep three surfaces separate:

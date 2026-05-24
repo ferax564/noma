@@ -11,7 +11,7 @@ Noma is a plain-text format for books, docs, research, dashboards, and webpages.
 - editable by AI agents at the **block level** — not via full-file rewrites
 
 ```
-.noma source  ->  typed AST  ->  HTML / PDF / JSON / LLM context
+.noma source  ->  typed AST  ->  HTML / PDF / DOCX / JSON / LLM context
 ```
 
 **Live site:** <https://ferax564.github.io/noma/> — landing page, demo gallery, rendered HTML/PDF/LLM/JSON for every example, full docs.
@@ -31,7 +31,7 @@ Use Noma when a document needs all three surfaces at once:
 | Surface | What Noma keeps stable | Why Markdown or raw HTML alone gets awkward |
 | ------- | ---------------------- | ------------------------------------------- |
 | Source | readable `.noma` text with directive blocks | Markdown gets flat; HTML gets noisy to co-author and diff |
-| Artifact | standalone HTML, PDF, docs site, JSON | Markdown needs extra tooling for polished rich output |
+| Artifact | standalone HTML, PDF, DOCX, docs site, JSON | Markdown needs extra tooling for polished rich output |
 | Agent | IDs, validation, scoped LLM export, patch ops | Agents need structure instead of whole-file rewrites |
 
 The first sharp use cases are table-heavy research, PR/architecture review artifacts, decision records, stale-source refreshes, and agent memory files.
@@ -106,6 +106,7 @@ npm run noma -- render examples/agent-plan.noma --to json
 npm run noma -- render examples/agent-plan.noma --to noma     # AST → .noma roundtrip
 npm run noma -- ids examples/book/book.noma.yml               # global ID + alias map for agents
 npm run noma -- render examples/agent-plan.noma --to pdf --out dist/agent-plan.pdf
+npm run noma -- render examples/agent-plan.noma --to docx --out dist/agent-plan.docx
 
 # pick a theme
 npm run noma -- render examples/research-thesis.noma --to html --theme dark
@@ -201,6 +202,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively switched everywhere.
 - HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, datasets, real inline-data plots (line + bar SVG, no JS) with x-axis label controls, agent tasks, export buttons, controls, tables, the new `::table` directive, and `::state_change` deltas. `::html` / `::svg` / `::script` escape hatches can be blocked with `--no-unsafe`; `--strict` also omits external CDN runtimes for math, diagrams, and Plotly.
 - LLM renderer — deterministic plain-text output for context windows; escape-hatch bodies always stripped. Supports `--select`, `--exclude`, and `--budget` for scoped agent context.
+- DOCX renderer — dependency-free WordprocessingML export for handoff to Word or Google Docs import paths. It preserves headings, prose, lists, tables, code blocks, semantic directive labels, block-ID bookmarks, internal wikilinks, and external hyperlinks; rich web-only blocks such as plots and figures degrade to labeled placeholders.
 - JSON renderer — full AST export.
 - `.noma` source printer — AST → `.noma` (roundtrip-safe). Backs `noma render --to noma`; source-preserving `noma patch` rewrites addressed spans directly.
 - `noma fmt` — re-aligns GitHub-style pipe tables in source; respects pipes inside `` `code spans` `` and `\|` escapes; leaves everything else byte-identical.
@@ -208,7 +210,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Profiles — declare `profile: research | technical | minimal` in frontmatter as a contract about which directives the document uses; downstream tools can narrow safely.
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
-- CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. `noma render --to pdf --out report.pdf` prints through Chromium via Puppeteer and accepts `--page-size`, margin flags, `--no-print-background`, and `--css`. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
+- CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt`. `noma render --to pdf --out report.pdf` prints through Chromium via Puppeteer and accepts `--page-size`, margin flags, `--no-print-background`, and `--css`; `noma render --to docx --out report.docx` writes a Word-compatible package. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
 - GitHub Action — `uses: ferax564/noma@v0.11.1` validates, renders, and uploads HTML/LLM/JSON/Noma/site artifacts in CI.
 - VS Code extension — `ext install ferax564.noma-language` adds syntax highlighting, folding, embedded YAML/JSON/LaTeX/Mermaid/DOT scopes, and warning scopes for raw escape hatches.
 - MCP server — `@ferax564/noma-mcp-server` exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio.

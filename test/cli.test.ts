@@ -98,6 +98,23 @@ test("noma render --to pdf writes a PDF file", () => {
   assert.equal(readFileSync(output).subarray(0, 4).toString("utf8"), "%PDF");
 });
 
+test("noma render --to docx writes a DOCX package", () => {
+  const dir = scratch();
+  const input = join(dir, "report.noma");
+  const output = join(dir, "report.docx");
+  writeFileSync(input, `# Report\n\nA short **report**.\n`);
+  const res = spawnSync(
+    "npx",
+    ["tsx", "src/cli.ts", "render", input, "--to", "docx", "--out", output],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 0, res.stderr);
+  assert.ok(existsSync(output), "expected DOCX output file");
+  const body = readFileSync(output);
+  assert.equal(body.subarray(0, 4).toString("binary"), "PK\u0003\u0004");
+  assert.ok(body.includes("word/document.xml"));
+});
+
 test("noma ids prints canonical IDs, aliases, and records", () => {
   const dir = scratch();
   const input = join(dir, "ids.noma");

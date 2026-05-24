@@ -8,6 +8,7 @@ import { renderHtml } from "./renderer-html.js";
 import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
+import { renderDocx } from "./renderer-docx.js";
 import { patchSource, type PatchOp } from "./patch.js";
 import { loadBook, loadBookChapters, isBookManifestPath } from "./book.js";
 import { inlineDatasetSources } from "./loader.js";
@@ -38,7 +39,8 @@ Usage:
   noma --version                             Print the CLI version
 
 Render options:
-  --to <html|llm|json|noma|site|pdf> Target format (default: html). 'site' renders
+  --to <html|llm|json|noma|site|pdf|docx>
+                            Target format (default: html). 'site' renders
                             a book manifest as a multi-page HTML site.
   --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
@@ -88,6 +90,7 @@ Examples:
   noma schema patch-op
   noma render examples/thesis.noma --to html --out dist/thesis.html
   noma render examples/thesis.noma --to pdf --out dist/thesis.pdf
+  noma render examples/thesis.noma --to docx --out dist/thesis.docx
   noma render examples/thesis.noma --to llm
   noma check examples/thesis.noma
   noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
@@ -340,6 +343,17 @@ function output(content: string, out?: string): void {
   const dir = dirname(out);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(out, content, "utf8");
+  process.stderr.write(`✓ wrote ${out}\n`);
+}
+
+function outputBinary(content: Buffer, out?: string): void {
+  if (!out) {
+    process.stdout.write(content);
+    return;
+  }
+  const dir = dirname(out);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(out, content);
   process.stderr.write(`✓ wrote ${out}\n`);
 }
 
@@ -598,6 +612,14 @@ async function main(): Promise<void> {
             printBackground: args.pdfPrintBackground,
           });
           process.stderr.write(`✓ wrote ${args.out}\n`);
+          return;
+        }
+        case "docx": {
+          if (!args.out) {
+            process.stderr.write(`error: --to docx requires --out <file.docx>\n`);
+            process.exit(2);
+          }
+          outputBinary(renderDocx(doc, { title: args.title }), args.out);
           return;
         }
         case "llm": {
