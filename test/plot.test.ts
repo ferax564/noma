@@ -66,6 +66,23 @@ rows:
   assert.match(html, /3 points/);
 });
 
+test("plot resolves quoted CSV dataset cells", () => {
+  const src = `::dataset{id="ds1" format="csv"}
+vertical,"gross,margin"
+"North, America",3.4
+EMEA,2.9
+::
+
+::plot{id="p1" type="bar" dataset="ds1" column="gross,margin" xcolumn="vertical" title="X"}
+::
+`;
+  const html = renderHtml(parse(src));
+  const rects = html.match(/<rect/g) ?? [];
+  assert.equal(rects.length, 2);
+  assert.match(html, />North, America</);
+  assert.match(html, /2 points/);
+});
+
 test("plot xlabels accept space or comma", () => {
   const docComma = parse(
     `::plot{id="p1" type="bar" data="1,2,3" xlabels="a,b,c" title="X"}\n::\n`,

@@ -2,25 +2,68 @@ export type PatchOpName =
   | "replace_block"
   | "replace_body"
   | "update_heading"
+  | "add_comment"
+  | "resolve_comment"
+  | "add_footnote"
+  | "add_endnote"
+  | "add_change_request"
+  | "update_table_cell"
+  | "update_table_header_cell"
+  | "insert_table_row"
+  | "delete_table_row"
+  | "insert_table_column"
+  | "delete_table_column"
+  | "update_dataset_cell"
+  | "insert_dataset_row"
+  | "delete_dataset_row"
+  | "insert_dataset_column"
+  | "delete_dataset_column"
+  | "move_block"
   | "add_block"
   | "delete_block"
   | "update_attribute"
+  | "remove_attribute"
   | "rename_id";
 
-// AttrValue mirrors src/ast.ts — string | number | boolean ONLY. The RFC
-// reserves `value: null` for attribute removal (§3.1.4) but the current
-// server schema rejects null (packages/mcp-server/src/index.ts:15). Null
-// removal is tracked as future work; do NOT add `null` to this union until
-// the server schema accepts it.
+// AttrValue mirrors src/ast.ts — string | number | boolean ONLY.
 export type AttrValue = string | number | boolean;
 
 export type PatchOp =
   | { op: "replace_block"; id: string; content: string }
   | { op: "replace_body"; id: string; content: string }
   | { op: "update_heading"; id: string; title: string }
+  | { op: "add_comment"; id: string; target: string; content: string; author?: string; initials?: string; date?: string; reply_to?: string }
+  | { op: "resolve_comment"; id: string; resolved_by?: string; resolved_at?: string }
+  | { op: "add_footnote"; id: string; target: string; content: string; label?: string }
+  | { op: "add_endnote"; id: string; target: string; content: string; label?: string }
+  | {
+      op: "add_change_request";
+      id: string;
+      target: string;
+      action: "insert" | "delete" | "replace";
+      from?: string;
+      to?: string;
+      text?: string;
+      content?: string;
+      author?: string;
+      date?: string;
+    }
+  | { op: "update_table_cell"; id: string; row: number; column: number | string; value: string }
+  | { op: "update_table_header_cell"; id: string; column: number | string; value: string }
+  | { op: "insert_table_row"; id: string; row: number; cells: string[] }
+  | { op: "delete_table_row"; id: string; row: number }
+  | { op: "insert_table_column"; id: string; column: number; header?: string; cells: string[] }
+  | { op: "delete_table_column"; id: string; column: number | string }
+  | { op: "update_dataset_cell"; id: string; row: number; column: number | string; value: string }
+  | { op: "insert_dataset_row"; id: string; row: number; cells: string[] }
+  | { op: "delete_dataset_row"; id: string; row: number }
+  | { op: "insert_dataset_column"; id: string; column: number; header: string; cells: string[] }
+  | { op: "delete_dataset_column"; id: string; column: number | string }
+  | { op: "move_block"; id: string; parent: string; position?: number }
   | { op: "add_block"; parent: string; content: string; position?: number }
   | { op: "delete_block"; id: string }
   | { op: "update_attribute"; id: string; key: string; value: AttrValue }
+  | { op: "remove_attribute"; id: string; key: string }
   | { op: "rename_id"; from: string; to: string };
 
 // Mirrors src/patch.ts PatchErrorCode exactly. Names like `rename_collision`

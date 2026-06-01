@@ -49,9 +49,28 @@ test("patch schemas validate all shipped operation shapes and transactions", () 
     { op: "replace_block", id: "claim-1", content: "::claim{id=\"claim-1\"}\nBody.\n::" },
     { op: "replace_body", id: "claim-1", content: "Body only." },
     { op: "update_heading", id: "roadmap", title: "Roadmap" },
+    { op: "add_comment", id: "comment-1", target: "claim-1", content: "Review this claim.", author: "Research" },
+    { op: "add_comment", id: "comment-reply", target: "comment-1", reply_to: "comment-1", content: "Reply noted." },
+    { op: "resolve_comment", id: "comment-1", resolved_by: "Andrea", resolved_at: "2026-05-24T10:00:00Z" },
+    { op: "add_footnote", id: "fn-1", target: "claim-1", content: "Add committee context." },
+    { op: "add_endnote", id: "en-1", target: "claim-1", content: "Keep this context at the end.", label: "Review note" },
+    { op: "add_change_request", id: "cr-1", target: "claim-1", action: "replace", from: "old", to: "new", content: "Track this edit.", author: "Research" },
+    { op: "update_table_cell", id: "metrics", row: 0, column: "Value", value: "125%" },
+    { op: "update_table_header_cell", id: "metrics", column: "Value", value: "Revenue" },
+    { op: "insert_table_row", id: "metrics", row: 1, cells: ["NRR", "120%"] },
+    { op: "delete_table_row", id: "metrics", row: 0 },
+    { op: "insert_table_column", id: "metrics", column: 1, header: "Owner", cells: ["Finance"] },
+    { op: "delete_table_column", id: "metrics", column: "Owner" },
+    { op: "update_dataset_cell", id: "scores", row: 0, column: "score", value: "25" },
+    { op: "insert_dataset_row", id: "scores", row: 1, cells: ["finance", "24"] },
+    { op: "delete_dataset_row", id: "scores", row: 0 },
+    { op: "insert_dataset_column", id: "scores", column: 1, header: "owner", cells: ["Research"] },
+    { op: "delete_dataset_column", id: "scores", column: "owner" },
+    { op: "move_block", id: "risk-1", parent: "risks", position: 0 },
     { op: "add_block", parent: "risks", content: "::risk{id=\"r1\"}\nRisk.\n::", position: 0 },
     { op: "delete_block", id: "old-risk" },
     { op: "update_attribute", id: "claim-1", key: "confidence", value: 0.82 },
+    { op: "remove_attribute", id: "claim-1", key: "stale" },
     { op: "rename_id", from: "claim-1", to: "claim-renamed" },
   ];
   for (const op of ops) assert.equal(validateOp(op), true, JSON.stringify(validateOp.errors));
@@ -61,6 +80,8 @@ test("patch schemas validate all shipped operation shapes and transactions", () 
     JSON.stringify(validateTx.errors),
   );
   assert.equal(validateOp({ op: "update_attribute", id: "x", key: "id", value: "y" }), false);
+  assert.equal(validateOp({ op: "remove_attribute", id: "x", key: "id" }), false);
+  assert.equal(validateOp({ op: "add_change_request", id: "cr", target: "x", action: "replace", from: "old" }), false);
 });
 
 test("AST schema validates renderer-json output", () => {
@@ -98,9 +119,13 @@ test("transcript and capability schemas validate reference examples", () => {
       validation: { required: true },
       blocks: {
         claim: {
-          ops: ["replace_body", "update_attribute", "rename_id"],
+          ops: ["replace_body", "add_comment", "add_footnote", "add_endnote", "add_change_request", "update_attribute", "rename_id"],
           attrs: { confidence: { type: "number", min: 0, max: 1 } },
         },
+        comment: { ops: ["resolve_comment"] },
+        table: { ops: ["update_table_cell", "update_table_header_cell", "insert_table_row", "delete_table_row", "insert_table_column", "delete_table_column"] },
+        dataset: { ops: ["update_dataset_cell", "insert_dataset_row", "delete_dataset_row", "insert_dataset_column", "delete_dataset_column"] },
+        risk: { ops: ["move_block"] },
       },
     },
   };

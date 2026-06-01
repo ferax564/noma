@@ -183,7 +183,96 @@ aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
   font-family: var(--noma-font-sans);
   font-size: 0.9rem;
 }
-.noma-control input { margin-left: 0.6em; }
+.noma-control-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 2fr);
+  gap: 0.75rem;
+  align-items: center;
+}
+.noma-control-label { font-weight: 650; }
+.noma-control input,
+.noma-control select {
+  width: 100%;
+  accent-color: var(--noma-accent);
+  font: inherit;
+}
+.noma-control input[type="number"],
+.noma-control input[type="text"],
+.noma-control select {
+  border: 1px solid var(--noma-rule);
+  border-radius: 6px;
+  padding: 0.35em 0.5em;
+  background: var(--noma-bg);
+  color: var(--noma-fg);
+}
+.noma-control input[type="checkbox"] {
+  width: auto;
+  justify-self: start;
+}
+.noma-control-value {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--noma-muted);
+  font-family: var(--noma-font-mono);
+  font-size: 0.82rem;
+}
+.noma-interactive-disabled {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  padding: 0.18em 0.55em;
+  border: 1px solid var(--noma-rule);
+  border-radius: 999px;
+  color: var(--noma-muted);
+  background: var(--noma-bg);
+  font-family: var(--noma-font-sans);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.noma-computed {
+  margin: 1.2em 0;
+  padding: 1em;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-left: 4px solid var(--noma-claim);
+  border-radius: var(--noma-radius);
+  box-shadow: var(--noma-shadow);
+}
+.noma-computed-head {
+  display: flex;
+  gap: 0.8rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 0.45rem;
+}
+.noma-computed-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.noma-computed-value {
+  font-family: var(--noma-font-sans);
+  font-size: 1.75rem;
+  line-height: 1.15;
+  font-weight: 750;
+  color: var(--noma-claim);
+}
+.noma-computed-body {
+  margin-top: 0.75rem;
+}
+.noma-computed-body p {
+  margin-bottom: 0;
+}
+.noma-computed-plot {
+  padding: 1em;
+}
+.noma-computed-canvas {
+  margin-bottom: 0.5rem;
+}
+@media (max-width: 720px) {
+  .noma-control-row {
+    grid-template-columns: 1fr;
+  }
+}
 
 .noma-confidence {
   flex: 1;
@@ -330,6 +419,313 @@ details.noma-dataset pre {
   margin-bottom: 0.4em;
 }
 
+/* Collaboration metadata */
+aside.noma-comment,
+aside.noma-review-meta {
+  margin: 1.4em 0;
+  padding: 1em 1.2em;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-left: 3px solid #5a6071;
+  border-radius: var(--noma-radius);
+  box-shadow: var(--noma-shadow);
+}
+aside.noma-comment {
+  background: #f7f6f1;
+}
+.noma-comment-head,
+.noma-review-meta-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.55em;
+  margin-bottom: 0.4em;
+  font-family: var(--noma-font-sans);
+}
+.noma-comment .noma-tag,
+.noma-review-meta .noma-tag {
+  display: inline-block;
+  font-family: var(--noma-font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5a6071;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: #ecedf2;
+}
+.noma-review-meta.noma-collab-review {
+  border-left-color: var(--noma-accent);
+}
+.noma-review-meta.noma-collab-review .noma-tag {
+  color: var(--noma-accent);
+  background: var(--noma-accent-soft);
+}
+.noma-review-meta.noma-collab-provenance {
+  border-left-color: var(--noma-claim);
+}
+.noma-review-meta.noma-collab-provenance .noma-tag {
+  color: var(--noma-claim);
+  background: var(--noma-claim-soft);
+}
+.noma-review-meta.noma-collab-confidence {
+  border-left-color: var(--noma-evidence);
+}
+.noma-review-meta.noma-collab-confidence .noma-tag {
+  color: var(--noma-evidence);
+  background: var(--noma-evidence-soft);
+}
+.noma-comment-body p:last-child,
+.noma-review-meta-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Memory profile */
+aside.noma-memory,
+aside.noma-memory-index {
+  margin: 1.4em 0;
+  padding: 1em 1.2em;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-left: 3px solid #5a6071;
+  border-radius: var(--noma-radius);
+  box-shadow: var(--noma-shadow);
+}
+aside.noma-memory-index {
+  background: #f4f7f8;
+}
+.noma-memory-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.65em;
+  margin-bottom: 0.4em;
+  font-family: var(--noma-font-sans);
+}
+.noma-memory .noma-tag,
+.noma-memory-index .noma-tag {
+  display: inline-block;
+  font-family: var(--noma-font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: #5a6071;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: #ecedf2;
+}
+.noma-memory h3 {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+.noma-memory.noma-memory-user {
+  border-left-color: var(--noma-evidence);
+}
+.noma-memory.noma-memory-user .noma-tag {
+  color: var(--noma-evidence);
+  background: var(--noma-evidence-soft);
+}
+.noma-memory.noma-memory-feedback {
+  border-left-color: var(--noma-accent);
+}
+.noma-memory.noma-memory-feedback .noma-tag {
+  color: var(--noma-accent);
+  background: var(--noma-accent-soft);
+}
+.noma-memory.noma-memory-project {
+  border-left-color: var(--noma-claim);
+}
+.noma-memory.noma-memory-project .noma-tag {
+  color: var(--noma-claim);
+  background: var(--noma-claim-soft);
+}
+.noma-memory.noma-memory-reference {
+  border-left-color: #5a6071;
+}
+.noma-memory.noma-memory-reference .noma-tag {
+  color: #5a6071;
+  background: #ecedf2;
+}
+.noma-memory-body p:last-child,
+.noma-memory-index .noma-memory-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Metrics */
+aside.noma-metric {
+  margin: 1.5em 0;
+  padding: 1em 1.2em;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-left: 3px solid var(--noma-evidence);
+  border-radius: var(--noma-radius);
+  box-shadow: var(--noma-shadow);
+}
+.noma-metric-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.65em;
+  margin-bottom: 0.25em;
+}
+.noma-metric .noma-tag {
+  display: inline-block;
+  font-family: var(--noma-font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--noma-evidence);
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: var(--noma-evidence-soft);
+}
+.noma-metric h3 {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+.noma-metric-value {
+  margin: 0.2em 0 0.25em;
+  color: var(--noma-evidence);
+  font-family: var(--noma-font-sans);
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.noma-metric-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Technical documentation */
+article.noma-technical {
+  margin: 1.5em 0;
+  padding: 1em 1.2em;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-left: 3px solid var(--noma-claim);
+  border-radius: var(--noma-radius);
+  box-shadow: var(--noma-shadow);
+}
+article.noma-technical .noma-technical-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.65em;
+  margin-bottom: 0.35em;
+}
+article.noma-technical .noma-tag {
+  display: inline-block;
+  font-family: var(--noma-font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--noma-claim);
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: var(--noma-claim-soft);
+}
+article.noma-technical h3 {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+.noma-technical-meta {
+  margin: 0.35em 0 0.65em;
+  color: var(--noma-muted);
+  font-family: var(--noma-font-sans);
+  font-size: 0.85rem;
+}
+.noma-technical-body p:last-child {
+  margin-bottom: 0;
+}
+pre.noma-technical-code {
+  margin: 0.7em 0 0;
+}
+
+/* Custom directives */
+aside.noma-block {
+  margin: 1.5em 0;
+  padding: 1em 1.2em;
+  background: var(--noma-card-bg);
+  border: 1px solid var(--noma-rule);
+  border-left: 3px solid #5a6071;
+  border-radius: var(--noma-radius);
+  box-shadow: var(--noma-shadow);
+}
+.noma-block-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.65em;
+  margin-bottom: 0.35em;
+  font-family: var(--noma-font-sans);
+}
+aside.noma-block .noma-tag {
+  display: inline-block;
+  font-family: var(--noma-font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: #5a6071;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: #ecedf2;
+}
+aside.noma-block h3 {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+.noma-block-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Change requests */
+aside.noma-change-request {
+  margin: 1.4em 0;
+  padding: 1em 1.2em;
+  background: #fff4f0;
+  border: 1px solid #f0c7bd;
+  border-left: 3px solid #c85c4a;
+  border-radius: var(--noma-radius);
+  font-family: var(--noma-font-sans);
+}
+.noma-change-request-head {
+  font-size: 0.85rem;
+  color: var(--noma-muted, var(--noma-fg));
+  margin-bottom: 0.45em;
+}
+.noma-change-request-delta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55em;
+  margin: 0.35em 0 0.55em;
+  line-height: 1.5;
+}
+.noma-change-request del {
+  color: #9a382b;
+  text-decoration-thickness: 0.12em;
+}
+.noma-change-request ins {
+  color: #2f6e42;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 /* State change */
 aside.noma-state-change {
   margin: 1.4em 0;
@@ -402,6 +798,102 @@ table.noma-table td {
 table.noma-table tbody tr:last-child td { border-bottom: 0; }
 table.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }
 
+.noma-page-header,
+.noma-page-footer {
+  margin: 1.2rem 0;
+  padding: 0.55rem 0;
+  border-color: var(--noma-rule);
+  color: var(--noma-muted);
+  font-family: var(--noma-font-sans);
+  font-size: 0.9rem;
+}
+.noma-page-header {
+  border-bottom: 1px solid var(--noma-rule);
+}
+.noma-page-footer {
+  border-top: 1px solid var(--noma-rule);
+}
+.noma-page-header p,
+.noma-page-footer p {
+  margin: 0;
+}
+.noma-page-number {
+  display: block;
+  text-align: right;
+}
+
+.noma-toc {
+  margin: 1.6rem 0 2rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--noma-rule);
+  background: var(--noma-card-bg);
+  font-family: var(--noma-font-sans);
+  box-shadow: var(--noma-shadow);
+}
+.noma-toc h2 {
+  margin: 0 0 0.6rem;
+  padding: 0;
+  border: 0;
+  font-size: 1.1rem;
+}
+.noma-toc ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.noma-toc li {
+  margin: 0.15rem 0;
+}
+.noma-toc li[data-level="2"] { margin-left: 1rem; }
+.noma-toc li[data-level="3"] { margin-left: 2rem; }
+.noma-toc li[data-level="4"] { margin-left: 3rem; }
+.noma-toc li[data-level="5"] { margin-left: 4rem; }
+.noma-toc li[data-level="6"] { margin-left: 5rem; }
+
+.noma-footnote,
+.noma-endnote {
+  margin: 1.2rem 0;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--noma-rule);
+  background: var(--noma-code-bg);
+  color: var(--noma-muted);
+  font-family: var(--noma-font-sans);
+  font-size: 0.9rem;
+}
+.noma-footnote p,
+.noma-endnote p {
+  margin: 0.25rem 0;
+}
+.noma-footnote sup,
+.noma-endnote sup {
+  margin-right: 0.4rem;
+  color: var(--noma-accent);
+  font-weight: 700;
+}
+
+.noma-bibliography {
+  margin: 2rem 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--noma-rule);
+}
+.noma-bibliography h2 {
+  margin-top: 0;
+}
+.noma-bibliography ol {
+  padding-left: 1.4rem;
+}
+.noma-citation-meta {
+  color: var(--noma-muted);
+  font-family: var(--noma-font-sans);
+  font-size: 0.9em;
+}
+
+.noma-pagebreak {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px dashed var(--noma-rule);
+}
+
 /* Print */
 @media print {
   @page { margin: 20mm 18mm; }
@@ -409,12 +901,12 @@ table.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }
   main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }
   section.noma-hero { background: none; border: 1px solid var(--noma-rule); }
   a { color: var(--noma-fg); }
-  pre, article.noma-card, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, details.noma-dataset, table.noma-table {
+  pre, article.noma-card, article.noma-technical, aside.noma-block, .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, aside.noma-comment, aside.noma-review-meta, aside.noma-memory, aside.noma-memory-index, aside.noma-metric, aside.noma-change-request, aside.noma-footnote, aside.noma-endnote, nav.noma-toc, header.noma-page-header, footer.noma-page-footer, details.noma-dataset, table.noma-table {
     box-shadow: none;
     page-break-inside: avoid;
     break-inside: avoid;
   }
-  figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {
+  .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {
     background: white;
   }
   table.noma-table {
@@ -428,6 +920,13 @@ table.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }
   h1, h2, h3 {
     page-break-after: avoid;
     break-after: avoid;
+  }
+  .noma-pagebreak {
+    margin: 0;
+    border: 0;
+    height: 0;
+    page-break-after: always;
+    break-after: page;
   }
 }
 

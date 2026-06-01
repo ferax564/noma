@@ -70,3 +70,21 @@ test("noma diff with --reason embeds reason on each delta", () => {
   assert.equal(res.status, 0, res.stderr);
   assert.match(res.stdout, /reason="post-incident"/);
 });
+
+test("noma diff prints attribute additions and removals", () => {
+  const dir = scratch();
+  writeFileSync(join(dir, "a.noma"), `::claim{id="c1" status="draft"}\nx\n::\n`);
+  writeFileSync(join(dir, "b.noma"), `::claim{id="c1" confidence=0.8}\nx\n::\n`);
+  const res = spawnSync(
+    "npx",
+    ["tsx", "src/cli.ts", "diff", join(dir, "a.noma"), join(dir, "b.noma"), "--at", "2026-05-12"],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /attribute="confidence"/);
+  assert.match(res.stdout, /from="\(absent\)"/);
+  assert.match(res.stdout, /to=0\.8/);
+  assert.match(res.stdout, /attribute="status"/);
+  assert.match(res.stdout, /from="draft"/);
+  assert.match(res.stdout, /to="\(absent\)"/);
+});

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Noma web workbench for editing, checking, and previewing .noma documents in the browser." />
+<title>Noma Workbench</title>
+<link rel="icon" href="data:," />
+<link rel="preconnect" href="https://rsms.me/" />
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<link rel="stylesheet" href="assets/workbench.css" />
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="./"><span class="brand-mark"></span>Noma Workbench</a>
+      <nav class="topnav" aria-label="Workbench links">
+        <a href="./">Home</a>
+        <a href="docs/getting-started.html">Docs</a>
+        <a href="docs/spec.html">Spec</a>
+        <a href="https://github.com/ferax564/noma">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="workbench">
+    <div class="toolbar" aria-label="Workbench commands">
+      <div class="toolbar-row">
+        <label class="field" for="exampleSelect">
+          Example
+          <select id="exampleSelect"></select>
+        </label>
+        <button id="loadExample" type="button">Load</button>
+        <button id="newDocument" type="button">New</button>
+        <label class="file-button" for="fileInput">
+          Open
+          <input id="fileInput" type="file" accept=".noma,text/plain" />
+        </label>
+        <button id="renderNow" type="button">Render</button>
+        <span class="toolbar-spacer"></span>
+        <button id="downloadSource" type="button">Noma</button>
+        <button id="downloadHtml" type="button">HTML</button>
+        <button id="downloadJson" type="button">JSON</button>
+        <button id="copyLlm" type="button">Copy LLM</button>
+        <button id="copyDocxCommand" type="button">DOCX Cmd</button>
+        <button id="printPreview" type="button">Print</button>
+        <span id="statusText" class="status-pill" aria-live="polite">Ready</span>
+      </div>
+
+      <div class="ribbon" aria-label="Authoring tools">
+        <div class="tool-group" aria-label="Text formatting">
+          <span class="tool-label">Text</span>
+          <button type="button" data-command="bold">B</button>
+          <button type="button" data-command="italic">I</button>
+          <button type="button" data-command="code">Code</button>
+          <button type="button" data-command="link">Link</button>
+        </div>
+        <div class="tool-group" aria-label="Paragraph formatting">
+          <span class="tool-label">Paragraph</span>
+          <button type="button" data-command="heading1">H1</button>
+          <button type="button" data-command="heading2">H2</button>
+          <button type="button" data-command="heading3">H3</button>
+          <button type="button" data-command="bullets">List</button>
+          <button type="button" data-command="numbers">1.</button>
+          <button type="button" data-command="quote">Quote</button>
+          <button type="button" data-command="codeblock">Block Code</button>
+        </div>
+        <div class="tool-group" aria-label="Insert blocks">
+          <span class="tool-label">Insert</span>
+          <button type="button" data-command="insertTable">Table</button>
+          <button type="button" data-command="insertFigure">Figure</button>
+          <button type="button" data-command="insertCallout">Callout</button>
+          <button type="button" data-command="insertTask">Task</button>
+          <button type="button" data-command="insertControl">Control</button>
+          <button type="button" data-command="insertMath">Math</button>
+        </div>
+        <div class="tool-group" aria-label="Layout tools">
+          <span class="tool-label">Layout</span>
+          <button type="button" data-command="insertToc">TOC</button>
+          <button type="button" data-command="insertHeader">Header</button>
+          <button type="button" data-command="insertFooter">Footer</button>
+          <button type="button" data-command="insertPageSetup">Page</button>
+          <button type="button" data-command="insertPageBreak">Break</button>
+        </div>
+        <div class="tool-group" aria-label="Review tools">
+          <span class="tool-label">Review</span>
+          <button type="button" data-command="insertComment">Comment</button>
+          <button type="button" data-command="insertChange">Change</button>
+          <button type="button" data-command="insertFootnote">Footnote</button>
+        </div>
+        <div class="tool-group search-group" aria-label="Find text">
+          <label class="tool-label" for="findInput">Find</label>
+          <input id="findInput" type="search" placeholder="Search source" />
+          <button id="findPrev" type="button">Prev</button>
+          <button id="findNext" type="button">Next</button>
+          <span id="findStatus" class="find-status">0/0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section class="pane" aria-labelledby="sourceTitle">
+        <div class="pane-head">
+          <h1 id="sourceTitle" class="pane-title">Source</h1>
+        </div>
+        <textarea id="sourceInput" class="source-editor" spellcheck="false" aria-label="Noma source"></textarea>
+      </section>
+
+      <section class="pane" aria-labelledby="outputTitle">
+        <div class="pane-head">
+          <h2 id="outputTitle" class="pane-title">Output</h2>
+          <div class="target-tabs" aria-label="Output target">
+            <button type="button" data-target="preview" aria-pressed="true">Preview</button>
+            <button type="button" data-target="json" aria-pressed="false">AST</button>
+            <button type="button" data-target="llm" aria-pressed="false">LLM</button>
+          </div>
+        </div>
+        <iframe id="previewFrame" class="preview-frame" title="Rendered Noma preview" sandbox="allow-same-origin allow-modals"></iframe>
+        <pre id="outputPre" class="output-pre" hidden></pre>
+      </section>
+
+      <aside class="side-panel" aria-label="Document inspection">
+        <section class="side-section" aria-labelledby="diagnosticsTitle">
+          <h3 id="diagnosticsTitle">Diagnostics</h3>
+          <div id="diagnosticsList" class="diagnostics"></div>
+        </section>
+        <section class="side-section" aria-labelledby="outlineTitle">
+          <h3 id="outlineTitle">Outline</h3>
+          <div id="outlineList" class="outline"></div>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+<script src="assets/workbench.js"></script>
+</body>
+</html>

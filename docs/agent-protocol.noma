@@ -23,6 +23,6 @@ Refer to the v1.0 RFC for normative content.
 For the current implementation's machine-readable schemas, run
 `noma schema patch-op`, `noma schema patch-transaction`, `noma schema ast`,
 `noma schema transcript`, or `noma schema capability`. The implementation also
-ships additive post-v1.0 patch extensions (`replace_body`, `update_heading`);
+ships additive post-v1.0 patch extensions (`replace_body`, `update_heading`, `add_comment`, `resolve_comment`, `remove_attribute`, `add_footnote`, `add_endnote`, `add_change_request`, `update_table_cell`, `update_table_header_cell`, `insert_table_row`, `delete_table_row`, `insert_table_column`, `delete_table_column`, `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, `delete_dataset_column`, `move_block`);
 strict v1.0 tools should keep using the five RFC ops.
 ::

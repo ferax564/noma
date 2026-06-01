@@ -396,3 +396,259 @@ test("checkCapability returns allowed=true when policy matches", async () => {
   });
   assert.equal(r.allowed, true);
 });
+
+test("checkCapability checks add_comment against the commented block", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    claim:\n      ops: [add_comment]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "add_comment",
+    id: "comment-c1",
+    target: "c1",
+    content: "Review this claim.",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks resolve_comment against the comment block", async () => {
+  const path = scratchDoc(`# H\n\n::comment{id="comment-c1" parent="c1"}\nReview this.\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    comment:\n      ops: [resolve_comment]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "resolve_comment",
+    id: "comment-c1",
+    resolved_by: "Andrea",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks add_change_request against the reviewed block", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    claim:\n      ops: [add_change_request]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "add_change_request",
+    id: "cr-c1",
+    target: "c1",
+    action: "replace",
+    from: "old",
+    to: "new",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks add_footnote against the noted block", async () => {
+  const path = scratchDoc(`# H\n\n::claim{id="c1"}\nbody\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    claim:\n      ops: [add_footnote]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "add_footnote",
+    id: "fn-c1",
+    target: "c1",
+    content: "Add a native note.",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks update_table_cell against the table block", async () => {
+  const path = scratchDoc(`# H\n\n::table{id="metrics" header}\n| Metric | Value |\n| ARR | 10m |\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    table:\n      ops: [update_table_cell]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "update_table_cell",
+    id: "metrics",
+    row: 0,
+    column: "Value",
+    value: "11m",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks update_table_header_cell against the table block", async () => {
+  const path = scratchDoc(`# H\n\n::table{id="metrics" header}\n| Metric | Value |\n| ARR | 10m |\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    table:\n      ops: [update_table_header_cell]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "update_table_header_cell",
+    id: "metrics",
+    column: "Value",
+    value: "Revenue",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks update_dataset_cell against the dataset block", async () => {
+  const path = scratchDoc(`# H\n\n::dataset{id="scores"}\nschema:\n  vertical: string\n  score: number\nrows:\n  - [legal, 18]\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    dataset:\n      ops: [update_dataset_cell]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "update_dataset_cell",
+    id: "scores",
+    row: 0,
+    column: "score",
+    value: "19",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks insert_dataset_row against the dataset block", async () => {
+  const path = scratchDoc(`# H\n\n::dataset{id="scores"}\nschema:\n  vertical: string\n  score: number\nrows:\n  - [legal, 18]\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    dataset:\n      ops: [insert_dataset_row]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "insert_dataset_row",
+    id: "scores",
+    row: 1,
+    cells: ["finance", "24"],
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks delete_dataset_row against the dataset block", async () => {
+  const path = scratchDoc(`# H\n\n::dataset{id="scores"}\nschema:\n  vertical: string\n  score: number\nrows:\n  - [legal, 18]\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    dataset:\n      ops: [delete_dataset_row]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "delete_dataset_row",
+    id: "scores",
+    row: 0,
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks insert_dataset_column against the dataset block", async () => {
+  const path = scratchDoc(`# H\n\n::dataset{id="scores"}\nschema:\n  vertical: string\n  score: number\nrows:\n  - [legal, 18]\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    dataset:\n      ops: [insert_dataset_column]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "insert_dataset_column",
+    id: "scores",
+    column: 1,
+    header: "owner",
+    cells: ["Research"],
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks delete_dataset_column against the dataset block", async () => {
+  const path = scratchDoc(`# H\n\n::dataset{id="scores"}\nschema:\n  vertical: string\n  owner: string\n  score: number\nrows:\n  - [legal, Research, 18]\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    dataset:\n      ops: [delete_dataset_column]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "delete_dataset_column",
+    id: "scores",
+    column: "owner",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks insert_table_row against the table block", async () => {
+  const path = scratchDoc(`# H\n\n::table{id="metrics" header}\n| Metric | Value |\n| ARR | 10m |\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    table:\n      ops: [insert_table_row]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "insert_table_row",
+    id: "metrics",
+    row: 1,
+    cells: ["NRR", "120%"],
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks delete_table_row against the table block", async () => {
+  const path = scratchDoc(`# H\n\n::table{id="metrics" header}\n| Metric | Value |\n| ARR | 10m |\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    table:\n      ops: [delete_table_row]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "delete_table_row",
+    id: "metrics",
+    row: 0,
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks insert_table_column against the table block", async () => {
+  const path = scratchDoc(`# H\n\n::table{id="metrics" header}\n| Metric | Value |\n| ARR | 10m |\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    table:\n      ops: [insert_table_column]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "insert_table_column",
+    id: "metrics",
+    column: 1,
+    header: "Owner",
+    cells: ["Finance"],
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks delete_table_column against the table block", async () => {
+  const path = scratchDoc(`# H\n\n::table{id="metrics" header}\n| Metric | Owner | Value |\n| ARR | Finance | 10m |\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    table:\n      ops: [delete_table_column]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "delete_table_column",
+    id: "metrics",
+    column: "Owner",
+  });
+  assert.equal(r.allowed, true);
+});
+
+test("checkCapability checks move_block against the moved block", async () => {
+  const path = scratchDoc(`# H\n\n::risk{id="r1"}\nRisk.\n::\n\n::section_marker{id="target"}\n::\n`);
+  writeFileSync(
+    `${path}.capabilities.yml`,
+    "nomaAgent:\n  version: 1\n  blocks:\n    risk:\n      ops: [move_block]\n",
+  );
+  const wf = new NomaWorkflow(tools);
+  const r = await wf.checkCapability(path, {
+    op: "move_block",
+    id: "r1",
+    parent: "target",
+  });
+  assert.equal(r.allowed, true);
+});

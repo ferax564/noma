@@ -13,10 +13,11 @@ import { inlineDatasetSources } from "./loader.js";
  *
  * Recognised security-posture keys (read at the render path, not surfaced as
  * typed fields):
- * - `trusted_publishing: true` — implies `--no-unsafe` for every render driven
- *   by this manifest. Disables `::html`, `::svg`, `::script` escape hatches.
- *   The manifest is the final word; no CLI flag re-enables them once the
- *   manifest forbids them.
+ * - `trusted_publishing: true` — applies the strict static HTML posture for
+ *   every render driven by this manifest: no `::html` / `::svg` / `::script`
+ *   escape hatches, no external CDN runtimes, and no generated interactive
+ *   computed-control runtime. The manifest is the final word; no CLI flag
+ *   loosens that posture once the manifest sets it.
  */
 export interface BookManifest {
   title?: string;

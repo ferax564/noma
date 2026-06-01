@@ -30,9 +30,21 @@ This guide is the operational playbook for agents editing Noma documents. The ru
 | Replace an entire semantic block | `replace_block` |
 | Change only the prose/body | `replace_body` |
 | Rename a section title but keep links stable | `update_heading` |
+| Add or resolve a review note | `add_comment` / `resolve_comment` |
+| Add a Word-compatible footnote or endnote | `add_footnote` / `add_endnote` |
+| Propose a tracked Word review edit | `add_change_request` |
+| Change one body cell in an ID-bearing `::table` | `update_table_cell` |
+| Change one header cell in an ID-bearing `::table` | `update_table_header_cell` |
+| Add or remove one body row in an ID-bearing `::table` | `insert_table_row` / `delete_table_row` |
+| Add or remove one column in an ID-bearing `::table` | `insert_table_column` / `delete_table_column` |
+| Change one body cell in an ID-bearing `::dataset` | `update_dataset_cell` |
+| Add or remove one data row in an ID-bearing `::dataset` | `insert_dataset_row` / `delete_dataset_row` |
+| Add or remove one data column in an ID-bearing `::dataset` | `insert_dataset_column` / `delete_dataset_column` |
+| Reorder or re-home an existing semantic block | `move_block` |
 | Insert evidence, a task, or a new card | `add_block` |
 | Remove obsolete material | `delete_block` |
 | Change confidence, status, owner, or source | `update_attribute` |
+| Clear stale metadata | `remove_attribute` |
 | Change a canonical ID and retarget references | `rename_id` |
 ::
 

@@ -89,12 +89,51 @@ The current reference implementation may expose additive patch operations before
 new normative protocol minor version is cut. These are implementation extensions, not
 part of the v1.0 conformance set in §§1–6.
 
-As of the post-v0.11.0 line, the reference implementation also supports:
+As of the post-v0.11.1 line, the reference implementation also supports:
 
 - `replace_body` — replace body text on a body-only directive or text node while
   preserving the wrapper, attributes, and sibling blocks.
 - `update_heading` — change a section title while preserving the section's canonical
   ID by adding an explicit heading `{id="..."}` when needed.
+- `add_comment` — add a targeted `::comment` block after an existing block or a
+  threaded `reply_to=` comment after an existing comment so agent review notes can
+  become native Word comments in DOCX output. Source patching preserves nested
+  directive fence depth when the target lives inside another directive.
+- `resolve_comment` — mark an existing `::comment` block as resolved by setting
+  `status="resolved"` and optional resolver metadata.
+- `remove_attribute` — remove one non-`id` directive attribute without replacing
+  the block body.
+- `add_footnote` / `add_endnote` — add targeted `::footnote` or `::endnote`
+  blocks after existing blocks for Word-compatible note handoffs, preserving
+  nested directive fence depth in source patches.
+- `add_change_request` — add a targeted `::change_request` block with explicit
+  insert/delete/replace revision text for DOCX tracked-review handoffs, preserving
+  nested directive fence depth in source patches.
+- `update_table_cell` — update one body cell in an ID-bearing `::table` directive by
+  zero-based row and numeric column or header label, escaping separator pipes
+  outside inline code spans while preserving pipes inside code spans.
+- `update_table_header_cell` — update one header cell in an ID-bearing
+  `::table` directive by numeric column or header label.
+- `insert_table_row` / `delete_table_row` — add or remove one body row in an
+  ID-bearing `::table` directive by zero-based row.
+- `insert_table_column` / `delete_table_column` — add or remove one column in an
+  ID-bearing `::table` directive by zero-based column or, for deletion, header label.
+- `update_dataset_cell` — update one body cell in an ID-bearing `::dataset`
+  directive by zero-based row and numeric column or dataset column label. The
+  source-preserving implementation supports inline YAML row arrays plus
+  single-line CSV/TSV datasets with quoted cells and simple pretty-printed JSON
+  row or record arrays; other dataset shapes can still use `replace_body`.
+- `insert_dataset_row` / `delete_dataset_row` — add or remove one data row in an
+  ID-bearing `::dataset` directive by zero-based row. Source-preserving row edits
+  support inline YAML row arrays, single-line CSV/TSV bodies with quoted cells,
+  and simple pretty-printed JSON row or record arrays.
+- `insert_dataset_column` / `delete_dataset_column` — add or remove one data
+  column in an ID-bearing `::dataset` directive by zero-based column or, for
+  deletion, dataset column label. Source-preserving column edits support inline
+  YAML row arrays, single-line CSV/TSV bodies with quoted cells, and simple
+  pretty-printed JSON row or record arrays.
+- `move_block` — move an existing directive block under a new ID-bearing parent
+  while preserving the block body/attributes and normalizing fence depth when needed.
 
 Tools that need strict v1.0 interoperability SHOULD continue to emit only the five
 v1.0 ops. Tools targeting the reference implementation may discover the extended
@@ -641,7 +680,7 @@ with the `noverify` flag attribute, or per-run with `--ignore-rule <code>`.
 
 | Code | Severity | Condition |
 |------|----------|-----------|
-| `unknown-profile` | warning | Frontmatter `profile:` (or `profiles:`) declares a profile name the validator does not recognise. Known profiles: `minimal`, `technical`, `research`. |
+| `unknown-profile` | warning | Frontmatter `profile:` (or `profiles:`) declares a profile name the validator does not recognise. Known profiles: `minimal`, `technical`, `research`, `memory`. |
 | `out-of-profile-directive` | warning | A directive block whose name is not in the declared profile's allowlist appears in the document. |
 
 **Research-profile semantic checks**
@@ -660,6 +699,20 @@ These rules fire in any document; they are most meaningful under the `research` 
 | Code | Severity | Condition |
 |------|----------|-----------|
 | `agent-task-without-scope` | warning | An `::agent_task` or `::todo` block has neither a `scope=` attribute nor a non-empty body or children. |
+
+**Computed-interaction checks**
+
+These rules validate the static contract for `::control`, `::computed_metric`, and `::computed_plot`. They do not require the future browser runtime to be present.
+
+| Code | Severity | Condition |
+|------|----------|-----------|
+| `control-missing-default` | warning | A numeric `::control` block (`slider`, `range`, `number`, `checkbox`, or `toggle`) has no numeric `default=` value for static rendering and LLM context. |
+| `control-out-of-range-default` | warning | A numeric `::control` block's numeric `default=` falls outside its declared `min=` / `max=` range. |
+| `control-invalid-lock` | warning | A `::control` block declares an unsupported DOCX content-control lock mode. Valid modes are `control`, `content`, `all`, `unlocked`, and `none`. |
+| `computed-missing-formula` | warning | A `::computed_metric` or `::computed_plot` block has no `formula=` attribute or `formula:` body line. |
+| `formula-parse-error` | error | A computed block's formula is not valid numeric formula syntax or calls a function outside the allow-list. |
+| `computed-unknown-dependency` | error | A computed block's formula references an identifier that is not a `::control`, another computed block, or a declared plot-domain variable. |
+| `computed-chain-too-deep` | warning | A computed block depends on a computed chain deeper than two levels, or participates in a computed cycle. |
 
 **State-change checks**
 
@@ -701,7 +754,7 @@ These rules fire in any document; they are most meaningful under the `research` 
 
 | Code | Severity | Condition |
 |------|----------|-----------|
-| `figure-missing-alt` | warning | A `::figure` block has neither an `alt=` nor a `caption=` attribute. |
+| `figure-missing-alt` | warning | A `::figure` block has neither an `alt=` nor a `caption=` attribute, unless the block carries `noverify`. |
 
 **Dataset checks**
 

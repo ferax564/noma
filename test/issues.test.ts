@@ -201,6 +201,15 @@ test("review hardening: externalAssets=false omits CDN runtimes", () => {
   assert.match(html, /noma-plotly/);
 });
 
+test("review hardening: externalAssets=false blocks figure image loads", () => {
+  const doc = parse(
+    `::figure{id="fig1" src="assets/chart.png" alt="Chart" caption="Chart"}\n::\n`,
+  );
+  const html = renderHtml(doc, { standalone: true, externalAssets: false });
+  assert.ok(!/src="assets\/chart\.png"/.test(html));
+  assert.match(html, /figure image asset disabled: assets\/chart\.png/);
+});
+
 test("issue #9: site index card descriptions parse inline markdown", () => {
   const dir = mkdtempSync(join(tmpdir(), "noma-site-"));
   const { manifest, chapters } = loadBookChapters("examples/book/book.noma.yml");

@@ -21,10 +21,11 @@ export interface DiffOptions {
  * `::state_change` directives describing every scalar attribute drift on
  * blocks identified by `id` and present in both snapshots.
  *
- * v0.7 scope: only attributes defined on both sides where the value differs.
- * Out of scope: attribute add (only-after), attribute delete (only-before),
- * prose/heading changes, block adds/deletes, block renames, ID-less
- * directives, nested-children diffs. Tracked for v0.7.1.
+ * Emits value changes plus attribute presence changes. Added attributes use
+ * `from="(absent)"`; removed attributes use `to="(absent)"`.
+ *
+ * Out of scope: prose/heading changes, block adds/deletes, block renames,
+ * ID-less directives, nested-children diffs.
  *
  * Throws if either document contains duplicate IDs (the validator already
  * flags this as an error; diff cannot reason about which copy to compare).
@@ -59,6 +60,8 @@ interface AttrDelta {
   to: AttrValue;
 }
 
+const ABSENT_ATTR_VALUE = "(absent)";
+
 function diffAttrs(a: Attrs, b: Attrs): AttrDelta[] {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   keys.delete("id");
@@ -66,7 +69,15 @@ function diffAttrs(a: Attrs, b: Attrs): AttrDelta[] {
   for (const k of [...keys].sort()) {
     const av = a[k];
     const bv = b[k];
-    if (av === undefined || bv === undefined) continue;
+    if (av === undefined && bv === undefined) continue;
+    if (av === undefined) {
+      out.push({ attribute: k, from: ABSENT_ATTR_VALUE, to: bv! });
+      continue;
+    }
+    if (bv === undefined) {
+      out.push({ attribute: k, from: av, to: ABSENT_ATTR_VALUE });
+      continue;
+    }
     if (Object.is(av, bv)) continue;
     out.push({ attribute: k, from: av, to: bv });
   }

@@ -48,3 +48,41 @@ test("renderLlm budget trims at a bounded size", () => {
   assert.ok(llm.length <= 120);
   assert.match(llm, /truncated at 120 characters/);
 });
+
+test("renderLlm emits computed formulas with default results", () => {
+  const llm = renderLlm(parse(`::control{id="growth-rate" type="slider" min=0 max=20 default=8}
+Growth rate
+::
+
+::control{id="base-revenue" type="number" default=120}
+Base revenue
+::
+
+::control{id="include-risk" type="toggle" default=true}
+Include risk
+::
+
+::computed_metric{id="year-5-revenue" formula="base-revenue * pow(1 + growth-rate / 100, 5)"}
+::
+
+::computed_metric{id="risk-enabled-revenue" formula="include-risk * base-revenue"}
+::
+
+::computed_metric{id="year-6-revenue" formula="year-5-revenue * (1 + growth-rate / 100)"}
+::
+
+::computed_plot{id="projection" formula="base-revenue * pow(1 + growth-rate / 100, year)" domain="year:0..3"}
+::
+`));
+
+  assert.match(llm, /\[COMPUTED_METRIC id="year-5-revenue"/);
+  assert.match(llm, /formula: base-revenue \* pow\(1 \+ growth-rate \/ 100, 5\)/);
+  assert.match(llm, /default: 176\.319/);
+  assert.match(llm, /\[COMPUTED_METRIC id="risk-enabled-revenue"/);
+  assert.match(llm, /formula: include-risk \* base-revenue/);
+  assert.match(llm, /default: 120/);
+  assert.match(llm, /\[COMPUTED_METRIC id="year-6-revenue"/);
+  assert.match(llm, /default: 190\.424/);
+  assert.match(llm, /\[COMPUTED_PLOT id="projection"/);
+  assert.match(llm, /default_series \(year\): 120, 129\.6, 139\.968, 151\.16544/);
+});

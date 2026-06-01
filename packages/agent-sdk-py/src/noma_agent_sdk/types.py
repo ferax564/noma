@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt
 
 # ---------------------------------------------------------------------------
 # §3.5 error codes — must match `packages/mcp-server/src/patch.ts`
@@ -33,15 +33,31 @@ PatchOpName = Literal[
     "replace_block",
     "replace_body",
     "update_heading",
+    "add_comment",
+    "resolve_comment",
+    "add_footnote",
+    "add_endnote",
+    "add_change_request",
+    "update_table_cell",
+    "update_table_header_cell",
+    "insert_table_row",
+    "delete_table_row",
+    "insert_table_column",
+    "delete_table_column",
+    "update_dataset_cell",
+    "insert_dataset_row",
+    "delete_dataset_row",
+    "insert_dataset_column",
+    "delete_dataset_column",
+    "move_block",
     "add_block",
     "delete_block",
     "update_attribute",
+    "remove_attribute",
     "rename_id",
 ]
 
-# AttrValue mirrors src/ast.ts — string | number | boolean ONLY. RFC §3.1.4
-# reserves `value: None` for attribute removal but the current server schema
-# rejects null. Do not add `None` to this union until the server schema accepts it.
+# AttrValue mirrors src/ast.ts — string | number | boolean ONLY.
 AttrValue = Union[str, int, float, bool]
 
 ValidationSummary = Literal["ok", "warn", "error"]
@@ -73,6 +89,139 @@ class UpdateHeadingOp(_OpBase):
     title: str
 
 
+class AddCommentOp(_OpBase):
+    op: Literal["add_comment"] = "add_comment"
+    id: str
+    target: str
+    content: str
+    author: str | None = None
+    initials: str | None = None
+    date: str | None = None
+    reply_to: str | None = None
+
+
+class ResolveCommentOp(_OpBase):
+    op: Literal["resolve_comment"] = "resolve_comment"
+    id: str
+    resolved_by: str | None = None
+    resolved_at: str | None = None
+
+
+class AddFootnoteOp(_OpBase):
+    op: Literal["add_footnote"] = "add_footnote"
+    id: str
+    target: str
+    content: str
+    label: str | None = None
+
+
+class AddEndnoteOp(_OpBase):
+    op: Literal["add_endnote"] = "add_endnote"
+    id: str
+    target: str
+    content: str
+    label: str | None = None
+
+
+class AddChangeRequestOp(_OpBase):
+    op: Literal["add_change_request"] = "add_change_request"
+    id: str
+    target: str
+    action: Literal["insert", "delete", "replace"]
+    from_: str | None = Field(default=None, alias="from")
+    to: str | None = None
+    text: str | None = None
+    content: str | None = None
+    author: str | None = None
+    date: str | None = None
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class UpdateTableCellOp(_OpBase):
+    op: Literal["update_table_cell"] = "update_table_cell"
+    id: str
+    row: NonNegativeInt
+    column: NonNegativeInt | str
+    value: str
+
+
+class UpdateTableHeaderCellOp(_OpBase):
+    op: Literal["update_table_header_cell"] = "update_table_header_cell"
+    id: str
+    column: NonNegativeInt | str
+    value: str
+
+
+class InsertTableRowOp(_OpBase):
+    op: Literal["insert_table_row"] = "insert_table_row"
+    id: str
+    row: NonNegativeInt
+    cells: list[str]
+
+
+class DeleteTableRowOp(_OpBase):
+    op: Literal["delete_table_row"] = "delete_table_row"
+    id: str
+    row: NonNegativeInt
+
+
+class InsertTableColumnOp(_OpBase):
+    op: Literal["insert_table_column"] = "insert_table_column"
+    id: str
+    column: NonNegativeInt
+    header: str | None = None
+    cells: list[str]
+
+
+class DeleteTableColumnOp(_OpBase):
+    op: Literal["delete_table_column"] = "delete_table_column"
+    id: str
+    column: NonNegativeInt | str
+
+
+class UpdateDatasetCellOp(_OpBase):
+    op: Literal["update_dataset_cell"] = "update_dataset_cell"
+    id: str
+    row: NonNegativeInt
+    column: NonNegativeInt | str
+    value: str
+
+
+class InsertDatasetRowOp(_OpBase):
+    op: Literal["insert_dataset_row"] = "insert_dataset_row"
+    id: str
+    row: NonNegativeInt
+    cells: list[str]
+
+
+class DeleteDatasetRowOp(_OpBase):
+    op: Literal["delete_dataset_row"] = "delete_dataset_row"
+    id: str
+    row: NonNegativeInt
+
+
+class InsertDatasetColumnOp(_OpBase):
+    op: Literal["insert_dataset_column"] = "insert_dataset_column"
+    id: str
+    column: NonNegativeInt
+    header: str
+    cells: list[str]
+
+
+class DeleteDatasetColumnOp(_OpBase):
+    op: Literal["delete_dataset_column"] = "delete_dataset_column"
+    id: str
+    column: NonNegativeInt | str
+
+
+class MoveBlockOp(_OpBase):
+    op: Literal["move_block"] = "move_block"
+    id: str
+    parent: str
+    position: NonNegativeInt | None = None
+
+
 class AddBlockOp(_OpBase):
     op: Literal["add_block"] = "add_block"
     parent: str
@@ -92,6 +241,12 @@ class UpdateAttributeOp(_OpBase):
     value: AttrValue
 
 
+class RemoveAttributeOp(_OpBase):
+    op: Literal["remove_attribute"] = "remove_attribute"
+    id: str
+    key: str
+
+
 class RenameIdOp(_OpBase):
     op: Literal["rename_id"] = "rename_id"
     from_: str = Field(alias="from")
@@ -105,9 +260,27 @@ PatchOp = Annotated[
         ReplaceBlockOp,
         ReplaceBodyOp,
         UpdateHeadingOp,
+        AddCommentOp,
+        ResolveCommentOp,
+        AddFootnoteOp,
+        AddEndnoteOp,
+        AddChangeRequestOp,
+        UpdateTableCellOp,
+        UpdateTableHeaderCellOp,
+        InsertTableRowOp,
+        DeleteTableRowOp,
+        InsertTableColumnOp,
+        DeleteTableColumnOp,
+        UpdateDatasetCellOp,
+        InsertDatasetRowOp,
+        DeleteDatasetRowOp,
+        InsertDatasetColumnOp,
+        DeleteDatasetColumnOp,
+        MoveBlockOp,
         AddBlockOp,
         DeleteBlockOp,
         UpdateAttributeOp,
+        RemoveAttributeOp,
         RenameIdOp,
     ],
     Field(discriminator="op"),
@@ -208,12 +381,18 @@ PatchResult = Union[PatchSuccess, PatchFailure]
 
 __all__ = [
     "Actor",
+    "AddChangeRequestOp",
+    "AddCommentOp",
     "AddBlockOp",
     "AttrValue",
     "BlockSummary",
     "DeleteBlockOp",
+    "DeleteDatasetColumnOp",
+    "DeleteDatasetRowOp",
     "Diagnostic",
     "DiagnosticPos",
+    "InsertDatasetColumnOp",
+    "InsertDatasetRowOp",
     "PatchErrorCode",
     "PatchFailure",
     "PatchOp",
@@ -222,10 +401,12 @@ __all__ = [
     "PatchResultStatus",
     "PatchSuccess",
     "RenameIdOp",
+    "RemoveAttributeOp",
     "ReplaceBlockOp",
     "ReplaceBodyOp",
     "TranscriptRecord",
     "UpdateAttributeOp",
     "UpdateHeadingOp",
+    "UpdateTableHeaderCellOp",
     "ValidationSummary",
 ]

@@ -425,7 +425,7 @@
 
   .try-grid {
     display: grid;
-    grid-template-columns: minmax(0, 0.62fr) minmax(360px, 0.38fr);
+    grid-template-columns: minmax(240px, 0.3fr) minmax(420px, 0.46fr) minmax(240px, 0.24fr);
     gap: 24px;
   }
   .command-panel,
@@ -453,6 +453,14 @@
     margin: 0;
     padding: 18px 22px 18px 38px;
     color: var(--muted);
+  }
+  .note-panel p {
+    margin: 0;
+    padding: 18px 20px 0;
+    color: var(--muted);
+  }
+  .note-panel p:last-child {
+    padding-bottom: 18px;
   }
   .note-panel li + li { margin-top: 10px; }
 
@@ -632,6 +640,7 @@
     <a class="brand" href="#top"><span class="brand-mark"></span>Noma</a>
     <div class="nav-links">
       <a href="#what">What it is</a>
+      <a href="workbench.html">Workbench</a>
       <a href="#try">Try it</a>
       <a href="#agents">Agents</a>
       <a href="#examples">Examples</a>
@@ -661,7 +670,8 @@
         sections, and agent tasks all get explicit structure.</p>
       </div>
       <div class="actions">
-        <a class="btn primary" href="#try">Install and render a file</a>
+        <a class="btn primary" href="workbench.html">Open web workbench</a>
+        <a class="btn" href="#try">Install and render a file</a>
         <a class="btn" href="#examples">Open examples</a>
         <a class="btn" href="docs/getting-started.html">Read getting started</a>
       </div>
@@ -789,11 +799,16 @@ List IDs, validate, and patch blocks.
         <h2>Install the CLI and render a document.</h2>
       </div>
       <p>
-        This path is the simplest proof: install the public npm package, create
-        a starter file, check it, render it, and open the generated HTML.
+        Use the browser workbench for a zero-install preview, or install the
+        public npm package when you want files, DOCX handoffs, PDFs, and CI.
       </p>
     </div>
     <div class="try-grid">
+      <div class="note-panel">
+        <h3>Web workbench</h3>
+        <p>Edit <code>.noma</code> source, validate it, inspect the AST and LLM context, and download the rendered HTML from the static site.</p>
+        <p><a class="chip" href="workbench.html">Open workbench</a></p>
+      </div>
       <div class="command-panel">
         <h3>Fresh project smoke test</h3>
 <pre>npm install -g @ferax564/noma-cli

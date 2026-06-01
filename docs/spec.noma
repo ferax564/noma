@@ -50,6 +50,10 @@ Headings auto-create `section` nodes. Each section has an `id` derived by slugif
 
 `id="..."` replaces the slugified default. `aliases="comma,or,space,separated"` registers extra IDs that resolve to the same section — the validator accepts either, the HTML renderer emits a hidden `<a id="alias">` anchor before the heading so wikilinks and URL fragments work.
 
+### Inline content
+
+Paragraphs, headings, table cells, and review/note bodies keep lightweight inline Markdown as source text: `**bold**`, `*emphasis*`, `_emphasis_`, `` `code` ``, `[label](url)`, and `[[id]]` wikilinks. Link labels may escape literal brackets, backslashes, and table pipes as `\[`, `\]`, `\\`, and `\|`; HTML, LLM, and DOCX renderers unescape those label characters while preserving the link target. Link targets stay inline and cannot contain whitespace or `)` in source form; DOCX return readers percent-encode whitespace and parentheses from native Word relationship targets before emitting Markdown links.
+
 ### Directive blocks
 
 The core construct in Noma is the **directive block**. A directive opens with two or more colons followed by a name and an optional attribute list, and closes with a matching colon run on its own line.
@@ -67,6 +71,8 @@ Directive names may be namespaced for future community packs:
 ...
 ::
 ```
+
+Without a registered pack renderer, HTML/PDF and DOCX output keep unknown or namespaced directives visible as readable fallback panels. The fallback uses a human label (`Finance position`, `Custom directive`), preserves the body, and exposes non-structural attributes such as `asset_class=`, `region=`, or `noverify` as metadata instead of hiding the directive identity in an anonymous wrapper. DOCX fallback panels are bookmarked and framed, so accepted Word edits to body-only fallback content can return through `replace_body`.
 
 Children are written with **strictly more colons** than the parent:
 
@@ -86,7 +92,7 @@ A `::: ` opener inside a `:: ` parent creates a child block. The closer must use
 
 ### Paragraphs and inline markup
 
-Plain text outside any directive becomes a `paragraph` node. Inline markup is a small subset of Markdown: `**bold**`, `*em*`, `` `code` ``, `[label](url)`, and the Noma extension `[[block-id]]` for cross-references.
+Plain text outside any directive becomes a `paragraph` node. Inline markup is a small subset of Markdown: `**bold**`, `*em*`, `` `code` ``, `[label](url)`, and the Noma extension `[[block-id]]` for cross-references. DOCX renders wikilinks to captioned figures, tables, plots, and computed plots as Word `REF` fields so the visible cross-reference can update with the numbered caption; DOCX review extraction maps generated complex or `fldSimple` `REF` fields back to `[[block-id]]`.
 
 ### Code, lists, quotes, rules
 
@@ -103,7 +109,7 @@ GitHub-style pipe tables. The parser detects a row of pipe-separated cells immed
 | **bold** | `code`   | [link](#)|
 ```
 
-The separator row sets per-column alignment: `:---` left, `:---:` center, `---:` right, `---` default. Inline markdown inside cells is preserved — bold, italic, code, and links all render.
+The separator row sets per-column alignment: `:---` left, `:---:` center, `---:` right, `---` default. Inline markdown inside cells is preserved — bold, italic, code, and links all render. Use `\|` for a literal pipe inside a non-code cell; renderers show the pipe outside code spans while preserving the source escape. Pipes inside inline code spans do not split cells and do not need escaping, so serializers preserve `` `x|y` `` as code text while escaping separator-like pipes elsewhere.
 
 The HTML renderer emits a real `<table class="noma-table">` with `text-align` styles per cell. The LLM renderer keeps the pipe format aligned to column widths so the output stays readable in agent context.
 
@@ -117,7 +123,7 @@ For tables where pipe-syntax becomes ugly — single-character markers (`✓`, `
 ::
 ```
 
-`align` is a comma-separated list of column codes: `l` left, `c` center, `r` right, `-` default. Add the `header` flag to treat the first row as the header (omit it for body-only tables).
+`align` is a comma-separated list of column codes: `l` left, `c` center, `r` right, `-` default. Add the `header` flag to treat the first row as the header (omit it for body-only tables). Add `title=` or `caption=` when the table needs a visible Word handoff label; DOCX renders that as a Word-caption-style `Table` label with a `SEQ Table` field and keeps the table's bookmark on the label.
 
 For source hygiene, run `noma fmt <file>` (`--inplace` to rewrite). It rebuilds GitHub-style pipe tables to a single column width and leaves everything else byte-identical, including tables inside fenced code blocks.
 
@@ -161,18 +167,50 @@ section, paragraph, list, list_item, quote, code, thematic_break
 ### Layout blocks
 
 ```
-hero, grid, card, callout, columns, tabs, accordion, sidebar, button
+hero, grid, card, callout, columns, tabs, accordion, sidebar, button, page_setup, header, footer, toc, pagebreak
 ```
+
+`::page_setup{size="Letter|A4|Legal" orientation="portrait|landscape" margin="12mm"}` controls print geometry. DOCX uses the first page setup as the initial section geometry; later `::page_setup` blocks emit native Word section breaks and subsequent Word table columns, dataset tables, and grid/columns layouts size from the active page width and margins. HTML emits an `@page` rule for browser printing. Per-side margins use `margin_top`, `margin_right`, `margin_bottom`, and `margin_left`; lengths accept `in`, `mm`, `cm`, and `pt`.
+
+`::grid{columns=N}` and `::columns{columns=N}` preserve multi-column structure in DOCX by exporting fixed-width Word tables. HTML uses responsive layout styling; LLM output keeps the nested block order.
+
+`::card{title="..." variant="..." icon="..."}` renders as a framed Word panel in DOCX. Titled cards use the title as the panel label; titleless cards use `Card`; `variant` controls Word shading and `icon` / `variant` stay visible as metadata.
+
+`::abstract`, `::callout{tone="..."}`, `::note`, `::warning`, and `::tip` render as readable Word blocks in DOCX. `note`, `warning`, and `tip` are shorthand callout tones; explicit `::callout{tone=...}` uses the same natural tone labels. Word exports use labels such as `Note`, `Warning`, and `Tip` plus tone-specific shading instead of raw directive names.
+
+`::hero`, `::tabs`, and `::accordion` are interactive or web-layout containers in HTML. DOCX flattens them into their child content so Word handoffs do not show raw layout labels. `:::tab{title="..."}` renders as a titled Word panel, and `::sidebar{title="..."}` renders as a framed Word aside.
+
+`::button{href="..."}` renders as a visible call-to-action in HTML. DOCX renders it as a Word hyperlink when `href=` is an internal anchor or external URL, otherwise as a readable action label.
+
+`::header` and `::footer` define document chrome for handoff targets. DOCX emits native Word header/footer parts, preserves inline formatting, wikilinks, and external hyperlinks with part-local relationship files, and `::footer{page_numbers total_pages}` inserts Word `PAGE` and `NUMPAGES` fields. HTML/PDF render visible header/footer bands as a fallback.
+
+`::toc{title="Contents" depth=3}` emits a generated table of contents from document headings. HTML/PDF render a linked navigation list; DOCX renders linked entries that target the same Word bookmarks used by wikilinks, adds `PAGEREF` page-number fields for each entry, and writes Word settings that refresh fields when the document opens. Use `::toc{of="figures|tables|plots"}` to generate linked caption lists instead of heading entries; DOCX uses the same bookmark and page-reference machinery for those caption lists.
+
+`::pagebreak` inserts a hard page boundary in print-oriented targets. HTML emits a screen-visible dashed marker that becomes `break-after: page` in print CSS; DOCX emits a native Word page break.
 
 ### Artifact-action blocks
 
 ```
-export_button, control
+export_button, control, computed_metric, computed_plot
 ```
 
-`::export_button{format="prompt|markdown|json|llm" target="..."}` renders as a real `<button>` with format-keyed colors. The body (or `Label:` line) becomes the button label. Agents and end-users use these to round-trip artifact state back into a prompt or to download the underlying source.
+`::export_button{format="prompt|markdown|json|llm" target="..."}` renders as a real `<button>` with format-keyed colors. The body (or `Label:` line) becomes the button label. Agents and end-users use these to round-trip artifact state back into a prompt or to download the underlying source. DOCX renders it as an explicit export action with `format` metadata and a bookmark link to `target` when possible.
 
-`::control{type="slider|number|text" min=... max=... default=...}` renders a labeled input. First-class support for the interactive-artifact direction described in PLAN.md §23.9.
+`::control{type="slider|number|text|date|select|toggle" min=... max=... default=...}` renders a labeled input. The HTML renderer maps `type="slider"` to a range input, `type="date"` to a date input, `type="select"` to a `<select>`, and `type="toggle"` to a checkbox-style input. Select options use `options="1=Base,1.2=Upside"`; the left side is the submitted value and the right side is the label. Omitted `type=` defaults to text. DOCX renders text/number/slider defaults as native editable text content controls, `date` as a native Word date-picker content control, `select` as a native Word dropdown list, and `toggle` / `checkbox` as native Word checkbox controls, while keeping type/default/range metadata readable beside the field. Date controls accept optional `date_format=` and `locale=` attributes for the Word content-control metadata. Add `lock="control"` (or the `locked` flag) when Word reviewers should not delete the content-control field itself; `lock="content"` locks the value, `lock="all"` locks field and value, and `lock="unlocked"` / `lock="none"` leaves it explicitly unlocked. ID-bearing controls also bind to a DOCX custom XML part (`urn:noma:controls`) through native `w:dataBinding`, so Word form handoffs carry a structured value layer behind the visible content controls. The DOCX data/sync return path reads visible control and task content controls from the document body, headers, and footers, which lets form fields embedded in document chrome return to source.
+
+`::doc_protection{edit="forms"}` is a document-wide DOCX setting for form handoffs. Word output writes native `w:documentProtection` metadata in `word/settings.xml`; `edit=` / `mode=` accepts `forms` (default), `readOnly`, `comments`, or `trackedChanges`, and `enforcement=` defaults to true. This is a Word editing-mode hint, not a security boundary or password-protection feature.
+
+`::computed_metric{formula="..."}` and `::computed_plot{formula="..." domain="year:0..10"}` are the declarative computation blocks for that same interactive direction. They intentionally stay inside the generic `directive` AST node. `formula:` and `domain:` body lines are accepted when attributes would be awkward. The validator parses formulas, checks referenced `::control` / computed IDs, catches invalid formulas, enforces numeric defaults on numeric control types, and warns when computed chains get deeper than two levels. Toggle defaults count as `1` / `0`, and select controls participate in formulas when their option values are numeric. Standalone HTML embeds a small local runtime that recalculates computed metrics and simple-domain computed plots when controls change, and PDF output keeps that rendered artifact path. DOCX evaluates computed metrics against control defaults and embeds simple-domain computed plots as static SVG chart media with formula/domain metadata visible. The LLM renderer emits each computed formula plus a default scalar result or short default series evaluated from current control defaults.
+
+Formula syntax is numeric only: `+`, `-`, `*`, `/`, `^`, comparisons (`>`, `>=`, `<`, `<=`, `==`, `!=`), parenthesized expressions, hyphenated control IDs such as `growth-rate`, and the allow-listed functions `pow`, `min`, `max`, `clamp`, `round`, `abs`, and `if`. Unknown functions are validation errors, not runtime surprises.
+
+### Technical documentation
+
+```
+api, endpoint, parameter, example, changelog, instruction, query
+```
+
+Technical documentation blocks render as structured panels in HTML/PDF and DOCX instead of generic directive labels. `::api` preserves title/version/base URL/status metadata; `::endpoint` preserves method/path/auth/API links; `::parameter` preserves location/type/required/default metadata; `::example{lang=...}` and `::query{lang=...}` keep their bodies in monospace code blocks; `::instruction` preserves scope/audience/priority; and `::changelog` preserves version/date/status metadata.
 
 ### Research and reasoning
 
@@ -180,19 +218,45 @@ export_button, control
 claim, evidence, counterevidence, assumption, risk, hypothesis, result, limitation, open_question, decision, adr, state_change
 ```
 
-`::state_change{block="<id>" attribute="<name>" from=<old> to=<new> reason="..." at="<iso-date>"}` records a typed delta against another block — useful for weekly/quarterly recap docs that need to express "value was X, now Y". The HTML renderer shows it as a strike-through → bold delta; the LLM renderer keeps the structured fields. Validator: `block=` must point to an existing id; both `from=` and `to=` are required.
+In HTML/PDF and DOCX output, reasoning blocks render as readable review blocks with key metadata preserved below the body. `::evidence` and `::counterevidence` keep `for=`, `source=`, `url=`, `doi=`, and `accessed=`; `::risk` keeps `severity=`, `owner=`, and `status=`; `::decision` / `::adr` keep `status=`, `owner=`, and decision dates; `::open_question` keeps `status=`, `owner=`, and due dates; and `::assumption`, `::hypothesis`, `::result`, and `::limitation` keep `status=`, `owner=`, `confidence=`, and `source=`. HTML/PDF output keeps references as anchors or external links; Word exports point references at bookmarks when the target ID exists and become external hyperlinks for URLs/DOIs.
+
+`::state_change{block="<id>" attribute="<name>" from=<old> to=<new> reason="..." at="<iso-date>"}` records a typed delta against another block — useful for weekly/quarterly recap docs that need to express "value was X, now Y". The HTML and DOCX renderers show it as a readable old → new delta, while the LLM renderer keeps the structured fields. Validator: `block=` must point to an existing id; both `from=` and `to=` are required.
 
 ### Data and computation
 
 ```
-dataset, plot, metric, code_cell, output
+dataset, plot, metric, figure, code, code_cell, output
 ```
+
+`::dataset` bodies can be YAML, CSV/TSV, or JSON. CSV/TSV rows support single-line double-quoted cells with doubled quotes (`"North, America"`, `"APAC ""Strategic"""`) when a cell needs the delimiter or quote character. HTML exposes the source in a collapsible details block, plots can query it by `dataset=`, and DOCX renders resolvable datasets as native Word tables with inferred headers. `noma docx-review-sync` can update inline dataset bodies from edited Word tables when the dataset table can be matched and represented in the source format; simple same-shape edits to inline YAML row arrays, CSV/TSV bodies, and pretty-printed JSON row or record arrays use `update_dataset_cell`, while simple row/column insert/delete edits use `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, or `delete_dataset_column` so surrounding schema text, comments, and unrelated rows stay byte-preserved. File-backed datasets are inlined by the CLI loader before renderers run.
+
+`::metric{label="..." value=... unit="..."}` represents a KPI or scalar data point. Optional `status=`, `trend=`, `change=` / `delta=`, `target=`, `source=`, and `as_of=` attributes keep review context attached to the number. HTML/PDF and DOCX render metrics as readable KPI blocks with the value/unit separated from metadata and with `source=` linked to a bookmark or external URL when possible.
+
+`::code{id="..." lang="..."}` is an addressable code or prompt snippet. It keeps the source patchable by block ID while HTML/PDF and DOCX render the body as a labeled monospace code block with the same bookmark/anchor used by wikilinks and comments.
+
+`::code_cell{lang="..." kernel="..."}` and `::output{for="..." type="..."}` represent computation source and its captured result. HTML/PDF and DOCX render both as technical handoff blocks: code-cell bodies and output bodies stay in monospace code paragraphs, `kernel=`, `status=`, and `execution_count=` metadata stays visible, and `output for=` links back to the source cell anchor/bookmark when possible.
+
+`::figure{src="..." alt="..." caption="..." width="..."}` renders an image with optional caption. HTML emits `<figure><img ...>`. DOCX embeds PNG/JPEG/GIF/SVG images when the `src=` is a data URI or when the CLI can resolve a local file path; the renderer itself only consumes already-inlined image data so it remains pure. Embedded DOCX figures place a Word-caption-style `Figure` caption after the media, include a `SEQ Figure` field for numbering, and attach the block bookmark to that caption. `width=` / `height=` accept the same length units as page setup.
 
 ### Agent collaboration
 
 ```
-agent_task, todo, review, comment, change_request, provenance, confidence, citation
+agent_task, todo, review, comment, change_request, provenance, confidence, citation, footnote, endnote, bibliography
 ```
+
+In DOCX output, `::comment{parent="<id>" author="..." date="..."}` becomes a native Word comment. HTML/PDF render the same block as a visible review-note panel. The block body becomes the comment text, preserving inline bold/emphasis/code, internal wikilinks, and external hyperlinks inside the native `comments.xml` part. `author=` / `initials=` / `date=` become review metadata, and `parent=`, `for=`, or `target=` anchors/links the comment to that block when the target exists. Use `reply_to="<comment-id>"` when a comment should reply to another comment; DOCX records the thread relationship in the Word `commentsExtended` part, while HTML/PDF still show the reply as a review-note panel. Replies whose parent is missing, deleted, or withdrawn are not exported as orphan standalone Word comments and do not force review-view settings. The validator checks `reply_to=` as an ID reference. Untargeted comments still render at their source position. Agents mark closed review notes with `status="resolved"` plus optional `resolved_by=` / `resolved_at=` metadata, usually through the `resolve_comment` patch op; DOCX output includes that resolution metadata at the top of the exported comment and records the resolved state in `commentsExtended`, while HTML/PDF show it in the panel metadata. `status="deleted"` / `"withdrawn"` keeps the source audit trail but suppresses native DOCX comment export so deleted review notes do not reappear in Word. Empty comment bodies may render as a readable `Comment` placeholder in DOCX, but review sync treats that placeholder as render-time fallback rather than accepted source text. If Word Track Changes markup appears inside returned native comment text, review sync reports the comment as skipped instead of accepting the current text as a body edit, while native comment resolution state can still return to source.
+
+In DOCX output, `::agent_task` and `::todo` become native Word checkbox content controls plus `scope=`, `owner=`, `due=`, and `priority=` metadata when present. `noma docx-data` extracts those checkbox states, and `noma docx-sync` can apply them back to source `done` / `status` attributes.
+
+`::review`, `::provenance`, and `::confidence` become readable collaboration metadata blocks in HTML/PDF and DOCX. `for=`, `target=`, or `block=` links back to the reviewed block anchor/bookmark when possible. `::review` keeps status/reviewer/due/date metadata; `::provenance` keeps source/url/tool/by/commit/time metadata; `::confidence` keeps value/basis/source/update metadata.
+
+`::change_request{target="<id>" action="insert|delete|replace" from="..." to="..." author="..." date="..."}` records a proposed edit. DOCX renders `insert`, `delete`, and `replace` actions as native Word tracked-change runs, preserving inline bold, emphasis, code, internal wikilinks, and external hyperlinks inside the revision text. When `target=` resolves and the request has valid revision text, Word output also marks the reviewed block with a native comment range and places the tracked revision block beside that target; unresolved targets or malformed tracked revisions still render at the change request's source position. Malformed DOCX fallbacks keep visible action, target, revision-text, author, and date metadata without creating native Word review parts, and review sync does not treat them as missing native tracked-revision siblings. DOCX files with native comments or valid change-request revisions include Word review-view settings so comments and insert/delete revisions are advertised as review markup. `status="deleted"` / `"withdrawn"` keeps the source audit trail but suppresses native DOCX tracked-revision export so closed proposals do not reappear in Word. HTML/PDF render matching `<ins>` / `<del>` deltas. `replace` requires both `from=` and `to=`. `insert` uses `to=`, `text=`, or the block body; `delete` uses `from=`, `text=`, or the block body.
+
+In DOCX output, `::footnote{label="..."}` becomes a native Word footnote. The block body becomes the footnote text, preserving inline bold/emphasis/code, internal wikilinks, and external hyperlinks inside the native `footnotes.xml` part. `for=`, `parent=`, `target=`, `block=`, or `ref=` anchors the superscript reference to that block when the target exists; unresolved targets still render the footnote at its source position. The validator treats those target attributes as ID references. `status="deleted"` / `"withdrawn"` keeps the source audit trail but suppresses native DOCX footnote export so deleted notes do not reappear in Word. HTML/PDF output keeps a styled note fallback so the content remains visible outside Word. Empty note bodies may render as readable `Footnote` / `Endnote` placeholders in DOCX, but review sync treats those placeholders as render-time fallback rather than accepted source text.
+
+`::endnote` has the same source shape, target attributes, and deleted/withdrawn DOCX suppression behavior as `::footnote`, but DOCX output writes a native `endnotes.xml` part and emits `w:endnoteReference` runs. Use it when notes should collect at the end of the Word document instead of appearing as page footnotes. HTML/PDF output renders a matching styled note fallback.
+
+`::bibliography{title="References"}` emits a generated references section from every `::citation` block in the document. HTML/PDF render an ordered list; DOCX renders a numbered Word list with clickable URL/DOI entries where present.
 
 ### Math
 
@@ -200,7 +264,7 @@ agent_task, todo, review, comment, change_request, provenance, confidence, citat
 math
 ```
 
-`::math{display="block|inline" id="..."}` carries a LaTeX expression. The HTML renderer wraps the body in `\[...\]` (display) or `\(...\)` (inline) and ships KaTeX assets from CDN automatically when the document contains math, unless strict rendering disables external assets. Inline math written in prose with `$...$` or `$$...$$` delimiters renders too — KaTeX auto-render finds and replaces them in place. The LLM renderer passes the LaTeX source through untouched so structural addressability survives.
+`::math{display="block|inline" id="..."}` carries a LaTeX expression. The HTML renderer wraps the body in `\[...\]` (display) or `\(...\)` (inline) and ships KaTeX assets from CDN automatically when the document contains math, unless strict rendering disables external assets. DOCX renders block math and prose/table-cell inline math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`) as Office Math containers with the linear source text preserved for Word review. The LLM renderer passes the LaTeX source through untouched so structural addressability survives.
 
 ```noma
 ::math{id="vol-target"}
@@ -216,7 +280,7 @@ Force-disable assets with `--math=none` (or `meta.math: false`); force-enable wi
 html, svg, script
 ```
 
-Allowed but discouraged. The validator warns on every untrusted use. Add the `trusted` flag attribute to silence the warning on a single block; pass `--no-unsafe` to the CLI (or set `allowEscapeHatches: false` on the API) to block escape hatches entirely in trusted-publishing contexts. Pass `--strict` to also omit external CDN runtimes for math, diagrams, and Plotly. The LLM renderer always strips escape-hatch bodies and replaces them with a placeholder so agent context stays predictable.
+Allowed but discouraged. The validator warns on every untrusted use. Add the `trusted` flag attribute to silence the warning on a single block; pass `--no-unsafe` to the CLI (or set `allowEscapeHatches: false` on the API) to block escape hatches entirely. Pass `--strict` to also omit external CDN runtimes for math, diagrams, and Plotly and to render computed controls as inert static defaults with disabled inputs and no generated inline runtime. Book manifests with `trusted_publishing: true` apply that same strict static HTML posture to every manifest-driven HTML/site/PDF render. The LLM renderer always strips escape-hatch bodies and replaces them with a placeholder so agent context stays predictable.
 
 ```noma
 ::svg{trusted}
@@ -227,7 +291,7 @@ Allowed but discouraged. The validator warns on every untrusted use. Add the `tr
 ```
 
 ::callout{tone="note"}
-v0.2 ships real chart rendering for `::plot`. Pass numeric data inline via `data="10,20,15,30"`, optional `xlabels="a,b,c,d"`, and `type="line"` or `type="bar"`. The renderer emits a self-contained inline SVG with min/max axis labels, faint gridlines, and (line) a soft area fill plus point markers — no external chart library, no JS. CSV-path values like `data="./series.csv"` still fall through to the placeholder so existing files don't break; CSV evaluation is a later milestone.
+v0.2 ships real chart rendering for `::plot`. Pass numeric data inline via `data="10,20,15,30"`, optional `xlabels="a,b,c,d"`, and `type="line"` or `type="bar"`. The HTML renderer emits a self-contained inline SVG with min/max axis labels, faint gridlines, and (line) a soft area fill plus point markers — no external chart library, no JS. DOCX embeds the same resolved chart as static SVG media for Word handoff and places a Word-caption-style `Plot` caption with a `SEQ Plot` field after the chart. CSV-path values like `data="./series.csv"` still fall through to the placeholder so existing files don't break; use `::dataset{src="..."}` plus `dataset=` for file-backed charts.
 ::
 
 **Delimiter rule.** Commas are canonical for both `data` and `xlabels`. Whitespace separators are still accepted for backward compatibility, but mixing styles between `data` and `xlabels` in the same plot triggers the `plot-mixed-delimiters` warning.
@@ -321,14 +385,90 @@ The shipped patch operation set is:
 | `replace_block`    | directive block              | Replace an entire semantic block.            |
 | `replace_body`     | body-only directive/text node | Replace body text while preserving wrapper.  |
 | `update_heading`   | section                      | Change heading title while preserving ID.    |
+| `add_comment`      | ID-bearing block             | Add a targeted or threaded `::comment`.      |
+| `resolve_comment`  | `::comment`                  | Mark a review comment resolved.              |
+| `add_footnote`     | ID-bearing block             | Add a targeted `::footnote` after a block.   |
+| `add_endnote`      | ID-bearing block             | Add a targeted `::endnote` after a block.    |
+| `add_change_request` | ID-bearing block           | Add a targeted tracked change request.       |
+| `update_table_cell`| `::table` directive          | Update one body cell by row and column.      |
+| `update_table_header_cell` | `::table` directive | Update one header cell by column.            |
+| `insert_table_row` | `::table` directive          | Insert one body row by row index.            |
+| `delete_table_row` | `::table` directive          | Delete one body row by row index.            |
+| `insert_table_column` | `::table` directive       | Insert one column by column index.           |
+| `delete_table_column` | `::table` directive       | Delete one column by index or header label.  |
+| `update_dataset_cell` | `::dataset` directive     | Update one dataset body cell by row/column.  |
+| `insert_dataset_row` | `::dataset` directive      | Insert one dataset data row by row index.    |
+| `delete_dataset_row` | `::dataset` directive      | Delete one dataset data row by row index.    |
+| `insert_dataset_column` | `::dataset` directive   | Insert one dataset column by column index.   |
+| `delete_dataset_column` | `::dataset` directive   | Delete one dataset column by index or label. |
+| `move_block`       | directive block              | Move an existing directive under a parent.   |
 | `add_block`        | document/section/directive   | Insert a directive child.                    |
 | `delete_block`     | ID-bearing block             | Remove a block.                              |
 | `update_attribute` | directive                    | Change one attribute except `id`.            |
+| `remove_attribute` | directive                    | Remove one attribute except `id`.            |
 | `rename_id`        | ID-bearing block             | Rename canonical ID and retarget references. |
 
 `update_heading` preserves stable agent handles: when the new title would
 produce a different auto-slug, the source-preserving patcher adds an explicit
 `{id="old-id"}` heading attribute.
+
+`add_change_request` targets an existing ID-bearing block and inserts a
+`::change_request` near it. `action` is `insert`, `delete`, or `replace`;
+`replace` requires `from` and `to`, `insert` requires `to` or `text`, and
+`delete` requires `from` or `text`. Optional `content` becomes the rationale
+body rendered after the tracked revision. DOCX output anchors the generated
+tracked revision beside the target block and marks that block with a native
+Word comment range.
+
+`add_footnote` and `add_endnote` target an existing ID-bearing block and insert
+`::footnote{for="<id>"}` or `::endnote{for="<id>"}` near that block. `content`
+becomes the note body and optional `label` becomes the visible source fallback
+label when the note renders outside native Word note parts.
+
+`update_table_cell` targets ID-bearing `::table` directives. `row` is zero-based
+and counts body rows; when the table has `header`, `column` may be the header
+label, otherwise it must be a zero-based column index. Table patch serializers
+escape literal separator pipes outside inline code spans and preserve pipes
+inside code spans. `update_table_header_cell` targets the header row itself and
+updates one header cell by zero-based column index or existing header label.
+
+`insert_table_row` and `delete_table_row` also target ID-bearing `::table`
+directives. `row` is zero-based over body rows; insert allows `row` equal to the
+current body-row count to append. `cells` is an array of single-line strings.
+
+`insert_table_column` and `delete_table_column` also target ID-bearing `::table`
+directives. Insert uses a zero-based numeric `column` and may include `header`
+when the table has `header`; `cells` supplies body-row values and is padded with
+empty cells when shorter than the current body row count. Delete accepts a
+zero-based numeric `column` or a header label when the table has `header`, and
+rejects removing the last remaining column.
+
+`update_dataset_cell` targets ID-bearing `::dataset` directives. `row` is
+zero-based over data rows (not the inferred header row), and `column` may be a
+zero-based index or a dataset column label from YAML `schema`, `columns=`, a
+CSV/TSV header row, or JSON `columns` / record keys. Source-preserving edits
+support inline YAML row arrays, single-line CSV/TSV bodies with quoted cells, and pretty-printed JSON
+row arrays or record arrays; structurally complex YAML/JSON datasets can still
+use `replace_body`.
+
+`insert_dataset_row` and `delete_dataset_row` also target ID-bearing
+`::dataset` directives. `row` is zero-based over data rows; insert allows `row`
+equal to the current data-row count to append. `cells` is an array of
+single-line strings, coerced through the dataset schema where available.
+Source-preserving row edits support inline YAML row arrays, single-line CSV/TSV
+bodies with quoted cells, and pretty-printed JSON row or record arrays.
+
+`insert_dataset_column` and `delete_dataset_column` also target ID-bearing
+`::dataset` directives. Insert uses a zero-based numeric `column`, requires a
+single-line `header`, and pads missing `cells` with empty values. Delete accepts
+a zero-based numeric `column` or a dataset column label from YAML `schema`,
+CSV/TSV headers, JSON `columns`, or JSON record keys, and rejects removing the
+last remaining column. Source-preserving column edits support inline YAML row
+arrays, single-line CSV/TSV bodies with quoted cells, and pretty-printed JSON row or record arrays.
+
+`move_block` moves an existing directive block to a new ID-bearing section or
+directive parent. `position` is zero-based in the destination after removing the
+source block. Moving a block into itself or one of its descendants is rejected.
 
 ## AST shape
 
@@ -354,7 +494,7 @@ Renderers exhaustively switch on `type`. Adding a new variant is a typed change:
 The default validator detects:
 
 - **errors** — duplicate IDs, references (`for=`, `[[id]]`) pointing to unknown IDs, `plot` blocks with no `data=` or `dataset=`, `::memory` blocks missing `type=` / `id=` or carrying an invalid `type` / `confidence` / `last_seen`.
-- **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days), and `[[wikilinks]]` inside a `memory`-profile document that resolve to a non-`::memory` target.
+- **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, malformed tracked-revision `change_request` blocks, `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days), and `[[wikilinks]]` inside a `memory`-profile document that resolve to a non-`::memory` target.
 
 Per-block opt-out: add the `noverify` flag attribute to silence rules on a single block (e.g. rhetorical claims that aren't expected to carry their own evidence chain).
 
@@ -386,12 +526,12 @@ Built-in profiles:
 
 | Profile     | Intended for                              | Includes (beyond core text blocks)                                                                                                                                                                                                                                                            |
 | ----------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `figure`, `citation`, `math`, `table`                                                                                                                                                                                                |
-| `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `plot`, `dataset`, `code_cell`, `output`, `control`, `export_button`, `agent_task`, `todo`                                                                                                             |
-| `research`  | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence`                |
+| `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `page_setup`, `doc_protection`, `header`, `footer`, `toc`, `figure`, `citation`, `footnote`, `endnote`, `bibliography`, `math`, `code`, `table`, `pagebreak`                                                                                                    |
+| `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `api`, `endpoint`, `parameter`, `example`, `changelog`, `instruction`, `plot`, `dataset`, `query`, `code_cell`, `output`, `control`, `computed_metric`, `computed_plot`, `export_button`, `agent_task`, `todo` |
+| `research`  | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `control`, `computed_metric`, `computed_plot`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence` |
 | `memory`    | Agent memory stores (per-project, per-user) | `memory`, `memory_index` only. Strict: each `::memory` must declare `id` + `type` (one of `user`, `feedback`, `project`, `reference`). `confidence` must be a number in `[0, 1]`; `last_seen` must be an ISO date.                                                                            |
 
-`math` and `table` are content-neutral and shipped in every profile from v0.4 onward — they were the most common "out-of-profile" warnings authors hit before they learned the workaround.
+`math`, `code`, and `table` are content-neutral and shipped in every profile — they were the most common "out-of-profile" warnings authors hit before they learned the workaround.
 
 The validator emits a `out-of-profile-directive` warning for any directive outside the declared profile (`noverify` on a single block silences it). Authors who want the open surface should simply omit the `profile` field.
 
@@ -449,6 +589,8 @@ ferax564 is the user's public authorship handle. Not a separate GitHub account.
 
 **`::memory_index`.** A single block whose body links every memory via `[[id]]` wikilinks. The validator does not yet enforce index completeness, but `noma check --profile memory` warns whenever an index wikilink resolves to a non-`::memory` target — catching the most common mistake of pointing the index at a heading or section.
 
+**HTML/PDF and DOCX handoff.** HTML/PDF output and Word exports render `::memory_index` as a labeled index panel and each `::memory` as a typed panel (`User memory`, `Feedback memory`, `Project memory`, or `Reference memory`) with `type`, `confidence`, `last_seen`, `scope`, `source`, `valid_until`, `superseded_by`, and `expired` metadata visible below the body. HTML/PDF output keeps index wikilinks and supersession references as anchors; Word exports point them at bookmarks when the target memory exists.
+
 **Canonical id ≠ display title.** A memory's `id=` is an immutable key that agents patch against — treat it like a database primary key, not like the title of the memory. Use the body for human phrasing; if a memory needs a renamable handle, use `aliases=` (which the validator also resolves for wikilink targeting).
 
 **Stale-aware recall.** `noma render --to llm --exclude-stale-days N` (optionally with `--now <ISO>` for tests) drops `::memory` blocks whose `last_seen` is older than the window before emitting the LLM context dump, AND drops `::memory_index` body lines whose wikilinks resolve only to omitted memories (no dangling refs in the LLM context). Time-window staleness applies **only to `project` and `reference` memories by default** — durable rules (`user`, `feedback`) are kept regardless of `last_seen` unless they explicitly carry `expired=true`. This is a useful first cut at bounded recall; it is **not** a general retrieval system. `last_seen` measures observation freshness, not content freshness, so a memory can be recently seen yet factually superseded — richer recall (relevance to current task, wikilink-graph expansion, `valid_until` / `superseded_by` attributes) is future work.
@@ -469,7 +611,9 @@ breaking the AST.
 `::diagram{kind="mermaid|graphviz|drawio"}` — body holds the source
 verbatim. The HTML renderer ships a small per-kind hydrator and only
 injects the matching CDN runtime when the document actually contains
-that kind, keeping plain pages CDN-free.
+that kind, keeping plain pages CDN-free. DOCX renders a readable source
+fallback labeled with the diagram kind so Word reviewers can still inspect
+the Mermaid, Graphviz, or Draw.io source.
 
 ```noma
 ::diagram{kind="mermaid"}
@@ -482,7 +626,8 @@ flowchart LR
 `::plotly` — body is a JSON spec (`{ "data": [...], "layout": {...} }`).
 The HTML renderer injects Plotly.js and hydrates each block; the LLM
 renderer keeps the JSON unchanged so an agent can still reason about
-the chart.
+the chart. DOCX preserves the JSON as an explicit interactive-chart spec
+fallback.
 
 `::dataset{src="data.csv"}` — paths resolve relative to the source file
 (book mode resolves per chapter). The CLI calls `inlineDatasetSources`
@@ -514,15 +659,57 @@ new function as `patchSource(source, ops)`; the AST-level
 | `epub`   | planned |                                                                               |
 | `slides` | planned |                                                                               |
 
+The static site also ships a browser workbench at `workbench.html`. It is not a separate render target; it bundles the parser, validator, HTML renderer, JSON renderer, and LLM renderer into a client-side editing surface for `.noma` source, safe preview, diagnostics, outline navigation, export downloads, find, print, selection formatting, headings/lists/links, and Noma block insertion templates for tables, figures, layout, controls, comments, change requests, and notes.
+
 ```bash
 noma render report.noma --to pdf --out report.pdf
 noma render report.noma --to pdf --out report.pdf --page-size Letter --margin 12mm --css report.css
 noma render report.noma --to docx --out report.docx
+noma docx-data report.docx --out report.controls.json
+noma docx-sync report.noma report.docx --out report.synced.noma --report report.sync.json
+noma docx-review-data report.docx --out report.review.json
+noma docx-review-sync report.noma report.docx --out report.reviewed.noma --report report.review-sync.json
 ```
 
-PDF output uses the HTML renderer and theme first, then prints through Chromium with print media enabled. PDF flags: `--page-size`, `--margin`, individual `--margin-top/right/bottom/left`, `--no-print-background`, and `--css` for appending custom CSS to the selected theme.
+PDF output uses the HTML renderer and theme first, then prints through Chromium with print media enabled. The HTML/PDF path renders technical API/reference blocks, semantic reasoning metadata, metric/code/computation blocks, memory profile panels, and collaboration review metadata as structured panels instead of generic directive boxes. PDF flags: `--page-size`, `--margin`, individual `--margin-top/right/bottom/left`, `--no-print-background`, and `--css` for appending custom CSS to the selected theme.
 
-DOCX output is generated directly from the AST without external dependencies. It preserves headings, paragraphs, lists, tables, code blocks, directive labels, block-ID bookmarks, internal wikilinks, and external hyperlinks. Browser-only artifact blocks such as plots and figures render as labeled placeholders in the Word document for now.
+DOCX output is generated directly from the AST without external dependencies. It preserves frontmatter metadata (`title`, `author`, `description`, `tags` / `keywords`, `profile`, and `status`) in `docProps/core.xml`, plus headings, paragraphs, lists, page-aware tables, field-numbered table captions, dataset tables with rich generated metadata values, metric KPI blocks with rich value and metadata runs, static computed metric/plot handoffs, technical API/reference blocks, addressable code snippets, code-cell/output computation blocks, page-aware grid/columns layouts, framed card panels, memory profile panels, flattened hero/tabs/accordion sections, titled tab panels, framed sidebars, code blocks, abstract/callout/note/warning/tip blocks, Office Math blocks and inline equations, native checkbox action items with rich visible status text, native text/dropdown/date/checkbox control fields with custom XML data bindings, action blocks, section-level page setup, document-protection settings for form handoffs, rich native Word headers/footers with page-number fields and part-local hyperlinks, generated tables of contents and caption lists with rich labels and Word page-reference fields, caption cross-reference fields for figure/table/plot wikilinks, page breaks, targeted/threaded native Word comments with rich inline body content and resolved-state metadata, review-view settings for comments and revisions, target-anchored tracked change-request revisions, state-change deltas with rich from/to values, target-anchored rich native Word footnotes/endnotes, generated bibliographies with rich entry text, styled semantic review blocks and rich metadata values, review/provenance/confidence metadata blocks, embedded PNG/JPEG/GIF/SVG figures, field-numbered figure/plot captions, static SVG plots for resolvable data, diagram/Plotly source fallbacks, clickable citation source links, block-ID bookmarks, internal wikilinks, external hyperlinks with rich Markdown labels including combined bold+italic spans, and readable fallback labels for custom directives. Browser-only artifact blocks that cannot be resolved at render time still fall back to labeled placeholders.
+
+Use `noma docx-data <file.docx>` to read the `urn:noma:controls` custom XML part, visible `noma-control:<id>` content controls, and native task checkbox content controls back out as JSON. This extracts the stable IDs, labels, types, and values for bound `::control` fields plus checked state for `::agent_task` / `::todo`, giving form-review workflows a machine-readable return path from a DOCX package. When both sources exist, visible content-control values override the custom XML values so Word edits can return even if the bound data part is stale; when the custom XML part is missing, visible text/date/dropdown/combobox/checkbox controls still produce control values. Word `w:cr` carriage-return and `w:br` manual-break runs are preserved as line breaks, Word `w:noBreakHyphen` runs are normalized to `-`, Word `w:softHyphen` runs are preserved as U+00AD soft hyphen characters, Word `w:tab` and `w:ptab` runs are preserved as tabs, Unicode `w:sym` glyphs are preserved, text control leading/trailing spaces are preserved, and those empty run-token elements are accepted whether serialized as self-closing or paired empty elements. Deleted or moved-from tracked ranges inside visible fields, including `w:moveFromRangeStart` / `w:moveFromRangeEnd` spans, are ignored so the old side of a Track Changes edit does not come back as the current form value; moved-to ranges remain current text. Native checkbox metadata accepts both explicit `val=` states and present checked elements without a value; if an editor strips native checkbox metadata but leaves the generated checked/unchecked glyph as text or a Unicode symbol run, task tags and controls whose original custom XML type was `toggle` / `checkbox` still recover boolean state from the glyph. Use `noma docx-sync <file.noma> <file.docx>` to apply those values back to matching source `::control default=` attributes and task `done` / `status` attributes with the source-preserving patcher; omitted `type=` is treated as text during sync, while numeric controls still coerce numeric-looking returned values. Unmatched DOCX control and task IDs are ignored. Add `--report <file.json>` to write the applied control/task changes and unmatched IDs as JSON without duplicating the patched source.
+
+Use `noma docx-review-data <file.docx>` to read native Word comments from `word/comments.xml` / `word/commentsExtended.xml`, tracked revisions and tracked moves from `word/document.xml` plus native header/footer parts, native footnote/endnote bodies from `word/footnotes.xml` / `word/endnotes.xml`, bookmarked Word headings, bookmarked Word captions, bookmarked metric/control/action labels and block titles, prose block bodies, metric values, metric metadata, citation metadata, technical block metadata, computation block metadata, computed-metric and computed-plot metadata, control metadata, memory block metadata, and semantic block metadata, and bookmarked native tables from the document body and header/footer parts as JSON. The extractor returns each comment's native ID, author, initials, date, body text, resolved state, resolver metadata when Noma wrote it, and reply linkage when the DOCX package carries a threaded comment relationship. Explicit native `done=false` comment state wins over a stale generated `Status: resolved` paragraph, so reopened Word comments extract as unresolved while still stripping the stale status paragraph from the body; a comments-extended entry without a `done` attribute is treated as unknown native resolution state, so the generated status paragraph remains the fallback. Comment, note, tracked-revision, heading-title, caption-title, metric/control/action/block-title label text, and table-cell bodies reconstruct lightweight Noma Markdown for bold, emphasis, inline code, internal wikilinks, and external hyperlinks by reading the relevant relationship files. Adjacent same-style Word runs are coalesced before Markdown rendering, so editor-split bold, italic, bold-italic, and code runs return as one Markdown span instead of fragmented markup, including inside internal and external hyperlink labels. Word `HYPERLINK` fields, including complex fields and `fldSimple`, return through the same Markdown link path with result-run formatting preserved. Formatted or custom internal `#id` hyperlink labels return as `[label](#id)` when the visible anchor text or a verified Noma-generated bookmark identifies the target; plain ID labels and generated complex or `fldSimple` Word `REF` fields for Noma caption cross-references still return as `[[id]]`. Intentional spaces inside hyperlink labels are preserved, literal `[` and `]` characters inside returned external hyperlink labels are escaped, and whitespace or parentheses inside returned external hyperlink targets are percent-encoded, so Word links remain valid Noma Markdown without rewriting unchanged `[ label ](...)` source links. Current comment, note, heading-title, caption-title, metric/control/action label and block-title text, prose block-body text, metric value/metadata text, citation metadata text, technical block-metadata text, computation block-metadata text, computed-metric and computed-plot metadata text, control metadata text, memory block-metadata text, semantic block-metadata text, and table-cell bodies preserve Word `w:cr` carriage-return and `w:br` manual-break runs as line breaks, normalize Word `w:noBreakHyphen` runs to `-`, preserve Word `w:softHyphen` runs as U+00AD soft hyphen characters, preserve Word `w:tab` and `w:ptab` runs as tabs, preserve Unicode `w:sym` glyphs, preserve leading/trailing spaces in comment, note, and table-cell text, keep nested native table rows inside their parent table cell instead of promoting them to outer rows, accept those empty run-token elements whether serialized as self-closing or paired empty elements, ignore deleted or moved-from tracked ranges, including `w:moveFromRangeStart` / `w:moveFromRangeEnd` spans, and keep moved-to ranges as current text, while tracked-revision entries preserve deleted or moved-from text and run tokens as `oldText` and moved-to runs as `newText`. Adjacent same-ID tracked revision fragments are merged before grouping, so Word edits split across multiple formatted `w:ins` or `w:del` wrappers return as one revision. Multiple adjacent delete/insert pairs in one paragraph return as separate replace revisions, while delete/insert runs separated by current text remain independent revisions. Heading entries include native heading index, level, lightweight Noma Markdown title, same-paragraph bookmark anchors, and whether the heading itself contains tracked revision markup, so accepted Word title edits can return to the source heading without accepting proposed heading revisions as plain edits. Caption entries include native caption index, kind, lightweight Noma Markdown title with generated whole-caption Word styling ignored as presentation-only, bookmark anchors, and whether the caption itself contains tracked revision markup, so accepted Word caption edits can return to source `title=` / `caption=` attributes or a computed-plot body `title:` field without accepting proposed caption revisions as plain edits. Metric/control/action/block-title entries include native label index, kind, lightweight Noma Markdown title with generated whole-label Word styling, generated button hyperlinks, and generated export-target links ignored as presentation-only, bookmark anchors, and whether the label paragraph contains tracked revision markup, so accepted Word edits to `Metric:`, `Computed metric:`, `Control:`, `::button`, `::export_button`, and titled directive headings can return to source label/title fields without accepting proposed label revisions as plain edits. Metric value entries include native value index, visible value text, inherited metric bookmark anchors, and whether the value paragraph contains tracked revision markup, so accepted Word edits to `::metric` value lines can return to source value fields without accepting proposed value revisions as plain edits. Metric metadata entries include native metadata index, parsed field labels/values, inherited metric bookmark anchors, and whether the metadata paragraph contains tracked revision markup, so accepted Word edits to `::metric` metadata can update source attrs without accepting proposed metadata revisions as plain edits. Block metadata entries include native metadata index, parsed field labels/values across one or more consecutive metadata paragraphs, inherited directive bookmark anchors, and whether the metadata paragraph contains tracked revision markup, so accepted Word edits to citation, technical, computation, computed-metric/plot, control, memory, and semantic metadata lines can update source attrs or body fields without accepting proposed metadata revisions as plain edits. Block body entries include native body index, lightweight Noma Markdown body text, inherited directive bookmark anchors, and whether the body paragraphs contain tracked revision markup, so accepted Word edits to supported prose-like body-only directives can return through `replace_body` without accepting proposed body revisions as plain edits. Comment ranges/references and tracked revisions in header/footer parts use the same bookmark mapping as document-body comments and revisions. Comment ranges or point references, note references, and tracked revisions made inside a native table inherit the table's preceding Noma bookmark, so table-cell review notes and change requests can return to the source table or dataset block. Inside generated `NomaLayout` tables for `::grid` / `::columns`, nested child bookmarks take precedence over the outer layout bookmark, so comments, notes, and revisions in a rendered card/claim cell target that child block; that inheritance resets at each generated layout cell, so unbookmarked sibling cells fall back to the outer layout block instead of a previous cell's child bookmark. Native table extraction also recurses through those layout cells, so accepted edits to nested source `::table` or `::dataset` blocks inside cards or layout columns can return to the nested source block; comments, notes, and tracked revisions inside those nested table cells inherit the nested table or dataset bookmark. Framed paragraphs following a `NomaDirective` bookmark keep inheriting that directive bookmark, so comments, notes, and revisions on later paragraphs of a rendered claim, risk, card, or other framed directive body still return to that source block. It also returns insert/delete/replace revisions, including adjacent `w:moveFrom` / `w:moveTo` tracked moves and `w:moveFromRangeStart` / `w:moveToRangeStart` marker spans as replace proposals, with native revision IDs, author/date metadata, old/new text, same-paragraph or inherited directive-body anchor bookmarks, Noma target IDs when the revision follows a Noma-generated change-request label, and source change-request bookmarks when that label was generated from source. Footnote and endnote entries include the native note ID, body text, and same-paragraph or inherited directive-body anchor bookmarks from the note reference; Noma-generated targeted note references also carry the source note bookmark so edited notes can return to the original source block. Table entries include the native table index, header flag, cell rows, the preceding Noma bookmark anchors, and whether the table contains tracked revisions; generated header-row styling is treated as presentation-only while authored header-cell Markdown is preserved. Bookmarked table entries are still extracted if a reviewer restyles the native Word table.
+
+Use `noma docx-review-sync <file.noma> <file.docx>` to apply the first native-review return path to source. The sync command maps Word comment ranges/references, notes, headings, captions, metric/control/action labels, block titles, prose and code block bodies, metric values, metric metadata, citation metadata, technical block metadata, computation block metadata, computed-metric and computed-plot metadata, control metadata, memory block metadata, semantic block metadata, tables, and revision anchors back to Noma block bookmarks, including comments and tracked revisions in native header/footer parts. It applies accepted heading-title edits with `update_heading`, preserving lightweight Markdown for Word bold, emphasis, inline code, internal wikilinks, and external hyperlinks, applies accepted table/figure/plot caption edits with `update_attribute` or, for computed plots whose title lives in the body, `replace_body`, applies accepted metric, computed-metric, control, action label, and block title edits with `update_attribute` or body-field `replace_body`, applies accepted prose block body edits for supported body-only directives with `replace_body`, applies accepted code block body edits for supported monospace directives with `replace_body`, applies accepted metric value edits with `update_attribute` or `replace_body`, applies accepted metric metadata edits with `update_attribute` or `remove_attribute`, applies accepted citation, technical, computation, computed-metric/plot, control, memory, and semantic block metadata edits with `update_attribute`, `replace_body`, or `remove_attribute`, adds new anchored Word comments as `::comment` blocks after the matching source target, updates same-target source comments when the source bookmark, visible body, or metadata identifies them, treats metadata-conflicting same-target comments and replies as distinct Word comments instead of overwriting source blocks even when the visible text is identical, keeps deleted/withdrawn source comments and replies as audit history instead of matching returned Word comments or replies, even if an older DOCX still carries their source bookmarks, adds threaded Word replies as `::comment{reply_to="..."}` blocks after the matching source comment, updates matched existing reply bodies when the thread parent plus visible text or metadata identifies the source reply, counts source-bookmarked replies as returned thread state for missing sibling deletion, adds native notes as `::footnote` / `::endnote` blocks, updates existing source-position comment and note bodies when their anchors identify the source blocks, updates targeted notes when the source note, exact or visible body, or one unambiguous same-target source note can be matched, keeps deleted/withdrawn source notes as audit history instead of matching returned notes, updates existing change requests when the source request, exact revision, metadata, or one unambiguous Noma-generated same-target request can be matched, treats metadata-conflicting target-only revisions as distinct change requests instead of overwriting source blocks even when the action and revision text are identical, counts target-anchored tracked revisions as returned review state for missing sibling deletion, keeps deleted/withdrawn source change requests as audit history instead of matching returned revisions, marks existing source comments resolved when Word's native comment state says they are done, refreshes returned resolver metadata, reopens source comments by removing stale resolution metadata when Word returns explicit native unresolved state, marks missing sibling comments, including previously resolved source comments, targeted notes, and change requests as `status="deleted"` when at least one other comment/note/request on the same target or reply thread came back from Word, adds table-cell Word comments, notes, tracked revisions, and wrapper or range-marker tracked moves to the matching source table or dataset block, updates matching `::table` directive bodies and inline `::dataset` bodies from edited Word tables, and imports unmatched anchored tracked revisions or tracked moves as `::change_request` blocks. Alias and canonical targets compare as the same source reference during review sync, so Word's canonical bookmark return does not rewrite unchanged alias-authored wikilinks, internal links with escaped labels, generated caption cross-reference fields, table/dataset cell links, or target attributes. Returned comments, notes, and change requests inserted next to nested directive targets preserve that target's fence depth. Add `--report <file.json>` to write applied changes plus skipped comments, revisions, footnotes, endnotes, tables, headings, captions, labels, block bodies, metric values, metric metadata, and block metadata as JSON without duplicating the patched source. Edited comment and note bodies with Word bold, emphasis, inline code, internal wikilinks, or external hyperlinks return through `replace_body` as Noma Markdown. Equivalent lightweight Markdown spellings such as `_emphasis_` and `*emphasis*`, escaped and raw backslash spellings inside hyperlink labels, and source `\|` escapes versus Word-returned literal pipes compare as unchanged during review sync, preserving the original source spelling unless Word introduced a real content or link change. If Word returns plain text where the source had bold, emphasis, inline code, wikilink, or hyperlink markup, review sync treats that as an accepted markup-removal edit and updates the source to plain text; target-only comments with sibling candidates use the same visible-text matching for links whose labels contain escaped literal brackets. Simple accepted `::table` edits use `update_table_header_cell`, `update_table_cell`, `insert_table_row`, `delete_table_row`, `insert_table_column`, or `delete_table_column` when the table shape is unambiguous, preserving Markdown/link markup in unchanged cells and keeping literal pipes inside edited code spans unescaped; returned multiline table cells are skipped because they cannot be represented safely in source pipe tables, while ambiguous row/column diffs fall back to full table-body replacement. Simple same-shape accepted `::dataset` edits for inline YAML row arrays, CSV/TSV bodies, and pretty-printed JSON row or record arrays use `update_dataset_cell`; simple row insert/delete edits use `insert_dataset_row` or `delete_dataset_row`; simple column insert/delete edits use `insert_dataset_column` or `delete_dataset_column`, preserving comments, schema text, and unrelated row lines. Returned multiline dataset cells are skipped because they cannot be represented safely across all supported source dataset formats. Unsupported dataset shapes still fall back to full dataset-body replacement when they can be serialized safely. Tables, headings, captions, labels, block bodies, metric values, metric metadata, and block metadata containing tracked revisions or tracked moves are not treated as direct accepted edits during sync; their revision markup returns as change requests, and those heading/table/caption/label/value/metadata entries remain visible in the skipped report lists. Unanchored comments, ambiguous same-target comments, replies whose parent cannot be matched, ambiguous edited replies, unanchored notes, ambiguous targeted notes, ambiguous change requests, unanchored headings, headings with tracked revisions, unanchored captions, captions with tracked revisions, unanchored labels, labels with tracked revisions, unanchored block bodies, block bodies with tracked revisions, unanchored metric values, metric values with tracked revisions, unanchored metric metadata, metric metadata with tracked revisions, unanchored block metadata, block metadata with tracked revisions, and tables that do not resolve to a supported `::table` / `::dataset` source block are extracted by `docx-review-data` but skipped by the sync command until they can be represented source-preservingly.
+
+Comment, footnote, and endnote entries whose bodies contain Word tracked revisions carry `hasRevisions`. Review sync keeps those review bodies in the skipped report instead of accepting the current text as a plain source edit; source-bookmarked skipped items still count as returned review state so they are not falsely marked deleted.
+
+Computed-plot caption sync follows the same label precedence used by DOCX rendering: `label=`, `title=`, `name=`, body `label:`, then body `title:`. Accepted Word edits update that source field, using `replace_body` only when the displayed caption came from a body field; if the caption came only from the block ID fallback, sync adds a `title=` attribute.
+
+Metric label sync follows the same label precedence used by DOCX rendering: `::metric` uses `label=`, `title=`, `name=`, then the block ID fallback; `::computed_metric` uses `label=`, `title=`, `name=`, body `label:`, body `title:`, then the block ID fallback. Accepted Word edits update the displayed source field, using `replace_body` only for computed-metric body fields; if the label came only from the block ID fallback, sync adds a `label=` attribute.
+
+Control label sync follows the DOCX-rendered control label precedence: `Label=`, `label=`, then the Word control fallback. Accepted Word edits update that source attr, preserving `Label=` when present and otherwise using `label=`; the content-control value beside the label remains part of the `docx-data` / `docx-sync` form-data path.
+
+Action label sync follows the DOCX-rendered action label precedence for `::button` and `::export_button`: `Label=`, `label=`, body `Label:`, then the action fallback. Accepted Word edits update that source field, preserving lightweight emphasis and mixed bold while ignoring generated button hyperlinks and export-target links; it preserves `Label=` / `label=` attrs and body fields when present, and if the label came only from the rendered fallback, sync adds a `label=` attribute.
+
+Block title sync follows the DOCX-rendered title precedence for titled directive headings. Accepted Word edits update `title=`, `caption=`, or `name=` only when the rendered title maps unambiguously to that source field; fallback card/callout/sidebar/tab/memory/dataset/bibliography/technical/custom title edits add `title=`.
+
+Custom fallback heading metadata sync parses the readable attribute summary rendered in unknown and namespaced directive headings. Accepted Word edits to that summary update existing attrs, add newly named attrs when the reviewed label uses `name=value`, and remove attrs omitted from the reviewed summary or when the whole summary is removed from an otherwise generated fallback heading. The parser recognizes existing attr labels as comma boundaries, so values such as `note=A, B` remain one attr value instead of becoming noisy `title=` text.
+
+DOCX metadata parsing treats Word's visible ` · ` separator as a field boundary only when another valid metadata label for the rendered block follows it in the rendered field order. Values such as `source="CRM · status: stale"` and `owner="Ops · Q1: Finance"` therefore survive `docx-review-data` extraction and `docx-review-sync` unchanged unless the reviewer edits that value, even when Word serializes the value separator as its own run.
+
+Block body sync follows the DOCX-rendered framed body paragraphs for supported prose-like body-only directives, including claims, cards, callouts, memory blocks, tasks, and semantic reasoning blocks. Accepted Word edits return through `replace_body`, preserving lightweight Markdown for bold, emphasis, inline code, internal wikilinks, and external hyperlinks, while source soft wraps compare against Word's paragraph-normalized text before patching.
+
+Technical prose body sync follows the same body-only `replace_body` path for `::api`, `::endpoint`, `::parameter`, `::instruction`, `::changelog`, and `::query` / `::example` blocks that do not render as language-backed code. Accepted Word edits preserve lightweight Markdown and use the same soft-wrap comparison as other prose bodies.
+
+Code body sync follows the DOCX-rendered monospace body paragraphs for `::code`, `::code_cell`, `::output`, and language-backed `::query` / `::example` blocks. Accepted Word edits return through `replace_body` in code mode, preserving line breaks instead of paragraph-normalizing the body.
+
+Custom fallback body sync follows the DOCX-rendered fallback panels for unknown and namespaced directives. Accepted Word edits to body-only fallback content return through `replace_body`, while custom labels and attribute metadata remain renderer output rather than source body text.
+
+Metric value sync follows the same value precedence used by DOCX rendering: `value=`, `current=`, `amount=`, then body text. Accepted Word edits update that source field, stripping the rendered `unit=` suffix from stored values when appropriate; if the reviewer removes the rendered unit from the visible value line, sync removes the `unit=` attribute so the source re-renders the accepted Word text.
+
+Metric metadata sync follows the same metadata precedence used by DOCX rendering: `status=`, `trend=`, `change=` / `delta=`, `target=`, `source=`, and `as_of=` / `asOf=` / `date=`. Accepted Word edits update, add, or remove those source attrs, preserving existing alternate spellings when present and using canonical `change=` / `as_of=` for newly-added metadata.
+
+Block metadata sync follows the metadata labels exported for `::citation`, technical API/reference blocks, `::code_cell`, `::output`, `::computed_metric`, `::computed_plot`, `::control`, `::memory`, reasoning blocks, `::review`, `::provenance`, `::confidence`, `::agent_task`, and `::todo`. Accepted Word edits update, add, or remove matching source attrs or computed body metadata fields, preserving existing alternate spellings such as `href=`, `baseUrl=`, `url=`, `location=`, `runtime=`, `count=`, `cell=`, `range=`, `suffix=`, `min=`, `max=`, `step=`, `lastSeen=`, `validUntil=`, `supersededBy=`, `due_at=`, `decided_at=`, `author=`, `by=`, `agent=`, `sha=`, `score=`, and `reason=` when present. Citation URL and DOI metadata can span separate Word metadata paragraphs and still return to the same source citation block.
 
 ### `--to site`
 
@@ -600,9 +787,13 @@ Resolution order: explicit `id=` on the heading → auto-slug from the title →
 - `noma patch --ops` accepts transaction-shaped payloads with optional
   `prevalidate` / `postvalidate`. Single-op `--op` payloads remain supported.
   Transaction writes are all-or-nothing when validation fails.
-- Strict rendering blocks raw escape hatches and external runtime assets. The
-  default HTML renderer remains permissive for local artifact authoring; use
-  `--strict` or manifest trusted-publishing mode for team/published contexts.
+- Strict rendering blocks raw escape hatches, external runtime assets, and the
+  generated computed-control runtime. Interactive controls stay visible but are
+  disabled with static default computed values. Manifest
+  `trusted_publishing: true` applies the same static posture to manifest-driven
+  HTML/site/PDF renders. The default HTML renderer remains permissive for local
+  artifact authoring; use `--strict` or manifest trusted-publishing mode for
+  team/published contexts.
 - The reusable GitHub Action is a distribution wrapper around the CLI, not a new
   format contract. Pin `cli-version` in workflows that require reproducible CI
   output.
@@ -627,9 +818,11 @@ Resolution order: explicit `id=` on the heading → auto-slug from the title →
 - `noma diff a.noma b.noma` is additive and pure: same inputs always produce
   the same `::state_change` block list. Output schema matches v0.3's
   `::state_change` directive (`block`, `attribute`, `from`, `to`, `at`, optional
-  `reason`).
-- `book.yml` `trusted_publishing: true` implies `--no-unsafe` for all renders
-  driven by that manifest. Existing manifests without the field are unchanged.
+  `reason`). Attribute additions use `from="(absent)"`; attribute removals use
+  `to="(absent)"`.
+- `book.yml` `trusted_publishing: true` applies the strict static HTML posture
+  for all HTML/site/PDF renders driven by that manifest. Existing manifests
+  without the field are unchanged.
 - `--to site` emits `_assets/theme.css` once and links it from every page.
   Output of `renderHtml` (single-page) is unchanged unless the caller opts in
   via `stylesheetHref`.
@@ -648,5 +841,5 @@ Should the long-term canonical PDF engine be Typst (richer typography, native La
 ::
 
 ::open_question{id="oq-agent-protocol"}
-What is the smallest set of agent patch operations needed to cover real editing workflows? Current builds ship seven operations, adding `replace_body` and `update_heading` to the original five. Open question: do we need `move_block` and `add_comment` as first-class ops, or are they better expressed as compositions of the existing set?
+What is the smallest set of agent patch operations needed to cover real editing workflows? Current builds ship twenty-five operations, adding `replace_body`, `update_heading`, `add_comment`, `resolve_comment`, `remove_attribute`, `add_footnote`, `add_endnote`, `add_change_request`, `update_table_cell`, `update_table_header_cell`, `insert_table_row`, `delete_table_row`, `insert_table_column`, `delete_table_column`, `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, `delete_dataset_column`, and `move_block` to the original five. Future additions should be driven by repeated real patches that cannot stay source-preserving with this set.
 ::

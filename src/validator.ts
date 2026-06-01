@@ -1,6 +1,9 @@
 import yaml from "js-yaml";
 import type { Diagnostic, DirectiveNode, DocumentNode, Node } from "./ast.js";
 import { walk } from "./ast.js";
+import { computedDomainVars, controlDefaultNumber, formulaText, numericAttr as computedNumericAttr } from "./computed.js";
+import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
+import { splitDelimitedRow } from "./inline.js";
 
 export interface ValidateOptions {
   /**
@@ -39,10 +42,20 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "note",
     "warning",
     "tip",
+    "header",
+    "footer",
+    "page_setup",
+    "doc_protection",
+    "toc",
     "figure",
     "citation",
+    "footnote",
+    "endnote",
+    "bibliography",
     "math",
+    "code",
     "table",
+    "pagebreak",
   ]),
   technical: new Set([
     "summary",
@@ -59,18 +72,37 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "accordion",
     "sidebar",
     "button",
+    "api",
+    "endpoint",
+    "parameter",
+    "example",
+    "changelog",
+    "instruction",
+    "header",
+    "footer",
+    "page_setup",
+    "doc_protection",
+    "toc",
+    "pagebreak",
     "figure",
     "plot",
     "plotly",
     "diagram",
     "dataset",
+    "query",
+    "code",
     "code_cell",
     "output",
     "control",
+    "computed_metric",
+    "computed_plot",
     "export_button",
     "agent_task",
     "todo",
     "citation",
+    "footnote",
+    "endnote",
+    "bibliography",
     "math",
     "table",
     "html",
@@ -84,6 +116,11 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "note",
     "warning",
     "tip",
+    "header",
+    "footer",
+    "page_setup",
+    "doc_protection",
+    "toc",
     "claim",
     "evidence",
     "counterevidence",
@@ -96,22 +133,32 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "decision",
     "adr",
     "dataset",
+    "query",
     "plot",
     "plotly",
     "diagram",
     "metric",
+    "control",
+    "computed_metric",
+    "computed_plot",
+    "code",
     "figure",
     "agent_task",
     "todo",
+    "instruction",
     "review",
     "comment",
     "change_request",
     "provenance",
     "confidence",
     "citation",
+    "footnote",
+    "endnote",
+    "bibliography",
     "state_change",
     "math",
     "table",
+    "pagebreak",
   ]),
   memory: new Set(["memory", "memory_index"]),
 };
@@ -137,6 +184,9 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   const referenced = new Set<string>();
   const datasetIds = new Map<string, DirectiveNode>();
   const datasetColumns = new Map<string, Set<string>>();
+  const controls = new Map<string, DirectiveNode>();
+  const computed = new Map<string, DirectiveNode>();
+  const computedNodes: DirectiveNode[] = [];
 
   const aliasToNode = new Map<string, Node>();
   const declaredProfiles = readDeclaredProfiles(doc.meta);
@@ -232,6 +282,19 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       }
     }
 
+    if (node.name === "control") {
+      if (node.id) controls.set(node.id, node);
+      if (!suppressed(node)) {
+        validateControl(node, diagnostics);
+        validateControlLock(node, diagnostics);
+      }
+    }
+
+    if (node.name === "computed_metric" || node.name === "computed_plot") {
+      if (node.id) computed.set(node.id, node);
+      computedNodes.push(node);
+    }
+
     if (node.name === "claim" && node.id) claims.push(node);
 
     if (node.name === "claim" && !suppressed(node) && "confidence" in node.attrs) {
@@ -277,6 +340,43 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
           nodeId: node.id,
         });
       }
+    }
+
+    if (node.name === "comment" && !suppressed(node)) {
+      const target = readFirstStringAttr(node, ["target", "for", "parent", "block", "ref"]);
+      if (target) referenced.add(target);
+      const replyTo = readFirstStringAttr(node, ["reply_to", "replyTo", "reply"]);
+      if (replyTo) referenced.add(replyTo);
+    }
+
+    if (node.name === "change_request" && !suppressed(node)) {
+      const target = readFirstStringAttr(node, ["target", "for", "parent", "block"]);
+      if (target) referenced.add(target);
+      const action = readFirstStringAttr(node, ["action", "type"])?.toLowerCase();
+      if (action) {
+        if (action !== "insert" && action !== "delete" && action !== "replace") {
+          diagnostics.push({
+            severity: "warning",
+            code: "change-request-invalid-action",
+            message: `change_request "${node.id ?? "?"}" action="${action}" must be insert, delete, or replace.`,
+            pos: node.pos,
+            nodeId: node.id,
+          });
+        } else if (!hasChangeRequestRevisionText(node, action)) {
+          diagnostics.push({
+            severity: "warning",
+            code: "change-request-missing-revision-text",
+            message: `change_request "${node.id ?? "?"}" action="${action}" is missing the text needed for a tracked revision.`,
+            pos: node.pos,
+            nodeId: node.id,
+          });
+        }
+      }
+    }
+
+    if ((node.name === "footnote" || node.name === "endnote") && !suppressed(node)) {
+      const target = readFirstStringAttr(node, ["target", "for", "parent", "block", "ref"]);
+      if (target) referenced.add(target);
     }
 
     if (node.name === "evidence" || node.name === "counterevidence") {
@@ -342,7 +442,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       }
     }
 
-    if (node.name === "figure" && !node.attrs.alt && !node.attrs.caption) {
+    if (node.name === "figure" && !suppressed(node) && !node.attrs.alt && !node.attrs.caption) {
       diagnostics.push({
         severity: "warning",
         code: "figure-missing-alt",
@@ -593,6 +693,8 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     }
   }
 
+  validateComputedNodes(computedNodes, controls, computed, diagnostics);
+
   const ignore = options.ignoreRules;
   if (ignore && ignore.length > 0) {
     const known = collectRuleCodes();
@@ -645,6 +747,8 @@ const KNOWN_RULES = [
   "claim-without-evidence",
   "state-change-missing-block",
   "state-change-missing-from-to",
+  "change-request-invalid-action",
+  "change-request-missing-revision-text",
   "diagram-missing-kind",
   "diagram-missing-source",
   "plotly-missing-spec",
@@ -658,6 +762,13 @@ const KNOWN_RULES = [
   "memory-wikilink-non-memory-target",
   "claim-invalid-confidence",
   "citation-missing-source",
+  "control-missing-default",
+  "control-out-of-range-default",
+  "control-invalid-lock",
+  "computed-missing-formula",
+  "computed-unknown-dependency",
+  "formula-parse-error",
+  "computed-chain-too-deep",
 ];
 
 function collectRuleCodes(): Set<string> {
@@ -666,6 +777,175 @@ function collectRuleCodes(): Set<string> {
 
 function suppressed(node: DirectiveNode): boolean {
   return node.attrs.noverify === true;
+}
+
+function readFirstStringAttr(node: DirectiveNode, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = node.attrs[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function hasChangeRequestRevisionText(node: DirectiveNode, action: "insert" | "delete" | "replace"): boolean {
+  const from = readFirstStringAttr(node, ["from"]);
+  const to = readFirstStringAttr(node, ["to"]);
+  const text = readFirstStringAttr(node, ["text"]);
+  const body = Boolean((node.body ?? "").trim() || node.children.length > 0);
+  if (action === "replace") return Boolean(from && to);
+  if (action === "insert") return Boolean(to || text || body);
+  return Boolean(from || text || body);
+}
+
+function validateControl(node: DirectiveNode, diagnostics: Diagnostic[]): void {
+  if (!controlNeedsNumericDefault(node)) return;
+  const def = controlDefaultNumber(node);
+  if (def === undefined) {
+    diagnostics.push({
+      severity: "warning",
+      code: "control-missing-default",
+      message: `Numeric control "${node.id ?? "?"}" has no numeric \`default=\` value for static rendering and LLM context.`,
+      pos: node.pos,
+      nodeId: node.id,
+    });
+    return;
+  }
+  const min = computedNumericAttr(node.attrs, "min");
+  const max = computedNumericAttr(node.attrs, "max");
+  if ((min !== undefined && def < min) || (max !== undefined && def > max)) {
+    diagnostics.push({
+      severity: "warning",
+      code: "control-out-of-range-default",
+      message: `Numeric control "${node.id ?? "?"}" default=${def} is outside its declared range.`,
+      pos: node.pos,
+      nodeId: node.id,
+    });
+  }
+}
+
+function validateControlLock(node: DirectiveNode, diagnostics: Diagnostic[]): void {
+  const value = node.attrs.lock ?? node.attrs.content_control_lock ?? node.attrs.sdt_lock;
+  if (value === undefined || typeof value === "boolean") return;
+  const normalized = String(value).trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (CONTROL_LOCK_VALUES.has(normalized)) return;
+  diagnostics.push({
+    severity: "warning",
+    code: "control-invalid-lock",
+    message: `Control "${node.id ?? "?"}" lock="${value}" must be control, content, all, unlocked, or none.`,
+    pos: node.pos,
+    nodeId: node.id,
+  });
+}
+
+const CONTROL_LOCK_VALUES = new Set([
+  "control",
+  "field",
+  "container",
+  "sdt",
+  "sdtlocked",
+  "content",
+  "value",
+  "contentlocked",
+  "all",
+  "both",
+  "full",
+  "sdtcontentlocked",
+  "controlandcontent",
+  "fieldandcontent",
+  "unlocked",
+  "none",
+  "off",
+  "false",
+  "0",
+  "no",
+  "",
+]);
+
+function controlNeedsNumericDefault(node: DirectiveNode): boolean {
+  const type = typeof node.attrs.type === "string" ? node.attrs.type.trim().toLowerCase() : undefined;
+  if (!type) return true;
+  return type === "slider" || type === "range" || type === "number" || type === "checkbox" || type === "toggle";
+}
+
+function validateComputedNodes(
+  nodes: DirectiveNode[],
+  controls: Map<string, DirectiveNode>,
+  computed: Map<string, DirectiveNode>,
+  diagnostics: Diagnostic[],
+): void {
+  const depMap = new Map<string, string[]>();
+  for (const node of nodes) {
+    if (suppressed(node)) continue;
+    const formula = formulaText(node);
+    if (!formula) {
+      diagnostics.push({
+        severity: "warning",
+        code: "computed-missing-formula",
+        message: `${node.name} "${node.id ?? "?"}" has no \`formula=\` attribute or \`formula:\` body line.`,
+        pos: node.pos,
+        nodeId: node.id,
+      });
+      continue;
+    }
+    const parsed = parseFormula(formula);
+    if (!parsed.ok) {
+      diagnostics.push({
+        severity: "error",
+        code: "formula-parse-error",
+        message: `${node.name} "${node.id ?? "?"}" formula could not be parsed: ${parsed.error.message}`,
+        pos: node.pos,
+        nodeId: node.id,
+      });
+      continue;
+    }
+    const domainVars = computedDomainVars(node);
+    const deps = extractFormulaIdentifiers(parsed.ast);
+    depMap.set(node.id ?? `@${node.pos?.line ?? depMap.size}`, deps);
+    for (const dep of deps) {
+      if (domainVars.has(dep) || controls.has(dep) || computed.has(dep)) continue;
+      diagnostics.push({
+        severity: "error",
+        code: "computed-unknown-dependency",
+        message: `${node.name} "${node.id ?? "?"}" formula references unknown control or computed block "${dep}".`,
+        pos: node.pos,
+        nodeId: node.id,
+      });
+    }
+  }
+
+  const depthMemo = new Map<string, number>();
+  const visiting = new Set<string>();
+  const depthOf = (id: string): number => {
+    if (controls.has(id)) return 0;
+    const memo = depthMemo.get(id);
+    if (memo !== undefined) return memo;
+    if (visiting.has(id)) return Infinity;
+    const node = computed.get(id);
+    if (!node) return 0;
+    visiting.add(id);
+    const deps = depMap.get(id) ?? [];
+    let depth = 1;
+    for (const dep of deps) {
+      if (computed.has(dep)) depth = Math.max(depth, depthOf(dep) + 1);
+    }
+    visiting.delete(id);
+    depthMemo.set(id, depth);
+    return depth;
+  };
+
+  for (const node of nodes) {
+    if (suppressed(node) || !node.id) continue;
+    const depth = depthOf(node.id);
+    if (depth > 2) {
+      diagnostics.push({
+        severity: "warning",
+        code: "computed-chain-too-deep",
+        message: `${node.name} "${node.id}" has computed dependency depth ${depth === Infinity ? "cycle" : depth}; keep computed chains at depth <= 2.`,
+        pos: node.pos,
+        nodeId: node.id,
+      });
+    }
+  }
 }
 
 function readDatasetColumns(node: DirectiveNode): Set<string> {
@@ -681,7 +961,7 @@ function readDatasetColumns(node: DirectiveNode): Set<string> {
     const delim = format === "tsv" ? "\t" : ",";
     const firstLine = body.replace(/\r\n?/g, "\n").split("\n").find((l) => l.length > 0);
     if (firstLine) {
-      for (const c of firstLine.split(delim).map((s) => s.trim()).filter(Boolean)) {
+      for (const c of splitDelimitedRow(firstLine, delim).filter(Boolean)) {
         cols.add(c);
       }
     }

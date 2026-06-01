@@ -12,6 +12,7 @@ export interface SiteRenderOptions {
   allowEscapeHatches?: boolean;
   math?: "katex" | "none";
   externalAssets?: boolean;
+  interactive?: boolean;
 }
 
 interface IdLocation {
@@ -51,6 +52,7 @@ export function renderSite(
       title: chapterTitle(ch) || bookTitle,
       allowEscapeHatches: options.allowEscapeHatches !== false,
       externalAssets: options.externalAssets !== false,
+      interactive: options.interactive !== false,
       ...(options.math ? { math: options.math } : {}),
     });
     const rewritten = rewriteWikilinks(html, ch.slug, idMap, prefix);

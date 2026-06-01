@@ -33,16 +33,24 @@ test("diffDocs with empty options.at throws", () => {
   assert.throws(() => diffDocs(before, after, { at: "" }), /at/i);
 });
 
-test("attribute appearing only on after-side is SKIPPED in v0.7", () => {
+test("attribute appearing only on after-side emits an added-attribute state_change", () => {
   const before = parse(`::claim{id="c1"}\nx\n::\n`);
   const after = parse(`::claim{id="c1" confidence=0.5}\nx\n::\n`);
-  assert.deepEqual(diffDocs(before, after, { at: AT }), []);
+  const deltas = diffDocs(before, after, { at: AT });
+  assert.equal(deltas.length, 1);
+  assert.equal(deltas[0]!.attrs.attribute, "confidence");
+  assert.equal(deltas[0]!.attrs.from, "(absent)");
+  assert.equal(deltas[0]!.attrs.to, 0.5);
 });
 
-test("attribute disappearing on after-side is SKIPPED in v0.7", () => {
+test("attribute disappearing on after-side emits a removed-attribute state_change", () => {
   const before = parse(`::claim{id="c1" status="open"}\nx\n::\n`);
   const after = parse(`::claim{id="c1"}\nx\n::\n`);
-  assert.deepEqual(diffDocs(before, after, { at: AT }), []);
+  const deltas = diffDocs(before, after, { at: AT });
+  assert.equal(deltas.length, 1);
+  assert.equal(deltas[0]!.attrs.attribute, "status");
+  assert.equal(deltas[0]!.attrs.from, "open");
+  assert.equal(deltas[0]!.attrs.to, "(absent)");
 });
 
 test("multiple attrs on same block produce multiple state_changes", () => {

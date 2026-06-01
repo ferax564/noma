@@ -144,15 +144,22 @@ export class NomaWorkflow {
     return { allowed: true };
   }
 
-  // For rename_id the target id lives in `op.from`, not `op.id`. For add_block
-  // there's no existing target id at all — we infer the block name from the
-  // first directive opener in the content string instead.
+  // For rename_id the target id lives in `op.from`; for targeted review/note
+  // insertion ops it lives in `op.target`. Comment-resolution and table-cell ops address their
+  // target block directly. move_block is gated on the moved block's type. For
+  // add_block there's no existing target id at all — we infer the block name
+  // from the first directive opener in the content string.
   private async inferBlockName(file: string, op: PatchOp): Promise<string | undefined> {
     if (op.op === "add_block") {
       const match = /^\s*::([a-z_]+)/i.exec(op.content);
       return match?.[1];
     }
-    const targetId = op.op === "rename_id" ? op.from : (op as { id?: string }).id;
+    const targetId =
+      op.op === "rename_id"
+        ? op.from
+        : op.op === "add_comment" || op.op === "add_footnote" || op.op === "add_endnote" || op.op === "add_change_request"
+          ? op.target
+          : (op as { id?: string }).id;
     if (!targetId) return undefined;
     const { blocks } = await this.tools.readDoc(file);
     const hit = blocks.find((b) => b.id === targetId);

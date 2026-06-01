@@ -1,5 +1,13 @@
 import type { DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
+import {
+  buildComputedEvalContext,
+  evaluateComputedNode,
+  evaluateComputedSeries,
+  formatComputedNumber,
+  formulaText,
+  type ComputedEvalContext,
+} from "./computed.js";
 import { inlineToPlain } from "./inline.js";
 
 export interface RenderLlmOptions {
@@ -27,6 +35,7 @@ interface RenderCtx extends RenderLlmOptions {
   excludedMemoryIds: Set<string>;
   selectSet: Set<string>;
   excludeSet: Set<string>;
+  computed: ComputedEvalContext;
 }
 
 const STALE_OPT_IN_TYPES = new Set(["project", "reference"]);
@@ -41,6 +50,7 @@ export function renderLlm(doc: DocumentNode, options: RenderLlmOptions = {}): st
     excludedMemoryIds: computeExcludedMemoryIds(doc, options),
     selectSet: normalizeSelectors(options.select),
     excludeSet: normalizeSelectors(options.exclude),
+    computed: buildComputedEvalContext(doc),
   };
   const out: string[] = [];
   if (doc.meta.title) out.push(`# ${String(doc.meta.title)}`);
@@ -209,6 +219,9 @@ function emitDirective(
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
     .join(" ");
   out.push(`[${tag}${attrs ? " " + attrs : ""}]`);
+  if (node.name === "computed_metric" || node.name === "computed_plot") {
+    emitComputedSummary(node, out, opts);
+  }
   const isIndexWithExclusions =
     node.name === "memory_index" && opts.excludedMemoryIds.size > 0;
   const childForce = forceSubtree || matchesSelector(node, opts.selectSet);
@@ -229,6 +242,24 @@ function emitDirective(
   }
   out.push(`[/${tag}]`);
   out.push("");
+}
+
+function emitComputedSummary(node: DirectiveNode, out: string[], opts: RenderCtx): void {
+  const formula = formulaText(node);
+  if (!formula) {
+    out.push("formula: <missing>");
+    return;
+  }
+  out.push(`formula: ${formula}`);
+  if (node.name === "computed_plot") {
+    const series = evaluateComputedSeries(node, opts.computed);
+    if (series) {
+      out.push(`default_series (${series.variable}): ${series.values.map(formatComputedNumber).join(", ")}`);
+      return;
+    }
+  }
+  const value = evaluateComputedNode(node, opts.computed);
+  if (value !== undefined) out.push(`default: ${formatComputedNumber(value)}`);
 }
 
 function shouldEmit(node: Node, opts: RenderCtx, forceSubtree: boolean): boolean {

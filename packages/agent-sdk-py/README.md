@@ -17,8 +17,13 @@
   `patch_block(file, op, options=...)` — 1:1 wrappers over the four v1.0
   MCP tools.
 - Pydantic models for every patch op variant (`replace_block`,
-  `replace_body`, `update_heading`, `add_block`, `delete_block`,
-  `update_attribute`, `rename_id`) and the §3.5 error code literal type.
+  `replace_body`, `update_heading`, `add_comment`, `resolve_comment`,
+  `add_footnote`, `add_endnote`, `add_change_request`, `update_table_cell`, `update_table_header_cell`, `insert_table_row`,
+  `delete_table_row`, `insert_table_column`, `delete_table_column`,
+  `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`,
+  `insert_dataset_column`, `delete_dataset_column`,
+  `move_block`, `add_block`, `delete_block`, `update_attribute`, `remove_attribute`,
+  `rename_id`) and the §3.5 error code literal type.
 - Error hierarchy mirroring the TS SDK: `NomaSystemError`,
   `NomaSpawnError`, `NomaTransportError`, `NomaCapabilityError`,
   `NomaTimeoutError`.

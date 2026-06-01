@@ -65,9 +65,27 @@ Current shipped operations:
 | `replace_block`    | directive block                | Replace an entire semantic block.            |
 | `replace_body`     | body-only directive/text node   | Replace body text while preserving wrapper.  |
 | `update_heading`   | section                        | Change heading title while preserving ID.    |
+| `add_comment`      | ID-bearing block               | Add a targeted or threaded review comment.   |
+| `resolve_comment`  | `::comment`                    | Mark a review comment resolved.              |
+| `add_footnote`     | ID-bearing block               | Add a targeted footnote.                     |
+| `add_endnote`      | ID-bearing block               | Add a targeted endnote.                      |
+| `add_change_request` | ID-bearing block             | Add a targeted tracked change request.       |
+| `update_table_cell`| `::table` directive            | Update one table body cell.                  |
+| `update_table_header_cell` | `::table` directive    | Update one table header cell.                |
+| `insert_table_row` | `::table` directive            | Insert one body row.                         |
+| `delete_table_row` | `::table` directive            | Delete one body row.                         |
+| `insert_table_column` | `::table` directive         | Insert one table column.                     |
+| `delete_table_column` | `::table` directive         | Delete one table column.                     |
+| `update_dataset_cell` | `::dataset` directive       | Update one dataset body cell.                |
+| `insert_dataset_row` | `::dataset` directive        | Insert one dataset data row.                 |
+| `delete_dataset_row` | `::dataset` directive        | Delete one dataset data row.                 |
+| `insert_dataset_column` | `::dataset` directive     | Insert one dataset column.                   |
+| `delete_dataset_column` | `::dataset` directive     | Delete one dataset column.                   |
+| `move_block`       | directive block                | Move a directive under a new parent.         |
 | `add_block`        | document/section/directive     | Insert a directive child.                    |
 | `delete_block`     | any ID-bearing block           | Remove a block.                              |
 | `update_attribute` | directive                      | Change one attribute except `id`.            |
+| `remove_attribute` | directive                      | Remove one attribute except `id`.            |
 | `rename_id`        | any ID-bearing block           | Rename canonical ID and retarget references. |
 
 `update_heading` pins the old section ID as an explicit `{id="..."}` attribute

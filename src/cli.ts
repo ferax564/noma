@@ -9,9 +9,13 @@ import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
 import { renderDocx } from "./renderer-docx.js";
+import { extractDocxControlData } from "./docx-control-data.js";
+import { syncControlDefaultsFromDocx } from "./docx-control-sync.js";
+import { extractDocxReviewData } from "./docx-review-data.js";
+import { syncReviewCommentsFromDocx } from "./docx-review-sync.js";
 import { patchSource, type PatchOp } from "./patch.js";
 import { loadBook, loadBookChapters, isBookManifestPath } from "./book.js";
-import { inlineDatasetSources } from "./loader.js";
+import { inlineDatasetSources, inlineFigureSources } from "./loader.js";
 import { renderSite } from "./renderer-site.js";
 import { validate, formatDiagnostics } from "./validator.js";
 import { formatSource } from "./fmt.js";
@@ -32,9 +36,13 @@ Usage:
   noma init [dir]                            Create a starter .noma document
   noma ids <file.noma|book.yml>              Print canonical ID and alias registry
   noma schema <name>                         Print bundled JSON Schema
+  noma docx-data <file.docx>                 Extract DOCX control/task state as JSON
+  noma docx-sync <file.noma> <file.docx>     Update ::control defaults and task state
+  noma docx-review-data <file.docx>          Extract Word review data as JSON
+  noma docx-review-sync <file.noma> <file.docx> Sync Word review data from DOCX
   noma fmt   <file.noma> [--inplace|--out p] Re-align pipe tables in source
   noma verify <fixture-dir>                  Run conformance suite against fixtures
-  noma diff <before.noma> <after.noma> --at <date>  Emit ::state_change for attribute drift
+  noma diff <before.noma> <after.noma> --at <date>  Emit ::state_change for attribute add/change/remove
   noma --help                                Show this help
   noma --version                             Print the CLI version
 
@@ -48,7 +56,8 @@ Render options:
   --theme <name>            HTML theme: default | dark (default: default)
   --css <path>              Append custom CSS to standalone HTML/site/PDF output
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
-  --strict                  HTML: block escape hatches and external CDN assets
+  --strict                  HTML: block escape hatches, external CDN assets,
+                            and generated interactive runtime
   --math <katex|none>       Math rendering: enable KaTeX assets in standalone HTML
                             (default: auto-detect from doc / book manifest)
   --page-size <name>        PDF: page size passed to Chromium (default: A4)
@@ -79,6 +88,10 @@ Patch options:
   --inplace                 Write the result back to <file.noma>
   --out <path>              Write to file instead of stdout
 
+DOCX sync options:
+  --report <path>           Write a JSON report for docx-sync or
+                            docx-review-sync changes/skips
+
 Diff options:
   --at <YYYY-MM-DD>         Required. Timestamp written as at="..." on each delta.
                             Required so output is deterministic.
@@ -91,6 +104,10 @@ Examples:
   noma render examples/thesis.noma --to html --out dist/thesis.html
   noma render examples/thesis.noma --to pdf --out dist/thesis.pdf
   noma render examples/thesis.noma --to docx --out dist/thesis.docx
+  noma docx-data dist/thesis.docx
+  noma docx-sync examples/thesis.noma dist/thesis.docx --out synced.noma
+  noma docx-review-data dist/thesis.docx
+  noma docx-review-sync examples/thesis.noma dist/thesis.docx --out reviewed.noma
   noma render examples/thesis.noma --to llm
   noma check examples/thesis.noma
   noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
@@ -110,11 +127,13 @@ interface CliArgs {
   help: boolean;
   op?: string;
   opsFile?: string;
+  report?: string;
   inplace: boolean;
   theme: string;
   customCss?: string;
   allowEscapeHatches: boolean;
   externalAssets: boolean;
+  interactive: boolean;
   pdfPageSize: string;
   pdfMargin?: string;
   pdfMarginTop?: string;
@@ -144,6 +163,7 @@ function parseArgs(argv: string[]): CliArgs {
     pdfPrintBackground: true,
     allowEscapeHatches: true,
     externalAssets: true,
+    interactive: true,
     ignoreRules: [],
     llmSelect: [],
     llmExclude: [],
@@ -181,6 +201,7 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--strict") {
       args.allowEscapeHatches = false;
       args.externalAssets = false;
+      args.interactive = false;
       i++;
     } else if (a === "--stale-days") {
       const v = Number(argv[++i]);
@@ -243,6 +264,9 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--ops") {
       args.opsFile = argv[++i];
       i++;
+    } else if (a === "--report") {
+      args.report = argv[++i];
+      i++;
     } else if (a === "--inplace") {
       args.inplace = true;
       i++;
@@ -296,6 +320,20 @@ function pdfMarginFromArgs(args: CliArgs): PdfMarginOptions {
     right: args.pdfMarginRight ?? base ?? "18mm",
     bottom: args.pdfMarginBottom ?? base ?? "20mm",
     left: args.pdfMarginLeft ?? base ?? "18mm",
+  };
+}
+
+interface RenderSafetyOptions {
+  allowEscapeHatches: boolean;
+  externalAssets: boolean;
+  interactive: boolean;
+}
+
+function renderSafetyFromArgs(args: CliArgs, trustedPublishing: boolean): RenderSafetyOptions {
+  return {
+    allowEscapeHatches: args.allowEscapeHatches && !trustedPublishing,
+    externalAssets: args.externalAssets && !trustedPublishing,
+    interactive: args.interactive && !trustedPublishing,
   };
 }
 
@@ -355,6 +393,12 @@ function outputBinary(content: Buffer, out?: string): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(out, content);
   process.stderr.write(`✓ wrote ${out}\n`);
+}
+
+function outputSyncReport<T extends { source: string }>(result: T, reportPath?: string): void {
+  if (!reportPath) return;
+  const { source: _source, ...report } = result;
+  output(JSON.stringify(report, null, 2), reportPath);
 }
 
 function starterSource(): string {
@@ -492,6 +536,64 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (cmd === "docx-data") {
+    if (!args.file) {
+      process.stderr.write("noma docx-data: <file.docx> required\n");
+      process.exit(2);
+    }
+    const data = extractDocxControlData(readFileSync(resolve(args.file)));
+    output(JSON.stringify(data, null, 2), args.out);
+    return;
+  }
+
+  if (cmd === "docx-sync") {
+    if (!args.file || !args.fileB) {
+      process.stderr.write("noma docx-sync: <file.noma> <file.docx> required\n");
+      process.exit(2);
+    }
+    const filePath = resolve(args.file);
+    if (isBookManifestPath(filePath)) {
+      process.stderr.write(`error: noma docx-sync operates on .noma source files, not book manifests\n`);
+      process.exit(2);
+    }
+    const result = syncControlDefaultsFromDocx(
+      readFileSync(filePath, "utf8"),
+      readFileSync(resolve(args.fileB)),
+    );
+    output(result.source, args.inplace ? filePath : args.out);
+    outputSyncReport(result, args.report);
+    return;
+  }
+
+  if (cmd === "docx-review-data") {
+    if (!args.file) {
+      process.stderr.write("noma docx-review-data: <file.docx> required\n");
+      process.exit(2);
+    }
+    const data = extractDocxReviewData(readFileSync(resolve(args.file)));
+    output(JSON.stringify(data, null, 2), args.out);
+    return;
+  }
+
+  if (cmd === "docx-review-sync") {
+    if (!args.file || !args.fileB) {
+      process.stderr.write("noma docx-review-sync: <file.noma> <file.docx> required\n");
+      process.exit(2);
+    }
+    const filePath = resolve(args.file);
+    if (isBookManifestPath(filePath)) {
+      process.stderr.write(`error: noma docx-review-sync operates on .noma source files, not book manifests\n`);
+      process.exit(2);
+    }
+    const result = syncReviewCommentsFromDocx(
+      readFileSync(filePath, "utf8"),
+      readFileSync(resolve(args.fileB)),
+    );
+    output(result.source, args.inplace ? filePath : args.out);
+    outputSyncReport(result, args.report);
+    return;
+  }
+
   if (cmd === "diff") {
     if (!args.file || !args.fileB) {
       process.stderr.write("noma diff: <before.noma> <after.noma> required\n");
@@ -543,12 +645,11 @@ async function main(): Promise<void> {
     }
     const themeCss = loadThemeCss(args);
     const { manifest, chapters } = loadBookChapters(filePath);
-    const allowEscapeHatches = args.allowEscapeHatches && manifest.trusted_publishing !== true;
+    const safety = renderSafetyFromArgs(args, manifest.trusted_publishing === true);
     renderSite(manifest, chapters, args.out, {
       themeCss,
       title: args.title,
-      allowEscapeHatches,
-      externalAssets: args.externalAssets,
+      ...safety,
       ...(args.math ? { math: args.math } : {}),
     });
     process.stderr.write(`✓ wrote ${chapters.length + 1} pages to ${args.out}\n`);
@@ -558,8 +659,7 @@ async function main(): Promise<void> {
   const manifestForTrust = isBookManifestPath(filePath)
     ? (yaml.load(readFileSync(filePath, "utf8")) as Record<string, unknown> | null)
     : null;
-  const allowEscapeHatches =
-    args.allowEscapeHatches && manifestForTrust?.trusted_publishing !== true;
+  const safety = renderSafetyFromArgs(args, manifestForTrust?.trusted_publishing === true);
 
   const doc = isBookManifestPath(filePath)
     ? loadBook(filePath)
@@ -585,8 +685,7 @@ async function main(): Promise<void> {
             standalone: args.standalone,
             title: args.title,
             themeCss,
-            allowEscapeHatches,
-            externalAssets: args.externalAssets,
+            ...safety,
             ...(args.math ? { math: args.math } : {}),
           });
           output(html, args.out);
@@ -602,8 +701,7 @@ async function main(): Promise<void> {
             standalone: true,
             title: args.title,
             themeCss,
-            allowEscapeHatches,
-            externalAssets: args.externalAssets,
+            ...safety,
             ...(args.math ? { math: args.math } : {}),
           });
           await writePdfFromHtml(html, args.out, {
@@ -619,6 +717,7 @@ async function main(): Promise<void> {
             process.stderr.write(`error: --to docx requires --out <file.docx>\n`);
             process.exit(2);
           }
+          inlineFigureSources(doc);
           outputBinary(renderDocx(doc, { title: args.title }), args.out);
           return;
         }

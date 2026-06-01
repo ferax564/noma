@@ -2,6 +2,8 @@
  * Tiny inline markup parser. Operates on plain text and emits HTML.
  * Order matters: handle code spans first so emphasis inside `code` stays raw.
  */
+const MARKDOWN_LINK_RE = /\[((?:\\.|[^\]\\])+)\]\(([^)\s]+)\)/g;
+
 export function inlineToHtml(src: string): string {
   let text = escapeHtml(src);
 
@@ -16,12 +18,13 @@ export function inlineToHtml(src: string): string {
     const i = codeSpans.push("<code>" + body + "</code>") - 1;
     return PH_OPEN + i + PH_CLOSE;
   });
+  text = unescapeMarkdownTextEscapes(text);
   text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
   text = text.replace(
-    /\[([^\]]+)\]\(([^)\s]+)\)/g,
-    (_m, label, href) => `<a href="${escapeAttr(href)}">${label}</a>`,
+    MARKDOWN_LINK_RE,
+    (_m, label, href) => `<a href="${escapeAttr(href)}">${unescapeMarkdownLinkLabel(label)}</a>`,
   );
   text = text.replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, (_m, id) =>
     `<a class="noma-ref" href="#${escapeAttr(id)}">${id}</a>`,
@@ -38,13 +41,29 @@ export function inlineToHtml(src: string): string {
 }
 
 export function inlineToPlain(src: string): string {
-  return src
-    .replace(/`([^`]+)`/g, "$1")
+  const codeSpans: string[] = [];
+  const PH_OPEN = String.fromCharCode(2);
+  const PH_CLOSE = String.fromCharCode(3);
+  let text = src.replace(/`([^`]+)`/g, (_m, body) => {
+    const i = codeSpans.push(body) - 1;
+    return PH_OPEN + i + PH_CLOSE;
+  });
+  text = unescapeMarkdownTextEscapes(text)
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/\b_([^_]+)_\b/g, "$1")
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 ($2)")
+    .replace(MARKDOWN_LINK_RE, (_m, label, href) => `${unescapeMarkdownLinkLabel(label)} (${href})`)
     .replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, "$1");
+  const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
+  return text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
+}
+
+export function unescapeMarkdownLinkLabel(label: string): string {
+  return label.replace(/\\([\\[\]|])/g, "$1");
+}
+
+export function unescapeMarkdownTextEscapes(text: string): string {
+  return text.replace(/\\\|/g, "|");
 }
 
 export function escapeHtml(s: string): string {
@@ -89,4 +108,77 @@ export function splitPipeRow(line: string): string[] {
   }
   cells.push(buf.trim());
   return cells;
+}
+
+export function escapePipeTableCell(cell: string): string {
+  let out = "";
+  let inBacktick = false;
+  for (let i = 0; i < cell.length; i++) {
+    const ch = cell[i]!;
+    if (ch === "`") {
+      inBacktick = !inBacktick;
+      out += ch;
+      continue;
+    }
+    if (ch === "|" && !inBacktick && cell[i - 1] !== "\\") {
+      out += "\\|";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+export type DelimitedRowDelimiter = "," | "\t";
+
+export function splitDelimitedRow(line: string, delimiter: DelimitedRowDelimiter): string[] {
+  const cells: string[] = [];
+  let buf = "";
+  let inQuotes = false;
+  let quotedCell = false;
+  let afterClosingQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (inQuotes) {
+      if (ch === "\"" && line[i + 1] === "\"") {
+        buf += "\"";
+        i++;
+        continue;
+      }
+      if (ch === "\"") {
+        inQuotes = false;
+        quotedCell = true;
+        afterClosingQuote = true;
+        continue;
+      }
+      buf += ch;
+      continue;
+    }
+    if (ch === delimiter) {
+      cells.push(quotedCell ? buf : buf.trim());
+      buf = "";
+      quotedCell = false;
+      afterClosingQuote = false;
+      continue;
+    }
+    if (ch === "\"" && buf.trim() === "" && !quotedCell) {
+      buf = "";
+      inQuotes = true;
+      continue;
+    }
+    if (afterClosingQuote && /\s/.test(ch)) continue;
+    afterClosingQuote = false;
+    buf += ch;
+  }
+  cells.push(quotedCell ? buf : buf.trim());
+  return cells;
+}
+
+export function serializeDelimitedRow(cells: string[], delimiter: DelimitedRowDelimiter): string {
+  return cells.map((cell) => serializeDelimitedCell(cell, delimiter)).join(delimiter);
+}
+
+function serializeDelimitedCell(cell: string, delimiter: DelimitedRowDelimiter): string {
+  if (!cell.includes(delimiter) && !cell.includes("\"") && !/^\s|\s$/.test(cell)) return cell;
+  return `"${cell.replace(/"/g, "\"\"")}"`;
 }

@@ -14,7 +14,7 @@ nomaAgent:
   profile: research
   blocks:
     claim:
-      ops: [replace_block, update_attribute]
+      ops: [replace_block, add_comment, add_footnote, add_endnote, add_change_request, update_attribute, remove_attribute]
       attrs:
         confidence:
           type: number
@@ -22,6 +22,14 @@ nomaAgent:
           max: 1
     evidence:
       ops: [add_block, replace_block, delete_block]
+    risk:
+      ops: [move_block]
+    comment:
+      ops: [resolve_comment]
+    table:
+      ops: [update_table_cell, update_table_header_cell, insert_table_row, delete_table_row, insert_table_column, delete_table_column]
+    dataset:
+      ops: [update_dataset_cell, insert_dataset_row, delete_dataset_row, insert_dataset_column, delete_dataset_column]
   ids:
     rename: true
   validation:
@@ -41,9 +49,27 @@ test("fromYaml accepts full descriptor and indexes ops + attr constraints", () =
   const d = CapabilityDescriptor.fromYaml(FULL);
   assert.equal(d.profile, "research");
   assert.ok(d.allows("claim", "replace_block"));
+  assert.ok(d.allows("claim", "add_comment"));
+  assert.ok(d.allows("claim", "add_footnote"));
+  assert.ok(d.allows("claim", "add_endnote"));
+  assert.ok(d.allows("claim", "add_change_request"));
   assert.ok(d.allows("claim", "update_attribute"));
+  assert.ok(d.allows("claim", "remove_attribute"));
   assert.ok(!d.allows("claim", "delete_block"));
   assert.ok(d.allows("evidence", "add_block"));
+  assert.ok(d.allows("risk", "move_block"));
+  assert.ok(d.allows("comment", "resolve_comment"));
+  assert.ok(d.allows("table", "update_table_cell"));
+  assert.ok(d.allows("table", "update_table_header_cell"));
+  assert.ok(d.allows("table", "insert_table_row"));
+  assert.ok(d.allows("table", "delete_table_row"));
+  assert.ok(d.allows("table", "insert_table_column"));
+  assert.ok(d.allows("table", "delete_table_column"));
+  assert.ok(d.allows("dataset", "update_dataset_cell"));
+  assert.ok(d.allows("dataset", "insert_dataset_row"));
+  assert.ok(d.allows("dataset", "delete_dataset_row"));
+  assert.ok(d.allows("dataset", "insert_dataset_column"));
+  assert.ok(d.allows("dataset", "delete_dataset_column"));
   assert.ok(!d.allows("paragraph", "replace_block"));
   assert.equal(d.idsRename, true);
   assert.equal(d.validationRequired, true);
