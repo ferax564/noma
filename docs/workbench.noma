@@ -20,7 +20,7 @@ Or use the published page:
 
 [Open the workbench](../workbench.html)
 
-::figure{id="workbench-overview" src="../assets/workbench-overview.png" alt="Noma Workbench overview showing source editor, live preview, diagnostics, outline, and the authoring ribbon." caption="The workbench keeps source, preview, diagnostics, and outline visible in one browser page."}
+::figure{id="workbench-overview" src="../assets/workbench-overview.png" alt="Noma Workbench overview showing the menu bar, active ribbon panel, source editor, live preview, diagnostics, and outline." caption="The workbench keeps source, preview, diagnostics, outline, and the active Word-style ribbon panel visible in one browser page."}
 ::
 
 ## What it is for
@@ -35,6 +35,8 @@ It covers the main Word-style workflows that fit Noma's source-first model:
 - Format selected text as bold, italic, inline code, or a link.
 - Change the current line to H1, H2, or H3.
 - Convert selected lines to bullets, numbered lists, quotes, or code blocks.
+- Toggle **Edit Preview** to edit rendered headings, paragraphs, list items,
+  and quotes directly, with changes synced back to the `.noma` source.
 - Insert Noma blocks for tables, figures, callouts, tasks, controls, math,
   headers, footers, page setup, page breaks, comments, change requests, and
   footnotes.
@@ -51,7 +53,7 @@ The workbench has four persistent areas:
 
 | Area | What it does |
 |---|---|
-| Ribbon | File, formatting, paragraph, insert, layout, review, find, print, and export commands. |
+| Menu bar and ribbon | File, format, insert, layout, review, find, and export tabs. The active tab shows only the relevant commands. |
 | Source | The editable `.noma` source. This remains the source of truth. |
 | Output | Safe rendered preview, JSON AST, or deterministic LLM context. |
 | Inspector | Diagnostics and outline navigation derived from the current AST. |
@@ -63,15 +65,18 @@ last draft. Use **Download Noma** before moving the draft into a repository.
 
 1. Load an example or click **New**.
 2. Draft in the source pane.
-3. Use the ribbon for common formatting and Noma block templates.
+3. Use the menu bar to choose a command group, then use the active ribbon for
+   common formatting and Noma block templates.
 4. Watch the status pill and diagnostics panel as the validator checks the
    document.
 5. Use the outline to jump to headings and ID-bearing blocks.
-6. Switch to AST or LLM output when you need to inspect structure or copy
+6. Toggle **Edit Preview** when you want to revise simple rendered prose
+   without moving your cursor back to the source pane.
+7. Switch to AST or LLM output when you need to inspect structure or copy
    agent context.
-7. Download the source or rendered artifacts.
+8. Download the source or rendered artifacts.
 
-::figure{id="workbench-authoring" src="../assets/workbench-authoring.png" alt="Noma Workbench authoring state showing inserted layout, review, control, table, and diagnostic blocks." caption="A review-oriented document can show layout controls, comments, change requests, diagnostics, AST output, and find state at once."}
+::figure{id="workbench-authoring" src="../assets/workbench-authoring.png" alt="Noma Workbench authoring state showing inserted layout, review, control, table, and diagnostic blocks with a compact menu-driven ribbon." caption="A review-oriented document can show layout controls, comments, change requests, diagnostics, AST output, and find state without exposing every command at once."}
 ::
 
 ## Word-style handoff
@@ -82,14 +87,34 @@ drafting:
 
 | Word workflow | Workbench equivalent |
 |---|---|
-| New/open document | **New**, **Open**, and example loading. |
-| Text formatting | Bold, italic, code, and link commands on the selected text. |
-| Paragraph tools | Headings, bullets, numbering, quote, and code-block commands. |
-| Insert menu | Table, figure, callout, task, control, math, review, and layout block templates. |
-| Review | Comment, change request, and footnote block templates. |
-| Find | Source search with previous/next navigation. |
-| Print | Browser print of the rendered preview. |
-| Export | Download Noma, HTML, JSON, copy LLM, and copy the DOCX render command. |
+| New/open document | **File** tab with New, Open, example loading, and Render. |
+| Text formatting | **Format** tab with bold, italic, code, links, headings, lists, quote, and code-block commands. |
+| Insert menu | **Insert** tab with table, figure, callout, task, control, and math block templates. |
+| Page layout | **Layout** tab with TOC, header, footer, page setup, and page break templates. |
+| Review | **Review** tab with comment, change request, and footnote block templates. |
+| Find | **Find** tab with source search and previous/next navigation. |
+| Print/export | **Export** tab with Noma, HTML, JSON, LLM, DOCX-command, and print actions. |
+
+## Rendered editing mode
+
+**Edit Preview** makes the safe rendered page directly editable for source-backed
+text blocks:
+
+| Rendered element | Source update |
+|---|---|
+| Heading | Replaces the heading title while preserving `#` level and trailing `{id=...}` attributes. |
+| Paragraph | Replaces the paragraph line range with plain Noma prose. |
+| List item | Replaces the item text while preserving the bullet or number marker. |
+| Quote | Rewrites the quote lines with `>` prefixes. |
+
+Edits commit when focus leaves the rendered element. Press **Escape** before
+blur to cancel the current rendered edit. Pasted content is inserted as plain
+text so the preview cannot inject raw HTML into the source.
+
+Complex semantic blocks, tables, datasets, layout directives, comments, tracked
+changes, and DOCX-specific structures remain source-first. Editing rendered
+inline markup as plain text also means the changed span is serialized as plain
+prose, which is the expected tradeoff for this browser-only mode.
 
 For a true Word package, use the copied DOCX command after saving the source:
 
@@ -116,6 +141,8 @@ from the CLI with the strictness flags that match your publishing context.
 The workbench is deliberately source-first:
 
 - It does not hide the `.noma` syntax.
+- It does not offer full visual editing for every semantic block; rendered
+  editing covers simple text nodes and leaves complex structures in source.
 - It does not provide realtime collaboration.
 - It does not write directly back to a local file without using the browser's
   download flow.
@@ -124,4 +151,3 @@ The workbench is deliberately source-first:
 
 Those constraints keep the UI static-site deployable and make the parser,
 validator, and renderers the only source of document truth.
-

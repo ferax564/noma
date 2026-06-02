@@ -10,6 +10,8 @@ import techDocSource from "../examples/tech-doc.noma";
 import researchThesisSource from "../examples/research-thesis.noma";
 
 type OutputMode = "preview" | "json" | "llm";
+type RibbonTab = "file" | "format" | "insert" | "layout" | "review" | "find" | "export";
+type PreviewEditKind = "section" | "paragraph" | "list_item" | "quote";
 type CommandName =
   | "bold"
   | "italic"
@@ -41,6 +43,7 @@ interface RenderState {
   doc: DocumentNode | null;
   diagnostics: Diagnostic[];
   html: string;
+  previewHtml: string;
   json: string;
   llm: string;
   error?: Error;
@@ -61,6 +64,8 @@ const examples = [
 ] as const;
 
 const storageKey = "noma.workbench.source.v1";
+const ribbonStorageKey = "noma.workbench.ribbon.v1";
+const ribbonTabs = new Set<RibbonTab>(["file", "format", "insert", "layout", "review", "find", "export"]);
 const initialSource = localStorage.getItem(storageKey) ?? examples[0].source;
 
 const sourceInput = requireElement<HTMLTextAreaElement>("sourceInput");
@@ -79,6 +84,7 @@ const downloadJsonButton = requireElement<HTMLButtonElement>("downloadJson");
 const copyLlmButton = requireElement<HTMLButtonElement>("copyLlm");
 const copyDocxCommandButton = requireElement<HTMLButtonElement>("copyDocxCommand");
 const printPreviewButton = requireElement<HTMLButtonElement>("printPreview");
+const previewEditToggle = requireElement<HTMLButtonElement>("previewEditToggle");
 const renderButton = requireElement<HTMLButtonElement>("renderNow");
 const findInput = requireElement<HTMLInputElement>("findInput");
 const findPrevButton = requireElement<HTMLButtonElement>("findPrev");
@@ -86,13 +92,18 @@ const findNextButton = requireElement<HTMLButtonElement>("findNext");
 const findStatus = requireElement<HTMLElement>("findStatus");
 const targetButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-target]")];
 const commandButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-command]")];
+const ribbonTabButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-ribbon-tab]")];
+const ribbonPanels = [...document.querySelectorAll<HTMLElement>("[data-ribbon-panel]")];
 
 let outputMode: OutputMode = "preview";
+let activeRibbonTab: RibbonTab = initialRibbonTab();
+let previewEditMode = false;
 let renderTimer: number | undefined;
 let state: RenderState = emptyState();
 
 sourceInput.value = initialSource;
 populateExamples();
+renderRibbonTabs();
 bindEvents();
 renderCurrent();
 
@@ -145,6 +156,14 @@ function bindEvents(): void {
     });
   }
 
+  for (const button of ribbonTabButtons) {
+    button.addEventListener("click", () => {
+      const tab = button.dataset.ribbonTab;
+      if (isRibbonTab(tab)) setRibbonTab(tab);
+    });
+    button.addEventListener("keydown", (event) => handleRibbonTabKeydown(event, button));
+  }
+
   downloadSourceButton.addEventListener("click", () => {
     downloadText("document.noma", sourceInput.value, "text/plain");
   });
@@ -171,6 +190,15 @@ function bindEvents(): void {
   printPreviewButton.addEventListener("click", () => {
     printPreview();
   });
+
+  previewEditToggle.addEventListener("click", () => {
+    previewEditMode = !previewEditMode;
+    if (previewEditMode && outputMode !== "preview") outputMode = "preview";
+    renderOutput();
+    showTransientStatus(previewEditMode ? "Rendered editing on" : "Rendered editing off");
+  });
+
+  previewFrame.addEventListener("load", () => installPreviewEditing());
 
   for (const button of commandButtons) {
     button.addEventListener("click", () => {
@@ -203,8 +231,11 @@ function bindEvents(): void {
       printPreview();
     } else if (key === "f") {
       event.preventDefault();
-      findInput.focus();
-      findInput.select();
+      setRibbonTab("find");
+      window.requestAnimationFrame(() => {
+        findInput.focus();
+        findInput.select();
+      });
     }
   });
 }
@@ -219,6 +250,50 @@ function scheduleRender(): void {
 
 function isCommandName(value: string | undefined): value is CommandName {
   return typeof value === "string" && commandNames.has(value as CommandName);
+}
+
+function initialRibbonTab(): RibbonTab {
+  const storedTab = localStorage.getItem(ribbonStorageKey);
+  return isRibbonTab(storedTab) ? storedTab : "file";
+}
+
+function isRibbonTab(value: string | undefined | null): value is RibbonTab {
+  return typeof value === "string" && ribbonTabs.has(value as RibbonTab);
+}
+
+function setRibbonTab(tab: RibbonTab): void {
+  activeRibbonTab = tab;
+  localStorage.setItem(ribbonStorageKey, tab);
+  renderRibbonTabs();
+}
+
+function renderRibbonTabs(): void {
+  for (const button of ribbonTabButtons) {
+    const selected = button.dataset.ribbonTab === activeRibbonTab;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  }
+
+  for (const panel of ribbonPanels) {
+    panel.hidden = panel.dataset.ribbonPanel !== activeRibbonTab;
+  }
+}
+
+function handleRibbonTabKeydown(event: KeyboardEvent, button: HTMLButtonElement): void {
+  if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+
+  const currentIndex = ribbonTabButtons.indexOf(button);
+  if (currentIndex === -1) return;
+
+  event.preventDefault();
+  const offset = event.key === "ArrowRight" ? 1 : -1;
+  const nextIndex = (currentIndex + offset + ribbonTabButtons.length) % ribbonTabButtons.length;
+  const nextButton = ribbonTabButtons[nextIndex];
+  const nextTab = nextButton?.dataset.ribbonTab;
+  if (!nextButton || !isRibbonTab(nextTab)) return;
+
+  setRibbonTab(nextTab);
+  nextButton.focus();
 }
 
 const commandNames = new Set<CommandName>([
@@ -442,16 +517,18 @@ function renderCurrent(): void {
     const doc = parse(source, { filename: "workbench.noma" });
     const diagnostics = validate(doc);
     const themeCss = `${defaultThemeCss}\nbody { background: #ffffff; }`;
+    const htmlOptions = {
+      standalone: true,
+      themeCss,
+      allowEscapeHatches: false,
+      externalAssets: false,
+      interactive: false,
+    } as const;
     state = {
       doc,
       diagnostics,
-      html: renderHtml(doc, {
-        standalone: true,
-        themeCss,
-        allowEscapeHatches: false,
-        externalAssets: false,
-        interactive: false,
-      }),
+      html: renderHtml(doc, htmlOptions),
+      previewHtml: renderHtml(doc, { ...htmlOptions, sourcePositions: true }),
       json: renderJson(doc),
       llm: renderLlm(doc),
     };
@@ -568,18 +645,203 @@ function renderOutput(): void {
   for (const button of targetButtons) {
     button.setAttribute("aria-pressed", String(button.dataset.target === outputMode));
   }
+  previewEditToggle.setAttribute("aria-pressed", String(previewEditMode));
 
   previewFrame.hidden = outputMode !== "preview";
+  previewFrame.dataset.editing = String(previewEditMode && outputMode === "preview" && !state.error);
   outputPre.hidden = outputMode === "preview";
 
   if (outputMode === "preview") {
     previewFrame.srcdoc = state.error
       ? errorDocument(state.error.message)
-      : state.html;
+      : state.previewHtml;
     return;
   }
 
   outputPre.textContent = outputMode === "json" ? state.json : state.llm;
+}
+
+function installPreviewEditing(): void {
+  if (!previewEditMode || outputMode !== "preview" || state.error) return;
+
+  const previewDoc = previewFrame.contentDocument;
+  if (!previewDoc) return;
+
+  const style = previewDoc.createElement("style");
+  style.textContent = previewEditCss();
+  previewDoc.head.append(style);
+
+  const editableNodes = [...previewDoc.querySelectorAll<HTMLElement>("[data-noma-editable]")];
+  for (const element of editableNodes) {
+    const kind = element.dataset.nomaEditable;
+    if (!isPreviewEditKind(kind)) continue;
+
+    element.contentEditable = "true";
+    element.spellcheck = true;
+    element.dataset.nomaOriginalText = editableText(element);
+    element.title = "Edit rendered text; blur to sync source";
+    element.addEventListener("focus", () => {
+      element.dataset.nomaEditing = "true";
+    });
+    element.addEventListener("blur", () => {
+      delete element.dataset.nomaEditing;
+      commitPreviewEdit(element);
+    });
+    element.addEventListener("keydown", (event) => handlePreviewEditKeydown(event, element));
+    element.addEventListener("paste", (event) => pastePlainText(event, element));
+  }
+}
+
+function previewEditCss(): string {
+  return `
+[data-noma-editable][contenteditable="true"] {
+  cursor: text;
+  outline: 1px dashed rgba(39, 93, 103, 0.38);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+[data-noma-editable][contenteditable="true"]:hover {
+  outline-color: rgba(39, 93, 103, 0.62);
+}
+[data-noma-editable][data-noma-editing="true"] {
+  background: rgba(232, 246, 239, 0.72);
+  outline: 2px solid #275d67;
+}
+`;
+}
+
+function handlePreviewEditKeydown(event: KeyboardEvent, element: HTMLElement): void {
+  const kind = element.dataset.nomaEditable;
+  const key = event.key.toLowerCase();
+
+  if (key === "escape") {
+    event.preventDefault();
+    element.textContent = element.dataset.nomaOriginalText ?? "";
+    element.blur();
+    return;
+  }
+
+  if ((event.metaKey || event.ctrlKey) && key === "s") {
+    event.preventDefault();
+    element.blur();
+    downloadText("document.noma", sourceInput.value, "text/plain");
+    return;
+  }
+
+  if (key === "enter" && !event.shiftKey && (kind === "section" || kind === "list_item")) {
+    event.preventDefault();
+    element.blur();
+  }
+}
+
+function pastePlainText(event: ClipboardEvent, element: HTMLElement): void {
+  const text = event.clipboardData?.getData("text/plain");
+  if (text === undefined) return;
+  event.preventDefault();
+  element.ownerDocument.execCommand("insertText", false, text);
+}
+
+function commitPreviewEdit(element: HTMLElement): void {
+  const originalText = element.dataset.nomaOriginalText ?? "";
+  const nextText = editableText(element);
+  if (nextText === originalText) return;
+
+  const kind = element.dataset.nomaEditable;
+  const line = positiveInt(element.dataset.nomaLine);
+  const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
+  if (!isPreviewEditKind(kind) || line === undefined) {
+    showTransientStatus("Rendered edit cannot sync", "warning");
+    return;
+  }
+
+  const replacement = previewSourceReplacement(kind, line, endLine, nextText);
+  if (replacement === null) {
+    showTransientStatus("Rendered edit cannot sync", "warning");
+    return;
+  }
+
+  replaceSourceLines(line, endLine, replacement);
+  showTransientStatus("Synced rendered edit");
+}
+
+function editableText(element: HTMLElement): string {
+  return (element.innerText || element.textContent || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n+$/g, "");
+}
+
+function previewSourceReplacement(
+  kind: PreviewEditKind,
+  line: number,
+  endLine: number,
+  text: string,
+): string | null {
+  const lines = sourceInput.value.split("\n");
+  const currentLine = lines[line - 1];
+  if (currentLine === undefined) return null;
+
+  switch (kind) {
+    case "section": {
+      const match = /^(#{1,6}\s+)(.*?)(\s+\{[^}]+\})?\s*$/.exec(currentLine);
+      if (!match) return null;
+      const prefix = match[1] ?? "";
+      const attrs = match[3] ?? "";
+      return `${prefix}${normalizeInlineText(text) || "Untitled"}${attrs}`;
+    }
+    case "paragraph":
+      return normalizeBlockText(text);
+    case "list_item": {
+      const match = /^(\s*(?:[-*]|\d+\.)\s+)(.*)$/.exec(currentLine);
+      if (!match) return null;
+      const prefix = match[1] ?? "";
+      return `${prefix}${normalizeInlineText(text)}`;
+    }
+    case "quote": {
+      const body = normalizeBlockText(text);
+      const quoteLines = body ? body.split("\n") : [""];
+      return quoteLines.map((quoteLine) => `> ${quoteLine}`).join("\n");
+    }
+  }
+}
+
+function normalizeInlineText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function normalizeBlockText(text: string): string {
+  return text
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+}
+
+function replaceSourceLines(startLine: number, endLine: number, replacement: string): void {
+  if (renderTimer !== undefined) {
+    window.clearTimeout(renderTimer);
+    renderTimer = undefined;
+  }
+
+  const lines = sourceInput.value.split("\n");
+  const startIndex = startLine - 1;
+  const endIndex = Math.max(startIndex, Math.min(lines.length - 1, endLine - 1));
+  lines.splice(startIndex, endIndex - startIndex + 1, ...replacement.split("\n"));
+  sourceInput.value = lines.join("\n");
+  localStorage.setItem(storageKey, sourceInput.value);
+  renderCurrent();
+}
+
+function positiveInt(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function isPreviewEditKind(value: string | undefined): value is PreviewEditKind {
+  return value === "section" || value === "paragraph" || value === "list_item" || value === "quote";
 }
 
 function collectOutline(doc: DocumentNode): OutlineItem[] {
@@ -756,6 +1018,7 @@ function emptyState(): RenderState {
     doc: null,
     diagnostics: [],
     html: "",
+    previewHtml: "",
     json: "",
     llm: "",
   };

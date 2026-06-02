@@ -3811,7 +3811,8 @@
       citations: collectCitationEntries(doc),
       sections: collectSectionEntries(doc),
       captions: collectCaptionEntries(doc),
-      computed: buildComputedEvalContext(doc)
+      computed: buildComputedEvalContext(doc),
+      sourcePositions: options.sourcePositions === true
     };
     const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
     if (!options.standalone) return body;
@@ -4191,22 +4192,22 @@ document.querySelectorAll(".noma-plotly").forEach((el) => {
       case "section":
         return renderSection(node, ctx);
       case "paragraph":
-        return `<p>${inlineToHtml(node.content)}</p>`;
+        return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content)}</p>`;
       case "code": {
         const langClass = node.lang ? ` class="lang-${escapeAttr(node.lang)}"` : "";
         return `<pre><code${langClass}>${escapeHtml(node.content)}</code></pre>`;
       }
       case "list": {
         const tag = node.ordered ? "ol" : "ul";
-        const items = node.items.map((item) => `  <li>${inlineToHtml(item.content)}</li>`).join("\n");
+        const items = node.items.map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content)}</li>`).join("\n");
         return `<${tag}>
 ${items}
 </${tag}>`;
       }
       case "list_item":
-        return `<li>${inlineToHtml(node.content)}</li>`;
+        return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content)}</li>`;
       case "quote":
-        return `<blockquote>${inlineToHtml(node.content)}</blockquote>`;
+        return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content)}</blockquote>`;
       case "thematic_break":
         return `<hr />`;
       case "table": {
@@ -4244,12 +4245,17 @@ ${body}
   function renderSection(node, ctx) {
     const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
     const aliasAnchors = (node.aliases ?? []).map((a) => `<a class="noma-alias" id="${escapeAttr(a)}" aria-hidden="true"></a>`).join("");
-    const heading = `<h${node.level}>${inlineToHtml(node.title)}</h${node.level}>`;
+    const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title)}</h${node.level}>`;
     const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
     return `<section${idAttr} data-level="${node.level}">
 ${aliasAnchors}${heading}
 ${inner}
 </section>`;
+  }
+  function sourceEditAttrs(node, ctx, kind, endLine = node.endLine) {
+    if (!ctx.sourcePositions || !node.pos?.line) return "";
+    const lastLine = endLine ?? node.pos.line;
+    return ` data-noma-editable="${escapeAttr(kind)}" data-noma-line="${node.pos.line}" data-noma-end-line="${lastLine}"`;
   }
   function variantAttr(node) {
     const v = node.attrs.variant;
@@ -6810,6 +6816,8 @@ ${bodyRows}
     { id: "research-thesis", label: "Research thesis", source: research_thesis_default }
   ];
   var storageKey = "noma.workbench.source.v1";
+  var ribbonStorageKey = "noma.workbench.ribbon.v1";
+  var ribbonTabs = /* @__PURE__ */ new Set(["file", "format", "insert", "layout", "review", "find", "export"]);
   var initialSource = localStorage.getItem(storageKey) ?? examples[0].source;
   var sourceInput = requireElement("sourceInput");
   var previewFrame = requireElement("previewFrame");
@@ -6827,6 +6835,7 @@ ${bodyRows}
   var copyLlmButton = requireElement("copyLlm");
   var copyDocxCommandButton = requireElement("copyDocxCommand");
   var printPreviewButton = requireElement("printPreview");
+  var previewEditToggle = requireElement("previewEditToggle");
   var renderButton = requireElement("renderNow");
   var findInput = requireElement("findInput");
   var findPrevButton = requireElement("findPrev");
@@ -6834,11 +6843,16 @@ ${bodyRows}
   var findStatus = requireElement("findStatus");
   var targetButtons = [...document.querySelectorAll("[data-target]")];
   var commandButtons = [...document.querySelectorAll("[data-command]")];
+  var ribbonTabButtons = [...document.querySelectorAll("[data-ribbon-tab]")];
+  var ribbonPanels = [...document.querySelectorAll("[data-ribbon-panel]")];
   var outputMode = "preview";
+  var activeRibbonTab = initialRibbonTab();
+  var previewEditMode = false;
   var renderTimer;
   var state = emptyState();
   sourceInput.value = initialSource;
   populateExamples();
+  renderRibbonTabs();
   bindEvents();
   renderCurrent();
   function requireElement(id) {
@@ -6882,6 +6896,13 @@ ${bodyRows}
         }
       });
     }
+    for (const button of ribbonTabButtons) {
+      button.addEventListener("click", () => {
+        const tab = button.dataset.ribbonTab;
+        if (isRibbonTab(tab)) setRibbonTab(tab);
+      });
+      button.addEventListener("keydown", (event) => handleRibbonTabKeydown(event, button));
+    }
     downloadSourceButton.addEventListener("click", () => {
       downloadText("document.noma", sourceInput.value, "text/plain");
     });
@@ -6903,6 +6924,13 @@ ${bodyRows}
     printPreviewButton.addEventListener("click", () => {
       printPreview();
     });
+    previewEditToggle.addEventListener("click", () => {
+      previewEditMode = !previewEditMode;
+      if (previewEditMode && outputMode !== "preview") outputMode = "preview";
+      renderOutput();
+      showTransientStatus(previewEditMode ? "Rendered editing on" : "Rendered editing off");
+    });
+    previewFrame.addEventListener("load", () => installPreviewEditing());
     for (const button of commandButtons) {
       button.addEventListener("click", () => {
         const command = button.dataset.command;
@@ -6932,8 +6960,11 @@ ${bodyRows}
         printPreview();
       } else if (key === "f") {
         event.preventDefault();
-        findInput.focus();
-        findInput.select();
+        setRibbonTab("find");
+        window.requestAnimationFrame(() => {
+          findInput.focus();
+          findInput.select();
+        });
       }
     });
   }
@@ -6946,6 +6977,41 @@ ${bodyRows}
   }
   function isCommandName(value) {
     return typeof value === "string" && commandNames.has(value);
+  }
+  function initialRibbonTab() {
+    const storedTab = localStorage.getItem(ribbonStorageKey);
+    return isRibbonTab(storedTab) ? storedTab : "file";
+  }
+  function isRibbonTab(value) {
+    return typeof value === "string" && ribbonTabs.has(value);
+  }
+  function setRibbonTab(tab) {
+    activeRibbonTab = tab;
+    localStorage.setItem(ribbonStorageKey, tab);
+    renderRibbonTabs();
+  }
+  function renderRibbonTabs() {
+    for (const button of ribbonTabButtons) {
+      const selected = button.dataset.ribbonTab === activeRibbonTab;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+    for (const panel of ribbonPanels) {
+      panel.hidden = panel.dataset.ribbonPanel !== activeRibbonTab;
+    }
+  }
+  function handleRibbonTabKeydown(event, button) {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    const currentIndex = ribbonTabButtons.indexOf(button);
+    if (currentIndex === -1) return;
+    event.preventDefault();
+    const offset = event.key === "ArrowRight" ? 1 : -1;
+    const nextIndex = (currentIndex + offset + ribbonTabButtons.length) % ribbonTabButtons.length;
+    const nextButton = ribbonTabButtons[nextIndex];
+    const nextTab = nextButton?.dataset.ribbonTab;
+    if (!nextButton || !isRibbonTab(nextTab)) return;
+    setRibbonTab(nextTab);
+    nextButton.focus();
   }
   var commandNames = /* @__PURE__ */ new Set([
     "bold",
@@ -7180,16 +7246,18 @@ Start writing here.
       const diagnostics = validate(doc);
       const themeCss = `${default_default}
 body { background: #ffffff; }`;
+      const htmlOptions = {
+        standalone: true,
+        themeCss,
+        allowEscapeHatches: false,
+        externalAssets: false,
+        interactive: false
+      };
       state = {
         doc,
         diagnostics,
-        html: renderHtml(doc, {
-          standalone: true,
-          themeCss,
-          allowEscapeHatches: false,
-          externalAssets: false,
-          interactive: false
-        }),
+        html: renderHtml(doc, htmlOptions),
+        previewHtml: renderHtml(doc, { ...htmlOptions, sourcePositions: true }),
         json: renderJson(doc),
         llm: renderLlm(doc)
       };
@@ -7288,13 +7356,160 @@ body { background: #ffffff; }`;
     for (const button of targetButtons) {
       button.setAttribute("aria-pressed", String(button.dataset.target === outputMode));
     }
+    previewEditToggle.setAttribute("aria-pressed", String(previewEditMode));
     previewFrame.hidden = outputMode !== "preview";
+    previewFrame.dataset.editing = String(previewEditMode && outputMode === "preview" && !state.error);
     outputPre.hidden = outputMode === "preview";
     if (outputMode === "preview") {
-      previewFrame.srcdoc = state.error ? errorDocument(state.error.message) : state.html;
+      previewFrame.srcdoc = state.error ? errorDocument(state.error.message) : state.previewHtml;
       return;
     }
     outputPre.textContent = outputMode === "json" ? state.json : state.llm;
+  }
+  function installPreviewEditing() {
+    if (!previewEditMode || outputMode !== "preview" || state.error) return;
+    const previewDoc = previewFrame.contentDocument;
+    if (!previewDoc) return;
+    const style = previewDoc.createElement("style");
+    style.textContent = previewEditCss();
+    previewDoc.head.append(style);
+    const editableNodes = [...previewDoc.querySelectorAll("[data-noma-editable]")];
+    for (const element of editableNodes) {
+      const kind = element.dataset.nomaEditable;
+      if (!isPreviewEditKind(kind)) continue;
+      element.contentEditable = "true";
+      element.spellcheck = true;
+      element.dataset.nomaOriginalText = editableText(element);
+      element.title = "Edit rendered text; blur to sync source";
+      element.addEventListener("focus", () => {
+        element.dataset.nomaEditing = "true";
+      });
+      element.addEventListener("blur", () => {
+        delete element.dataset.nomaEditing;
+        commitPreviewEdit(element);
+      });
+      element.addEventListener("keydown", (event) => handlePreviewEditKeydown(event, element));
+      element.addEventListener("paste", (event) => pastePlainText(event, element));
+    }
+  }
+  function previewEditCss() {
+    return `
+[data-noma-editable][contenteditable="true"] {
+  cursor: text;
+  outline: 1px dashed rgba(39, 93, 103, 0.38);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+[data-noma-editable][contenteditable="true"]:hover {
+  outline-color: rgba(39, 93, 103, 0.62);
+}
+[data-noma-editable][data-noma-editing="true"] {
+  background: rgba(232, 246, 239, 0.72);
+  outline: 2px solid #275d67;
+}
+`;
+  }
+  function handlePreviewEditKeydown(event, element) {
+    const kind = element.dataset.nomaEditable;
+    const key = event.key.toLowerCase();
+    if (key === "escape") {
+      event.preventDefault();
+      element.textContent = element.dataset.nomaOriginalText ?? "";
+      element.blur();
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && key === "s") {
+      event.preventDefault();
+      element.blur();
+      downloadText("document.noma", sourceInput.value, "text/plain");
+      return;
+    }
+    if (key === "enter" && !event.shiftKey && (kind === "section" || kind === "list_item")) {
+      event.preventDefault();
+      element.blur();
+    }
+  }
+  function pastePlainText(event, element) {
+    const text = event.clipboardData?.getData("text/plain");
+    if (text === void 0) return;
+    event.preventDefault();
+    element.ownerDocument.execCommand("insertText", false, text);
+  }
+  function commitPreviewEdit(element) {
+    const originalText = element.dataset.nomaOriginalText ?? "";
+    const nextText = editableText(element);
+    if (nextText === originalText) return;
+    const kind = element.dataset.nomaEditable;
+    const line = positiveInt(element.dataset.nomaLine);
+    const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
+    if (!isPreviewEditKind(kind) || line === void 0) {
+      showTransientStatus("Rendered edit cannot sync", "warning");
+      return;
+    }
+    const replacement = previewSourceReplacement(kind, line, endLine, nextText);
+    if (replacement === null) {
+      showTransientStatus("Rendered edit cannot sync", "warning");
+      return;
+    }
+    replaceSourceLines(line, endLine, replacement);
+    showTransientStatus("Synced rendered edit");
+  }
+  function editableText(element) {
+    return (element.innerText || element.textContent || "").replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").replace(/\n+$/g, "");
+  }
+  function previewSourceReplacement(kind, line, endLine, text) {
+    const lines = sourceInput.value.split("\n");
+    const currentLine = lines[line - 1];
+    if (currentLine === void 0) return null;
+    switch (kind) {
+      case "section": {
+        const match = /^(#{1,6}\s+)(.*?)(\s+\{[^}]+\})?\s*$/.exec(currentLine);
+        if (!match) return null;
+        const prefix = match[1] ?? "";
+        const attrs = match[3] ?? "";
+        return `${prefix}${normalizeInlineText(text) || "Untitled"}${attrs}`;
+      }
+      case "paragraph":
+        return normalizeBlockText(text);
+      case "list_item": {
+        const match = /^(\s*(?:[-*]|\d+\.)\s+)(.*)$/.exec(currentLine);
+        if (!match) return null;
+        const prefix = match[1] ?? "";
+        return `${prefix}${normalizeInlineText(text)}`;
+      }
+      case "quote": {
+        const body = normalizeBlockText(text);
+        const quoteLines = body ? body.split("\n") : [""];
+        return quoteLines.map((quoteLine) => `> ${quoteLine}`).join("\n");
+      }
+    }
+  }
+  function normalizeInlineText(text) {
+    return text.replace(/\s+/g, " ").trim();
+  }
+  function normalizeBlockText(text) {
+    return text.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim()).filter((line) => line.length > 0).join("\n");
+  }
+  function replaceSourceLines(startLine, endLine, replacement) {
+    if (renderTimer !== void 0) {
+      window.clearTimeout(renderTimer);
+      renderTimer = void 0;
+    }
+    const lines = sourceInput.value.split("\n");
+    const startIndex = startLine - 1;
+    const endIndex = Math.max(startIndex, Math.min(lines.length - 1, endLine - 1));
+    lines.splice(startIndex, endIndex - startIndex + 1, ...replacement.split("\n"));
+    sourceInput.value = lines.join("\n");
+    localStorage.setItem(storageKey, sourceInput.value);
+    renderCurrent();
+  }
+  function positiveInt(value) {
+    if (!value) return void 0;
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : void 0;
+  }
+  function isPreviewEditKind(value) {
+    return value === "section" || value === "paragraph" || value === "list_item" || value === "quote";
   }
   function collectOutline(doc) {
     const out = [];
@@ -7452,6 +7667,7 @@ body { background: #ffffff; }`;
       doc: null,
       diagnostics: [],
       html: "",
+      previewHtml: "",
       json: "",
       llm: ""
     };

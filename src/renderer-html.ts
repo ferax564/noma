@@ -54,6 +54,11 @@ export interface HtmlRenderOptions {
    * controls are disabled and the generated computed runtime is omitted.
    */
   interactive?: boolean;
+  /**
+   * Emit source-line metadata on simple text nodes. This is intended for
+   * editor previews and is disabled for normal publishing output.
+   */
+  sourcePositions?: boolean;
 }
 
 export interface DatasetTable {
@@ -93,6 +98,7 @@ interface RenderCtx {
   sections: SectionEntry[];
   captions: CaptionEntry[];
   computed: ComputedEvalContext;
+  sourcePositions: boolean;
 }
 
 export function buildDatasetRegistry(doc: DocumentNode): Map<string, DatasetTable> {
@@ -330,6 +336,7 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
     sections: collectSectionEntries(doc),
     captions: collectCaptionEntries(doc),
     computed: buildComputedEvalContext(doc),
+    sourcePositions: options.sourcePositions === true,
   };
   const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
   if (!options.standalone) return body;
@@ -731,7 +738,7 @@ function renderNode(node: Node, ctx: RenderCtx): string {
     case "section":
       return renderSection(node, ctx);
     case "paragraph":
-      return `<p>${inlineToHtml(node.content)}</p>`;
+      return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content)}</p>`;
     case "code": {
       const langClass = node.lang ? ` class="lang-${escapeAttr(node.lang)}"` : "";
       return `<pre><code${langClass}>${escapeHtml(node.content)}</code></pre>`;
@@ -739,14 +746,14 @@ function renderNode(node: Node, ctx: RenderCtx): string {
     case "list": {
       const tag = node.ordered ? "ol" : "ul";
       const items = node.items
-        .map((item) => `  <li>${inlineToHtml(item.content)}</li>`)
+        .map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content)}</li>`)
         .join("\n");
       return `<${tag}>\n${items}\n</${tag}>`;
     }
     case "list_item":
-      return `<li>${inlineToHtml(node.content)}</li>`;
+      return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content)}</li>`;
     case "quote":
-      return `<blockquote>${inlineToHtml(node.content)}</blockquote>`;
+      return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content)}</blockquote>`;
     case "thematic_break":
       return `<hr />`;
     case "table": {
@@ -788,9 +795,15 @@ function renderSection(node: SectionNode, ctx: RenderCtx): string {
   const aliasAnchors = (node.aliases ?? [])
     .map((a) => `<a class="noma-alias" id="${escapeAttr(a)}" aria-hidden="true"></a>`)
     .join("");
-  const heading = `<h${node.level}>${inlineToHtml(node.title)}</h${node.level}>`;
+  const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title)}</h${node.level}>`;
   const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
   return `<section${idAttr} data-level="${node.level}">\n${aliasAnchors}${heading}\n${inner}\n</section>`;
+}
+
+function sourceEditAttrs(node: Node, ctx: RenderCtx, kind: string, endLine = node.endLine): string {
+  if (!ctx.sourcePositions || !node.pos?.line) return "";
+  const lastLine = endLine ?? node.pos.line;
+  return ` data-noma-editable="${escapeAttr(kind)}" data-noma-line="${node.pos.line}" data-noma-end-line="${lastLine}"`;
 }
 
 function variantAttr(node: DirectiveNode): string {

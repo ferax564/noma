@@ -119,6 +119,18 @@ test("review hardening: section IDs render once in HTML", () => {
   assert.match(html, /<h1>Title<\/h1>/);
 });
 
+test("workbench source metadata is opt-in for HTML previews", () => {
+  const doc = parse(`# Title\n\nBody text.\n\n- Item\n\n> Quote\n`);
+  const html = renderHtml(doc);
+  assert.doesNotMatch(html, /data-noma-editable/);
+
+  const editableHtml = renderHtml(doc, { sourcePositions: true });
+  assert.match(editableHtml, /<h1 data-noma-editable="section" data-noma-line="1" data-noma-end-line="1">Title<\/h1>/);
+  assert.match(editableHtml, /<p data-noma-editable="paragraph" data-noma-line="3" data-noma-end-line="3">Body text\.<\/p>/);
+  assert.match(editableHtml, /<li data-noma-editable="list_item" data-noma-line="5" data-noma-end-line="5">Item<\/li>/);
+  assert.match(editableHtml, /<blockquote data-noma-editable="quote" data-noma-line="7" data-noma-end-line="7">Quote<\/blockquote>/);
+});
+
 test("issue #4: heading {id=...} attribute overrides slug", () => {
   const doc = parse(`# Title\n\n## Risks {id="rp3-risks"}\n\nbody\n`);
   const root = doc.children[0] as SectionNode;

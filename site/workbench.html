@@ -26,29 +26,39 @@
 
   <main class="workbench">
     <div class="toolbar" aria-label="Workbench commands">
-      <div class="toolbar-row">
-        <label class="field" for="exampleSelect">
-          Example
-          <select id="exampleSelect"></select>
-        </label>
-        <button id="loadExample" type="button">Load</button>
-        <button id="newDocument" type="button">New</button>
-        <label class="file-button" for="fileInput">
-          Open
-          <input id="fileInput" type="file" accept=".noma,text/plain" />
-        </label>
-        <button id="renderNow" type="button">Render</button>
-        <span class="toolbar-spacer"></span>
-        <button id="downloadSource" type="button">Noma</button>
-        <button id="downloadHtml" type="button">HTML</button>
-        <button id="downloadJson" type="button">JSON</button>
-        <button id="copyLlm" type="button">Copy LLM</button>
-        <button id="copyDocxCommand" type="button">DOCX Cmd</button>
-        <button id="printPreview" type="button">Print</button>
+      <div class="menu-row">
+        <div class="menu-tabs" role="tablist" aria-label="Workbench menu">
+          <button id="ribbonTabFile" type="button" role="tab" data-ribbon-tab="file" aria-selected="true" aria-controls="ribbonFile">File</button>
+          <button id="ribbonTabFormat" type="button" role="tab" data-ribbon-tab="format" aria-selected="false" aria-controls="ribbonFormat">Format</button>
+          <button id="ribbonTabInsert" type="button" role="tab" data-ribbon-tab="insert" aria-selected="false" aria-controls="ribbonInsert">Insert</button>
+          <button id="ribbonTabLayout" type="button" role="tab" data-ribbon-tab="layout" aria-selected="false" aria-controls="ribbonLayout">Layout</button>
+          <button id="ribbonTabReview" type="button" role="tab" data-ribbon-tab="review" aria-selected="false" aria-controls="ribbonReview">Review</button>
+          <button id="ribbonTabFind" type="button" role="tab" data-ribbon-tab="find" aria-selected="false" aria-controls="ribbonFind">Find</button>
+          <button id="ribbonTabExport" type="button" role="tab" data-ribbon-tab="export" aria-selected="false" aria-controls="ribbonExport">Export</button>
+        </div>
         <span id="statusText" class="status-pill" aria-live="polite">Ready</span>
       </div>
 
-      <div class="ribbon" aria-label="Authoring tools">
+      <div id="ribbonFile" class="ribbon-panel" role="tabpanel" data-ribbon-panel="file" aria-labelledby="ribbonTabFile">
+        <div class="tool-group" aria-label="Examples">
+          <label class="field" for="exampleSelect">
+            Example
+            <select id="exampleSelect"></select>
+          </label>
+          <button id="loadExample" type="button">Load</button>
+        </div>
+        <div class="tool-group" aria-label="Document commands">
+          <span class="tool-label">Document</span>
+          <button id="newDocument" type="button">New</button>
+          <label class="file-button" for="fileInput">
+            Open
+            <input id="fileInput" type="file" accept=".noma,text/plain" />
+          </label>
+          <button id="renderNow" type="button">Render</button>
+        </div>
+      </div>
+
+      <div id="ribbonFormat" class="ribbon-panel" role="tabpanel" data-ribbon-panel="format" aria-labelledby="ribbonTabFormat" hidden>
         <div class="tool-group" aria-label="Text formatting">
           <span class="tool-label">Text</span>
           <button type="button" data-command="bold">B</button>
@@ -66,6 +76,9 @@
           <button type="button" data-command="quote">Quote</button>
           <button type="button" data-command="codeblock">Block Code</button>
         </div>
+      </div>
+
+      <div id="ribbonInsert" class="ribbon-panel" role="tabpanel" data-ribbon-panel="insert" aria-labelledby="ribbonTabInsert" hidden>
         <div class="tool-group" aria-label="Insert blocks">
           <span class="tool-label">Insert</span>
           <button type="button" data-command="insertTable">Table</button>
@@ -75,6 +88,9 @@
           <button type="button" data-command="insertControl">Control</button>
           <button type="button" data-command="insertMath">Math</button>
         </div>
+      </div>
+
+      <div id="ribbonLayout" class="ribbon-panel" role="tabpanel" data-ribbon-panel="layout" aria-labelledby="ribbonTabLayout" hidden>
         <div class="tool-group" aria-label="Layout tools">
           <span class="tool-label">Layout</span>
           <button type="button" data-command="insertToc">TOC</button>
@@ -83,18 +99,39 @@
           <button type="button" data-command="insertPageSetup">Page</button>
           <button type="button" data-command="insertPageBreak">Break</button>
         </div>
+      </div>
+
+      <div id="ribbonReview" class="ribbon-panel" role="tabpanel" data-ribbon-panel="review" aria-labelledby="ribbonTabReview" hidden>
         <div class="tool-group" aria-label="Review tools">
           <span class="tool-label">Review</span>
           <button type="button" data-command="insertComment">Comment</button>
           <button type="button" data-command="insertChange">Change</button>
           <button type="button" data-command="insertFootnote">Footnote</button>
         </div>
+      </div>
+
+      <div id="ribbonFind" class="ribbon-panel" role="tabpanel" data-ribbon-panel="find" aria-labelledby="ribbonTabFind" hidden>
         <div class="tool-group search-group" aria-label="Find text">
           <label class="tool-label" for="findInput">Find</label>
           <input id="findInput" type="search" placeholder="Search source" />
           <button id="findPrev" type="button">Prev</button>
           <button id="findNext" type="button">Next</button>
           <span id="findStatus" class="find-status">0/0</span>
+        </div>
+      </div>
+
+      <div id="ribbonExport" class="ribbon-panel" role="tabpanel" data-ribbon-panel="export" aria-labelledby="ribbonTabExport" hidden>
+        <div class="tool-group" aria-label="Download formats">
+          <span class="tool-label">Download</span>
+          <button id="downloadSource" type="button">Noma</button>
+          <button id="downloadHtml" type="button">HTML</button>
+          <button id="downloadJson" type="button">JSON</button>
+        </div>
+        <div class="tool-group" aria-label="Output actions">
+          <span class="tool-label">Output</span>
+          <button id="copyLlm" type="button">Copy LLM</button>
+          <button id="copyDocxCommand" type="button">DOCX Cmd</button>
+          <button id="printPreview" type="button">Print</button>
         </div>
       </div>
     </div>
@@ -112,6 +149,7 @@
           <h2 id="outputTitle" class="pane-title">Output</h2>
           <div class="target-tabs" aria-label="Output target">
             <button type="button" data-target="preview" aria-pressed="true">Preview</button>
+            <button id="previewEditToggle" type="button" aria-pressed="false">Edit Preview</button>
             <button type="button" data-target="json" aria-pressed="false">AST</button>
             <button type="button" data-target="llm" aria-pressed="false">LLM</button>
           </div>
