@@ -1,0 +1,127 @@
+---
+title: Web Workbench Guide
+version: 0.11.1
+---
+
+# Web Workbench Guide
+
+The Noma Workbench is the static, browser-based editor for `.noma`
+documents. It is designed for people who want a Word-like authoring surface
+without giving up source control, block IDs, validation, and renderer output.
+
+Open it from the built site:
+
+```bash
+npm run build:site
+open dist/workbench.html
+```
+
+Or use the published page:
+
+[Open the workbench](../workbench.html)
+
+::figure{id="workbench-overview" src="../assets/workbench-overview.png" alt="Noma Workbench overview showing source editor, live preview, diagnostics, outline, and the authoring ribbon." caption="The workbench keeps source, preview, diagnostics, and outline visible in one browser page."}
+::
+
+## What it is for
+
+Use the workbench when you want to draft, inspect, and hand off a Noma
+document without installing an editor extension.
+
+It covers the main Word-style workflows that fit Noma's source-first model:
+
+- Create a new document or load one of the shipped examples.
+- Open a local `.noma` file from disk.
+- Format selected text as bold, italic, inline code, or a link.
+- Change the current line to H1, H2, or H3.
+- Convert selected lines to bullets, numbered lists, quotes, or code blocks.
+- Insert Noma blocks for tables, figures, callouts, tasks, controls, math,
+  headers, footers, page setup, page breaks, comments, change requests, and
+  footnotes.
+- Find text in the source.
+- Preview safe HTML, inspect diagnostics, jump through the outline, and switch
+  to AST or LLM output.
+- Download the current document as `.noma`, HTML, or JSON.
+- Copy LLM context or the DOCX CLI command for Word handoff.
+- Print the rendered preview from the browser.
+
+## Screen layout
+
+The workbench has four persistent areas:
+
+| Area | What it does |
+|---|---|
+| Ribbon | File, formatting, paragraph, insert, layout, review, find, print, and export commands. |
+| Source | The editable `.noma` source. This remains the source of truth. |
+| Output | Safe rendered preview, JSON AST, or deterministic LLM context. |
+| Inspector | Diagnostics and outline navigation derived from the current AST. |
+
+The browser stores the current source in `localStorage` so a reload keeps the
+last draft. Use **Download Noma** before moving the draft into a repository.
+
+## Authoring workflow
+
+1. Load an example or click **New**.
+2. Draft in the source pane.
+3. Use the ribbon for common formatting and Noma block templates.
+4. Watch the status pill and diagnostics panel as the validator checks the
+   document.
+5. Use the outline to jump to headings and ID-bearing blocks.
+6. Switch to AST or LLM output when you need to inspect structure or copy
+   agent context.
+7. Download the source or rendered artifacts.
+
+::figure{id="workbench-authoring" src="../assets/workbench-authoring.png" alt="Noma Workbench authoring state showing inserted layout, review, control, table, and diagnostic blocks." caption="A review-oriented document can show layout controls, comments, change requests, diagnostics, AST output, and find state at once."}
+::
+
+## Word-style handoff
+
+The workbench does not try to become a full WYSIWYG clone. It keeps Noma source
+visible and uses Word-like controls for the operations users expect while
+drafting:
+
+| Word workflow | Workbench equivalent |
+|---|---|
+| New/open document | **New**, **Open**, and example loading. |
+| Text formatting | Bold, italic, code, and link commands on the selected text. |
+| Paragraph tools | Headings, bullets, numbering, quote, and code-block commands. |
+| Insert menu | Table, figure, callout, task, control, math, review, and layout block templates. |
+| Review | Comment, change request, and footnote block templates. |
+| Find | Source search with previous/next navigation. |
+| Print | Browser print of the rendered preview. |
+| Export | Download Noma, HTML, JSON, copy LLM, and copy the DOCX render command. |
+
+For a true Word package, use the copied DOCX command after saving the source:
+
+```bash
+npm run noma -- render document.noma --to docx --out document.docx
+```
+
+## Safety model
+
+The workbench renders with a safe preview posture:
+
+- Raw `::html`, `::svg`, and `::script` escape hatches are blocked.
+- External math, diagram, Plotly, and figure image loads are disabled in the
+  preview path.
+- Interactive controls render as static defaults.
+- The preview runs in a sandboxed iframe.
+
+This makes the workbench suitable for inspecting untrusted drafts while still
+surfacing the source and validator diagnostics. For production HTML, render
+from the CLI with the strictness flags that match your publishing context.
+
+## Limitations
+
+The workbench is deliberately source-first:
+
+- It does not hide the `.noma` syntax.
+- It does not provide realtime collaboration.
+- It does not write directly back to a local file without using the browser's
+  download flow.
+- It does not edit DOCX packages in the browser. DOCX export and return paths
+  stay in the CLI.
+
+Those constraints keep the UI static-site deployable and make the parser,
+validator, and renderers the only source of document truth.
+

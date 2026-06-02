@@ -154,6 +154,12 @@ walkthrough.
 [Open →](./docs/getting-started.html)
 :::
 
+:::card{title="Web Workbench Guide"}
+Screenshots and workflows for the browser-based Word-style `.noma` editor.
+
+[Open →](./docs/workbench.html)
+:::
+
 :::card{title="Agent Protocol"}
 How agents propose block-level patches without rewriting whole files.
 

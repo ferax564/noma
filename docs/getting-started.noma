@@ -44,6 +44,8 @@ npm run build:site
 open dist/workbench.html
 ```
 
+For screenshots and the full command map, read the [web workbench guide](workbench.noma).
+
 ## Render an example
 
 The repo ships working examples in `examples/` — three full-surface demos, starter templates, the original intro files, and a multi-file book:

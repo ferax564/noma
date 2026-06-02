@@ -214,6 +214,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - [Markdown/HTML pain research](docs/research-markdown-html-pains.noma) — external evidence from X, Reddit, HN, specs, GitHub, and Stack Overflow behind the source/artifact/agent wedge.
 - [Agent editing guide](docs/agent-guide.noma) — the safe loop for ID discovery, patch transactions, validation, and strict rendering.
 - [Starter templates](docs/templates.noma) — copyable research memo, decision record, technical spec, and agent refresh templates under `examples/templates/`.
+- [Web workbench guide](docs/workbench.noma) — screenshots and workflows for the browser-based Word-style `.noma` editor.
 
 ## What ships today
 
@@ -238,7 +239,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
 - Starter templates under `examples/templates/` for research memos, decision records, technical specs, and agent refresh packs.
 - Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
-- Eleven docs (all written in Noma): direction, spec, compatibility, getting started, agent patch protocol, architecture, comparison guide, case studies, agent editing guide, starter templates, and the Markdown/HTML pain research memo.
+- Twelve docs (all written in Noma): direction, spec, compatibility, getting started, web workbench guide, agent patch protocol, architecture, comparison guide, case studies, agent editing guide, starter templates, and the Markdown/HTML pain research memo.
 - Hand-crafted HTML landing page (`site/index.html`) plus the static browser workbench (`site/workbench.html`).
 - PDF demo exports via Puppeteer.
 - GitHub Pages deployment on every push to `main`.
