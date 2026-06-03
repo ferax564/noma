@@ -21,6 +21,7 @@ typed AST  ─────────►  validator.ts  ─►  diagnostics
    ├──►  renderer-llm.ts   ─►  LLM context (optionally selected/budgeted)
    ├──►  renderer-json.ts  ─►  JSON
    ├──►  renderer-noma.ts  ─►  .noma source        (roundtrip + patch)
+   ├──►  renderer-markdown.ts ─► Markdown
    ├──►  renderer-docx.ts  ─►  DOCX
    │
    ├──►  ids.ts            ─►  ID / alias registry
@@ -32,7 +33,7 @@ DOCX ──► docx-control-data.ts ─► bound control JSON ──► docx-con
   └──► docx-review-data.ts  ─► native review JSON  ──► docx-review-sync.ts ─► .noma source
 ```
 
-The parser does not validate. The renderers do not parse. The validator does not render. HTML/LLM/JSON/Noma renderers are pure AST-to-string functions; the DOCX renderer is pure AST-to-Buffer and writes no files itself. `docx-control-data.ts` is the reverse bridge for form handoffs: DOCX package bytes in, bound `::control` value JSON out. `docx-control-sync.ts` turns that value layer into source-preserving `default=` updates for matching controls. `docx-review-data.ts` reads native Word comment, revision, footnote, endnote, heading, and table parts back into JSON so review state can be inspected outside Word, and `docx-review-sync.ts` maps anchors back to source block IDs for heading updates, comment add/update/resolve, note insertion/update, table/dataset cell/row/column updates, and tracked-revision change-request patches. PDF generation is the one render path that performs I/O because it writes a temporary HTML file and drives Chromium. The patch layer has two paths: AST-level `patch(doc, op)` for callers already operating on a tree, and source-level `patchSource(source, ops)` for the CLI/MCP path that rewrites only the addressed source spans.
+The parser does not validate. The renderers do not parse. The validator does not render. HTML/LLM/JSON/Noma/Markdown renderers are pure AST-to-string functions; the DOCX renderer is pure AST-to-Buffer and writes no files itself. `docx-control-data.ts` is the reverse bridge for form handoffs: DOCX package bytes in, bound `::control` value JSON out. `docx-control-sync.ts` turns that value layer into source-preserving `default=` updates for matching controls. `docx-review-data.ts` reads native Word comment, revision, footnote, endnote, heading, and table parts back into JSON so review state can be inspected outside Word, and `docx-review-sync.ts` maps anchors back to source block IDs for heading updates, comment add/update/resolve, note insertion/update, table/dataset cell/row/column updates, and tracked-revision change-request patches. PDF generation is the one render path that performs I/O because it writes a temporary HTML file and drives Chromium. The patch layer has two paths: AST-level `patch(doc, op)` for callers already operating on a tree, and source-level `patchSource(source, ops)` for the CLI/MCP path that rewrites only the addressed source spans.
 
 ## Modules
 
@@ -63,6 +64,10 @@ AST → deterministic plain text with `[TAG attr=value]` markers. Designed to ma
 
 :::card{title="src/renderer-noma.ts"}
 AST → `.noma` source. Roundtrip-safe printer that backs `noma render --to noma`. `parse → renderNoma → parse` preserves the AST modulo positions.
+:::
+
+:::card{title="src/renderer-markdown.ts"}
+AST → portable Markdown. Preserves normal Markdown prose, headings, lists, code, quotes, and pipe tables; converts `[[id]]` wikilinks to `[id](#id)`; emits hidden HTML anchors for IDs and aliases; renders tasks as checklists, figures as images, callouts as GitHub-style admonitions, and directive tables as Markdown pipe tables. Noma-only semantics degrade to readable labels plus hidden `noma:block` comments so `.md` exports remain useful for humans while retaining agent context.
 :::
 
 :::card{title="src/renderer-docx.ts"}

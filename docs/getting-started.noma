@@ -58,6 +58,16 @@ npm run noma -- render examples/tech-doc.noma --to html --out dist/tech-doc.html
 
 Open any of the produced files in a browser — they are fully self-contained and include the default theme inline.
 
+## Export to Markdown
+
+Use Markdown when the recipient needs a lightweight handoff rather than the full Noma source or a Word review package:
+
+```bash
+npm run noma -- render examples/agent-plan.noma --to markdown --out dist/agent-plan.md
+```
+
+The Markdown target keeps ordinary Markdown prose, headings, lists, code, quotes, and pipe tables readable. It converts `[[id]]` links to `[id](#id)`, emits hidden anchors for IDs and aliases, renders `::agent_task` / `::todo` as checkboxes, `::figure` as Markdown images, callouts as GitHub-style admonitions, and directive tables as Markdown pipe tables. Noma-specific blocks degrade to readable labels and hidden `noma:block` comments so exported `.md` files remain useful in GitHub, Slack, email, docs imports, and agent handoffs without replacing `.noma` as the source of truth.
+
 ## Export to Word
 
 Use DOCX when a document needs to enter a Word, Google Docs import, or committee review workflow:
@@ -216,7 +226,7 @@ Noma is easiest to use when you keep three surfaces separate:
 ::table{header align="l,l,l"}
 | Surface | Command or file | What to check |
 | Source | `file.noma` | Is the text readable in a normal editor? Are important blocks named with stable IDs? |
-| Artifact | `noma render file.noma --to html` | Does the rendered page carry the layout, table, plot, or review surface people need? |
+| Artifact | `noma render file.noma --to html`, `--to markdown`, or `--to docx` | Does the rendered page, Markdown handoff, or Word package carry the layout, table, plot, or review surface people need? |
 | Agent | `noma ids`, `noma check`, `noma render --to llm`, `noma patch` | Can an agent discover targets, validate facts, get scoped context, and patch only the block that changed? |
 ::
 

@@ -8,6 +8,7 @@ import { renderHtml } from "./renderer-html.js";
 import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
+import { renderMarkdown } from "./renderer-markdown.js";
 import { renderDocx } from "./renderer-docx.js";
 import { extractDocxControlData } from "./docx-control-data.js";
 import { syncControlDefaultsFromDocx } from "./docx-control-sync.js";
@@ -47,7 +48,7 @@ Usage:
   noma --version                             Print the CLI version
 
 Render options:
-  --to <html|llm|json|noma|site|pdf|docx>
+  --to <html|llm|json|noma|markdown|md|site|pdf|docx>
                             Target format (default: html). 'site' renders
                             a book manifest as a multi-page HTML site.
   --out <path>              Write to file (or directory for --to site)
@@ -104,6 +105,7 @@ Examples:
   noma render examples/thesis.noma --to html --out dist/thesis.html
   noma render examples/thesis.noma --to pdf --out dist/thesis.pdf
   noma render examples/thesis.noma --to docx --out dist/thesis.docx
+  noma render examples/thesis.noma --to markdown --out dist/thesis.md
   noma docx-data dist/thesis.docx
   noma docx-sync examples/thesis.noma dist/thesis.docx --out synced.noma
   noma docx-review-data dist/thesis.docx
@@ -748,6 +750,11 @@ async function main(): Promise<void> {
         }
         case "noma": {
           output(renderNoma(doc), args.out);
+          return;
+        }
+        case "markdown":
+        case "md": {
+          output(renderMarkdown(doc), args.out);
           return;
         }
         default:

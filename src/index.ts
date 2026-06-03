@@ -8,6 +8,8 @@ export { renderJson } from "./renderer-json.js";
 export type { JsonRenderOptions } from "./renderer-json.js";
 export { renderNoma } from "./renderer-noma.js";
 export type { NomaRenderOptions } from "./renderer-noma.js";
+export { renderMarkdown } from "./renderer-markdown.js";
+export type { MarkdownRenderOptions } from "./renderer-markdown.js";
 export { renderDocx } from "./renderer-docx.js";
 export type { DocxRenderOptions } from "./renderer-docx.js";
 export { extractDocxControlData } from "./docx-control-data.js";

@@ -94,6 +94,27 @@ test("noma render --to llm supports select, exclude, and budget", () => {
   assert.ok(res.stdout.length <= 120);
 });
 
+test("noma render --to markdown writes shareable Markdown", () => {
+  const dir = scratch();
+  const input = join(dir, "share.noma");
+  const output = join(dir, "share.md");
+  writeFileSync(
+    input,
+    `# Share {id="share"}\n\nSee [[claim-1]].\n\n::claim{id="claim-1" confidence=0.7}\nA **claim**.\n::\n`,
+  );
+  const res = spawnSync(
+    "npx",
+    ["tsx", "src/cli.ts", "render", input, "--to", "markdown", "--out", output],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 0, res.stderr);
+  const md = readFileSync(output, "utf8");
+  assert.match(md, /# Share/);
+  assert.match(md, /\[claim-1\]\(#claim-1\)/);
+  assert.match(md, /<!-- noma:block/);
+  assert.match(md, /\*\*Claim: claim-1\*\*/);
+});
+
 test("noma render --to pdf writes a PDF file", () => {
   const dir = scratch();
   const input = join(dir, "report.noma");

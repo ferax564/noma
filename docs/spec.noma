@@ -52,7 +52,7 @@ Headings auto-create `section` nodes. Each section has an `id` derived by slugif
 
 ### Inline content
 
-Paragraphs, headings, table cells, and review/note bodies keep lightweight inline Markdown as source text: `**bold**`, `*emphasis*`, `_emphasis_`, `` `code` ``, `[label](url)`, and `[[id]]` wikilinks. Link labels may escape literal brackets, backslashes, and table pipes as `\[`, `\]`, `\\`, and `\|`; HTML, LLM, and DOCX renderers unescape those label characters while preserving the link target. Link targets stay inline and cannot contain whitespace or `)` in source form; DOCX return readers percent-encode whitespace and parentheses from native Word relationship targets before emitting Markdown links.
+Paragraphs, headings, table cells, and review/note bodies keep lightweight inline Markdown as source text: `**bold**`, `*emphasis*`, `_emphasis_`, `` `code` ``, `[label](url)`, and `[[id]]` wikilinks. Link labels may escape literal brackets, backslashes, and table pipes as `\[`, `\]`, `\\`, and `\|`; HTML, Markdown, LLM, and DOCX renderers unescape those label characters while preserving the link target. Link targets stay inline and cannot contain whitespace or `)` in source form; DOCX return readers percent-encode whitespace and parentheses from native Word relationship targets before emitting Markdown links.
 
 ### Directive blocks
 
@@ -72,7 +72,7 @@ Directive names may be namespaced for future community packs:
 ::
 ```
 
-Without a registered pack renderer, HTML/PDF and DOCX output keep unknown or namespaced directives visible as readable fallback panels. The fallback uses a human label (`Finance position`, `Custom directive`), preserves the body, and exposes non-structural attributes such as `asset_class=`, `region=`, or `noverify` as metadata instead of hiding the directive identity in an anonymous wrapper. DOCX fallback panels are bookmarked and framed, so accepted Word edits to body-only fallback content can return through `replace_body`.
+Without a registered pack renderer, HTML/PDF, Markdown, and DOCX output keep unknown or namespaced directives visible as readable fallback panels or labels. The fallback uses a human label (`Finance position`, `Custom directive`), preserves the body, and exposes non-structural attributes such as `asset_class=`, `region=`, or `noverify` as metadata instead of hiding the directive identity in an anonymous wrapper. DOCX fallback panels are bookmarked and framed, so accepted Word edits to body-only fallback content can return through `replace_body`.
 
 Children are written with **strictly more colons** than the parent:
 
@@ -111,7 +111,7 @@ GitHub-style pipe tables. The parser detects a row of pipe-separated cells immed
 
 The separator row sets per-column alignment: `:---` left, `:---:` center, `---:` right, `---` default. Inline markdown inside cells is preserved — bold, italic, code, and links all render. Use `\|` for a literal pipe inside a non-code cell; renderers show the pipe outside code spans while preserving the source escape. Pipes inside inline code spans do not split cells and do not need escaping, so serializers preserve `` `x|y` `` as code text while escaping separator-like pipes elsewhere.
 
-The HTML renderer emits a real `<table class="noma-table">` with `text-align` styles per cell. The LLM renderer keeps the pipe format aligned to column widths so the output stays readable in agent context.
+The HTML renderer emits a real `<table class="noma-table">` with `text-align` styles per cell. The Markdown and LLM renderers keep the pipe format aligned to column widths so output stays readable in sharing and agent contexts.
 
 For tables where pipe-syntax becomes ugly — single-character markers (`✓`, `—`) next to long prose cells force visible padding to keep the separator row valid — wrap the rows in a `::table` directive. The separator row is no longer required, alignment is declared via an attribute, and the source stays compact:
 
@@ -187,6 +187,12 @@ hero, grid, card, callout, columns, tabs, accordion, sidebar, button, page_setup
 `::toc{title="Contents" depth=3}` emits a generated table of contents from document headings. HTML/PDF render a linked navigation list; DOCX renders linked entries that target the same Word bookmarks used by wikilinks, adds `PAGEREF` page-number fields for each entry, and writes Word settings that refresh fields when the document opens. Use `::toc{of="figures|tables|plots"}` to generate linked caption lists instead of heading entries; DOCX uses the same bookmark and page-reference machinery for those caption lists.
 
 `::pagebreak` inserts a hard page boundary in print-oriented targets. HTML emits a screen-visible dashed marker that becomes `break-after: page` in print CSS; DOCX emits a native Word page break.
+
+### Markdown export
+
+`noma render file.noma --to markdown` (or `--to md`) renders a portable Markdown artifact for GitHub, Slack, email, Notion-style imports, and lightweight agent handoffs. Noma remains the source of truth; Markdown export is intentionally lossy for rich layout and computed artifacts.
+
+The Markdown renderer preserves frontmatter, headings, paragraphs, inline Markdown, fenced code, lists, quotes, thematic breaks, and GitHub-style pipe tables. It converts `[[id]]` wikilinks to `[id](#id)`, emits hidden `<a id="..."></a>` anchors for canonical IDs and aliases, renders `::agent_task` / `::todo` as task-list checkboxes, `::figure` as `![alt](src)`, callouts as GitHub-style admonitions, and `::table{header ...}` directives as Markdown pipe tables. Other directives degrade to readable labels plus metadata lines; by default each directive is wrapped in hidden `<!-- noma:block ... -->` comments carrying directive name, ID, and attributes so exported Markdown retains stable agent context without showing those details in rendered Markdown views. Raw `::html`, `::svg`, and `::script` escape-hatch bodies are replaced by safe placeholders unless the API caller explicitly opts into including them.
 
 ### Artifact-action blocks
 

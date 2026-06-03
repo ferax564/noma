@@ -107,6 +107,9 @@ run(
   ],
   { cwd: workDir },
 );
+run(npx, ["noma", "render", "demo/demo.noma", "--to", "markdown", "--out", "out/demo.md"], {
+  cwd: workDir,
+});
 
 const ids = JSON.parse(run(npx, ["noma", "ids", "demo/demo.noma"], { cwd: workDir, capture: true }));
 if (!Array.isArray(ids.records) || ids.records.length === 0) {
@@ -144,10 +147,12 @@ if (!readFileSync(join(workDir, "spec.noma"), "utf8").includes("confidence=0.82"
 writeFileSync(
   join(workDir, "api-smoke.mjs"),
   [
-    'import { parse, renderLlm } from "@ferax564/noma-cli";',
+    'import { parse, renderLlm, renderMarkdown } from "@ferax564/noma-cli";',
     'const doc = parse("# API smoke\\n\\n::claim{id=\\"x\\"}\\nWorks.\\n::");',
     'const out = renderLlm(doc, { select: ["claim"] });',
     'if (!out.includes("[CLAIM id=\\"x\\"]")) throw new Error(out);',
+    'const md = renderMarkdown(doc);',
+    'if (!md.includes("<!-- noma:block")) throw new Error(md);',
   ].join("\n"),
 );
 run(process.execPath, ["api-smoke.mjs"], { cwd: workDir });

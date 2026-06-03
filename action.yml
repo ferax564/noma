@@ -10,7 +10,7 @@ inputs:
     required: false
     default: noma-artifact.html
   to:
-    description: "Render target: html, llm, json, noma, site, pdf, or docx."
+    description: "Render target: html, llm, json, noma, markdown, md, site, pdf, or docx."
     required: false
     default: html
   cli-package:
