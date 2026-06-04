@@ -684,6 +684,22 @@ const COMPUTED_RUNTIME_FOOT = `
           values.push(value);
         }
         canvas["inn" + "erHTML"] = renderChart(values, el.getAttribute("data-chart-type") || "line", Number(el.getAttribute("data-width") || 320), Number(el.getAttribute("data-height") || 140), domain.points.map(formatNumber));
+      } else if (el.getAttribute("data-noma-computed") === "table") {
+        const domain = parseDomain(el.getAttribute("data-domain"));
+        const body = el.querySelector("[data-noma-computed-table]");
+        if (!domain || !body) continue;
+        const rows = [];
+        for (const point of domain.points) {
+          const env = Object.assign({}, controlEnv);
+          env[domain.variable] = point;
+          const value = evaluateComputed(el, env, new Set());
+          if (value === undefined) {
+            rows.length = 0;
+            break;
+          }
+          rows.push('<tr><td>' + escapeText(formatNumber(point)) + '</td><td>' + escapeText(formatDisplay(value, el.getAttribute("data-unit") || "")) + '</td></tr>');
+        }
+        body["inn" + "erHTML"] = rows.length ? rows.join("") : '<tr><td colspan="2">—</td></tr>';
       } else {
         const env = Object.assign({}, controlEnv);
         const value = evaluateComputed(el, env, new Set());
@@ -693,10 +709,46 @@ const COMPUTED_RUNTIME_FOOT = `
     }
   }
 
-  for (const input of controls) {
-    input.addEventListener("input", update);
-    input.addEventListener("change", update);
+  function readHashState() {
+    const raw = window.location.hash ? window.location.hash.slice(1) : "";
+    if (!raw || !raw.includes("=")) return {};
+    const source = raw.startsWith("noma:") ? raw.slice(5) : raw;
+    const params = new URLSearchParams(source);
+    const state = {};
+    for (const [key, value] of params.entries()) state[key] = value;
+    return state;
   }
+
+  function applyHashState() {
+    const state = readHashState();
+    for (const input of controls) {
+      const id = input.getAttribute("data-noma-control-input");
+      if (!id || !Object.prototype.hasOwnProperty.call(state, id)) continue;
+      if (input.type === "checkbox") {
+        const value = String(state[id]).toLowerCase();
+        input.checked = value === "1" || value === "true" || value === "yes" || value === "on" || value === "checked";
+      } else {
+        input.value = state[id];
+      }
+    }
+  }
+
+  function writeHashState() {
+    const params = new URLSearchParams();
+    for (const input of controls) {
+      const id = input.getAttribute("data-noma-control-input");
+      if (!id) continue;
+      params.set(id, input.type === "checkbox" ? (input.checked ? "1" : "0") : input.value);
+    }
+    const hash = params.toString();
+    if (hash) history.replaceState(null, "", window.location.pathname + window.location.search + "#noma:" + hash);
+  }
+
+  for (const input of controls) {
+    input.addEventListener("input", () => { writeHashState(); update(); });
+    input.addEventListener("change", () => { writeHashState(); update(); });
+  }
+  applyHashState();
   update();
 })();
 </script>`;
@@ -813,6 +865,45 @@ function variantAttr(node: DirectiveNode): string {
     : "";
 }
 
+function gridLayoutAttrs(
+  node: DirectiveNode,
+  columns: number,
+  baseClass = "noma-grid",
+): { className: string; style: string } {
+  const classes = [baseClass];
+  const width = String(node.attrs.width ?? node.attrs.span ?? "");
+  const min = cssLength(
+    node.attrs.min ??
+      node.attrs.min_width ??
+      node.attrs.minWidth ??
+      node.attrs.minColumnWidth ??
+      node.attrs["min-width"],
+  );
+  const gap = cssLength(node.attrs.gap);
+  if (node.attrs.wide === true || width === "wide") classes.push(`${baseClass}-wide`);
+  if (node.attrs.full === true || width === "full") classes.push(`${baseClass}-full`);
+  if (node.attrs.compact === true || node.attrs.dense === true) classes.push(`${baseClass}-compact`);
+  if (min) classes.push(`${baseClass}-auto`);
+  const safeColumns = Number.isFinite(columns)
+    ? Math.max(1, Math.min(12, Math.floor(columns)))
+    : 2;
+  const vars = [`--noma-cols: ${safeColumns}`];
+  if (min) vars.push(`--noma-grid-min: ${min}`);
+  if (gap) vars.push(`--noma-grid-gap: ${gap}`);
+  return {
+    className: classes.map(escapeAttr).join(" "),
+    style: escapeAttr(`${vars.join("; ")};`),
+  };
+}
+
+function cssLength(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return `${value}px`;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed === "0") return trimmed;
+  return /^(?:\d+(?:\.\d+)?)(?:px|rem|em|ch|vw|%)$/.test(trimmed) ? trimmed : undefined;
+}
+
 function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
   const name = node.name;
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
@@ -866,7 +957,8 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
 
     case "grid": {
       const cols = Number(node.attrs.columns ?? 2);
-      return `<div class="noma-grid"${idAttr} style="--noma-cols: ${cols};"${dataAttrs}>${renderChildren(node, ctx)}</div>`;
+      const layout = gridLayoutAttrs(node, cols);
+      return `<div class="${layout.className}"${idAttr} style="${layout.style}"${dataAttrs}>${renderChildren(node, ctx)}</div>`;
     }
 
     case "card": {
@@ -942,6 +1034,9 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
     case "computed_plot":
       return renderComputedPlot(node, idAttr + variant, ctx);
 
+    case "computed_table":
+      return renderComputedTable(node, idAttr + variant, ctx);
+
     case "code":
       return renderCodeDirective(node, idAttr + dataAttrs, ctx);
 
@@ -998,8 +1093,13 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
     case "tabs":
     case "accordion":
     case "sidebar":
-    case "columns":
       return wrap("div", `noma-${name}`, idAttr + dataAttrs, renderChildren(node, ctx));
+
+    case "columns": {
+      const cols = Number(node.attrs.columns ?? 2);
+      const layout = gridLayoutAttrs(node, cols, "noma-columns");
+      return `<div class="${layout.className}"${idAttr} style="${layout.style}"${dataAttrs}>${renderChildren(node, ctx)}</div>`;
+    }
 
     case "citation":
       return `<cite class="noma-citation"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</cite>`;
@@ -1734,6 +1834,36 @@ function renderComputedPlot(node: DirectiveNode, idAndAttrs: string, ctx: Render
 </figure>`;
 }
 
+function renderComputedTable(node: DirectiveNode, idAndAttrs: string, ctx: RenderCtx): string {
+  const title = computedLabel(node, "Computed table");
+  const unit = controlUnit(node);
+  const formula = formulaText(node);
+  const domain = computedDomainText(node);
+  const series = evaluateComputedSeries(node, ctx.computed);
+  const variable = series?.variable ?? parseComputedTableVariable(domain) ?? "input";
+  const [variableLabel, valueLabel] = computedTableHeaders(node, variable);
+  const rows = series
+    ? series.points.map((point, index) => {
+      const rawValue = series.values[index];
+      const value = rawValue !== undefined ? computedValueText(rawValue, unit) : "—";
+      return `<tr><td>${escapeHtml(formatComputedNumber(point))}</td><td>${escapeHtml(value)}</td></tr>`;
+    }).join("")
+    : `<tr><td colspan="2">—</td></tr>`;
+  const body = computedBodyHtml(node, ctx);
+  const meta = computedMetaHtml(node, formula);
+  const metaHtml = meta ? `<div class="noma-meta">${meta}</div>` : "";
+  return `<aside class="noma-computed noma-computed-table"${idAndAttrs} data-noma-computed="table"${domain ? ` data-domain="${escapeAttr(domain)}"` : ""}${unit ? ` data-unit="${escapeAttr(unit)}"` : ""}${computedDataAttrs(node)}>
+  ${strictInteractiveBadge(ctx)}
+  <header class="noma-computed-head"><span class="noma-tag">Computed table</span><h3>${escapeHtml(title)}</h3></header>
+  <table class="noma-table noma-computed-table-view">
+    <thead><tr><th>${escapeHtml(variableLabel)}</th><th>${escapeHtml(valueLabel)}</th></tr></thead>
+    <tbody data-noma-computed-table>${rows}</tbody>
+  </table>
+  ${body}
+  ${metaHtml}
+</aside>`;
+}
+
 function strictInteractiveBadge(ctx: RenderCtx): string {
   if (ctx.interactive || ctx.strictInteractiveBadgeEmitted) return "";
   ctx.strictInteractiveBadgeEmitted = true;
@@ -1766,7 +1896,22 @@ function computedLabel(node: DirectiveNode, fallback: string): string {
 
 function computedBodyHtml(node: DirectiveNode, ctx: RenderCtx): string {
   if (node.body !== undefined) {
-    const text = freeformBodyText(node, ["formula", "domain", "range", "title", "label", "unit"]);
+    const text = freeformBodyText(node, [
+      "formula",
+      "domain",
+      "range",
+      "title",
+      "label",
+      "unit",
+      "variable_label",
+      "variableLabel",
+      "x_label",
+      "xLabel",
+      "value_label",
+      "valueLabel",
+      "y_label",
+      "yLabel",
+    ]);
     return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text)}</p></div>` : "";
   }
   const rendered = renderChildren(node, ctx);
@@ -1793,9 +1938,38 @@ function computedMetaHtml(node: DirectiveNode, formula: string | undefined): str
   const deps = parsed?.ok ? extractFormulaIdentifiers(parsed.ast).join(", ") : undefined;
   return metaFieldsHtml([
     metaTextField("formula", formula),
+    metaTextField("domain", computedDomainText(node)),
     metaTextField("depends on", deps),
     metaTextField("unit", controlUnit(node)),
   ]);
+}
+
+function parseComputedTableVariable(domain: string | undefined): string | undefined {
+  return domain?.split(":", 1)[0]?.trim() || undefined;
+}
+
+function computedTableHeaders(node: DirectiveNode, variable: string): [string, string] {
+  const variableLabel =
+    attrValueText(node.attrs, "variable_label") ??
+    attrValueText(node.attrs, "variableLabel") ??
+    attrValueText(node.attrs, "x_label") ??
+    attrValueText(node.attrs, "xLabel") ??
+    bodyFieldText(node, "variable_label") ??
+    bodyFieldText(node, "variableLabel") ??
+    bodyFieldText(node, "x_label") ??
+    bodyFieldText(node, "xLabel") ??
+    variable;
+  const valueLabel =
+    attrValueText(node.attrs, "value_label") ??
+    attrValueText(node.attrs, "valueLabel") ??
+    attrValueText(node.attrs, "y_label") ??
+    attrValueText(node.attrs, "yLabel") ??
+    bodyFieldText(node, "value_label") ??
+    bodyFieldText(node, "valueLabel") ??
+    bodyFieldText(node, "y_label") ??
+    bodyFieldText(node, "yLabel") ??
+    computedLabel(node, "Value");
+  return [variableLabel, valueLabel];
 }
 
 function computedDataAttrs(node: DirectiveNode): string {

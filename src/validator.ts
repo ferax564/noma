@@ -96,6 +96,7 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "control",
     "computed_metric",
     "computed_plot",
+    "computed_table",
     "export_button",
     "agent_task",
     "todo",
@@ -141,6 +142,7 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "control",
     "computed_metric",
     "computed_plot",
+    "computed_table",
     "code",
     "figure",
     "agent_task",
@@ -290,7 +292,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       }
     }
 
-    if (node.name === "computed_metric" || node.name === "computed_plot") {
+    if (node.name === "computed_metric" || node.name === "computed_plot" || node.name === "computed_table") {
       if (node.id) computed.set(node.id, node);
       computedNodes.push(node);
     }

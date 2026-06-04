@@ -1,0 +1,51 @@
+---
+title: Interactive Projection Demo
+author: ferax564
+date: 2026-06-04
+---
+
+# Interactive Projection Demo
+
+This artifact models a simple account expansion plan. The controls update
+computed metrics, a chart, and a table in the browser; the current control
+state is stored in the URL hash so the scenario can be shared.
+
+::grid{columns=3 min="13rem" gap="0.8rem" wide compact}
+:::control{id="accounts" type="number" min=50 max=1000 step=25 default=250 label="Starting accounts" unit="accounts"}
+:::
+
+:::control{id="growth_rate" type="slider" min=0 max=45 step=1 default=18 label="Annual growth" unit="%"}
+:::
+
+:::control{id="retention" type="slider" min=70 max=100 step=1 default=92 label="Retention" unit="%"}
+:::
+::
+
+::grid{columns=3 min="14rem" gap="0.8rem" wide compact}
+:::computed_metric{id="year_3_accounts" label="Year 3 accounts" formula="round(accounts * pow(1 + growth_rate / 100, 3) * pow(retention / 100, 3), 0)" unit="accounts"}
+The static value comes from defaults; browser controls recompute it instantly.
+:::
+
+:::computed_metric{id="year_5_accounts" label="Year 5 accounts" formula="round(accounts * pow(1 + growth_rate / 100, 5) * pow(retention / 100, 5), 0)" unit="accounts"}
+This block can be referenced by downstream computed blocks or exported to LLM context.
+:::
+
+:::computed_metric{id="net_growth" label="Net annual growth" formula="round(((1 + growth_rate / 100) * (retention / 100) - 1) * 100, 1)" unit="%"}
+The formula language supports arithmetic, comparisons, and simple functions.
+:::
+::
+
+::computed_plot{id="accounts_curve" label="Account curve" formula="round(accounts * pow(1 + growth_rate / 100, year) * pow(retention / 100, year), 0)" domain="year:0..5" type="bar" width=720 height=220 x_label_wrap=6}
+::
+
+::computed_table{id="accounts_table" label="Scenario table" formula="round(accounts * pow(1 + growth_rate / 100, year) * pow(retention / 100, year), 0)" domain="year:0..5" unit="accounts" variable_label="Year" value_label="Projected accounts"}
+Share a scenario by copying the URL after moving the controls.
+::
+
+::export_button{format="llm" target="document"}
+Label: Copy LLM context
+::
+
+::export_button{format="json" target="document"}
+Label: Copy JSON AST
+::

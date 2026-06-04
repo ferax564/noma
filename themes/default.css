@@ -14,8 +14,10 @@
   --noma-code-bg: #f1ede4;
   --noma-card-bg: #ffffff;
   --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);
-  --noma-radius: 10px;
+  --noma-radius: 8px;
   --noma-cols: 2;
+  --noma-grid-min: 14rem;
+  --noma-grid-gap: 1rem;
   --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;
   --noma-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
   --noma-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
@@ -29,20 +31,21 @@ html, body {
   background: var(--noma-bg);
   color: var(--noma-fg);
   font-family: var(--noma-font-serif);
-  font-size: 17px;
-  line-height: 1.65;
+  font-size: 16px;
+  line-height: 1.58;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 main.noma-doc {
-  max-width: 760px;
-  margin: 4rem auto;
-  padding: 0 1.5rem 6rem;
+  max-width: 1040px;
+  margin: 3rem auto;
+  padding: 0 1.25rem 5rem;
 }
 
 main.noma-doc > section.noma-hero ~ section,
-main.noma-doc > .noma-grid {
+main.noma-doc > .noma-grid,
+main.noma-doc > .noma-columns {
   max-width: 100%;
 }
 
@@ -50,13 +53,13 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--noma-font-sans);
   font-weight: 700;
   line-height: 1.2;
-  letter-spacing: -0.01em;
-  margin: 2.5em 0 0.6em;
+  letter-spacing: 0;
+  margin: 2em 0 0.55em;
 }
-h1 { font-size: 2.4rem; margin-top: 0; letter-spacing: -0.02em; }
-h2 { font-size: 1.7rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.3em; }
-h3 { font-size: 1.25rem; }
-h4 { font-size: 1.05rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+h1 { font-size: 2.1rem; margin-top: 0; }
+h2 { font-size: 1.45rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.25em; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 0.98rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
 p { margin: 0 0 1.05em; }
 a { color: var(--noma-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
@@ -286,6 +289,14 @@ aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
 .noma-computed-canvas {
   margin-bottom: 0.5rem;
 }
+.noma-computed-table-view {
+  margin: 0.65rem 0 0;
+  font-size: 0.9rem;
+}
+.noma-computed-table-view th:last-child,
+.noma-computed-table-view td:last-child {
+  text-align: right;
+}
 @media (max-width: 720px) {
   .noma-control-row {
     grid-template-columns: 1fr;
@@ -317,14 +328,45 @@ aside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }
 }
 
 /* Grid */
-.noma-grid {
+.noma-grid,
+.noma-columns {
   display: grid;
   grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));
-  gap: 1.2rem;
-  margin: 2em 0;
+  gap: var(--noma-grid-gap);
+  margin: 1.5em 0;
+}
+.noma-grid-auto,
+.noma-columns-auto {
+  grid-template-columns: repeat(auto-fit, minmax(min(var(--noma-grid-min), 100%), 1fr));
+}
+.noma-grid-wide,
+.noma-columns-wide,
+.noma-grid-full,
+.noma-columns-full {
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.noma-grid-wide,
+.noma-columns-wide {
+  width: min(1180px, calc(100vw - 2rem));
+}
+.noma-grid-full,
+.noma-columns-full {
+  width: min(1440px, calc(100vw - 2rem));
+}
+.noma-grid-compact,
+.noma-columns-compact {
+  --noma-grid-gap: 0.75rem;
 }
 @media (max-width: 720px) {
-  .noma-grid { grid-template-columns: 1fr; }
+  .noma-grid,
+  .noma-columns {
+    grid-template-columns: 1fr;
+    width: auto;
+    left: auto;
+    transform: none;
+  }
 }
 
 /* Card */
@@ -332,7 +374,7 @@ article.noma-card {
   background: var(--noma-card-bg);
   border: 1px solid var(--noma-rule);
   border-radius: var(--noma-radius);
-  padding: 1.2em 1.4em;
+  padding: 1em 1.1em;
   box-shadow: var(--noma-shadow);
 }
 article.noma-card .noma-card-head {
@@ -343,7 +385,7 @@ article.noma-card .noma-card-head {
 }
 article.noma-card h3 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-family: var(--noma-font-sans);
 }
 article.noma-card .noma-icon {
@@ -355,7 +397,7 @@ article.noma-card p:last-child { margin-bottom: 0; }
 /* Hero */
 section.noma-hero {
   background: linear-gradient(180deg, var(--noma-accent-soft), transparent);
-  padding: 4rem 2.5rem 3rem;
+  padding: 3rem 2rem 2.4rem;
   border-radius: var(--noma-radius);
   margin: 0 0 3rem;
   text-align: center;
@@ -790,7 +832,7 @@ table.noma-table {
   border-collapse: collapse;
   margin: 1.6em 0;
   font-family: var(--noma-font-sans);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   background: var(--noma-card-bg);
   border: 1px solid var(--noma-rule);
   border-radius: var(--noma-radius);
@@ -804,12 +846,12 @@ table.noma-table th {
   text-align: left;
   font-weight: 700;
   letter-spacing: 0.02em;
-  padding: 0.7em 1em;
+  padding: 0.55em 0.75em;
   border-bottom: 1px solid var(--noma-rule);
   color: var(--noma-fg);
 }
 table.noma-table td {
-  padding: 0.6em 1em;
+  padding: 0.5em 0.75em;
   border-bottom: 1px solid var(--noma-rule);
   vertical-align: top;
 }
@@ -959,7 +1001,7 @@ a.noma-alias {
 
 /* v0.4 — multi-page site nav (rendered above main when --to site) */
 nav.noma-site-nav {
-  max-width: 880px;
+  max-width: 1040px;
   margin: 1.5rem auto 0;
   padding: 0 2rem;
   display: flex;

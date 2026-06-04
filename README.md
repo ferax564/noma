@@ -1,8 +1,11 @@
 # Noma
 
-> **Readable source for beautiful agent artifacts.**
+> **Source-controlled artifacts agents can safely edit.**
 
-Noma is a plain-text format for books, docs, research, dashboards, and webpages. It is:
+Noma is a plain-text document format for agent workflows. It lets teams keep one
+reviewable `.noma` source file, render it as a polished artifact, export clean
+LLM context, and let agents patch named blocks without rewriting the whole file.
+It is:
 
 - readable like Markdown
 - structured like data
@@ -11,22 +14,29 @@ Noma is a plain-text format for books, docs, research, dashboards, and webpages.
 - editable by AI agents at the **block level** — not via full-file rewrites
 
 ```
-.noma source  ->  typed AST  ->  HTML / PDF / DOCX / Markdown / JSON / LLM context
+.noma source  ->  artifact for humans  ->  context + patch targets for agents
 ```
 
 **Live site:** <https://ferax564.github.io/noma/> — landing page, demo gallery, rendered HTML/PDF/LLM/JSON for every example, full docs.
 
 ## Why
 
-Markdown is excellent for prose and durable notes. HTML is excellent for browser artifacts. The painful gap is everything in between: research memos, PR reviews, decision records, technical docs, dashboards, and agent outputs that need tables, layout, validation, citations, and safe follow-up edits.
+Markdown is excellent for prose. HTML is excellent as the browser artifact. The
+painful gap is the work agents now produce and maintain: research memos, PR
+reviews, decision records, technical specs, stale-source refreshes, and Word
+review handoffs that need tables, citations, validation, render targets, and
+safe follow-up edits.
 
-Noma is that middle layer. Keep the source small and reviewable like Markdown; render the artifact as rich HTML/PDF; give agents typed blocks and stable IDs so they can patch the exact claim, table, risk, or citation that changed.
+Noma is that middle layer. Keep the source small and reviewable like Markdown;
+render the artifact as HTML/PDF/DOCX/LLM/JSON; give agents typed blocks and
+stable IDs so they can patch the exact claim, table, risk, task, or citation
+that changed.
 
 See [`docs/direction.noma`](docs/direction.noma) for the full positioning and [PLAN.md §23](PLAN.md) for the three-layer model and the central design test every feature must pass.
 
 ## The wedge
 
-Use Noma when a document needs all three surfaces at once:
+Use Noma when one source file needs all three surfaces at once:
 
 | Surface | What Noma keeps stable | Why Markdown or raw HTML alone gets awkward |
 | ------- | ---------------------- | ------------------------------------------- |
@@ -34,7 +44,26 @@ Use Noma when a document needs all three surfaces at once:
 | Artifact | standalone HTML, PDF, DOCX, docs site, JSON | Markdown needs extra tooling for polished rich output |
 | Agent | IDs, validation, scoped LLM export, patch ops | Agents need structure instead of whole-file rewrites |
 
-The first sharp use cases are table-heavy research, PR/architecture review artifacts, decision records, stale-source refreshes, and agent memory files.
+The first sharp use cases are agent-refreshable research, PR/architecture review
+artifacts, decision records, table-heavy technical specs, Word review loops, and
+agent memory files.
+
+## The loop
+
+The default workflow is deliberately small:
+
+```bash
+noma check memo.noma
+noma render memo.noma --to html --strict --out memo.html
+noma render memo.noma --to llm --select claim,evidence,risk --budget 12000
+noma ids memo.noma
+noma patch memo.noma --ops ops.json --inplace
+noma check memo.noma
+```
+
+That is the product contract: humans review source and artifacts; agents inspect
+IDs, patch the smallest stable surface, and validation catches broken structure
+before the artifact ships.
 
 ## Hello, Noma
 
@@ -128,7 +157,7 @@ npm run noma -- patch examples/thesis.noma \
 npm run noma -- check examples/research-thesis.noma
 
 # render in GitHub Actions
-# - uses: ferax564/noma@v0.11.1
+# - uses: ferax564/noma@v0.12.0
 #   with:
 #     input: docs/spec.noma
 #     output: dist/spec.html
@@ -187,7 +216,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.11.1
+      - uses: ferax564/noma@v0.12.0
         with:
           input: docs/spec.noma
           output: dist/spec.html
@@ -200,20 +229,23 @@ The action installs the CLI from the checked-out action ref by default, runs `no
 
 ## Demos
 
-Three artifacts that exercise the full block surface end-to-end. Each renders to HTML, PDF, LLM context, and JSON AST from a single `.noma` source. For the workflow narrative behind them, see the [case studies](docs/case-studies.noma).
+Five artifacts exercise the full block surface end-to-end. The main demos render to HTML, LLM context, and JSON AST from a single `.noma` source; the Word review-loop demo also builds a DOCX handoff. For the workflow narrative behind them, see the [case studies](docs/case-studies.noma).
 
 | Demo | What it shows | Live |
 | ---- | ------------- | ---- |
 | **Agent planning artifact** ([source](examples/agent-plan.noma)) | Q3 roadmap decision — options, decision matrix, claims/evidence/risks, agent tasks, copy-as-prompt buttons | [HTML](https://ferax564.github.io/noma/examples/agent-plan.html) · [PDF](https://ferax564.github.io/noma/examples/agent-plan.pdf) · [LLM](https://ferax564.github.io/noma/examples/agent-plan.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/agent-plan.json) |
 | **Technical documentation** ([source](examples/tech-doc.noma)) | CLI reference page — tabs, callouts, code blocks, architecture diagram, cross-links | [HTML](https://ferax564.github.io/noma/examples/tech-doc.html) · [PDF](https://ferax564.github.io/noma/examples/tech-doc.pdf) · [LLM](https://ferax564.github.io/noma/examples/tech-doc.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/tech-doc.json) |
 | **Investment thesis** ([source](examples/research-thesis.noma)) | Vertical-AI thesis — claims with confidence scores, counterevidence, risks, datasets, plots, quarterly review tasks | [HTML](https://ferax564.github.io/noma/examples/research-thesis.html) · [PDF](https://ferax564.github.io/noma/examples/research-thesis.pdf) · [LLM](https://ferax564.github.io/noma/examples/research-thesis.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/research-thesis.json) |
+| **Interactive projection** ([source](examples/interactive-projection.noma)) | Controls update computed metrics, plots, and computed tables; scenario state persists in the URL hash | [HTML](https://ferax564.github.io/noma/examples/interactive-projection.html) · [LLM](https://ferax564.github.io/noma/examples/interactive-projection.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/interactive-projection.json) |
+| **Word review loop** ([source](examples/word-review-loop.noma)) | Word controls, comments, change requests, native computed tables, and extractable review return data | [HTML](https://ferax564.github.io/noma/examples/word-review-loop.html) · [DOCX](https://ferax564.github.io/noma/examples/word-review-loop.docx) · [LLM](https://ferax564.github.io/noma/examples/word-review-loop.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/word-review-loop.json) |
 
 ## Guides for adoption
 
-- [Case studies](docs/case-studies.noma) — agent-refreshable research memo, decision artifact, technical-doc publishing, and memory workflow.
+- [Getting started](docs/getting-started.noma) — the first source/artifact/agent loop: render, export context, list IDs, patch, validate.
+- [Agent editing guide](docs/agent-guide.noma) — the operational rulebook agents should follow before touching a `.noma` file.
+- [Case studies](docs/case-studies.noma) — agent-refreshable research memo, decision artifact, technical-doc publishing, Word review, and memory workflow.
 - [Comparison guide](docs/comparison.noma) — when to choose Noma vs Markdown, MDX, raw HTML, or collaborative docs.
-- [Markdown/HTML pain research](docs/research-markdown-html-pains.noma) — external evidence from X, Reddit, HN, specs, GitHub, and Stack Overflow behind the source/artifact/agent wedge.
-- [Agent editing guide](docs/agent-guide.noma) — the safe loop for ID discovery, patch transactions, validation, and strict rendering.
+- [Markdown/HTML pain research](docs/research-markdown-html-pains.noma) — external evidence behind the source/artifact/agent wedge.
 - [Starter templates](docs/templates.noma) — copyable research memo, decision record, technical spec, and agent refresh templates under `examples/templates/`.
 - [Web workbench guide](docs/workbench.noma) — screenshots and workflows for the browser-based Word-style `.noma` editor.
 
@@ -225,7 +257,7 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Web workbench (`site/workbench.html`, published as `dist/workbench.html`) — browser-based editing surface for `.noma` source with a compact Word-style menu bar and tabbed File, Format, Insert, Layout, Review, Find, and Export ribbon panels. It includes Typora-style rendered editing for headings/prose/list items/quotes, live safe HTML preview, diagnostics, outline navigation, AST/LLM output tabs, example loading, local file opening, selection-aware Markdown formatting, Noma block insertion templates, and HTML/JSON/Noma/LLM export actions. The client bundle reuses the core parser, validator, HTML renderer, JSON renderer, and LLM renderer.
 - LLM renderer — deterministic plain-text output for context windows; escape-hatch bodies always stripped. Supports `--select`, `--exclude`, and `--budget` for scoped agent context, and emits computed formulas with default scalar/series results from control defaults.
 - Markdown renderer — portable `.md` export for GitHub, Slack, email, Notion-style imports, and agent handoffs. It preserves ordinary Markdown prose, emits hidden anchors for IDs and aliases, converts `[[id]]` wikilinks to `[id](#id)`, renders tasks as checklists, figures as Markdown images, callouts as GitHub-style admonitions, tables as pipe tables, and wraps directives in hidden semantic comments so exported Markdown keeps enough block context for agents.
-- DOCX renderer — dependency-free WordprocessingML export for handoff to Word or Google Docs import paths. It preserves frontmatter as Word package metadata, headings, prose, lists, page-aware tables, field-numbered table captions, dataset tables, metric KPI blocks, static computed metric/plot handoffs, technical API/reference blocks, addressable code snippets, code-cell/output computation blocks, page-aware grid/columns layouts, framed card panels, memory profile panels, flattened hero/tabs/accordion sections, titled tab panels, framed sidebars, code blocks, abstract/callout/note/warning/tip blocks, Office Math blocks and inline equations, native checkbox action items, native text/dropdown/date/checkbox control fields with optional lock metadata and custom XML data bindings, action blocks, section-level page setup, form document-protection settings, rich native headers/footers with page numbers and part-local hyperlinks, linked tables of contents and caption lists with Word page-reference fields, caption cross-reference fields for figure/table/plot wikilinks, page breaks, targeted/threaded native comments with rich inline body content and resolved-state metadata, review-view settings for comments and revisions, target-anchored rich tracked review revisions, state-change deltas, target-anchored rich native footnotes/endnotes, generated bibliographies, styled semantic review blocks and metadata, review/provenance/confidence metadata blocks, embedded PNG/JPEG/GIF/SVG figures, field-numbered figure/plot captions, static SVG plots for resolvable data, diagram/Plotly source fallbacks, clickable citations, block-ID bookmarks, internal wikilinks, external hyperlinks with rich Markdown labels including combined bold+italic spans, visible escaped table pipes outside code spans, and readable fallback labels for custom directives; unresolved web-only blocks degrade to labeled placeholders.
+- DOCX renderer — dependency-free WordprocessingML export for handoff to Word or Google Docs import paths. It preserves frontmatter as Word package metadata, headings, prose, lists, page-aware tables, field-numbered table captions, dataset tables, metric KPI blocks, static computed metric/plot/table handoffs, technical API/reference blocks, addressable code snippets, code-cell/output computation blocks, page-aware grid/columns layouts, framed card panels, memory profile panels, flattened hero/tabs/accordion sections, titled tab panels, framed sidebars, code blocks, abstract/callout/note/warning/tip blocks, Office Math blocks and inline equations, native checkbox action items, native text/dropdown/date/checkbox control fields with optional lock metadata and custom XML data bindings, action blocks, section-level page setup, form document-protection settings, rich native headers/footers with page numbers and part-local hyperlinks, linked tables of contents and caption lists with Word page-reference fields, caption cross-reference fields for figure/table/plot wikilinks, page breaks, targeted/threaded native comments with rich inline body content and resolved-state metadata, review-view settings for comments and revisions, target-anchored rich tracked review revisions, state-change deltas, target-anchored rich native footnotes/endnotes, generated bibliographies, styled semantic review blocks and metadata, review/provenance/confidence metadata blocks, embedded PNG/JPEG/GIF/SVG figures, field-numbered figure/plot captions, static SVG plots for resolvable data, diagram/Plotly source fallbacks, clickable citations, block-ID bookmarks, internal wikilinks, external hyperlinks with rich Markdown labels including combined bold+italic spans, visible escaped table pipes outside code spans, and readable fallback labels for custom directives; unresolved web-only blocks degrade to labeled placeholders.
 - JSON renderer — full AST export.
 - `.noma` source printer — AST → `.noma` (roundtrip-safe). Backs `noma render --to noma`; source-preserving `noma patch` rewrites addressed spans directly.
 - `noma fmt` — re-aligns GitHub-style pipe tables in source; respects pipes inside `` `code spans` `` and `\|` escapes, which render as literal pipes outside code spans; leaves everything else byte-identical.
@@ -234,13 +266,13 @@ Three artifacts that exercise the full block surface end-to-end. Each renders to
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
 - CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt | docx-data | docx-sync | docx-review-data | docx-review-sync | diff`. `noma render --to markdown --out report.md` writes a portable Markdown handoff; `noma render --to pdf --out report.pdf` prints through Chromium via Puppeteer and accepts `--page-size`, margin flags, `--no-print-background`, and `--css`; `noma render --to docx --out report.docx` writes a Word-compatible package; `noma docx-data report.docx --out controls.json` extracts bound `::control` values from the DOCX custom XML part or visible `noma-control:<id>` content controls in the document body, headers, or footers plus native `::agent_task` / `::todo` checkbox state from those Word content controls; `noma docx-sync report.noma report.docx --out synced.noma --report sync.json` source-preservingly updates matching `::control default=` attributes and task done/status attributes from those values and can write a JSON change/unmatched report; `noma docx-review-data report.docx` extracts native Word comment/note bodies, authors, resolved state, reply links, tracked revisions and wrapper or range-marker moves, footnotes, endnotes, bookmarked headings, and bookmarked tables as JSON, including lightweight Markdown for bold/emphasis/code/internal wikilinks/external links in comments, notes, accepted heading titles, tracked revision text, and bookmarked table cells plus comment, note-reference, tracked-revision, and tracked-move anchors inside the document body, native headers/footers, and bookmarked native tables; `noma docx-review-sync report.noma report.docx --out reviewed.noma --report review-sync.json` source-preservingly updates accepted heading edits, adds anchored Word comments, threaded replies, and notes, updates/resolves/reopens/deletes existing source comments and replies from Word state, updates/deletes targeted source footnotes and endnotes from Word state when they can be matched, adds/updates/deletes source `::change_request` blocks from Word revisions and moves when they can be matched, applies simple accepted `::table` edits with granular header/cell/row/column patch ops, and applies simple accepted inline `::dataset` cell/row/column edits with `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, or `delete_dataset_column` before falling back to safe full-body dataset replacement. The review-sync report records applied changes and skipped native review items without duplicating the patched source. `noma diff before.noma after.noma --at YYYY-MM-DD` emits `::state_change` blocks for attribute additions, changes, and removals. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_comment`, `resolve_comment`, `remove_attribute`, `add_footnote`, `add_endnote`, `add_change_request`, `update_table_cell`, `update_table_header_cell`, `insert_table_row`, `delete_table_row`, `insert_table_column`, `delete_table_column`, `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, `delete_dataset_column`, `move_block`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
-- GitHub Action — `uses: ferax564/noma@v0.11.1` validates, renders, and uploads HTML/LLM/JSON/Noma/Markdown/site artifacts in CI.
+- GitHub Action — `uses: ferax564/noma@v0.12.0` validates, renders, and uploads HTML/LLM/JSON/Noma/Markdown/site artifacts in CI.
 - VS Code extension — `ext install ferax564.noma-language` adds syntax highlighting, folding, embedded YAML/JSON/LaTeX/Mermaid/DOT scopes, and warning scopes for raw escape hatches.
 - MCP server — `@ferax564/noma-mcp-server` exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio.
 - Agent SDK — `@ferax564/noma-agent-sdk` wraps the MCP server with TypeScript helpers for safe patching, capability descriptors, and transcript replay. Experimental during v0.x.
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory.
 - Starter templates under `examples/templates/` for research memos, decision records, technical specs, and agent refresh packs.
-- Seven examples: three demos (agent-plan, tech-doc, research-thesis), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
+- Nine examples: five demos (agent-plan, tech-doc, research-thesis, interactive-projection, word-review-loop), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
 - Twelve docs (all written in Noma): direction, spec, compatibility, getting started, web workbench guide, agent patch protocol, architecture, comparison guide, case studies, agent editing guide, starter templates, and the Markdown/HTML pain research memo.
 - Hand-crafted HTML landing page (`site/index.html`) plus the static browser workbench (`site/workbench.html`).
 - PDF demo exports via Puppeteer.
@@ -250,7 +282,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.11.1 + unreleased Markdown export work. The current branch adds `renderMarkdown` / `noma render --to markdown` for portable `.md` sharing while keeping Noma as the source of truth. v0.11.1 itself is the polish patch on the first public `@ferax564/*` release line; see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.22 for the full release tracker.
+**Status:** v0.12.0 release candidate. This line packages the Word handoff/review loop, Markdown/PDF/DOCX work, denser HTML layouts, interactive computed artifacts with URL-hash scenario state, and new projection/review demos; see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.24 for the full release tracker.
 
 ## License
 

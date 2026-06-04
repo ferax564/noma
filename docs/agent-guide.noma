@@ -1,6 +1,6 @@
 ---
 title: Noma — Agent Editing Guide
-version: 0.11.0
+version: 0.12.0
 status: stable
 tags: [docs, agents, patching]
 ---
@@ -8,7 +8,22 @@ tags: [docs, agents, patching]
 # Agent Editing Guide
 
 ::summary
-This guide is the operational playbook for agents editing Noma documents. The rule is simple: discover IDs, patch the smallest stable block, validate the result, and never rewrite a whole file unless the user explicitly asks for a migration.
+This is the operational playbook for agents editing Noma documents. The rule is
+simple: read scoped context, discover IDs, patch the smallest stable block,
+validate the result, and never rewrite a whole file unless the user explicitly
+asks for a migration.
+::
+
+## Agent contract
+
+If you are an agent, treat the `.noma` source as the artifact's audit log. Your
+job is to preserve surrounding bytes, keep block IDs stable, and make the next
+human review smaller.
+
+::decision{id="agent-edit-contract" status="accepted"}
+An agent edit is valid only when it targets a known ID, uses the smallest patch
+operation that represents the requested change, and passes validation after the
+patch.
 ::
 
 ## The safe editing loop
@@ -73,6 +88,7 @@ Patch files should use the transaction wrapper when an edit has more than one op
 Do not patch by line number unless the user explicitly asks. Noma IDs are the public editing API; line spans are implementation evidence, not the primary target.
 ::
 
+- Do not scrape rendered HTML when `--to llm` can provide scoped context.
 - Prefer `replace_body` over `replace_block` when attributes and children should survive.
 - Prefer `update_heading` over text replacement for section titles.
 - Use `rename_id` only when the user accepts a breaking ID change.

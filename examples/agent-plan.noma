@@ -16,7 +16,7 @@ can be exported as a prompt for a follow-on review pass.
 
 ## Options at a glance
 
-::grid{columns=3}
+::grid{columns=3 min="14rem" gap="0.9rem" wide}
 :::card{title="A · Docs Platform" icon="docs"}
 Build a hosted publishing target for Noma. Highest revenue ceiling, longest path to value.
 :::
@@ -93,7 +93,7 @@ Easy to verify, easy to fix. Tracked separately.
 
 ## Timeline
 
-::grid{columns=4}
+::grid{columns=4 min="12rem" compact wide}
 :::card{title="Wk 1 · Format"}
 Parser, AST, frontmatter, JSON export, basic validation.
 :::

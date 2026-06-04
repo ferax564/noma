@@ -1,4 +1,4 @@
-# `ferax564-noma-agent-sdk` (Python — v0.1.0 starter)
+# `ferax564-noma-agent-sdk` (Python — v0.1.1 starter)
 
 > **Status: starter / experimental.** This is the **third-party language
 > binding** for the [Noma Agent Protocol v1.0](../../docs/spec-agent-protocol-v1.noma).
@@ -9,7 +9,7 @@
 > Workflow layer (safe-patch retry, op-list transcripts, replay) and
 > capability sidecar parsing land in **v0.2.0**. See "What's missing" below.
 
-## What this gives you (v0.1.0)
+## What this gives you (v0.1.1)
 
 - `NomaTools.spawn()` — async factory that spawns the Node
   `@ferax564/noma-mcp-server` over stdio.
@@ -90,7 +90,7 @@ Two channels (matches the TS SDK):
   enforce capabilities on the server side via `noma.capabilities.yml`.
 - **Full §3.5 error code coverage** — `pre_validation_blocked` and
   `op_list_aborted` only surface via op-list flows (Annex B.8), which
-  this v0.1.0 binding does not yet expose.
+  this v0.1.1 binding does not yet expose.
 
 ## Tests
 

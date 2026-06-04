@@ -317,6 +317,59 @@ Check this claim.
   ]);
 });
 
+test("noma docx-review-sync maps computed table captions and metadata", () => {
+  const dir = scratch();
+  const source = join(dir, "source.noma");
+  const reviewed = join(dir, "reviewed.noma");
+  const docx = join(dir, "reviewed.docx");
+  const synced = join(dir, "synced.noma");
+  const report = join(dir, "review-report.json");
+  const base = `# Review
+
+::control{id="base" type="number" default=10 label="Base"}
+::
+`;
+  writeFileSync(source, `${base}
+::computed_table{id="projection" label="Scenario" formula="base * year" domain="year:1..2" unit="pts" variable_label="Year" value_label="Score"}
+::
+`);
+  writeFileSync(reviewed, `${base}
+::computed_table{id="projection" label="Reviewed scenario" formula="base * year * 2" domain="year:1..2" unit="points" variable_label="Year" value_label="Score"}
+::
+`);
+  const render = spawnSync(
+    "npx",
+    ["tsx", "src/cli.ts", "render", reviewed, "--to", "docx", "--out", docx],
+    { encoding: "utf8" },
+  );
+  assert.equal(render.status, 0, render.stderr);
+
+  const extract = spawnSync("npx", ["tsx", "src/cli.ts", "docx-review-data", docx], {
+    encoding: "utf8",
+  });
+  assert.equal(extract.status, 0, extract.stderr);
+  const data = JSON.parse(extract.stdout) as {
+    captions?: Array<{ kind: string; title: string }>;
+    blockMetadata?: Array<{ fields: Record<string, string> }>;
+  };
+  assert.ok(data.captions?.some((caption) => caption.kind === "table" && caption.title === "Reviewed scenario"));
+  assert.ok(data.blockMetadata?.some((meta) => meta.fields.formula === "base * year * 2" && meta.fields.unit === "points"));
+
+  const sync = spawnSync("npx", ["tsx", "src/cli.ts", "docx-review-sync", source, docx, "--out", synced, "--report", report], {
+    encoding: "utf8",
+  });
+  assert.equal(sync.status, 0, sync.stderr);
+  const body = readFileSync(synced, "utf8");
+  assert.match(body, /label="Reviewed scenario"/);
+  assert.match(body, /formula="base \* year \* 2"/);
+  assert.match(body, /unit="points"/);
+  const reportBody = JSON.parse(readFileSync(report, "utf8")) as {
+    changes: Array<{ action: string; id: string; key?: string }>;
+  };
+  assert.ok(reportBody.changes.some((change) => change.action === "update_caption" && change.id === "projection" && change.key === "label"));
+  assert.ok(reportBody.changes.some((change) => change.action === "update_block_metadata" && change.id === "projection" && change.key === "formula"));
+});
+
 test("noma docx-review-sync adds native Word comments to source", () => {
   const dir = scratch();
   const source = join(dir, "source.noma");

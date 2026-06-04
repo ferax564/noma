@@ -219,7 +219,7 @@ function emitDirective(
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
     .join(" ");
   out.push(`[${tag}${attrs ? " " + attrs : ""}]`);
-  if (node.name === "computed_metric" || node.name === "computed_plot") {
+  if (node.name === "computed_metric" || node.name === "computed_plot" || node.name === "computed_table") {
     emitComputedSummary(node, out, opts);
   }
   const isIndexWithExclusions =
@@ -251,10 +251,13 @@ function emitComputedSummary(node: DirectiveNode, out: string[], opts: RenderCtx
     return;
   }
   out.push(`formula: ${formula}`);
-  if (node.name === "computed_plot") {
+  if (node.name === "computed_plot" || node.name === "computed_table") {
     const series = evaluateComputedSeries(node, opts.computed);
     if (series) {
-      out.push(`default_series (${series.variable}): ${series.values.map(formatComputedNumber).join(", ")}`);
+      const values = node.name === "computed_table"
+        ? series.points.map((point, index) => `${formatComputedNumber(point)}=${formatComputedNumber(series.values[index]!)}`)
+        : series.values.map(formatComputedNumber);
+      out.push(`default_series (${series.variable}): ${values.join(", ")}`);
       return;
     }
   }

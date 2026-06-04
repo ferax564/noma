@@ -309,13 +309,14 @@ function parseDocumentCaptions(
 }
 
 function parseCaptionText(text: string): Pick<DocxReviewCaption, "kind" | "title"> | undefined {
-  const match = /^(Figure|Table|Plot|Computed plot)\s+\d+\s*:\s*([\s\S]+)$/i.exec(text.trim());
+  const match = /^(Figure|Table|Plot|Computed plot|Computed table)\s+\d+\s*:\s*([\s\S]+)$/i.exec(text.trim());
   if (!match) return undefined;
   const title = match[2]?.trim() ?? "";
   if (!title) return undefined;
   const label = (match[1] ?? "").toLowerCase();
   if (label === "figure") return { kind: "figure", title };
   if (label === "table") return { kind: "table", title };
+  if (label === "computed table") return { kind: "table", title };
   return { kind: "plot", title };
 }
 
@@ -705,6 +706,7 @@ function blockMetadataFieldLabelsForLabel(text: string): string[] | undefined {
   if (/^Output(?:\s+\([^)]+\))?$/i.test(trimmed)) return ["for", "status", "mime"];
   if (/^Computed metric(?:\s*:.*)?$/i.test(trimmed)) return ["formula", "domain", "unit"];
   if (/^Computed plot(?:\s+\d+)?(?:\s*:.*)?$/i.test(trimmed)) return ["formula", "domain", "unit"];
+  if (/^Computed table(?:\s+\d+)?(?:\s*:.*)?$/i.test(trimmed)) return ["formula", "domain", "unit"];
   if (/^Control(?:\s*:.*)?$/i.test(trimmed)) return ["type", "default", "min", "max", "step"];
   if (/^(?:User|Feedback|Project|Reference)\s+memory(?:\s*:.*)?$/i.test(trimmed) || /^Memory(?:\s*:.*)?$/i.test(trimmed)) {
     return ["type", "confidence", "last seen", "scope", "source", "valid until", "superseded by", "expired"];

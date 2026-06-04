@@ -988,7 +988,7 @@ Noma should not be positioned as "better Markdown" or "HTML replacement."
 
 The stronger thesis is:
 
-> **Noma is readable source for beautiful agent artifacts.**
+> **Noma is source-controlled artifacts agents can safely edit.**
 
 Markdown is excellent as lightweight text, but too weak for rich artifacts.
 HTML is excellent as a rendering target, but too noisy and unpleasant as long-term source.
@@ -996,7 +996,7 @@ HTML is excellent as a rendering target, but too noisy and unpleasant as long-te
 Noma is the missing middle:
 
 ```txt
-Readable source → Typed document AST → Beautiful HTML / PDF / Book / Slides / LLM Context
+Readable source → Polished artifact → Agent context + ID-targeted patches
 ```
 
 ### 23.2 The Three-Layer Model
@@ -1013,22 +1013,23 @@ diagrams, charts, copy buttons, mobile-responsive layout, collapsible sections.
 HTML is not the enemy. Hand-authored HTML *as source of truth* is.
 
 **3. Agent layer** — what AI systems use. Deterministic LLM context export — more
-structured than Markdown, less noisy than HTML.
+structured than Markdown, less noisy than HTML — plus IDs, validation, and
+patch operations.
 
 ### 23.3 Final Positioning
 
 Primary:
 
-> **Noma is a plain-text format for creating beautiful, structured documents
-> with humans and AI agents.**
+> **Noma is a plain-text format for durable documents that humans review and
+> agents safely patch.**
 
 Sharper:
 
-> **Write in Noma. Render to HTML. Collaborate with agents.**
+> **Write in Noma. Render the artifact. Patch by ID.**
 
 Or:
 
-> **Readable source. Beautiful artifacts. Agent-safe edits.**
+> **Readable source. Polished artifacts. Safe agent edits.**
 
 ### 23.4 The Central Design Test
 
@@ -1242,16 +1243,16 @@ contribution guide.
 
 Launch line:
 
-> Noma is readable source for beautiful agent artifacts. Write structured
-> documents in plain text, render them to HTML/PDF/LLM context, and let agents
-> edit them safely.
+> Noma is source-controlled artifacts agents can safely edit. Write structured
+> documents in plain text, render them to HTML/PDF/DOCX/LLM context, and let
+> agents patch stable block IDs.
 
 ### 23.17 Final Product Definition
 
-> **Noma is a plain-text source format for building beautiful, structured,
-> agent-editable documents. It keeps the source readable like Markdown, renders
-> artifacts as richly as HTML, and gives agents a stable structure for safe
-> collaboration.**
+> **Noma is a plain-text source format for durable, structured documents that
+> humans review and agents safely patch. It keeps source readable in Git,
+> renders polished artifacts, and gives agents stable block IDs for targeted
+> edits.**
 
 ## 24. Shipped Tracker
 
@@ -1725,3 +1726,14 @@ Landed after v0.11.1 to move the source/artifact/agent loop closer to a Word-com
 - **Table and dataset patch ops.** `update_table_cell` updates one body cell in an ID-bearing `::table` directive by zero-based row and numeric column or header label, escaping separator pipes outside inline code spans while preserving pipes inside code spans; `update_table_header_cell` updates one header cell without touching body rows; `insert_table_row` and `delete_table_row` add or remove body rows; `insert_table_column` and `delete_table_column` add or remove columns, including header-label deletion; `update_dataset_cell` updates one data cell in an ID-bearing `::dataset` directive for inline YAML row arrays, single-line CSV/TSV bodies with quoted cells, and simple pretty-printed JSON row or record arrays; `insert_dataset_row` and `delete_dataset_row` add or remove data rows; `insert_dataset_column` and `delete_dataset_column` add or remove data columns with schema/header/key updates where the source shape supports them. All preserve surrounding source bytes where the source shape is supported.
 - **Move patch op.** `move_block` relocates an existing directive block under a new parent while preserving the block body/attributes, normalizing directive fence depth when needed, and rejecting moves into descendants.
 - **Surface sync.** CLI schemas, MCP validation, Agent SDK types/capabilities, Python SDK models, docs, and regression tests all understand the expanded patch surface.
+
+### §24.24 — v0.12.0 (interactive artifacts + release packaging)
+
+Prepared on 2026-06-04. This release packages the post-v0.11.1 Word/review work and adds the local interactive-artifact follow-through needed for a coherent v0.12.0 cut.
+
+- **Computed table directive.** `::computed_table` joins `computed_metric` and `computed_plot` as a first-class computed artifact directive without adding an AST variant. HTML renders default rows and updates them live with controls; LLM export emits a default row series; DOCX exports native captioned Word tables with formula/domain/unit metadata; validator/profile support covers formula dependencies and profile membership.
+- **Shareable interactive state.** Standalone computed HTML artifacts persist control values in a `#noma:` URL hash and restore them on load, so scenario pages can be shared without a backend.
+- **Denser lateral layouts.** Default and dark themes use a wider document canvas, smaller base/headline/table typography, tighter cards, and responsive `::grid` / `::columns` controls for `min=`, `gap=`, `wide`, `full`, `compact`, and related aliases.
+- **New demos.** `examples/interactive-projection.noma` demonstrates controls, metrics, plots, computed tables, and URL-hash scenarios. `examples/word-review-loop.noma` demonstrates controls, comments, change requests, computed Word tables, and DOCX review/data return paths. Both are wired into `npm run render:examples`; the review demo also builds a DOCX artifact.
+- **Release metadata.** Root CLI and MCP server move to `0.12.0`; the TypeScript Agent SDK moves to `0.1.2` with `0.12.0` dependencies; the Python starter binding moves locally to `0.1.1`; versioned docs, README status, changelog, and lockfile metadata are aligned.
+- **Publish readiness.** npm and PyPI runbooks document the maintainer-only publish steps. VS Code Marketplace publication remains the manual §24.9 maintainer action; this release does not automate `vsce publish`.

@@ -18,15 +18,15 @@ to a collaborator who has never heard of the project.
 ## The one-liner
 
 ::callout{tone="tip"}
-**Noma is readable source for beautiful agent artifacts.**
+**Noma is source-controlled artifacts agents can safely edit.**
 ::
 
 ## The longer version
 
-> Noma is a plain-text source format for building beautiful, structured,
-> agent-editable documents. It keeps the source readable like Markdown,
-> renders artifacts as richly as HTML, and gives agents a stable structure
-> for safe collaboration.
+> Noma is a plain-text source format for durable agent-editable documents. It
+> keeps source readable in Git, renders polished artifacts for humans, and gives
+> agents stable block IDs so they can patch the exact claim, table, task, or
+> citation that changed.
 
 ## The three-layer model
 
@@ -38,12 +38,12 @@ time, easy to patch at the block level.
 
 :::card{title="2 · Artifact" icon="artifact"}
 What humans consume. Standalone HTML by default — visual hierarchy,
-grids, cards, charts, copy buttons, mobile-responsive.
+grids, cards, charts, review controls, mobile-responsive.
 :::
 
 :::card{title="3 · Agent" icon="agent"}
 What AI systems use. Deterministic LLM context — more structured than
-Markdown, less noisy than HTML.
+Markdown, less noisy than HTML — plus IDs, validation, and patch operations.
 :::
 ::
 

@@ -61,6 +61,43 @@ test("::plotly emits container + Plotly CDN", () => {
   assert.match(html, /cdn\.plot\.ly\/plotly-/);
 });
 
+test("HTML grid and columns expose lateral layout controls", () => {
+  const doc = parse(
+    `::grid{id="g" columns=5 min="12rem" gap="0.5rem" wide compact}\n::\n\n::columns{id="c" columns=20 min=220 full dense}\n::\n`,
+  );
+  const html = renderHtml(doc);
+
+  assert.match(html, /class="noma-grid noma-grid-wide noma-grid-compact noma-grid-auto"/);
+  assert.match(html, /style="--noma-cols: 5; --noma-grid-min: 12rem; --noma-grid-gap: 0.5rem;"/);
+  assert.match(html, /class="noma-columns noma-columns-full noma-columns-compact noma-columns-auto"/);
+  assert.match(html, /style="--noma-cols: 12; --noma-grid-min: 220px;"/);
+});
+
+test("HTML grid layout ignores unsafe CSS lengths", () => {
+  const doc = parse(`::grid{gap="url(javascript:bad)" min="calc(100vw)"}\n::\n`);
+  const html = renderHtml(doc);
+  const style = /<div class="noma-grid"[^>]* style="([^"]+)"/.exec(html)?.[1];
+  assert.equal(style, "--noma-cols: 2;");
+});
+
+test("::computed_table renders static rows, LLM defaults, and hash-state runtime", () => {
+  const doc = parse(
+    `::control{id="base" type="slider" min=0 max=20 default=10 label="Base"}\n::\n\n::computed_table{id="projection" formula="base * year" domain="year:1..3" unit="pts" variable_label="Year" value_label="Score"}\n::\n`,
+  );
+  const html = renderHtml(doc, { standalone: true });
+  assert.match(html, /data-noma-computed="table"/);
+  assert.match(html, /<th>Year<\/th><th>Score<\/th>/);
+  assert.match(html, /<td>2<\/td><td>20 pts<\/td>/);
+  assert.match(html, /#noma:/);
+  assert.match(html, /writeHashState/);
+
+  const llm = renderLlm(doc);
+  assert.match(llm, /default_series \(year\): 1=10, 2=20, 3=30/);
+
+  const diags = validate(doc);
+  assert.equal(diags.filter((d) => d.code.startsWith("computed-")).length, 0);
+});
+
 test("::plotly invalid JSON flagged by validator", () => {
   const doc = parse(`::plotly\n{not json}\n::\n`);
   const diags = validate(doc);

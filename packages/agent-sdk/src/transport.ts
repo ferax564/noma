@@ -71,7 +71,7 @@ export class StdioMcpClient {
       ...(env ? { env } : {}),
     });
     const client = new Client(
-      { name: "@ferax564/noma-agent-sdk", version: "0.1.0" },
+      { name: "@ferax564/noma-agent-sdk", version: "0.1.2" },
       { capabilities: {} },
     );
     try {

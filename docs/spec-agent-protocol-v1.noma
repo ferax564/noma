@@ -89,7 +89,7 @@ The current reference implementation may expose additive patch operations before
 new normative protocol minor version is cut. These are implementation extensions, not
 part of the v1.0 conformance set in §§1–6.
 
-As of the post-v0.11.1 line, the reference implementation also supports:
+As of the v0.12.0 line, the reference implementation also supports:
 
 - `replace_body` — replace body text on a body-only directive or text node while
   preserving the wrapper, attributes, and sibling blocks.

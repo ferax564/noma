@@ -1,0 +1,76 @@
+---
+title: Word Review Loop Demo
+author: ferax564
+date: 2026-06-04
+---
+
+# Word Review Loop Demo
+
+This document is source-controlled Noma that can be handed to a reviewer as a
+Word package. The review controls, comments, and change requests stay tied to
+stable block IDs so an agent can reconcile the returned document without a
+full-file rewrite.
+
+::page_setup{size="letter" margins="0.7in 0.85in 0.75in 0.85in"}
+::
+
+::header
+Word review loop - confidential draft
+::
+
+::footer
+Noma source -> DOCX handoff -> extracted review data
+::
+
+## Review Controls
+
+::grid{columns=3 min="13rem" gap="0.8rem" wide compact}
+:::control{id="review_decision" type="select" default="revise" options="approve=Approve,revise=Revise,block=Block" label="Reviewer decision"}
+:::
+
+:::control{id="legal_ready" type="toggle" default=false label="Ready for legal"}
+:::
+
+:::control{id="confidence_score" type="slider" min=0 max=100 step=5 default=70 label="Reviewer confidence" unit="%"}
+:::
+::
+
+::computed_table{id="review_scorecard" label="Confidence scenarios" formula="round(confidence_score * stage / 3, 0)" domain="stage:1..3" unit="%" variable_label="Review stage" value_label="Effective confidence"}
+The table exports as native HTML and DOCX table rows while remaining computed
+from the editable controls.
+::
+
+## Renewal Terms
+
+::decision{id="renewal-terms-decision" owner="Commercial" status="draft"}
+Adopt a two-year renewal with a 60-day opt-out window and pricing protection
+for seats already committed in the current order form.
+::
+
+::comment{id="comment-legal-window" for="renewal-terms-decision" author="Legal" date="2026-06-04"}
+Confirm whether the opt-out clock starts at signature or production launch.
+::
+
+::change_request{id="cr-renewal-terms" for="renewal-terms-decision" status="open" priority="high"}
+Replace "60-day opt-out window" with the final legal trigger once counsel
+confirms the timing.
+::
+
+::table{id="handoff-matrix" title="Review handoff matrix" header align="l,l,l"}
+Area | Owner | Return signal
+Commercial terms | Commercial | `review_decision`
+Legal readiness | Legal | `legal_ready`
+Risk confidence | Strategy | `confidence_score`
+::
+
+## Agent Reconciliation
+
+::agent_task{id="extract-word-review" assignee="agent" status="todo"}
+Run `noma docx-data dist/examples/word-review-loop.docx`, inspect reviewer
+control values, and apply source updates only to blocks referenced by changed
+controls or review annotations.
+::
+
+::export_button{format="llm" target="document"}
+Label: Copy agent handoff context
+::

@@ -6,8 +6,40 @@ audience: new contributors
 # Getting Started
 
 ::summary
-Five minutes to your first rendered Noma document.
+Run the first Noma loop: render a readable artifact, export clean agent
+context, discover stable block IDs, apply a small patch, and validate the
+result.
 ::
+
+## The first loop
+
+Start here before learning the full directive surface. A useful Noma document
+proves five things:
+
+1. the source stays readable in Git
+2. the artifact renders for humans
+3. the LLM export is clean enough for agents
+4. IDs give agents stable patch targets
+5. validation catches broken structure before shipping
+
+```bash
+noma init my-spec
+noma check my-spec/demo.noma
+noma render my-spec/demo.noma --to html --strict --out my-spec/demo.html
+noma render my-spec/demo.noma --to llm --budget 12000
+noma ids my-spec/demo.noma
+```
+
+Once those commands work, an agent can patch through the same contract:
+
+```bash
+noma patch my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"The first risk is now tracked without rewriting surrounding source."}' --inplace
+noma check my-spec/demo.noma
+```
+
+Use `noma render --to html --strict` for team-visible artifacts. Use
+`noma render --to llm --select ... --budget ...` when an agent should see only
+the relevant block types.
 
 ## Install
 
@@ -48,7 +80,8 @@ For screenshots and the full command map, read the [web workbench guide](workben
 
 ## Render an example
 
-The repo ships working examples in `examples/` — three full-surface demos, starter templates, the original intro files, and a multi-file book:
+The repo ships working examples in `examples/`: five main demos, starter
+templates, original intro files, and a multi-file book:
 
 ```bash
 npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
@@ -80,7 +113,7 @@ npm run noma -- docx-review-data dist/agent-plan.docx --out dist/agent-plan.revi
 npm run noma -- docx-review-sync examples/agent-plan.noma dist/agent-plan.docx --out reviewed-agent-plan.noma --report reviewed-agent-plan.report.json
 ```
 
-The DOCX target preserves frontmatter as Word package metadata, headings, prose, lists, page-aware pipe tables, `::table` directives and field-numbered captions, `::dataset` tables, metric KPI blocks, static computed metric/plot handoffs, technical API/reference blocks, addressable code snippets, code-cell/output computation blocks, page-aware `::grid` / `::columns` layouts, framed card panels, memory profile panels, flattened hero/tabs/accordion sections, titled tab panels, framed sidebars, code blocks, abstract/callout/note/warning/tip blocks, Office Math blocks and inline equations, native checkbox action items, native text/dropdown/date/checkbox control fields with custom XML data bindings, action blocks, section-level page setup, form document-protection settings, rich native Word headers/footers with page-number fields and part-local hyperlinks, generated tables of contents and caption lists with Word page-reference fields, page breaks, targeted/threaded native Word comments with rich inline body content and resolved-state metadata, review-view settings for comments and revisions, target-anchored rich tracked review revisions, state-change deltas, target-anchored rich native footnotes/endnotes, generated bibliographies, semantic directive labels, styled review blocks and metadata, review/provenance/confidence metadata blocks, embedded PNG/JPEG/GIF/SVG figures, field-numbered figure/plot captions, static SVG plots for resolvable data, diagram/Plotly source fallbacks, clickable citations, block-ID bookmarks, internal wikilinks, external hyperlinks with rich Markdown labels including combined bold+italic spans, and readable fallback labels for custom directives. Unresolved web-first blocks degrade to labeled placeholders so the handoff document stays readable.
+The DOCX target preserves frontmatter as Word package metadata, headings, prose, lists, page-aware pipe tables, `::table` directives and field-numbered captions, `::dataset` tables, metric KPI blocks, static computed metric/plot/table handoffs, technical API/reference blocks, addressable code snippets, code-cell/output computation blocks, page-aware `::grid` / `::columns` layouts, framed card panels, memory profile panels, flattened hero/tabs/accordion sections, titled tab panels, framed sidebars, code blocks, abstract/callout/note/warning/tip blocks, Office Math blocks and inline equations, native checkbox action items, native text/dropdown/date/checkbox control fields with custom XML data bindings, action blocks, section-level page setup, form document-protection settings, rich native Word headers/footers with page-number fields and part-local hyperlinks, generated tables of contents and caption lists with Word page-reference fields, page breaks, targeted/threaded native Word comments with rich inline body content and resolved-state metadata, review-view settings for comments and revisions, target-anchored rich tracked review revisions, state-change deltas, target-anchored rich native footnotes/endnotes, generated bibliographies, semantic directive labels, styled review blocks and metadata, review/provenance/confidence metadata blocks, embedded PNG/JPEG/GIF/SVG figures, field-numbered figure/plot captions, static SVG plots for resolvable data, diagram/Plotly source fallbacks, clickable citations, block-ID bookmarks, internal wikilinks, external hyperlinks with rich Markdown labels including combined bold+italic spans, and readable fallback labels for custom directives. Unresolved web-first blocks degrade to labeled placeholders so the handoff document stays readable.
 
 `noma docx-data` reads the `urn:noma:controls` custom XML part behind bound `::control` fields plus visible `noma-control:<id>` fields and native checkbox content controls behind `::agent_task` / `::todo` in the document body, headers, and footers, emitting JSON for workflows that need `.noma -> .docx -> data` handoff loops. `noma docx-sync` uses that value layer to update matching source `::control default=` attributes plus task `done` / `status` attributes while preserving the rest of the `.noma` file, giving fillable Word review cycles a source return path; visible text controls preserve leading/trailing spaces from Word instead of trimming them before source sync. Pass `--report <file.json>` to record applied control/task changes and unmatched DOCX IDs without duplicating the patched source. `noma docx-review-data` extracts native Word comment/note bodies, author/date metadata, resolved state, reply links, tracked revisions and tracked moves, footnotes, endnotes, bookmarked headings, prose block bodies, and bookmarked tables as JSON so review loops can inspect what came back from the DOCX package before turning it into patches; bold, emphasis, inline code, internal wikilinks, and external hyperlinks in comments, notes, accepted heading titles, accepted caption titles, accepted metric/control/action/block-title labels, accepted block body edits, tracked revision text, and bookmarked table cells return as lightweight Noma Markdown, with adjacent same-style Word runs coalesced before Markdown rendering, including inside internal and external hyperlink labels. Word `HYPERLINK` fields, including complex fields and `fldSimple`, return through the same Markdown link path. Formatted or custom internal `#id` hyperlink labels return as `[label](#id)` when the visible anchor text or a verified Noma-generated bookmark identifies the target, generated complex or `fldSimple` Word `REF` fields for Noma caption cross-references return as `[[id]]`, intentional spaces inside hyperlink labels are preserved, literal brackets inside returned external hyperlink labels are escaped, and whitespace or parentheses inside returned external hyperlink targets are percent-encoded. DOCX return readers preserve Word `w:cr` / `w:br` line breaks, tabs, hyphen tokens, symbol glyphs, and leading/trailing spaces in comment, note, and table-cell text even when those empty run-token elements are serialized as paired XML elements, keep nested native table rows inside their parent table cell, merge adjacent same-ID tracked revision fragments, and group multiple adjacent delete/insert pairs in one paragraph as separate replacements before syncing change requests. Header/footer comments, tracked revisions, and wrapper or range-marker tracked moves use the same bookmark return path as body content, and table-cell comments, notes, tracked revisions, and tracked moves inherit the table's Noma bookmark when the table was exported from a bookmarked block. `noma docx-review-sync` uses native anchors to apply accepted heading-title edits with `update_heading`, add new source `::comment`, `::footnote`, and `::endnote` blocks after matching target blocks, add threaded replies with `reply_to=`, update/resolve/delete existing source comments and replies from Word state, update existing source-position and matched targeted note bodies when those note bodies have no tracked revisions, mark missing sibling targeted notes deleted, add/update/delete source `::change_request` blocks from Word revisions and moves, apply accepted prose-like body-only directive edits with `replace_body`, apply simple accepted `::table` edits with granular header/cell/row/column patch ops, apply simple inline `::dataset` cell/row/column edits with `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, or `delete_dataset_column`, and import unmatched tracked insert/delete/replace revisions or wrapper/range-marker tracked moves as source `::change_request` blocks. It treats alias and canonical targets as the same source reference, so Word's canonical bookmark return does not rewrite unchanged alias-authored wikilinks, internal links with escaped labels, generated caption cross-reference fields, table/dataset cell links, or target attributes; equivalent escaped/raw backslash spellings inside hyperlink labels and source `\|` escapes versus Word-returned literal pipes also compare unchanged, and target-only comment markup removals match source links whose visible labels contain escaped brackets. Its `--report <file.json>` output records applied changes plus skipped comments, revisions, notes, tables, headings, block bodies, labels, metric values, metric metadata, and block metadata, including revision-bearing comments, notes, tables, and block bodies plus table/dataset cell edits whose multiline or nested Word content cannot be represented source-preservingly, so reviewers can audit what the source sync did not apply.
 
@@ -447,7 +480,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.11.0
+      - uses: ferax564/noma@v0.12.0
         with:
           input: docs/spec.noma
           output: dist/spec.html

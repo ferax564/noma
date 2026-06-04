@@ -9,22 +9,22 @@ date: 2026-05-09
 
 Readable source for beautiful agent artifacts.
 
-::button{href="https://github.com/ferax564/noma"}
+:::button{href="https://github.com/ferax564/noma"}
 View on GitHub
-::
+:::
 ::
 
 ::summary
-Three demos prove the thesis: a `.noma` source file should be readable
+Five demos prove the thesis: a `.noma` source file should be readable
 enough to edit manually, structured enough for agents to modify safely,
 and rich enough to render into an artifact someone actually wants to
-read. Each demo below ships as `.noma` source plus rendered HTML, LLM
+read. The main demos ship as `.noma` source plus rendered HTML, LLM
 context, and JSON AST.
 ::
 
-## Three demos
+## Five demos
 
-::grid{columns=3}
+::grid{columns=3 min="14rem" gap="0.9rem" wide}
 :::card{title="1 · Agent Planning Artifact"}
 A Q3 roadmap decision: options, decision matrix, claims, evidence,
 risks, timeline, agent tasks, copy-as-prompt buttons.
@@ -48,11 +48,27 @@ and counterevidence, risks, datasets, plots, quarterly review tasks.
 [Open rendered artifact →](./examples/research-thesis.html)
 [Source](https://github.com/ferax564/noma/blob/main/examples/research-thesis.noma) · [LLM](./examples/research-thesis.llm.txt) · [JSON](./examples/research-thesis.json)
 :::
+
+:::card{title="4 · Interactive Projection"}
+Browser controls update computed metrics, a chart, and a computed table.
+The current scenario is encoded in the URL hash for sharing.
+
+[Open rendered artifact →](./examples/interactive-projection.html)
+[Source](https://github.com/ferax564/noma/blob/main/examples/interactive-projection.noma) · [LLM](./examples/interactive-projection.llm.txt) · [JSON](./examples/interactive-projection.json)
+:::
+
+:::card{title="5 · Word Review Loop"}
+A review handoff source with Word controls, comments, change requests,
+native DOCX table output, and extractable return data.
+
+[Open rendered artifact →](./examples/word-review-loop.html)
+[DOCX](./examples/word-review-loop.docx) · [Source](https://github.com/ferax564/noma/blob/main/examples/word-review-loop.noma) · [LLM](./examples/word-review-loop.llm.txt) · [JSON](./examples/word-review-loop.json)
+:::
 ::
 
 ## More examples
 
-::grid{columns=3}
+::grid{columns=3 min="14rem" gap="0.9rem" wide}
 :::card{title="Multi-file book"}
 A manifest-driven book with three chapters, scoped heading IDs, alias-aware
 wikilinks, single-page HTML, LLM export, and multi-page site output.

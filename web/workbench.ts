@@ -8,6 +8,8 @@ import defaultThemeCss from "../themes/default.css";
 import agentPlanSource from "../examples/agent-plan.noma";
 import techDocSource from "../examples/tech-doc.noma";
 import researchThesisSource from "../examples/research-thesis.noma";
+import interactiveProjectionSource from "../examples/interactive-projection.noma";
+import wordReviewLoopSource from "../examples/word-review-loop.noma";
 
 type OutputMode = "preview" | "json" | "llm";
 type RibbonTab = "file" | "format" | "insert" | "layout" | "review" | "find" | "export";
@@ -61,6 +63,8 @@ const examples = [
   { id: "agent-plan", label: "Agent plan", source: agentPlanSource },
   { id: "tech-doc", label: "Tech doc", source: techDocSource },
   { id: "research-thesis", label: "Research thesis", source: researchThesisSource },
+  { id: "interactive-projection", label: "Interactive projection", source: interactiveProjectionSource },
+  { id: "word-review-loop", label: "Word review loop", source: wordReviewLoopSource },
 ] as const;
 
 const storageKey = "noma.workbench.source.v1";

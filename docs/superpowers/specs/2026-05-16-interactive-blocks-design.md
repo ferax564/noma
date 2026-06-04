@@ -87,7 +87,7 @@ Threat model: `--strict` blocks **author-supplied** escape hatches (`::html`, `:
 |---|----------|------------------|----------------|
 | 3 | Where does formula evaluation happen? | **Browser at runtime** (HTML target) **AND** at render-time for PDF/LLM (using default values) | Browser keeps interactivity. Render-time evaluation for PDF means a printed thesis still shows a coherent number for the default. |
 | 4 | Dependency tracking: explicit `depends_on="a,b"` attr, or scan formula for identifiers? | **Scan formula for identifiers**, validator warns when scan disagrees with explicit `depends_on=` if both present | Less typing; mirrors how spreadsheets work. Explicit attr stays available as override for documentation. |
-| 5 | Control state at page load: defaults from attrs, or URL hash? | **Defaults from `default=` attr; URL hash sync deferred to v0.13** | Keep v0.12 surface tight. URL sync is a "share this configuration" feature, not core to the artifact. |
+| 5 | Control state at page load: defaults from attrs, or URL hash? | **Defaults from `default=` attr; `#noma:` URL hash sync shipped in v0.12.0** | Defaults keep static render targets coherent; URL state lets scenario pages be shared without a backend. |
 | 6 | Validator coverage scope | **6 rules: computed-missing-formula, computed-unknown-dependency, formula-parse-error, control-missing-default, control-out-of-range-default, computed-chain-too-deep** (last added 2026-05-16 to enforce Q1's depth ≤ 2 ceiling) | Mirrors existing validator density per block family. |
 | 7 | LLM rendering | **Emit formula as `formula: <expr>` and default value as `default: <n>` in the LLM output**, do not include runtime | LLM consumers reason about the expression and the steady-state value, never the live one. |
 | 9 | Theme support | **Controls inherit theme form styles; computed_plot uses the same SVG palette as `::plot`** | No new theme surface to maintain. |
@@ -156,7 +156,7 @@ ylabel: Revenue ($M)
 - Omit the `<script>` tag AND the `<noma-controls>` data island entirely. The output is fully static and CSP-clean (`script-src 'self'` works without modification).
 - Tests: snapshot a strict render of `examples/interactive-projection.noma` and assert no `<script>`, no `<noma-controls>`, every `<input>` has `disabled`, and the badge appears exactly once.
 
-**Phase 7 — Demo + docs (1 day).** Add a `examples/interactive-projection.noma` exercising the example above. Update `docs/spec.noma` block-type tables (bump spec version to v0.12.0). Update `PLAN.md` §24.23.
+**Phase 7 — Demo + docs (1 day).** Add a `examples/interactive-projection.noma` exercising the example above. Update `docs/spec.noma` block-type tables (bump spec version to v0.12.0). Update `PLAN.md` §24.24.
 
 **Total estimate:** ~8 days of focused work.
 
@@ -175,7 +175,7 @@ ylabel: Revenue ($M)
 
 **Should v0.12 ship `::computed_table` too, or hold for v0.13?**
 
-The §23.9 example only shows `::computed_plot` and a slider. `::computed_table` (a table where one column is a formula over the row's other columns + control inputs) is the obvious "next" piece — but its design surface is bigger (sort order, per-row formulas vs columnar, derived column header naming). Recommendation: hold for v0.13 once `computed_plot` has shipped and surfaced real usage patterns.
+Answered in v0.12.0: ship the simple-domain version now. `::computed_table` uses the same `formula=` + `domain="x:0..5"` contract as `::computed_plot`, renders live HTML rows, exports native DOCX tables, and leaves richer per-row/columnar table formulas for a later release if real usage requires them.
 
 ---
 

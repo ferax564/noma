@@ -469,10 +469,21 @@ function captionSourceField(caption: DocxReviewCaption, node: Node | undefined):
   }
   if (caption.kind === "plot" && node.name === "plot") return { key: "title", location: "attr" };
   if (caption.kind === "plot" && node.name === "computed_plot") return computedPlotCaptionSourceField(node);
+  if (caption.kind === "table" && node.name === "computed_table") return computedTableCaptionSourceField(node);
   return undefined;
 }
 
 function computedPlotCaptionSourceField(node: DirectiveNode): ReviewTextSourceField | undefined {
+  for (const key of ["label", "title", "name"] as const) {
+    if (node.attrs[key] !== undefined) return { key, location: "attr" };
+  }
+  for (const key of ["label", "title"] as const) {
+    if (directiveBodyFieldText(node, key) !== undefined) return { key, location: "body" };
+  }
+  return { key: "title", location: "attr" };
+}
+
+function computedTableCaptionSourceField(node: DirectiveNode): ReviewTextSourceField | undefined {
   for (const key of ["label", "title", "name"] as const) {
     if (node.attrs[key] !== undefined) return { key, location: "attr" };
   }
@@ -487,6 +498,7 @@ function captionSourceValue(node: DirectiveNode, field: ReviewTextSourceField): 
   const value = attrValueText(node, field.key);
   if (value !== undefined) return value;
   if (node.name === "computed_plot" && field.key === "title") return node.id ?? "Computed plot";
+  if (node.name === "computed_table" && field.key === "title") return node.id ?? "Computed table";
   if (node.name === "figure" && field.key === "caption") return "Figure";
   if (node.name === "plot" && field.key === "title") return "Plot";
   return "";
@@ -609,6 +621,7 @@ function blockTitleUsesCaption(node: DirectiveNode): boolean {
     "figure",
     "plot",
     "computed_plot",
+    "computed_table",
   ].includes(node.name);
 }
 
@@ -1054,6 +1067,7 @@ const SPECIAL_BODY_SYNC_EXCLUDED_DIRECTIVES = new Set([
   "comment",
   "computed_metric",
   "computed_plot",
+  "computed_table",
   "control",
   "citation",
   "dataset",
@@ -1544,6 +1558,7 @@ function blockMetadataFieldDefs(node: DirectiveNode): BlockMetadataFieldDef[] {
       ];
     case "computed_metric":
     case "computed_plot":
+    case "computed_table":
       return [
         { label: "formula", keys: ["formula"], bodyKeys: ["formula"], defaultKey: "formula" },
         { label: "domain", keys: ["domain", "range"], bodyKeys: ["domain", "range"], defaultKey: "domain" },

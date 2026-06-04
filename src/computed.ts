@@ -29,7 +29,7 @@ export function buildComputedEvalContext(doc: DocumentNode): ComputedEvalContext
 }
 
 export function isComputedDirective(node: DirectiveNode): boolean {
-  return node.name === "computed_metric" || node.name === "computed_plot";
+  return node.name === "computed_metric" || node.name === "computed_plot" || node.name === "computed_table";
 }
 
 export function formulaText(node: DirectiveNode): string | undefined {

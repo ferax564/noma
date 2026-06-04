@@ -498,6 +498,7 @@ function renderDirective(node: DirectiveNode, ctx: DocxCtx): string {
   if (node.name === "metric") return renderMetric(node, ctx);
   if (node.name === "computed_metric") return renderComputedMetric(node, ctx);
   if (node.name === "computed_plot") return renderComputedPlot(node, ctx);
+  if (node.name === "computed_table") return renderComputedTable(node, ctx);
   if (node.name === "citation") return renderCitation(node, ctx);
   if (node.name === "bibliography") return renderBibliography(node, ctx);
   if (node.name === "comment") return renderComment(node, ctx);
@@ -1047,7 +1048,7 @@ function documentProtectionEnforcement(attrs: Attrs): boolean {
 }
 
 function hasCaptionSequenceField(node: DirectiveNode): boolean {
-  if (node.name === "figure" || node.name === "plot" || node.name === "computed_plot") return true;
+  if (node.name === "figure" || node.name === "plot" || node.name === "computed_plot" || node.name === "computed_table") return true;
   if (node.name !== "table") return false;
   return Boolean(stringAttr(node.attrs, "title") ?? stringAttr(node.attrs, "caption"));
 }
@@ -1384,12 +1385,12 @@ function captionParagraph(label: string, node: DirectiveNode, ctx: DocxCtx): str
 }
 
 function captionRuns(label: string, style: RunStyle, ctx: DocxCtx): string {
-  const match = /^(Figure|Table|Plot|Computed plot):\s*(.+)$/i.exec(label);
+  const match = /^(Figure|Table|Plot|Computed plot|Computed table):\s*(.+)$/i.exec(label);
   if (!match) return inlineRuns(label, ctx, style);
   const kind = match[1] ?? "";
   const caption = match[2] ?? "";
   const display = kind.charAt(0).toUpperCase() + kind.slice(1).toLowerCase();
-  const sequence = display === "Computed plot" ? "Plot" : display;
+  const sequence = display === "Computed plot" ? "Plot" : display === "Computed table" ? "Table" : display;
   return inlineRuns(`${display} `, ctx, style) +
     fieldRun(`SEQ ${sequence} \\* ARABIC`, "1", style) +
     inlineRuns(`: ${caption}`, ctx, style);
@@ -1551,6 +1552,33 @@ function renderComputedPlot(node: DirectiveNode, ctx: DocxCtx): string {
   return figure + label + metaParagraph + seriesMeta + body;
 }
 
+function renderComputedTable(node: DirectiveNode, ctx: DocxCtx): string {
+  const title = computedLabel(node, "Computed table");
+  const series = evaluateComputedSeries(node, ctx.computed);
+  const label = captionParagraph(`Computed table: ${title}`, node, ctx);
+  const meta = computedMetaRuns(node, ctx);
+  const metaParagraph = meta ? paragraph(meta, { style: "NomaMeta" }) : "";
+  const body = computedBody(node, ctx);
+  if (!series || series.values.length === 0) {
+    return label + metaParagraph + paragraph(textRun("No default rows could be evaluated.", { italic: true, color: "7E8B96" }), { style: "NomaMeta" }) + body;
+  }
+
+  const unit = attrText(node.attrs, "unit") ?? attrText(node.attrs, "suffix") ?? bodyFieldText(node, "unit");
+  const [variableLabel, valueLabel] = computedTableHeaders(node, series.variable, title);
+  const widths = tableWidths(2, ctx.pageSetup);
+  const align: TableAlign[] = ["left", "right"];
+  const header = tableRow([variableLabel, valueLabel], ctx, widths, { header: true, align });
+  const rows = series.points
+    .map((point, index) => {
+      const rawValue = series.values[index];
+      const value = rawValue === undefined ? "—" : metricValueText(formatComputedNumber(rawValue), unit);
+      return tableRow([formatComputedNumber(point), value], ctx, widths, { align });
+    })
+    .join("");
+  const seriesMeta = paragraph(textRun(`${series.values.length} computed rows`), { style: "NomaMeta" });
+  return label + metaParagraph + tableXml(header + rows, widths) + seriesMeta + body;
+}
+
 function computedLabel(node: DirectiveNode, fallback: string): string {
   return attrText(node.attrs, "label") ??
     attrText(node.attrs, "title") ??
@@ -1562,11 +1590,36 @@ function computedLabel(node: DirectiveNode, fallback: string): string {
 }
 
 function computedMetaRuns(node: DirectiveNode, ctx: DocxCtx): string {
+  void ctx;
   return joinMetaRuns([
-    metaTextField("formula", formulaText(node), ctx),
-    metaTextField("domain", computedDomainText(node), ctx),
-    metaTextField("unit", attrText(node.attrs, "unit") ?? attrText(node.attrs, "suffix") ?? bodyFieldText(node, "unit"), ctx),
+    metaTextField("formula", formulaText(node)),
+    metaTextField("domain", computedDomainText(node)),
+    metaTextField("unit", attrText(node.attrs, "unit") ?? attrText(node.attrs, "suffix") ?? bodyFieldText(node, "unit")),
   ]);
+}
+
+function computedTableHeaders(node: DirectiveNode, variable: string, title: string): [string, string] {
+  const variableLabel =
+    attrText(node.attrs, "variable_label") ??
+    attrText(node.attrs, "variableLabel") ??
+    attrText(node.attrs, "x_label") ??
+    attrText(node.attrs, "xLabel") ??
+    bodyFieldText(node, "variable_label") ??
+    bodyFieldText(node, "variableLabel") ??
+    bodyFieldText(node, "x_label") ??
+    bodyFieldText(node, "xLabel") ??
+    variable;
+  const valueLabel =
+    attrText(node.attrs, "value_label") ??
+    attrText(node.attrs, "valueLabel") ??
+    attrText(node.attrs, "y_label") ??
+    attrText(node.attrs, "yLabel") ??
+    bodyFieldText(node, "value_label") ??
+    bodyFieldText(node, "valueLabel") ??
+    bodyFieldText(node, "y_label") ??
+    bodyFieldText(node, "yLabel") ??
+    title;
+  return [variableLabel, valueLabel];
 }
 
 function computedBody(node: DirectiveNode, ctx: DocxCtx, frame?: DirectiveFrame): string {
@@ -2936,6 +2989,13 @@ function captionEntry(node: DirectiveNode): CaptionEntry | undefined {
       title: computedLabel(node, "Plot"),
     };
   }
+  if (node.name === "computed_table") {
+    return {
+      ...(node.id ? { id: node.id } : {}),
+      kind: "tables",
+      title: computedLabel(node, "Computed table"),
+    };
+  }
   if (node.name === "table") {
     const title = stringAttr(node.attrs, "title") ?? stringAttr(node.attrs, "caption");
     if (!title) return undefined;
@@ -3071,6 +3131,7 @@ function directiveFrame(node: DirectiveNode): DirectiveFrame | undefined {
       return { color: "304B75", border: "5E7CAA", fill: "EEF3FA" };
     case "metric":
     case "computed_metric":
+    case "computed_table":
       return { color: "2B5265", border: "4F86A0", fill: "EFF6F8" };
     case "code_cell":
     case "code":
@@ -3805,6 +3866,7 @@ function buildCaptionCrossReferences(doc: DocumentNode): Map<string, string> {
 function captionReferenceLabel(node: DirectiveNode): string | undefined {
   if (node.name === "figure") return "Figure";
   if (node.name === "plot" || node.name === "computed_plot") return "Plot";
+  if (node.name === "computed_table") return "Table";
   if (node.name === "table" && (stringAttr(node.attrs, "title") ?? stringAttr(node.attrs, "caption"))) {
     return "Table";
   }

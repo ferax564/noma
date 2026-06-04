@@ -1,4 +1,4 @@
-"""Python SDK for the Noma Agent Protocol v1.0 (starter — v0.1.0).
+"""Python SDK for the Noma Agent Protocol v1.0 (starter — v0.1.1).
 
 Drives ``@ferax564/noma-mcp-server`` over stdio.
 
@@ -68,7 +68,7 @@ from .types import (
     UpdateHeadingOp,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     # tools
