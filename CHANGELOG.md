@@ -6,10 +6,6 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-
-- Refocused the landing page, README, direction docs, and agent guide around the source/artifact/agent loop: render artifacts for humans, export scoped context, patch stable block IDs, and validate before shipping.
-
 ## [0.12.0] — 2026-06-04
 
 ### Added
@@ -165,6 +161,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Agent-focused product narrative:** The landing page, README, direction docs, and agent guide now center the source/artifact/agent loop: render artifacts for humans, export scoped context, patch stable block IDs, and validate before shipping.
 - **Release metadata:** `@ferax564/noma-cli` and `@ferax564/noma-mcp-server` move to `0.12.0`; `@ferax564/noma-agent-sdk` moves to `0.1.2` with `0.12.0` toolchain dependencies; the Python starter binding moves to `0.1.1` locally while remaining unpublished.
 - **Report print defaults:** the default and dark themes now avoid breaking plots, diagrams, datasets, and tables across pages, style disabled computed-control badges, and use denser print table spacing for committee-style PDFs.
 - **Denser HTML themes:** the bundled light and dark themes now use a wider document canvas, smaller base/headline/table typography, tighter cards, and narrower grid gaps so rendered examples use lateral space more effectively.
