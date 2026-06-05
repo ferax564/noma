@@ -1,6 +1,6 @@
 ---
 title: Noma — Case Studies
-version: 0.12.0
+version: 0.13.0
 status: stable
 tags: [docs, case-studies, demos]
 ---
@@ -61,7 +61,7 @@ See the rendered planning demo at [examples/agent-plan.html](../examples/agent-p
 Technical docs need code blocks, warnings, diagrams, examples, cross-links, and CI previews. Noma keeps the source small while the GitHub Action validates and renders the artifact.
 
 ```yaml
-- uses: ferax564/noma@v0.12.0
+- uses: ferax564/noma@v0.13.0
   with:
     input: docs/spec.noma
     output: dist/spec.html
@@ -88,5 +88,5 @@ Run `npm run demo:agent-memory` to see the full-memory and recent-memory exports
 ## What to measure with real users
 
 ::decision{id="case-study-success-metrics" status="accepted"}
-A Noma case study is convincing only when it shows all four numbers: percentage of unchanged source lines after an agent patch, validation diagnostics before and after, rendered artifact links, and the exact patch operations applied.
+A Noma case study is convincing only when it shows an agent safety proof: percentage of unchanged source lines after an agent patch, validation diagnostics before and after, rendered artifact preview or links, hashes, and the exact patch operations applied.
 ::

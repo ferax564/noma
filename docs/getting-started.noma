@@ -6,36 +6,38 @@ audience: new contributors
 # Getting Started
 
 ::summary
-Run the first Noma loop: render a readable artifact, export clean agent
-context, discover stable block IDs, apply a small patch, and validate the
+Install the public CLI, render a readable artifact, export clean agent context,
+discover stable block IDs, prove a small patch, apply it, and validate the
 result.
 ::
 
 ## The first loop
 
-Start here before learning the full directive surface. A useful Noma document
-proves five things:
-
-1. the source stays readable in Git
-2. the artifact renders for humans
-3. the LLM export is clean enough for agents
-4. IDs give agents stable patch targets
-5. validation catches broken structure before shipping
+Start here before learning the full directive surface. This path uses the
+published npm package, so it is the same first loop a new user runs outside this
+checkout.
 
 ```bash
+npm install -g @ferax564/noma-cli@latest
+noma --version
 noma init my-spec
 noma check my-spec/demo.noma
 noma render my-spec/demo.noma --to html --strict --out my-spec/demo.html
 noma render my-spec/demo.noma --to llm --budget 12000
 noma ids my-spec/demo.noma
-```
-
-Once those commands work, an agent can patch through the same contract:
-
-```bash
+noma prove my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"The first risk is now tracked without rewriting surrounding source."}' --out my-spec/proof.html
 noma patch my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"The first risk is now tracked without rewriting surrounding source."}' --inplace
 noma check my-spec/demo.noma
 ```
+
+That loop proves six things:
+
+1. the source stays readable in Git
+2. the artifact renders for humans
+3. the LLM export is clean enough for agents
+4. IDs give agents stable patch targets
+5. the proof artifact shows the proposed patch, diff, hashes, diagnostics, and post-patch preview before the source changes
+6. validation catches broken structure before shipping
 
 Use `noma render --to html --strict` for team-visible artifacts. Use
 `noma render --to llm --select ... --budget ...` when an agent should see only
@@ -46,7 +48,7 @@ the relevant block types.
 Install the CLI when you want to author documents outside this checkout:
 
 ```bash
-npm install -g @ferax564/noma-cli
+npm install -g @ferax564/noma-cli@latest
 noma --version
 noma init my-spec
 noma render my-spec/demo.noma --to html --out my-spec/demo.html
@@ -303,8 +305,8 @@ The CLI is the stable contract, but two public packages make agent integrations
 easier:
 
 ```bash
-npm install @ferax564/noma-mcp-server
-npm install @ferax564/noma-agent-sdk
+npm install @ferax564/noma-mcp-server@latest
+npm install @ferax564/noma-agent-sdk@latest
 ```
 
 Use the MCP server from any stdio-capable MCP host:
@@ -480,7 +482,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.12.0
+      - uses: ferax564/noma@v0.13.0
         with:
           input: docs/spec.noma
           output: dist/spec.html

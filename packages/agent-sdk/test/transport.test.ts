@@ -19,7 +19,7 @@ test("StdioMcpClient.spawn resolves the bundled mcp-server binary and returns a 
 
 test("StdioMcpClient.spawn rejects an unresolvable server binary", async () => {
   await assert.rejects(
-    () => StdioMcpClient.spawn({ mcpServerBin: "/no/such/file" }),
+    () => StdioMcpClient.spawn({ mcpServerBin: "/no/such/file", stderr: "pipe" }),
     NomaSpawnError,
   );
 });

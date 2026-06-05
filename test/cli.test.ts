@@ -115,6 +115,89 @@ test("noma render --to markdown writes shareable Markdown", () => {
   assert.match(md, /\*\*Claim: claim-1\*\*/);
 });
 
+test("noma prove renders an agent safety proof without mutating by default", () => {
+  const dir = scratch();
+  const input = join(dir, "proof.noma");
+  const html = join(dir, "proof.html");
+  const json = join(dir, "proof.json");
+  writeFileSync(input, `# Proof\n\n::risk{id="r1" owner="ops"}\nOld risk.\n::\n`);
+
+  const res = spawnSync(
+    "npx",
+    [
+      "tsx",
+      "src/cli.ts",
+      "prove",
+      input,
+      "--op",
+      '{"op":"replace_body","id":"r1","content":"New risk."}',
+      "--out",
+      html,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(readFileSync(html, "utf8"), /Noma Agent Safety Proof/);
+  assert.match(readFileSync(html, "utf8"), /Lines preserved/);
+  assert.equal(readFileSync(input, "utf8"), `# Proof\n\n::risk{id="r1" owner="ops"}\nOld risk.\n::\n`);
+
+  const jsonRes = spawnSync(
+    "npx",
+    [
+      "tsx",
+      "src/cli.ts",
+      "prove",
+      input,
+      "--to",
+      "json",
+      "--op",
+      '{"op":"replace_body","id":"r1","content":"New risk."}',
+      "--out",
+      json,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(jsonRes.status, 0, jsonRes.stderr);
+  const proof = JSON.parse(readFileSync(json, "utf8")) as {
+    status: string;
+    patchResult: string;
+    canWrite: boolean;
+    sourceMetrics: { preservedPercent: number };
+  };
+  assert.equal(proof.status, "pass");
+  assert.equal(proof.patchResult, "applied");
+  assert.equal(proof.canWrite, true);
+  assert.ok(proof.sourceMetrics.preservedPercent > 0);
+});
+
+test("noma prove --inplace refuses to write when the patch target is missing", () => {
+  const dir = scratch();
+  const input = join(dir, "proof-fail.noma");
+  const html = join(dir, "proof-fail.html");
+  const before = `# Proof\n\n::risk{id="r1" owner="ops"}\nOld risk.\n::\n`;
+  writeFileSync(input, before);
+
+  const res = spawnSync(
+    "npx",
+    [
+      "tsx",
+      "src/cli.ts",
+      "prove",
+      input,
+      "--op",
+      '{"op":"replace_body","id":"missing","content":"New risk."}',
+      "--inplace",
+      "--out",
+      html,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /source not written/);
+  assert.match(readFileSync(html, "utf8"), /target_missing/);
+  assert.equal(readFileSync(input, "utf8"), before);
+});
+
 test("noma render --to pdf writes a PDF file", () => {
   const dir = scratch();
   const input = join(dir, "report.noma");

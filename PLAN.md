@@ -1737,3 +1737,26 @@ Prepared on 2026-06-04. This release packages the post-v0.11.1 Word/review work 
 - **New demos.** `examples/interactive-projection.noma` demonstrates controls, metrics, plots, computed tables, and URL-hash scenarios. `examples/word-review-loop.noma` demonstrates controls, comments, change requests, computed Word tables, and DOCX review/data return paths. Both are wired into `npm run render:examples`; the review demo also builds a DOCX artifact.
 - **Release metadata.** Root CLI and MCP server move to `0.12.0`; the TypeScript Agent SDK moves to `0.1.2` with `0.12.0` dependencies; the Python starter binding moves locally to `0.1.1`; versioned docs, README status, changelog, and lockfile metadata are aligned.
 - **Publish readiness.** npm and PyPI runbooks document the maintainer-only publish steps. VS Code Marketplace publication remains the manual §24.9 maintainer action; this release does not automate `vsce publish`.
+
+### §24.25 — v0.13.0 (agent safety proof)
+
+Shipped on 2026-06-05 to make the source/artifact/agent loop visible as a single
+trust artifact instead of a sequence of separate commands.
+
+- **`noma prove` CLI.** `noma prove <file.noma> --op/--ops` dry-runs the same
+  patch transaction shape as `noma patch` and renders a static proof artifact:
+  pre/post validation, canonical ID registry, scoped LLM context, operation
+  payloads, source-line preservation percentage, compact source diff, pre/post
+  SHA hashes, and a sandboxed post-patch HTML preview.
+- **Guarded apply.** `noma prove --inplace --out proof.html` writes the source
+  only when the simulated post-patch document has no validation errors. Failed
+  proofs still write the report and leave the source unchanged.
+- **Automation surface.** `noma prove --to json` emits proof metadata without the
+  patched source or embedded preview, and the public API exports
+  `createAgentSafetyProof` / `renderProofHtml` for integrations that want the
+  same audit artifact without shelling out.
+- **Docs and examples.** README, getting-started, agent guide, and the CLI
+  reference demo now put proof before patching in the default agent loop.
+- **Release metadata.** Root CLI and MCP server move to `0.13.0`; the
+  TypeScript Agent SDK moves to `0.1.3` with `0.13.0` dependencies; versioned
+  docs, README status, changelog, and lockfile metadata are aligned.

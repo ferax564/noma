@@ -11,7 +11,7 @@ experimental until the v0.2.0 workflow layer lands.
 - Node.js 20+ and the matching npm packages published
 - Clean working tree on the release tag:
   ```bash
-  git checkout v0.12.0
+  git checkout v0.13.0
   git status
   ```
 

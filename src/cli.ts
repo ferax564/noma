@@ -24,6 +24,8 @@ import { verifyFixtureDir } from "./verify.js";
 import { diffDocs } from "./diff.js";
 import { collectIdRegistry } from "./ids.js";
 import { writePdfFromHtml, type PdfMarginOptions } from "./pdf.js";
+import { createAgentSafetyProof, renderProofHtml } from "./proof.js";
+import type { RenderLlmOptions } from "./renderer-llm.js";
 import type { DocumentNode } from "./ast.js";
 
 const HELP = `noma — readable document format for humans and agents
@@ -36,6 +38,7 @@ Usage:
   noma patch <file.noma> [opts]              Apply block-level patch ops
   noma init [dir]                            Create a starter .noma document
   noma ids <file.noma|book.yml>              Print canonical ID and alias registry
+  noma prove <file.noma> [opts]              Render an agent safety proof for patch ops
   noma schema <name>                         Print bundled JSON Schema
   noma docx-data <file.docx>                 Extract DOCX control/task state as JSON
   noma docx-sync <file.noma> <file.docx>     Update ::control defaults and task state
@@ -89,6 +92,13 @@ Patch options:
   --inplace                 Write the result back to <file.noma>
   --out <path>              Write to file instead of stdout
 
+Proof options:
+  --op/--ops                Patch operation(s) to simulate. Same shape as patch.
+  --to <html|json>          Proof output target (default: html)
+  --inplace                 Apply the simulated patch only if the proof passes
+  --select/--exclude/--budget
+                            Scope the LLM context shown in the proof
+
 DOCX sync options:
   --report <path>           Write a JSON report for docx-sync or
                             docx-review-sync changes/skips
@@ -113,6 +123,7 @@ Examples:
   noma render examples/thesis.noma --to llm
   noma check examples/thesis.noma
   noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
+  noma prove examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --out dist/proof.html
   noma diff before.noma after.noma --at 2026-05-12 --reason "Q1 refresh"
 `;
 
@@ -475,6 +486,26 @@ function validatePatchSource(source: string, filename: string): string {
   return errors.length > 0 ? formatDiagnostics(errors, filename) : "";
 }
 
+function llmOptionsFromArgs(args: CliArgs, defaultBudget?: number): RenderLlmOptions {
+  const llmOpts: RenderLlmOptions = {};
+  if (args.excludeStaleDays !== undefined) {
+    const now = args.now ? new Date(args.now) : new Date();
+    if (Number.isNaN(now.getTime())) {
+      throw new Error("--now value is not a valid date");
+    }
+    llmOpts.excludeStale = { now, days: args.excludeStaleDays };
+  }
+  if (args.llmSelect.length > 0) llmOpts.select = args.llmSelect;
+  if (args.llmExclude.length > 0) llmOpts.exclude = args.llmExclude;
+  llmOpts.budget = args.llmBudget ?? defaultBudget;
+  return llmOpts;
+}
+
+function proofJson(proof: ReturnType<typeof createAgentSafetyProof>): string {
+  const { postSource: _postSource, artifactPreviewHtml: _artifactPreviewHtml, ...body } = proof;
+  return JSON.stringify(body, null, 2);
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
@@ -636,6 +667,62 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (cmd === "prove") {
+    if (isBookManifestPath(filePath)) {
+      process.stderr.write(`error: noma prove operates on .noma source files, not book manifests\n`);
+      process.exit(2);
+    }
+    const tx = patchTransactionFromArgs(args);
+    if (tx.ops.length === 0) {
+      process.stderr.write(`error: noma prove needs --op or --ops\n`);
+      process.exit(2);
+    }
+    let llmOptions: RenderLlmOptions;
+    try {
+      llmOptions = llmOptionsFromArgs(args, 12000);
+    } catch (error) {
+      process.stderr.write(`error: ${(error as Error).message}\n`);
+      process.exit(2);
+    }
+    const themeCss = loadThemeCss(args);
+    const proofSafety = renderSafetyFromArgs(args, false);
+    const proof = createAgentSafetyProof({
+      filePath,
+      source: readFileSync(filePath, "utf8"),
+      ops: tx.ops,
+      prevalidate: tx.prevalidate,
+      postvalidate: tx.postvalidate,
+      validateOptions: {
+        ...(args.staleDays !== undefined ? { staleCitationDays: args.staleDays } : {}),
+        ...(args.ignoreRules.length > 0 ? { ignoreRules: args.ignoreRules } : {}),
+      },
+      llmOptions,
+      artifactOptions: {
+        title: args.title,
+        themeCss,
+        ...proofSafety,
+        ...(args.math ? { math: args.math } : {}),
+      },
+    });
+    if (args.to === "json") {
+      output(proofJson(proof), args.out);
+    } else if (args.to === "html") {
+      output(renderProofHtml(proof), args.out);
+    } else {
+      process.stderr.write(`error: noma prove supports --to html or --to json\n`);
+      process.exit(2);
+    }
+    if (args.inplace) {
+      if (!proof.canWrite) {
+        process.stderr.write(`error: proof failed; source not written\n`);
+        process.exit(1);
+      }
+      writeFileSync(filePath, proof.postSource, "utf8");
+      process.stderr.write(`✓ wrote ${filePath}\n`);
+    }
+    process.exit(proof.status === "fail" ? 1 : 0);
+  }
+
   if ((cmd === "render" || cmd === "export") && args.to === "site") {
     if (!isBookManifestPath(filePath)) {
       process.stderr.write(`error: --to site requires a book manifest (.yml)\n`);
@@ -724,23 +811,13 @@ async function main(): Promise<void> {
           return;
         }
         case "llm": {
-          const llmOpts: {
-            excludeStale?: { now: Date; days: number };
-            select?: string[];
-            exclude?: string[];
-            budget?: number;
-          } = {};
-          if (args.excludeStaleDays !== undefined) {
-            const now = args.now ? new Date(args.now) : new Date();
-            if (Number.isNaN(now.getTime())) {
-              process.stderr.write(`error: --now value is not a valid date\n`);
-              process.exit(2);
-            }
-            llmOpts.excludeStale = { now, days: args.excludeStaleDays };
+          let llmOpts: RenderLlmOptions;
+          try {
+            llmOpts = llmOptionsFromArgs(args);
+          } catch (error) {
+            process.stderr.write(`error: ${(error as Error).message}\n`);
+            process.exit(2);
           }
-          if (args.llmSelect.length > 0) llmOpts.select = args.llmSelect;
-          if (args.llmExclude.length > 0) llmOpts.exclude = args.llmExclude;
-          if (args.llmBudget !== undefined) llmOpts.budget = args.llmBudget;
           output(renderLlm(doc, llmOpts), args.out);
           return;
         }

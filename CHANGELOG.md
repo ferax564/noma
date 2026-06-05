@@ -6,6 +6,22 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-06-05
+
+### Added
+
+- **Agent safety proof:** `noma prove <file.noma> --op/--ops` now dry-runs patch operations and renders a static proof artifact with pre/post validation, canonical IDs, scoped LLM context, operation payloads, source-line preservation, compact diff, hashes, and a sandboxed post-patch artifact preview. `--to json` emits proof metadata for automation, and `--inplace` writes only when the simulated post-patch document has no validation errors.
+- **Proof API:** the public package now exports `createAgentSafetyProof` and `renderProofHtml` so integrations can generate the same proof report without shelling out to the CLI.
+
+### Changed
+
+- **First-loop DX polish:** README and getting-started now use the published `@latest` packages and show the full install → init → check → render → LLM export → ID discovery → patch proof → block patch → validation loop.
+- **Mobile landing proof:** the landing hero now keeps a compact source/artifact/patch proof visible on small screens instead of hiding the product demonstration entirely.
+- **Console-clean published docs:** standalone HTML and book-site pages now emit a no-op favicon link, avoiding browser-default `/favicon.ico` 404s on static hosts.
+- **Contributor test lanes:** added `npm run test:quick` for a focused fast loop and `npm run test:full` for the full release gate.
+- **SDK test noise:** the agent SDK negative spawn test now suppresses the expected child-process stderr stack trace while keeping normal SDK stderr behavior unchanged.
+- **Release metadata:** `@ferax564/noma-cli` and `@ferax564/noma-mcp-server` move to `0.13.0`; `@ferax564/noma-agent-sdk` moves to `0.1.3` with `0.13.0` toolchain dependencies.
+
 ## [0.12.0] — 2026-06-04
 
 ### Added

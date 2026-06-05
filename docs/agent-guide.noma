@@ -1,6 +1,6 @@
 ---
 title: Noma — Agent Editing Guide
-version: 0.12.0
+version: 0.13.0
 status: stable
 tags: [docs, agents, patching]
 ---
@@ -9,9 +9,9 @@ tags: [docs, agents, patching]
 
 ::summary
 This is the operational playbook for agents editing Noma documents. The rule is
-simple: read scoped context, discover IDs, patch the smallest stable block,
-validate the result, and never rewrite a whole file unless the user explicitly
-asks for a migration.
+simple: read scoped context, discover IDs, choose the smallest stable patch,
+prove the edit, apply it only after the proof passes, validate the result, and
+never rewrite a whole file unless the user explicitly asks for a migration.
 ::
 
 ## Agent contract
@@ -33,10 +33,16 @@ patch.
 | 1. Read | `noma render file.noma --to llm --budget 12000` | Get deterministic context without HTML noise. |
 | 2. Discover IDs | `noma ids file.noma` | Find canonical IDs and aliases before patching. |
 | 3. Validate | `noma check file.noma` | Record the pre-edit diagnostic state. |
-| 4. Patch | `noma patch file.noma --ops ops.json --inplace` | Apply a transaction of targeted operations. |
-| 5. Re-check | `noma check file.noma` | Confirm the edit did not introduce errors. |
-| 6. Render | `noma render file.noma --to html --strict --out artifact.html` | Produce a safe published artifact. |
+| 4. Prove | `noma prove file.noma --ops ops.json --out proof.html` | Dry-run the patch and render diagnostics, hashes, diff, source preservation, LLM context, ID registry, and a post-patch preview. |
+| 5. Patch | `noma patch file.noma --ops ops.json --inplace` | Apply the same transaction after the proof is accepted. |
+| 6. Re-check | `noma check file.noma` | Confirm the edit did not introduce errors. |
+| 7. Render | `noma render file.noma --to html --strict --out artifact.html` | Produce a safe published artifact. |
 ::
+
+Use `noma prove file.noma --ops ops.json --inplace --out proof.html` when the
+proof artifact and source update should be one guarded operation. The command
+writes the source only if the simulated post-patch document has no validation
+errors.
 
 ## Choose the smallest operation
 
@@ -89,6 +95,8 @@ Do not patch by line number unless the user explicitly asks. Noma IDs are the pu
 ::
 
 - Do not scrape rendered HTML when `--to llm` can provide scoped context.
+- Prefer `noma prove` before `noma patch` when the edit is user-visible,
+  multi-operation, or needs an audit artifact.
 - Prefer `replace_body` over `replace_block` when attributes and children should survive.
 - Prefer `update_heading` over text replacement for section titles.
 - Use `rename_id` only when the user accepts a breaking ID change.
@@ -104,7 +112,7 @@ Copy agent editing prompt
 ::
 
 ::code{id="agent-safe-edit-prompt" lang="text"}
-You are editing a Noma document. First discover IDs with `noma ids`. Choose the smallest patch operation. Apply edits with `noma patch --ops`. Run `noma check` after the patch. Do not rewrite the whole file unless explicitly requested.
+You are editing a Noma document. First discover IDs with `noma ids`. Choose the smallest patch operation. Prove the edit with `noma prove --ops --out proof.html`. Apply edits with `noma patch --ops` only after the proof passes. Run `noma check` after the patch. Do not rewrite the whole file unless explicitly requested.
 ::
 
 ## When to ask a human

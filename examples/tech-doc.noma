@@ -16,7 +16,7 @@ reading and the deterministic LLM context an agent would consume.
 ## Install
 
 ```bash
-npm install -g @ferax564/noma-cli
+npm install -g @ferax564/noma-cli@latest
 # or one-off
 npx @ferax564/noma-cli render path/to/file.noma --to html
 ```
@@ -82,6 +82,24 @@ noma check examples/thesis.noma
 Catches: duplicate block IDs, broken `for=` references on evidence blocks,
 broken internal links, invalid frontmatter, plot blocks missing a dataset
 or `data=` attribute, and (in v0.2) claims missing supporting evidence.
+:::
+
+:::tab{title="prove"}
+### `noma prove <file> --op/--ops`
+
+Dry-run a patch transaction and render an agent safety proof before the source
+changes.
+
+```bash
+noma prove examples/thesis.noma \
+  --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' \
+  --out dist/thesis-proof.html
+```
+
+The proof includes pre/post validation, canonical IDs, the LLM context used for
+agent work, patch payloads, source-line preservation, a compact diff, hashes,
+and a sandboxed post-patch artifact preview. Add `--to json` for automation, or
+`--inplace` when the command should write only if the proof passes.
 :::
 
 :::tab{title="export"}

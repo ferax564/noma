@@ -57,13 +57,14 @@ noma check memo.noma
 noma render memo.noma --to html --strict --out memo.html
 noma render memo.noma --to llm --select claim,evidence,risk --budget 12000
 noma ids memo.noma
+noma prove memo.noma --ops ops.json --out proof.html
 noma patch memo.noma --ops ops.json --inplace
 noma check memo.noma
 ```
 
 That is the product contract: humans review source and artifacts; agents inspect
-IDs, patch the smallest stable surface, and validation catches broken structure
-before the artifact ships.
+IDs, prove the patch, update the smallest stable surface, and validation catches
+broken structure before the artifact ships.
 
 ## Hello, Noma
 
@@ -100,10 +101,16 @@ That's the whole language — directive blocks (`::name{attrs} ... ::`), Markdow
 Install the public CLI:
 
 ```bash
-npm install -g @ferax564/noma-cli
+npm install -g @ferax564/noma-cli@latest
 noma --version
 noma init my-spec
+noma check my-spec/demo.noma
 noma render my-spec/demo.noma --to html --out my-spec/demo.html
+noma render my-spec/demo.noma --to llm --budget 12000
+noma ids my-spec/demo.noma
+noma prove my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"The first risk is now tracked without rewriting surrounding source."}' --out my-spec/proof.html
+noma patch my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"The first risk is now tracked without rewriting surrounding source."}' --inplace
+noma check my-spec/demo.noma
 ```
 
 Install editor support:
@@ -116,8 +123,8 @@ Install the agent integration packages when you want MCP or a TypeScript
 workflow wrapper:
 
 ```bash
-npm install @ferax564/noma-mcp-server
-npm install @ferax564/noma-agent-sdk
+npm install @ferax564/noma-mcp-server@latest
+npm install @ferax564/noma-agent-sdk@latest
 ```
 
 From a checkout:
@@ -135,6 +142,7 @@ npm run noma -- render examples/agent-plan.noma --to json
 npm run noma -- render examples/agent-plan.noma --to markdown --out dist/agent-plan.md
 npm run noma -- render examples/agent-plan.noma --to noma     # AST → .noma roundtrip
 npm run noma -- ids examples/book/book.noma.yml               # global ID + alias map for agents
+npm run noma -- prove examples/agent-plan.noma --op '{"op":"update_attribute","id":"decision-q3-direction","key":"status","value":"accepted"}' --out dist/agent-plan-proof.html
 npm run noma -- render examples/agent-plan.noma --to pdf --out dist/agent-plan.pdf
 npm run noma -- render examples/agent-plan.noma --to docx --out dist/agent-plan.docx
 npm run noma -- docx-data dist/agent-plan.docx                # extract Word control values and task state
@@ -157,7 +165,7 @@ npm run noma -- patch examples/thesis.noma \
 npm run noma -- check examples/research-thesis.noma
 
 # render in GitHub Actions
-# - uses: ferax564/noma@v0.12.0
+# - uses: ferax564/noma@v0.13.0
 #   with:
 #     input: docs/spec.noma
 #     output: dist/spec.html
@@ -176,6 +184,7 @@ npm run noma -- fmt examples/research-thesis.noma --inplace
 Agents and CI pipelines patch single blocks instead of rewriting whole files. Twenty-three operations cover the editing flows that matter:
 
 ```bash
+noma prove thesis.noma --op '{"op":"replace_body","id":"claim-x","content":"Sharper body text."}' --out proof.html
 noma patch thesis.noma --op '{"op":"replace_block","id":"claim-x","content":"::claim{id=\"claim-x\" confidence=0.9}\nNew body.\n::"}'
 noma patch thesis.noma --op '{"op":"replace_body","id":"claim-x","content":"Sharper body text."}'
 noma patch thesis.noma --op '{"op":"update_heading","id":"risk-section","title":"Known Risks"}'
@@ -200,7 +209,7 @@ noma patch thesis.noma --op '{"op":"rename_id","from":"claim-x","to":"claim-rena
 noma patch thesis.noma --ops patch-transaction.json --inplace
 ```
 
-`rename_id` retargets reference attributes such as `for=`, `parent=`, `dataset=`, `block=`, and `ref=`, plus `[[wikilink]]` references across the document. Table patch ops escape literal separator pipes in edited cells while preserving pipes inside inline code spans. The source-preserving patch path rewrites only the addressed line range or inserted block, so unrelated bytes stay byte-identical. See [`docs/agent-protocol.noma`](docs/agent-protocol.noma) and [`docs/compatibility.noma`](docs/compatibility.noma).
+`noma prove` dry-runs those same patch operations and renders an agent safety proof: pre/post validation, ID registry, LLM context, operation payloads, source-line preservation, diff, hashes, and a sandboxed post-patch artifact preview. `--inplace` writes only when the proof passes. `rename_id` retargets reference attributes such as `for=`, `parent=`, `dataset=`, `block=`, and `ref=`, plus `[[wikilink]]` references across the document. Table patch ops escape literal separator pipes in edited cells while preserving pipes inside inline code spans. The source-preserving patch path rewrites only the addressed line range or inserted block, so unrelated bytes stay byte-identical. See [`docs/agent-protocol.noma`](docs/agent-protocol.noma) and [`docs/compatibility.noma`](docs/compatibility.noma).
 
 ## GitHub Action
 
@@ -216,7 +225,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.12.0
+      - uses: ferax564/noma@v0.13.0
         with:
           input: docs/spec.noma
           output: dist/spec.html
@@ -233,7 +242,7 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 
 | Demo | What it shows | Live |
 | ---- | ------------- | ---- |
-| **Agent planning artifact** ([source](examples/agent-plan.noma)) | Q3 roadmap decision — options, decision matrix, claims/evidence/risks, agent tasks, copy-as-prompt buttons | [HTML](https://ferax564.github.io/noma/examples/agent-plan.html) · [PDF](https://ferax564.github.io/noma/examples/agent-plan.pdf) · [LLM](https://ferax564.github.io/noma/examples/agent-plan.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/agent-plan.json) |
+| **Agent planning artifact** ([source](examples/agent-plan.noma)) | Q3 roadmap decision — options, decision matrix, claims/evidence/risks, agent tasks, copy-as-prompt buttons | [HTML](https://ferax564.github.io/noma/examples/agent-plan.html) · [Proof](https://ferax564.github.io/noma/examples/agent-plan-proof.html) · [PDF](https://ferax564.github.io/noma/examples/agent-plan.pdf) · [LLM](https://ferax564.github.io/noma/examples/agent-plan.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/agent-plan.json) |
 | **Technical documentation** ([source](examples/tech-doc.noma)) | CLI reference page — tabs, callouts, code blocks, architecture diagram, cross-links | [HTML](https://ferax564.github.io/noma/examples/tech-doc.html) · [PDF](https://ferax564.github.io/noma/examples/tech-doc.pdf) · [LLM](https://ferax564.github.io/noma/examples/tech-doc.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/tech-doc.json) |
 | **Investment thesis** ([source](examples/research-thesis.noma)) | Vertical-AI thesis — claims with confidence scores, counterevidence, risks, datasets, plots, quarterly review tasks | [HTML](https://ferax564.github.io/noma/examples/research-thesis.html) · [PDF](https://ferax564.github.io/noma/examples/research-thesis.pdf) · [LLM](https://ferax564.github.io/noma/examples/research-thesis.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/research-thesis.json) |
 | **Interactive projection** ([source](examples/interactive-projection.noma)) | Controls update computed metrics, plots, and computed tables; scenario state persists in the URL hash | [HTML](https://ferax564.github.io/noma/examples/interactive-projection.html) · [LLM](https://ferax564.github.io/noma/examples/interactive-projection.llm.txt) · [JSON](https://ferax564.github.io/noma/examples/interactive-projection.json) |
@@ -241,7 +250,7 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 
 ## Guides for adoption
 
-- [Getting started](docs/getting-started.noma) — the first source/artifact/agent loop: render, export context, list IDs, patch, validate.
+- [Getting started](docs/getting-started.noma) — the first source/artifact/agent loop: render, export context, list IDs, prove a patch, patch, validate.
 - [Agent editing guide](docs/agent-guide.noma) — the operational rulebook agents should follow before touching a `.noma` file.
 - [Case studies](docs/case-studies.noma) — agent-refreshable research memo, decision artifact, technical-doc publishing, Word review, and memory workflow.
 - [Comparison guide](docs/comparison.noma) — when to choose Noma vs Markdown, MDX, raw HTML, or collaborative docs.
@@ -265,8 +274,8 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 - Profiles — declare `profile: research | technical | minimal` in frontmatter as a contract about which directives the document uses; the `technical` profile includes API/reference blocks such as `api`, `endpoint`, `parameter`, `example`, `query`, `instruction`, and `changelog` so downstream tools can narrow safely.
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
-- CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | patch | fmt | docx-data | docx-sync | docx-review-data | docx-review-sync | diff`. `noma render --to markdown --out report.md` writes a portable Markdown handoff; `noma render --to pdf --out report.pdf` prints through Chromium via Puppeteer and accepts `--page-size`, margin flags, `--no-print-background`, and `--css`; `noma render --to docx --out report.docx` writes a Word-compatible package; `noma docx-data report.docx --out controls.json` extracts bound `::control` values from the DOCX custom XML part or visible `noma-control:<id>` content controls in the document body, headers, or footers plus native `::agent_task` / `::todo` checkbox state from those Word content controls; `noma docx-sync report.noma report.docx --out synced.noma --report sync.json` source-preservingly updates matching `::control default=` attributes and task done/status attributes from those values and can write a JSON change/unmatched report; `noma docx-review-data report.docx` extracts native Word comment/note bodies, authors, resolved state, reply links, tracked revisions and wrapper or range-marker moves, footnotes, endnotes, bookmarked headings, and bookmarked tables as JSON, including lightweight Markdown for bold/emphasis/code/internal wikilinks/external links in comments, notes, accepted heading titles, tracked revision text, and bookmarked table cells plus comment, note-reference, tracked-revision, and tracked-move anchors inside the document body, native headers/footers, and bookmarked native tables; `noma docx-review-sync report.noma report.docx --out reviewed.noma --report review-sync.json` source-preservingly updates accepted heading edits, adds anchored Word comments, threaded replies, and notes, updates/resolves/reopens/deletes existing source comments and replies from Word state, updates/deletes targeted source footnotes and endnotes from Word state when they can be matched, adds/updates/deletes source `::change_request` blocks from Word revisions and moves when they can be matched, applies simple accepted `::table` edits with granular header/cell/row/column patch ops, and applies simple accepted inline `::dataset` cell/row/column edits with `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, or `delete_dataset_column` before falling back to safe full-body dataset replacement. The review-sync report records applied changes and skipped native review items without duplicating the patched source. `noma diff before.noma after.noma --at YYYY-MM-DD` emits `::state_change` blocks for attribute additions, changes, and removals. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_comment`, `resolve_comment`, `remove_attribute`, `add_footnote`, `add_endnote`, `add_change_request`, `update_table_cell`, `update_table_header_cell`, `insert_table_row`, `delete_table_row`, `insert_table_column`, `delete_table_column`, `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, `delete_dataset_column`, `move_block`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
-- GitHub Action — `uses: ferax564/noma@v0.12.0` validates, renders, and uploads HTML/LLM/JSON/Noma/Markdown/site artifacts in CI.
+- CLI — `noma --version`, `noma init`, `noma parse | render | ids | schema | check | export | prove | patch | fmt | docx-data | docx-sync | docx-review-data | docx-review-sync | diff`. `noma prove report.noma --ops ops.json --out proof.html` dry-runs a patch transaction and renders an agent safety proof with diagnostics, hashes, source preservation, diff, LLM context, ID registry, and a sandboxed post-patch artifact preview; `--to json` emits the same proof metadata for automation, and `--inplace` writes only if the proof passes. `noma render --to markdown --out report.md` writes a portable Markdown handoff; `noma render --to pdf --out report.pdf` prints through Chromium via Puppeteer and accepts `--page-size`, margin flags, `--no-print-background`, and `--css`; `noma render --to docx --out report.docx` writes a Word-compatible package; `noma docx-data report.docx --out controls.json` extracts bound `::control` values from the DOCX custom XML part or visible `noma-control:<id>` content controls in the document body, headers, or footers plus native `::agent_task` / `::todo` checkbox state from those Word content controls; `noma docx-sync report.noma report.docx --out synced.noma --report sync.json` source-preservingly updates matching `::control default=` attributes and task done/status attributes from those values and can write a JSON change/unmatched report; `noma docx-review-data report.docx` extracts native Word comment/note bodies, authors, resolved state, reply links, tracked revisions and wrapper or range-marker moves, footnotes, endnotes, bookmarked headings, and bookmarked tables as JSON, including lightweight Markdown for bold/emphasis/code/internal wikilinks/external links in comments, notes, accepted heading titles, tracked revision text, and bookmarked table cells plus comment, note-reference, tracked-revision, and tracked-move anchors inside the document body, native headers/footers, and bookmarked native tables; `noma docx-review-sync report.noma report.docx --out reviewed.noma --report review-sync.json` source-preservingly updates accepted heading edits, adds anchored Word comments, threaded replies, and notes, updates/resolves/reopens/deletes existing source comments and replies from Word state, updates/deletes targeted source footnotes and endnotes from Word state when they can be matched, adds/updates/deletes source `::change_request` blocks from Word revisions and moves when they can be matched, applies simple accepted `::table` edits with granular header/cell/row/column patch ops, and applies simple accepted inline `::dataset` cell/row/column edits with `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, or `delete_dataset_column` before falling back to safe full-body dataset replacement. The review-sync report records applied changes and skipped native review items without duplicating the patched source. `noma diff before.noma after.noma --at YYYY-MM-DD` emits `::state_change` blocks for attribute additions, changes, and removals. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_comment`, `resolve_comment`, `remove_attribute`, `add_footnote`, `add_endnote`, `add_change_request`, `update_table_cell`, `update_table_header_cell`, `insert_table_row`, `delete_table_row`, `insert_table_column`, `delete_table_column`, `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, `delete_dataset_column`, `move_block`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
+- GitHub Action — `uses: ferax564/noma@v0.13.0` validates, renders, and uploads HTML/LLM/JSON/Noma/Markdown/site artifacts in CI.
 - VS Code extension — `ext install ferax564.noma-language` adds syntax highlighting, folding, embedded YAML/JSON/LaTeX/Mermaid/DOT scopes, and warning scopes for raw escape hatches.
 - MCP server — `@ferax564/noma-mcp-server` exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio.
 - Agent SDK — `@ferax564/noma-agent-sdk` wraps the MCP server with TypeScript helpers for safe patching, capability descriptors, and transcript replay. Experimental during v0.x.
@@ -282,7 +291,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.12.0 release candidate. This line packages the Word handoff/review loop, Markdown/PDF/DOCX work, denser HTML layouts, interactive computed artifacts with URL-hash scenario state, and new projection/review demos; see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.24 for the full release tracker.
+**Status:** v0.13.0 public release. This line adds agent safety proofs for patch operations, proof-first docs/examples, cleaner published static pages, and a sharper agent-oriented landing flow; see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.25 for the full release tracker.
 
 ## License
 

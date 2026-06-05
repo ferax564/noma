@@ -139,6 +139,11 @@ writeFileSync(
     postvalidate: true,
   }),
 );
+run(npx, ["noma", "prove", "spec.noma", "--ops", "ops.json", "--out", "out/spec-proof.html"], { cwd: workDir });
+const proofHtml = readFileSync(join(workDir, "out/spec-proof.html"), "utf8");
+if (!proofHtml.includes("Noma Agent Safety Proof") || !proofHtml.includes("Lines preserved")) {
+  throw new Error("noma prove did not write the expected proof artifact");
+}
 run(npx, ["noma", "patch", "spec.noma", "--ops", "ops.json", "--inplace"], { cwd: workDir });
 if (!readFileSync(join(workDir, "spec.noma"), "utf8").includes("confidence=0.82")) {
   throw new Error("noma patch did not update confidence");
@@ -147,12 +152,14 @@ if (!readFileSync(join(workDir, "spec.noma"), "utf8").includes("confidence=0.82"
 writeFileSync(
   join(workDir, "api-smoke.mjs"),
   [
-    'import { parse, renderLlm, renderMarkdown } from "@ferax564/noma-cli";',
+    'import { createAgentSafetyProof, parse, renderLlm, renderMarkdown } from "@ferax564/noma-cli";',
     'const doc = parse("# API smoke\\n\\n::claim{id=\\"x\\"}\\nWorks.\\n::");',
     'const out = renderLlm(doc, { select: ["claim"] });',
     'if (!out.includes("[CLAIM id=\\"x\\"]")) throw new Error(out);',
     'const md = renderMarkdown(doc);',
     'if (!md.includes("<!-- noma:block")) throw new Error(md);',
+    'const proof = createAgentSafetyProof({ filePath: "api-smoke.noma", source: "# API smoke\\n\\n::risk{id=\\"x\\" owner=\\"ops\\"}\\nWorks.\\n::\\n", ops: [{ op: "replace_body", id: "x", content: "Still works." }] });',
+    'if (proof.status !== "pass" || proof.patchResult !== "applied") throw new Error(JSON.stringify(proof));',
   ].join("\n"),
 );
 run(process.execPath, ["api-smoke.mjs"], { cwd: workDir });

@@ -1,6 +1,6 @@
 # npm publish runbook
 
-Manual steps to publish a Noma release to npm. Run after the release tag exists on `origin/main` (e.g. `v0.12.0`) and the GitHub release is live.
+Manual steps to publish a Noma release to npm. Run after the release tag exists on `origin/main` (e.g. `v0.13.0`) and the GitHub release is live.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ Manual steps to publish a Noma release to npm. Run after the release tag exists 
 - npm login as the `ferax564` account (2FA enabled — you'll need your authenticator)
 - Clean working tree on the release tag:
   ```bash
-  git checkout v0.12.0
+  git checkout v0.13.0
   git status   # must be clean
   ```
 - All three release gates green locally:
@@ -69,6 +69,6 @@ Expected: each command prints the new version.
 
 ```bash
 # Bump the .npmrc-tracked engines version in CHANGELOG/PLAN if needed
-# Close the v0.12.0 GH milestone if one exists
-gh issue list --label release --search "v0.12.0" --state open
+# Close the v0.13.0 GH milestone if one exists
+gh issue list --label release --search "v0.13.0" --state open
 ```

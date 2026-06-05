@@ -187,6 +187,7 @@ function renderIndex(
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="generator" content="noma" />
 <title>${escapeHtml(bookTitle)}</title>
+<link rel="icon" href="data:," />
 ${themeLink}
 </head>
 <body>

@@ -367,6 +367,7 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="generator" content="noma" />
 <title>${escapeHtml(title)}</title>
+<link rel="icon" href="data:," />
 ${styleHead}${mathHead}
 </head>
 <body>

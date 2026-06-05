@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { StdioServerParameters } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { NomaSpawnError, NomaTimeoutError, NomaTransportError } from "./errors.js";
 
 const require_ = createRequire(import.meta.url);
@@ -11,6 +12,7 @@ export type StdioMcpClientOptions = {
   mcpServerBin?: string;
   env?: NodeJS.ProcessEnv;
   requestTimeoutMs?: number;
+  stderr?: StdioServerParameters["stderr"];
 };
 
 export type ToolDescriptor = { name: string };
@@ -69,9 +71,10 @@ export class StdioMcpClient {
       command: process.execPath,
       args: [bin],
       ...(env ? { env } : {}),
+      ...(options.stderr !== undefined ? { stderr: options.stderr } : {}),
     });
     const client = new Client(
-      { name: "@ferax564/noma-agent-sdk", version: "0.1.2" },
+      { name: "@ferax564/noma-agent-sdk", version: "0.1.3" },
       { capabilities: {} },
     );
     try {

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Noma turns readable .noma source into polished artifacts that agents can patch safely by block ID." />
+<meta name="description" content="Noma turns readable .noma source into polished artifacts that agents can prove and patch safely by block ID." />
 <meta property="og:title" content="Noma - source-controlled artifacts for agents" />
-<meta property="og:description" content="Write named blocks, render HTML/PDF/DOCX/LLM artifacts, and let agents patch stable IDs without rewriting whole documents." />
+<meta property="og:description" content="Write named blocks, render HTML/PDF/DOCX/LLM artifacts, and let agents prove and patch stable IDs without rewriting whole documents." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://ferax564.github.io/noma/" />
 <title>Noma - Source-controlled artifacts for agents</title>
@@ -186,6 +186,9 @@
     margin: 0;
     color: var(--muted);
   }
+  .mobile-proof {
+    display: none;
+  }
   .actions {
     display: flex;
     flex-wrap: wrap;
@@ -304,7 +307,7 @@
   }
   .pipeline {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     border-top: 1px solid var(--rule);
     background: var(--panel-soft);
   }
@@ -634,6 +637,35 @@
     h2 { font-size: 2rem; }
     .lead { font-size: 1.08rem; }
     .plain-definition { display: none; }
+    .mobile-proof {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 22px;
+      padding: 12px 0;
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+    .mobile-proof div {
+      display: grid;
+      grid-template-columns: 5.5rem minmax(0, 1fr);
+      gap: 10px;
+      align-items: baseline;
+      min-width: 0;
+    }
+    .mobile-proof span {
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 760;
+      text-transform: uppercase;
+    }
+    .mobile-proof code {
+      display: block;
+      min-width: 0;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid var(--rule);
+      white-space: normal;
+    }
     .explainer {
       display: none;
     }
@@ -665,13 +697,19 @@
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <div class="release">v0.12.0 public release · MIT</div>
+      <div class="release">v0.13.0 public release · MIT</div>
       <h1>Source-controlled artifacts <span>agents can safely edit</span>.</h1>
       <p class="lead">
         Noma is a plain-text document format for agent workflows. Write named
-        blocks, render a polished artifact, export clean context, and patch only
-        the block that changed.
+        blocks, render a polished artifact, export clean context, prove the
+        patch, and update only the block that changed.
       </p>
+      <div class="mobile-proof" aria-label="Noma source artifact and patch proof">
+        <div><span>Source</span><code>::risk{id="edit-risk"}</code></div>
+        <div><span>Artifact</span><code>HTML / PDF / DOCX / LLM</code></div>
+        <div><span>Proof</span><code>diff + hashes + preview</code></div>
+        <div><span>Patch</span><code>replace_body id="edit-risk"</code></div>
+      </div>
       <div class="plain-definition">
         <strong>The default use case</strong>
         <p>Use Noma for specs, research memos, decision records, review
@@ -710,7 +748,7 @@ Refresh the evidence before the next release note.
         </div>
         <div class="output-pane">
           <h2>Rendered artifact</h2>
-          <p class="render-note">The same source becomes a reader-facing page, scoped LLM context, and a stable patch target.</p>
+          <p class="render-note">The same source becomes a reader-facing page, scoped LLM context, stable patch target, and pre-apply proof.</p>
           <div class="render-block">
             <strong>claim · confidence 0.82</strong>
             The agent-safe artifact wedge is stronger than a generic Markdown replacement.
@@ -721,7 +759,7 @@ Refresh the evidence before the next release note.
           </div>
           <div class="render-grid">
             <div class="render-card"><b>Agent context</b><code>--to llm --select claim,evidence,risk</code></div>
-            <div class="render-card"><b>Patch target</b><code>replace_body id="edit-risk"</code></div>
+            <div class="render-card"><b>Proof</b><code>noma prove --op ... --out proof.html</code></div>
           </div>
         </div>
       </div>
@@ -729,8 +767,9 @@ Refresh the evidence before the next release note.
         <div class="pipe-step"><span class="label">01</span><strong>Write</strong><p>Plain text with named semantic blocks.</p></div>
         <div class="pipe-step"><span class="label">02</span><strong>Render</strong><p>HTML, PDF, DOCX, site, JSON, LLM.</p></div>
         <div class="pipe-step"><span class="label">03</span><strong>Discover</strong><p>Agents list canonical IDs and aliases.</p></div>
-        <div class="pipe-step"><span class="label">04</span><strong>Patch</strong><p>Apply a targeted operation by block ID.</p></div>
-        <div class="pipe-step"><span class="label">05</span><strong>Validate</strong><p>Check refs, evidence, citations, plots, profiles.</p></div>
+        <div class="pipe-step"><span class="label">04</span><strong>Prove</strong><p>Dry-run the patch, diff, hashes, IDs, and preview.</p></div>
+        <div class="pipe-step"><span class="label">05</span><strong>Patch</strong><p>Apply a targeted operation by block ID.</p></div>
+        <div class="pipe-step"><span class="label">06</span><strong>Validate</strong><p>Check refs, evidence, citations, plots, profiles.</p></div>
       </div>
     </div>
   </div>
@@ -746,7 +785,7 @@ Refresh the evidence before the next release note.
       <p>
         Noma is useful when the document will be read by humans and edited by
         agents later. The first job is not maximal expressiveness; it is making
-        the next edit targetable, reviewable, and validated.
+        the next edit targetable, provable, reviewable, and validated.
       </p>
     </div>
     <table class="wide-table">
@@ -773,9 +812,9 @@ Refresh the evidence before the next release note.
           <td><a class="chip" href="docs/agent-guide.html">Agent guide</a></td>
         </tr>
         <tr>
-          <td>Patch by ID</td>
-          <td><code>noma ids file.noma</code> then <code>noma patch file.noma --ops ops.json --inplace</code></td>
-          <td>The edit touches a claim, table cell, heading, task, or attribute instead of rewriting the document.</td>
+          <td>Prove then patch by ID</td>
+          <td><code>noma ids file.noma</code>, <code>noma prove file.noma --ops ops.json --out proof.html</code>, then <code>noma patch file.noma --ops ops.json --inplace</code></td>
+          <td>The proof shows diagnostics, hashes, source preservation, diff, LLM context, and preview before the document changes.</td>
           <td><a class="chip" href="#agents">Patch flow</a></td>
         </tr>
         <tr>
@@ -804,8 +843,8 @@ Refresh the evidence before the next release note.
       </div>
       <p>
         The first useful test is not learning every directive. It is rendering
-        one document, listing its IDs, exporting agent context, applying a tiny
-        patch, and validating the result.
+        one document, listing its IDs, exporting agent context, proving a tiny
+        patch, applying it, and validating the result.
       </p>
     </div>
     <div class="try-grid">
@@ -816,14 +855,18 @@ Refresh the evidence before the next release note.
       </div>
       <div class="command-panel">
         <h3>CLI smoke test</h3>
-<pre>npm install -g @ferax564/noma-cli
+<pre>npm install -g @ferax564/noma-cli@latest
 noma init my-spec
 
 noma check my-spec/demo.noma
 noma render my-spec/demo.noma --to html --out my-spec/demo.html
 noma render my-spec/demo.noma --to llm --budget 12000
 noma ids my-spec/demo.noma
+noma prove my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"Tracked by proof before patch."}' --out my-spec/proof.html
+noma patch my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"Tracked by proof before patch."}' --inplace
+noma check my-spec/demo.noma
 
+open my-spec/proof.html
 open my-spec/demo.html</pre>
       </div>
       <div class="note-panel">
@@ -831,7 +874,7 @@ open my-spec/demo.html</pre>
         <ul>
           <li><strong>MCP:</strong> <code>npx -y @ferax564/noma-mcp-server</code></li>
           <li><strong>SDK:</strong> <code>npm install @ferax564/noma-agent-sdk</code></li>
-          <li><strong>CI:</strong> <code>uses: ferax564/noma@v0.12.0</code></li>
+          <li><strong>CI:</strong> <code>uses: ferax564/noma@v0.13.0</code></li>
           <li><strong>Editor:</strong> <code>ext install ferax564.noma-language</code></li>
         </ul>
       </div>
@@ -848,8 +891,8 @@ open my-spec/demo.html</pre>
       </div>
       <p>
         Noma gives agents a boring contract: read scoped context, list stable
-        targets, choose the smallest operation, patch by ID, and re-check. The
-        source file remains the audit log.
+        targets, choose the smallest operation, prove the patch, patch by ID,
+        and re-check. The source file remains the audit log.
       </p>
     </div>
     <div class="agent-grid">
@@ -879,6 +922,7 @@ open my-spec/demo.html</pre>
           <li>Read clean context with <code>noma render --to llm</code>; do not scrape rendered HTML.</li>
           <li>Discover canonical IDs and aliases with <code>noma ids</code> before editing.</li>
           <li>Prefer <code>replace_body</code>, table cell ops, or <code>update_attribute</code> over whole-block replacement.</li>
+          <li>Run <code>noma prove --ops --out proof.html</code> before applying user-visible edits.</li>
           <li>Run <code>noma check</code> after the patch and render strict HTML for review.</li>
           <li>Use MCP or the SDK when an agent host needs the same loop over stdio.</li>
         </ol>
@@ -907,8 +951,8 @@ open my-spec/demo.html</pre>
         <tr>
           <td>Agent planning artifact</td>
           <td>Decision matrix, claims, evidence, risks, timeline, agent tasks, and copy-as-prompt controls.</td>
-          <td>How a planning memo becomes a structured artifact and clean LLM context.</td>
-          <td><div class="link-list"><a class="chip" href="examples/agent-plan.html">HTML</a><a class="chip" href="examples/agent-plan.pdf">PDF</a><a class="chip" href="examples/agent-plan.llm.txt">LLM</a><a class="chip" href="examples/agent-plan.json">JSON</a><a class="chip" href="https://github.com/ferax564/noma/blob/main/examples/agent-plan.noma">Source</a></div></td>
+          <td>How a planning memo becomes a structured artifact, clean LLM context, and patch proof.</td>
+          <td><div class="link-list"><a class="chip" href="examples/agent-plan.html">HTML</a><a class="chip" href="examples/agent-plan-proof.html">Proof</a><a class="chip" href="examples/agent-plan.pdf">PDF</a><a class="chip" href="examples/agent-plan.llm.txt">LLM</a><a class="chip" href="examples/agent-plan.json">JSON</a><a class="chip" href="https://github.com/ferax564/noma/blob/main/examples/agent-plan.noma">Source</a></div></td>
         </tr>
         <tr>
           <td>Technical documentation</td>
@@ -966,7 +1010,7 @@ open my-spec/demo.html</pre>
       </div>
       <p>
         The docs are organized around the agent-safe lifecycle: create a
-        document, render it, expose context, patch it, validate it, and only
+        document, render it, expose context, prove a patch, apply it, validate it, and only
         then reach for the full format reference.
       </p>
     </div>
@@ -975,8 +1019,8 @@ open my-spec/demo.html</pre>
         <tr><th>Task</th><th>Document</th><th>Use it for</th><th>Link</th></tr>
       </thead>
       <tbody>
-        <tr><td>Run the first loop</td><td>Getting Started</td><td>Install, render, export LLM context, list IDs, patch, validate, and wire CI.</td><td><a class="chip" href="docs/getting-started.html">Open</a></td></tr>
-        <tr><td>Give rules to an agent</td><td>Agent Editing Guide</td><td>The safe patch loop, smallest-operation choices, transaction shape, MCP setup, and SDK workflow.</td><td><a class="chip" href="docs/agent-guide.html">Open</a></td></tr>
+        <tr><td>Run the first loop</td><td>Getting Started</td><td>Install, render, export LLM context, list IDs, prove a patch, patch, validate, and wire CI.</td><td><a class="chip" href="docs/getting-started.html">Open</a></td></tr>
+        <tr><td>Give rules to an agent</td><td>Agent Editing Guide</td><td>The safe proof/patch loop, smallest-operation choices, transaction shape, MCP setup, and SDK workflow.</td><td><a class="chip" href="docs/agent-guide.html">Open</a></td></tr>
         <tr><td>Choose the right use case</td><td>Case Studies</td><td>Research refreshes, decision artifacts, technical docs, Word review, and agent memory workflows.</td><td><a class="chip" href="docs/case-studies.html">Open</a></td></tr>
         <tr><td>Author in the browser</td><td>Workbench Guide</td><td>Word-style command map, safe preview behavior, diagnostics, AST/LLM tabs, and export flows.</td><td><a class="chip" href="docs/workbench.html">Open</a></td></tr>
         <tr><td>Look up syntax</td><td>Spec</td><td>Block syntax, AST variants, render targets, validation rules, profiles, books, math, memory.</td><td><a class="chip" href="docs/spec.html">Open</a></td></tr>
