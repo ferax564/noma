@@ -132,6 +132,8 @@ export interface Diagnostic {
   code: string;
   message: string;
   pos?: Position;
+  /** Last source line of the offending block, completing the span begun at pos. */
+  endLine?: number;
   nodeId?: string;
 }
 

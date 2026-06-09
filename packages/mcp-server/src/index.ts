@@ -204,10 +204,12 @@ server.tool(
       version: z.string().optional(),
     }).optional().describe("Caller identity recorded in transcript"),
     base_sha256: z.string().length(64).optional().describe("SHA-256 of doc state the agent prepared against; mismatch surfaces base_sha_drift warning"),
+    base_hash: z.string().regex(/^[0-9a-fA-F]{8,64}$/).optional().describe("Block-level precondition: sha256 (full or >=8-char prefix) of the target block's source slice as returned by read_doc. The patch is refused with sha_mismatch if the block changed since it was read."),
     parent_op_id: z.string().uuid().optional().describe("Previous op_id for causation chains"),
   },
-  async ({ file, op, reason, expected_sha, actor, base_sha256, parent_op_id }) => {
-    const result = patchBlock({ file, op: op as PatchOp, reason, expected_sha, actor, base_sha256, parent_op_id });
+  async ({ file, op, reason, expected_sha, actor, base_sha256, base_hash, parent_op_id }) => {
+    const fullOp = (base_hash ? { ...op, baseHash: base_hash } : op) as PatchOp;
+    const result = patchBlock({ file, op: fullOp, reason, expected_sha, actor, base_sha256, parent_op_id });
     if (!result.ok) {
       const { system, ...body } = result;
       if (system) {
