@@ -56,6 +56,14 @@
           </label>
           <button id="renderNow" type="button">Render</button>
         </div>
+        <div class="tool-group" aria-label="Markdown import">
+          <span class="tool-label">Markdown</span>
+          <button id="pasteMarkdown" type="button">Paste MD</button>
+          <label class="file-button" for="markdownFileInput">
+            Upload MD
+            <input id="markdownFileInput" type="file" accept=".md,.markdown,.mdown,.mkdn,text/markdown,text/x-markdown,text/plain" />
+          </label>
+        </div>
       </div>
 
       <div id="ribbonFormat" class="ribbon-panel" role="tabpanel" data-ribbon-panel="format" aria-labelledby="ribbonTabFormat" hidden>
@@ -129,6 +137,7 @@
         </div>
         <div class="tool-group" aria-label="Output actions">
           <span class="tool-label">Output</span>
+          <button id="copyMarkdown" type="button">Copy MD</button>
           <button id="copyLlm" type="button">Copy LLM</button>
           <button id="copyDocxCommand" type="button">DOCX Cmd</button>
           <button id="printPreview" type="button">Print</button>

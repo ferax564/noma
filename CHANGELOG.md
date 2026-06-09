@@ -6,6 +6,10 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Workbench Markdown intake:** the workbench File tab can paste Markdown from the clipboard or upload `.md` / `.markdown` files into the current browser draft, and the Export tab can copy the current document as portable Markdown.
+
 ## [0.13.0] — 2026-06-05
 
 ### Added

@@ -31,7 +31,10 @@ document without installing an editor extension.
 It covers the main Word-style workflows that fit Noma's source-first model:
 
 - Create a new document or load one of the shipped examples.
-- Open a local `.noma` file from disk.
+- Open a local `.noma` file from disk, or upload a Markdown file into the
+  current browser draft.
+- Paste Markdown from the clipboard when you want to start from text copied out
+  of another editor.
 - Format selected text as bold, italic, inline code, or a link.
 - Change the current line to H1, H2, or H3.
 - Convert selected lines to bullets, numbered lists, quotes, or code blocks.
@@ -44,7 +47,7 @@ It covers the main Word-style workflows that fit Noma's source-first model:
 - Preview safe HTML, inspect diagnostics, jump through the outline, and switch
   to AST or LLM output.
 - Download the current document as `.noma`, HTML, or JSON.
-- Copy LLM context or the DOCX CLI command for Word handoff.
+- Copy Markdown, LLM context, or the DOCX CLI command for handoff.
 - Print the rendered preview from the browser.
 
 ## Screen layout
@@ -87,13 +90,13 @@ drafting:
 
 | Word workflow | Workbench equivalent |
 |---|---|
-| New/open document | **File** tab with New, Open, example loading, and Render. |
+| New/open document | **File** tab with New, Open, Markdown paste/upload, example loading, and Render. |
 | Text formatting | **Format** tab with bold, italic, code, links, headings, lists, quote, and code-block commands. |
 | Insert menu | **Insert** tab with table, figure, callout, task, control, and math block templates. |
 | Page layout | **Layout** tab with TOC, header, footer, page setup, and page break templates. |
 | Review | **Review** tab with comment, change request, and footnote block templates. |
 | Find | **Find** tab with source search and previous/next navigation. |
-| Print/export | **Export** tab with Noma, HTML, JSON, LLM, DOCX-command, and print actions. |
+| Print/export | **Export** tab with Noma, HTML, JSON, Markdown, LLM, DOCX-command, and print actions. |
 
 ## Rendered editing mode
 

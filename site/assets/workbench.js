@@ -10,7 +10,7 @@
     }
   }
 
-  // node_modules/js-yaml/dist/js-yaml.mjs
+  // ../../../Users/andreaferrarelli/code/noma/node_modules/js-yaml/dist/js-yaml.mjs
   function isNothing(subject) {
     return typeof subject === "undefined" || subject === null;
   }
@@ -2713,6 +2713,24 @@
     }
     cells.push(buf.trim());
     return cells;
+  }
+  function escapePipeTableCell(cell) {
+    let out = "";
+    let inBacktick = false;
+    for (let i = 0; i < cell.length; i++) {
+      const ch = cell[i];
+      if (ch === "`") {
+        inBacktick = !inBacktick;
+        out += ch;
+        continue;
+      }
+      if (ch === "|" && !inBacktick && cell[i - 1] !== "\\") {
+        out += "\\|";
+        continue;
+      }
+      out += ch;
+    }
+    return out;
   }
   function splitDelimitedRow(line, delimiter) {
     const cells = [];
@@ -6020,6 +6038,359 @@ ${bodyRows}
     return cfg.now.getTime() - t > cfg.days * 24 * 60 * 60 * 1e3;
   }
 
+  // src/renderer-markdown.ts
+  var INTERNAL_META_KEYS = /* @__PURE__ */ new Set(["filename"]);
+  var ESCAPE_HATCHES = /* @__PURE__ */ new Set(["html", "svg", "script"]);
+  var CODE_DIRECTIVES = /* @__PURE__ */ new Set(["code", "code_cell", "output", "query", "example"]);
+  var LAYOUT_CONTAINERS = /* @__PURE__ */ new Set(["grid", "columns", "tabs", "accordion", "hero"]);
+  var VERBATIM_DIRECTIVES = /* @__PURE__ */ new Set(["dataset", "diagram", "plotly"]);
+  function renderMarkdown(doc, options = {}) {
+    const ctx = {
+      includeFrontmatter: options.includeFrontmatter !== false,
+      stripInternal: options.stripInternal !== false,
+      anchorWikilinks: options.anchorWikilinks !== false,
+      includeAnchors: options.includeAnchors !== false,
+      semanticComments: options.semanticComments !== false,
+      includeEscapeHatches: options.includeEscapeHatches === true
+    };
+    const chunks = [];
+    const hasFrontmatterNode = doc.children[0]?.type === "frontmatter";
+    if (ctx.includeFrontmatter && !hasFrontmatterNode) {
+      const frontmatter = frontmatterFromMeta(doc, ctx);
+      if (frontmatter) chunks.push(frontmatter);
+    }
+    for (const child of doc.children) chunks.push(renderNode2(child, ctx, 1));
+    return joinBlocks(chunks) + "\n";
+  }
+  function frontmatterFromMeta(doc, ctx) {
+    const entries = Object.entries(doc.meta).filter(([key]) => {
+      return !ctx.stripInternal || !INTERNAL_META_KEYS.has(key);
+    });
+    if (entries.length === 0) return "";
+    return `---
+${jsYaml.dump(Object.fromEntries(entries)).trimEnd()}
+---`;
+  }
+  function renderNode2(node, ctx, depth) {
+    switch (node.type) {
+      case "document":
+        return joinBlocks(node.children.map((child) => renderNode2(child, ctx, depth)));
+      case "frontmatter":
+        return renderFrontmatter(node, ctx);
+      case "section":
+        return renderSection2(node, ctx, depth);
+      case "paragraph":
+        return renderInline(node.content, ctx);
+      case "code":
+        return fenced(node.content, node.lang);
+      case "list":
+        return renderList(node, ctx);
+      case "list_item":
+        return `- ${renderInline(node.content, ctx)}`;
+      case "quote":
+        return renderQuote(node, ctx);
+      case "thematic_break":
+        return "---";
+      case "table":
+        return renderPipeTable(node.header, node.rows, node.align, ctx);
+      case "directive":
+        return renderDirective2(node, ctx, depth);
+      default: {
+        const _exhaustive = node;
+        void _exhaustive;
+        return "";
+      }
+    }
+  }
+  function renderFrontmatter(node, ctx) {
+    return ctx.includeFrontmatter ? `---
+${node.raw}
+---` : "";
+  }
+  function renderSection2(node, ctx, depth) {
+    const level = Math.max(1, Math.min(6, node.level));
+    const heading = `${"#".repeat(level)} ${renderInline(node.title, ctx)}`;
+    const anchors = renderAnchors([node.id, ...node.aliases ?? []], ctx);
+    const children = joinBlocks(node.children.map((child) => renderNode2(child, ctx, depth + 1)));
+    return joinBlocks([anchors, heading, children]);
+  }
+  function renderList(node, ctx) {
+    return node.items.map((item, index) => {
+      const marker = node.ordered ? `${index + 1}.` : "-";
+      return `${marker} ${renderInline(item.content, ctx)}`;
+    }).join("\n");
+  }
+  function renderQuote(node, ctx) {
+    return renderInline(node.content, ctx).split("\n").map((line) => line ? `> ${line}` : ">").join("\n");
+  }
+  function renderDirective2(node, ctx, depth) {
+    if (ESCAPE_HATCHES.has(node.name) && !ctx.includeEscapeHatches) {
+      return wrapDirective(node, `[${readableDirectiveName2(node.name)} escape hatch omitted]`, ctx);
+    }
+    if (node.name === "math") {
+      const body = node.body ?? renderDirectiveChildren(node, ctx, depth);
+      return wrapDirective(node, `$$
+${body.trim()}
+$$`, ctx);
+    }
+    if (node.name === "pagebreak") {
+      return wrapDirective(node, "<!-- pagebreak -->", ctx);
+    }
+    if (node.name === "table") {
+      return wrapDirective(node, renderTableDirective2(node, ctx), ctx);
+    }
+    if (node.name === "figure") {
+      return wrapDirective(node, renderFigure(node, ctx, depth), ctx);
+    }
+    if (node.name === "agent_task" || node.name === "todo") {
+      return wrapDirective(node, renderTask(node, ctx, depth), ctx);
+    }
+    if (isCallout(node)) {
+      return wrapDirective(node, renderCallout(node, ctx, depth), ctx);
+    }
+    if (node.name === "card" || node.name === "tab" || node.name === "sidebar") {
+      return wrapDirective(node, renderTitledContainer(node, ctx, depth), ctx);
+    }
+    if (LAYOUT_CONTAINERS.has(node.name)) {
+      return wrapDirective(node, renderDirectiveChildren(node, ctx, depth), ctx);
+    }
+    if (CODE_DIRECTIVES.has(node.name) && hasCodeLikeBody(node)) {
+      const language = attrText(node, "lang", "language", "runtime");
+      return wrapDirective(node, renderLabeledCode(node, ctx, depth, language), ctx);
+    }
+    if (node.name === "button" || node.name === "export_button") {
+      return wrapDirective(node, renderAction(node, ctx, depth), ctx);
+    }
+    if (VERBATIM_DIRECTIVES.has(node.name)) {
+      return wrapDirective(node, renderVerbatimDirective(node), ctx);
+    }
+    return wrapDirective(node, renderGenericDirective2(node, ctx, depth), ctx);
+  }
+  function renderCallout(node, ctx, depth) {
+    const admonition = calloutKind(node);
+    const title = attrText(node, "title", "label", "caption");
+    const body = renderDirectiveContent(node, ctx, depth);
+    const lines = [admonition ? `[!${admonition}]` : void 0, title ? `**${renderInline(title, ctx)}**` : void 0, body].filter((line) => Boolean(line && line.trim()));
+    return lines.map((line) => quoteMarkdown(line)).join("\n");
+  }
+  function renderTitledContainer(node, ctx, depth) {
+    const title = attrText(node, "title", "label", "caption", "name") ?? readableDirectiveName2(node.name);
+    const headingLevel = Math.min(6, depth + 1);
+    return joinBlocks([
+      `${"#".repeat(headingLevel)} ${renderInline(title, ctx)}`,
+      renderMetadata(node),
+      renderDirectiveContent(node, ctx, depth)
+    ]);
+  }
+  function renderGenericDirective2(node, ctx, depth) {
+    const title = directiveTitle(node);
+    const content = renderDirectiveContent(node, ctx, depth);
+    return joinBlocks([`**${renderInline(title, ctx)}**`, renderMetadata(node), content]);
+  }
+  function renderLabeledCode(node, ctx, depth, language) {
+    return joinBlocks([
+      `**${renderInline(directiveTitle(node), ctx)}**`,
+      renderMetadata(node),
+      fenced(node.body ?? renderDirectiveChildren(node, ctx, depth), language)
+    ]);
+  }
+  function renderVerbatimDirective(node) {
+    const language = node.name === "dataset" ? datasetLanguage(node) : node.name;
+    return joinBlocks([
+      `**${directiveTitle(node)}**`,
+      renderMetadata(node),
+      fenced(node.body ?? "", language)
+    ]);
+  }
+  function renderAction(node, ctx, depth) {
+    const label = attrText(node, "Label", "label", "title") ?? directiveBodyLabel(node) ?? readableDirectiveName2(node.name);
+    const href = attrText(node, "href", "url");
+    const body = renderDirectiveContent(node, ctx, depth);
+    const action = href ? `[${renderInline(label, ctx)}](${href})` : `**${renderInline(label, ctx)}**`;
+    return joinBlocks([action, renderMetadata(node), body]);
+  }
+  function renderFigure(node, ctx, depth) {
+    const src = attrText(node, "src", "href", "url");
+    const alt = attrText(node, "alt") ?? attrText(node, "caption", "title") ?? node.id ?? "Figure";
+    const caption = attrText(node, "caption", "title");
+    const media = src ? `![${renderInline(alt, ctx)}](${src})` : `**${renderInline(directiveTitle(node), ctx)}**`;
+    return joinBlocks([
+      media,
+      caption ? `_${renderInline(caption, ctx)}_` : "",
+      renderMetadata(node),
+      renderDirectiveContent(node, ctx, depth)
+    ]);
+  }
+  function renderTask(node, ctx, depth) {
+    const checked = node.attrs.done === true || attrText(node, "status") === "done";
+    const body = renderDirectiveContent(node, ctx, depth).trim() || directiveTitle(node);
+    const firstLine = body.split("\n")[0] ?? "";
+    const rest = body.split("\n").slice(1).join("\n");
+    const item = `- [${checked ? "x" : " "}] ${firstLine}`;
+    return joinBlocks([item, rest, renderMetadata(node)]);
+  }
+  function renderTableDirective2(node, ctx) {
+    const rows = (node.body ?? "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith("|")).map(splitPipeRow);
+    if (rows.length === 0) return renderVerbatimDirective(node);
+    const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    const header = node.attrs.header === true ? normalizeRow(rows[0] ?? [], width) : Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
+    const bodyRows = node.attrs.header === true ? rows.slice(1) : rows;
+    return joinBlocks([
+      attrText(node, "title", "caption") ? `**${renderInline(directiveTitle(node), ctx)}**` : "",
+      renderMetadata(node),
+      renderPipeTable(header, bodyRows.map((row) => normalizeRow(row, width)), alignFromAttr(node.attrs.align, width), ctx)
+    ]);
+  }
+  function renderPipeTable(header, rows, align, ctx) {
+    const renderedHeader = header.map((cell) => tableCell(cell, ctx));
+    const renderedRows = rows.map((row2) => row2.map((cell) => tableCell(cell, ctx)));
+    const widths = renderedHeader.map(
+      (cell, index) => Math.max(cell.length, ...renderedRows.map((row2) => (row2[index] ?? "").length), 3)
+    );
+    const row = (cells) => "| " + cells.map((cell, index) => cell.padEnd(widths[index] ?? cell.length)).join(" | ") + " |";
+    const separator = "| " + widths.map((width, index) => alignmentSeparator(width, align[index] ?? null)).join(" | ") + " |";
+    return [row(renderedHeader), separator, ...renderedRows.map(row)].join("\n");
+  }
+  function renderDirectiveContent(node, ctx, depth) {
+    if (node.children.length > 0) return renderDirectiveChildren(node, ctx, depth);
+    if (node.body === void 0) return "";
+    return renderInline(node.body, ctx);
+  }
+  function renderDirectiveChildren(node, ctx, depth) {
+    return joinBlocks(node.children.map((child) => renderNode2(child, ctx, depth + 1)));
+  }
+  function wrapDirective(node, body, ctx) {
+    const anchors = renderAnchors([node.id, ...node.aliases ?? []], ctx);
+    if (!ctx.semanticComments) return joinBlocks([anchors, body]);
+    const open = directiveComment(node);
+    const close = `<!-- /noma:block ${safeCommentToken(node.id ?? node.name)} -->`;
+    return joinBlocks([anchors, open, body, close]);
+  }
+  function renderInline(src, ctx) {
+    const text = unescapeMarkdownTextEscapes(src);
+    if (!ctx.anchorWikilinks) return text;
+    return text.replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, (_match, id) => `[${id}](#${id})`);
+  }
+  function renderAnchors(values, ctx) {
+    if (!ctx.includeAnchors) return "";
+    const unique = [...new Set(values.filter((value) => Boolean(value)))];
+    return unique.map((value) => `<a id="${escapeHtmlAttr(value)}"></a>`).join("\n");
+  }
+  function renderMetadata(node) {
+    const parts = metadataParts(node);
+    return parts.length > 0 ? `_${parts.join(", ")}_` : "";
+  }
+  function metadataParts(node) {
+    const skip = /* @__PURE__ */ new Set(["id", "title", "caption", "label", "Label", "name", "src", "alt"]);
+    const parts = [];
+    if (node.id) parts.push(`id=${node.id}`);
+    for (const [key, value] of Object.entries(node.attrs)) {
+      if (skip.has(key)) continue;
+      parts.push(formatAttr(key, value));
+    }
+    return parts;
+  }
+  function directiveComment(node) {
+    const attrs = Object.fromEntries(Object.entries(node.attrs).filter(([key]) => key !== "id"));
+    const payload = { name: node.name };
+    if (node.id) payload.id = node.id;
+    if (Object.keys(attrs).length > 0) payload.attrs = attrs;
+    return `<!-- noma:block ${safeCommentToken(JSON.stringify(payload))} -->`;
+  }
+  function directiveTitle(node) {
+    const title = attrText(node, "title", "caption", "label", "Label", "name");
+    const label = readableDirectiveName2(node.name);
+    if (title) return label === title ? title : `${label}: ${title}`;
+    return node.id ? `${label}: ${node.id}` : label;
+  }
+  function directiveBodyLabel(node) {
+    if (!node.body) return void 0;
+    const match = /^(?:Label|label|title):\s*(.+)$/m.exec(node.body);
+    return match?.[1]?.trim();
+  }
+  function isCallout(node) {
+    return node.name === "summary" || node.name === "abstract" || node.name === "callout" || node.name === "note" || node.name === "warning" || node.name === "tip";
+  }
+  function calloutKind(node) {
+    if (node.name === "warning") return "WARNING";
+    if (node.name === "tip") return "TIP";
+    if (node.name === "note") return "NOTE";
+    const tone = attrText(node, "tone")?.toLowerCase();
+    if (tone === "warning" || tone === "danger" || tone === "error") return "WARNING";
+    if (tone === "tip" || tone === "success") return "TIP";
+    if (tone === "info" || tone === "note") return "NOTE";
+    return "NOTE";
+  }
+  function hasCodeLikeBody(node) {
+    return node.body !== void 0 && (node.children.length === 0 || attrText(node, "lang", "language", "runtime") !== void 0);
+  }
+  function datasetLanguage(node) {
+    const format = attrText(node, "format")?.toLowerCase();
+    if (format === "csv" || format === "tsv" || format === "json" || format === "yaml") return format;
+    if ((node.body ?? "").trimStart().startsWith("{") || (node.body ?? "").trimStart().startsWith("[")) return "json";
+    return "yaml";
+  }
+  function attrText(node, ...keys) {
+    for (const key of keys) {
+      const value = node.attrs[key];
+      if (typeof value === "string" && value.trim()) return value;
+      if (typeof value === "number" || typeof value === "boolean") return String(value);
+    }
+    return void 0;
+  }
+  function formatAttr(key, value) {
+    if (value === true) return key;
+    return `${key}=${String(value)}`;
+  }
+  function readableDirectiveName2(name) {
+    const words = name.replace(/::/g, "_").split(/[_-]+/).filter(Boolean);
+    if (words.length === 0) return "Block";
+    return words.map((word, index) => {
+      const lower = word.toLowerCase();
+      return index === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    }).join(" ");
+  }
+  function tableCell(cell, ctx) {
+    return escapePipeTableCell(renderInline(cell, ctx));
+  }
+  function alignmentSeparator(width, align) {
+    if (align === "center") return ":" + "-".repeat(Math.max(3, width - 2)) + ":";
+    if (align === "right") return "-".repeat(Math.max(3, width - 1)) + ":";
+    if (align === "left") return ":" + "-".repeat(Math.max(3, width - 1));
+    return "-".repeat(Math.max(3, width));
+  }
+  function alignFromAttr(value, width) {
+    const parts = typeof value === "string" ? value.split(/[,\s]+/).filter(Boolean) : [];
+    return Array.from({ length: width }, (_item, index) => {
+      const code = parts[index]?.toLowerCase();
+      if (code === "l" || code === "left") return "left";
+      if (code === "c" || code === "center") return "center";
+      if (code === "r" || code === "right") return "right";
+      return null;
+    });
+  }
+  function normalizeRow(row, width) {
+    return Array.from({ length: width }, (_value, index) => row[index] ?? "");
+  }
+  function quoteMarkdown(text) {
+    return text.split("\n").map((line) => `> ${line}`).join("\n");
+  }
+  function fenced(content, language) {
+    const fence = content.includes("```") ? "~~~~" : "```";
+    return `${fence}${language ?? ""}
+${content.replace(/\n+$/, "")}
+${fence}`;
+  }
+  function joinBlocks(chunks) {
+    return chunks.filter((chunk) => chunk.trim().length > 0).join("\n\n");
+  }
+  function safeCommentToken(value) {
+    return value.replace(/--/g, "- -");
+  }
+  function escapeHtmlAttr(value) {
+    return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
   // src/validator.ts
   var DEFAULT_STALE_DAYS = 365;
   var PROFILES = {
@@ -6978,9 +7349,12 @@ ${bodyRows}
   var loadExampleButton = requireElement("loadExample");
   var newDocumentButton = requireElement("newDocument");
   var fileInput = requireElement("fileInput");
+  var markdownFileInput = requireElement("markdownFileInput");
+  var pasteMarkdownButton = requireElement("pasteMarkdown");
   var downloadSourceButton = requireElement("downloadSource");
   var downloadHtmlButton = requireElement("downloadHtml");
   var downloadJsonButton = requireElement("downloadJson");
+  var copyMarkdownButton = requireElement("copyMarkdown");
   var copyLlmButton = requireElement("copyLlm");
   var copyDocxCommandButton = requireElement("copyDocxCommand");
   var printPreviewButton = requireElement("printPreview");
@@ -7033,8 +7407,17 @@ ${bodyRows}
     fileInput.addEventListener("change", async () => {
       const file = fileInput.files?.[0];
       if (!file) return;
-      setSource(await file.text(), file.name);
+      await loadSourceFile(file);
       fileInput.value = "";
+    });
+    markdownFileInput.addEventListener("change", async () => {
+      const file = markdownFileInput.files?.[0];
+      if (!file) return;
+      await loadMarkdownFile(file);
+      markdownFileInput.value = "";
+    });
+    pasteMarkdownButton.addEventListener("click", () => {
+      void pasteMarkdownFromClipboard();
     });
     for (const button of targetButtons) {
       button.addEventListener("click", () => {
@@ -7062,6 +7445,10 @@ ${bodyRows}
     downloadJsonButton.addEventListener("click", () => {
       if (state.error) return;
       downloadText("document.json", state.json, "application/json");
+    });
+    copyMarkdownButton.addEventListener("click", async () => {
+      if (state.error) return;
+      await copyText(state.markdown, "Copied Markdown");
     });
     copyLlmButton.addEventListener("click", async () => {
       if (state.error) return;
@@ -7288,6 +7675,43 @@ Add image description or source details.
         break;
     }
   }
+  async function loadSourceFile(file) {
+    const source = await file.text();
+    if (isMarkdownFile(file)) {
+      setSource(markdownSourceFromText(source), `Markdown ${file.name}`);
+      return;
+    }
+    setSource(source, file.name);
+  }
+  async function loadMarkdownFile(file) {
+    const source = await file.text();
+    setSource(markdownSourceFromText(source), `Markdown ${file.name}`);
+  }
+  async function pasteMarkdownFromClipboard() {
+    if (!navigator.clipboard?.readText) {
+      showTransientStatus("Clipboard read unavailable", "warning");
+      sourceInput.focus();
+      return;
+    }
+    try {
+      const source = await navigator.clipboard.readText();
+      if (!source.trim()) {
+        showTransientStatus("Clipboard is empty", "warning");
+        sourceInput.focus();
+        return;
+      }
+      setSource(markdownSourceFromText(source), "Markdown paste");
+    } catch {
+      showTransientStatus("Clipboard read blocked by browser", "warning");
+      sourceInput.focus();
+    }
+  }
+  function isMarkdownFile(file) {
+    return /\.(?:md|markdown|mdown|mkdn)$/i.test(file.name) || /^text\/(?:markdown|x-markdown)$/i.test(file.type);
+  }
+  function markdownSourceFromText(source) {
+    return source.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  }
   function setSource(source, label) {
     sourceInput.value = source;
     localStorage.setItem(storageKey, sourceInput.value);
@@ -7408,7 +7832,8 @@ body { background: #ffffff; }`;
         html: renderHtml(doc, htmlOptions),
         previewHtml: renderHtml(doc, { ...htmlOptions, sourcePositions: true }),
         json: renderJson(doc),
-        llm: renderLlm(doc)
+        llm: renderLlm(doc),
+        markdown: renderMarkdown(doc)
       };
     } catch (error) {
       state = {
@@ -7818,7 +8243,8 @@ body { background: #ffffff; }`;
       html: "",
       previewHtml: "",
       json: "",
-      llm: ""
+      llm: "",
+      markdown: ""
     };
   }
   function errorDocument(message) {

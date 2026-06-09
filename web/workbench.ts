@@ -3,6 +3,7 @@ import { parse } from "../src/parser.js";
 import { renderHtml } from "../src/renderer-html.js";
 import { renderJson } from "../src/renderer-json.js";
 import { renderLlm } from "../src/renderer-llm.js";
+import { renderMarkdown } from "../src/renderer-markdown.js";
 import { validate } from "../src/validator.js";
 import defaultThemeCss from "../themes/default.css";
 import agentPlanSource from "../examples/agent-plan.noma";
@@ -48,6 +49,7 @@ interface RenderState {
   previewHtml: string;
   json: string;
   llm: string;
+  markdown: string;
   error?: Error;
 }
 
@@ -82,9 +84,12 @@ const exampleSelect = requireElement<HTMLSelectElement>("exampleSelect");
 const loadExampleButton = requireElement<HTMLButtonElement>("loadExample");
 const newDocumentButton = requireElement<HTMLButtonElement>("newDocument");
 const fileInput = requireElement<HTMLInputElement>("fileInput");
+const markdownFileInput = requireElement<HTMLInputElement>("markdownFileInput");
+const pasteMarkdownButton = requireElement<HTMLButtonElement>("pasteMarkdown");
 const downloadSourceButton = requireElement<HTMLButtonElement>("downloadSource");
 const downloadHtmlButton = requireElement<HTMLButtonElement>("downloadHtml");
 const downloadJsonButton = requireElement<HTMLButtonElement>("downloadJson");
+const copyMarkdownButton = requireElement<HTMLButtonElement>("copyMarkdown");
 const copyLlmButton = requireElement<HTMLButtonElement>("copyLlm");
 const copyDocxCommandButton = requireElement<HTMLButtonElement>("copyDocxCommand");
 const printPreviewButton = requireElement<HTMLButtonElement>("printPreview");
@@ -146,8 +151,19 @@ function bindEvents(): void {
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
-    setSource(await file.text(), file.name);
+    await loadSourceFile(file);
     fileInput.value = "";
+  });
+
+  markdownFileInput.addEventListener("change", async () => {
+    const file = markdownFileInput.files?.[0];
+    if (!file) return;
+    await loadMarkdownFile(file);
+    markdownFileInput.value = "";
+  });
+
+  pasteMarkdownButton.addEventListener("click", () => {
+    void pasteMarkdownFromClipboard();
   });
 
   for (const button of targetButtons) {
@@ -180,6 +196,11 @@ function bindEvents(): void {
   downloadJsonButton.addEventListener("click", () => {
     if (state.error) return;
     downloadText("document.json", state.json, "application/json");
+  });
+
+  copyMarkdownButton.addEventListener("click", async () => {
+    if (state.error) return;
+    await copyText(state.markdown, "Copied Markdown");
   });
 
   copyLlmButton.addEventListener("click", async () => {
@@ -408,6 +429,49 @@ function runCommand(command: CommandName): void {
   }
 }
 
+async function loadSourceFile(file: File): Promise<void> {
+  const source = await file.text();
+  if (isMarkdownFile(file)) {
+    setSource(markdownSourceFromText(source), `Markdown ${file.name}`);
+    return;
+  }
+  setSource(source, file.name);
+}
+
+async function loadMarkdownFile(file: File): Promise<void> {
+  const source = await file.text();
+  setSource(markdownSourceFromText(source), `Markdown ${file.name}`);
+}
+
+async function pasteMarkdownFromClipboard(): Promise<void> {
+  if (!navigator.clipboard?.readText) {
+    showTransientStatus("Clipboard read unavailable", "warning");
+    sourceInput.focus();
+    return;
+  }
+
+  try {
+    const source = await navigator.clipboard.readText();
+    if (!source.trim()) {
+      showTransientStatus("Clipboard is empty", "warning");
+      sourceInput.focus();
+      return;
+    }
+    setSource(markdownSourceFromText(source), "Markdown paste");
+  } catch {
+    showTransientStatus("Clipboard read blocked by browser", "warning");
+    sourceInput.focus();
+  }
+}
+
+function isMarkdownFile(file: File): boolean {
+  return /\.(?:md|markdown|mdown|mkdn)$/i.test(file.name) || /^text\/(?:markdown|x-markdown)$/i.test(file.type);
+}
+
+function markdownSourceFromText(source: string): string {
+  return source.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+}
+
 function setSource(source: string, label?: string): void {
   sourceInput.value = source;
   localStorage.setItem(storageKey, sourceInput.value);
@@ -535,6 +599,7 @@ function renderCurrent(): void {
       previewHtml: renderHtml(doc, { ...htmlOptions, sourcePositions: true }),
       json: renderJson(doc),
       llm: renderLlm(doc),
+      markdown: renderMarkdown(doc),
     };
   } catch (error) {
     state = {
@@ -1025,6 +1090,7 @@ function emptyState(): RenderState {
     previewHtml: "",
     json: "",
     llm: "",
+    markdown: "",
   };
 }
 
