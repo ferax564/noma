@@ -1,21 +1,23 @@
 ---
-title: Noma Research Memo -- Markdown and HTML Pain Points
+title: Noma Research Memo -- LaTeX, Markdown, and HTML Pain Points
 date: 2026-05-22
+updated: 2026-06-05
 status: draft
 profile: research
 stale_citation_days: 90
-tags: [research, positioning, markdown, html, agents]
+tags: [research, positioning, latex, markdown, html, agents]
 ---
 
-# Noma Research Memo -- Markdown and HTML Pain Points
+# Noma Research Memo -- LaTeX, Markdown, and HTML Pain Points
 
 ::summary
-External research across X, Reddit, Hacker News, official Markdown
-specification material, GitHub issues, and Stack Overflow supports the
-current Noma wedge: Markdown remains the best low-ceremony source for
-simple prose, HTML remains the best artifact target, and the open gap is
-a readable, structured source format that renders rich artifacts and gives
-agents stable patch targets.
+External research across X, Reddit, Hacker News, official Markdown and
+Overleaf material, GitHub issues, and Stack Overflow supports the current
+Noma wedge: LaTeX remains strongest for publication-grade typesetting,
+Markdown remains the best low-ceremony source for simple prose, HTML
+remains the best artifact target, and the open gap is a readable,
+structured source format that renders rich artifacts and gives agents
+stable patch targets.
 ::
 
 ## Executive conclusion
@@ -52,6 +54,7 @@ right frame to emphasize more strongly.
 
 ::table{header align="l,l,l"}
 | Observed pain | Where it shows up | Noma answer |
+| LaTeX compile errors, generated-file errors, and Overleaf timeouts interrupt the writing loop | Overleaf docs, Reddit LaTeX/Overleaf threads | Keep math/PDF support but make artifact authoring diagnostics-first, live-previewable, and block-addressable |
 | Markdown tables are tedious, fragile, and ugly at scale | Reddit, Markdown Guide, GitHub/Stack Overflow issues | Keep pipe tables for simple cases; use `::table`, datasets, and plots for richer data |
 | Markdown dialects render differently | CommonMark/GFM docs, Obsidian/CommonMark Reddit thread | Own a typed parser and validator instead of relying on ambient Markdown flavor behavior |
 | Rich documents become Markdown plus HTML/CSS/Mermaid soup | Reddit technical-doc thread, X/HTML debate | Provide declarative layout and data directives with controlled escape hatches |
@@ -63,7 +66,51 @@ right frame to emphasize more strongly.
 
 ## Findings
 
-### 1. Markdown tables are the loudest everyday pain
+### 1. LaTeX is powerful, but the compile loop is heavy for agent-maintained artifacts
+
+::claim{id="claim-latex-compile-loop-pain" confidence=0.82}
+LaTeX should not be dismissed: it is excellent for equations, academic
+typesetting, and established publication pipelines. The product gap for
+Noma is documents that need math and print output but also need live
+preview, diagnostics, table/data editing, and safe agent patches.
+::
+
+::evidence{id="evidence-overleaf-errors" for="claim-latex-compile-loop-pain" source="source-overleaf-fixing-errors"}
+Overleaf's own troubleshooting flow centers on understanding compiler
+errors, generated-file errors, and compile-time failures. Its guidance to
+use the error pane and locate the source line is useful, but it still
+frames authoring around compiler feedback rather than a structured
+document AST.
+::
+
+::evidence{id="evidence-overleaf-timeouts" for="claim-latex-compile-loop-pain" source="source-overleaf-timeouts"}
+Overleaf documents compile timeouts as a practical failure mode, especially
+for large or complex projects, and recommends fixing accumulated errors,
+optimizing heavy assets, or changing compile settings before the PDF can be
+produced reliably.
+::
+
+::evidence{id="evidence-reddit-overleaf-timeouts" for="claim-latex-compile-loop-pain" source="source-reddit-overleaf-timeouts"}
+Recent Reddit threads about Overleaf timeouts show the same product shape
+from the user side: people value collaboration and sharing, but the compile
+limit can push them toward local editor workflows when documents include
+figures, tables, or thesis-scale structure.
+::
+
+::evidence{id="evidence-reddit-latex-errors" for="claim-latex-compile-loop-pain" source="source-reddit-latex-errors"}
+Reddit LaTeX users repeatedly describe non-trivial TeX errors as hard to
+localize and debug, especially for new users and for documents that keep
+compiling until accumulated errors later become blocking.
+::
+
+::result{id="result-latex-product-implication"}
+Noma should be LaTeX-friendly, not LaTeX-hostile. The workbench should make
+math blocks easy to preview, keep PDF export available, and sell the
+diagnostics/proof/table loop for agent-maintained reports where raw TeX is
+too brittle as the collaboration surface.
+::
+
+### 2. Markdown tables are the loudest everyday pain
 
 ::claim{id="claim-markdown-table-pain" confidence=0.88}
 Tables are the most repeated concrete Markdown complaint: users like the
@@ -106,7 +153,7 @@ HTML/PDF and export to LLM context without forcing users to hand-align
 source.
 ::
 
-### 2. Markdown's extension story is still fractured
+### 3. Markdown's extension story is still fractured
 
 ::claim{id="claim-markdown-fragmentation" confidence=0.84}
 Markdown's core strength is portability for simple prose; its weakness is
@@ -138,7 +185,7 @@ comparison should say that Noma borrows Markdown's readable baseline but
 does not inherit Markdown's implicit flavor negotiation for rich blocks.
 ::
 
-### 3. People now want HTML because agent outputs became artifacts
+### 4. People now want HTML because agent outputs became artifacts
 
 ::claim{id="claim-html-artifact-demand" confidence=0.86}
 The renewed interest in HTML is real because AI agents are no longer only
@@ -171,7 +218,7 @@ artifact should often be HTML. But it should reject the weaker part:
 humans and agents should not have to store, diff, and patch the raw HTML.
 ::
 
-### 4. Raw HTML loses as durable source
+### 5. Raw HTML loses as durable source
 
 ::claim{id="claim-html-source-pain" confidence=0.82}
 Raw HTML is a strong artifact format and a weak durable source format for
@@ -210,7 +257,7 @@ source of truth." This captures both sides of the debate and avoids an
 unnecessary Markdown-vs-HTML binary.
 ::
 
-### 5. The agent-era gap is stable structure, not more formatting
+### 6. The agent-era gap is stable structure, not more formatting
 
 ::claim{id="claim-agent-structure-gap" confidence=0.87}
 The unsolved agent-era document problem is stable, structured state:
@@ -255,6 +302,7 @@ source that renders rich artifacts" as the core comparison frame.
 | Say "HTML is an output, not the source" more often | The current X/HN/Reddit debate makes this immediately legible |
 | Lead with tables, research memos, PR reviews, and decision artifacts | These are the recurring pain clusters where Markdown is too flat and raw HTML is too noisy |
 | Show source and artifact side by side | The differentiator is the split: readable `.noma` source plus rich HTML/PDF/LLM output |
+| Be LaTeX-friendly | Users who need equations and print output should see Noma as a lighter source/artifact loop around math-capable reports, not as an anti-TeX crusade |
 | Treat agent patching as the wedge, not an extra feature | Stable IDs and source-preserving patches answer the co-authoring and diff objections to generated HTML |
 | Keep escape hatches controlled | Users already worry about hidden or unsafe HTML; strict mode and LLM stripping are positioning assets |
 ::
@@ -262,6 +310,7 @@ source that renders rich artifacts" as the core comparison frame.
 ## What Noma can credibly solve
 
 - Rich tables without hand-maintained pipe alignment for every complex case.
+- Math-capable reports with live preview, diagnostics, and PDF output without making TeX the collaboration surface.
 - Structured claims, evidence, risks, decisions, citations, and stale checks.
 - Agent-safe targeted edits through block IDs and patch operations.
 - Beautiful standalone HTML without making authors or agents hand-write HTML.
@@ -272,6 +321,7 @@ source that renders rich artifacts" as the core comparison frame.
 
 - It should not claim Markdown is obsolete. Markdown is still ideal for short, linear prose.
 - It should not claim HTML is bad. HTML is the right artifact target and the right escape hatch for bespoke pages.
+- It should not claim LaTeX is obsolete. LaTeX remains the right tool for many journal and equation-heavy publication workflows.
 - It should not claim to solve live collaborative editing. Google Docs and Notion still own messy human collaboration.
 - It should not claim arbitrary app UI is core Noma. Pixel-perfect apps should remain HTML/React/etc.
 - It should not hide the adoption cost. A `.noma` document pays off only when structure, validation, rendering, or agent edits matter.
@@ -305,6 +355,26 @@ strongest.
 ::
 
 ## Source notes
+
+::citation{id="source-overleaf-fixing-errors" url="https://docs.overleaf.com/troubleshooting-and-support/fixing-latex-errors" accessed="2026-06-05"}
+Overleaf documentation on using its error pane to locate and understand
+LaTeX compiler errors.
+::
+
+::citation{id="source-overleaf-timeouts" url="https://docs.overleaf.com/troubleshooting-and-support/fixing-and-preventing-compile-timeouts" accessed="2026-06-05"}
+Overleaf documentation on compile timeouts, accumulated errors, heavy
+assets, and project-organization causes.
+::
+
+::citation{id="source-reddit-latex-errors" url="https://www.reddit.com/r/LaTeX/comments/ijbtwp/latex_error_messages_do_not_help_at_all_any_tips/" accessed="2026-06-05"}
+Reddit LaTeX thread about frustrating error messages and debugging `.tex`
+files.
+::
+
+::citation{id="source-reddit-overleaf-timeouts" url="https://www.reddit.com/r/LaTeX/comments/1ndn0r3/overleafs_new_compilation_timeout_is_a_joke/" accessed="2026-06-05"}
+Reddit LaTeX thread about Overleaf compile-timeout frustration and local
+workflow alternatives.
+::
 
 ::citation{id="source-x-thariq-html" url="https://x.com/trq212/status/2052809885763747935" accessed="2026-05-22"}
 Original X post/thread by Thariq Shihipar that triggered the May 2026

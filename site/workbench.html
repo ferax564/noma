@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Noma web workbench for editing, checking, and previewing .noma documents in the browser." />
+<meta name="description" content="Noma web workbench for source-first editing, diagnostics, proofed agent patches, and live artifact preview." />
 <title>Noma Workbench</title>
 <link rel="icon" href="data:," />
 <link rel="preconnect" href="https://rsms.me/" />
@@ -15,6 +15,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="./"><span class="brand-mark"></span>Noma Workbench</a>
+      <span class="topline">Source -> proof -> artifact</span>
       <nav class="topnav" aria-label="Workbench links">
         <a href="./">Home</a>
         <a href="docs/getting-started.html">Docs</a>
@@ -116,6 +117,12 @@
           <button type="button" data-command="insertChange">Change</button>
           <button type="button" data-command="insertFootnote">Footnote</button>
         </div>
+        <div class="tool-group" aria-label="Agent proof tools">
+          <span class="tool-label">Agent</span>
+          <button id="generateProof" type="button">Prove</button>
+          <button id="applyProof" type="button" disabled>Apply</button>
+          <button id="copyProofLink" type="button" disabled>Share Proof</button>
+        </div>
       </div>
 
       <div id="ribbonFind" class="ribbon-panel" role="tabpanel" data-ribbon-panel="find" aria-labelledby="ribbonTabFind" hidden>
@@ -142,6 +149,11 @@
           <button id="copyDocxCommand" type="button">DOCX Cmd</button>
           <button id="printPreview" type="button">Print</button>
         </div>
+        <div class="tool-group" aria-label="Collaboration actions">
+          <span class="tool-label">Share</span>
+          <button id="copyDraftLink" type="button">Draft Link</button>
+          <button id="copyReviewPacket" type="button">Review Packet</button>
+        </div>
       </div>
     </div>
 
@@ -161,6 +173,7 @@
             <button id="previewEditToggle" type="button" aria-pressed="false">Edit Preview</button>
             <button type="button" data-target="json" aria-pressed="false">AST</button>
             <button type="button" data-target="llm" aria-pressed="false">LLM</button>
+            <button type="button" data-target="proof" aria-pressed="false">Proof</button>
           </div>
         </div>
         <iframe id="previewFrame" class="preview-frame" title="Rendered Noma preview" sandbox="allow-same-origin allow-modals"></iframe>
@@ -168,8 +181,65 @@
       </section>
 
       <aside class="side-panel" aria-label="Document inspection">
+        <section class="side-section" aria-labelledby="collabTitle">
+          <h3 id="collabTitle">Collaboration</h3>
+          <label class="cloud-field" for="cloudUserName">
+            Cloud user
+            <input id="cloudUserName" type="text" placeholder="Your name" />
+          </label>
+          <div class="collab-actions" aria-label="Cloud identity actions">
+            <button id="createCloudUser" type="button">New User</button>
+            <button id="copyUserToken" type="button" disabled>User Token</button>
+          </div>
+          <div id="collabStatus" class="collab-status">Preparing document fingerprint.</div>
+          <div id="cloudStatus" class="collab-status cloud-status">Checking cloud workspace.</div>
+          <label class="cloud-field" for="cloudShareRole">
+            Link role
+            <select id="cloudShareRole">
+              <option value="editor">Editor link</option>
+              <option value="viewer">Viewer link</option>
+            </select>
+          </label>
+          <div class="collab-actions" aria-label="Collaboration actions">
+            <button id="saveCloudDocument" type="button" disabled>Save Cloud</button>
+            <button id="copyCloudLink" type="button" disabled>Cloud Link</button>
+            <button id="openCloudArtifact" type="button" disabled>Open Artifact</button>
+            <button id="saveCloudSite" type="button" disabled>Save Site</button>
+            <button id="copyCloudSiteLink" type="button" disabled>Site Link</button>
+            <button id="openCloudSite" type="button" disabled>Open Site</button>
+            <button id="copyDraftLinkPanel" type="button">Copy Draft Link</button>
+            <button id="copyReviewPacketPanel" type="button">Copy Review Packet</button>
+          </div>
+        </section>
+        <section class="side-section" aria-labelledby="proofTitle">
+          <h3 id="proofTitle">Agent Proof</h3>
+          <textarea id="proofOpsInput" class="proof-ops-input" spellcheck="false" aria-label="Patch operations JSON">[
+  {
+    "op": "update_attribute",
+    "id": "decision-q3-direction",
+    "key": "status",
+    "value": "accepted"
+  }
+]</textarea>
+          <p id="proofStatus" class="proof-status">Patch ops are simulated before they can write.</p>
+        </section>
+        <section class="side-section" aria-labelledby="dataTitle">
+          <h3 id="dataTitle">Tables &amp; Data</h3>
+          <label class="data-select-label" for="dataBlockSelect">
+            Block
+            <select id="dataBlockSelect"></select>
+          </label>
+          <div class="data-actions" aria-label="Data editor actions">
+            <button id="addDataRow" type="button">Add Row</button>
+            <button id="addDataColumn" type="button">Add Column</button>
+            <button id="applyDataChanges" type="button">Apply</button>
+          </div>
+          <p id="dataEditorStatus" class="data-status">Choose a table or dataset block with an ID.</p>
+          <div id="dataEditor" class="data-editor"></div>
+        </section>
         <section class="side-section" aria-labelledby="diagnosticsTitle">
           <h3 id="diagnosticsTitle">Diagnostics</h3>
+          <div id="diagnosticsSummary" class="diagnostic-summary">No diagnostics</div>
           <div id="diagnosticsList" class="diagnostics"></div>
         </section>
         <section class="side-section" aria-labelledby="outlineTitle">

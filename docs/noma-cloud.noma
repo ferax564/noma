@@ -1,0 +1,422 @@
+---
+title: Noma Cloud Guide
+version: 0.13.0
+updated: 2026-06-07
+audience: collaborators, researchers, documentation teams, agents
+---
+
+# Noma Cloud Guide
+
+::summary
+Noma Cloud is the hosted workspace for shared Noma documents: research papers,
+books, documentation spaces, live rendered artifacts, permissioned editing,
+agent patch review, published reader sites, and a queryable SQLite-backed API.
+::
+
+[Open Noma Cloud](../cloud.html)
+
+## What Noma Cloud is for
+
+Use Noma Cloud when a `.noma` document should move beyond a local HTML file:
+
+- collaborate on a paper, research memo, book, or documentation space
+- keep multiple pages inside one workspace
+- give viewers and editors different access
+- share stable page, artifact, and published-site links
+- let an agent patch a named block without rewriting the whole source
+- expose a permission-aware query API for future Codex plugins and automation
+
+The source remains plain Noma. The cloud layer adds persistence, users,
+permissions, share links, site membership, rendered artifacts, and the database
+index around that source.
+
+::figure{id="cloud-workspace-shot" src="../assets/docs/noma-cloud-workspace.png" alt="Noma Cloud workspace with navigation, paper source editor, rendered paper preview, share panel, agent review panel, diagnostics, and outline." caption="Noma Cloud keeps the workspace, pages, source, paper preview, permissions, agent review, diagnostics, and outline visible in one hosted app."}
+::
+
+## Run it locally
+
+From a checkout:
+
+```bash
+npm install
+npm run build:cloud
+PORT=3000 npm start
+open http://localhost:3000/cloud.html
+```
+
+The server stores runtime state in SQLite. By default it writes under the local
+cloud data directory configured by the server. In production, set a stable data
+directory or mount `/data/noma` so users, documents, sites, permissions, share
+links, and the block index survive container replacement.
+
+Check the server:
+
+```bash
+curl http://localhost:3000/healthz
+curl http://localhost:3000/api/status
+```
+
+Deploy with EZKeel from this repo:
+
+```bash
+npm run deploy:ezkeel:dry-run
+npm run deploy:ezkeel
+```
+
+The EZKeel deployment uses `Dockerfile`, `ezkeel.yaml`, `npm run build:cloud`,
+`node dist/cloud-server.js`, and `/data/noma` as the storage root.
+
+## Protect the cloud app
+
+Production deployments can put a global token gate in front of the cloud app
+and cloud APIs, plus a separate invitation code for user registration:
+
+```bash
+NOMA_CLOUD_ACCESS_TOKEN_FILE=/data/noma/access-token \
+NOMA_CLOUD_INVITATION_CODE_FILE=/data/noma/invitation-code \
+npm start
+```
+
+Open the login page:
+
+```text
+https://noma-cloud.apps.ezkeel.com/login.html
+```
+
+The login form validates the cloud access token, sets an HttpOnly cookie, and
+can import an existing Noma user token into the browser. New user registration
+is blocked unless the registration form includes the invitation code.
+
+API clients must send the gate token separately from the normal Noma user
+token:
+
+```bash
+curl -H "X-Noma-Cloud-Access-Token: $NOMA_CLOUD_ACCESS_TOKEN" \
+  -H "Authorization: Bearer $NOMA_TOKEN" \
+  https://noma-cloud.apps.ezkeel.com/api/status
+```
+
+When the gate is enabled, `cloud.html`, the cloud editor assets, and `/api/*`
+return `401` without the access token. Browser visits to `cloud.html` redirect
+to `login.html`. Published document and site artifacts still require their own
+share tokens.
+
+## First workspace
+
+After login, Noma Cloud uses a browser-stored Noma user token as the editing
+identity for API calls and UI permissions.
+
+1. Register from `login.html` with the cloud access token and invitation code,
+   or log in with an existing Noma user token.
+2. Edit the **User** field if you want a recognizable collaborator name.
+3. Use **Copy User ID** when another owner needs to invite you.
+4. Use **Copy Token** only for your own API calls or plugin development.
+5. Click **New Workspace** to create a separate research, book, or docs space.
+6. Use **New Page** to add another paper section, chapter, or reference page.
+7. Click a page in the left rail to switch documents.
+
+The default first page is paper-oriented: abstract, research question, claim,
+evidence, methods, review table, findings, citation, bibliography, and review
+task. It is only a starter. Replace it with the structure your team needs.
+
+## Edit a page
+
+The center of the app has two panes:
+
+| Pane | Purpose |
+|---|---|
+| Noma Source | The editable `.noma` source. This is the source of truth and the patch target for agents. |
+| Paper Preview | A sandboxed rendered artifact. It updates as you type and uses the same renderer as the CLI. |
+
+Use the view switch in the page header when the workspace feels too dense:
+
+| Mode | Use it for |
+|---|---|
+| Source | Give the `.noma` editor the full writing canvas. |
+| Split | Keep source and rendered preview side by side. |
+| Preview | Hide the source pane and side panels so the paper/artifact becomes the main surface. |
+
+In Preview mode, owners and editors can click rendered headings, paragraphs,
+list items, and quotes to edit them directly. Those edits sync back to the
+matching source lines and mark the page unsaved. Semantic blocks, tables,
+citations, figures, and agent patches remain source-first so structured
+metadata is not rewritten accidentally. Use **Panels** when you need the
+workspace rail, share controls, diagnostics, or outline again.
+
+Mouse editing is available in Preview mode:
+
+| Action | Result |
+|---|---|
+| Click a heading, paragraph, list item, or quote | Select it and edit the rendered text in place. |
+| Click **+ Section** on the selected-block toolbar | Insert a new section after the selected section or block. |
+| Click **+ Text** on the selected-block toolbar | Insert a new paragraph after the selected block. |
+| Drag the paper edge | Resize the preview paper width for reading and screenshots. |
+| Drag the divider in Split mode | Resize the source and preview panes. |
+
+## Link pages like Obsidian
+
+Noma Cloud supports page-oriented wikilinks for LLM wiki workflows:
+
+| Syntax | Meaning |
+|---|---|
+| `[[Literature Review]]` | Link to a page by title. |
+| `[[Literature Review|review]]` | Link to a page by title with a shorter label. |
+| `[[Literature Review#Methods]]` | Link to a page plus a heading target. |
+| `[[claim-main]]` | Keep using a stable Noma block ID link inside a page. |
+
+In the preview, click a resolved page link to open that page. Click a missing
+page link as an editor to create a new wiki page with a summary, notes, related
+links, and an agent maintenance task. The **Wiki** inspector shows outgoing
+links, backlinks, and missing pages for the current page.
+
+The server exposes the same graph through the API:
+
+```bash
+curl -H "X-Noma-Cloud-Access-Token: $NOMA_CLOUD_ACCESS_TOKEN" \
+  -H "Authorization: Bearer $NOMA_TOKEN" \
+  https://noma-cloud.apps.ezkeel.com/api/sites/<site-id>/wiki
+```
+
+The response includes `pages`, `links`, `backlinks`, and `missing` so a Codex
+plugin can query the wiki graph without scraping rendered HTML.
+
+Use stable IDs on headings and semantic blocks:
+
+```noma
+# Research Paper Draft {id="research-paper-draft"}
+
+::claim{id="claim-main" confidence=0.72}
+The core claim goes here.
+::
+
+::evidence{id="evidence-primary" for="claim-main" source="source-primary"}
+The strongest evidence goes here.
+::
+```
+
+Click **Save** when the diagnostics are acceptable. The cloud server stores the
+source, title, hash, diagnostics, and block index in SQLite.
+
+::figure{id="cloud-editing-shot" src="../assets/docs/noma-cloud-editing.png" alt="Noma Cloud editing a paper with live preview, diagnostics, and outline derived from the Noma source." caption="Editing is source-first, but the preview, diagnostics, and outline update from the current AST so authors can catch structure issues while drafting."}
+::
+
+## Scientific-paper workflow
+
+For papers and technical research, keep each reviewable idea in an addressable
+block:
+
+| Need | Noma structure |
+|---|---|
+| Abstract | `::abstract{id="abstract" status="draft"}` |
+| Main claim | `::claim{id="claim-main" confidence=0.72}` |
+| Evidence | `::evidence{id="evidence-primary" for="claim-main" source="source-id"}` |
+| Counterpoint | `::counterevidence{for="claim-main" source="source-id"}` |
+| Method note | normal heading plus prose, or a typed directive if the method needs metadata |
+| Table | pipe table or `::table{id="..." header}` |
+| Figure | `::figure{id="..." src="..." alt="..." caption="..."}` |
+| Equation | inline math or `::math{id="..."}` |
+| Citation | `::citation{id="source-id" url="..." accessed="YYYY-MM-DD"}` |
+| References | `::bibliography{id="references"}` |
+| Review task | `::agent_task{id="task-source-check" scope="paper-review"}` |
+| Reviewer note | `::comment{id="comment-..." parent="claim-main" author="..."}` |
+| Proposed edit | `::change_request{id="cr-..." target="claim-main" action="replace" from="..." to="..."}` |
+
+This shape matters because collaborators and agents can target exactly
+`claim-main`, `evidence-primary`, or `review-checklist` instead of editing the
+whole document.
+
+For journal or committee handoff, use the CLI from the saved source:
+
+```bash
+noma render paper.noma --to html --strict --out paper.html
+noma render paper.noma --to pdf --out paper.pdf
+noma render paper.noma --to docx --out paper.docx
+noma docx-review-sync paper.noma reviewed-paper.docx --out paper.reviewed.noma --report review-sync.json
+```
+
+Cloud is the shared workspace. The CLI remains the strongest release path for
+PDF, DOCX, strict publishing, CI, and source-controlled review.
+
+## Share and permissions
+
+Noma Cloud has three roles:
+
+| Role | Can read | Can edit source | Can manage collaborators |
+|---|---:|---:|---:|
+| Owner | yes | yes | yes |
+| Editor | yes | yes | no |
+| Viewer | yes | no | no |
+
+Owners can invite another browser user by pasting that user's ID into **Invite
+user ID** and choosing viewer or editor. Site invitations also grant matching
+access to the pages currently in the workspace.
+
+Share links are token-based:
+
+| Button | What it copies or opens |
+|---|---|
+| Page Link | A `cloud.html?doc=<id>&share=<token>` editor or viewer link for one page. |
+| Artifact | A rendered `/d/<id>?share=<token>` reader artifact for one page. |
+| Space Link | A `cloud.html?site=<id>&share=<token>` link for the workspace editor/viewer shell. |
+| Published | Opens a rendered `/s/<id>?share=<token>` multi-page reader site. |
+
+Viewer links make the source readonly in the app. Editor links can save the
+page. API query endpoints do not accept share tokens for raw database access;
+they require a real Noma Cloud user token.
+
+::figure{id="cloud-share-shot" src="../assets/docs/noma-cloud-sharing.png" alt="Noma Cloud share panel with viewer/editor links, collaborator invite controls, and agent patch controls." caption="Owners can invite collaborators, create viewer/editor links, and run agent patches from the same inspector."}
+::
+
+## Agent review
+
+The **Agent Review** panel accepts one patch op or an array of patch ops in
+JSON. The browser applies the patch to the current source, parses the result,
+validates it, and only writes the changed source into the editor if validation
+has no errors.
+
+Example:
+
+```json
+[
+  {
+    "op": "replace_body",
+    "id": "claim-main",
+    "content": "The revised central claim goes here."
+  }
+]
+```
+
+Common ops:
+
+| Op | Use it for |
+|---|---|
+| `replace_body` | Rewrite a directive body without touching attrs or neighbors. |
+| `update_heading` | Rename a heading while preserving its stable ID. |
+| `update_attribute` | Change metadata such as `confidence`, `status`, `owner`, or `accessed`. |
+| `add_comment` | Add a targeted review note after the reviewed block. |
+| `resolve_comment` | Mark a comment resolved without deleting history. |
+| `update_table_cell` | Patch one table cell by row and column/header. |
+| `insert_table_row` | Add one row to an ID-bearing table. |
+| `rename_id` | Rename a block ID and retarget references. |
+
+Use **Copy LLM** to copy deterministic LLM context for the current page. That
+context strips unsafe escape hatch bodies and keeps block IDs visible so an
+agent can propose a focused patch transaction.
+
+## Published sites and artifacts
+
+Use **Artifact** when you want one page as a reader artifact. Use **Published**
+when the workspace should become a multi-page reader site with page navigation.
+
+::figure{id="cloud-published-shot" src="../assets/docs/noma-cloud-published.png" alt="Published Noma Cloud site showing a rendered multi-page reader artifact." caption="Published sites turn a workspace into a readable shared artifact while keeping editing permissions in the Cloud app."}
+::
+
+These routes are generated from the same saved source:
+
+| Route | Purpose |
+|---|---|
+| `/cloud.html?site=<id>` | Editable workspace shell. |
+| `/cloud.html?doc=<id>` | Editable or readonly single-page shell. |
+| `/d/<id>` | Rendered single-page artifact. |
+| `/s/<id>` | Rendered workspace site. |
+| `/api/documents/<id>/export?to=html` | HTML export for one document. |
+| `/api/documents/<id>/export?to=llm` | LLM context export for one document. |
+| `/api/documents/<id>/export?to=json` | JSON AST export for one document. |
+
+## Query the DB API
+
+The DB API is intentionally not raw SQL. It is a bounded JSON query surface for
+future plugins and agent tools.
+
+Read the available resources:
+
+```bash
+curl -H "authorization: Bearer $NOMA_TOKEN" \
+  http://localhost:3000/api/db/schema
+```
+
+Query blocks:
+
+```bash
+curl -X POST \
+  -H "authorization: Bearer $NOMA_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"resource":"blocks","q":"claim","limit":10}' \
+  http://localhost:3000/api/db/query
+```
+
+Query documents in a workspace:
+
+```bash
+curl -X POST \
+  -H "authorization: Bearer $NOMA_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"resource":"documents","siteId":"site-id","limit":20}' \
+  http://localhost:3000/api/db/query
+```
+
+Resources:
+
+| Resource | What it returns |
+|---|---|
+| `documents` | Documents visible to the authenticated user. |
+| `sites` | Workspaces visible to the authenticated user. |
+| `blocks` | Indexed headings and directive blocks from visible documents. |
+| `users` | Public user lookup for collaboration workflows. |
+
+Every result is filtered by the caller's Noma Cloud permissions. Tokens copied
+from share links are for document/site access, not database inspection.
+
+::figure{id="cloud-db-shot" src="../assets/docs/noma-cloud-db-api.png" alt="Noma Cloud database API report showing schema and query results for documents, sites, blocks, and users." caption="The API exposes structured workspace data for future plugins without giving agents raw SQL access."}
+::
+
+## Mobile and tablet use
+
+On small screens the app stacks the top bar, workspace rail, editor, preview,
+and inspector vertically. This is useful for review and light editing. Long
+authoring sessions are still better on desktop because the source and preview
+can remain side by side.
+
+::figure{id="cloud-mobile-shot" src="../assets/docs/noma-cloud-mobile.png" alt="Mobile Noma Cloud layout with responsive controls and stacked editor sections." caption="The Cloud UI keeps controls usable on mobile, with the same permissions and diagnostics model."}
+::
+
+## Safety model
+
+Noma Cloud follows the same safety posture as the workbench:
+
+- the preview runs in a sandboxed iframe
+- raw `::html`, `::svg`, and `::script` escape hatches are blocked in preview
+- external figure, math, diagram, and Plotly loads are disabled in preview
+- permissions are checked on document, site, export, share, collaborator, and DB endpoints
+- share links are role-scoped and token-based
+- DB queries are resource-bounded and permission-aware, not arbitrary SQL
+- request bodies have size limits
+- server-side render paths escape user source before artifact output
+
+For repository changes, run:
+
+```bash
+npx tsc --noEmit
+npm test
+npm run build:site
+```
+
+For browser acceptance, verify owner, editor, viewer, page edit, site edit,
+share links, published site, artifact export, DB schema/query, diagnostics,
+agent patches, mobile layout, and XSS payload handling.
+
+## Troubleshooting
+
+| Problem | Check |
+|---|---|
+| Save is disabled | Your current role is viewer, the server is busy, or no page is selected. |
+| New Page is disabled | You need an editor or owner role on the workspace. |
+| Invite is disabled | Only owners can invite collaborators. |
+| Published page is old | Save the page before copying/opening a published link. |
+| DB query returns empty results | Confirm the bearer token belongs to a user with access to the workspace or document. |
+| A patch fails | Use a smaller patch op, verify the target ID in the outline, and fix validation errors before saving. |
+| A collaborator cannot edit | Invite their user ID as editor or create an editor share link. |
+
+Noma Cloud is the collaboration layer. The `.noma` source, renderer outputs,
+block IDs, validator, proof/patch ops, and CLI remain the durable product
+contract underneath it.

@@ -11,185 +11,6 @@
     }
   }
 
-  // src/inline.ts
-  var MARKDOWN_LINK_RE = /\[((?:\\.|[^\]\\])+)\]\(([^)\s]+)\)/g;
-  var WIKILINK_RE = /\[\[([^\]\n]+?)\]\]/g;
-  var BLOCK_REFERENCE_WIKILINK_RE = /^[a-zA-Z_][\w\-./:]*$/;
-  function extractWikilinks(src) {
-    const out = [];
-    for (const match of stripInlineCodeSpans(src).matchAll(WIKILINK_RE)) {
-      const parsed = parseWikilink(match[1] ?? "");
-      if (parsed) out.push(parsed);
-    }
-    return out;
-  }
-  function stripInlineCodeSpans(src) {
-    return src.replace(/`[^`\n]*`/g, "");
-  }
-  function isBlockReferenceWikilinkTarget(target) {
-    return BLOCK_REFERENCE_WIKILINK_RE.test(target);
-  }
-  function inlineToHtml(src) {
-    let text = escapeHtml(src);
-    const codeSpans = [];
-    const PH_OPEN = String.fromCharCode(2);
-    const PH_CLOSE = String.fromCharCode(3);
-    text = text.replace(/`([^`]+)`/g, (_m, body) => {
-      const i = codeSpans.push("<code>" + body + "</code>") - 1;
-      return PH_OPEN + i + PH_CLOSE;
-    });
-    text = unescapeMarkdownTextEscapes(text);
-    text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-    text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
-    text = text.replace(
-      MARKDOWN_LINK_RE,
-      (_m, label, href) => `<a href="${escapeAttr(href)}">${unescapeMarkdownLinkLabel(label)}</a>`
-    );
-    text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
-    text = text.replace(/(?:  +|\\)\n/g, "<br />");
-    text = text.replace(/\n/g, " ");
-    const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
-    text = text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
-    return text;
-  }
-  function inlineToPlain(src) {
-    const codeSpans = [];
-    const PH_OPEN = String.fromCharCode(2);
-    const PH_CLOSE = String.fromCharCode(3);
-    let text = src.replace(/`([^`]+)`/g, (_m, body) => {
-      const i = codeSpans.push(body) - 1;
-      return PH_OPEN + i + PH_CLOSE;
-    });
-    text = unescapeMarkdownTextEscapes(text).replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/\b_([^_]+)_\b/g, "$1").replace(MARKDOWN_LINK_RE, (_m, label, href) => `${unescapeMarkdownLinkLabel(label)} (${href})`).replace(WIKILINK_RE, (match, raw) => parseWikilink(raw)?.label ?? match);
-    const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
-    return text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
-  }
-  function renderWikilinkHtml(match, raw) {
-    const parsed = parseWikilink(raw);
-    if (!parsed) return match;
-    const hrefTarget = isBlockReferenceWikilinkTarget(parsed.target) ? parsed.target : encodeURIComponent(parsed.target);
-    return `<a class="noma-ref" href="#${escapeAttr(hrefTarget)}">${parsed.label}</a>`;
-  }
-  function parseWikilink(raw) {
-    const trimmed = raw.trim();
-    if (!trimmed || trimmed.includes("[") || trimmed.includes("]")) return void 0;
-    const pipe = trimmed.indexOf("|");
-    const target = (pipe === -1 ? trimmed : trimmed.slice(0, pipe)).trim();
-    const label = (pipe === -1 ? defaultWikilinkLabel(target) : trimmed.slice(pipe + 1).trim()) || defaultWikilinkLabel(target);
-    if (!target) return void 0;
-    return { raw: trimmed, target, label };
-  }
-  function defaultWikilinkLabel(target) {
-    return target.replace(/^#/, "").replace(/#/g, " > ");
-  }
-  function unescapeMarkdownLinkLabel(label) {
-    return label.replace(/\\([\\[\]|])/g, "$1");
-  }
-  function unescapeMarkdownTextEscapes(text) {
-    return text.replace(/\\\|/g, "|");
-  }
-  function escapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-  function escapeAttr(s) {
-    return escapeHtml(s).replace(/"/g, "&quot;");
-  }
-  function splitPipeRow(line) {
-    const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-    const cells = [];
-    let buf = "";
-    let inBacktick = false;
-    for (let i = 0; i < trimmed.length; i++) {
-      const ch = trimmed[i];
-      if (ch === "\\" && trimmed[i + 1] === "|") {
-        buf += "\\|";
-        i++;
-        continue;
-      }
-      if (ch === "`") {
-        inBacktick = !inBacktick;
-        buf += ch;
-        continue;
-      }
-      if (ch === "|" && !inBacktick) {
-        cells.push(buf.trim());
-        buf = "";
-        continue;
-      }
-      buf += ch;
-    }
-    cells.push(buf.trim());
-    return cells;
-  }
-  function escapePipeTableCell(cell) {
-    let out = "";
-    let inBacktick = false;
-    for (let i = 0; i < cell.length; i++) {
-      const ch = cell[i];
-      if (ch === "`") {
-        inBacktick = !inBacktick;
-        out += ch;
-        continue;
-      }
-      if (ch === "|" && !inBacktick && cell[i - 1] !== "\\") {
-        out += "\\|";
-        continue;
-      }
-      out += ch;
-    }
-    return out;
-  }
-  function splitDelimitedRow(line, delimiter) {
-    const cells = [];
-    let buf = "";
-    let inQuotes = false;
-    let quotedCell = false;
-    let afterClosingQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuotes) {
-        if (ch === '"' && line[i + 1] === '"') {
-          buf += '"';
-          i++;
-          continue;
-        }
-        if (ch === '"') {
-          inQuotes = false;
-          quotedCell = true;
-          afterClosingQuote = true;
-          continue;
-        }
-        buf += ch;
-        continue;
-      }
-      if (ch === delimiter) {
-        cells.push(quotedCell ? buf : buf.trim());
-        buf = "";
-        quotedCell = false;
-        afterClosingQuote = false;
-        continue;
-      }
-      if (ch === '"' && buf.trim() === "" && !quotedCell) {
-        buf = "";
-        inQuotes = true;
-        continue;
-      }
-      if (afterClosingQuote && /\s/.test(ch)) continue;
-      afterClosingQuote = false;
-      buf += ch;
-    }
-    cells.push(quotedCell ? buf : buf.trim());
-    return cells;
-  }
-  function serializeDelimitedRow(cells, delimiter) {
-    return cells.map((cell) => serializeDelimitedCell(cell, delimiter)).join(delimiter);
-  }
-  function serializeDelimitedCell(cell, delimiter) {
-    if (!cell.includes(delimiter) && !cell.includes('"') && !/^\s|\s$/.test(cell)) return cell;
-    return `"${cell.replace(/"/g, '""')}"`;
-  }
-
   // node_modules/js-yaml/dist/js-yaml.mjs
   function isNothing(subject) {
     return typeof subject === "undefined" || subject === null;
@@ -1091,95 +912,95 @@
     this.firstTabInLine = -1;
     this.documents = [];
   }
-  function generateError(state2, message) {
+  function generateError(state, message) {
     var mark = {
-      name: state2.filename,
-      buffer: state2.input.slice(0, -1),
+      name: state.filename,
+      buffer: state.input.slice(0, -1),
       // omit trailing \0
-      position: state2.position,
-      line: state2.line,
-      column: state2.position - state2.lineStart
+      position: state.position,
+      line: state.line,
+      column: state.position - state.lineStart
     };
     mark.snippet = snippet(mark);
     return new exception(message, mark);
   }
-  function throwError(state2, message) {
-    throw generateError(state2, message);
+  function throwError(state, message) {
+    throw generateError(state, message);
   }
-  function throwWarning(state2, message) {
-    if (state2.onWarning) {
-      state2.onWarning.call(null, generateError(state2, message));
+  function throwWarning(state, message) {
+    if (state.onWarning) {
+      state.onWarning.call(null, generateError(state, message));
     }
   }
   var directiveHandlers = {
-    YAML: function handleYamlDirective(state2, name, args) {
+    YAML: function handleYamlDirective(state, name, args) {
       var match, major, minor;
-      if (state2.version !== null) {
-        throwError(state2, "duplication of %YAML directive");
+      if (state.version !== null) {
+        throwError(state, "duplication of %YAML directive");
       }
       if (args.length !== 1) {
-        throwError(state2, "YAML directive accepts exactly one argument");
+        throwError(state, "YAML directive accepts exactly one argument");
       }
       match = /^([0-9]+)\.([0-9]+)$/.exec(args[0]);
       if (match === null) {
-        throwError(state2, "ill-formed argument of the YAML directive");
+        throwError(state, "ill-formed argument of the YAML directive");
       }
       major = parseInt(match[1], 10);
       minor = parseInt(match[2], 10);
       if (major !== 1) {
-        throwError(state2, "unacceptable YAML version of the document");
+        throwError(state, "unacceptable YAML version of the document");
       }
-      state2.version = args[0];
-      state2.checkLineBreaks = minor < 2;
+      state.version = args[0];
+      state.checkLineBreaks = minor < 2;
       if (minor !== 1 && minor !== 2) {
-        throwWarning(state2, "unsupported YAML version of the document");
+        throwWarning(state, "unsupported YAML version of the document");
       }
     },
-    TAG: function handleTagDirective(state2, name, args) {
+    TAG: function handleTagDirective(state, name, args) {
       var handle, prefix;
       if (args.length !== 2) {
-        throwError(state2, "TAG directive accepts exactly two arguments");
+        throwError(state, "TAG directive accepts exactly two arguments");
       }
       handle = args[0];
       prefix = args[1];
       if (!PATTERN_TAG_HANDLE.test(handle)) {
-        throwError(state2, "ill-formed tag handle (first argument) of the TAG directive");
+        throwError(state, "ill-formed tag handle (first argument) of the TAG directive");
       }
-      if (_hasOwnProperty$1.call(state2.tagMap, handle)) {
-        throwError(state2, 'there is a previously declared suffix for "' + handle + '" tag handle');
+      if (_hasOwnProperty$1.call(state.tagMap, handle)) {
+        throwError(state, 'there is a previously declared suffix for "' + handle + '" tag handle');
       }
       if (!PATTERN_TAG_URI.test(prefix)) {
-        throwError(state2, "ill-formed tag prefix (second argument) of the TAG directive");
+        throwError(state, "ill-formed tag prefix (second argument) of the TAG directive");
       }
       try {
         prefix = decodeURIComponent(prefix);
       } catch (err) {
-        throwError(state2, "tag prefix is malformed: " + prefix);
+        throwError(state, "tag prefix is malformed: " + prefix);
       }
-      state2.tagMap[handle] = prefix;
+      state.tagMap[handle] = prefix;
     }
   };
-  function captureSegment(state2, start, end, checkJson) {
+  function captureSegment(state, start, end, checkJson) {
     var _position, _length, _character, _result;
     if (start < end) {
-      _result = state2.input.slice(start, end);
+      _result = state.input.slice(start, end);
       if (checkJson) {
         for (_position = 0, _length = _result.length; _position < _length; _position += 1) {
           _character = _result.charCodeAt(_position);
           if (!(_character === 9 || 32 <= _character && _character <= 1114111)) {
-            throwError(state2, "expected valid JSON character");
+            throwError(state, "expected valid JSON character");
           }
         }
       } else if (PATTERN_NON_PRINTABLE.test(_result)) {
-        throwError(state2, "the stream contains non-printable characters");
+        throwError(state, "the stream contains non-printable characters");
       }
-      state2.result += _result;
+      state.result += _result;
     }
   }
-  function mergeMappings(state2, destination, source, overridableKeys) {
+  function mergeMappings(state, destination, source, overridableKeys) {
     var sourceKeys, key, index, quantity;
     if (!common.isObject(source)) {
-      throwError(state2, "cannot merge mappings; the provided source object is unacceptable");
+      throwError(state, "cannot merge mappings; the provided source object is unacceptable");
     }
     sourceKeys = Object.keys(source);
     for (index = 0, quantity = sourceKeys.length; index < quantity; index += 1) {
@@ -1190,13 +1011,13 @@
       }
     }
   }
-  function storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, valueNode, startLine, startLineStart, startPos) {
+  function storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, valueNode, startLine, startLineStart, startPos) {
     var index, quantity;
     if (Array.isArray(keyNode)) {
       keyNode = Array.prototype.slice.call(keyNode);
       for (index = 0, quantity = keyNode.length; index < quantity; index += 1) {
         if (Array.isArray(keyNode[index])) {
-          throwError(state2, "nested arrays are not supported inside keys");
+          throwError(state, "nested arrays are not supported inside keys");
         }
         if (typeof keyNode === "object" && _class(keyNode[index]) === "[object Object]") {
           keyNode[index] = "[object Object]";
@@ -1213,246 +1034,246 @@
     if (keyTag === "tag:yaml.org,2002:merge") {
       if (Array.isArray(valueNode)) {
         for (index = 0, quantity = valueNode.length; index < quantity; index += 1) {
-          mergeMappings(state2, _result, valueNode[index], overridableKeys);
+          mergeMappings(state, _result, valueNode[index], overridableKeys);
         }
       } else {
-        mergeMappings(state2, _result, valueNode, overridableKeys);
+        mergeMappings(state, _result, valueNode, overridableKeys);
       }
     } else {
-      if (!state2.json && !_hasOwnProperty$1.call(overridableKeys, keyNode) && _hasOwnProperty$1.call(_result, keyNode)) {
-        state2.line = startLine || state2.line;
-        state2.lineStart = startLineStart || state2.lineStart;
-        state2.position = startPos || state2.position;
-        throwError(state2, "duplicated mapping key");
+      if (!state.json && !_hasOwnProperty$1.call(overridableKeys, keyNode) && _hasOwnProperty$1.call(_result, keyNode)) {
+        state.line = startLine || state.line;
+        state.lineStart = startLineStart || state.lineStart;
+        state.position = startPos || state.position;
+        throwError(state, "duplicated mapping key");
       }
       setProperty(_result, keyNode, valueNode);
       delete overridableKeys[keyNode];
     }
     return _result;
   }
-  function readLineBreak(state2) {
+  function readLineBreak(state) {
     var ch;
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     if (ch === 10) {
-      state2.position++;
+      state.position++;
     } else if (ch === 13) {
-      state2.position++;
-      if (state2.input.charCodeAt(state2.position) === 10) {
-        state2.position++;
+      state.position++;
+      if (state.input.charCodeAt(state.position) === 10) {
+        state.position++;
       }
     } else {
-      throwError(state2, "a line break is expected");
+      throwError(state, "a line break is expected");
     }
-    state2.line += 1;
-    state2.lineStart = state2.position;
-    state2.firstTabInLine = -1;
+    state.line += 1;
+    state.lineStart = state.position;
+    state.firstTabInLine = -1;
   }
-  function skipSeparationSpace(state2, allowComments, checkIndent) {
-    var lineBreaks = 0, ch = state2.input.charCodeAt(state2.position);
+  function skipSeparationSpace(state, allowComments, checkIndent) {
+    var lineBreaks = 0, ch = state.input.charCodeAt(state.position);
     while (ch !== 0) {
       while (is_WHITE_SPACE(ch)) {
-        if (ch === 9 && state2.firstTabInLine === -1) {
-          state2.firstTabInLine = state2.position;
+        if (ch === 9 && state.firstTabInLine === -1) {
+          state.firstTabInLine = state.position;
         }
-        ch = state2.input.charCodeAt(++state2.position);
+        ch = state.input.charCodeAt(++state.position);
       }
       if (allowComments && ch === 35) {
         do {
-          ch = state2.input.charCodeAt(++state2.position);
+          ch = state.input.charCodeAt(++state.position);
         } while (ch !== 10 && ch !== 13 && ch !== 0);
       }
       if (is_EOL(ch)) {
-        readLineBreak(state2);
-        ch = state2.input.charCodeAt(state2.position);
+        readLineBreak(state);
+        ch = state.input.charCodeAt(state.position);
         lineBreaks++;
-        state2.lineIndent = 0;
+        state.lineIndent = 0;
         while (ch === 32) {
-          state2.lineIndent++;
-          ch = state2.input.charCodeAt(++state2.position);
+          state.lineIndent++;
+          ch = state.input.charCodeAt(++state.position);
         }
       } else {
         break;
       }
     }
-    if (checkIndent !== -1 && lineBreaks !== 0 && state2.lineIndent < checkIndent) {
-      throwWarning(state2, "deficient indentation");
+    if (checkIndent !== -1 && lineBreaks !== 0 && state.lineIndent < checkIndent) {
+      throwWarning(state, "deficient indentation");
     }
     return lineBreaks;
   }
-  function testDocumentSeparator(state2) {
-    var _position = state2.position, ch;
-    ch = state2.input.charCodeAt(_position);
-    if ((ch === 45 || ch === 46) && ch === state2.input.charCodeAt(_position + 1) && ch === state2.input.charCodeAt(_position + 2)) {
+  function testDocumentSeparator(state) {
+    var _position = state.position, ch;
+    ch = state.input.charCodeAt(_position);
+    if ((ch === 45 || ch === 46) && ch === state.input.charCodeAt(_position + 1) && ch === state.input.charCodeAt(_position + 2)) {
       _position += 3;
-      ch = state2.input.charCodeAt(_position);
+      ch = state.input.charCodeAt(_position);
       if (ch === 0 || is_WS_OR_EOL(ch)) {
         return true;
       }
     }
     return false;
   }
-  function writeFoldedLines(state2, count) {
+  function writeFoldedLines(state, count) {
     if (count === 1) {
-      state2.result += " ";
+      state.result += " ";
     } else if (count > 1) {
-      state2.result += common.repeat("\n", count - 1);
+      state.result += common.repeat("\n", count - 1);
     }
   }
-  function readPlainScalar(state2, nodeIndent, withinFlowCollection) {
-    var preceding, following, captureStart, captureEnd, hasPendingContent, _line, _lineStart, _lineIndent, _kind = state2.kind, _result = state2.result, ch;
-    ch = state2.input.charCodeAt(state2.position);
+  function readPlainScalar(state, nodeIndent, withinFlowCollection) {
+    var preceding, following, captureStart, captureEnd, hasPendingContent, _line, _lineStart, _lineIndent, _kind = state.kind, _result = state.result, ch;
+    ch = state.input.charCodeAt(state.position);
     if (is_WS_OR_EOL(ch) || is_FLOW_INDICATOR(ch) || ch === 35 || ch === 38 || ch === 42 || ch === 33 || ch === 124 || ch === 62 || ch === 39 || ch === 34 || ch === 37 || ch === 64 || ch === 96) {
       return false;
     }
     if (ch === 63 || ch === 45) {
-      following = state2.input.charCodeAt(state2.position + 1);
+      following = state.input.charCodeAt(state.position + 1);
       if (is_WS_OR_EOL(following) || withinFlowCollection && is_FLOW_INDICATOR(following)) {
         return false;
       }
     }
-    state2.kind = "scalar";
-    state2.result = "";
-    captureStart = captureEnd = state2.position;
+    state.kind = "scalar";
+    state.result = "";
+    captureStart = captureEnd = state.position;
     hasPendingContent = false;
     while (ch !== 0) {
       if (ch === 58) {
-        following = state2.input.charCodeAt(state2.position + 1);
+        following = state.input.charCodeAt(state.position + 1);
         if (is_WS_OR_EOL(following) || withinFlowCollection && is_FLOW_INDICATOR(following)) {
           break;
         }
       } else if (ch === 35) {
-        preceding = state2.input.charCodeAt(state2.position - 1);
+        preceding = state.input.charCodeAt(state.position - 1);
         if (is_WS_OR_EOL(preceding)) {
           break;
         }
-      } else if (state2.position === state2.lineStart && testDocumentSeparator(state2) || withinFlowCollection && is_FLOW_INDICATOR(ch)) {
+      } else if (state.position === state.lineStart && testDocumentSeparator(state) || withinFlowCollection && is_FLOW_INDICATOR(ch)) {
         break;
       } else if (is_EOL(ch)) {
-        _line = state2.line;
-        _lineStart = state2.lineStart;
-        _lineIndent = state2.lineIndent;
-        skipSeparationSpace(state2, false, -1);
-        if (state2.lineIndent >= nodeIndent) {
+        _line = state.line;
+        _lineStart = state.lineStart;
+        _lineIndent = state.lineIndent;
+        skipSeparationSpace(state, false, -1);
+        if (state.lineIndent >= nodeIndent) {
           hasPendingContent = true;
-          ch = state2.input.charCodeAt(state2.position);
+          ch = state.input.charCodeAt(state.position);
           continue;
         } else {
-          state2.position = captureEnd;
-          state2.line = _line;
-          state2.lineStart = _lineStart;
-          state2.lineIndent = _lineIndent;
+          state.position = captureEnd;
+          state.line = _line;
+          state.lineStart = _lineStart;
+          state.lineIndent = _lineIndent;
           break;
         }
       }
       if (hasPendingContent) {
-        captureSegment(state2, captureStart, captureEnd, false);
-        writeFoldedLines(state2, state2.line - _line);
-        captureStart = captureEnd = state2.position;
+        captureSegment(state, captureStart, captureEnd, false);
+        writeFoldedLines(state, state.line - _line);
+        captureStart = captureEnd = state.position;
         hasPendingContent = false;
       }
       if (!is_WHITE_SPACE(ch)) {
-        captureEnd = state2.position + 1;
+        captureEnd = state.position + 1;
       }
-      ch = state2.input.charCodeAt(++state2.position);
+      ch = state.input.charCodeAt(++state.position);
     }
-    captureSegment(state2, captureStart, captureEnd, false);
-    if (state2.result) {
+    captureSegment(state, captureStart, captureEnd, false);
+    if (state.result) {
       return true;
     }
-    state2.kind = _kind;
-    state2.result = _result;
+    state.kind = _kind;
+    state.result = _result;
     return false;
   }
-  function readSingleQuotedScalar(state2, nodeIndent) {
+  function readSingleQuotedScalar(state, nodeIndent) {
     var ch, captureStart, captureEnd;
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     if (ch !== 39) {
       return false;
     }
-    state2.kind = "scalar";
-    state2.result = "";
-    state2.position++;
-    captureStart = captureEnd = state2.position;
-    while ((ch = state2.input.charCodeAt(state2.position)) !== 0) {
+    state.kind = "scalar";
+    state.result = "";
+    state.position++;
+    captureStart = captureEnd = state.position;
+    while ((ch = state.input.charCodeAt(state.position)) !== 0) {
       if (ch === 39) {
-        captureSegment(state2, captureStart, state2.position, true);
-        ch = state2.input.charCodeAt(++state2.position);
+        captureSegment(state, captureStart, state.position, true);
+        ch = state.input.charCodeAt(++state.position);
         if (ch === 39) {
-          captureStart = state2.position;
-          state2.position++;
-          captureEnd = state2.position;
+          captureStart = state.position;
+          state.position++;
+          captureEnd = state.position;
         } else {
           return true;
         }
       } else if (is_EOL(ch)) {
-        captureSegment(state2, captureStart, captureEnd, true);
-        writeFoldedLines(state2, skipSeparationSpace(state2, false, nodeIndent));
-        captureStart = captureEnd = state2.position;
-      } else if (state2.position === state2.lineStart && testDocumentSeparator(state2)) {
-        throwError(state2, "unexpected end of the document within a single quoted scalar");
+        captureSegment(state, captureStart, captureEnd, true);
+        writeFoldedLines(state, skipSeparationSpace(state, false, nodeIndent));
+        captureStart = captureEnd = state.position;
+      } else if (state.position === state.lineStart && testDocumentSeparator(state)) {
+        throwError(state, "unexpected end of the document within a single quoted scalar");
       } else {
-        state2.position++;
-        captureEnd = state2.position;
+        state.position++;
+        captureEnd = state.position;
       }
     }
-    throwError(state2, "unexpected end of the stream within a single quoted scalar");
+    throwError(state, "unexpected end of the stream within a single quoted scalar");
   }
-  function readDoubleQuotedScalar(state2, nodeIndent) {
+  function readDoubleQuotedScalar(state, nodeIndent) {
     var captureStart, captureEnd, hexLength, hexResult, tmp, ch;
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     if (ch !== 34) {
       return false;
     }
-    state2.kind = "scalar";
-    state2.result = "";
-    state2.position++;
-    captureStart = captureEnd = state2.position;
-    while ((ch = state2.input.charCodeAt(state2.position)) !== 0) {
+    state.kind = "scalar";
+    state.result = "";
+    state.position++;
+    captureStart = captureEnd = state.position;
+    while ((ch = state.input.charCodeAt(state.position)) !== 0) {
       if (ch === 34) {
-        captureSegment(state2, captureStart, state2.position, true);
-        state2.position++;
+        captureSegment(state, captureStart, state.position, true);
+        state.position++;
         return true;
       } else if (ch === 92) {
-        captureSegment(state2, captureStart, state2.position, true);
-        ch = state2.input.charCodeAt(++state2.position);
+        captureSegment(state, captureStart, state.position, true);
+        ch = state.input.charCodeAt(++state.position);
         if (is_EOL(ch)) {
-          skipSeparationSpace(state2, false, nodeIndent);
+          skipSeparationSpace(state, false, nodeIndent);
         } else if (ch < 256 && simpleEscapeCheck[ch]) {
-          state2.result += simpleEscapeMap[ch];
-          state2.position++;
+          state.result += simpleEscapeMap[ch];
+          state.position++;
         } else if ((tmp = escapedHexLen(ch)) > 0) {
           hexLength = tmp;
           hexResult = 0;
           for (; hexLength > 0; hexLength--) {
-            ch = state2.input.charCodeAt(++state2.position);
+            ch = state.input.charCodeAt(++state.position);
             if ((tmp = fromHexCode(ch)) >= 0) {
               hexResult = (hexResult << 4) + tmp;
             } else {
-              throwError(state2, "expected hexadecimal character");
+              throwError(state, "expected hexadecimal character");
             }
           }
-          state2.result += charFromCodepoint(hexResult);
-          state2.position++;
+          state.result += charFromCodepoint(hexResult);
+          state.position++;
         } else {
-          throwError(state2, "unknown escape sequence");
+          throwError(state, "unknown escape sequence");
         }
-        captureStart = captureEnd = state2.position;
+        captureStart = captureEnd = state.position;
       } else if (is_EOL(ch)) {
-        captureSegment(state2, captureStart, captureEnd, true);
-        writeFoldedLines(state2, skipSeparationSpace(state2, false, nodeIndent));
-        captureStart = captureEnd = state2.position;
-      } else if (state2.position === state2.lineStart && testDocumentSeparator(state2)) {
-        throwError(state2, "unexpected end of the document within a double quoted scalar");
+        captureSegment(state, captureStart, captureEnd, true);
+        writeFoldedLines(state, skipSeparationSpace(state, false, nodeIndent));
+        captureStart = captureEnd = state.position;
+      } else if (state.position === state.lineStart && testDocumentSeparator(state)) {
+        throwError(state, "unexpected end of the document within a double quoted scalar");
       } else {
-        state2.position++;
-        captureEnd = state2.position;
+        state.position++;
+        captureEnd = state.position;
       }
     }
-    throwError(state2, "unexpected end of the stream within a double quoted scalar");
+    throwError(state, "unexpected end of the stream within a double quoted scalar");
   }
-  function readFlowCollection(state2, nodeIndent) {
-    var readNext = true, _line, _lineStart, _pos, _tag = state2.tag, _result, _anchor = state2.anchor, following, terminator, isPair, isExplicitPair, isMapping, overridableKeys = /* @__PURE__ */ Object.create(null), keyNode, keyTag, valueNode, ch;
-    ch = state2.input.charCodeAt(state2.position);
+  function readFlowCollection(state, nodeIndent) {
+    var readNext = true, _line, _lineStart, _pos, _tag = state.tag, _result, _anchor = state.anchor, following, terminator, isPair, isExplicitPair, isMapping, overridableKeys = /* @__PURE__ */ Object.create(null), keyNode, keyTag, valueNode, ch;
+    ch = state.input.charCodeAt(state.position);
     if (ch === 91) {
       terminator = 93;
       isMapping = false;
@@ -1464,71 +1285,71 @@
     } else {
       return false;
     }
-    if (state2.anchor !== null) {
-      state2.anchorMap[state2.anchor] = _result;
+    if (state.anchor !== null) {
+      state.anchorMap[state.anchor] = _result;
     }
-    ch = state2.input.charCodeAt(++state2.position);
+    ch = state.input.charCodeAt(++state.position);
     while (ch !== 0) {
-      skipSeparationSpace(state2, true, nodeIndent);
-      ch = state2.input.charCodeAt(state2.position);
+      skipSeparationSpace(state, true, nodeIndent);
+      ch = state.input.charCodeAt(state.position);
       if (ch === terminator) {
-        state2.position++;
-        state2.tag = _tag;
-        state2.anchor = _anchor;
-        state2.kind = isMapping ? "mapping" : "sequence";
-        state2.result = _result;
+        state.position++;
+        state.tag = _tag;
+        state.anchor = _anchor;
+        state.kind = isMapping ? "mapping" : "sequence";
+        state.result = _result;
         return true;
       } else if (!readNext) {
-        throwError(state2, "missed comma between flow collection entries");
+        throwError(state, "missed comma between flow collection entries");
       } else if (ch === 44) {
-        throwError(state2, "expected the node content, but found ','");
+        throwError(state, "expected the node content, but found ','");
       }
       keyTag = keyNode = valueNode = null;
       isPair = isExplicitPair = false;
       if (ch === 63) {
-        following = state2.input.charCodeAt(state2.position + 1);
+        following = state.input.charCodeAt(state.position + 1);
         if (is_WS_OR_EOL(following)) {
           isPair = isExplicitPair = true;
-          state2.position++;
-          skipSeparationSpace(state2, true, nodeIndent);
+          state.position++;
+          skipSeparationSpace(state, true, nodeIndent);
         }
       }
-      _line = state2.line;
-      _lineStart = state2.lineStart;
-      _pos = state2.position;
-      composeNode(state2, nodeIndent, CONTEXT_FLOW_IN, false, true);
-      keyTag = state2.tag;
-      keyNode = state2.result;
-      skipSeparationSpace(state2, true, nodeIndent);
-      ch = state2.input.charCodeAt(state2.position);
-      if ((isExplicitPair || state2.line === _line) && ch === 58) {
+      _line = state.line;
+      _lineStart = state.lineStart;
+      _pos = state.position;
+      composeNode(state, nodeIndent, CONTEXT_FLOW_IN, false, true);
+      keyTag = state.tag;
+      keyNode = state.result;
+      skipSeparationSpace(state, true, nodeIndent);
+      ch = state.input.charCodeAt(state.position);
+      if ((isExplicitPair || state.line === _line) && ch === 58) {
         isPair = true;
-        ch = state2.input.charCodeAt(++state2.position);
-        skipSeparationSpace(state2, true, nodeIndent);
-        composeNode(state2, nodeIndent, CONTEXT_FLOW_IN, false, true);
-        valueNode = state2.result;
+        ch = state.input.charCodeAt(++state.position);
+        skipSeparationSpace(state, true, nodeIndent);
+        composeNode(state, nodeIndent, CONTEXT_FLOW_IN, false, true);
+        valueNode = state.result;
       }
       if (isMapping) {
-        storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, valueNode, _line, _lineStart, _pos);
+        storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, valueNode, _line, _lineStart, _pos);
       } else if (isPair) {
-        _result.push(storeMappingPair(state2, null, overridableKeys, keyTag, keyNode, valueNode, _line, _lineStart, _pos));
+        _result.push(storeMappingPair(state, null, overridableKeys, keyTag, keyNode, valueNode, _line, _lineStart, _pos));
       } else {
         _result.push(keyNode);
       }
-      skipSeparationSpace(state2, true, nodeIndent);
-      ch = state2.input.charCodeAt(state2.position);
+      skipSeparationSpace(state, true, nodeIndent);
+      ch = state.input.charCodeAt(state.position);
       if (ch === 44) {
         readNext = true;
-        ch = state2.input.charCodeAt(++state2.position);
+        ch = state.input.charCodeAt(++state.position);
       } else {
         readNext = false;
       }
     }
-    throwError(state2, "unexpected end of the stream within a flow collection");
+    throwError(state, "unexpected end of the stream within a flow collection");
   }
-  function readBlockScalar(state2, nodeIndent) {
+  function readBlockScalar(state, nodeIndent) {
     var captureStart, folding, chomping = CHOMPING_CLIP, didReadContent = false, detectedIndent = false, textIndent = nodeIndent, emptyLines = 0, atMoreIndented = false, tmp, ch;
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     if (ch === 124) {
       folding = false;
     } else if (ch === 62) {
@@ -1536,24 +1357,24 @@
     } else {
       return false;
     }
-    state2.kind = "scalar";
-    state2.result = "";
+    state.kind = "scalar";
+    state.result = "";
     while (ch !== 0) {
-      ch = state2.input.charCodeAt(++state2.position);
+      ch = state.input.charCodeAt(++state.position);
       if (ch === 43 || ch === 45) {
         if (CHOMPING_CLIP === chomping) {
           chomping = ch === 43 ? CHOMPING_KEEP : CHOMPING_STRIP;
         } else {
-          throwError(state2, "repeat of a chomping mode identifier");
+          throwError(state, "repeat of a chomping mode identifier");
         }
       } else if ((tmp = fromDecimalCode(ch)) >= 0) {
         if (tmp === 0) {
-          throwError(state2, "bad explicit indentation width of a block scalar; it cannot be less than one");
+          throwError(state, "bad explicit indentation width of a block scalar; it cannot be less than one");
         } else if (!detectedIndent) {
           textIndent = nodeIndent + tmp - 1;
           detectedIndent = true;
         } else {
-          throwError(state2, "repeat of an indentation width identifier");
+          throwError(state, "repeat of an indentation width identifier");
         }
       } else {
         break;
@@ -1561,35 +1382,35 @@
     }
     if (is_WHITE_SPACE(ch)) {
       do {
-        ch = state2.input.charCodeAt(++state2.position);
+        ch = state.input.charCodeAt(++state.position);
       } while (is_WHITE_SPACE(ch));
       if (ch === 35) {
         do {
-          ch = state2.input.charCodeAt(++state2.position);
+          ch = state.input.charCodeAt(++state.position);
         } while (!is_EOL(ch) && ch !== 0);
       }
     }
     while (ch !== 0) {
-      readLineBreak(state2);
-      state2.lineIndent = 0;
-      ch = state2.input.charCodeAt(state2.position);
-      while ((!detectedIndent || state2.lineIndent < textIndent) && ch === 32) {
-        state2.lineIndent++;
-        ch = state2.input.charCodeAt(++state2.position);
+      readLineBreak(state);
+      state.lineIndent = 0;
+      ch = state.input.charCodeAt(state.position);
+      while ((!detectedIndent || state.lineIndent < textIndent) && ch === 32) {
+        state.lineIndent++;
+        ch = state.input.charCodeAt(++state.position);
       }
-      if (!detectedIndent && state2.lineIndent > textIndent) {
-        textIndent = state2.lineIndent;
+      if (!detectedIndent && state.lineIndent > textIndent) {
+        textIndent = state.lineIndent;
       }
       if (is_EOL(ch)) {
         emptyLines++;
         continue;
       }
-      if (state2.lineIndent < textIndent) {
+      if (state.lineIndent < textIndent) {
         if (chomping === CHOMPING_KEEP) {
-          state2.result += common.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
+          state.result += common.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
         } else if (chomping === CHOMPING_CLIP) {
           if (didReadContent) {
-            state2.result += "\n";
+            state.result += "\n";
           }
         }
         break;
@@ -1597,97 +1418,97 @@
       if (folding) {
         if (is_WHITE_SPACE(ch)) {
           atMoreIndented = true;
-          state2.result += common.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
+          state.result += common.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
         } else if (atMoreIndented) {
           atMoreIndented = false;
-          state2.result += common.repeat("\n", emptyLines + 1);
+          state.result += common.repeat("\n", emptyLines + 1);
         } else if (emptyLines === 0) {
           if (didReadContent) {
-            state2.result += " ";
+            state.result += " ";
           }
         } else {
-          state2.result += common.repeat("\n", emptyLines);
+          state.result += common.repeat("\n", emptyLines);
         }
       } else {
-        state2.result += common.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
+        state.result += common.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
       }
       didReadContent = true;
       detectedIndent = true;
       emptyLines = 0;
-      captureStart = state2.position;
+      captureStart = state.position;
       while (!is_EOL(ch) && ch !== 0) {
-        ch = state2.input.charCodeAt(++state2.position);
+        ch = state.input.charCodeAt(++state.position);
       }
-      captureSegment(state2, captureStart, state2.position, false);
+      captureSegment(state, captureStart, state.position, false);
     }
     return true;
   }
-  function readBlockSequence(state2, nodeIndent) {
-    var _line, _tag = state2.tag, _anchor = state2.anchor, _result = [], following, detected = false, ch;
-    if (state2.firstTabInLine !== -1) return false;
-    if (state2.anchor !== null) {
-      state2.anchorMap[state2.anchor] = _result;
+  function readBlockSequence(state, nodeIndent) {
+    var _line, _tag = state.tag, _anchor = state.anchor, _result = [], following, detected = false, ch;
+    if (state.firstTabInLine !== -1) return false;
+    if (state.anchor !== null) {
+      state.anchorMap[state.anchor] = _result;
     }
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     while (ch !== 0) {
-      if (state2.firstTabInLine !== -1) {
-        state2.position = state2.firstTabInLine;
-        throwError(state2, "tab characters must not be used in indentation");
+      if (state.firstTabInLine !== -1) {
+        state.position = state.firstTabInLine;
+        throwError(state, "tab characters must not be used in indentation");
       }
       if (ch !== 45) {
         break;
       }
-      following = state2.input.charCodeAt(state2.position + 1);
+      following = state.input.charCodeAt(state.position + 1);
       if (!is_WS_OR_EOL(following)) {
         break;
       }
       detected = true;
-      state2.position++;
-      if (skipSeparationSpace(state2, true, -1)) {
-        if (state2.lineIndent <= nodeIndent) {
+      state.position++;
+      if (skipSeparationSpace(state, true, -1)) {
+        if (state.lineIndent <= nodeIndent) {
           _result.push(null);
-          ch = state2.input.charCodeAt(state2.position);
+          ch = state.input.charCodeAt(state.position);
           continue;
         }
       }
-      _line = state2.line;
-      composeNode(state2, nodeIndent, CONTEXT_BLOCK_IN, false, true);
-      _result.push(state2.result);
-      skipSeparationSpace(state2, true, -1);
-      ch = state2.input.charCodeAt(state2.position);
-      if ((state2.line === _line || state2.lineIndent > nodeIndent) && ch !== 0) {
-        throwError(state2, "bad indentation of a sequence entry");
-      } else if (state2.lineIndent < nodeIndent) {
+      _line = state.line;
+      composeNode(state, nodeIndent, CONTEXT_BLOCK_IN, false, true);
+      _result.push(state.result);
+      skipSeparationSpace(state, true, -1);
+      ch = state.input.charCodeAt(state.position);
+      if ((state.line === _line || state.lineIndent > nodeIndent) && ch !== 0) {
+        throwError(state, "bad indentation of a sequence entry");
+      } else if (state.lineIndent < nodeIndent) {
         break;
       }
     }
     if (detected) {
-      state2.tag = _tag;
-      state2.anchor = _anchor;
-      state2.kind = "sequence";
-      state2.result = _result;
+      state.tag = _tag;
+      state.anchor = _anchor;
+      state.kind = "sequence";
+      state.result = _result;
       return true;
     }
     return false;
   }
-  function readBlockMapping(state2, nodeIndent, flowIndent) {
-    var following, allowCompact, _line, _keyLine, _keyLineStart, _keyPos, _tag = state2.tag, _anchor = state2.anchor, _result = {}, overridableKeys = /* @__PURE__ */ Object.create(null), keyTag = null, keyNode = null, valueNode = null, atExplicitKey = false, detected = false, ch;
-    if (state2.firstTabInLine !== -1) return false;
-    if (state2.anchor !== null) {
-      state2.anchorMap[state2.anchor] = _result;
+  function readBlockMapping(state, nodeIndent, flowIndent) {
+    var following, allowCompact, _line, _keyLine, _keyLineStart, _keyPos, _tag = state.tag, _anchor = state.anchor, _result = {}, overridableKeys = /* @__PURE__ */ Object.create(null), keyTag = null, keyNode = null, valueNode = null, atExplicitKey = false, detected = false, ch;
+    if (state.firstTabInLine !== -1) return false;
+    if (state.anchor !== null) {
+      state.anchorMap[state.anchor] = _result;
     }
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     while (ch !== 0) {
-      if (!atExplicitKey && state2.firstTabInLine !== -1) {
-        state2.position = state2.firstTabInLine;
-        throwError(state2, "tab characters must not be used in indentation");
+      if (!atExplicitKey && state.firstTabInLine !== -1) {
+        state.position = state.firstTabInLine;
+        throwError(state, "tab characters must not be used in indentation");
       }
-      following = state2.input.charCodeAt(state2.position + 1);
-      _line = state2.line;
+      following = state.input.charCodeAt(state.position + 1);
+      _line = state.line;
       if ((ch === 63 || ch === 58) && is_WS_OR_EOL(following)) {
         if (ch === 63) {
           if (atExplicitKey) {
-            storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
+            storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
             keyTag = keyNode = valueNode = null;
           }
           detected = true;
@@ -1697,229 +1518,229 @@
           atExplicitKey = false;
           allowCompact = true;
         } else {
-          throwError(state2, "incomplete explicit mapping pair; a key node is missed; or followed by a non-tabulated empty line");
+          throwError(state, "incomplete explicit mapping pair; a key node is missed; or followed by a non-tabulated empty line");
         }
-        state2.position += 1;
+        state.position += 1;
         ch = following;
       } else {
-        _keyLine = state2.line;
-        _keyLineStart = state2.lineStart;
-        _keyPos = state2.position;
-        if (!composeNode(state2, flowIndent, CONTEXT_FLOW_OUT, false, true)) {
+        _keyLine = state.line;
+        _keyLineStart = state.lineStart;
+        _keyPos = state.position;
+        if (!composeNode(state, flowIndent, CONTEXT_FLOW_OUT, false, true)) {
           break;
         }
-        if (state2.line === _line) {
-          ch = state2.input.charCodeAt(state2.position);
+        if (state.line === _line) {
+          ch = state.input.charCodeAt(state.position);
           while (is_WHITE_SPACE(ch)) {
-            ch = state2.input.charCodeAt(++state2.position);
+            ch = state.input.charCodeAt(++state.position);
           }
           if (ch === 58) {
-            ch = state2.input.charCodeAt(++state2.position);
+            ch = state.input.charCodeAt(++state.position);
             if (!is_WS_OR_EOL(ch)) {
-              throwError(state2, "a whitespace character is expected after the key-value separator within a block mapping");
+              throwError(state, "a whitespace character is expected after the key-value separator within a block mapping");
             }
             if (atExplicitKey) {
-              storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
+              storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
               keyTag = keyNode = valueNode = null;
             }
             detected = true;
             atExplicitKey = false;
             allowCompact = false;
-            keyTag = state2.tag;
-            keyNode = state2.result;
+            keyTag = state.tag;
+            keyNode = state.result;
           } else if (detected) {
-            throwError(state2, "can not read an implicit mapping pair; a colon is missed");
+            throwError(state, "can not read an implicit mapping pair; a colon is missed");
           } else {
-            state2.tag = _tag;
-            state2.anchor = _anchor;
+            state.tag = _tag;
+            state.anchor = _anchor;
             return true;
           }
         } else if (detected) {
-          throwError(state2, "can not read a block mapping entry; a multiline key may not be an implicit key");
+          throwError(state, "can not read a block mapping entry; a multiline key may not be an implicit key");
         } else {
-          state2.tag = _tag;
-          state2.anchor = _anchor;
+          state.tag = _tag;
+          state.anchor = _anchor;
           return true;
         }
       }
-      if (state2.line === _line || state2.lineIndent > nodeIndent) {
+      if (state.line === _line || state.lineIndent > nodeIndent) {
         if (atExplicitKey) {
-          _keyLine = state2.line;
-          _keyLineStart = state2.lineStart;
-          _keyPos = state2.position;
+          _keyLine = state.line;
+          _keyLineStart = state.lineStart;
+          _keyPos = state.position;
         }
-        if (composeNode(state2, nodeIndent, CONTEXT_BLOCK_OUT, true, allowCompact)) {
+        if (composeNode(state, nodeIndent, CONTEXT_BLOCK_OUT, true, allowCompact)) {
           if (atExplicitKey) {
-            keyNode = state2.result;
+            keyNode = state.result;
           } else {
-            valueNode = state2.result;
+            valueNode = state.result;
           }
         }
         if (!atExplicitKey) {
-          storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, valueNode, _keyLine, _keyLineStart, _keyPos);
+          storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, valueNode, _keyLine, _keyLineStart, _keyPos);
           keyTag = keyNode = valueNode = null;
         }
-        skipSeparationSpace(state2, true, -1);
-        ch = state2.input.charCodeAt(state2.position);
+        skipSeparationSpace(state, true, -1);
+        ch = state.input.charCodeAt(state.position);
       }
-      if ((state2.line === _line || state2.lineIndent > nodeIndent) && ch !== 0) {
-        throwError(state2, "bad indentation of a mapping entry");
-      } else if (state2.lineIndent < nodeIndent) {
+      if ((state.line === _line || state.lineIndent > nodeIndent) && ch !== 0) {
+        throwError(state, "bad indentation of a mapping entry");
+      } else if (state.lineIndent < nodeIndent) {
         break;
       }
     }
     if (atExplicitKey) {
-      storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
+      storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
     }
     if (detected) {
-      state2.tag = _tag;
-      state2.anchor = _anchor;
-      state2.kind = "mapping";
-      state2.result = _result;
+      state.tag = _tag;
+      state.anchor = _anchor;
+      state.kind = "mapping";
+      state.result = _result;
     }
     return detected;
   }
-  function readTagProperty(state2) {
+  function readTagProperty(state) {
     var _position, isVerbatim = false, isNamed = false, tagHandle, tagName, ch;
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     if (ch !== 33) return false;
-    if (state2.tag !== null) {
-      throwError(state2, "duplication of a tag property");
+    if (state.tag !== null) {
+      throwError(state, "duplication of a tag property");
     }
-    ch = state2.input.charCodeAt(++state2.position);
+    ch = state.input.charCodeAt(++state.position);
     if (ch === 60) {
       isVerbatim = true;
-      ch = state2.input.charCodeAt(++state2.position);
+      ch = state.input.charCodeAt(++state.position);
     } else if (ch === 33) {
       isNamed = true;
       tagHandle = "!!";
-      ch = state2.input.charCodeAt(++state2.position);
+      ch = state.input.charCodeAt(++state.position);
     } else {
       tagHandle = "!";
     }
-    _position = state2.position;
+    _position = state.position;
     if (isVerbatim) {
       do {
-        ch = state2.input.charCodeAt(++state2.position);
+        ch = state.input.charCodeAt(++state.position);
       } while (ch !== 0 && ch !== 62);
-      if (state2.position < state2.length) {
-        tagName = state2.input.slice(_position, state2.position);
-        ch = state2.input.charCodeAt(++state2.position);
+      if (state.position < state.length) {
+        tagName = state.input.slice(_position, state.position);
+        ch = state.input.charCodeAt(++state.position);
       } else {
-        throwError(state2, "unexpected end of the stream within a verbatim tag");
+        throwError(state, "unexpected end of the stream within a verbatim tag");
       }
     } else {
       while (ch !== 0 && !is_WS_OR_EOL(ch)) {
         if (ch === 33) {
           if (!isNamed) {
-            tagHandle = state2.input.slice(_position - 1, state2.position + 1);
+            tagHandle = state.input.slice(_position - 1, state.position + 1);
             if (!PATTERN_TAG_HANDLE.test(tagHandle)) {
-              throwError(state2, "named tag handle cannot contain such characters");
+              throwError(state, "named tag handle cannot contain such characters");
             }
             isNamed = true;
-            _position = state2.position + 1;
+            _position = state.position + 1;
           } else {
-            throwError(state2, "tag suffix cannot contain exclamation marks");
+            throwError(state, "tag suffix cannot contain exclamation marks");
           }
         }
-        ch = state2.input.charCodeAt(++state2.position);
+        ch = state.input.charCodeAt(++state.position);
       }
-      tagName = state2.input.slice(_position, state2.position);
+      tagName = state.input.slice(_position, state.position);
       if (PATTERN_FLOW_INDICATORS.test(tagName)) {
-        throwError(state2, "tag suffix cannot contain flow indicator characters");
+        throwError(state, "tag suffix cannot contain flow indicator characters");
       }
     }
     if (tagName && !PATTERN_TAG_URI.test(tagName)) {
-      throwError(state2, "tag name cannot contain such characters: " + tagName);
+      throwError(state, "tag name cannot contain such characters: " + tagName);
     }
     try {
       tagName = decodeURIComponent(tagName);
     } catch (err) {
-      throwError(state2, "tag name is malformed: " + tagName);
+      throwError(state, "tag name is malformed: " + tagName);
     }
     if (isVerbatim) {
-      state2.tag = tagName;
-    } else if (_hasOwnProperty$1.call(state2.tagMap, tagHandle)) {
-      state2.tag = state2.tagMap[tagHandle] + tagName;
+      state.tag = tagName;
+    } else if (_hasOwnProperty$1.call(state.tagMap, tagHandle)) {
+      state.tag = state.tagMap[tagHandle] + tagName;
     } else if (tagHandle === "!") {
-      state2.tag = "!" + tagName;
+      state.tag = "!" + tagName;
     } else if (tagHandle === "!!") {
-      state2.tag = "tag:yaml.org,2002:" + tagName;
+      state.tag = "tag:yaml.org,2002:" + tagName;
     } else {
-      throwError(state2, 'undeclared tag handle "' + tagHandle + '"');
+      throwError(state, 'undeclared tag handle "' + tagHandle + '"');
     }
     return true;
   }
-  function readAnchorProperty(state2) {
+  function readAnchorProperty(state) {
     var _position, ch;
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     if (ch !== 38) return false;
-    if (state2.anchor !== null) {
-      throwError(state2, "duplication of an anchor property");
+    if (state.anchor !== null) {
+      throwError(state, "duplication of an anchor property");
     }
-    ch = state2.input.charCodeAt(++state2.position);
-    _position = state2.position;
+    ch = state.input.charCodeAt(++state.position);
+    _position = state.position;
     while (ch !== 0 && !is_WS_OR_EOL(ch) && !is_FLOW_INDICATOR(ch)) {
-      ch = state2.input.charCodeAt(++state2.position);
+      ch = state.input.charCodeAt(++state.position);
     }
-    if (state2.position === _position) {
-      throwError(state2, "name of an anchor node must contain at least one character");
+    if (state.position === _position) {
+      throwError(state, "name of an anchor node must contain at least one character");
     }
-    state2.anchor = state2.input.slice(_position, state2.position);
+    state.anchor = state.input.slice(_position, state.position);
     return true;
   }
-  function readAlias(state2) {
+  function readAlias(state) {
     var _position, alias, ch;
-    ch = state2.input.charCodeAt(state2.position);
+    ch = state.input.charCodeAt(state.position);
     if (ch !== 42) return false;
-    ch = state2.input.charCodeAt(++state2.position);
-    _position = state2.position;
+    ch = state.input.charCodeAt(++state.position);
+    _position = state.position;
     while (ch !== 0 && !is_WS_OR_EOL(ch) && !is_FLOW_INDICATOR(ch)) {
-      ch = state2.input.charCodeAt(++state2.position);
+      ch = state.input.charCodeAt(++state.position);
     }
-    if (state2.position === _position) {
-      throwError(state2, "name of an alias node must contain at least one character");
+    if (state.position === _position) {
+      throwError(state, "name of an alias node must contain at least one character");
     }
-    alias = state2.input.slice(_position, state2.position);
-    if (!_hasOwnProperty$1.call(state2.anchorMap, alias)) {
-      throwError(state2, 'unidentified alias "' + alias + '"');
+    alias = state.input.slice(_position, state.position);
+    if (!_hasOwnProperty$1.call(state.anchorMap, alias)) {
+      throwError(state, 'unidentified alias "' + alias + '"');
     }
-    state2.result = state2.anchorMap[alias];
-    skipSeparationSpace(state2, true, -1);
+    state.result = state.anchorMap[alias];
+    skipSeparationSpace(state, true, -1);
     return true;
   }
-  function composeNode(state2, parentIndent, nodeContext, allowToSeek, allowCompact) {
+  function composeNode(state, parentIndent, nodeContext, allowToSeek, allowCompact) {
     var allowBlockStyles, allowBlockScalars, allowBlockCollections, indentStatus = 1, atNewLine = false, hasContent = false, typeIndex, typeQuantity, typeList, type2, flowIndent, blockIndent;
-    if (state2.listener !== null) {
-      state2.listener("open", state2);
+    if (state.listener !== null) {
+      state.listener("open", state);
     }
-    state2.tag = null;
-    state2.anchor = null;
-    state2.kind = null;
-    state2.result = null;
+    state.tag = null;
+    state.anchor = null;
+    state.kind = null;
+    state.result = null;
     allowBlockStyles = allowBlockScalars = allowBlockCollections = CONTEXT_BLOCK_OUT === nodeContext || CONTEXT_BLOCK_IN === nodeContext;
     if (allowToSeek) {
-      if (skipSeparationSpace(state2, true, -1)) {
+      if (skipSeparationSpace(state, true, -1)) {
         atNewLine = true;
-        if (state2.lineIndent > parentIndent) {
+        if (state.lineIndent > parentIndent) {
           indentStatus = 1;
-        } else if (state2.lineIndent === parentIndent) {
+        } else if (state.lineIndent === parentIndent) {
           indentStatus = 0;
-        } else if (state2.lineIndent < parentIndent) {
+        } else if (state.lineIndent < parentIndent) {
           indentStatus = -1;
         }
       }
     }
     if (indentStatus === 1) {
-      while (readTagProperty(state2) || readAnchorProperty(state2)) {
-        if (skipSeparationSpace(state2, true, -1)) {
+      while (readTagProperty(state) || readAnchorProperty(state)) {
+        if (skipSeparationSpace(state, true, -1)) {
           atNewLine = true;
           allowBlockCollections = allowBlockStyles;
-          if (state2.lineIndent > parentIndent) {
+          if (state.lineIndent > parentIndent) {
             indentStatus = 1;
-          } else if (state2.lineIndent === parentIndent) {
+          } else if (state.lineIndent === parentIndent) {
             indentStatus = 0;
-          } else if (state2.lineIndent < parentIndent) {
+          } else if (state.lineIndent < parentIndent) {
             indentStatus = -1;
           }
         } else {
@@ -1936,153 +1757,153 @@
       } else {
         flowIndent = parentIndent + 1;
       }
-      blockIndent = state2.position - state2.lineStart;
+      blockIndent = state.position - state.lineStart;
       if (indentStatus === 1) {
-        if (allowBlockCollections && (readBlockSequence(state2, blockIndent) || readBlockMapping(state2, blockIndent, flowIndent)) || readFlowCollection(state2, flowIndent)) {
+        if (allowBlockCollections && (readBlockSequence(state, blockIndent) || readBlockMapping(state, blockIndent, flowIndent)) || readFlowCollection(state, flowIndent)) {
           hasContent = true;
         } else {
-          if (allowBlockScalars && readBlockScalar(state2, flowIndent) || readSingleQuotedScalar(state2, flowIndent) || readDoubleQuotedScalar(state2, flowIndent)) {
+          if (allowBlockScalars && readBlockScalar(state, flowIndent) || readSingleQuotedScalar(state, flowIndent) || readDoubleQuotedScalar(state, flowIndent)) {
             hasContent = true;
-          } else if (readAlias(state2)) {
+          } else if (readAlias(state)) {
             hasContent = true;
-            if (state2.tag !== null || state2.anchor !== null) {
-              throwError(state2, "alias node should not have any properties");
+            if (state.tag !== null || state.anchor !== null) {
+              throwError(state, "alias node should not have any properties");
             }
-          } else if (readPlainScalar(state2, flowIndent, CONTEXT_FLOW_IN === nodeContext)) {
+          } else if (readPlainScalar(state, flowIndent, CONTEXT_FLOW_IN === nodeContext)) {
             hasContent = true;
-            if (state2.tag === null) {
-              state2.tag = "?";
+            if (state.tag === null) {
+              state.tag = "?";
             }
           }
-          if (state2.anchor !== null) {
-            state2.anchorMap[state2.anchor] = state2.result;
+          if (state.anchor !== null) {
+            state.anchorMap[state.anchor] = state.result;
           }
         }
       } else if (indentStatus === 0) {
-        hasContent = allowBlockCollections && readBlockSequence(state2, blockIndent);
+        hasContent = allowBlockCollections && readBlockSequence(state, blockIndent);
       }
     }
-    if (state2.tag === null) {
-      if (state2.anchor !== null) {
-        state2.anchorMap[state2.anchor] = state2.result;
+    if (state.tag === null) {
+      if (state.anchor !== null) {
+        state.anchorMap[state.anchor] = state.result;
       }
-    } else if (state2.tag === "?") {
-      if (state2.result !== null && state2.kind !== "scalar") {
-        throwError(state2, 'unacceptable node kind for !<?> tag; it should be "scalar", not "' + state2.kind + '"');
+    } else if (state.tag === "?") {
+      if (state.result !== null && state.kind !== "scalar") {
+        throwError(state, 'unacceptable node kind for !<?> tag; it should be "scalar", not "' + state.kind + '"');
       }
-      for (typeIndex = 0, typeQuantity = state2.implicitTypes.length; typeIndex < typeQuantity; typeIndex += 1) {
-        type2 = state2.implicitTypes[typeIndex];
-        if (type2.resolve(state2.result)) {
-          state2.result = type2.construct(state2.result);
-          state2.tag = type2.tag;
-          if (state2.anchor !== null) {
-            state2.anchorMap[state2.anchor] = state2.result;
+      for (typeIndex = 0, typeQuantity = state.implicitTypes.length; typeIndex < typeQuantity; typeIndex += 1) {
+        type2 = state.implicitTypes[typeIndex];
+        if (type2.resolve(state.result)) {
+          state.result = type2.construct(state.result);
+          state.tag = type2.tag;
+          if (state.anchor !== null) {
+            state.anchorMap[state.anchor] = state.result;
           }
           break;
         }
       }
-    } else if (state2.tag !== "!") {
-      if (_hasOwnProperty$1.call(state2.typeMap[state2.kind || "fallback"], state2.tag)) {
-        type2 = state2.typeMap[state2.kind || "fallback"][state2.tag];
+    } else if (state.tag !== "!") {
+      if (_hasOwnProperty$1.call(state.typeMap[state.kind || "fallback"], state.tag)) {
+        type2 = state.typeMap[state.kind || "fallback"][state.tag];
       } else {
         type2 = null;
-        typeList = state2.typeMap.multi[state2.kind || "fallback"];
+        typeList = state.typeMap.multi[state.kind || "fallback"];
         for (typeIndex = 0, typeQuantity = typeList.length; typeIndex < typeQuantity; typeIndex += 1) {
-          if (state2.tag.slice(0, typeList[typeIndex].tag.length) === typeList[typeIndex].tag) {
+          if (state.tag.slice(0, typeList[typeIndex].tag.length) === typeList[typeIndex].tag) {
             type2 = typeList[typeIndex];
             break;
           }
         }
       }
       if (!type2) {
-        throwError(state2, "unknown tag !<" + state2.tag + ">");
+        throwError(state, "unknown tag !<" + state.tag + ">");
       }
-      if (state2.result !== null && type2.kind !== state2.kind) {
-        throwError(state2, "unacceptable node kind for !<" + state2.tag + '> tag; it should be "' + type2.kind + '", not "' + state2.kind + '"');
+      if (state.result !== null && type2.kind !== state.kind) {
+        throwError(state, "unacceptable node kind for !<" + state.tag + '> tag; it should be "' + type2.kind + '", not "' + state.kind + '"');
       }
-      if (!type2.resolve(state2.result, state2.tag)) {
-        throwError(state2, "cannot resolve a node with !<" + state2.tag + "> explicit tag");
+      if (!type2.resolve(state.result, state.tag)) {
+        throwError(state, "cannot resolve a node with !<" + state.tag + "> explicit tag");
       } else {
-        state2.result = type2.construct(state2.result, state2.tag);
-        if (state2.anchor !== null) {
-          state2.anchorMap[state2.anchor] = state2.result;
+        state.result = type2.construct(state.result, state.tag);
+        if (state.anchor !== null) {
+          state.anchorMap[state.anchor] = state.result;
         }
       }
     }
-    if (state2.listener !== null) {
-      state2.listener("close", state2);
+    if (state.listener !== null) {
+      state.listener("close", state);
     }
-    return state2.tag !== null || state2.anchor !== null || hasContent;
+    return state.tag !== null || state.anchor !== null || hasContent;
   }
-  function readDocument(state2) {
-    var documentStart = state2.position, _position, directiveName, directiveArgs, hasDirectives = false, ch;
-    state2.version = null;
-    state2.checkLineBreaks = state2.legacy;
-    state2.tagMap = /* @__PURE__ */ Object.create(null);
-    state2.anchorMap = /* @__PURE__ */ Object.create(null);
-    while ((ch = state2.input.charCodeAt(state2.position)) !== 0) {
-      skipSeparationSpace(state2, true, -1);
-      ch = state2.input.charCodeAt(state2.position);
-      if (state2.lineIndent > 0 || ch !== 37) {
+  function readDocument(state) {
+    var documentStart = state.position, _position, directiveName, directiveArgs, hasDirectives = false, ch;
+    state.version = null;
+    state.checkLineBreaks = state.legacy;
+    state.tagMap = /* @__PURE__ */ Object.create(null);
+    state.anchorMap = /* @__PURE__ */ Object.create(null);
+    while ((ch = state.input.charCodeAt(state.position)) !== 0) {
+      skipSeparationSpace(state, true, -1);
+      ch = state.input.charCodeAt(state.position);
+      if (state.lineIndent > 0 || ch !== 37) {
         break;
       }
       hasDirectives = true;
-      ch = state2.input.charCodeAt(++state2.position);
-      _position = state2.position;
+      ch = state.input.charCodeAt(++state.position);
+      _position = state.position;
       while (ch !== 0 && !is_WS_OR_EOL(ch)) {
-        ch = state2.input.charCodeAt(++state2.position);
+        ch = state.input.charCodeAt(++state.position);
       }
-      directiveName = state2.input.slice(_position, state2.position);
+      directiveName = state.input.slice(_position, state.position);
       directiveArgs = [];
       if (directiveName.length < 1) {
-        throwError(state2, "directive name must not be less than one character in length");
+        throwError(state, "directive name must not be less than one character in length");
       }
       while (ch !== 0) {
         while (is_WHITE_SPACE(ch)) {
-          ch = state2.input.charCodeAt(++state2.position);
+          ch = state.input.charCodeAt(++state.position);
         }
         if (ch === 35) {
           do {
-            ch = state2.input.charCodeAt(++state2.position);
+            ch = state.input.charCodeAt(++state.position);
           } while (ch !== 0 && !is_EOL(ch));
           break;
         }
         if (is_EOL(ch)) break;
-        _position = state2.position;
+        _position = state.position;
         while (ch !== 0 && !is_WS_OR_EOL(ch)) {
-          ch = state2.input.charCodeAt(++state2.position);
+          ch = state.input.charCodeAt(++state.position);
         }
-        directiveArgs.push(state2.input.slice(_position, state2.position));
+        directiveArgs.push(state.input.slice(_position, state.position));
       }
-      if (ch !== 0) readLineBreak(state2);
+      if (ch !== 0) readLineBreak(state);
       if (_hasOwnProperty$1.call(directiveHandlers, directiveName)) {
-        directiveHandlers[directiveName](state2, directiveName, directiveArgs);
+        directiveHandlers[directiveName](state, directiveName, directiveArgs);
       } else {
-        throwWarning(state2, 'unknown document directive "' + directiveName + '"');
+        throwWarning(state, 'unknown document directive "' + directiveName + '"');
       }
     }
-    skipSeparationSpace(state2, true, -1);
-    if (state2.lineIndent === 0 && state2.input.charCodeAt(state2.position) === 45 && state2.input.charCodeAt(state2.position + 1) === 45 && state2.input.charCodeAt(state2.position + 2) === 45) {
-      state2.position += 3;
-      skipSeparationSpace(state2, true, -1);
+    skipSeparationSpace(state, true, -1);
+    if (state.lineIndent === 0 && state.input.charCodeAt(state.position) === 45 && state.input.charCodeAt(state.position + 1) === 45 && state.input.charCodeAt(state.position + 2) === 45) {
+      state.position += 3;
+      skipSeparationSpace(state, true, -1);
     } else if (hasDirectives) {
-      throwError(state2, "directives end mark is expected");
+      throwError(state, "directives end mark is expected");
     }
-    composeNode(state2, state2.lineIndent - 1, CONTEXT_BLOCK_OUT, false, true);
-    skipSeparationSpace(state2, true, -1);
-    if (state2.checkLineBreaks && PATTERN_NON_ASCII_LINE_BREAKS.test(state2.input.slice(documentStart, state2.position))) {
-      throwWarning(state2, "non-ASCII line breaks are interpreted as content");
+    composeNode(state, state.lineIndent - 1, CONTEXT_BLOCK_OUT, false, true);
+    skipSeparationSpace(state, true, -1);
+    if (state.checkLineBreaks && PATTERN_NON_ASCII_LINE_BREAKS.test(state.input.slice(documentStart, state.position))) {
+      throwWarning(state, "non-ASCII line breaks are interpreted as content");
     }
-    state2.documents.push(state2.result);
-    if (state2.position === state2.lineStart && testDocumentSeparator(state2)) {
-      if (state2.input.charCodeAt(state2.position) === 46) {
-        state2.position += 3;
-        skipSeparationSpace(state2, true, -1);
+    state.documents.push(state.result);
+    if (state.position === state.lineStart && testDocumentSeparator(state)) {
+      if (state.input.charCodeAt(state.position) === 46) {
+        state.position += 3;
+        skipSeparationSpace(state, true, -1);
       }
       return;
     }
-    if (state2.position < state2.length - 1) {
-      throwError(state2, "end of the stream or a document separator is expected");
+    if (state.position < state.length - 1) {
+      throwError(state, "end of the stream or a document separator is expected");
     } else {
       return;
     }
@@ -2098,21 +1919,21 @@
         input = input.slice(1);
       }
     }
-    var state2 = new State$1(input, options);
+    var state = new State$1(input, options);
     var nullpos = input.indexOf("\0");
     if (nullpos !== -1) {
-      state2.position = nullpos;
-      throwError(state2, "null byte is not allowed in input");
+      state.position = nullpos;
+      throwError(state, "null byte is not allowed in input");
     }
-    state2.input += "\0";
-    while (state2.input.charCodeAt(state2.position) === 32) {
-      state2.lineIndent += 1;
-      state2.position += 1;
+    state.input += "\0";
+    while (state.input.charCodeAt(state.position) === 32) {
+      state.lineIndent += 1;
+      state.position += 1;
     }
-    while (state2.position < state2.length - 1) {
-      readDocument(state2);
+    while (state.position < state.length - 1) {
+      readDocument(state);
     }
-    return state2.documents;
+    return state.documents;
   }
   function loadAll$1(input, iterator, options) {
     if (iterator !== null && typeof iterator === "object" && typeof options === "undefined") {
@@ -2280,13 +2101,13 @@
     }
     return result;
   }
-  function generateNextLine(state2, level) {
-    return "\n" + common.repeat(" ", state2.indent * level);
+  function generateNextLine(state, level) {
+    return "\n" + common.repeat(" ", state.indent * level);
   }
-  function testImplicitResolving(state2, str2) {
+  function testImplicitResolving(state, str2) {
     var index, length, type2;
-    for (index = 0, length = state2.implicitTypes.length; index < length; index += 1) {
-      type2 = state2.implicitTypes[index];
+    for (index = 0, length = state.implicitTypes.length; index < length; index += 1) {
+      type2 = state.implicitTypes[index];
       if (type2.resolve(str2)) {
         return true;
       }
@@ -2388,30 +2209,30 @@
     }
     return quotingType === QUOTING_TYPE_DOUBLE ? STYLE_DOUBLE : STYLE_SINGLE;
   }
-  function writeScalar(state2, string, level, iskey, inblock) {
-    state2.dump = (function() {
+  function writeScalar(state, string, level, iskey, inblock) {
+    state.dump = (function() {
       if (string.length === 0) {
-        return state2.quotingType === QUOTING_TYPE_DOUBLE ? '""' : "''";
+        return state.quotingType === QUOTING_TYPE_DOUBLE ? '""' : "''";
       }
-      if (!state2.noCompatMode) {
+      if (!state.noCompatMode) {
         if (DEPRECATED_BOOLEANS_SYNTAX.indexOf(string) !== -1 || DEPRECATED_BASE60_SYNTAX.test(string)) {
-          return state2.quotingType === QUOTING_TYPE_DOUBLE ? '"' + string + '"' : "'" + string + "'";
+          return state.quotingType === QUOTING_TYPE_DOUBLE ? '"' + string + '"' : "'" + string + "'";
         }
       }
-      var indent = state2.indent * Math.max(1, level);
-      var lineWidth = state2.lineWidth === -1 ? -1 : Math.max(Math.min(state2.lineWidth, 40), state2.lineWidth - indent);
-      var singleLineOnly = iskey || state2.flowLevel > -1 && level >= state2.flowLevel;
+      var indent = state.indent * Math.max(1, level);
+      var lineWidth = state.lineWidth === -1 ? -1 : Math.max(Math.min(state.lineWidth, 40), state.lineWidth - indent);
+      var singleLineOnly = iskey || state.flowLevel > -1 && level >= state.flowLevel;
       function testAmbiguity(string2) {
-        return testImplicitResolving(state2, string2);
+        return testImplicitResolving(state, string2);
       }
       switch (chooseScalarStyle(
         string,
         singleLineOnly,
-        state2.indent,
+        state.indent,
         lineWidth,
         testAmbiguity,
-        state2.quotingType,
-        state2.forceQuotes && !iskey,
+        state.quotingType,
+        state.forceQuotes && !iskey,
         inblock
       )) {
         case STYLE_PLAIN:
@@ -2419,9 +2240,9 @@
         case STYLE_SINGLE:
           return "'" + string.replace(/'/g, "''") + "'";
         case STYLE_LITERAL:
-          return "|" + blockHeader(string, state2.indent) + dropEndingNewline(indentString(string, indent));
+          return "|" + blockHeader(string, state.indent) + dropEndingNewline(indentString(string, indent));
         case STYLE_FOLDED:
-          return ">" + blockHeader(string, state2.indent) + dropEndingNewline(indentString(foldString(string, lineWidth), indent));
+          return ">" + blockHeader(string, state.indent) + dropEndingNewline(indentString(foldString(string, lineWidth), indent));
         case STYLE_DOUBLE:
           return '"' + escapeString(string) + '"';
         default:
@@ -2497,133 +2318,133 @@
     }
     return result;
   }
-  function writeFlowSequence(state2, level, object) {
-    var _result = "", _tag = state2.tag, index, length, value;
+  function writeFlowSequence(state, level, object) {
+    var _result = "", _tag = state.tag, index, length, value;
     for (index = 0, length = object.length; index < length; index += 1) {
       value = object[index];
-      if (state2.replacer) {
-        value = state2.replacer.call(object, String(index), value);
+      if (state.replacer) {
+        value = state.replacer.call(object, String(index), value);
       }
-      if (writeNode(state2, level, value, false, false) || typeof value === "undefined" && writeNode(state2, level, null, false, false)) {
-        if (_result !== "") _result += "," + (!state2.condenseFlow ? " " : "");
-        _result += state2.dump;
+      if (writeNode(state, level, value, false, false) || typeof value === "undefined" && writeNode(state, level, null, false, false)) {
+        if (_result !== "") _result += "," + (!state.condenseFlow ? " " : "");
+        _result += state.dump;
       }
     }
-    state2.tag = _tag;
-    state2.dump = "[" + _result + "]";
+    state.tag = _tag;
+    state.dump = "[" + _result + "]";
   }
-  function writeBlockSequence(state2, level, object, compact) {
-    var _result = "", _tag = state2.tag, index, length, value;
+  function writeBlockSequence(state, level, object, compact) {
+    var _result = "", _tag = state.tag, index, length, value;
     for (index = 0, length = object.length; index < length; index += 1) {
       value = object[index];
-      if (state2.replacer) {
-        value = state2.replacer.call(object, String(index), value);
+      if (state.replacer) {
+        value = state.replacer.call(object, String(index), value);
       }
-      if (writeNode(state2, level + 1, value, true, true, false, true) || typeof value === "undefined" && writeNode(state2, level + 1, null, true, true, false, true)) {
+      if (writeNode(state, level + 1, value, true, true, false, true) || typeof value === "undefined" && writeNode(state, level + 1, null, true, true, false, true)) {
         if (!compact || _result !== "") {
-          _result += generateNextLine(state2, level);
+          _result += generateNextLine(state, level);
         }
-        if (state2.dump && CHAR_LINE_FEED === state2.dump.charCodeAt(0)) {
+        if (state.dump && CHAR_LINE_FEED === state.dump.charCodeAt(0)) {
           _result += "-";
         } else {
           _result += "- ";
         }
-        _result += state2.dump;
+        _result += state.dump;
       }
     }
-    state2.tag = _tag;
-    state2.dump = _result || "[]";
+    state.tag = _tag;
+    state.dump = _result || "[]";
   }
-  function writeFlowMapping(state2, level, object) {
-    var _result = "", _tag = state2.tag, objectKeyList = Object.keys(object), index, length, objectKey, objectValue, pairBuffer;
+  function writeFlowMapping(state, level, object) {
+    var _result = "", _tag = state.tag, objectKeyList = Object.keys(object), index, length, objectKey, objectValue, pairBuffer;
     for (index = 0, length = objectKeyList.length; index < length; index += 1) {
       pairBuffer = "";
       if (_result !== "") pairBuffer += ", ";
-      if (state2.condenseFlow) pairBuffer += '"';
+      if (state.condenseFlow) pairBuffer += '"';
       objectKey = objectKeyList[index];
       objectValue = object[objectKey];
-      if (state2.replacer) {
-        objectValue = state2.replacer.call(object, objectKey, objectValue);
+      if (state.replacer) {
+        objectValue = state.replacer.call(object, objectKey, objectValue);
       }
-      if (!writeNode(state2, level, objectKey, false, false)) {
+      if (!writeNode(state, level, objectKey, false, false)) {
         continue;
       }
-      if (state2.dump.length > 1024) pairBuffer += "? ";
-      pairBuffer += state2.dump + (state2.condenseFlow ? '"' : "") + ":" + (state2.condenseFlow ? "" : " ");
-      if (!writeNode(state2, level, objectValue, false, false)) {
+      if (state.dump.length > 1024) pairBuffer += "? ";
+      pairBuffer += state.dump + (state.condenseFlow ? '"' : "") + ":" + (state.condenseFlow ? "" : " ");
+      if (!writeNode(state, level, objectValue, false, false)) {
         continue;
       }
-      pairBuffer += state2.dump;
+      pairBuffer += state.dump;
       _result += pairBuffer;
     }
-    state2.tag = _tag;
-    state2.dump = "{" + _result + "}";
+    state.tag = _tag;
+    state.dump = "{" + _result + "}";
   }
-  function writeBlockMapping(state2, level, object, compact) {
-    var _result = "", _tag = state2.tag, objectKeyList = Object.keys(object), index, length, objectKey, objectValue, explicitPair, pairBuffer;
-    if (state2.sortKeys === true) {
+  function writeBlockMapping(state, level, object, compact) {
+    var _result = "", _tag = state.tag, objectKeyList = Object.keys(object), index, length, objectKey, objectValue, explicitPair, pairBuffer;
+    if (state.sortKeys === true) {
       objectKeyList.sort();
-    } else if (typeof state2.sortKeys === "function") {
-      objectKeyList.sort(state2.sortKeys);
-    } else if (state2.sortKeys) {
+    } else if (typeof state.sortKeys === "function") {
+      objectKeyList.sort(state.sortKeys);
+    } else if (state.sortKeys) {
       throw new exception("sortKeys must be a boolean or a function");
     }
     for (index = 0, length = objectKeyList.length; index < length; index += 1) {
       pairBuffer = "";
       if (!compact || _result !== "") {
-        pairBuffer += generateNextLine(state2, level);
+        pairBuffer += generateNextLine(state, level);
       }
       objectKey = objectKeyList[index];
       objectValue = object[objectKey];
-      if (state2.replacer) {
-        objectValue = state2.replacer.call(object, objectKey, objectValue);
+      if (state.replacer) {
+        objectValue = state.replacer.call(object, objectKey, objectValue);
       }
-      if (!writeNode(state2, level + 1, objectKey, true, true, true)) {
+      if (!writeNode(state, level + 1, objectKey, true, true, true)) {
         continue;
       }
-      explicitPair = state2.tag !== null && state2.tag !== "?" || state2.dump && state2.dump.length > 1024;
+      explicitPair = state.tag !== null && state.tag !== "?" || state.dump && state.dump.length > 1024;
       if (explicitPair) {
-        if (state2.dump && CHAR_LINE_FEED === state2.dump.charCodeAt(0)) {
+        if (state.dump && CHAR_LINE_FEED === state.dump.charCodeAt(0)) {
           pairBuffer += "?";
         } else {
           pairBuffer += "? ";
         }
       }
-      pairBuffer += state2.dump;
+      pairBuffer += state.dump;
       if (explicitPair) {
-        pairBuffer += generateNextLine(state2, level);
+        pairBuffer += generateNextLine(state, level);
       }
-      if (!writeNode(state2, level + 1, objectValue, true, explicitPair)) {
+      if (!writeNode(state, level + 1, objectValue, true, explicitPair)) {
         continue;
       }
-      if (state2.dump && CHAR_LINE_FEED === state2.dump.charCodeAt(0)) {
+      if (state.dump && CHAR_LINE_FEED === state.dump.charCodeAt(0)) {
         pairBuffer += ":";
       } else {
         pairBuffer += ": ";
       }
-      pairBuffer += state2.dump;
+      pairBuffer += state.dump;
       _result += pairBuffer;
     }
-    state2.tag = _tag;
-    state2.dump = _result || "{}";
+    state.tag = _tag;
+    state.dump = _result || "{}";
   }
-  function detectType(state2, object, explicit) {
+  function detectType(state, object, explicit) {
     var _result, typeList, index, length, type2, style;
-    typeList = explicit ? state2.explicitTypes : state2.implicitTypes;
+    typeList = explicit ? state.explicitTypes : state.implicitTypes;
     for (index = 0, length = typeList.length; index < length; index += 1) {
       type2 = typeList[index];
       if ((type2.instanceOf || type2.predicate) && (!type2.instanceOf || typeof object === "object" && object instanceof type2.instanceOf) && (!type2.predicate || type2.predicate(object))) {
         if (explicit) {
           if (type2.multi && type2.representName) {
-            state2.tag = type2.representName(object);
+            state.tag = type2.representName(object);
           } else {
-            state2.tag = type2.tag;
+            state.tag = type2.tag;
           }
         } else {
-          state2.tag = "?";
+          state.tag = "?";
         }
         if (type2.represent) {
-          style = state2.styleMap[type2.tag] || type2.defaultStyle;
+          style = state.styleMap[type2.tag] || type2.defaultStyle;
           if (_toString.call(type2.represent) === "[object Function]") {
             _result = type2.represent(object, style);
           } else if (_hasOwnProperty.call(type2.represent, style)) {
@@ -2631,100 +2452,100 @@
           } else {
             throw new exception("!<" + type2.tag + '> tag resolver accepts not "' + style + '" style');
           }
-          state2.dump = _result;
+          state.dump = _result;
         }
         return true;
       }
     }
     return false;
   }
-  function writeNode(state2, level, object, block, compact, iskey, isblockseq) {
-    state2.tag = null;
-    state2.dump = object;
-    if (!detectType(state2, object, false)) {
-      detectType(state2, object, true);
+  function writeNode(state, level, object, block, compact, iskey, isblockseq) {
+    state.tag = null;
+    state.dump = object;
+    if (!detectType(state, object, false)) {
+      detectType(state, object, true);
     }
-    var type2 = _toString.call(state2.dump);
+    var type2 = _toString.call(state.dump);
     var inblock = block;
     var tagStr;
     if (block) {
-      block = state2.flowLevel < 0 || state2.flowLevel > level;
+      block = state.flowLevel < 0 || state.flowLevel > level;
     }
     var objectOrArray = type2 === "[object Object]" || type2 === "[object Array]", duplicateIndex, duplicate;
     if (objectOrArray) {
-      duplicateIndex = state2.duplicates.indexOf(object);
+      duplicateIndex = state.duplicates.indexOf(object);
       duplicate = duplicateIndex !== -1;
     }
-    if (state2.tag !== null && state2.tag !== "?" || duplicate || state2.indent !== 2 && level > 0) {
+    if (state.tag !== null && state.tag !== "?" || duplicate || state.indent !== 2 && level > 0) {
       compact = false;
     }
-    if (duplicate && state2.usedDuplicates[duplicateIndex]) {
-      state2.dump = "*ref_" + duplicateIndex;
+    if (duplicate && state.usedDuplicates[duplicateIndex]) {
+      state.dump = "*ref_" + duplicateIndex;
     } else {
-      if (objectOrArray && duplicate && !state2.usedDuplicates[duplicateIndex]) {
-        state2.usedDuplicates[duplicateIndex] = true;
+      if (objectOrArray && duplicate && !state.usedDuplicates[duplicateIndex]) {
+        state.usedDuplicates[duplicateIndex] = true;
       }
       if (type2 === "[object Object]") {
-        if (block && Object.keys(state2.dump).length !== 0) {
-          writeBlockMapping(state2, level, state2.dump, compact);
+        if (block && Object.keys(state.dump).length !== 0) {
+          writeBlockMapping(state, level, state.dump, compact);
           if (duplicate) {
-            state2.dump = "&ref_" + duplicateIndex + state2.dump;
+            state.dump = "&ref_" + duplicateIndex + state.dump;
           }
         } else {
-          writeFlowMapping(state2, level, state2.dump);
+          writeFlowMapping(state, level, state.dump);
           if (duplicate) {
-            state2.dump = "&ref_" + duplicateIndex + " " + state2.dump;
+            state.dump = "&ref_" + duplicateIndex + " " + state.dump;
           }
         }
       } else if (type2 === "[object Array]") {
-        if (block && state2.dump.length !== 0) {
-          if (state2.noArrayIndent && !isblockseq && level > 0) {
-            writeBlockSequence(state2, level - 1, state2.dump, compact);
+        if (block && state.dump.length !== 0) {
+          if (state.noArrayIndent && !isblockseq && level > 0) {
+            writeBlockSequence(state, level - 1, state.dump, compact);
           } else {
-            writeBlockSequence(state2, level, state2.dump, compact);
+            writeBlockSequence(state, level, state.dump, compact);
           }
           if (duplicate) {
-            state2.dump = "&ref_" + duplicateIndex + state2.dump;
+            state.dump = "&ref_" + duplicateIndex + state.dump;
           }
         } else {
-          writeFlowSequence(state2, level, state2.dump);
+          writeFlowSequence(state, level, state.dump);
           if (duplicate) {
-            state2.dump = "&ref_" + duplicateIndex + " " + state2.dump;
+            state.dump = "&ref_" + duplicateIndex + " " + state.dump;
           }
         }
       } else if (type2 === "[object String]") {
-        if (state2.tag !== "?") {
-          writeScalar(state2, state2.dump, level, iskey, inblock);
+        if (state.tag !== "?") {
+          writeScalar(state, state.dump, level, iskey, inblock);
         }
       } else if (type2 === "[object Undefined]") {
         return false;
       } else {
-        if (state2.skipInvalid) return false;
+        if (state.skipInvalid) return false;
         throw new exception("unacceptable kind of an object to dump " + type2);
       }
-      if (state2.tag !== null && state2.tag !== "?") {
+      if (state.tag !== null && state.tag !== "?") {
         tagStr = encodeURI(
-          state2.tag[0] === "!" ? state2.tag.slice(1) : state2.tag
+          state.tag[0] === "!" ? state.tag.slice(1) : state.tag
         ).replace(/!/g, "%21");
-        if (state2.tag[0] === "!") {
+        if (state.tag[0] === "!") {
           tagStr = "!" + tagStr;
         } else if (tagStr.slice(0, 18) === "tag:yaml.org,2002:") {
           tagStr = "!!" + tagStr.slice(18);
         } else {
           tagStr = "!<" + tagStr + ">";
         }
-        state2.dump = tagStr + " " + state2.dump;
+        state.dump = tagStr + " " + state.dump;
       }
     }
     return true;
   }
-  function getDuplicateReferences(object, state2) {
+  function getDuplicateReferences(object, state) {
     var objects = [], duplicatesIndexes = [], index, length;
     inspectNode(object, objects, duplicatesIndexes);
     for (index = 0, length = duplicatesIndexes.length; index < length; index += 1) {
-      state2.duplicates.push(objects[duplicatesIndexes[index]]);
+      state.duplicates.push(objects[duplicatesIndexes[index]]);
     }
-    state2.usedDuplicates = new Array(length);
+    state.usedDuplicates = new Array(length);
   }
   function inspectNode(object, objects, duplicatesIndexes) {
     var objectKeyList, index, length;
@@ -2751,13 +2572,13 @@
   }
   function dump$1(input, options) {
     options = options || {};
-    var state2 = new State(options);
-    if (!state2.noRefs) getDuplicateReferences(input, state2);
+    var state = new State(options);
+    if (!state.noRefs) getDuplicateReferences(input, state);
     var value = input;
-    if (state2.replacer) {
-      value = state2.replacer.call({ "": value }, "", value);
+    if (state.replacer) {
+      value = state.replacer.call({ "": value }, "", value);
     }
-    if (writeNode(state2, 0, value, true, true)) return state2.dump + "\n";
+    if (writeNode(state, 0, value, true, true)) return state.dump + "\n";
     return "";
   }
   var dump_1 = dump$1;
@@ -2814,6 +2635,185 @@
     safeDump
   };
 
+  // src/inline.ts
+  var MARKDOWN_LINK_RE = /\[((?:\\.|[^\]\\])+)\]\(([^)\s]+)\)/g;
+  var WIKILINK_RE = /\[\[([^\]\n]+?)\]\]/g;
+  var BLOCK_REFERENCE_WIKILINK_RE = /^[a-zA-Z_][\w\-./:]*$/;
+  function extractWikilinks(src) {
+    const out = [];
+    for (const match of stripInlineCodeSpans(src).matchAll(WIKILINK_RE)) {
+      const parsed = parseWikilink(match[1] ?? "");
+      if (parsed) out.push(parsed);
+    }
+    return out;
+  }
+  function stripInlineCodeSpans(src) {
+    return src.replace(/`[^`\n]*`/g, "");
+  }
+  function isBlockReferenceWikilinkTarget(target) {
+    return BLOCK_REFERENCE_WIKILINK_RE.test(target);
+  }
+  function inlineToHtml(src) {
+    let text = escapeHtml(src);
+    const codeSpans = [];
+    const PH_OPEN = String.fromCharCode(2);
+    const PH_CLOSE = String.fromCharCode(3);
+    text = text.replace(/`([^`]+)`/g, (_m, body) => {
+      const i = codeSpans.push("<code>" + body + "</code>") - 1;
+      return PH_OPEN + i + PH_CLOSE;
+    });
+    text = unescapeMarkdownTextEscapes(text);
+    text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
+    text = text.replace(
+      MARKDOWN_LINK_RE,
+      (_m, label, href) => `<a href="${escapeAttr(href)}">${unescapeMarkdownLinkLabel(label)}</a>`
+    );
+    text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
+    text = text.replace(/(?:  +|\\)\n/g, "<br />");
+    text = text.replace(/\n/g, " ");
+    const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
+    text = text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
+    return text;
+  }
+  function inlineToPlain(src) {
+    const codeSpans = [];
+    const PH_OPEN = String.fromCharCode(2);
+    const PH_CLOSE = String.fromCharCode(3);
+    let text = src.replace(/`([^`]+)`/g, (_m, body) => {
+      const i = codeSpans.push(body) - 1;
+      return PH_OPEN + i + PH_CLOSE;
+    });
+    text = unescapeMarkdownTextEscapes(text).replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/\b_([^_]+)_\b/g, "$1").replace(MARKDOWN_LINK_RE, (_m, label, href) => `${unescapeMarkdownLinkLabel(label)} (${href})`).replace(WIKILINK_RE, (match, raw) => parseWikilink(raw)?.label ?? match);
+    const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
+    return text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
+  }
+  function renderWikilinkHtml(match, raw) {
+    const parsed = parseWikilink(raw);
+    if (!parsed) return match;
+    const hrefTarget = isBlockReferenceWikilinkTarget(parsed.target) ? parsed.target : encodeURIComponent(parsed.target);
+    return `<a class="noma-ref" href="#${escapeAttr(hrefTarget)}">${parsed.label}</a>`;
+  }
+  function parseWikilink(raw) {
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.includes("[") || trimmed.includes("]")) return void 0;
+    const pipe = trimmed.indexOf("|");
+    const target = (pipe === -1 ? trimmed : trimmed.slice(0, pipe)).trim();
+    const label = (pipe === -1 ? defaultWikilinkLabel(target) : trimmed.slice(pipe + 1).trim()) || defaultWikilinkLabel(target);
+    if (!target) return void 0;
+    return { raw: trimmed, target, label };
+  }
+  function defaultWikilinkLabel(target) {
+    return target.replace(/^#/, "").replace(/#/g, " > ");
+  }
+  function unescapeMarkdownLinkLabel(label) {
+    return label.replace(/\\([\\[\]|])/g, "$1");
+  }
+  function unescapeMarkdownTextEscapes(text) {
+    return text.replace(/\\\|/g, "|");
+  }
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function escapeAttr(s) {
+    return escapeHtml(s).replace(/"/g, "&quot;");
+  }
+  function splitPipeRow(line) {
+    const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+    const cells = [];
+    let buf = "";
+    let inBacktick = false;
+    for (let i = 0; i < trimmed.length; i++) {
+      const ch = trimmed[i];
+      if (ch === "\\" && trimmed[i + 1] === "|") {
+        buf += "\\|";
+        i++;
+        continue;
+      }
+      if (ch === "`") {
+        inBacktick = !inBacktick;
+        buf += ch;
+        continue;
+      }
+      if (ch === "|" && !inBacktick) {
+        cells.push(buf.trim());
+        buf = "";
+        continue;
+      }
+      buf += ch;
+    }
+    cells.push(buf.trim());
+    return cells;
+  }
+  function escapePipeTableCell(cell) {
+    let out = "";
+    let inBacktick = false;
+    for (let i = 0; i < cell.length; i++) {
+      const ch = cell[i];
+      if (ch === "`") {
+        inBacktick = !inBacktick;
+        out += ch;
+        continue;
+      }
+      if (ch === "|" && !inBacktick && cell[i - 1] !== "\\") {
+        out += "\\|";
+        continue;
+      }
+      out += ch;
+    }
+    return out;
+  }
+  function splitDelimitedRow(line, delimiter) {
+    const cells = [];
+    let buf = "";
+    let inQuotes = false;
+    let quotedCell = false;
+    let afterClosingQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          buf += '"';
+          i++;
+          continue;
+        }
+        if (ch === '"') {
+          inQuotes = false;
+          quotedCell = true;
+          afterClosingQuote = true;
+          continue;
+        }
+        buf += ch;
+        continue;
+      }
+      if (ch === delimiter) {
+        cells.push(quotedCell ? buf : buf.trim());
+        buf = "";
+        quotedCell = false;
+        afterClosingQuote = false;
+        continue;
+      }
+      if (ch === '"' && buf.trim() === "" && !quotedCell) {
+        buf = "";
+        inQuotes = true;
+        continue;
+      }
+      if (afterClosingQuote && /\s/.test(ch)) continue;
+      afterClosingQuote = false;
+      buf += ch;
+    }
+    cells.push(quotedCell ? buf : buf.trim());
+    return cells;
+  }
+  function serializeDelimitedRow(cells, delimiter) {
+    return cells.map((cell) => serializeDelimitedCell(cell, delimiter)).join(delimiter);
+  }
+  function serializeDelimitedCell(cell, delimiter) {
+    if (!cell.includes(delimiter) && !cell.includes('"') && !/^\s|\s$/.test(cell)) return cell;
+    return `"${cell.replace(/"/g, '""')}"`;
+  }
+
   // src/parser.ts
   var FRONTMATTER_RE = /^---\s*$/;
   var HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
@@ -2860,8 +2860,8 @@
     if (filename) {
       const base = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
       const stem = base.replace(/\.noma$/i, "").replace(/^\d+[-_]/, "");
-      const slug = slugify(stem);
-      if (slug && slug !== root.id) aliases.add(slug);
+      const slug2 = slugify(stem);
+      if (slug2 && slug2 !== root.id) aliases.add(slug2);
     }
     const fmAliases = meta.aliases;
     if (Array.isArray(fmAliases)) {
@@ -3163,14 +3163,14 @@
         const section = node;
         const isExplicit = section._idIsExplicit === true;
         if (!isExplicit) {
-          const slug = section.id;
-          if (seenSlugSections.has(slug)) {
+          const slug2 = section.id;
+          if (seenSlugSections.has(slug2)) {
             let n = 2;
-            while (seenSlugSections.has(`${slug}-${n}`)) n++;
-            section.id = `${slug}-${n}`;
+            while (seenSlugSections.has(`${slug2}-${n}`)) n++;
+            section.id = `${slug2}-${n}`;
             seenSlugSections.add(section.id);
           } else {
-            seenSlugSections.add(slug);
+            seenSlugSections.add(slug2);
           }
         }
         while (stack.length > 0 && stack[stack.length - 1].level >= section.level) {
@@ -7768,11 +7768,6 @@ ${bodyRows}
     return void 0;
   }
 
-  // src/renderer-json.ts
-  function renderJson(doc, options = {}) {
-    return JSON.stringify(doc, null, options.pretty === false ? 0 : 2);
-  }
-
   // src/renderer-llm.ts
   var STALE_OPT_IN_TYPES = /* @__PURE__ */ new Set(["project", "reference"]);
   function renderLlm(doc, options = {}) {
@@ -8024,363 +8019,6 @@ ${bodyRows}
     const expired = node.attrs.expired === true;
     if (!STALE_OPT_IN_TYPES.has(type2) && !expired) return false;
     return cfg.now.getTime() - t > cfg.days * 24 * 60 * 60 * 1e3;
-  }
-
-  // src/renderer-markdown.ts
-  var INTERNAL_META_KEYS = /* @__PURE__ */ new Set(["filename"]);
-  var ESCAPE_HATCHES = /* @__PURE__ */ new Set(["html", "svg", "script"]);
-  var CODE_DIRECTIVES = /* @__PURE__ */ new Set(["code", "code_cell", "output", "query", "example"]);
-  var LAYOUT_CONTAINERS = /* @__PURE__ */ new Set(["grid", "columns", "tabs", "accordion", "hero"]);
-  var VERBATIM_DIRECTIVES = /* @__PURE__ */ new Set(["dataset", "diagram", "plotly"]);
-  function renderMarkdown(doc, options = {}) {
-    const ctx = {
-      includeFrontmatter: options.includeFrontmatter !== false,
-      stripInternal: options.stripInternal !== false,
-      anchorWikilinks: options.anchorWikilinks !== false,
-      includeAnchors: options.includeAnchors !== false,
-      semanticComments: options.semanticComments !== false,
-      includeEscapeHatches: options.includeEscapeHatches === true
-    };
-    const chunks = [];
-    const hasFrontmatterNode = doc.children[0]?.type === "frontmatter";
-    if (ctx.includeFrontmatter && !hasFrontmatterNode) {
-      const frontmatter = frontmatterFromMeta(doc, ctx);
-      if (frontmatter) chunks.push(frontmatter);
-    }
-    for (const child of doc.children) chunks.push(renderNode2(child, ctx, 1));
-    return joinBlocks(chunks) + "\n";
-  }
-  function frontmatterFromMeta(doc, ctx) {
-    const entries = Object.entries(doc.meta).filter(([key]) => {
-      return !ctx.stripInternal || !INTERNAL_META_KEYS.has(key);
-    });
-    if (entries.length === 0) return "";
-    return `---
-${jsYaml.dump(Object.fromEntries(entries)).trimEnd()}
----`;
-  }
-  function renderNode2(node, ctx, depth) {
-    switch (node.type) {
-      case "document":
-        return joinBlocks(node.children.map((child) => renderNode2(child, ctx, depth)));
-      case "frontmatter":
-        return renderFrontmatter(node, ctx);
-      case "section":
-        return renderSection2(node, ctx, depth);
-      case "paragraph":
-        return renderInline(node.content, ctx);
-      case "code":
-        return fenced(node.content, node.lang);
-      case "list":
-        return renderList(node, ctx);
-      case "list_item":
-        return `- ${renderInline(node.content, ctx)}`;
-      case "quote":
-        return renderQuote(node, ctx);
-      case "thematic_break":
-        return "---";
-      case "table":
-        return renderPipeTable(node.header, node.rows, node.align, ctx);
-      case "directive":
-        return renderDirective2(node, ctx, depth);
-      default: {
-        const _exhaustive = node;
-        void _exhaustive;
-        return "";
-      }
-    }
-  }
-  function renderFrontmatter(node, ctx) {
-    return ctx.includeFrontmatter ? `---
-${node.raw}
----` : "";
-  }
-  function renderSection2(node, ctx, depth) {
-    const level = Math.max(1, Math.min(6, node.level));
-    const heading = `${"#".repeat(level)} ${renderInline(node.title, ctx)}`;
-    const anchors = renderAnchors([node.id, ...node.aliases ?? []], ctx);
-    const children = joinBlocks(node.children.map((child) => renderNode2(child, ctx, depth + 1)));
-    return joinBlocks([anchors, heading, children]);
-  }
-  function renderList(node, ctx) {
-    return node.items.map((item, index) => {
-      const marker = node.ordered ? `${index + 1}.` : "-";
-      return `${marker} ${renderInline(item.content, ctx)}`;
-    }).join("\n");
-  }
-  function renderQuote(node, ctx) {
-    return renderInline(node.content, ctx).split("\n").map((line) => line ? `> ${line}` : ">").join("\n");
-  }
-  function renderDirective2(node, ctx, depth) {
-    if (ESCAPE_HATCHES.has(node.name) && !ctx.includeEscapeHatches) {
-      return wrapDirective(node, `[${readableDirectiveName2(node.name)} escape hatch omitted]`, ctx);
-    }
-    if (node.name === "math") {
-      const body = node.body ?? renderDirectiveChildren(node, ctx, depth);
-      return wrapDirective(node, `$$
-${body.trim()}
-$$`, ctx);
-    }
-    if (node.name === "pagebreak") {
-      return wrapDirective(node, "<!-- pagebreak -->", ctx);
-    }
-    if (node.name === "table") {
-      return wrapDirective(node, renderTableDirective2(node, ctx), ctx);
-    }
-    if (node.name === "figure") {
-      return wrapDirective(node, renderFigure(node, ctx, depth), ctx);
-    }
-    if (node.name === "agent_task" || node.name === "todo") {
-      return wrapDirective(node, renderTask(node, ctx, depth), ctx);
-    }
-    if (isCallout(node)) {
-      return wrapDirective(node, renderCallout(node, ctx, depth), ctx);
-    }
-    if (node.name === "card" || node.name === "tab" || node.name === "sidebar") {
-      return wrapDirective(node, renderTitledContainer(node, ctx, depth), ctx);
-    }
-    if (LAYOUT_CONTAINERS.has(node.name)) {
-      return wrapDirective(node, renderDirectiveChildren(node, ctx, depth), ctx);
-    }
-    if (CODE_DIRECTIVES.has(node.name) && hasCodeLikeBody(node)) {
-      const language = attrText(node, "lang", "language", "runtime");
-      return wrapDirective(node, renderLabeledCode(node, ctx, depth, language), ctx);
-    }
-    if (node.name === "button" || node.name === "export_button") {
-      return wrapDirective(node, renderAction(node, ctx, depth), ctx);
-    }
-    if (VERBATIM_DIRECTIVES.has(node.name)) {
-      return wrapDirective(node, renderVerbatimDirective(node), ctx);
-    }
-    return wrapDirective(node, renderGenericDirective2(node, ctx, depth), ctx);
-  }
-  function renderCallout(node, ctx, depth) {
-    const admonition = calloutKind(node);
-    const title = attrText(node, "title", "label", "caption");
-    const body = renderDirectiveContent(node, ctx, depth);
-    const lines = [admonition ? `[!${admonition}]` : void 0, title ? `**${renderInline(title, ctx)}**` : void 0, body].filter((line) => Boolean(line && line.trim()));
-    return lines.map((line) => quoteMarkdown(line)).join("\n");
-  }
-  function renderTitledContainer(node, ctx, depth) {
-    const title = attrText(node, "title", "label", "caption", "name") ?? readableDirectiveName2(node.name);
-    const headingLevel = Math.min(6, depth + 1);
-    return joinBlocks([
-      `${"#".repeat(headingLevel)} ${renderInline(title, ctx)}`,
-      renderMetadata(node),
-      renderDirectiveContent(node, ctx, depth)
-    ]);
-  }
-  function renderGenericDirective2(node, ctx, depth) {
-    const title = directiveTitle(node);
-    const content = renderDirectiveContent(node, ctx, depth);
-    return joinBlocks([`**${renderInline(title, ctx)}**`, renderMetadata(node), content]);
-  }
-  function renderLabeledCode(node, ctx, depth, language) {
-    return joinBlocks([
-      `**${renderInline(directiveTitle(node), ctx)}**`,
-      renderMetadata(node),
-      fenced(node.body ?? renderDirectiveChildren(node, ctx, depth), language)
-    ]);
-  }
-  function renderVerbatimDirective(node) {
-    const language = node.name === "dataset" ? datasetLanguage(node) : node.name;
-    return joinBlocks([
-      `**${directiveTitle(node)}**`,
-      renderMetadata(node),
-      fenced(node.body ?? "", language)
-    ]);
-  }
-  function renderAction(node, ctx, depth) {
-    const label = attrText(node, "Label", "label", "title") ?? directiveBodyLabel(node) ?? readableDirectiveName2(node.name);
-    const href = attrText(node, "href", "url");
-    const body = renderDirectiveContent(node, ctx, depth);
-    const action = href ? `[${renderInline(label, ctx)}](${href})` : `**${renderInline(label, ctx)}**`;
-    return joinBlocks([action, renderMetadata(node), body]);
-  }
-  function renderFigure(node, ctx, depth) {
-    const src = attrText(node, "src", "href", "url");
-    const alt = attrText(node, "alt") ?? attrText(node, "caption", "title") ?? node.id ?? "Figure";
-    const caption = attrText(node, "caption", "title");
-    const media = src ? `![${renderInline(alt, ctx)}](${src})` : `**${renderInline(directiveTitle(node), ctx)}**`;
-    return joinBlocks([
-      media,
-      caption ? `_${renderInline(caption, ctx)}_` : "",
-      renderMetadata(node),
-      renderDirectiveContent(node, ctx, depth)
-    ]);
-  }
-  function renderTask(node, ctx, depth) {
-    const checked = node.attrs.done === true || attrText(node, "status") === "done";
-    const body = renderDirectiveContent(node, ctx, depth).trim() || directiveTitle(node);
-    const firstLine = body.split("\n")[0] ?? "";
-    const rest = body.split("\n").slice(1).join("\n");
-    const item = `- [${checked ? "x" : " "}] ${firstLine}`;
-    return joinBlocks([item, rest, renderMetadata(node)]);
-  }
-  function renderTableDirective2(node, ctx) {
-    const rows = (node.body ?? "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith("|")).map(splitPipeRow);
-    if (rows.length === 0) return renderVerbatimDirective(node);
-    const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
-    const header = node.attrs.header === true ? normalizeRow(rows[0] ?? [], width) : Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
-    const bodyRows = node.attrs.header === true ? rows.slice(1) : rows;
-    return joinBlocks([
-      attrText(node, "title", "caption") ? `**${renderInline(directiveTitle(node), ctx)}**` : "",
-      renderMetadata(node),
-      renderPipeTable(header, bodyRows.map((row) => normalizeRow(row, width)), alignFromAttr(node.attrs.align, width), ctx)
-    ]);
-  }
-  function renderPipeTable(header, rows, align, ctx) {
-    const renderedHeader = header.map((cell) => tableCell(cell, ctx));
-    const renderedRows = rows.map((row2) => row2.map((cell) => tableCell(cell, ctx)));
-    const widths = renderedHeader.map(
-      (cell, index) => Math.max(cell.length, ...renderedRows.map((row2) => (row2[index] ?? "").length), 3)
-    );
-    const row = (cells) => "| " + cells.map((cell, index) => cell.padEnd(widths[index] ?? cell.length)).join(" | ") + " |";
-    const separator = "| " + widths.map((width, index) => alignmentSeparator(width, align[index] ?? null)).join(" | ") + " |";
-    return [row(renderedHeader), separator, ...renderedRows.map(row)].join("\n");
-  }
-  function renderDirectiveContent(node, ctx, depth) {
-    if (node.children.length > 0) return renderDirectiveChildren(node, ctx, depth);
-    if (node.body === void 0) return "";
-    return renderInline(node.body, ctx);
-  }
-  function renderDirectiveChildren(node, ctx, depth) {
-    return joinBlocks(node.children.map((child) => renderNode2(child, ctx, depth + 1)));
-  }
-  function wrapDirective(node, body, ctx) {
-    const anchors = renderAnchors([node.id, ...node.aliases ?? []], ctx);
-    if (!ctx.semanticComments) return joinBlocks([anchors, body]);
-    const open = directiveComment(node);
-    const close = `<!-- /noma:block ${safeCommentToken(node.id ?? node.name)} -->`;
-    return joinBlocks([anchors, open, body, close]);
-  }
-  function renderInline(src, ctx) {
-    const text = unescapeMarkdownTextEscapes(src);
-    if (!ctx.anchorWikilinks) return text;
-    return text.replace(/\[\[([^\]\n]+?)\]\]/g, (match) => {
-      const link = extractWikilinks(match)[0];
-      if (!link) return match;
-      return `[${link.label}](#${encodeURIComponent(link.target)})`;
-    });
-  }
-  function renderAnchors(values, ctx) {
-    if (!ctx.includeAnchors) return "";
-    const unique = [...new Set(values.filter((value) => Boolean(value)))];
-    return unique.map((value) => `<a id="${escapeHtmlAttr(value)}"></a>`).join("\n");
-  }
-  function renderMetadata(node) {
-    const parts = metadataParts(node);
-    return parts.length > 0 ? `_${parts.join(", ")}_` : "";
-  }
-  function metadataParts(node) {
-    const skip = /* @__PURE__ */ new Set(["id", "title", "caption", "label", "Label", "name", "src", "alt"]);
-    const parts = [];
-    if (node.id) parts.push(`id=${node.id}`);
-    for (const [key, value] of Object.entries(node.attrs)) {
-      if (skip.has(key)) continue;
-      parts.push(formatAttr(key, value));
-    }
-    return parts;
-  }
-  function directiveComment(node) {
-    const attrs = Object.fromEntries(Object.entries(node.attrs).filter(([key]) => key !== "id"));
-    const payload = { name: node.name };
-    if (node.id) payload.id = node.id;
-    if (Object.keys(attrs).length > 0) payload.attrs = attrs;
-    return `<!-- noma:block ${safeCommentToken(JSON.stringify(payload))} -->`;
-  }
-  function directiveTitle(node) {
-    const title = attrText(node, "title", "caption", "label", "Label", "name");
-    const label = readableDirectiveName2(node.name);
-    if (title) return label === title ? title : `${label}: ${title}`;
-    return node.id ? `${label}: ${node.id}` : label;
-  }
-  function directiveBodyLabel(node) {
-    if (!node.body) return void 0;
-    const match = /^(?:Label|label|title):\s*(.+)$/m.exec(node.body);
-    return match?.[1]?.trim();
-  }
-  function isCallout(node) {
-    return node.name === "summary" || node.name === "abstract" || node.name === "callout" || node.name === "note" || node.name === "warning" || node.name === "tip";
-  }
-  function calloutKind(node) {
-    if (node.name === "warning") return "WARNING";
-    if (node.name === "tip") return "TIP";
-    if (node.name === "note") return "NOTE";
-    const tone = attrText(node, "tone")?.toLowerCase();
-    if (tone === "warning" || tone === "danger" || tone === "error") return "WARNING";
-    if (tone === "tip" || tone === "success") return "TIP";
-    if (tone === "info" || tone === "note") return "NOTE";
-    return "NOTE";
-  }
-  function hasCodeLikeBody(node) {
-    return node.body !== void 0 && (node.children.length === 0 || attrText(node, "lang", "language", "runtime") !== void 0);
-  }
-  function datasetLanguage(node) {
-    const format = attrText(node, "format")?.toLowerCase();
-    if (format === "csv" || format === "tsv" || format === "json" || format === "yaml") return format;
-    if ((node.body ?? "").trimStart().startsWith("{") || (node.body ?? "").trimStart().startsWith("[")) return "json";
-    return "yaml";
-  }
-  function attrText(node, ...keys) {
-    for (const key of keys) {
-      const value = node.attrs[key];
-      if (typeof value === "string" && value.trim()) return value;
-      if (typeof value === "number" || typeof value === "boolean") return String(value);
-    }
-    return void 0;
-  }
-  function formatAttr(key, value) {
-    if (value === true) return key;
-    return `${key}=${String(value)}`;
-  }
-  function readableDirectiveName2(name) {
-    const words = name.replace(/::/g, "_").split(/[_-]+/).filter(Boolean);
-    if (words.length === 0) return "Block";
-    return words.map((word, index) => {
-      const lower = word.toLowerCase();
-      return index === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
-    }).join(" ");
-  }
-  function tableCell(cell, ctx) {
-    return escapePipeTableCell(renderInline(cell, ctx));
-  }
-  function alignmentSeparator(width, align) {
-    if (align === "center") return ":" + "-".repeat(Math.max(3, width - 2)) + ":";
-    if (align === "right") return "-".repeat(Math.max(3, width - 1)) + ":";
-    if (align === "left") return ":" + "-".repeat(Math.max(3, width - 1));
-    return "-".repeat(Math.max(3, width));
-  }
-  function alignFromAttr(value, width) {
-    const parts = typeof value === "string" ? value.split(/[,\s]+/).filter(Boolean) : [];
-    return Array.from({ length: width }, (_item, index) => {
-      const code = parts[index]?.toLowerCase();
-      if (code === "l" || code === "left") return "left";
-      if (code === "c" || code === "center") return "center";
-      if (code === "r" || code === "right") return "right";
-      return null;
-    });
-  }
-  function normalizeRow(row, width) {
-    return Array.from({ length: width }, (_value, index) => row[index] ?? "");
-  }
-  function quoteMarkdown(text) {
-    return text.split("\n").map((line) => `> ${line}`).join("\n");
-  }
-  function fenced(content, language) {
-    const fence = content.includes("```") ? "~~~~" : "```";
-    return `${fence}${language ?? ""}
-${content.replace(/\n+$/, "")}
-${fence}`;
-  }
-  function joinBlocks(chunks) {
-    return chunks.filter((chunk) => chunk.trim().length > 0).join("\n\n");
-  }
-  function safeCommentToken(value) {
-    return value.replace(/--/g, "- -");
-  }
-  function escapeHtmlAttr(value) {
-    return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   // src/validator.ts
@@ -9376,904 +9014,632 @@ ${fence}`;
   // themes/default.css
   var default_default = ':root {\n  --noma-bg: #fbfaf7;\n  --noma-fg: #1d1c1a;\n  --noma-muted: #6b6a66;\n  --noma-rule: #e7e4dc;\n  --noma-accent: #b9522a;\n  --noma-accent-soft: #f4dccd;\n  --noma-claim: #2c5d8f;\n  --noma-claim-soft: #dfeaf5;\n  --noma-evidence: #2f7d4a;\n  --noma-evidence-soft: #dff0e3;\n  --noma-risk: #a8362e;\n  --noma-risk-soft: #f7d9d4;\n  --noma-code-bg: #f1ede4;\n  --noma-card-bg: #ffffff;\n  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);\n  --noma-radius: 8px;\n  --noma-cols: 2;\n  --noma-grid-min: 14rem;\n  --noma-grid-gap: 1rem;\n  --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;\n  --noma-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;\n  --noma-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;\n}\n\n* { box-sizing: border-box; }\n\nhtml, body {\n  margin: 0;\n  padding: 0;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n  font-family: var(--noma-font-serif);\n  font-size: 16px;\n  line-height: 1.58;\n  -webkit-font-smoothing: antialiased;\n  text-rendering: optimizeLegibility;\n}\n\nmain.noma-doc {\n  max-width: 1040px;\n  margin: 3rem auto;\n  padding: 0 1.25rem 5rem;\n}\n\nmain.noma-doc > section.noma-hero ~ section,\nmain.noma-doc > .noma-grid,\nmain.noma-doc > .noma-columns {\n  max-width: 100%;\n}\n\nh1, h2, h3, h4, h5, h6 {\n  font-family: var(--noma-font-sans);\n  font-weight: 700;\n  line-height: 1.2;\n  letter-spacing: 0;\n  margin: 2em 0 0.55em;\n}\nh1 { font-size: 2.1rem; margin-top: 0; }\nh2 { font-size: 1.45rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.25em; }\nh3 { font-size: 1.15rem; }\nh4 { font-size: 0.98rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n\np { margin: 0 0 1.05em; }\na { color: var(--noma-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }\na:hover { text-decoration-thickness: 2px; }\n\ncode {\n  font-family: var(--noma-font-mono);\n  font-size: 0.9em;\n  background: var(--noma-code-bg);\n  padding: 0.1em 0.35em;\n  border-radius: 4px;\n}\npre {\n  background: var(--noma-code-bg);\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  overflow-x: auto;\n  font-size: 0.9rem;\n  line-height: 1.5;\n}\npre code { background: none; padding: 0; }\n\nblockquote {\n  border-left: 3px solid var(--noma-accent);\n  margin: 1.5em 0;\n  padding: 0.2em 1.2em;\n  color: var(--noma-muted);\n  font-style: italic;\n}\n\nhr { border: 0; border-top: 1px solid var(--noma-rule); margin: 3em 0; }\n\nul, ol { padding-left: 1.4em; }\nli { margin: 0.25em 0; }\n\nfigure {\n  margin: 1.8em 0;\n}\nfigure img {\n  display: block;\n  max-width: 100%;\n  height: auto;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\nfigcaption {\n  margin-top: 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n\n/* Callouts */\naside.noma-callout {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-accent-soft);\n  border-left: 3px solid var(--noma-accent);\n}\naside.noma-callout-warning { background: #fbe6df; border-color: var(--noma-risk); }\naside.noma-callout-tip     { background: #e6f3eb; border-color: var(--noma-evidence); }\naside.noma-callout-note    { background: #ecedf2; border-color: #5a6071; }\n\n/* Research blocks */\naside.noma-research {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-research .noma-research-head {\n  display: flex;\n  align-items: center;\n  gap: 0.8em;\n  margin-bottom: 0.5em;\n}\naside.noma-research .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-muted);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-code-bg);\n}\naside.noma-claim          { border-left: 3px solid var(--noma-claim); }\naside.noma-claim .noma-tag { color: var(--noma-claim); background: var(--noma-claim-soft); }\naside.noma-evidence       { border-left: 3px solid var(--noma-evidence); }\naside.noma-evidence .noma-tag { color: var(--noma-evidence); background: var(--noma-evidence-soft); }\naside.noma-counterevidence { border-left: 3px solid var(--noma-risk); }\naside.noma-counterevidence .noma-tag { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-risk           { border-left: 3px solid var(--noma-risk); }\naside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }\naside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }\naside.noma-open_question { border-left: 3px solid #8b6c1a; }\naside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }\naside.noma-assumption { border-left: 3px solid #5a6071; }\naside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }\n\n/* Variants \u2014 themable per-block emphasis without inline styling */\n[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }\n[data-variant="subtle"] { opacity: 0.78; box-shadow: none; }\n[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }\n[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }\n[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }\n\n/* Export buttons (artifact-side action surface) */\n.noma-export-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  border: 0;\n  padding: 0.55em 1.1em;\n  margin: 0.3em 0.4em 0.3em 0;\n  border-radius: 999px;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.85rem;\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n.noma-export-button:hover { background: var(--noma-accent); color: white; }\n.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }\n.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }\n.noma-export-button[data-format="json"] { background: var(--noma-muted); }\n\n/* Controls (interactive artifact blocks) */\n.noma-control {\n  margin: 1em 0;\n  padding: 0.8em 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-control-row {\n  display: grid;\n  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 2fr);\n  gap: 0.75rem;\n  align-items: center;\n}\n.noma-control-label { font-weight: 650; }\n.noma-control input,\n.noma-control select {\n  width: 100%;\n  accent-color: var(--noma-accent);\n  font: inherit;\n}\n.noma-control input[type="number"],\n.noma-control input[type="text"],\n.noma-control select {\n  border: 1px solid var(--noma-rule);\n  border-radius: 6px;\n  padding: 0.35em 0.5em;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n}\n.noma-control input[type="checkbox"] {\n  width: auto;\n  justify-self: start;\n}\n.noma-control-value {\n  display: block;\n  margin-top: 0.35rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-mono);\n  font-size: 0.82rem;\n}\n.noma-interactive-disabled {\n  display: inline-block;\n  margin-bottom: 0.5rem;\n  padding: 0.18em 0.55em;\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n  font-weight: 650;\n}\n\n.noma-computed {\n  margin: 1.2em 0;\n  padding: 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 4px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-computed-head {\n  display: flex;\n  gap: 0.8rem;\n  align-items: baseline;\n  flex-wrap: wrap;\n  margin-bottom: 0.45rem;\n}\n.noma-computed-head h3 {\n  margin: 0;\n  font-size: 1rem;\n}\n.noma-computed-value {\n  font-family: var(--noma-font-sans);\n  font-size: 1.75rem;\n  line-height: 1.15;\n  font-weight: 750;\n  color: var(--noma-claim);\n}\n.noma-computed-body {\n  margin-top: 0.75rem;\n}\n.noma-computed-body p {\n  margin-bottom: 0;\n}\n.noma-computed-plot {\n  padding: 1em;\n}\n.noma-computed-canvas {\n  margin-bottom: 0.5rem;\n}\n.noma-computed-table-view {\n  margin: 0.65rem 0 0;\n  font-size: 0.9rem;\n}\n.noma-computed-table-view th:last-child,\n.noma-computed-table-view td:last-child {\n  text-align: right;\n}\n@media (max-width: 720px) {\n  .noma-control-row {\n    grid-template-columns: 1fr;\n  }\n}\n\n.noma-confidence {\n  flex: 1;\n  height: 6px;\n  border-radius: 999px;\n  background: var(--noma-rule);\n  overflow: hidden;\n  max-width: 140px;\n}\n.noma-confidence-bar {\n  height: 100%;\n  background: linear-gradient(90deg, var(--noma-accent), var(--noma-claim));\n}\n\n.noma-meta {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\n.noma-meta-key {\n  font-weight: 600;\n  color: var(--noma-fg);\n}\n\n/* Grid */\n.noma-grid,\n.noma-columns {\n  display: grid;\n  grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));\n  gap: var(--noma-grid-gap);\n  margin: 1.5em 0;\n}\n.noma-grid-auto,\n.noma-columns-auto {\n  grid-template-columns: repeat(auto-fit, minmax(min(var(--noma-grid-min), 100%), 1fr));\n}\n.noma-grid-wide,\n.noma-columns-wide,\n.noma-grid-full,\n.noma-columns-full {\n  position: relative;\n  left: 50%;\n  transform: translateX(-50%);\n}\n.noma-grid-wide,\n.noma-columns-wide {\n  width: min(1180px, calc(100vw - 2rem));\n}\n.noma-grid-full,\n.noma-columns-full {\n  width: min(1440px, calc(100vw - 2rem));\n}\n.noma-grid-compact,\n.noma-columns-compact {\n  --noma-grid-gap: 0.75rem;\n}\n@media (max-width: 720px) {\n  .noma-grid,\n  .noma-columns {\n    grid-template-columns: 1fr;\n    width: auto;\n    left: auto;\n    transform: none;\n  }\n}\n\n/* Card */\narticle.noma-card {\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 1em 1.1em;\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-card .noma-card-head {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  margin-bottom: 0.4em;\n}\narticle.noma-card h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-family: var(--noma-font-sans);\n}\narticle.noma-card .noma-icon {\n  color: var(--noma-accent);\n  font-size: 0.9em;\n}\narticle.noma-card p:last-child { margin-bottom: 0; }\n\n/* Hero */\nsection.noma-hero {\n  background: linear-gradient(180deg, var(--noma-accent-soft), transparent);\n  padding: 3rem 2rem 2.4rem;\n  border-radius: var(--noma-radius);\n  margin: 0 0 3rem;\n  text-align: center;\n}\nsection.noma-hero h1 { font-size: 2.8rem; margin-top: 0; }\n\na.noma-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  padding: 0.7em 1.4em;\n  border-radius: 999px;\n  text-decoration: none;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.95rem;\n  margin-top: 0.5em;\n}\na.noma-button:hover { background: var(--noma-accent); color: white; }\n\n/* Plot */\nfigure.noma-plot {\n  margin: 1.8em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n}\nfigure.noma-plot .noma-plot-canvas {\n  color: var(--noma-claim);\n  background: linear-gradient(180deg, transparent, var(--noma-claim-soft));\n  border-radius: 6px;\n  padding: 0.6em;\n}\nfigure.noma-plot svg { width: 100%; height: auto; display: block; }\nfigure.noma-plot figcaption {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\nfigure.noma-plot[data-compact="true"] {\n  padding: 0.65em 0.8em;\n}\nfigure.noma-plot[data-compact="true"] figcaption {\n  margin-top: 0.35em;\n  font-size: 0.78rem;\n}\n\n/* Dataset */\ndetails.noma-dataset {\n  margin: 1.4em 0;\n  padding: 0.6em 1em;\n  background: var(--noma-code-bg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\ndetails.noma-dataset pre {\n  background: transparent;\n  padding: 0.6em 0 0;\n}\n\n/* Agent task */\n.noma-agent-task {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-claim-soft);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n}\n.noma-agent-task label {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.9rem;\n  margin-bottom: 0.4em;\n}\n\n/* Collaboration metadata */\naside.noma-comment,\naside.noma-review-meta {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-comment {\n  background: #f7f6f1;\n}\n.noma-comment-head,\n.noma-review-meta-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.55em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-comment .noma-tag,\n.noma-review-meta .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-review-meta.noma-collab-review {\n  border-left-color: var(--noma-accent);\n}\n.noma-review-meta.noma-collab-review .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-review-meta.noma-collab-provenance {\n  border-left-color: var(--noma-claim);\n}\n.noma-review-meta.noma-collab-provenance .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-review-meta.noma-collab-confidence {\n  border-left-color: var(--noma-evidence);\n}\n.noma-review-meta.noma-collab-confidence .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-comment-body p:last-child,\n.noma-review-meta-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Memory profile */\naside.noma-memory,\naside.noma-memory-index {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-memory-index {\n  background: #f4f7f8;\n}\n.noma-memory-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-memory .noma-tag,\n.noma-memory-index .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-memory h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-memory.noma-memory-user {\n  border-left-color: var(--noma-evidence);\n}\n.noma-memory.noma-memory-user .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-memory.noma-memory-feedback {\n  border-left-color: var(--noma-accent);\n}\n.noma-memory.noma-memory-feedback .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-memory.noma-memory-project {\n  border-left-color: var(--noma-claim);\n}\n.noma-memory.noma-memory-project .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-memory.noma-memory-reference {\n  border-left-color: #5a6071;\n}\n.noma-memory.noma-memory-reference .noma-tag {\n  color: #5a6071;\n  background: #ecedf2;\n}\n.noma-memory-body p:last-child,\n.noma-memory-index .noma-memory-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Metrics */\naside.noma-metric {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-evidence);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-metric-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.25em;\n}\n.noma-metric .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-evidence);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-evidence-soft);\n}\n.noma-metric h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-metric-value {\n  margin: 0.2em 0 0.25em;\n  color: var(--noma-evidence);\n  font-family: var(--noma-font-sans);\n  font-size: 1.7rem;\n  font-weight: 800;\n  line-height: 1.15;\n}\n.noma-metric-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Technical documentation */\narticle.noma-technical {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-technical .noma-technical-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n}\narticle.noma-technical .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-claim);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n}\narticle.noma-technical h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-technical-meta {\n  margin: 0.35em 0 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.85rem;\n}\n.noma-technical-body p:last-child {\n  margin-bottom: 0;\n}\npre.noma-technical-code {\n  margin: 0.7em 0 0;\n}\n\n/* Custom directives */\naside.noma-block {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-block-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n  font-family: var(--noma-font-sans);\n}\naside.noma-block .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\naside.noma-block h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-block-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Change requests */\naside.noma-change-request {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: #fff4f0;\n  border: 1px solid #f0c7bd;\n  border-left: 3px solid #c85c4a;\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-change-request-head {\n  font-size: 0.85rem;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.45em;\n}\n.noma-change-request-delta {\n  display: flex;\n  align-items: baseline;\n  gap: 0.55em;\n  margin: 0.35em 0 0.55em;\n  line-height: 1.5;\n}\n.noma-change-request del {\n  color: #9a382b;\n  text-decoration-thickness: 0.12em;\n}\n.noma-change-request ins {\n  color: #2f6e42;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n/* State change */\naside.noma-state-change {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-fg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-state-change-head {\n  font-size: 0.85rem;\n  letter-spacing: 0.02em;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.4em;\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  flex-wrap: wrap;\n}\n.noma-state-change-delta {\n  font-size: 1rem;\n  display: flex;\n  align-items: baseline;\n  gap: 0.6em;\n  margin: 0.3em 0 0.5em;\n  font-variant-numeric: tabular-nums;\n}\n.noma-state-from {\n  text-decoration: line-through;\n  opacity: 0.65;\n}\n.noma-state-to {\n  font-weight: 700;\n}\n.noma-state-arrow {\n  opacity: 0.55;\n  font-size: 0.95em;\n}\n\n/* Tables */\ntable.noma-table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 1.6em 0;\n  font-family: var(--noma-font-sans);\n  font-size: 0.88rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  overflow: hidden;\n  box-shadow: var(--noma-shadow);\n}\ntable.noma-table thead {\n  background: var(--noma-code-bg);\n}\ntable.noma-table th {\n  text-align: left;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  padding: 0.55em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  color: var(--noma-fg);\n}\ntable.noma-table td {\n  padding: 0.5em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  vertical-align: top;\n}\ntable.noma-table tbody tr:last-child td { border-bottom: 0; }\ntable.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }\n\n.noma-page-header,\n.noma-page-footer {\n  margin: 1.2rem 0;\n  padding: 0.55rem 0;\n  border-color: var(--noma-rule);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-page-header {\n  border-bottom: 1px solid var(--noma-rule);\n}\n.noma-page-footer {\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-page-header p,\n.noma-page-footer p {\n  margin: 0;\n}\n.noma-page-number {\n  display: block;\n  text-align: right;\n}\n\n.noma-toc {\n  margin: 1.6rem 0 2rem;\n  padding: 1rem 1.1rem;\n  border: 1px solid var(--noma-rule);\n  background: var(--noma-card-bg);\n  font-family: var(--noma-font-sans);\n  box-shadow: var(--noma-shadow);\n}\n.noma-toc h2 {\n  margin: 0 0 0.6rem;\n  padding: 0;\n  border: 0;\n  font-size: 1.1rem;\n}\n.noma-toc ol {\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n.noma-toc li {\n  margin: 0.15rem 0;\n}\n.noma-toc li[data-level="2"] { margin-left: 1rem; }\n.noma-toc li[data-level="3"] { margin-left: 2rem; }\n.noma-toc li[data-level="4"] { margin-left: 3rem; }\n.noma-toc li[data-level="5"] { margin-left: 4rem; }\n.noma-toc li[data-level="6"] { margin-left: 5rem; }\n\n.noma-footnote,\n.noma-endnote {\n  margin: 1.2rem 0;\n  padding: 0.7rem 0.9rem;\n  border-left: 3px solid var(--noma-rule);\n  background: var(--noma-code-bg);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-footnote p,\n.noma-endnote p {\n  margin: 0.25rem 0;\n}\n.noma-footnote sup,\n.noma-endnote sup {\n  margin-right: 0.4rem;\n  color: var(--noma-accent);\n  font-weight: 700;\n}\n\n.noma-bibliography {\n  margin: 2rem 0;\n  padding-top: 0.8rem;\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-bibliography h2 {\n  margin-top: 0;\n}\n.noma-bibliography ol {\n  padding-left: 1.4rem;\n}\n.noma-citation-meta {\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9em;\n}\n\n.noma-pagebreak {\n  margin: 2rem 0;\n  border: 0;\n  border-top: 1px dashed var(--noma-rule);\n}\n\n/* Print */\n@media print {\n  @page { margin: 20mm 18mm; }\n  html, body { background: white; font-size: 11pt; }\n  main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }\n  section.noma-hero { background: none; border: 1px solid var(--noma-rule); }\n  a { color: var(--noma-fg); }\n  pre, article.noma-card, article.noma-technical, aside.noma-block, .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, aside.noma-comment, aside.noma-review-meta, aside.noma-memory, aside.noma-memory-index, aside.noma-metric, aside.noma-change-request, aside.noma-footnote, aside.noma-endnote, nav.noma-toc, header.noma-page-header, footer.noma-page-footer, details.noma-dataset, table.noma-table {\n    box-shadow: none;\n    page-break-inside: avoid;\n    break-inside: avoid;\n  }\n  .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {\n    background: white;\n  }\n  table.noma-table {\n    font-size: 9.5pt;\n    box-shadow: none;\n  }\n  table.noma-table th,\n  table.noma-table td {\n    padding: 0.35em 0.55em;\n  }\n  h1, h2, h3 {\n    page-break-after: avoid;\n    break-after: avoid;\n  }\n  .noma-pagebreak {\n    margin: 0;\n    border: 0;\n    height: 0;\n    page-break-after: always;\n    break-after: page;\n  }\n}\n\n/* v0.4 \u2014 alias anchors (offset for sticky-headed pages) */\na.noma-alias {\n  display: block;\n  position: relative;\n  top: -1.2em;\n  visibility: hidden;\n  height: 0;\n}\n\n/* v0.4 \u2014 multi-page site nav (rendered above main when --to site) */\nnav.noma-site-nav {\n  max-width: 1040px;\n  margin: 1.5rem auto 0;\n  padding: 0 2rem;\n  display: flex;\n  align-items: baseline;\n  gap: 1.5rem;\n  flex-wrap: wrap;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n}\nnav.noma-site-nav a.noma-site-home {\n  font-weight: 600;\n  color: var(--noma-fg);\n  text-decoration: none;\n  border-right: 1px solid var(--noma-rule);\n  padding-right: 1.25rem;\n}\nnav.noma-site-nav ol {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n  display: flex;\n  gap: 1.25rem;\n  flex-wrap: wrap;\n  counter-reset: chap;\n}\nnav.noma-site-nav li {\n  counter-increment: chap;\n}\nnav.noma-site-nav li::before {\n  content: counter(chap, decimal-leading-zero) " \xB7 ";\n  color: var(--noma-rule);\n  font-variant-numeric: tabular-nums;\n}\nnav.noma-site-nav a {\n  color: var(--noma-muted);\n  text-decoration: none;\n}\nnav.noma-site-nav a:hover { color: var(--noma-accent); }\nnav.noma-site-nav .noma-nav-current span {\n  color: var(--noma-fg);\n  font-weight: 500;\n}\n\na.noma-ref.noma-xchapter::after {\n  content: " \u2197";\n  font-size: 0.85em;\n  color: var(--noma-muted);\n}\n\nmain.noma-site-index {\n  padding-top: 3rem;\n}\nheader.noma-site-header h1 {\n  font-size: 2.4rem;\n  margin-bottom: 0.25rem;\n}\nheader.noma-site-header .noma-site-author {\n  color: var(--noma-muted);\n  margin: 0 0 2rem;\n}\nol.noma-site-toc {\n  list-style: none;\n  padding: 0;\n  margin: 2rem 0;\n  display: grid;\n  gap: 0.6rem;\n  counter-reset: toc;\n}\nol.noma-site-toc li {\n  counter-increment: toc;\n}\na.noma-site-chapter {\n  display: block;\n  padding: 1.1rem 1.4rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  text-decoration: none;\n  color: inherit;\n  transition: border-color 120ms ease, transform 120ms ease;\n}\na.noma-site-chapter:hover {\n  border-color: var(--noma-accent);\n  transform: translateY(-1px);\n}\na.noma-site-chapter::before {\n  content: counter(toc, decimal-leading-zero);\n  display: block;\n  font-size: 0.75rem;\n  font-variant-numeric: tabular-nums;\n  color: var(--noma-muted);\n  margin-bottom: 0.25rem;\n}\n.noma-site-chapter-title {\n  display: block;\n  font-weight: 600;\n  font-size: 1.1rem;\n}\n.noma-site-chapter-summary {\n  display: block;\n  color: var(--noma-muted);\n  margin-top: 0.4rem;\n  font-size: 0.93rem;\n}\n.noma-site-description {\n  max-width: 48rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 1.02rem;\n}\n.noma-site-chapter-tags,\n.noma-space-tags {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  margin-top: 0.6rem;\n}\n.noma-site-chapter-tags span,\n.noma-space-tags span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  padding: 0.12rem 0.45rem;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n}\n\n/* Space renderer \u2014 source-controlled documentation/wiki surface */\nbody.noma-space-body {\n  background: linear-gradient(180deg, #f7f5ef 0, var(--noma-bg) 16rem);\n}\n.noma-space-shell {\n  display: grid;\n  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);\n  min-height: 100vh;\n}\n.noma-space-sidebar {\n  position: sticky;\n  top: 0;\n  height: 100vh;\n  overflow: auto;\n  border-right: 1px solid var(--noma-rule);\n  background: rgba(255, 255, 255, 0.68);\n  padding: 1rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-home {\n  display: block;\n  margin-bottom: 0.45rem;\n  color: var(--noma-fg);\n  font-weight: 800;\n  text-decoration: none;\n}\n.noma-space-description,\n.noma-space-search-disabled {\n  margin: 0 0 1rem;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n  line-height: 1.38;\n}\n.noma-space-search {\n  display: grid;\n  gap: 0.35rem;\n  margin: 0.9rem 0 0.75rem;\n  color: var(--noma-muted);\n  font-size: 0.74rem;\n  font-weight: 750;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n}\n.noma-space-search input {\n  width: 100%;\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  padding: 0.5rem 0.6rem;\n  background: var(--noma-card-bg);\n  color: var(--noma-fg);\n  font: 500 0.88rem var(--noma-font-sans);\n  text-transform: none;\n  letter-spacing: 0;\n}\n.noma-space-search-results {\n  display: grid;\n  gap: 0.4rem;\n  margin: 0 0 0.85rem;\n  padding: 0.45rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: 8px;\n  background: var(--noma-card-bg);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-search-results a {\n  display: grid;\n  gap: 0.1rem;\n  padding: 0.45rem 0.5rem;\n  border-radius: 6px;\n  color: var(--noma-fg);\n  text-decoration: none;\n}\n.noma-space-search-results a:hover {\n  background: var(--noma-code-bg);\n}\n.noma-space-search-results small {\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n}\n.noma-space-search-results em {\n  display: flex;\n  gap: 0.25rem;\n  flex-wrap: wrap;\n  font-style: normal;\n}\n.noma-space-search-results em span {\n  color: var(--noma-accent);\n  font-size: 0.68rem;\n}\n.noma-space-search-results p {\n  margin: 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-sidebar nav.noma-site-nav {\n  max-width: none;\n  margin: 0;\n  padding: 0;\n  display: block;\n}\n.noma-space-sidebar nav.noma-site-nav ol {\n  display: grid;\n  gap: 0.18rem;\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  counter-reset: none;\n}\n.noma-space-sidebar nav.noma-site-nav li {\n  padding-left: calc(var(--depth, 0) * 0.85rem);\n}\n.noma-space-sidebar nav.noma-site-nav li::before {\n  content: "";\n}\n.noma-space-sidebar nav.noma-site-nav a,\n.noma-space-sidebar nav.noma-site-nav span {\n  display: block;\n  border-radius: 6px;\n  padding: 0.38rem 0.5rem;\n  color: var(--noma-muted);\n  text-decoration: none;\n  font-size: 0.88rem;\n  line-height: 1.25;\n}\n.noma-space-sidebar nav.noma-site-nav a:hover {\n  background: var(--noma-code-bg);\n  color: var(--noma-fg);\n}\n.noma-space-sidebar nav.noma-site-nav .noma-nav-current span {\n  background: var(--noma-accent-soft);\n  color: var(--noma-accent);\n  font-weight: 760;\n}\n.noma-space-sidebar nav.noma-site-nav small {\n  display: block;\n  padding: 0 0.5rem 0.32rem;\n  color: var(--noma-muted);\n  font-size: 0.68rem;\n}\n.noma-space-main {\n  min-width: 0;\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);\n  grid-template-rows: auto 1fr;\n  gap: 1rem;\n  padding: 1rem;\n}\n.noma-space-topbar {\n  grid-column: 1 / -1;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 1rem;\n  min-width: 0;\n  padding: 0.5rem 0.2rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-breadcrumbs {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  min-width: 0;\n  color: var(--noma-muted);\n  font-size: 0.83rem;\n}\n.noma-space-breadcrumbs a,\n.noma-space-breadcrumbs span {\n  color: inherit;\n  text-decoration: none;\n}\n.noma-space-breadcrumbs span:last-child {\n  color: var(--noma-fg);\n  font-weight: 700;\n}\n.noma-space-breadcrumbs a::after,\n.noma-space-breadcrumbs span::after {\n  content: "/";\n  margin-left: 0.35rem;\n  color: var(--noma-rule);\n}\n.noma-space-breadcrumbs span:last-child::after {\n  content: "";\n  margin: 0;\n}\n.noma-space-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.noma-space-actions button {\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.38rem 0.6rem;\n  font: 700 0.78rem var(--noma-font-sans);\n  cursor: pointer;\n}\n.noma-space-actions button:hover {\n  border-color: var(--noma-accent);\n  color: var(--noma-accent);\n}\nbody.noma-space-body main.noma-doc {\n  min-width: 0;\n  max-width: none;\n  margin: 0;\n  padding: 2rem min(4vw, 2.5rem) 5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: rgba(255, 255, 255, 0.78);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector {\n  min-width: 0;\n  align-self: start;\n  position: sticky;\n  top: 1rem;\n  display: grid;\n  gap: 0.75rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-inspector section {\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 0.85rem;\n  background: rgba(255, 255, 255, 0.72);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector h2 {\n  margin: 0 0 0.55rem;\n  padding: 0;\n  border: 0;\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n}\n.noma-space-inspector p {\n  display: flex;\n  justify-content: space-between;\n  gap: 0.6rem;\n  margin: 0.3rem 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-inspector strong {\n  color: var(--noma-fg);\n  overflow-wrap: anywhere;\n}\n.noma-space-inspector ul {\n  margin: 0;\n  padding-left: 1rem;\n}\n.noma-space-inspector li {\n  margin: 0.25rem 0;\n  font-size: 0.84rem;\n}\n.noma-space-empty {\n  display: block !important;\n  color: var(--noma-muted);\n}\n.noma-space-stats {\n  display: flex;\n  gap: 0.5rem;\n  flex-wrap: wrap;\n  margin: 1rem 0 0;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-stats span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.2rem 0.6rem;\n  font-size: 0.8rem;\n  font-weight: 700;\n}\nbody.noma-space-body ol.noma-site-toc {\n  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));\n}\n@media (max-width: 1100px) {\n  .noma-space-main {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .noma-space-inspector {\n    position: static;\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n}\n@media (max-width: 780px) {\n  .noma-space-shell {\n    grid-template-columns: 1fr;\n  }\n  .noma-space-sidebar {\n    position: static;\n    height: auto;\n    border-right: 0;\n    border-bottom: 1px solid var(--noma-rule);\n  }\n  .noma-space-main {\n    padding: 0.75rem;\n  }\n  .noma-space-topbar {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  body.noma-space-body main.noma-doc {\n    padding: 1.25rem 1rem 3rem;\n  }\n  .noma-space-inspector {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* v0.4 \u2014 math (KaTeX is loaded from CDN; we just style block layout) */\n.noma-math-display {\n  margin: 1.4em auto;\n  text-align: center;\n  overflow-x: auto;\n}\n.noma-math-inline {\n  display: inline;\n}\n';
 
-  // examples/agent-plan.noma
-  var agent_plan_default = '---\ntitle: Agent Planning Artifact \u2014 Q3 Roadmap Decision\nauthor: ferax564\ndate: 2026-05-09\ntags: [planning, decision-record, agent-artifact]\n---\n\n# Q3 Roadmap Decision\n\n::summary\nThree candidate directions for next quarter. This document captures the\noptions, trade-offs, risks, and timeline as structured blocks so an agent\ncan revisit and update each section independently \u2014 and so the recommendation\ncan be exported as a prompt for a follow-on review pass.\n::\n\n## Options at a glance\n\n::grid{columns=3 min="14rem" gap="0.9rem" wide}\n:::card{title="A \xB7 Docs Platform" icon="docs"}\nBuild a hosted publishing target for Noma. Highest revenue ceiling, longest path to value.\n:::\n\n:::card{title="B \xB7 Research Workflows" icon="search"}\nLean into claims/evidence/risk blocks for analyst teams. Narrow ICP, fastest to first paying customer.\n:::\n\n:::card{title="C \xB7 General Reports" icon="report"}\nPosition Noma as the default format for AI-generated reports across domains. Broadest TAM, weakest wedge.\n:::\n::\n\n## Decision\n\n::decision{id="decision-q3-direction" status="proposed"}\nStart with **Option B \u2014 Research Workflows**. Narrowest wedge, fastest signal,\nkeeps the door open to A and C as adjacent expansions.\n::\n\n## Decision matrix\n\n| Dimension             | A \xB7 Docs | B \xB7 Research | C \xB7 Reports |\n| --------------------- | -------- | ------------ | ----------- |\n| Time to first revenue | 6\u20139 mo   | 6\u201310 wk      | 4\u20136 mo      |\n| Wedge sharpness       | Medium   | High         | Low         |\n| Existing block fit    | Strong   | Native       | Medium      |\n| Defensibility         | Network  | Workflow     | Brand only  |\n| 18-month revenue cap  | High     | Medium       | High        |\n\n## Claims and evidence\n\n::claim{id="claim-research-wedge" confidence=0.74}\nResearch and analyst teams are the sharpest wedge for Noma because their\nexisting tools (Word, Notion, Confluence) lack first-class claim/evidence/risk\nprimitives, and they already structure documents this way mentally.\n::\n\n::evidence{for="claim-research-wedge" source="user-interviews-apr-2026"}\nOf 11 analyst-team interviews in April, 9 described their current workflow as\n"copy-paste claims into a doc and hope someone catches stale ones." All 9 said\nthey would pay for a tool that flagged stale evidence automatically.\n::\n\n::claim{id="claim-docs-too-slow" confidence=0.68}\nA docs platform is the higher revenue ceiling, but time-to-revenue is too long\nto be the wedge. Better as a follow-on once Noma has format adoption.\n::\n\n::evidence{for="claim-docs-too-slow" source="docs-platform-benchmark-2026"}\nComparable docs-platform launches (Mintlify, GitBook) took 12\u201318 months to\nreach $100k ARR; research-tool launches (Mem, Reflect) hit it in 6\u20139 months\nwith a tighter ICP.\n::\n\n## Risks\n\n::risk{id="risk-narrow-icp" severity="medium" owner="ferax564"}\nResearch-team ICP is small (~3k orgs globally). Even high conversion caps the\nbusiness below docs-platform scale. Mitigation: use research wedge to drive\nformat adoption, then expand to docs.\n::\n\n::risk{id="risk-format-not-sticky" severity="high" owner="ferax564"}\nIf teams don\'t keep editing in Noma after first artifact, the workflow value\ndisappears. Mitigation: ship the agent patch protocol in week 3 so updates\nflow back into source automatically.\n::\n\n::risk{id="risk-llm-export-quality" severity="low" owner="ferax564"}\nLLM export quality determines whether agents trust Noma source as canonical.\nEasy to verify, easy to fix. Tracked separately.\n::\n\n## Timeline\n\n::grid{columns=4 min="12rem" compact wide}\n:::card{title="Wk 1 \xB7 Format"}\nParser, AST, frontmatter, JSON export, basic validation.\n:::\n\n:::card{title="Wk 2 \xB7 Artifact"}\nHTML renderer, default theme, cards/grids/tabs/charts, mobile.\n:::\n\n:::card{title="Wk 3 \xB7 Agent"}\nLLM export, patch protocol, copy-as-prompt buttons.\n:::\n\n:::card{title="Wk 4 \xB7 Launch"}\n3 demos, README, spec, comparison page, OSS release.\n:::\n::\n\n## Open questions\n\n::open_question{id="oq-pricing-model"}\nPer-seat, per-document, or per-render? Research-team workflows favor per-seat;\nagent-driven artifacts favor per-render. Decide before week 3.\n::\n\n::open_question{id="oq-pdf-engine"}\nKeep Puppeteer as the report-PDF path or add Typst for longer books? Puppeteer\nnow covers first-class PDFs; Typst may still be worth evaluating for book output.\n::\n\n## Agent tasks\n\n::agent_task{id="task-validate-claim-research-wedge"}\nRe-run the interview tally each month. If `claim-research-wedge` evidence base\ndrops below 8 of 11 supporting interviews (or new interviews contradict),\nlower the claim\'s `confidence` attribute and add a `counterevidence` block.\n::\n\n::agent_task{id="task-watch-stale-evidence"}\nEvery two weeks, scan `evidence` blocks for `source` attributes older than\n60 days. Flag any whose underlying source has changed materially. Do not\nauto-edit \u2014 propose a `replace_block` patch for human approval.\n::\n\n::agent_task{id="task-export-as-review-prompt"}\nOn request, package this document\'s `decision`, top three `claim`s, and all\n`risk`s of severity \u2265 medium into an LLM prompt for a second-opinion review.\n::\n\n## Export\n\n::export_button{format="prompt" target="decision-q3-direction"}\nLabel: Copy decision + risks as a review prompt\n::\n\n::export_button{format="markdown" target="summary"}\nLabel: Copy summary as Markdown\n::\n\n::export_button{format="json" target="document"}\nLabel: Copy full document AST\n::\n\n> The point of this artifact is not the prose \u2014 it\'s that an agent can re-open\n> it next month, walk the decision/claim/risk graph, and update only the parts\n> that changed. Everything else stays put, and the Git diff stays clean.\n';
-
-  // examples/tech-doc.noma
-  var tech_doc_default = '---\ntitle: Noma CLI Reference\nauthor: ferax564\ndate: 2026-05-09\ntags: [docs, reference, cli]\n---\n\n# Noma CLI Reference\n\n::summary\nThe `noma` CLI parses, renders, and validates `.noma` source files. This page\nis itself written in Noma \u2014 the same source produces the rendered HTML you\'re\nreading and the deterministic LLM context an agent would consume.\n::\n\n## Install\n\n```bash\nnpm install -g @ferax564/noma-cli@latest\n# or one-off\nnpx @ferax564/noma-cli render path/to/file.noma --to html\n```\n\n::callout{tone="tip"}\nThe CLI auto-detects the `themes/default.css` shipped with the package. To\nuse a custom theme, pass `--theme path/to/theme.css` (coming in v0.2).\n::\n\n## Commands\n\n::tabs\n:::tab{title="parse"}\n### `noma parse <file>`\n\nPrint the parsed AST as JSON. Useful for debugging the parser or building\ntools that consume Noma documents.\n\n```bash\nnoma parse examples/thesis.noma\nnoma parse examples/thesis.noma --out ast.json\n```\n\nReturns the full typed AST defined in `src/ast.ts`. Block IDs are stable\nacross re-parses of unchanged content, so AST diffs map cleanly to source\ndiffs.\n:::\n\n:::tab{title="render"}\n### `noma render <file> [--to <target>]`\n\nRender a `.noma` file to one of the supported targets.\n\n| Target | Output                                               |\n| ------ | ---------------------------------------------------- |\n| `html` | Standalone HTML document with the default theme      |\n| `pdf`  | Report PDF printed from the HTML renderer            |\n| `llm`  | Deterministic plain-text context for LLM consumption |\n| `json` | The parsed AST (alias of `noma export`)              |\n\n```bash\nnoma render docs/spec.noma --to html --out dist/spec.html\nnoma render docs/spec.noma --to pdf --out dist/spec.pdf\nnoma render docs/spec.noma --to llm\nnoma render docs/spec.noma --to json --out dist/spec.json\n```\n\nUse `--no-standalone` to emit just the HTML body (for embedding inside an\nexisting page). Use `--title "..."` to override the document title. PDF output\nrequires `--out` and accepts `--page-size`, `--margin`, `--no-print-background`,\nand `--css`.\n:::\n\n:::tab{title="check"}\n### `noma check <file>`\n\nValidate a Noma document. Exits 1 if any errors are present, 0 otherwise.\n\n```bash\nnoma check examples/thesis.noma\n```\n\nCatches: duplicate block IDs, broken `for=` references on evidence blocks,\nbroken internal links, invalid frontmatter, plot blocks missing a dataset\nor `data=` attribute, and (in v0.2) claims missing supporting evidence.\n:::\n\n:::tab{title="prove"}\n### `noma prove <file> --op/--ops`\n\nDry-run a patch transaction and render an agent safety proof before the source\nchanges.\n\n```bash\nnoma prove examples/thesis.noma \\\n  --op \'{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}\' \\\n  --out dist/thesis-proof.html\n```\n\nThe proof includes pre/post validation, canonical IDs, the LLM context used for\nagent work, patch payloads, source-line preservation, a compact diff, hashes,\nand a sandboxed post-patch artifact preview. Add `--to json` for automation, or\n`--inplace` when the command should write only if the proof passes.\n:::\n\n:::tab{title="export"}\n### `noma export <file>`\n\nAlias for `noma render <file> --to json`. Kept as a separate command because\nit\'s the most common scripted use case (CI pipelines, agent context, RAG\nindexing).\n:::\n::\n\n## Architecture\n\n::grid{columns=3}\n:::card{title="Parser" icon="parse"}\nHand-written recursive descent. Tracks fence depth by counting leading colons.\nNever throws on malformed input \u2014 produces a best-effort AST and lets the\nvalidator complain.\n:::\n\n:::card{title="AST" icon="tree"}\nDiscriminated union in `src/ast.ts`. Single source of truth. Adding a node\ntype is a one-line change that the TypeScript compiler propagates to every\nrenderer\'s switch.\n:::\n\n:::card{title="Renderers" icon="render"}\nPure functions. `AST \u2192 string`. No I/O, no globals. Three in core today\n(HTML, LLM, JSON); PDF is a wrapper around the HTML renderer + Puppeteer.\n:::\n::\n\n## Data flow\n\n```txt\n.noma source\n   \u2502\n   \u25BC\n\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502  Parser  \u2502  src/parser.ts  (line-based, recursive descent)\n\u2514\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2518\n      \u2502  typed AST  (src/ast.ts)\n      \u25BC\n\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502  Renderers (pure)                \u2502\n\u2502  \u251C\u2500\u2500 renderer-html.ts \u2192 HTML     \u2502\n\u2502  \u251C\u2500\u2500 renderer-llm.ts  \u2192 LLM ctx  \u2502\n\u2502  \u2514\u2500\u2500 renderer-json.ts \u2192 JSON     \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n           \u2502\n           \u25BC\n       artifact\n```\n\n## Common errors\n\n::callout{tone="warning"}\n**Stray triple-colon at top level.** `:::card` only opens a child block one\nlevel deeper. At the top of a document it has no parent and the parser will\nemit a `parser/orphan-fence` diagnostic. Fix: wrap in `::grid` or use `::card`.\n::\n\n::callout{tone="warning"}\n**Duplicate block ID.** Block IDs are user-facing API. The validator emits\n`validator/duplicate-id` and `noma check` exits non-zero. Fix: rename one\nof the blocks. If they were intentionally duplicated, they shouldn\'t have\nbeen \u2014 split or merge.\n::\n\n::callout{tone="note"}\n**Plot without data.** A `::plot` block without a `data=` or `dataset=`\nattribute renders as a placeholder SVG. The validator emits\n`validator/plot-missing-data` as a warning, not an error, so the build\nstill passes \u2014 but the artifact won\'t have real data in it.\n::\n\n## Programmatic use\n\n```ts\nimport { parse, renderHtml, validate } from "@ferax564/noma-cli";\n\nconst source = await fs.readFile("doc.noma", "utf8");\nconst ast = parse(source, { filename: "doc.noma" });\nconst diagnostics = validate(ast);\nif (diagnostics.some(d => d.severity === "error")) {\n  throw new Error("invalid Noma document");\n}\nconst html = renderHtml(ast, { standalone: true });\n```\n\n## Patch protocol (preview, v0.3)\n\nAgents should not rewrite full files. They propose block-level operations\nthat the CLI applies safely.\n\n```json\n{\n  "op": "replace_block",\n  "id": "asml-euv-moat",\n  "content": "ASML\'s moat rests on EUV optics, mechanics, and supply chain \u2014 not just exclusivity."\n}\n```\n\nOperations: `add_block`, `replace_block`, `delete_block`, `move_block`,\n`update_attribute`, `add_evidence`, `add_comment`, `resolve_comment`,\n`rename_id`. See `docs/agent-protocol.noma` for the full schema.\n\n## Architecture (v0.5 \u2014 interactive diagrams)\n\n::diagram{kind="mermaid" id="cli-flow"}\nflowchart LR\n  A[.noma source] --> B[parser]\n  B --> C[AST]\n  C --> D[validator]\n  C --> E[renderer-html]\n  C --> F[renderer-llm]\n  C --> G[renderer-noma]\n  G --> H[noma fmt / patch]\n::\n\n## Cross-links\n\n- See `docs/spec.noma` for the full block reference.\n- See `docs/agent-protocol.noma` for the patch protocol.\n- See `docs/direction.noma` for the product positioning.\n- See `examples/research-thesis.noma` for a reasoning-heavy demo.\n';
-
-  // examples/research-thesis.noma
-  var research_thesis_default = '---\ntitle: Vertical AI Agents \u2014 Investment Thesis\nauthor: ferax564\ndate: 2026-05-09\ntags: [ai, vertical-saas, thesis, research]\n---\n\n# Vertical AI Agents \u2014 Investment Thesis\n\n::summary\nHorizontal LLM platforms commoditize fast. The durable value sits in\n**vertical agents** that own a workflow end-to-end inside a single\ndomain \u2014 legal review, claims processing, financial-statement audit,\nclinical documentation. This thesis lays out the structural reasons,\nthe supporting evidence, the leading indicators to watch, and the\ndisqualifying conditions that would invalidate it.\n::\n\n## Thesis at a glance\n\n::grid{columns=2}\n:::card{title="Bull Case" icon="up"}\nDomain-specific agents win on data depth, workflow integration, and\nliability ownership. Each vertical can support 1\u20133 category leaders\nwith $500M+ ARR within 5 years.\n:::\n\n:::card{title="Bear Case" icon="down"}\nFrontier model gains compress the gap. A horizontal model with strong\ntool use plus a thin vertical wrapper captures most of the value.\nVertical agents become features, not companies.\n:::\n::\n\n## Core claims\n\n::claim{id="claim-data-moat" confidence=0.78}\nVertical agents accumulate proprietary workflow data \u2014 corrections,\nedge-case patterns, customer-specific schemas \u2014 that horizontal agents\ncannot replicate by scaling base-model capability alone.\n::\n\n::evidence{for="claim-data-moat" source="harvey-public-disclosures-2026q1"}\nHarvey reports that 71% of model improvements in the last 12 months\ncame from fine-tuning on proprietary corrections collected in customer\ndeployments \u2014 not from base-model upgrades.\n::\n\n::evidence{for="claim-data-moat" source="ambience-customer-case-2026"}\nAmbience Healthcare\'s clinical-documentation agent improved acceptance\nrates from 62% to 89% after twelve months in production at a single\nhospital network \u2014 the gain was specific to that network\'s documentation\nconventions and did not transfer to the open-source baseline.\n::\n\n::claim{id="claim-liability-moat" confidence=0.71}\nIn regulated verticals, the agent vendor must own legal liability for\nagent output. This forces a stack of guarantees (audit logs, escalation,\nhuman-in-loop sign-off, SOC 2/HIPAA) that takes years to build and is\nadversarial to horizontal generalists.\n::\n\n::evidence{for="claim-liability-moat" source="legal-tech-procurement-survey-2026"}\n89% of in-house legal teams surveyed in Q1 2026 said "vendor accepts\nindemnification for agent output" was a hard requirement for production\ndeployment. Only 4 vendors met the bar; all 4 are vertical specialists.\n::\n\n::claim{id="claim-workflow-stickiness" confidence=0.74}\nThe integration surface \u2014 clearinghouses, EHRs, court filing systems,\npractice-management software \u2014 is a structural moat, not a feature gap.\nEach integration is custom, slow, and high-trust.\n::\n\n::counterevidence{for="claim-workflow-stickiness" source="model-context-protocol-traction-2026"}\nThe Model Context Protocol (MCP) is reducing per-integration cost by an\norder of magnitude in some verticals. If MCP-style adapters become\nuniversal, the integration moat compresses faster than the data moat does.\n::\n\n## Risks\n\n::risk{id="risk-frontier-leap" severity="high" owner="ferax564"}\nA frontier-model capability leap (e.g., GPT-6-class reasoning + native\nlong-horizon tool use) could collapse the workflow gap. Most vulnerable\nverticals: those where workflow complexity comes from reasoning chains\nrather than data integration (e.g., research synthesis).\n::\n\n::risk{id="risk-platform-shift" severity="medium" owner="ferax564"}\nIf the major model providers ship vertical-agent SDKs with\nrevenue-share models, distribution shifts toward platform-bundled\nofferings. Mitigation: invest in customer ownership of data\n(BYO-storage, on-prem options).\n::\n\n::risk{id="risk-regulatory-freeze" severity="medium" owner="ferax564"}\nEU AI Act high-risk classification or US sector-specific rules (FDA,\nSEC) could freeze deployments for 12\u201318 months in the affected\nverticals. This *helps* incumbents and *helps* well-capitalized\nvendors with compliance teams \u2014 and disproportionately hurts startups.\n::\n\n::risk{id="risk-talent-concentration" severity="low" owner="ferax564"}\nTop vertical talent is concentrated in 4\u20136 startups per category.\nAcquihire risk is real but bounded; not a thesis-breaker.\n::\n\n## What would invalidate the thesis\n\n::open_question{id="invalidator-frontier-tool-use"}\nA frontier model that achieves >85% acceptance on a high-stakes\nvertical workflow (clinical docs, deposition review, SEC filing prep)\nwithout any vertical-specific tuning. If this happens within 18 months,\nthe data moat is weaker than claimed and `confidence` on\n`claim-data-moat` should drop below 0.5.\n::\n\n::open_question{id="invalidator-mcp-universal"}\nUniversal MCP-style adapters that reduce vertical integration cost from\nweeks to hours across at least three regulated verticals. If this ships\nbroadly within 12 months, `claim-workflow-stickiness` confidence should\ndrop below 0.5.\n::\n\n## Quantitative backdrop\n\n::dataset{id="vertical-ai-funding"}\nschema:\n  vertical: string\n  funded_companies: number\n  total_funding_usd_m: number\n  median_arr_growth_yoy: number\nrows:\n  - [legal, 14, 1280, 3.4]\n  - [healthcare, 22, 2650, 2.9]\n  - [financial-audit, 9, 540, 4.1]\n  - [insurance, 11, 720, 3.6]\n  - [construction, 6, 290, 2.7]\n::\n\n::plot{id="vertical-ai-arr-plot" type="bar" dataset="vertical-ai-funding" column="median_arr_growth_yoy" xcolumn="vertical" title="Median ARR YoY growth by vertical (2026)"}\n::\n\n::plot{id="vertical-ai-funding-plot" type="line" dataset="vertical-ai-funding" column="total_funding_usd_m" xcolumn="vertical" title="Total funding raised by vertical ($M)"}\n::\n\n## Watchlist (positions, not recommendations)\n\n| Vertical         | Public proxy          | Private leader       | Note                                  |\n| ---------------- | --------------------- | -------------------- | ------------------------------------- |\n| Legal            | RELX, Thomson Reuters | Harvey, EvenUp       | Watch incumbents\' agent rollouts      |\n| Clinical docs    | \u2014                     | Abridge, Ambience    | Acceptance rate is the leading metric |\n| Financial audit  | Intuit, S&P           | Numeric, Trullion    | Audit-trail UX is the moat            |\n| Insurance claims | Verisk                | Sixfold, EvolutionIQ | Loss-ratio impact is the proof point  |\n\n## Deltas since last update\n\n::state_change{block="claim-data-moat" attribute="confidence" from=0.72 to=0.78 reason="Harvey\'s Q1 disclosure quantified the proprietary-correction loop more concretely than expected" at="2026-05-09"}\n::\n\n::state_change{block="claim-liability-moat" attribute="confidence" from=0.65 to=0.71 reason="legal-tech procurement survey put the indemnification requirement at 89%, vs. 71% the prior survey" at="2026-05-09"}\n::\n\n## Quarterly review task\n\n::agent_task{id="quarterly-thesis-review"}\nEvery quarter (Q1: Mar 31, Q2: Jun 30, Q3: Sep 30, Q4: Dec 31), walk this\ndocument and:\n\n1. For each `claim`, check whether new public evidence supports or\n   contradicts. If material, add a fresh `evidence` or `counterevidence`\n   block and adjust the `confidence` attribute.\n2. For each `risk`, check whether the leading indicators have moved.\n   Adjust `severity` if warranted.\n3. For each `open_question` invalidator, check whether the trigger\n   condition has been met. If yes, escalate to a `decision` block\n   recommending exit or rebalance.\n4. Do not delete prior evidence. Append, don\'t overwrite \u2014 the audit\n   trail is the value.\n::\n\n## Stale-evidence guard\n\n::agent_task{id="stale-evidence-scan"}\nEvery two weeks, scan all `evidence` blocks for `source` attributes\nolder than 90 days. Propose (do not apply) a `replace_block` patch for\neach, citing the latest available source.\n::\n\n## Export\n\n::export_button{format="prompt" target="document"}\nLabel: Copy as second-opinion review prompt\n::\n\n::export_button{format="llm" target="document"}\nLabel: Copy structured LLM context\n::\n\n::export_button{format="markdown" target="summary"}\nLabel: Copy summary as Markdown\n::\n\n> A thesis is only useful if you can revisit it. The blocks above are\n> structured so a future-you (or a future agent acting on your behalf)\n> can update only what changed, leave the rest alone, and produce a\n> clean Git diff that shows exactly which beliefs moved.\n';
-
-  // examples/interactive-projection.noma
-  var interactive_projection_default = '---\ntitle: Interactive Projection Demo\nauthor: ferax564\ndate: 2026-06-04\n---\n\n# Interactive Projection Demo\n\nThis artifact models a simple account expansion plan. The controls update\ncomputed metrics, a chart, and a table in the browser; the current control\nstate is stored in the URL hash so the scenario can be shared.\n\n::grid{columns=3 min="13rem" gap="0.8rem" wide compact}\n:::control{id="accounts" type="number" min=50 max=1000 step=25 default=250 label="Starting accounts" unit="accounts"}\n:::\n\n:::control{id="growth_rate" type="slider" min=0 max=45 step=1 default=18 label="Annual growth" unit="%"}\n:::\n\n:::control{id="retention" type="slider" min=70 max=100 step=1 default=92 label="Retention" unit="%"}\n:::\n::\n\n::grid{columns=3 min="14rem" gap="0.8rem" wide compact}\n:::computed_metric{id="year_3_accounts" label="Year 3 accounts" formula="round(accounts * pow(1 + growth_rate / 100, 3) * pow(retention / 100, 3), 0)" unit="accounts"}\nThe static value comes from defaults; browser controls recompute it instantly.\n:::\n\n:::computed_metric{id="year_5_accounts" label="Year 5 accounts" formula="round(accounts * pow(1 + growth_rate / 100, 5) * pow(retention / 100, 5), 0)" unit="accounts"}\nThis block can be referenced by downstream computed blocks or exported to LLM context.\n:::\n\n:::computed_metric{id="net_growth" label="Net annual growth" formula="round(((1 + growth_rate / 100) * (retention / 100) - 1) * 100, 1)" unit="%"}\nThe formula language supports arithmetic, comparisons, and simple functions.\n:::\n::\n\n::computed_plot{id="accounts_curve" label="Account curve" formula="round(accounts * pow(1 + growth_rate / 100, year) * pow(retention / 100, year), 0)" domain="year:0..5" type="bar" width=720 height=220 x_label_wrap=6}\n::\n\n::computed_table{id="accounts_table" label="Scenario table" formula="round(accounts * pow(1 + growth_rate / 100, year) * pow(retention / 100, year), 0)" domain="year:0..5" unit="accounts" variable_label="Year" value_label="Projected accounts"}\nShare a scenario by copying the URL after moving the controls.\n::\n\n::export_button{format="llm" target="document"}\nLabel: Copy LLM context\n::\n\n::export_button{format="json" target="document"}\nLabel: Copy JSON AST\n::\n';
-
-  // examples/word-review-loop.noma
-  var word_review_loop_default = '---\ntitle: Word Review Loop Demo\nauthor: ferax564\ndate: 2026-06-04\n---\n\n# Word Review Loop Demo\n\nThis document is source-controlled Noma that can be handed to a reviewer as a\nWord package. The review controls, comments, and change requests stay tied to\nstable block IDs so an agent can reconcile the returned document without a\nfull-file rewrite.\n\n::page_setup{size="letter" margins="0.7in 0.85in 0.75in 0.85in"}\n::\n\n::header\nWord review loop - confidential draft\n::\n\n::footer\nNoma source -> DOCX handoff -> extracted review data\n::\n\n## Review Controls\n\n::grid{columns=3 min="13rem" gap="0.8rem" wide compact}\n:::control{id="review_decision" type="select" default="revise" options="approve=Approve,revise=Revise,block=Block" label="Reviewer decision"}\n:::\n\n:::control{id="legal_ready" type="toggle" default=false label="Ready for legal"}\n:::\n\n:::control{id="confidence_score" type="slider" min=0 max=100 step=5 default=70 label="Reviewer confidence" unit="%"}\n:::\n::\n\n::computed_table{id="review_scorecard" label="Confidence scenarios" formula="round(confidence_score * stage / 3, 0)" domain="stage:1..3" unit="%" variable_label="Review stage" value_label="Effective confidence"}\nThe table exports as native HTML and DOCX table rows while remaining computed\nfrom the editable controls.\n::\n\n## Renewal Terms\n\n::decision{id="renewal-terms-decision" owner="Commercial" status="draft"}\nAdopt a two-year renewal with a 60-day opt-out window and pricing protection\nfor seats already committed in the current order form.\n::\n\n::comment{id="comment-legal-window" for="renewal-terms-decision" author="Legal" date="2026-06-04"}\nConfirm whether the opt-out clock starts at signature or production launch.\n::\n\n::change_request{id="cr-renewal-terms" for="renewal-terms-decision" status="open" priority="high"}\nReplace "60-day opt-out window" with the final legal trigger once counsel\nconfirms the timing.\n::\n\n::table{id="handoff-matrix" title="Review handoff matrix" header align="l,l,l"}\nArea | Owner | Return signal\nCommercial terms | Commercial | `review_decision`\nLegal readiness | Legal | `legal_ready`\nRisk confidence | Strategy | `confidence_score`\n::\n\n## Agent Reconciliation\n\n::agent_task{id="extract-word-review" assignee="agent" status="todo"}\nRun `noma docx-data dist/examples/word-review-loop.docx`, inspect reviewer\ncontrol values, and apply source updates only to blocks referenced by changed\ncontrols or review annotations.\n::\n\n::export_button{format="llm" target="document"}\nLabel: Copy agent handoff context\n::\n';
-
-  // web/workbench.ts
-  var examples = [
-    { id: "agent-plan", label: "Agent plan", source: agent_plan_default },
-    { id: "tech-doc", label: "Tech doc", source: tech_doc_default },
-    { id: "research-thesis", label: "Research thesis", source: research_thesis_default },
-    { id: "interactive-projection", label: "Interactive projection", source: interactive_projection_default },
-    { id: "word-review-loop", label: "Word review loop", source: word_review_loop_default }
-  ];
-  var storageKey = "noma.workbench.source.v1";
-  var ribbonStorageKey = "noma.workbench.ribbon.v1";
-  var cloudUserStorageKey = "noma.cloud.user.v1";
-  var base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  var ribbonTabs = /* @__PURE__ */ new Set(["file", "format", "insert", "layout", "review", "find", "export"]);
-  var sharedDraft = readSharedDraftHash();
-  var initialCloudDocumentId = readCloudDocumentId();
-  var initialCloudShareToken = readCloudShareToken();
-  var initialSource = sharedDraft?.source ?? localStorage.getItem(storageKey) ?? examples[0].source;
+  // web/cloud-app.ts
+  var userStorageKey = "noma.cloud.user.v1";
+  var activeSiteStorageKey = "noma.cloud.activeSite.v1";
+  var activeDocumentStorageKey = "noma.cloud.activeDocument.v1";
+  var viewModeStorageKey = "noma.cloud.viewMode.v1";
+  var panelsOpenStorageKey = "noma.cloud.panelsOpen.v1";
+  var splitSourceRatioStorageKey = "noma.cloud.splitSourceRatio.v1";
+  var previewPaperWidthStorageKey = "noma.cloud.previewPaperWidth.v1";
+  var themeStorageKey = "noma.cloud.theme.v1";
+  var query = new URLSearchParams(window.location.search);
+  var cloudUserNameInput = requireElement("cloudUserName");
+  var newUserButton = requireElement("newUserButton");
+  var copyUserIdButton = requireElement("copyUserIdButton");
+  var copyUserTokenButton = requireElement("copyUserTokenButton");
+  var themeToggleButton = requireElement("themeToggleButton");
+  var cloudStatus = requireElement("cloudStatus");
+  var siteTitleInput = requireElement("siteTitleInput");
+  var newSpaceButton = requireElement("newSpaceButton");
+  var saveSpaceButton = requireElement("saveSpaceButton");
+  var siteList = requireElement("siteList");
+  var newPageButton = requireElement("newPageButton");
+  var newFolderButton = requireElement("newFolderButton");
+  var pageList = requireElement("pageList");
+  var pageTitleInput = requireElement("pageTitleInput");
+  var roleBadge = requireElement("roleBadge");
+  var dirtyBadge = requireElement("dirtyBadge");
+  var updatedText = requireElement("updatedText");
+  var sourceViewButton = requireElement("sourceViewButton");
+  var splitViewButton = requireElement("splitViewButton");
+  var previewViewButton = requireElement("previewViewButton");
+  var togglePanelsButton = requireElement("togglePanelsButton");
+  var savePageButton = requireElement("savePageButton");
+  var copyPageLinkButton = requireElement("copyPageLinkButton");
+  var copyArtifactLinkButton = requireElement("copyArtifactLinkButton");
+  var copySiteLinkButton = requireElement("copySiteLinkButton");
+  var openPublishedSiteButton = requireElement("openPublishedSiteButton");
+  var documentGrid = requireElement("documentGrid");
+  var splitResizeHandle = requireElement("splitResizeHandle");
   var sourceInput = requireElement("sourceInput");
   var previewFrame = requireElement("previewFrame");
-  var outputPre = requireElement("outputPre");
-  var diagnosticsList = requireElement("diagnosticsList");
+  var shareRoleSelect = requireElement("shareRoleSelect");
+  var inviteUserIdInput = requireElement("inviteUserIdInput");
+  var inviteRoleSelect = requireElement("inviteRoleSelect");
+  var inviteUserButton = requireElement("inviteUserButton");
+  var shareStatus = requireElement("shareStatus");
+  var patchInput = requireElement("patchInput");
+  var applyPatchButton = requireElement("applyPatchButton");
+  var copyLlmButton = requireElement("copyLlmButton");
+  var agentStatus = requireElement("agentStatus");
   var diagnosticsSummary = requireElement("diagnosticsSummary");
+  var diagnosticsList = requireElement("diagnosticsList");
   var outlineList = requireElement("outlineList");
-  var statusText = requireElement("statusText");
-  var exampleSelect = requireElement("exampleSelect");
-  var loadExampleButton = requireElement("loadExample");
-  var newDocumentButton = requireElement("newDocument");
-  var fileInput = requireElement("fileInput");
-  var markdownFileInput = requireElement("markdownFileInput");
-  var pasteMarkdownButton = requireElement("pasteMarkdown");
-  var downloadSourceButton = requireElement("downloadSource");
-  var downloadHtmlButton = requireElement("downloadHtml");
-  var downloadJsonButton = requireElement("downloadJson");
-  var copyMarkdownButton = requireElement("copyMarkdown");
-  var copyLlmButton = requireElement("copyLlm");
-  var copyDocxCommandButton = requireElement("copyDocxCommand");
-  var copyDraftLinkButton = requireElement("copyDraftLink");
-  var copyReviewPacketButton = requireElement("copyReviewPacket");
-  var copyDraftLinkPanelButton = requireElement("copyDraftLinkPanel");
-  var copyReviewPacketPanelButton = requireElement("copyReviewPacketPanel");
-  var collabStatus = requireElement("collabStatus");
-  var cloudStatus = requireElement("cloudStatus");
-  var cloudUserNameInput = requireElement("cloudUserName");
-  var createCloudUserButton = requireElement("createCloudUser");
-  var copyUserTokenButton = requireElement("copyUserToken");
-  var cloudShareRoleSelect = requireElement("cloudShareRole");
-  var saveCloudDocumentButton = requireElement("saveCloudDocument");
-  var copyCloudLinkButton = requireElement("copyCloudLink");
-  var openCloudArtifactButton = requireElement("openCloudArtifact");
-  var saveCloudSiteButton = requireElement("saveCloudSite");
-  var copyCloudSiteLinkButton = requireElement("copyCloudSiteLink");
-  var openCloudSiteButton = requireElement("openCloudSite");
-  var printPreviewButton = requireElement("printPreview");
-  var previewEditToggle = requireElement("previewEditToggle");
-  var renderButton = requireElement("renderNow");
-  var proofOpsInput = requireElement("proofOpsInput");
-  var generateProofButton = requireElement("generateProof");
-  var applyProofButton = requireElement("applyProof");
-  var copyProofLinkButton = requireElement("copyProofLink");
-  var proofStatus = requireElement("proofStatus");
-  var dataBlockSelect = requireElement("dataBlockSelect");
-  var dataEditor = requireElement("dataEditor");
-  var addDataRowButton = requireElement("addDataRow");
-  var addDataColumnButton = requireElement("addDataColumn");
-  var applyDataChangesButton = requireElement("applyDataChanges");
-  var dataEditorStatus = requireElement("dataEditorStatus");
-  var findInput = requireElement("findInput");
-  var findPrevButton = requireElement("findPrev");
-  var findNextButton = requireElement("findNext");
-  var findStatus = requireElement("findStatus");
-  var targetButtons = [...document.querySelectorAll("[data-target]")];
-  var commandButtons = [...document.querySelectorAll("[data-command]")];
-  var ribbonTabButtons = [...document.querySelectorAll("[data-ribbon-tab]")];
-  var ribbonPanels = [...document.querySelectorAll("[data-ribbon-panel]")];
-  var outputMode = "preview";
-  var activeRibbonTab = initialRibbonTab();
-  var previewEditMode = false;
-  var renderTimer;
-  var state = emptyState();
-  var lastProof = null;
-  var lastProofApplied = false;
-  var activeDataBlockId;
-  var sharedProof = readSharedProofHash();
+  var wikiSummary = requireElement("wikiSummary");
+  var wikiLinksList = requireElement("wikiLinksList");
   var cloudAvailable = false;
-  var cloudLoading = false;
+  var busy = false;
   var cloudUser = readCloudUser();
-  var cloudShareToken = initialCloudShareToken;
-  var cloudDocumentId = initialCloudDocumentId;
-  var cloudDocumentHash;
-  var cloudDocumentRole;
-  var cloudSiteId;
-  var cloudSiteShareToken;
-  sourceInput.value = initialSource;
+  var shareToken = readShareToken();
+  var sites = [];
+  var currentSite;
+  var pages = [];
+  var currentPage;
+  var activeFolder = "";
+  var dirty = false;
+  var renderTimer;
+  var renderState = emptyRenderState();
+  var viewMode = readViewMode();
+  var panelsOpen = readPanelsOpen();
+  var splitSourceRatio = readSplitSourceRatio();
+  var previewPaperWidth = readPreviewPaperWidth();
+  var themeMode = readThemeMode();
+  var pendingPreviewFocusLine;
+  applyThemeMode();
   cloudUserNameInput.value = cloudUser?.name ?? "Noma collaborator";
-  if (sharedDraft) localStorage.setItem(storageKey, sharedDraft.source);
-  populateExamples();
-  renderRibbonTabs();
   bindEvents();
-  if (sharedProof) {
-    outputMode = "proof";
-    activeRibbonTab = "review";
-    renderRibbonTabs();
-  }
-  renderCurrent();
+  renderChrome();
   void initializeCloud();
-  if (sharedDraft) showTransientStatus("Loaded shared draft");
   function requireElement(id) {
     const element = document.getElementById(id);
     if (!element) throw new Error(`Missing #${id}`);
     return element;
   }
-  function populateExamples() {
-    for (const example of examples) {
-      const option = document.createElement("option");
-      option.value = example.id;
-      option.textContent = example.label;
-      exampleSelect.append(option);
-    }
-  }
   function bindEvents() {
-    sourceInput.addEventListener("input", () => {
-      localStorage.setItem(storageKey, sourceInput.value);
-      lastProof = null;
-      lastProofApplied = false;
-      updateProofControls();
-      scheduleRender();
+    document.addEventListener("click", () => closeContextMenu());
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeContextMenu();
     });
-    renderButton.addEventListener("click", () => renderCurrent());
-    newDocumentButton.addEventListener("click", () => {
-      setSource(starterDocument(), "Untitled Document");
-    });
-    loadExampleButton.addEventListener("click", () => {
-      const example = examples.find((item) => item.id === exampleSelect.value) ?? examples[0];
-      setSource(example.source, example.label);
-    });
-    fileInput.addEventListener("change", async () => {
-      const file = fileInput.files?.[0];
-      if (!file) return;
-      await loadSourceFile(file);
-      fileInput.value = "";
-    });
-    markdownFileInput.addEventListener("change", async () => {
-      const file = markdownFileInput.files?.[0];
-      if (!file) return;
-      await loadMarkdownFile(file);
-      markdownFileInput.value = "";
-    });
-    pasteMarkdownButton.addEventListener("click", () => {
-      void pasteMarkdownFromClipboard();
-    });
-    for (const button of targetButtons) {
-      button.addEventListener("click", () => {
-        const next = button.dataset.target;
-        if (next === "preview" || next === "json" || next === "llm" || next === "proof") {
-          outputMode = next;
-          renderOutput();
-        }
-      });
-    }
-    for (const button of ribbonTabButtons) {
-      button.addEventListener("click", () => {
-        const tab = button.dataset.ribbonTab;
-        if (isRibbonTab(tab)) setRibbonTab(tab);
-      });
-      button.addEventListener("keydown", (event) => handleRibbonTabKeydown(event, button));
-    }
-    downloadSourceButton.addEventListener("click", () => {
-      downloadText("document.noma", sourceInput.value, "text/plain");
-    });
-    downloadHtmlButton.addEventListener("click", () => {
-      if (state.error) return;
-      downloadText("document.html", state.html, "text/html");
-    });
-    downloadJsonButton.addEventListener("click", () => {
-      if (state.error) return;
-      downloadText("document.json", state.json, "application/json");
-    });
-    copyMarkdownButton.addEventListener("click", async () => {
-      if (state.error) return;
-      await copyText(state.markdown, "Copied Markdown");
-    });
-    copyLlmButton.addEventListener("click", async () => {
-      if (state.error) return;
-      await copyText(state.llm, "Copied LLM context");
-    });
-    copyDocxCommandButton.addEventListener("click", async () => {
-      await copyText("npm run noma -- render document.noma --to docx --out document.docx", "Copied DOCX command");
-    });
-    copyDraftLinkButton.addEventListener("click", () => {
-      void copyDraftLink();
-    });
-    copyReviewPacketButton.addEventListener("click", () => {
-      void copyReviewPacket();
-    });
-    copyDraftLinkPanelButton.addEventListener("click", () => {
-      void copyDraftLink();
-    });
-    copyReviewPacketPanelButton.addEventListener("click", () => {
-      void copyReviewPacket();
-    });
-    createCloudUserButton.addEventListener("click", () => {
+    window.addEventListener("resize", () => closeContextMenu());
+    newUserButton.addEventListener("click", () => {
       void createCloudUser();
     });
+    copyUserIdButton.addEventListener("click", () => {
+      if (cloudUser) void copyText(cloudUser.id, "Copied user ID");
+    });
     copyUserTokenButton.addEventListener("click", () => {
-      void copyCloudUserToken();
+      if (cloudUser) void copyText(cloudUser.token, "Copied user token");
     });
-    saveCloudDocumentButton.addEventListener("click", () => {
-      void saveCloudDocument();
+    themeToggleButton.addEventListener("click", () => {
+      themeMode = themeMode === "dark" ? "light" : "dark";
+      localStorage.setItem(themeStorageKey, themeMode);
+      applyThemeMode();
+      renderChrome();
+      renderCurrent();
     });
-    copyCloudLinkButton.addEventListener("click", () => {
-      void copyCloudLink();
+    newSpaceButton.addEventListener("click", () => {
+      void createStarterWorkspace(promptName("Space name", "Research Workspace"));
     });
-    openCloudArtifactButton.addEventListener("click", () => {
-      void openCloudArtifact();
+    saveSpaceButton.addEventListener("click", () => {
+      void saveCurrentSite();
     });
-    saveCloudSiteButton.addEventListener("click", () => {
-      void saveCloudSite();
+    newPageButton.addEventListener("click", () => {
+      void createPage();
     });
-    copyCloudSiteLinkButton.addEventListener("click", () => {
-      void copyCloudSiteLink();
+    newFolderButton.addEventListener("click", () => {
+      void createFolder();
     });
-    openCloudSiteButton.addEventListener("click", () => {
-      void openCloudSite();
+    savePageButton.addEventListener("click", () => {
+      void saveCurrentPage();
     });
-    printPreviewButton.addEventListener("click", () => {
-      printPreview();
+    copyPageLinkButton.addEventListener("click", () => {
+      void copyPageLink();
     });
-    previewEditToggle.addEventListener("click", () => {
-      previewEditMode = !previewEditMode;
-      if (previewEditMode && outputMode !== "preview") outputMode = "preview";
-      renderOutput();
-      showTransientStatus(previewEditMode ? "Rendered editing on" : "Rendered editing off");
+    copyArtifactLinkButton.addEventListener("click", () => {
+      void copyArtifactLink();
     });
-    previewFrame.addEventListener("load", () => installPreviewEditing());
-    generateProofButton.addEventListener("click", () => {
-      void generateProofFromInput();
+    copySiteLinkButton.addEventListener("click", () => {
+      void copySiteLink();
     });
-    applyProofButton.addEventListener("click", () => applyLastProof());
-    copyProofLinkButton.addEventListener("click", () => {
-      void copyProofLink();
+    openPublishedSiteButton.addEventListener("click", () => {
+      void openPublishedSite();
     });
-    dataBlockSelect.addEventListener("change", () => {
-      activeDataBlockId = dataBlockSelect.value || void 0;
-      renderDataEditorForActiveBlock();
+    inviteUserButton.addEventListener("click", () => {
+      void inviteCollaborator();
     });
-    addDataRowButton.addEventListener("click", () => addDataGridRow());
-    addDataColumnButton.addEventListener("click", () => addDataGridColumn());
-    applyDataChangesButton.addEventListener("click", () => {
-      void applyDataGridChanges();
+    applyPatchButton.addEventListener("click", () => {
+      void applyAgentPatch();
     });
-    for (const button of commandButtons) {
+    copyLlmButton.addEventListener("click", () => {
+      void copyLlmContext();
+    });
+    for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
       button.addEventListener("click", () => {
-        const command = button.dataset.command;
-        if (isCommandName(command)) runCommand(command);
+        const mode = button.dataset.viewMode;
+        setViewMode(mode === "source" || mode === "preview" ? mode : "split");
       });
     }
-    findInput.addEventListener("input", () => updateFindStatus());
-    findNextButton.addEventListener("click", () => findInSource(1));
-    findPrevButton.addEventListener("click", () => findInSource(-1));
+    togglePanelsButton.addEventListener("click", () => {
+      panelsOpen = !panelsOpen;
+      localStorage.setItem(panelsOpenStorageKey, panelsOpen ? "true" : "false");
+      renderChrome();
+    });
+    sourceInput.addEventListener("input", () => {
+      markDirty();
+      syncTitleFromSource();
+      scheduleRender();
+    });
+    pageTitleInput.addEventListener("input", () => {
+      const nextTitle = pageTitleInput.value.trim() || "Untitled Page";
+      sourceInput.value = replaceFirstHeading(sourceInput.value, nextTitle);
+      if (currentPage) currentPage = { ...currentPage, title: nextTitle, source: sourceInput.value };
+      markDirty();
+      scheduleRender();
+    });
     sourceInput.addEventListener("keydown", (event) => {
-      if (!event.metaKey && !event.ctrlKey) return;
-      const key = event.key.toLowerCase();
-      if (key === "b") {
-        event.preventDefault();
-        runCommand("bold");
-      } else if (key === "i") {
-        event.preventDefault();
-        runCommand("italic");
-      } else if (key === "k") {
-        event.preventDefault();
-        runCommand("link");
-      } else if (key === "s") {
-        event.preventDefault();
-        downloadText("document.noma", sourceInput.value, "text/plain");
-      } else if (key === "p") {
-        event.preventDefault();
-        printPreview();
-      } else if (key === "f") {
-        event.preventDefault();
-        setRibbonTab("find");
-        window.requestAnimationFrame(() => {
-          findInput.focus();
-          findInput.select();
-        });
-      }
+      if (!event.metaKey && !event.ctrlKey || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      void saveCurrentPage();
     });
-  }
-  function scheduleRender() {
-    if (renderTimer !== void 0) window.clearTimeout(renderTimer);
-    renderTimer = window.setTimeout(() => {
-      renderTimer = void 0;
-      renderCurrent();
-    }, 220);
-  }
-  function isCommandName(value) {
-    return typeof value === "string" && commandNames.has(value);
-  }
-  function initialRibbonTab() {
-    const storedTab = localStorage.getItem(ribbonStorageKey);
-    return isRibbonTab(storedTab) ? storedTab : "file";
-  }
-  function isRibbonTab(value) {
-    return typeof value === "string" && ribbonTabs.has(value);
-  }
-  function setRibbonTab(tab) {
-    activeRibbonTab = tab;
-    localStorage.setItem(ribbonStorageKey, tab);
-    renderRibbonTabs();
-  }
-  function renderRibbonTabs() {
-    for (const button of ribbonTabButtons) {
-      const selected = button.dataset.ribbonTab === activeRibbonTab;
-      button.setAttribute("aria-selected", String(selected));
-      button.tabIndex = selected ? 0 : -1;
-    }
-    for (const panel of ribbonPanels) {
-      panel.hidden = panel.dataset.ribbonPanel !== activeRibbonTab;
-    }
-  }
-  function handleRibbonTabKeydown(event, button) {
-    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-    const currentIndex = ribbonTabButtons.indexOf(button);
-    if (currentIndex === -1) return;
-    event.preventDefault();
-    const offset = event.key === "ArrowRight" ? 1 : -1;
-    const nextIndex = (currentIndex + offset + ribbonTabButtons.length) % ribbonTabButtons.length;
-    const nextButton = ribbonTabButtons[nextIndex];
-    const nextTab = nextButton?.dataset.ribbonTab;
-    if (!nextButton || !isRibbonTab(nextTab)) return;
-    setRibbonTab(nextTab);
-    nextButton.focus();
-  }
-  var commandNames = /* @__PURE__ */ new Set([
-    "bold",
-    "italic",
-    "code",
-    "link",
-    "heading1",
-    "heading2",
-    "heading3",
-    "bullets",
-    "numbers",
-    "quote",
-    "codeblock",
-    "insertTable",
-    "insertFigure",
-    "insertCallout",
-    "insertTask",
-    "insertControl",
-    "insertMath",
-    "insertToc",
-    "insertHeader",
-    "insertFooter",
-    "insertPageSetup",
-    "insertPageBreak",
-    "insertComment",
-    "insertChange",
-    "insertFootnote"
-  ]);
-  function runCommand(command) {
-    switch (command) {
-      case "bold":
-        wrapSelection("**", "**", "bold text");
-        break;
-      case "italic":
-        wrapSelection("*", "*", "emphasis");
-        break;
-      case "code":
-        wrapSelection("`", "`", "code");
-        break;
-      case "link":
-        insertLink();
-        break;
-      case "heading1":
-        setHeading(1);
-        break;
-      case "heading2":
-        setHeading(2);
-        break;
-      case "heading3":
-        setHeading(3);
-        break;
-      case "bullets":
-        prefixSelectedLines((line) => `- ${stripListMarker(line)}`);
-        break;
-      case "numbers":
-        prefixSelectedLines((line, index) => `${index + 1}. ${stripListMarker(line)}`);
-        break;
-      case "quote":
-        prefixSelectedLines((line) => `> ${line.replace(/^>\s?/, "")}`);
-        break;
-      case "codeblock":
-        wrapBlock("```\n", "\n```", "code");
-        break;
-      case "insertTable":
-        insertTemplate("| Column | Status |\n|---|---|\n| Item | Draft |", "Item");
-        break;
-      case "insertFigure":
-        insertTemplate(`::figure{id="${nextId("figure")}" alt="Describe image" caption="{{cursor}}Figure caption"}
-Add image description or source details.
-::`, "Figure caption");
-        break;
-      case "insertCallout":
-        insertTemplate(`::callout{id="${nextId("callout")}" title="Note"}
-{{cursor}}Add note text.
-::`, "Add note text.");
-        break;
-      case "insertTask":
-        insertTemplate(`::todo{id="${nextId("todo")}" status="open" owner="" due=""}
-{{cursor}}Task description.
-::`, "Task description.");
-        break;
-      case "insertControl":
-        insertTemplate(`::control{id="${nextId("control")}" type="text" label="Field" default="{{cursor}}Value"}
-::`, "Value");
-        break;
-      case "insertMath":
-        insertTemplate(`::math{id="${nextId("math")}"}
-{{cursor}}E = mc^2
-::`, "E = mc^2");
-        break;
-      case "insertToc":
-        insertTemplate(`::toc{id="${nextId("toc")}" depth=3}
-::`);
-        break;
-      case "insertHeader":
-        insertTemplate(`::header{id="${nextId("header")}"}
-{{cursor}}Document header
-::`, "Document header");
-        break;
-      case "insertFooter":
-        insertTemplate(`::footer{id="${nextId("footer")}" page_numbers total_pages}
-{{cursor}}Document footer
-::`, "Document footer");
-        break;
-      case "insertPageSetup":
-        insertTemplate('::page_setup{size="A4" margin="18mm"}\n::');
-        break;
-      case "insertPageBreak":
-        insertTemplate(`::pagebreak{id="${nextId("pagebreak")}"}
-::`);
-        break;
-      case "insertComment":
-        insertTemplate(`::comment{id="${nextId("comment")}" parent="" author=""}
-{{cursor}}Review note.
-::`, "Review note.");
-        break;
-      case "insertChange":
-        insertTemplate(`::change_request{id="${nextId("change")}" action="replace" from="{{cursor}}old text" to="new text"}
-::`, "old text");
-        break;
-      case "insertFootnote":
-        insertTemplate(`::footnote{id="${nextId("footnote")}"}
-{{cursor}}Footnote text.
-::`, "Footnote text.");
-        break;
-    }
-  }
-  async function loadSourceFile(file) {
-    const source = await file.text();
-    if (isMarkdownFile(file)) {
-      setSource(markdownSourceFromText(source), `Markdown ${file.name}`);
-      return;
-    }
-    setSource(source, file.name);
-  }
-  async function loadMarkdownFile(file) {
-    const source = await file.text();
-    setSource(markdownSourceFromText(source), `Markdown ${file.name}`);
-  }
-  async function pasteMarkdownFromClipboard() {
-    if (!navigator.clipboard?.readText) {
-      showTransientStatus("Clipboard read unavailable", "warning");
-      sourceInput.focus();
-      return;
-    }
-    try {
-      const source = await navigator.clipboard.readText();
-      if (!source.trim()) {
-        showTransientStatus("Clipboard is empty", "warning");
-        sourceInput.focus();
-        return;
-      }
-      setSource(markdownSourceFromText(source), "Markdown paste");
-    } catch {
-      showTransientStatus("Clipboard read blocked by browser", "warning");
-      sourceInput.focus();
-    }
-  }
-  function isMarkdownFile(file) {
-    return /\.(?:md|markdown|mdown|mkdn)$/i.test(file.name) || /^text\/(?:markdown|x-markdown)$/i.test(file.type);
-  }
-  function markdownSourceFromText(source) {
-    return source.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
-  }
-  function setSource(source, label, options = {}) {
-    if (options.cloudDocumentId) {
-      cloudDocumentId = options.cloudDocumentId;
-      cloudDocumentHash = options.cloudDocumentHash;
-      updateCloudDocumentUrl(cloudDocumentId, cloudShareToken);
-    } else {
-      clearCloudDocumentBinding();
-      clearCloudSiteBinding();
-    }
-    sourceInput.value = source;
-    localStorage.setItem(storageKey, sourceInput.value);
-    lastProof = null;
-    lastProofApplied = false;
-    sharedProof = null;
-    updateProofControls();
-    sourceInput.focus();
-    sourceInput.setSelectionRange(0, 0);
-    renderCurrent();
-    if (label) showTransientStatus(`Loaded ${label}`);
-  }
-  function starterDocument() {
-    return `---
-title: Untitled Noma Document
-profile: technical
----
-
-# Untitled Document
-
-Start writing here.
-`;
-  }
-  function wrapSelection(prefix, suffix, placeholder) {
-    const selection = sourceSelection();
-    const body = selection.text || placeholder;
-    const inserted = `${prefix}${body}${suffix}`;
-    replaceRange(selection.start, selection.end, inserted, selection.start + prefix.length, selection.start + prefix.length + body.length);
-  }
-  function wrapBlock(prefix, suffix, placeholder) {
-    const selection = sourceSelection();
-    const body = selection.text || placeholder;
-    const inserted = `${prefix}${body}${suffix}`;
-    replaceRange(selection.start, selection.end, inserted, selection.start + prefix.length, selection.start + prefix.length + body.length);
-  }
-  function insertLink() {
-    const selection = sourceSelection();
-    const label = selection.text || "link text";
-    const inserted = `[${label}](https://example.com)`;
-    replaceRange(selection.start, selection.end, inserted, selection.start + 1, selection.start + 1 + label.length);
-  }
-  function setHeading(level) {
-    const source = sourceInput.value;
-    const bounds = currentLineBounds();
-    const line = source.slice(bounds.start, bounds.end);
-    const clean = line.replace(/^#{1,6}\s+/, "").trim() || "Heading";
-    const next = `${"#".repeat(level)} ${clean}`;
-    replaceRange(bounds.start, bounds.end, next, bounds.start + level + 1, bounds.start + next.length);
-  }
-  function prefixSelectedLines(transform) {
-    const source = sourceInput.value;
-    const selection = sourceSelection();
-    const start = source.lastIndexOf("\n", Math.max(0, selection.start - 1)) + 1;
-    const nextBreak = source.indexOf("\n", selection.end);
-    const end = nextBreak === -1 ? source.length : nextBreak;
-    const lines = source.slice(start, end).split("\n");
-    const transformed = lines.map((line, index) => transform(line, index)).join("\n");
-    replaceRange(start, end, transformed, start, start + transformed.length);
-  }
-  function stripListMarker(line) {
-    return line.replace(/^\s*(?:[-*]|\d+\.)\s+/, "");
-  }
-  function insertTemplate(rawTemplate, selectionHint) {
-    const selection = sourceSelection();
-    const marker = "{{cursor}}";
-    const markerIndex = rawTemplate.indexOf(marker);
-    const template = rawTemplate.replace(marker, "");
-    const before = sourceInput.value.slice(0, selection.start);
-    const after = sourceInput.value.slice(selection.end);
-    const prefix = before.length > 0 && !before.endsWith("\n\n") ? "\n\n" : "";
-    const suffix = after.length > 0 && !after.startsWith("\n\n") ? "\n\n" : "";
-    const inserted = `${prefix}${template}${suffix}`;
-    const cursorStart = selection.start + prefix.length + (markerIndex >= 0 ? markerIndex : template.length);
-    const cursorEnd = selectionHint ? cursorStart + selectionHint.length : cursorStart;
-    replaceRange(selection.start, selection.end, inserted, cursorStart, cursorEnd);
-  }
-  function nextId(prefix) {
-    const source = sourceInput.value;
-    for (let i = 1; i < 1e3; i++) {
-      const candidate = `${prefix}-${i}`;
-      if (!source.includes(`id="${candidate}"`) && !source.includes(`id=${candidate}`)) return candidate;
-    }
-    return `${prefix}-${Date.now()}`;
-  }
-  function sourceSelection() {
-    const start = sourceInput.selectionStart;
-    const end = sourceInput.selectionEnd;
-    return { start, end, text: sourceInput.value.slice(start, end) };
-  }
-  function currentLineBounds() {
-    const source = sourceInput.value;
-    const cursor = sourceInput.selectionStart;
-    const start = source.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
-    const nextBreak = source.indexOf("\n", cursor);
-    return { start, end: nextBreak === -1 ? source.length : nextBreak };
-  }
-  function replaceRange(start, end, inserted, selectStart, selectEnd) {
-    const source = sourceInput.value;
-    sourceInput.value = `${source.slice(0, start)}${inserted}${source.slice(end)}`;
-    localStorage.setItem(storageKey, sourceInput.value);
-    lastProof = null;
-    lastProofApplied = false;
-    updateProofControls();
-    sourceInput.focus();
-    sourceInput.setSelectionRange(selectStart, selectEnd);
-    renderCurrent();
-  }
-  function renderCurrent() {
-    const source = sourceInput.value;
-    try {
-      const doc = parse(source, { filename: "workbench.noma" });
-      const diagnostics = validate(doc);
-      const themeCss = `${default_default}
-body { background: #ffffff; }`;
-      const htmlOptions = {
-        standalone: true,
-        themeCss,
-        allowEscapeHatches: false,
-        externalAssets: false,
-        interactive: false
-      };
-      state = {
-        doc,
-        diagnostics,
-        html: renderHtml(doc, htmlOptions),
-        previewHtml: renderHtml(doc, { ...htmlOptions, sourcePositions: true }),
-        json: renderJson(doc),
-        llm: renderLlm(doc),
-        markdown: renderMarkdown(doc)
-      };
-    } catch (error) {
-      state = {
-        ...emptyState(),
-        error: error instanceof Error ? error : new Error(String(error))
-      };
-    }
-    renderStatus();
-    renderDiagnostics();
-    renderOutline();
-    renderDataInspector();
-    renderCollaboration();
-    updateProofControls();
-    renderOutput();
-    updateFindStatus();
-  }
-  function renderStatus() {
-    if (state.error) {
-      statusText.textContent = state.error.message;
-      statusText.dataset.state = "error";
-      return;
-    }
-    const errors = state.diagnostics.filter((item) => item.severity === "error").length;
-    const warnings = state.diagnostics.filter((item) => item.severity === "warning").length;
-    const ids = state.doc ? countIds(state.doc) : 0;
-    statusText.textContent = `${errors} errors / ${warnings} warnings / ${ids} IDs`;
-    statusText.dataset.state = errors > 0 ? "error" : warnings > 0 ? "warning" : "ok";
-  }
-  function renderDiagnostics() {
-    diagnosticsList.replaceChildren();
-    diagnosticsSummary.dataset.state = "ok";
-    if (state.error) {
-      diagnosticsSummary.textContent = "Render failed";
-      diagnosticsSummary.dataset.state = "error";
-      diagnosticsList.append(diagnosticRow("error", "render", state.error.message));
-      return;
-    }
-    const errors = state.diagnostics.filter((item) => item.severity === "error").length;
-    const warnings = state.diagnostics.filter((item) => item.severity === "warning").length;
-    const infos = state.diagnostics.filter((item) => item.severity === "info").length;
-    diagnosticsSummary.textContent = `${errors} errors / ${warnings} warnings / ${infos} info`;
-    diagnosticsSummary.dataset.state = errors > 0 ? "error" : warnings > 0 ? "warning" : "ok";
-    if (state.diagnostics.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "empty";
-      empty.textContent = "No diagnostics";
-      diagnosticsList.append(empty);
-      return;
-    }
-    for (const item of state.diagnostics) {
-      const row = diagnosticRow(item.severity, item.code, item.message, item.pos?.line);
-      diagnosticsList.append(row);
-    }
-  }
-  function renderCollaboration() {
-    const source = sourceInput.value;
-    const bytes = utf8Bytes(source);
-    const lines = sourceLineCount(source);
-    const ids = state.doc ? countIds(state.doc) : 0;
-    const errors = state.diagnostics.filter((item) => item.severity === "error").length;
-    const warnings = state.diagnostics.filter((item) => item.severity === "warning").length;
-    collabStatus.dataset.state = errors > 0 ? "error" : warnings > 0 ? "warning" : "ok";
-    collabStatus.textContent = `${lines} lines / ${formatBytes(bytes)} / ${ids} IDs / ${errors} errors / ${warnings} warnings`;
-    renderCloudStatus();
-    void sha256Hex(source).then((hash) => {
-      if (sourceInput.value !== source) return;
-      collabStatus.textContent = `${shortHash(hash)} / ${lines} lines / ${formatBytes(bytes)} / ${ids} IDs / ${errors} errors / ${warnings} warnings`;
-      renderCloudStatus(hash);
-    });
+    sourceInput.addEventListener("contextmenu", (event) => showSourceContextMenu(event));
+    splitResizeHandle.addEventListener("pointerdown", (event) => startSplitResize(event));
+    splitResizeHandle.addEventListener("keydown", (event) => handleSplitResizeKeydown(event));
+    previewFrame.addEventListener("load", () => installPreviewEditing());
   }
   async function initializeCloud() {
-    if (window.location.protocol === "file:") {
-      cloudAvailable = false;
-      renderCloudStatus();
-      return;
-    }
-    cloudLoading = true;
-    renderCloudStatus();
+    setBusy(true, "Connecting to cloud", "warning");
     try {
-      await fetchCloudJson("/api/status");
+      const status = await fetchCloudJson("/api/status");
       cloudAvailable = true;
-      if (!cloudUser && !cloudShareToken) await createCloudUser({ silent: true });
-      if (cloudDocumentId) {
-        await loadCloudDocument(cloudDocumentId);
-      } else {
-        renderCloudStatus();
+      validateStoredCloudUser(status.user);
+      if (!cloudUser && !shareToken) {
+        clearWorkspaceState();
+        setCloudStatus("Register with an invitation code or log in with an existing user token", "warning");
+        return;
       }
-    } catch {
+      const requestedSite = readCloudId(query.get("site")) ?? readCloudId(localStorage.getItem(activeSiteStorageKey));
+      const requestedDoc = readCloudId(query.get("doc")) ?? readCloudId(localStorage.getItem(activeDocumentStorageKey));
+      if (requestedSite) {
+        await refreshSites({ silent: true });
+        await loadSite(requestedSite, requestedDoc);
+      } else if (requestedDoc) {
+        await refreshSites({ silent: true });
+        await loadStandaloneDocument(requestedDoc);
+      } else {
+        await refreshSites({ silent: true });
+        const firstSite = sites[0];
+        if (firstSite) await loadSite(firstSite.id);
+        else await createStarterWorkspace("Research Workspace");
+      }
+      setCloudStatus("Ready", "ok");
+    } catch (error) {
       cloudAvailable = false;
-      cloudDocumentHash = void 0;
-      renderCloudStatus();
+      setCloudStatus(errorMessage(error), "error");
     } finally {
-      cloudLoading = false;
-      renderCloudStatus();
+      setBusy(false);
+      renderChrome();
     }
   }
-  async function loadCloudDocument(id) {
-    cloudLoading = true;
-    renderCloudStatus();
+  function validateStoredCloudUser(statusUser) {
+    if (!cloudUser) return;
+    if (statusUser && statusUser.id === cloudUser.id) {
+      cloudUser = {
+        id: statusUser.id,
+        name: statusUser.name,
+        token: cloudUser.token,
+        tokenPreview: statusUser.tokenPreview ?? cloudUser.tokenPreview
+      };
+      localStorage.setItem(userStorageKey, JSON.stringify(cloudUser));
+      cloudUserNameInput.value = cloudUser.name;
+      return;
+    }
+    cloudUser = void 0;
+    localStorage.removeItem(userStorageKey);
+    localStorage.removeItem(activeSiteStorageKey);
+    localStorage.removeItem(activeDocumentStorageKey);
+  }
+  function clearWorkspaceState() {
+    sites = [];
+    currentSite = void 0;
+    activeFolder = "";
+    pages = [];
+    setCurrentPage(void 0);
+    siteTitleInput.value = "Research Workspace";
+  }
+  async function refreshSites(options = {}) {
+    if (!cloudUser) return;
+    if (!options.silent) setBusy(true, "Loading spaces", "warning");
     try {
-      const record = await fetchCloudJson(`/api/documents/${encodeURIComponent(id)}`);
-      cloudDocumentRole = record.access?.role;
-      setSource(record.source, record.title, {
-        cloudDocumentId: record.id,
-        cloudDocumentHash: record.hash
+      const response = await fetchCloudJson("/api/sites");
+      sites = response.sites.map(normalizeSite);
+    } finally {
+      if (!options.silent) setBusy(false);
+      renderNavigation();
+    }
+  }
+  async function loadSite(siteId, preferredDocumentId) {
+    if (!confirmDiscardDirty()) return;
+    setBusy(true, "Opening space", "warning");
+    try {
+      const site = await fetchCloudJson(`/api/sites/${encodeURIComponent(siteId)}?include=documents`);
+      currentSite = normalizeSite(site);
+      pages = site.documents ?? [];
+      siteTitleInput.value = currentSite.title;
+      localStorage.setItem(activeSiteStorageKey, currentSite.id);
+      const selected = preferredDocumentId ? pages.find((page) => page.id === preferredDocumentId) : void 0;
+      setCurrentPage(selected ?? pages[0]);
+      updateAddress();
+      if (cloudUser) await refreshSites({ silent: true });
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function loadStandaloneDocument(documentId) {
+    if (!confirmDiscardDirty()) return;
+    setBusy(true, "Opening page", "warning");
+    try {
+      const page = await fetchCloudJson(`/api/documents/${encodeURIComponent(documentId)}`);
+      currentSite = void 0;
+      activeFolder = "";
+      pages = [page];
+      siteTitleInput.value = "Standalone Page";
+      setCurrentPage(page);
+      updateAddress();
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function createStarterWorkspace(name) {
+    if (!cloudAvailable) return;
+    if (!cloudUser) {
+      setCloudStatus("Register a user before creating workspaces", "error");
+      return;
+    }
+    if (!confirmDiscardDirty()) return;
+    setBusy(true, "Creating space", "warning");
+    try {
+      const page = await fetchCloudJson("/api/documents", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Research Paper Draft",
+          source: starterPage("Research Paper Draft", name)
+        })
       });
-      showTransientStatus(`Loaded cloud document ${shortHash(record.hash)}`);
+      const site = await fetchCloudJson("/api/sites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: name,
+          documentIds: [page.id],
+          folders: ["Drafts"],
+          pageFolders: { [page.id]: "Drafts" }
+        })
+      });
+      await refreshSites({ silent: true });
+      await loadSite(site.id, page.id);
+      setCloudStatus("Created space", "ok");
     } catch (error) {
-      cloudDocumentHash = void 0;
-      cloudStatus.dataset.state = "error";
-      cloudStatus.textContent = error instanceof Error ? error.message : "Could not load cloud document";
+      setCloudStatus(errorMessage(error), "error");
     } finally {
-      cloudLoading = false;
-      renderCloudStatus();
+      setBusy(false);
+      renderChrome();
     }
   }
-  async function saveCloudDocument() {
-    if (!cloudAvailable || state.error) return;
-    cloudLoading = true;
-    renderCloudStatus();
+  async function createPage(folder = activeFolder) {
+    if (!currentSite) {
+      await createStarterWorkspace(promptName("Space name", "Research Workspace"));
+      return;
+    }
+    if (!cloudUser) {
+      setCloudStatus("A user token is required to create pages", "error");
+      return;
+    }
+    if (!confirmDiscardDirty()) return;
+    const normalizedFolder = normalizeFolderName(folder);
+    const title = promptName(normalizedFolder ? `Page title in ${normalizedFolder}` : "Page title", "Untitled Page");
+    setBusy(true, "Creating page", "warning");
     try {
-      if (!cloudUser && !cloudShareToken) await createCloudUser({ silent: true });
-      const source = sourceInput.value;
-      const body = JSON.stringify({
-        title: sourceTitle(source),
-        source
+      const page = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}/documents`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title,
+          source: starterPage(title, currentSite.title),
+          folder: normalizedFolder
+        })
       });
-      const record = await fetchCloudJson(
-        cloudDocumentId ? `/api/documents/${encodeURIComponent(cloudDocumentId)}` : "/api/documents",
-        {
-          method: cloudDocumentId ? "PUT" : "POST",
-          headers: { "content-type": "application/json" },
-          body
+      pages = [...pages, page];
+      const documentIds = [...currentSite.documentIds, page.id];
+      const pageFolders = normalizedPageFolders({ ...currentSite.pageFolders, ...normalizedFolder ? { [page.id]: normalizedFolder } : {} }, documentIds);
+      currentSite = {
+        ...currentSite,
+        documentIds,
+        folders: normalizeFolders([...currentSite.folders ?? [], normalizedFolder, ...Object.values(pageFolders)]),
+        pageFolders,
+        documents: pages
+      };
+      activeFolder = normalizedFolder;
+      setCurrentPage(page);
+      await refreshSites({ silent: true });
+      updateAddress();
+      setCloudStatus("Created page", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function createFolder() {
+    if (!currentSite || !canEditSite()) return;
+    const folder = promptFolder("Folder name", "Research Notes");
+    if (folder === void 0) return;
+    if (!folder) {
+      setCloudStatus("Folder name required", "error");
+      return;
+    }
+    if (siteFolders(currentSite).some((item) => sameFolder(item, folder))) {
+      activeFolder = folder;
+      setCloudStatus("Selected folder", "ok");
+      renderChrome();
+      return;
+    }
+    currentSite = {
+      ...currentSite,
+      folders: normalizeFolders([...currentSite.folders ?? [], folder]),
+      pageFolders: normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds),
+      documents: pages
+    };
+    activeFolder = folder;
+    await saveSiteStructure("Created folder");
+  }
+  async function renameFolder(folder) {
+    if (!currentSite || !canEditSite()) return;
+    const currentFolder = normalizeFolderName(folder);
+    if (!currentFolder) return;
+    const nextFolder = promptFolder("Rename folder", currentFolder);
+    if (nextFolder === void 0 || !nextFolder || sameFolder(currentFolder, nextFolder)) return;
+    const pageFolders = normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds);
+    for (const [pageId, pageFolder2] of Object.entries(pageFolders)) {
+      if (sameFolder(pageFolder2, currentFolder)) pageFolders[pageId] = nextFolder;
+    }
+    currentSite = {
+      ...currentSite,
+      folders: normalizeFolders((currentSite.folders ?? []).map((item) => sameFolder(item, currentFolder) ? nextFolder : item)),
+      pageFolders,
+      documents: pages
+    };
+    activeFolder = nextFolder;
+    await saveSiteStructure("Renamed folder");
+  }
+  async function deleteFolder(folder) {
+    if (!currentSite || !canEditSite()) return;
+    const currentFolder = normalizeFolderName(folder);
+    if (!currentFolder) return;
+    const pagesInFolder = pages.filter((page) => sameFolder(pageFolder(page.id), currentFolder)).length;
+    const message = pagesInFolder > 0 ? `Delete folder "${currentFolder}"? ${pagesInFolder} page${pagesInFolder === 1 ? "" : "s"} will move to Pages.` : `Delete folder "${currentFolder}"?`;
+    if (!window.confirm(message)) return;
+    const pageFolders = normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds);
+    for (const [pageId, pageFolder2] of Object.entries(pageFolders)) {
+      if (sameFolder(pageFolder2, currentFolder)) delete pageFolders[pageId];
+    }
+    currentSite = {
+      ...currentSite,
+      folders: normalizeFolders((currentSite.folders ?? []).filter((item) => !sameFolder(item, currentFolder))),
+      pageFolders,
+      documents: pages
+    };
+    if (sameFolder(activeFolder, currentFolder)) activeFolder = "";
+    await saveSiteStructure("Deleted folder");
+  }
+  async function movePage(pageId) {
+    if (!currentSite || !canEditSite()) return;
+    const page = pages.find((item) => item.id === pageId);
+    if (!page) return;
+    const folder = promptFolder(`Move "${page.title}" to folder`, pageFolder(page.id));
+    if (folder === void 0) return;
+    await movePageToFolder(pageId, folder);
+  }
+  async function movePageToFolder(pageId, folder) {
+    if (!currentSite || !canEditSite()) return;
+    const page = pages.find((item) => item.id === pageId);
+    if (!page) return;
+    const pageFolders = normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds);
+    if (folder) pageFolders[page.id] = folder;
+    else delete pageFolders[page.id];
+    currentSite = {
+      ...currentSite,
+      folders: normalizeFolders([...currentSite.folders ?? [], folder, ...Object.values(pageFolders)]),
+      pageFolders,
+      documents: pages
+    };
+    activeFolder = folder;
+    await saveSiteStructure(folder ? `Moved page to ${folder}` : "Moved page to Pages");
+  }
+  async function saveSiteStructure(status) {
+    if (!currentSite || !canEditSite()) return;
+    setBusy(true, "Saving folders", "warning");
+    try {
+      const saved = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: siteTitleInput.value.trim() || currentSite.title,
+          documentIds: currentSite.documentIds,
+          folders: siteFolders(currentSite),
+          pageFolders: normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds)
+        })
+      });
+      currentSite = { ...normalizeSite(saved), documents: pages };
+      sites = sites.map((site) => site.id === saved.id ? normalizeSite(saved) : site);
+      setCloudStatus(status, "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function saveCurrentPage() {
+    if (!currentPage || !canEditPage()) return;
+    if (renderState.error) {
+      setCloudStatus("Fix the render error before saving", "error");
+      return;
+    }
+    setBusy(true, "Saving page", "warning");
+    try {
+      const endpoint = currentSite?.documentIds.includes(currentPage.id) ? `/api/sites/${encodeURIComponent(currentSite.id)}/documents/${encodeURIComponent(currentPage.id)}` : `/api/documents/${encodeURIComponent(currentPage.id)}`;
+      const saved = await fetchCloudJson(endpoint, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value),
+          source: sourceInput.value
+        })
+      });
+      replacePage(saved);
+      currentPage = saved;
+      dirty = false;
+      syncTitleFromSource();
+      setCloudStatus("Saved page", "ok");
+      updateAddress();
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function saveCurrentSite() {
+    if (!currentSite || !canEditSite()) return;
+    setBusy(true, "Saving space", "warning");
+    try {
+      const saved = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: siteTitleInput.value.trim() || currentSite.title,
+          documentIds: currentSite.documentIds,
+          folders: siteFolders(currentSite),
+          pageFolders: normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds)
+        })
+      });
+      currentSite = { ...normalizeSite(saved), documents: pages };
+      sites = sites.map((site) => site.id === saved.id ? saved : site);
+      setCloudStatus("Saved space", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function copyPageLink() {
+    if (!currentPage) return;
+    await ensureSavedBeforeShare();
+    const role = selectedShareRole();
+    const share = await createShare(`/api/documents/${encodeURIComponent(currentPage.id)}/shares`, role, "Noma Cloud page");
+    await copyText(cloudAppDocumentUrl(currentPage.id, share.token), `Copied ${role} page link`);
+  }
+  async function copyArtifactLink() {
+    if (!currentPage) return;
+    await ensureSavedBeforeShare();
+    const share = await createShare(`/api/documents/${encodeURIComponent(currentPage.id)}/shares`, "viewer", "Noma rendered artifact");
+    await copyText(absoluteUrl(`/d/${currentPage.id}?share=${encodeURIComponent(share.token)}`), "Copied artifact link");
+  }
+  async function copySiteLink() {
+    if (!currentSite) return;
+    await ensureSavedBeforeShare();
+    const role = selectedShareRole();
+    const share = await createShare(`/api/sites/${encodeURIComponent(currentSite.id)}/shares`, role, "Noma Cloud space");
+    await copyText(cloudAppSiteUrl(currentSite.id, share.token), `Copied ${role} space link`);
+  }
+  async function openPublishedSite() {
+    if (!currentSite) return;
+    await ensureSavedBeforeShare();
+    const share = await createShare(`/api/sites/${encodeURIComponent(currentSite.id)}/shares`, "viewer", "Published site");
+    window.open(absoluteUrl(`/s/${currentSite.id}?share=${encodeURIComponent(share.token)}`), "_blank", "noopener");
+  }
+  async function inviteCollaborator() {
+    const userId = inviteUserIdInput.value.trim();
+    if (!readCloudId(userId)) {
+      setPanelStatus(shareStatus, "Enter a valid user ID", "error");
+      return;
+    }
+    const role = selectedInviteRole();
+    if (!currentSite && !currentPage) return;
+    setBusy(true, "Inviting collaborator", "warning");
+    try {
+      if (currentSite) {
+        await postCollaborator(`/api/sites/${encodeURIComponent(currentSite.id)}/collaborators`, userId, role);
+        for (const page of pages) {
+          await postCollaborator(`/api/documents/${encodeURIComponent(page.id)}/collaborators`, userId, role);
         }
-      );
-      cloudDocumentId = record.id;
-      cloudDocumentHash = record.hash;
-      cloudDocumentRole = record.access?.role;
-      updateCloudDocumentUrl(record.id, cloudShareToken);
-      renderCloudStatus(record.hash);
-      showTransientStatus(`Saved cloud document ${shortHash(record.hash)}`);
+      } else if (currentPage) {
+        await postCollaborator(`/api/documents/${encodeURIComponent(currentPage.id)}/collaborators`, userId, role);
+      }
+      inviteUserIdInput.value = "";
+      setPanelStatus(shareStatus, `Invited ${userId} as ${role}`, "ok");
+      setCloudStatus("Invited collaborator", "ok");
     } catch (error) {
-      cloudStatus.dataset.state = "error";
-      cloudStatus.textContent = error instanceof Error ? error.message : "Cloud save failed";
+      setPanelStatus(shareStatus, errorMessage(error), "error");
     } finally {
-      cloudLoading = false;
-      renderCloudStatus();
+      setBusy(false);
+      renderChrome();
     }
   }
-  async function copyCloudLink() {
-    await ensureCloudDocumentSaved();
-    if (!cloudDocumentId) return;
-    const share = await createDocumentShare(selectedCloudShareRole(), "Workbench link");
-    await copyText(cloudDocumentUrl(cloudDocumentId, share.token), `Copied ${share.role} cloud link`);
+  async function postCollaborator(url, userId, role) {
+    await fetchCloudJson(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId, role })
+    });
   }
-  async function openCloudArtifact() {
-    await ensureCloudDocumentSaved();
-    if (!cloudDocumentId) return;
-    const share = await createDocumentShare("viewer", "Artifact link");
-    window.open(cloudArtifactUrl(cloudDocumentId, share.token), "_blank", "noopener");
-  }
-  async function saveCloudSite() {
-    if (!cloudAvailable || state.error) return;
-    await ensureCloudDocumentSaved();
-    if (!cloudDocumentId) return;
-    cloudLoading = true;
-    renderCloudStatus();
+  async function applyAgentPatch() {
     try {
-      const payload = JSON.stringify({
-        title: `${sourceTitle(sourceInput.value)} Space`,
-        documentIds: [cloudDocumentId]
-      });
-      const record = await fetchCloudJson(
-        cloudSiteId ? `/api/sites/${encodeURIComponent(cloudSiteId)}` : "/api/sites",
-        {
-          method: cloudSiteId ? "PUT" : "POST",
-          headers: { "content-type": "application/json" },
-          body: payload
-        }
-      );
-      cloudSiteId = record.id;
-      renderCloudStatus();
-      showTransientStatus(`Saved cloud site ${record.slug}`);
+      const ops = parsePatchOps(patchInput.value);
+      const nextSource = patchSource(sourceInput.value, ops);
+      const nextDoc = parse(nextSource, { filename: `${currentPage?.id ?? "draft"}.noma` });
+      const nextDiagnostics = validate(nextDoc);
+      const errors = nextDiagnostics.filter((item) => item.severity === "error");
+      if (errors.length > 0) {
+        throw new Error(`Patch produced ${errors.length} validation error${errors.length === 1 ? "" : "s"}`);
+      }
+      sourceInput.value = nextSource;
+      markDirty();
+      syncTitleFromSource();
+      renderCurrent();
+      setPanelStatus(agentStatus, `Applied ${ops.length} patch op${ops.length === 1 ? "" : "s"}`, "ok");
+      setCloudStatus("Applied patch", "ok");
     } catch (error) {
-      cloudStatus.dataset.state = "error";
-      cloudStatus.textContent = error instanceof Error ? error.message : "Cloud site save failed";
-    } finally {
-      cloudLoading = false;
-      renderCloudStatus();
+      setPanelStatus(agentStatus, errorMessage(error), "error");
     }
   }
-  async function copyCloudSiteLink() {
-    await ensureCloudSiteSaved();
-    if (!cloudSiteId) return;
-    const share = await createSiteShare("viewer", "Site link");
-    cloudSiteShareToken = share.token;
-    await copyText(cloudSiteUrl(cloudSiteId, share.token), "Copied site link");
-  }
-  async function openCloudSite() {
-    await ensureCloudSiteSaved();
-    if (!cloudSiteId) return;
-    const share = cloudSiteShareToken ? void 0 : await createSiteShare("viewer", "Site preview");
-    if (share) cloudSiteShareToken = share.token;
-    window.open(cloudSiteUrl(cloudSiteId, cloudSiteShareToken), "_blank", "noopener");
-  }
-  function renderCloudStatus(currentHash) {
-    const canEditCloudDocument = !cloudDocumentId || cloudDocumentRole === void 0 || roleRank(cloudDocumentRole) >= roleRank("editor");
-    createCloudUserButton.disabled = !cloudAvailable || cloudLoading;
-    copyUserTokenButton.disabled = !cloudAvailable || cloudLoading || !cloudUser;
-    saveCloudDocumentButton.disabled = !cloudAvailable || cloudLoading || Boolean(state.error) || !canEditCloudDocument;
-    copyCloudLinkButton.disabled = !cloudAvailable || cloudLoading || !cloudDocumentId;
-    openCloudArtifactButton.disabled = !cloudAvailable || cloudLoading || !cloudDocumentId;
-    saveCloudSiteButton.disabled = !cloudAvailable || cloudLoading || Boolean(state.error) || !canEditCloudDocument;
-    copyCloudSiteLinkButton.disabled = !cloudAvailable || cloudLoading || !cloudSiteId;
-    openCloudSiteButton.disabled = !cloudAvailable || cloudLoading || !cloudSiteId;
-    if (cloudLoading) {
-      cloudStatus.dataset.state = "warning";
-      cloudStatus.textContent = "Cloud workspace syncing.";
+  async function copyLlmContext() {
+    if (renderState.error || !renderState.llm) {
+      setPanelStatus(agentStatus, "Render the page before copying LLM context", "error");
       return;
     }
-    if (!cloudAvailable) {
-      cloudStatus.dataset.state = "warning";
-      cloudStatus.textContent = "Cloud save is unavailable on this static build.";
-      return;
-    }
-    const userText = cloudUser ? `${cloudUser.name} (${cloudUser.tokenPreview ?? shortHash(cloudUser.id)})` : "shared-link user";
-    if (state.error) {
-      cloudStatus.dataset.state = "error";
-      cloudStatus.textContent = `${userText}. Fix the render error before saving to cloud.`;
-      return;
-    }
-    if (!cloudDocumentId) {
-      cloudStatus.dataset.state = "ok";
-      cloudStatus.textContent = `${userText}. Save once to create a permissioned cloud document.`;
-      return;
-    }
-    const dirty = currentHash !== void 0 && cloudDocumentHash !== void 0 && currentHash !== cloudDocumentHash;
-    cloudStatus.dataset.state = dirty ? "warning" : "ok";
-    const role = cloudDocumentRole ? `${cloudDocumentRole} access` : "cloud access";
-    const site = cloudSiteId ? ` / site ${cloudSiteId}` : "";
-    cloudStatus.textContent = dirty ? `${userText}. Cloud doc ${cloudDocumentId} has unsaved changes (${role})${site}.` : `${userText}. Cloud doc ${cloudDocumentId} saved (${role})${site}.`;
+    await copyText(renderState.llm, "Copied LLM context");
+    setPanelStatus(agentStatus, "Copied LLM context", "ok");
   }
   async function createCloudUser(options = {}) {
-    if (!cloudAvailable) return;
-    cloudLoading = true;
-    renderCloudStatus();
+    if (!cloudAvailable && !options.silent) return;
+    const invitationCode = promptSecret("Invitation code");
+    if (!invitationCode) {
+      setCloudStatus("Invitation code required", "error");
+      return;
+    }
+    setBusy(true, "Creating user", "warning");
     try {
       const user = await fetchCloudJson("/api/users", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: cloudUserNameInput.value || "Noma collaborator" })
+        body: JSON.stringify({ name: cloudUserNameInput.value || "Noma collaborator", invitationCode })
       });
       cloudUser = {
         id: user.id,
@@ -10281,46 +9647,875 @@ body { background: #ffffff; }`;
         token: user.token,
         tokenPreview: user.tokenPreview
       };
-      localStorage.setItem(cloudUserStorageKey, JSON.stringify(cloudUser));
+      localStorage.setItem(userStorageKey, JSON.stringify(cloudUser));
       cloudUserNameInput.value = cloudUser.name;
-      if (!options.silent) showTransientStatus(`Using cloud user ${cloudUser.name}`);
+      if (!options.silent) setCloudStatus("Created user", "ok");
     } catch (error) {
-      cloudStatus.dataset.state = "error";
-      cloudStatus.textContent = error instanceof Error ? error.message : "Could not create cloud user";
+      setCloudStatus(errorMessage(error), "error");
     } finally {
-      cloudLoading = false;
-      renderCloudStatus();
+      setBusy(false);
+      renderChrome();
     }
   }
-  async function copyCloudUserToken() {
-    if (!cloudUser) return;
-    await copyText(cloudUser.token, "Copied cloud user token");
+  async function ensureSavedBeforeShare() {
+    if (dirty) await saveCurrentPage();
   }
-  async function ensureCloudDocumentSaved() {
-    if (!cloudDocumentId || cloudDocumentHash === void 0) await saveCloudDocument();
-  }
-  async function ensureCloudSiteSaved() {
-    await ensureCloudDocumentSaved();
-    if (!cloudSiteId) await saveCloudSite();
-  }
-  async function createDocumentShare(role, label) {
-    if (!cloudDocumentId) throw new Error("Cloud document is not saved");
-    return fetchCloudJson(`/api/documents/${encodeURIComponent(cloudDocumentId)}/shares`, {
+  async function createShare(url, role, label) {
+    return fetchCloudJson(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ role, label })
     });
   }
-  async function createSiteShare(role, label) {
-    if (!cloudSiteId) throw new Error("Cloud site is not saved");
-    return fetchCloudJson(`/api/sites/${encodeURIComponent(cloudSiteId)}/shares`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ role, label })
+  function setCurrentPage(page) {
+    currentPage = page;
+    if (!page) {
+      pageTitleInput.value = "";
+      sourceInput.value = "";
+      dirty = false;
+      renderCurrent();
+      renderChrome();
+      return;
+    }
+    pageTitleInput.value = page.title;
+    sourceInput.value = page.source;
+    activeFolder = pageFolder(page.id);
+    dirty = false;
+    localStorage.setItem(activeDocumentStorageKey, page.id);
+    renderCurrent();
+    renderChrome();
+  }
+  function replacePage(page) {
+    pages = pages.map((item) => item.id === page.id ? page : item);
+    if (currentSite) currentSite = { ...currentSite, documents: pages };
+  }
+  function selectPage(pageId) {
+    if (currentPage?.id === pageId) return true;
+    if (!confirmDiscardDirty()) return false;
+    const page = pages.find((item) => item.id === pageId);
+    if (!page) return false;
+    setCurrentPage(page);
+    updateAddress();
+    return true;
+  }
+  function renderCurrent() {
+    const source = sourceInput.value;
+    try {
+      const doc = parse(source, { filename: `${currentPage?.id ?? "draft"}.noma` });
+      const diagnostics = validate(doc);
+      const body = renderHtml(doc, {
+        standalone: false,
+        allowEscapeHatches: false,
+        externalAssets: false,
+        interactive: false,
+        sourcePositions: true
+      });
+      renderState = {
+        doc,
+        diagnostics,
+        llm: renderLlm(doc)
+      };
+      previewFrame.srcdoc = previewDocument(body);
+    } catch (error) {
+      renderState = {
+        doc: null,
+        diagnostics: [],
+        llm: "",
+        error: error instanceof Error ? error : new Error(String(error))
+      };
+      previewFrame.srcdoc = previewError(errorMessage(error));
+    }
+    renderDiagnostics();
+    renderOutline();
+    renderWikiPanel();
+    renderChrome();
+  }
+  function scheduleRender() {
+    if (renderTimer !== void 0) window.clearTimeout(renderTimer);
+    renderTimer = window.setTimeout(() => {
+      renderTimer = void 0;
+      renderCurrent();
+    }, 180);
+  }
+  function setViewMode(mode) {
+    viewMode = mode;
+    if (mode === "preview") panelsOpen = false;
+    localStorage.setItem(viewModeStorageKey, viewMode);
+    localStorage.setItem(panelsOpenStorageKey, panelsOpen ? "true" : "false");
+    renderChrome();
+    renderCurrent();
+  }
+  function renderChrome() {
+    const shell = document.querySelector(".cloud-shell");
+    if (shell) {
+      shell.dataset.viewMode = viewMode;
+      shell.dataset.panels = panelsOpen ? "open" : "closed";
+    }
+    documentGrid.style.setProperty("--source-pane-width", `${splitSourceRatio}%`);
+    cloudUserNameInput.disabled = busy;
+    newUserButton.disabled = busy || !cloudAvailable;
+    copyUserIdButton.disabled = busy || !cloudUser;
+    copyUserTokenButton.disabled = busy || !cloudUser;
+    themeToggleButton.textContent = themeMode === "dark" ? "Light" : "Dark";
+    themeToggleButton.setAttribute("aria-pressed", String(themeMode === "dark"));
+    newSpaceButton.disabled = busy || !cloudAvailable || !cloudUser;
+    saveSpaceButton.disabled = busy || !canEditSite();
+    newPageButton.disabled = busy || !canCreatePage();
+    newFolderButton.disabled = busy || !canEditSite();
+    savePageButton.disabled = busy || !canEditPage() || !currentPage;
+    sourceInput.disabled = busy || !canEditPage();
+    pageTitleInput.disabled = busy || !canEditPage();
+    copyPageLinkButton.disabled = busy || !currentPage;
+    copyArtifactLinkButton.disabled = busy || !currentPage;
+    copySiteLinkButton.disabled = busy || !currentSite;
+    openPublishedSiteButton.disabled = busy || !currentSite;
+    inviteUserButton.disabled = busy || !canManagePermissions();
+    applyPatchButton.disabled = busy || !canEditPage();
+    copyLlmButton.disabled = busy || Boolean(renderState.error) || !renderState.llm;
+    togglePanelsButton.setAttribute("aria-pressed", String(panelsOpen));
+    togglePanelsButton.textContent = panelsOpen ? "Hide Panels" : "Panels";
+    for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
+      button.setAttribute("aria-pressed", String(button.dataset.viewMode === viewMode));
+    }
+    const role = currentPageRole();
+    roleBadge.textContent = role;
+    roleBadge.dataset.state = roleRank(role) >= roleRank("editor") ? "ok" : "warning";
+    dirtyBadge.textContent = dirty ? "unsaved" : "saved";
+    dirtyBadge.dataset.state = dirty ? "dirty" : "ok";
+    updatedText.textContent = currentPage ? `Updated ${formatDate(currentPage.updatedAt)}` : "";
+    renderNavigation();
+  }
+  function renderNavigation() {
+    siteList.textContent = "";
+    if (sites.length === 0 && !currentSite) {
+      siteList.append(emptyState("No spaces"));
+    } else {
+      for (const site of sites) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "site-row";
+        button.setAttribute("aria-current", String(currentSite?.id === site.id));
+        button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
+        const title = button.querySelector(".row-title");
+        const meta = button.querySelector(".row-meta");
+        if (title) title.textContent = site.title;
+        if (meta) meta.textContent = `${site.documentIds.length} page${site.documentIds.length === 1 ? "" : "s"} / ${site.access?.role ?? site.currentRole ?? "viewer"}`;
+        button.addEventListener("click", () => {
+          void loadSite(site.id);
+        });
+        button.addEventListener("contextmenu", (event) => showSiteContextMenu(event, site));
+        siteList.append(button);
+      }
+    }
+    pageList.textContent = "";
+    if (pages.length === 0) {
+      pageList.append(emptyState("No pages"));
+      return;
+    }
+    const groups = groupedPages();
+    for (const group of groups) {
+      pageList.append(folderRow(group.folder, group.pages.length));
+      for (const page of group.pages) {
+        pageList.append(pageRow(page));
+      }
+    }
+  }
+  function folderRow(folder, pageCount) {
+    const row = document.createElement("div");
+    row.className = "folder-row";
+    row.setAttribute("aria-current", String(sameFolder(activeFolder, folder)));
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "folder-label";
+    label.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
+    const title = label.querySelector(".row-title");
+    const meta = label.querySelector(".row-meta");
+    if (title) title.textContent = folder || "Pages";
+    if (meta) meta.textContent = `${pageCount} page${pageCount === 1 ? "" : "s"}`;
+    label.addEventListener("click", () => {
+      activeFolder = folder;
+      setCloudStatus(folder ? `Selected ${folder}` : "Selected Pages", "ok");
+      renderChrome();
+    });
+    row.addEventListener("contextmenu", (event) => showFolderContextMenu(event, folder));
+    const actions = document.createElement("div");
+    actions.className = "folder-actions";
+    const addPage = iconButton("+", folder ? `New page in ${folder}` : "New page in Pages", () => {
+      activeFolder = folder;
+      void createPage(folder);
+    });
+    actions.append(addPage);
+    if (folder) {
+      actions.append(
+        iconButton("Rename", `Rename ${folder}`, () => void renameFolder(folder)),
+        iconButton("Delete", `Delete ${folder}`, () => void deleteFolder(folder), "danger")
+      );
+    }
+    row.append(label, actions);
+    return row;
+  }
+  function pageRow(page) {
+    const row = document.createElement("div");
+    row.className = "page-entry";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "page-row";
+    button.setAttribute("aria-current", String(currentPage?.id === page.id));
+    button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
+    const title = button.querySelector(".row-title");
+    const meta = button.querySelector(".row-meta");
+    if (title) title.textContent = page.title;
+    if (meta) meta.textContent = `${shortId(page.id)} / ${page.access?.role ?? currentSite?.access?.role ?? "viewer"}`;
+    button.addEventListener("click", () => selectPage(page.id));
+    row.addEventListener("contextmenu", (event) => showPageContextMenu(event, page));
+    const move = iconButton("Move", `Move ${page.title}`, () => void movePage(page.id));
+    move.disabled = busy || !canEditSite();
+    row.append(button, move);
+    return row;
+  }
+  function groupedPages() {
+    const folders = siteFolders(currentSite);
+    const rootPages = pages.filter((page) => !pageFolder(page.id));
+    return [
+      { folder: "", pages: rootPages },
+      ...folders.map((folder) => ({ folder, pages: pages.filter((page) => sameFolder(pageFolder(page.id), folder)) }))
+    ];
+  }
+  function siteFolders(site) {
+    if (!site) return [];
+    return normalizeFolders([...site.folders ?? [], ...Object.values(site.pageFolders ?? {})]);
+  }
+  function normalizeSite(site) {
+    const pageFolders = normalizedPageFolders(site.pageFolders, site.documentIds);
+    return {
+      ...site,
+      folders: normalizeFolders([...site.folders ?? [], ...Object.values(pageFolders)]),
+      pageFolders
+    };
+  }
+  function normalizedPageFolders(value, documentIds) {
+    const allowed = new Set(documentIds);
+    const next = {};
+    for (const [pageId, folder] of Object.entries(value ?? {})) {
+      if (!allowed.has(pageId)) continue;
+      const normalized = normalizeFolderName(folder);
+      if (normalized) next[pageId] = normalized;
+    }
+    return next;
+  }
+  function pageFolder(pageId) {
+    return normalizeFolderName(currentSite?.pageFolders?.[pageId] ?? "");
+  }
+  function normalizeFolders(values) {
+    const seen = /* @__PURE__ */ new Set();
+    const next = [];
+    for (const value of values) {
+      const folder = normalizeFolderName(value ?? "");
+      if (!folder) continue;
+      const key = folder.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push(folder);
+    }
+    return next.slice(0, 80);
+  }
+  function normalizeFolderName(value) {
+    return value.replace(/\\/g, "/").split("/").map((part) => part.trim().replace(/\s+/g, " ")).filter(Boolean).join("/").slice(0, 80);
+  }
+  function sameFolder(left, right) {
+    return normalizeFolderName(left).toLowerCase() === normalizeFolderName(right).toLowerCase();
+  }
+  function promptFolder(label, fallback = "") {
+    const value = window.prompt(label, fallback);
+    return value === null ? void 0 : normalizeFolderName(value);
+  }
+  function iconButton(text, title, onClick, variant) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = variant === "danger" ? "row-action row-action-danger" : "row-action";
+    button.textContent = text;
+    button.title = title;
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
+  function showContextMenu(event, actions) {
+    event.preventDefault();
+    event.stopPropagation();
+    showContextMenuAt(event.clientX, event.clientY, actions);
+  }
+  function showContextMenuAt(clientX, clientY, actions) {
+    closeContextMenu();
+    if (actions.length === 0) return;
+    const menu = document.createElement("div");
+    menu.className = "cloud-context-menu";
+    menu.setAttribute("role", "menu");
+    menu.addEventListener("click", (event) => event.stopPropagation());
+    menu.addEventListener("pointerdown", (event) => event.stopPropagation());
+    for (const item of actions) {
+      if (item.separatorBefore) {
+        const separator = document.createElement("div");
+        separator.className = "cloud-context-menu-separator";
+        separator.setAttribute("role", "separator");
+        menu.append(separator);
+      }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "menuitem");
+      button.disabled = item.disabled === true;
+      if (item.danger) button.dataset.danger = "true";
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      button.append(label);
+      if (item.hint) {
+        const hint = document.createElement("span");
+        hint.className = "cloud-context-menu-hint";
+        hint.textContent = item.hint;
+        button.append(hint);
+      }
+      button.addEventListener("click", () => {
+        if (button.disabled) return;
+        closeContextMenu();
+        void item.action();
+      });
+      menu.append(button);
+    }
+    menu.style.visibility = "hidden";
+    document.body.append(menu);
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(Math.max(8, clientX), Math.max(8, window.innerWidth - rect.width - 8));
+    const top = Math.min(Math.max(8, clientY), Math.max(8, window.innerHeight - rect.height - 8));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.visibility = "visible";
+  }
+  function closeContextMenu() {
+    for (const menu of [...document.querySelectorAll(".cloud-context-menu")]) menu.remove();
+  }
+  function showSiteContextMenu(event, site) {
+    const isCurrent = currentSite?.id === site.id;
+    const canEdit = canEditSiteRecord(site);
+    showContextMenu(event, [
+      {
+        label: isCurrent ? "Refresh space" : "Open space",
+        hint: site.documentIds.length === 1 ? "1 page" : `${site.documentIds.length} pages`,
+        action: () => void loadSite(site.id)
+      },
+      {
+        label: "New page in space",
+        disabled: !canEdit,
+        action: () => void runWithLoadedSite(site.id, () => createPage())
+      },
+      {
+        label: "New folder",
+        disabled: !canEdit,
+        action: () => void runWithLoadedSite(site.id, () => createFolder())
+      },
+      {
+        label: "Copy space link",
+        disabled: !canEdit,
+        separatorBefore: true,
+        action: () => void runWithLoadedSite(site.id, () => copySiteLink())
+      },
+      {
+        label: "Save space",
+        disabled: !isCurrent || !canEditSite(),
+        action: () => void saveCurrentSite()
+      }
+    ]);
+  }
+  function showFolderContextMenu(event, folder) {
+    const title = folder || "Pages";
+    const sameAsCurrentPage = currentPage ? sameFolder(pageFolder(currentPage.id), folder) : false;
+    showContextMenu(event, [
+      {
+        label: "Select folder",
+        hint: title,
+        action: () => {
+          activeFolder = folder;
+          setCloudStatus(folder ? `Selected ${folder}` : "Selected Pages", "ok");
+          renderChrome();
+        }
+      },
+      {
+        label: "New page here",
+        disabled: !canCreatePage(),
+        action: () => {
+          activeFolder = folder;
+          void createPage(folder);
+        }
+      },
+      {
+        label: "Move current page here",
+        disabled: !currentPage || !canEditSite() || sameAsCurrentPage,
+        action: () => {
+          if (currentPage) void movePageToFolder(currentPage.id, folder);
+        }
+      },
+      {
+        label: "Rename folder",
+        disabled: !folder || !canEditSite(),
+        separatorBefore: true,
+        action: () => void renameFolder(folder)
+      },
+      {
+        label: "Delete folder",
+        disabled: !folder || !canEditSite(),
+        danger: true,
+        action: () => void deleteFolder(folder)
+      }
+    ]);
+  }
+  function showPageContextMenu(event, page) {
+    const isCurrent = currentPage?.id === page.id;
+    showContextMenu(event, [
+      {
+        label: isCurrent ? "Focus page" : "Open page",
+        hint: page.access?.role ?? currentSite?.access?.role ?? "viewer",
+        action: () => selectPage(page.id)
+      },
+      {
+        label: "Open in preview",
+        action: () => {
+          if (selectPage(page.id)) setViewMode("preview");
+        }
+      },
+      {
+        label: "Move to folder...",
+        disabled: !canEditSite(),
+        action: () => void movePage(page.id)
+      },
+      {
+        label: activeFolder ? `Move to ${activeFolder}` : "Move to Pages",
+        disabled: !canEditSite() || sameFolder(pageFolder(page.id), activeFolder),
+        action: () => void movePageToFolder(page.id, activeFolder)
+      },
+      {
+        label: "Copy page link",
+        disabled: !currentSite,
+        separatorBefore: true,
+        action: () => runAfterSelectPage(page.id, () => copyPageLink())
+      },
+      {
+        label: "Copy artifact link",
+        action: () => runAfterSelectPage(page.id, () => copyArtifactLink())
+      },
+      {
+        label: "Copy page ID",
+        action: () => void copyText(page.id, "Copied page ID")
+      },
+      {
+        label: "Save page",
+        disabled: !isCurrent || !canEditPage(),
+        separatorBefore: true,
+        action: () => void saveCurrentPage()
+      }
+    ]);
+  }
+  function showOutlineContextMenu(event, node) {
+    const line = node.line;
+    const canEdit = canEditPage();
+    showContextMenu(event, [
+      {
+        label: "Focus in source",
+        disabled: line === void 0,
+        hint: line ? `Line ${line}` : void 0,
+        action: () => {
+          if (line) focusSourceLine(line);
+        }
+      },
+      {
+        label: "Insert section after",
+        disabled: !canEdit || line === void 0,
+        action: () => {
+          if (line) insertSourceBlockAtIndex(sectionEndInsertIndex(line), newSectionSource(line), "Added section from outline");
+        }
+      },
+      {
+        label: "Insert text after heading",
+        disabled: !canEdit || line === void 0,
+        action: () => {
+          if (line) insertSourceBlockAtIndex(line, "New paragraph.", "Added paragraph from outline");
+        }
+      },
+      {
+        label: "Copy block ID",
+        disabled: !node.id,
+        separatorBefore: true,
+        action: () => {
+          if (node.id) void copyText(node.id, "Copied block ID");
+        }
+      },
+      {
+        label: "Delete section",
+        disabled: !canEdit || node.level <= 1 || line === void 0,
+        danger: true,
+        action: () => deleteSectionAtLine(line)
+      }
+    ]);
+  }
+  function showWikiContextMenu(event, link, kind) {
+    showContextMenu(event, [
+      {
+        label: link.missing ? "Create linked page" : "Open linked page",
+        hint: `[[${link.target}]]`,
+        action: () => void openWikiTarget(link.target)
+      },
+      {
+        label: "Open backlink source",
+        disabled: kind !== "backlink" || !link.page,
+        action: () => {
+          if (link.page) selectPage(link.page.id);
+        }
+      },
+      {
+        label: "Copy wiki link",
+        separatorBefore: true,
+        action: () => void copyText(`[[${link.target}]]`, "Copied wiki link")
+      },
+      {
+        label: "Copy target",
+        action: () => void copyText(link.target, "Copied wiki target")
+      }
+    ]);
+  }
+  function showSourceContextMenu(event) {
+    showContextMenu(event, [
+      {
+        label: "Insert section at cursor",
+        disabled: !canEditPage(),
+        action: () => insertSectionAtCursor()
+      },
+      {
+        label: "Insert text at cursor",
+        disabled: !canEditPage(),
+        action: () => insertParagraphAtCursor()
+      },
+      {
+        label: "Save page",
+        disabled: !canEditPage() || !currentPage,
+        separatorBefore: true,
+        hint: "Cmd/Ctrl S",
+        action: () => void saveCurrentPage()
+      },
+      {
+        label: "Copy LLM context",
+        disabled: Boolean(renderState.error) || !renderState.llm,
+        action: () => void copyLlmContext()
+      },
+      {
+        label: "Preview only",
+        separatorBefore: true,
+        action: () => setViewMode("preview")
+      },
+      {
+        label: "Split view",
+        action: () => setViewMode("split")
+      }
+    ]);
+  }
+  function canEditSiteRecord(site) {
+    const role = cloudRole(site.access?.role ?? site.currentRole);
+    return Boolean(cloudAvailable && cloudUser && roleRank(role) >= roleRank("editor"));
+  }
+  function cloudRole(value) {
+    return value === "owner" || value === "editor" || value === "viewer" ? value : "viewer";
+  }
+  async function runWithLoadedSite(siteId, action) {
+    if (currentSite?.id !== siteId) await loadSite(siteId);
+    if (currentSite?.id === siteId) await action();
+  }
+  function runAfterSelectPage(pageId, action) {
+    if (!selectPage(pageId)) return;
+    void action();
+  }
+  function renderDiagnostics() {
+    diagnosticsList.textContent = "";
+    if (renderState.error) {
+      diagnosticsSummary.textContent = "Render failed";
+      diagnosticsSummary.dataset.state = "error";
+      diagnosticsList.append(diagnosticRow("error", "render", renderState.error.message));
+      return;
+    }
+    const errors = renderState.diagnostics.filter((item) => item.severity === "error").length;
+    const warnings = renderState.diagnostics.filter((item) => item.severity === "warning").length;
+    const infos = renderState.diagnostics.filter((item) => item.severity === "info").length;
+    diagnosticsSummary.textContent = `${errors} errors / ${warnings} warnings / ${infos} info`;
+    diagnosticsSummary.dataset.state = errors > 0 ? "error" : warnings > 0 ? "warning" : "ok";
+    if (renderState.diagnostics.length === 0) {
+      diagnosticsList.append(emptyState("No diagnostics"));
+      return;
+    }
+    for (const item of renderState.diagnostics) {
+      diagnosticsList.append(diagnosticRow(item.severity, item.code, item.message, item.pos?.line));
+    }
+  }
+  function renderOutline() {
+    outlineList.textContent = "";
+    const doc = renderState.doc;
+    if (!doc) {
+      outlineList.append(emptyState("No outline"));
+      return;
+    }
+    let count = 0;
+    for (const node of walk(doc)) {
+      if (node.type !== "section") continue;
+      count += 1;
+      const row = document.createElement("div");
+      row.className = "outline-row";
+      row.style.paddingLeft = `${Math.min(node.level - 1, 4) * 10 + 9}px`;
+      if (node.pos?.line) row.dataset.line = String(node.pos.line);
+      const title = document.createElement("span");
+      title.className = "row-title";
+      title.textContent = node.title;
+      const meta = document.createElement("span");
+      meta.className = "row-meta";
+      meta.textContent = node.id ?? `h${node.level}`;
+      row.addEventListener("click", () => {
+        if (node.pos?.line) focusSourceLine(node.pos.line);
+      });
+      row.addEventListener("contextmenu", (event) => showOutlineContextMenu(event, {
+        id: node.id,
+        title: node.title,
+        level: node.level,
+        line: node.pos?.line
+      }));
+      row.append(title, meta);
+      if (node.level > 1 && node.pos?.line && canEditPage()) {
+        const deleteButton = iconButton("Delete", `Delete ${node.title}`, () => deleteSectionAtLine(node.pos?.line), "danger");
+        row.append(deleteButton);
+      }
+      outlineList.append(row);
+    }
+    if (count === 0) outlineList.append(emptyState("No outline"));
+  }
+  function renderWikiPanel() {
+    wikiLinksList.textContent = "";
+    if (!currentPage) {
+      wikiSummary.textContent = "No wiki links";
+      wikiSummary.dataset.state = "ok";
+      wikiLinksList.append(emptyState("No page"));
+      return;
+    }
+    const outgoing = wikiLinksForPage(currentPage);
+    const backlinks = pages.filter((page) => page.id !== currentPage?.id).flatMap((page) => wikiLinksForPage(page).filter((link) => link.page?.id === currentPage?.id).map((link) => ({ page, link })));
+    const missing = outgoing.filter((link) => link.missing);
+    wikiSummary.textContent = `${outgoing.length} links / ${backlinks.length} backlinks / ${missing.length} missing`;
+    wikiSummary.dataset.state = missing.length > 0 ? "warning" : "ok";
+    if (outgoing.length > 0) {
+      wikiLinksList.append(wikiLabel("Links"));
+      for (const link of outgoing) wikiLinksList.append(wikiLinkRow(link));
+    }
+    if (backlinks.length > 0) {
+      wikiLinksList.append(wikiLabel("Backlinks"));
+      for (const item of backlinks) {
+        wikiLinksList.append(wikiLinkRow({ ...item.link, page: item.page, missing: false }, "backlink"));
+      }
+    }
+    if (outgoing.length === 0 && backlinks.length === 0) {
+      wikiLinksList.append(emptyState("No wiki links on this page"));
+    }
+  }
+  function wikiLabel(text) {
+    const label = document.createElement("div");
+    label.className = "wiki-section-label";
+    label.textContent = text;
+    return label;
+  }
+  function wikiLinkRow(link, kind = "link") {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "wiki-row";
+    row.dataset.kind = kind;
+    row.dataset.state = link.missing ? "missing" : "resolved";
+    row.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
+    const title = row.querySelector(".row-title");
+    const meta = row.querySelector(".row-meta");
+    if (title) title.textContent = link.page?.title ?? link.label;
+    if (meta) meta.textContent = link.missing ? `Create [[${link.target}]]` : kind === "backlink" ? `Linked from ${link.page?.title ?? "page"}` : `Open [[${link.target}]]`;
+    row.addEventListener("click", () => {
+      if (kind === "backlink" && link.page) {
+        selectPage(link.page.id);
+        return;
+      }
+      void openWikiTarget(link.target);
+    });
+    row.addEventListener("contextmenu", (event) => showWikiContextMenu(event, link, kind));
+    return row;
+  }
+  function wikiLinksForPage(page) {
+    return extractWikilinks(stripFencedCode(page.source)).map((link) => {
+      const resolved = resolveWikiPage(link.target) ?? resolveWikiBlockPage(link.target);
+      return {
+        ...link,
+        ...resolved ? { page: resolved } : {},
+        missing: !resolved
+      };
     });
   }
-  function selectedCloudShareRole() {
-    return cloudShareRoleSelect.value === "viewer" ? "viewer" : "editor";
+  function installPreviewWikiLinks(previewDoc) {
+    for (const anchor of [...previewDoc.querySelectorAll("a.noma-ref[href^='#']")]) {
+      const target = decodeWikiHrefTarget(anchor.getAttribute("href") ?? "");
+      if (!target) continue;
+      const page = resolveWikiPage(target) ?? resolveWikiBlockPage(target);
+      if (page || canCreatePage()) {
+        anchor.dataset.nomaWikiTarget = target;
+        anchor.title = page ? `Open ${page.title}` : `Create ${target}`;
+      }
+      anchor.addEventListener("click", (event) => {
+        const currentBlock = target.split("#", 1)[0] ?? target;
+        if (!page && hasCurrentDocumentBlock(currentBlock)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void openWikiTarget(target);
+      });
+    }
+  }
+  async function openWikiTarget(target) {
+    const page = resolveWikiPage(target) ?? resolveWikiBlockPage(target);
+    if (page) {
+      selectPage(page.id);
+      return;
+    }
+    if (!canCreatePage()) {
+      setCloudStatus(`Missing page: ${target}`, "warning");
+      return;
+    }
+    await createWikiPage(wikiPageTitleFromTarget(target));
+  }
+  async function createWikiPage(title) {
+    if (!currentSite || !cloudUser) return;
+    if (dirty) await saveCurrentPage();
+    setBusy(true, "Creating wiki page", "warning");
+    try {
+      const page = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}/documents`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title,
+          source: wikiPage(title, currentSite.title, currentPage?.title ?? currentSite.title)
+        })
+      });
+      pages = [...pages, page];
+      currentSite = {
+        ...currentSite,
+        documentIds: [...currentSite.documentIds, page.id],
+        documents: pages
+      };
+      setCurrentPage(page);
+      await refreshSites({ silent: true });
+      updateAddress();
+      setCloudStatus(`Created wiki page: ${title}`, "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  function resolveWikiPage(target) {
+    const base = wikiPageTitleFromTarget(target);
+    const key = wikiKey(base);
+    const slugKey = slug(base);
+    return pages.find((page) => {
+      const title = sourceTitle(page.source) || page.title;
+      return wikiKey(page.id) === key || wikiKey(page.title) === key || wikiKey(title) === key || slug(page.title) === slugKey || slug(title) === slugKey;
+    });
+  }
+  function resolveWikiBlockPage(target) {
+    const base = wikiPageTitleFromTarget(target);
+    const key = wikiKey(base);
+    for (const page of pages) {
+      try {
+        const doc = parse(page.source, { filename: `${page.id}.noma` });
+        for (const node of walk(doc)) {
+          if (wikiKey(node.id ?? "") === key || (node.aliases ?? []).some((alias) => wikiKey(alias) === key)) return page;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return void 0;
+  }
+  function hasCurrentDocumentBlock(target) {
+    const doc = renderState.doc;
+    if (!doc) return false;
+    for (const node of walk(doc)) {
+      if (node.id === target || node.aliases?.includes(target)) return true;
+    }
+    return false;
+  }
+  function decodeWikiHrefTarget(href) {
+    if (!href.startsWith("#")) return "";
+    const raw = href.slice(1);
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+  function wikiPageTitleFromTarget(target) {
+    return (target.split("#", 1)[0] || target).trim();
+  }
+  function wikiKey(value) {
+    return value.trim().toLowerCase().replace(/\.noma$/i, "").replace(/\s+/g, " ");
+  }
+  function stripFencedCode(source) {
+    return source.replace(/```[\s\S]*?```/g, "");
+  }
+  function diagnosticRow(severity, code, message, line) {
+    const row = document.createElement("div");
+    row.className = "diagnostic-row";
+    row.dataset.severity = severity;
+    const title = document.createElement("span");
+    title.className = "row-title";
+    title.textContent = `${severity} / ${code}`;
+    const meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = line ? `Line ${line}: ${message}` : message;
+    row.append(title, meta);
+    return row;
+  }
+  function emptyState(text) {
+    const row = document.createElement("div");
+    row.className = "empty-state";
+    row.textContent = text;
+    return row;
+  }
+  function markDirty() {
+    dirty = true;
+    if (currentPage) currentPage = { ...currentPage, source: sourceInput.value, title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value) };
+    renderChrome();
+  }
+  function syncTitleFromSource() {
+    if (document.activeElement === pageTitleInput) return;
+    const title = sourceTitle(sourceInput.value);
+    pageTitleInput.value = title;
+    if (currentPage) currentPage = { ...currentPage, title };
+  }
+  function canEditPage() {
+    return roleRank(currentPageRole()) >= roleRank("editor");
+  }
+  function canCreatePage() {
+    return Boolean(cloudAvailable && cloudUser && currentSite && roleRank(currentSite.access?.role ?? "viewer") >= roleRank("editor"));
+  }
+  function canEditSite() {
+    return Boolean(cloudAvailable && cloudUser && currentSite && roleRank(currentSite.access?.role ?? "viewer") >= roleRank("editor"));
+  }
+  function canManagePermissions() {
+    const role = currentSite?.access?.role ?? currentPage?.access?.role ?? "viewer";
+    return role === "owner";
+  }
+  function currentPageRole() {
+    return currentPage?.access?.role ?? currentSite?.access?.role ?? "viewer";
+  }
+  function selectedShareRole() {
+    return shareRoleSelect.value === "viewer" ? "viewer" : "editor";
+  }
+  function selectedInviteRole() {
+    return inviteRoleSelect.value === "viewer" ? "viewer" : "editor";
   }
   function roleRank(role) {
     return role === "owner" ? 3 : role === "editor" ? 2 : 1;
@@ -10329,7 +10524,7 @@ body { background: #ffffff; }`;
     const headers = new Headers(init?.headers);
     headers.set("accept", "application/json");
     if (cloudUser) headers.set("authorization", `Bearer ${cloudUser.token}`);
-    if (cloudShareToken) headers.set("x-noma-share-token", cloudShareToken);
+    if (shareToken) headers.set("x-noma-share-token", shareToken);
     const response = await fetch(url, {
       ...init,
       headers
@@ -10343,1002 +10538,84 @@ body { background: #ffffff; }`;
       } catch {
         if (text) message = text;
       }
+      if (response.status === 401 && message.includes("Noma Cloud access token required")) {
+        const next = `${window.location.pathname}${window.location.search}`;
+        window.location.assign(`/login.html?next=${encodeURIComponent(next)}`);
+      }
       throw new Error(message);
     }
     return response.json();
   }
-  function sourceTitle(source) {
-    return source.match(/^#\s+(.+)$/m)?.[1]?.replace(/\s+\{[^}]*\}\s*$/, "").trim() || "Untitled document";
-  }
-  function readCloudDocumentId() {
-    const id = new URLSearchParams(window.location.search).get("doc");
-    return id && /^[A-Za-z0-9_-]{8,80}$/.test(id) ? id : void 0;
-  }
-  function readCloudShareToken() {
-    const token = new URLSearchParams(window.location.search).get("share");
-    return token && /^ns_[A-Za-z0-9_-]{16,}$/.test(token) ? token : void 0;
-  }
-  function readCloudUser() {
-    const stored = localStorage.getItem(cloudUserStorageKey);
-    if (!stored) return void 0;
-    try {
-      const parsed = JSON.parse(stored);
-      if (typeof parsed.id === "string" && typeof parsed.name === "string" && typeof parsed.token === "string") {
-        return {
-          id: parsed.id,
-          name: parsed.name,
-          token: parsed.token,
-          tokenPreview: typeof parsed.tokenPreview === "string" ? parsed.tokenPreview : void 0
-        };
-      }
-    } catch {
-      return void 0;
-    }
-    return void 0;
-  }
-  function clearCloudDocumentBinding() {
-    if (!cloudDocumentId && !cloudDocumentHash && !cloudDocumentRole && !cloudShareToken) return;
-    cloudDocumentId = void 0;
-    cloudDocumentHash = void 0;
-    cloudDocumentRole = void 0;
-    cloudShareToken = void 0;
-    updateCloudDocumentUrl(void 0, void 0);
-  }
-  function clearCloudSiteBinding() {
-    cloudSiteId = void 0;
-    cloudSiteShareToken = void 0;
-  }
-  function updateCloudDocumentUrl(id, share) {
-    if (window.location.protocol === "file:") return;
-    const url = new URL(window.location.href);
-    if (id) url.searchParams.set("doc", id);
-    else url.searchParams.delete("doc");
-    if (share) url.searchParams.set("share", share);
-    else url.searchParams.delete("share");
-    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-  }
-  function cloudDocumentUrl(id, share) {
-    const url = new URL(window.location.href);
-    url.searchParams.set("doc", id);
-    if (share) url.searchParams.set("share", share);
-    else url.searchParams.delete("share");
-    url.hash = "";
-    return url.toString();
-  }
-  function cloudArtifactUrl(id, share) {
-    const url = new URL(`/d/${encodeURIComponent(id)}`, window.location.href);
-    if (share) url.searchParams.set("share", share);
-    return url.toString();
-  }
-  function cloudSiteUrl(id, share) {
-    const url = new URL(`/s/${encodeURIComponent(id)}`, window.location.href);
-    if (share) url.searchParams.set("share", share);
-    return url.toString();
-  }
-  function diagnosticRow(severity, code, message, line) {
-    const row = document.createElement(line ? "button" : "div");
-    row.className = `diagnostic diagnostic-${severity}`;
-    if (line && row instanceof HTMLButtonElement) {
-      row.type = "button";
-      row.addEventListener("click", () => jumpToLine(line));
-    }
-    const meta = document.createElement("span");
-    meta.className = "diagnostic-meta";
-    meta.textContent = line ? `${severity} / ${code} / line ${line}` : `${severity} / ${code}`;
-    const body = document.createElement("span");
-    body.className = "diagnostic-body";
-    body.textContent = message;
-    row.append(meta, body);
-    return row;
-  }
-  function renderOutline() {
-    outlineList.replaceChildren();
-    if (!state.doc) {
-      const empty = document.createElement("p");
-      empty.className = "empty";
-      empty.textContent = "No outline";
-      outlineList.append(empty);
-      return;
-    }
-    const items = collectOutline(state.doc);
-    if (items.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "empty";
-      empty.textContent = "No headings or IDs";
-      outlineList.append(empty);
-      return;
-    }
-    for (const item of items) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "outline-item";
-      button.style.setProperty("--depth", String(Math.max(0, item.level - 1)));
-      if (item.line) button.addEventListener("click", () => jumpToLine(item.line));
-      const label = document.createElement("span");
-      label.className = "outline-label";
-      label.textContent = item.label;
-      const meta = document.createElement("span");
-      meta.className = "outline-meta";
-      meta.textContent = item.id ? `${item.kind} / ${item.id}` : item.kind;
-      button.append(label, meta);
-      outlineList.append(button);
-    }
-  }
-  function renderDataInspector() {
-    const blocks = state.doc ? collectEditableDataBlocks(state.doc) : [];
-    dataBlockSelect.replaceChildren();
-    for (const block of blocks) {
-      const option = document.createElement("option");
-      option.value = block.id;
-      option.textContent = `${block.kind} / ${block.id}`;
-      dataBlockSelect.append(option);
-    }
-    if (blocks.length === 0) {
-      activeDataBlockId = void 0;
-      dataBlockSelect.disabled = true;
-      addDataRowButton.disabled = true;
-      addDataColumnButton.disabled = true;
-      applyDataChangesButton.disabled = true;
-      dataEditor.replaceChildren();
-      dataEditorStatus.textContent = "No ID-bearing ::table or ::dataset blocks found.";
-      return;
-    }
-    const hasActive = activeDataBlockId ? blocks.some((block) => block.id === activeDataBlockId) : false;
-    activeDataBlockId = hasActive ? activeDataBlockId : blocks[0].id;
-    dataBlockSelect.value = activeDataBlockId ?? "";
-    dataBlockSelect.disabled = false;
-    addDataRowButton.disabled = false;
-    addDataColumnButton.disabled = false;
-    applyDataChangesButton.disabled = false;
-    renderDataEditorForActiveBlock();
-  }
-  function renderDataEditorForActiveBlock() {
-    const block = currentEditableDataBlock();
-    dataEditor.replaceChildren();
-    if (!block) {
-      dataEditorStatus.textContent = "Choose a table or dataset block with an ID.";
-      return;
-    }
-    const table = document.createElement("table");
-    table.className = "data-grid";
-    table.dataset.kind = block.kind;
-    table.dataset.blockId = block.id;
-    const thead = document.createElement("thead");
-    const headerRow = document.createElement("tr");
-    for (let index = 0; index < block.columns.length; index++) {
-      headerRow.append(dataHeaderCell(block, block.columns[index] ?? `Column ${index + 1}`, index, true));
-    }
-    thead.append(headerRow);
-    const tbody = document.createElement("tbody");
-    for (const row of block.rows) {
-      tbody.append(dataBodyRow(block.columns.length, row));
-    }
-    table.append(thead, tbody);
-    dataEditor.append(table);
-    const format = block.format ? ` / ${block.format}` : "";
-    dataEditorStatus.textContent = `${block.label}${format}: ${block.rows.length} rows, ${block.columns.length} columns.`;
-  }
-  function collectEditableDataBlocks(doc) {
-    const blocks = [];
-    for (const node of walk(doc)) {
-      if (node.type !== "directive" || !node.id) continue;
-      const block = editableDataBlockFromDirective(node);
-      if (block) blocks.push(block);
-    }
-    return blocks;
-  }
-  function editableDataBlockFromDirective(node) {
-    try {
-      if (node.name === "table") return tableDirectiveDataBlock(node);
-      if (node.name === "dataset") return datasetDirectiveDataBlock(node);
-    } catch {
-      return null;
-    }
-    return null;
-  }
-  function tableDirectiveDataBlock(node) {
-    const lines = (node.body ?? "").replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim()).filter(Boolean);
-    if (lines.length === 0 || !node.id) return null;
-    const parsed = lines.map(splitPipeRow);
-    const width = Math.max(1, ...parsed.map((row) => row.length));
-    const hasHeader = node.attrs.header === true || node.attrs.header === "true";
-    const columns = hasHeader ? padCells(parsed[0] ?? [], width) : Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
-    const rows = (hasHeader ? parsed.slice(1) : parsed).map((row) => padCells(row, width));
-    return {
-      id: node.id,
-      kind: "table",
-      label: directiveLabel(node),
-      hasHeader,
-      columns,
-      rows,
-      line: node.pos?.line
-    };
-  }
-  function datasetDirectiveDataBlock(node) {
-    if (!node.id) return null;
-    const format = datasetFormat2(node);
-    const parsed = parseDatasetBodyForEditor(node, format);
-    if (!parsed) return null;
-    const width = Math.max(1, parsed.columns.length, ...parsed.rows.map((row) => row.length));
-    return {
-      id: node.id,
-      kind: "dataset",
-      label: directiveLabel(node),
-      format,
-      hasHeader: true,
-      columns: padCells(parsed.columns, width),
-      rows: parsed.rows.map((row) => padCells(row, width)),
-      line: node.pos?.line
-    };
-  }
-  function parseDatasetBodyForEditor(node, format) {
-    const body = (node.body ?? "").replace(/\r\n?/g, "\n");
-    if (format === "csv" || format === "tsv") {
-      const delimiter = format === "tsv" ? "	" : ",";
-      const lines = body.split("\n").filter((line) => line.trim().length > 0);
-      if (lines.length === 0) return null;
-      return {
-        columns: splitDelimitedRow(lines[0], delimiter),
-        rows: lines.slice(1).map((line) => splitDelimitedRow(line, delimiter))
-      };
-    }
-    if (format === "json") {
-      const parsed = JSON.parse(body);
-      return jsonDatasetForEditor(node, parsed);
-    }
-    if (format === "yaml") {
-      const parsed = jsYaml.load(body);
-      return yamlDatasetForEditor(node, parsed);
-    }
-    return null;
-  }
-  function jsonDatasetForEditor(node, parsed) {
-    if (Array.isArray(parsed)) {
-      if (parsed.length > 0 && isRecord(parsed[0])) {
-        const columns2 = Object.keys(parsed[0]);
-        return {
-          columns: columns2,
-          rows: parsed.filter(isRecord).map((row) => columns2.map((column) => scalarText(row[column])))
-        };
-      }
-      const rows2 = parsed.filter(Array.isArray).map((row) => row.map(scalarText));
-      return { columns: columnsAttr2(node, rows2), rows: rows2 };
-    }
-    const record = isRecord(parsed) ? parsed : null;
-    if (!record || !Array.isArray(record.rows)) return null;
-    const rows = record.rows.filter(Array.isArray).map((row) => row.map(scalarText));
-    const columns = Array.isArray(record.columns) ? record.columns.map(String) : columnsAttr2(node, rows);
-    return { columns, rows };
-  }
-  function yamlDatasetForEditor(node, parsed) {
-    const record = isRecord(parsed) ? parsed : null;
-    if (!record || !Array.isArray(record.rows)) return null;
-    const rows = record.rows.filter(Array.isArray).map((row) => row.map(scalarText));
-    const schema2 = isRecord(record.schema) ? record.schema : null;
-    const columns = schema2 ? Object.keys(schema2) : columnsAttr2(node, rows);
-    return { columns, rows };
-  }
-  function columnsAttr2(node, rows) {
-    const value = node.attrs.columns;
-    if (typeof value === "string" && value.trim()) return value.split(/[,\s]+/).filter(Boolean);
-    const width = Math.max(0, ...rows.map((row) => row.length));
-    return Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
-  }
-  function datasetFormat2(node) {
-    const format = node.attrs.format;
-    return typeof format === "string" && format.trim() ? format.trim().toLowerCase() : "yaml";
-  }
-  function currentEditableDataBlock() {
-    if (!state.doc || !activeDataBlockId) return null;
-    return collectEditableDataBlocks(state.doc).find((block) => block.id === activeDataBlockId) ?? null;
-  }
-  function dataHeaderCell(block, value, index, existing) {
-    const cell = document.createElement("th");
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = value;
-    input.dataset.dataHeader = String(index);
-    input.readOnly = existing && (block.kind === "dataset" || !block.hasHeader);
-    input.title = input.readOnly ? "Existing dataset and inferred table column names are source-derived" : "Column name";
-    cell.append(input);
-    return cell;
-  }
-  function dataBodyRow(columnCount, row = []) {
-    const tr = document.createElement("tr");
-    for (let index = 0; index < columnCount; index++) {
-      const cell = document.createElement("td");
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = row[index] ?? "";
-      input.dataset.dataCell = String(index);
-      cell.append(input);
-      tr.append(cell);
-    }
-    return tr;
-  }
-  function addDataGridRow() {
-    const block = currentEditableDataBlock();
-    const table = dataEditor.querySelector("table.data-grid");
-    const tbody = table?.tBodies[0];
-    const columnCount = dataGridColumnCount();
-    if (!block || !tbody || columnCount === 0) {
-      showTransientStatus("No editable data grid", "warning");
-      return;
-    }
-    tbody.append(dataBodyRow(columnCount));
-    dataEditorStatus.textContent = `Added a row to ${block.id}. Apply to write it.`;
-  }
-  function addDataGridColumn() {
-    const block = currentEditableDataBlock();
-    const table = dataEditor.querySelector("table.data-grid");
-    const headerRow = table?.tHead?.rows[0];
-    if (!block || !table || !headerRow) {
-      showTransientStatus("No editable data grid", "warning");
-      return;
-    }
-    const index = headerRow.cells.length;
-    const nextColumn = block.kind === "dataset" ? `column_${index + 1}` : `Column ${index + 1}`;
-    headerRow.append(dataHeaderCell(block, nextColumn, index, false));
-    for (const row of [...table.tBodies[0]?.rows ?? []]) {
-      const cell = document.createElement("td");
-      const input = document.createElement("input");
-      input.type = "text";
-      input.dataset.dataCell = String(index);
-      cell.append(input);
-      row.append(cell);
-    }
-    dataEditorStatus.textContent = `Added a column to ${block.id}. Apply to write it.`;
-  }
-  async function applyDataGridChanges() {
-    const block = currentEditableDataBlock();
-    const edited = readDataGrid();
-    if (!block || !edited) {
-      showTransientStatus("No editable data grid", "warning");
-      return;
-    }
-    let ops;
-    try {
-      ops = dataGridPatchOps(block, edited);
-    } catch (error) {
-      dataEditorStatus.textContent = error instanceof Error ? error.message : String(error);
-      showTransientStatus("Data edit cannot be applied", "error");
-      return;
-    }
-    if (ops.length === 0) {
-      dataEditorStatus.textContent = "No data changes to apply.";
-      showTransientStatus("No data changes", "warning");
-      return;
-    }
-    proofOpsInput.value = JSON.stringify(ops, null, 2);
-    const proof = await generateProofForOps(ops);
-    if (proof.canWrite) {
-      applyLastProof();
-      dataEditorStatus.textContent = `Applied ${ops.length} proofed data patch${ops.length === 1 ? "" : "es"}.`;
-    } else {
-      dataEditorStatus.textContent = "Data changes produced a failing proof.";
-    }
-  }
-  function readDataGrid() {
-    const table = dataEditor.querySelector("table.data-grid");
-    if (!table) return null;
-    const columns = [...table.querySelectorAll("thead input[data-data-header]")].map((input, index) => input.value.trim() || `Column ${index + 1}`);
-    const rows = [...table.querySelectorAll("tbody tr")].map(
-      (row) => [...row.querySelectorAll("input[data-data-cell]")].map((input) => input.value)
-    );
-    return { columns, rows };
-  }
-  function dataGridPatchOps(block, edited) {
-    if (edited.columns.length < block.columns.length || edited.rows.length < block.rows.length) {
-      throw new Error("Use source patches for row or column deletion; the grid applies additions and cell edits.");
-    }
-    const ops = [];
-    const commonColumns = Math.min(block.columns.length, edited.columns.length);
-    const commonRows = Math.min(block.rows.length, edited.rows.length);
-    if (block.kind === "table" && block.hasHeader) {
-      for (let column = 0; column < commonColumns; column++) {
-        const next = edited.columns[column] ?? "";
-        if (next !== (block.columns[column] ?? "")) {
-          ops.push({ op: "update_table_header_cell", id: block.id, column, value: next });
-        }
+  function parsePatchOps(text) {
+    const parsed = JSON.parse(text);
+    const list = Array.isArray(parsed) ? parsed : [parsed];
+    for (const item of list) {
+      if (!item || typeof item !== "object" || typeof item.op !== "string") {
+        throw new Error("Patch operations must be objects with an op field");
       }
     }
-    for (let row = 0; row < commonRows; row++) {
-      for (let column = 0; column < commonColumns; column++) {
-        const next = edited.rows[row]?.[column] ?? "";
-        if (next === (block.rows[row]?.[column] ?? "")) continue;
-        ops.push(block.kind === "table" ? { op: "update_table_cell", id: block.id, row, column, value: next } : { op: "update_dataset_cell", id: block.id, row, column, value: next });
-      }
-    }
-    for (let column = block.columns.length; column < edited.columns.length; column++) {
-      const header = edited.columns[column]?.trim() || `column_${column + 1}`;
-      const cells = block.rows.map((_row, row) => edited.rows[row]?.[column] ?? "");
-      if (block.kind === "table") {
-        ops.push(block.hasHeader ? { op: "insert_table_column", id: block.id, column, header, cells } : { op: "insert_table_column", id: block.id, column, cells });
-      } else {
-        ops.push({ op: "insert_dataset_column", id: block.id, column, header, cells });
-      }
-    }
-    for (let row = block.rows.length; row < edited.rows.length; row++) {
-      const cells = padCells(edited.rows[row] ?? [], edited.columns.length);
-      ops.push(block.kind === "table" ? { op: "insert_table_row", id: block.id, row, cells } : { op: "insert_dataset_row", id: block.id, row, cells });
-    }
-    return ops;
+    return list;
   }
-  function dataGridColumnCount() {
-    return dataEditor.querySelectorAll("thead input[data-data-header]").length;
-  }
-  function padCells(row, width) {
-    return Array.from({ length: width }, (_value, index) => row[index] ?? "");
-  }
-  function scalarText(value) {
-    if (value === null || value === void 0) return "";
-    if (typeof value === "string") return value;
-    return String(value);
-  }
-  function isRecord(value) {
-    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-  }
-  function renderOutput() {
-    for (const button of targetButtons) {
-      button.setAttribute("aria-pressed", String(button.dataset.target === outputMode));
-    }
-    previewEditToggle.setAttribute("aria-pressed", String(previewEditMode));
-    previewFrame.hidden = outputMode !== "preview" && outputMode !== "proof";
-    previewFrame.dataset.editing = String(previewEditMode && outputMode === "preview" && !state.error);
-    outputPre.hidden = outputMode === "preview" || outputMode === "proof";
-    if (outputMode === "preview") {
-      previewFrame.srcdoc = state.error ? errorDocument(state.error.message) : state.previewHtml;
-      return;
-    }
-    if (outputMode === "proof") {
-      previewFrame.srcdoc = lastProof?.html ?? proofPlaceholderDocument(sharedProof);
-      return;
-    }
-    outputPre.textContent = outputMode === "json" ? state.json : state.llm;
-  }
-  async function generateProofFromInput() {
-    let ops;
-    try {
-      ops = parsePatchOpsInput();
-    } catch (error) {
-      proofStatus.textContent = error instanceof Error ? error.message : String(error);
-      proofStatus.dataset.state = "error";
-      outputMode = "proof";
-      renderOutput();
-      return;
-    }
-    await generateProofForOps(ops);
-  }
-  async function generateProofForOps(ops) {
-    proofStatus.textContent = "Simulating patch...";
-    proofStatus.dataset.state = "warning";
-    lastProofApplied = false;
-    const proof = await createWorkbenchProof(ops);
-    lastProof = proof;
-    sharedProof = null;
-    outputMode = "proof";
-    updateProofControls();
-    renderOutput();
-    if (proof.canWrite) {
-      proofStatus.textContent = proof.status === "pass" ? "Proof passed. Apply is enabled." : "Proof passed with warnings. Review before applying.";
-      proofStatus.dataset.state = proof.status === "pass" ? "ok" : "warning";
-    } else {
-      proofStatus.textContent = proof.error ?? "Proof failed. Apply is disabled.";
-      proofStatus.dataset.state = "error";
-    }
-    return proof;
-  }
-  async function createWorkbenchProof(ops) {
-    const source = sourceInput.value;
-    const preHash = await sha256Hex(source);
-    const beforeBytes = utf8Bytes(source);
-    const beforeLines = sourceLineCount(source);
-    const preDoc = safeParse(source);
-    const preDiagnostics = preDoc.doc ? validate(preDoc.doc) : [parseDiagnostic(preDoc.error ?? "Unable to parse source")];
-    let postSource = source;
-    let patchResult = "rejected";
-    let error;
-    try {
-      postSource = patchSource(source, ops);
-      patchResult = postSource === source ? "noop" : "applied";
-    } catch (caught) {
-      error = caught instanceof Error ? caught.message : String(caught);
-    }
-    const postHash = await sha256Hex(postSource);
-    const postDoc = safeParse(postSource);
-    const postDiagnostics = postDoc.doc ? validate(postDoc.doc) : [parseDiagnostic(postDoc.error ?? "Unable to parse patched source")];
-    const metrics = measureSourcePreservation(source, postSource);
-    const hasPostErrors = postDiagnostics.some((item) => item.severity === "error");
-    const hasWarnings = [...preDiagnostics, ...postDiagnostics].some((item) => item.severity === "warning");
-    const canWrite = patchResult !== "rejected" && !hasPostErrors;
-    const status = !canWrite ? "fail" : hasWarnings ? "warn" : "pass";
-    const html = renderWorkbenchProofHtml({
-      status,
-      canWrite,
-      patchResult,
-      ops,
-      preHash,
-      postHash,
-      preDiagnostics,
-      postDiagnostics,
-      beforeBytes,
-      afterBytes: utf8Bytes(postSource),
-      beforeLines,
-      afterLines: sourceLineCount(postSource),
-      unchangedLines: metrics.unchangedLines,
-      preservedPercent: metrics.preservedPercent,
-      postSource,
-      ...error ? { error } : {}
-    }, postDoc.doc);
-    return {
-      status,
-      canWrite,
-      patchResult,
-      ops,
-      preHash,
-      postHash,
-      preDiagnostics,
-      postDiagnostics,
-      beforeBytes,
-      afterBytes: utf8Bytes(postSource),
-      beforeLines,
-      afterLines: sourceLineCount(postSource),
-      unchangedLines: metrics.unchangedLines,
-      preservedPercent: metrics.preservedPercent,
-      postSource,
-      html,
-      ...error ? { error } : {}
-    };
-  }
-  function parsePatchOpsInput() {
-    const raw = proofOpsInput.value.trim();
-    if (!raw) throw new Error("Enter one patch op or an array of patch ops.");
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (error) {
-      throw new Error(`Patch ops JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    return normalizePatchOps(parsed);
-  }
-  function normalizePatchOps(parsed) {
-    const ops = Array.isArray(parsed) ? parsed : [parsed];
-    if (ops.length === 0) throw new Error("Patch ops array is empty.");
-    for (const op of ops) {
-      if (!op || typeof op !== "object" || typeof op.op !== "string") {
-        throw new Error("Every patch op must be an object with an op string.");
-      }
-    }
-    return ops;
-  }
-  function applyLastProof() {
-    if (!lastProof || !lastProof.canWrite || lastProofApplied) {
-      showTransientStatus("No unapplied passing proof", "warning");
-      return;
-    }
-    sourceInput.value = lastProof.postSource;
-    localStorage.setItem(storageKey, sourceInput.value);
-    lastProofApplied = true;
-    renderCurrent();
-    updateProofControls();
-    proofStatus.textContent = "Proof applied to the browser draft.";
-    proofStatus.dataset.state = "ok";
-    showTransientStatus("Applied proven patch");
-  }
-  async function copyProofLink() {
-    if (!lastProof) {
-      showTransientStatus("Generate a proof first", "warning");
-      return;
-    }
-    const payload = {
-      status: lastProof.status,
-      canWrite: lastProof.canWrite,
-      ops: lastProof.ops,
-      preHash: lastProof.preHash,
-      postHash: lastProof.postHash,
-      diagnostics: `${lastProof.postDiagnostics.filter((item) => item.severity === "error").length} errors / ${lastProof.postDiagnostics.filter((item) => item.severity === "warning").length} warnings`,
-      preservedPercent: lastProof.preservedPercent
-    };
-    const url = new URL(window.location.href);
-    url.hash = new URLSearchParams({ "noma-proof": encodeBase64Url(JSON.stringify(payload)) }).toString();
-    await copyText(url.toString(), "Copied proof link");
-  }
-  async function copyDraftLink() {
-    const source = sourceInput.value;
-    const hash = await sha256Hex(source);
-    const url = await draftLinkForSource(source, hash);
-    await copyText(url, url.length > 12e4 ? "Copied large draft link" : "Copied draft link");
-  }
-  async function copyReviewPacket() {
-    const source = sourceInput.value;
-    const hash = await sha256Hex(source);
-    const errors = state.diagnostics.filter((item) => item.severity === "error");
-    const warnings = state.diagnostics.filter((item) => item.severity === "warning");
-    const info = state.diagnostics.filter((item) => item.severity === "info");
-    const ids = state.doc ? collectIdSummary(state.doc) : [];
-    const packet = [
-      `# Noma Review Packet`,
-      ``,
-      `Document: ${documentTitle()}`,
-      `Hash: ${hash}`,
-      `Size: ${sourceLineCount(source)} lines / ${formatBytes(utf8Bytes(source))}`,
-      `Diagnostics: ${errors.length} errors / ${warnings.length} warnings / ${info.length} info`,
-      ``,
-      `## Shared Draft`,
-      await draftLinkForSource(source, hash),
-      ``,
-      `## Priority Diagnostics`,
-      diagnosticsMarkdown(state.diagnostics),
-      ``,
-      `## Addressable IDs`,
-      ids.length ? ids.map((item) => `- ${item}`).join("\n") : `No IDs found.`,
-      ``,
-      `## LLM Context`,
-      "```text",
-      state.llm || "No LLM context available.",
-      "```"
-    ].join("\n");
-    await copyText(packet, "Copied review packet");
-  }
-  async function draftLinkForSource(source, hash = "") {
-    const sourceHash = hash || await sha256Hex(source);
-    const payload = {
-      source,
-      title: documentTitle(),
-      hash: sourceHash,
-      createdAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    const url = new URL(window.location.href);
-    url.hash = new URLSearchParams({ "noma-source": encodeBase64Url(JSON.stringify(payload)) }).toString();
-    return url.toString();
-  }
-  function documentTitle() {
-    if (!state.doc) return "Untitled Noma Document";
-    const metaTitle = state.doc.meta.title;
-    if (typeof metaTitle === "string" && metaTitle.trim()) return metaTitle.trim();
-    const root = state.doc.children.find((node) => node.type === "section" && node.level === 1);
-    return root?.title || "Untitled Noma Document";
-  }
-  function collectIdSummary(doc) {
-    const out = [];
-    for (const item of collectOutline(doc)) {
-      if (!item.id) continue;
-      const line = item.line ? ` line ${item.line}` : "";
-      out.push(`${item.id} (${item.kind}${line})`);
-      if (out.length >= 80) {
-        out.push("...");
-        break;
-      }
-    }
-    return out;
-  }
-  function diagnosticsMarkdown(diagnostics) {
-    if (diagnostics.length === 0) return "No diagnostics.";
-    return diagnostics.slice(0, 24).map((item) => {
-      const line = item.pos?.line ? ` line ${item.pos.line}` : "";
-      return `- ${item.severity} / ${item.code}${line}: ${item.message}`;
-    }).join("\n") + (diagnostics.length > 24 ? "\n- ..." : "");
-  }
-  function updateProofControls() {
-    applyProofButton.disabled = !lastProof?.canWrite || lastProofApplied;
-    copyProofLinkButton.disabled = !lastProof;
-    if (!lastProof) {
-      if (sharedProof) {
-        proofStatus.textContent = `Shared proof: ${sharedProof.status}, ${sharedProof.diagnostics}, ${sharedProof.preservedPercent}% preserved.`;
-        proofStatus.dataset.state = sharedProof.status === "fail" ? "error" : sharedProof.status === "warn" ? "warning" : "ok";
-      } else {
-        proofStatus.textContent = "Patch ops are simulated before they can write.";
-        delete proofStatus.dataset.state;
-      }
-      return;
-    }
-    proofStatus.dataset.state = lastProof.status === "fail" ? "error" : lastProof.status === "warn" ? "warning" : "ok";
-  }
-  function renderWorkbenchProofHtml(proof, postDoc) {
-    const postPreviewHtml = postDoc ? renderHtml(postDoc, {
-      standalone: true,
-      themeCss: `${default_default}
-body { background: #ffffff; }`,
-      allowEscapeHatches: false,
-      externalAssets: false,
-      interactive: false
-    }) : "";
-    const postErrors = proof.postDiagnostics.filter((item) => item.severity === "error").length;
-    const postWarnings = proof.postDiagnostics.filter((item) => item.severity === "warning").length;
-    const opRows = proof.ops.map(
-      (op, index) => `<tr><td>${index + 1}</td><td><code>${escapeHtml2(op.op)}</code></td><td><pre>${escapeHtml2(JSON.stringify(op, null, 2))}</pre></td></tr>`
-    ).join("");
-    const preview = postPreviewHtml ? `<iframe class="proof-artifact" title="Post-patch artifact preview" sandbox srcdoc="${escapeAttr2(postPreviewHtml)}"></iframe>` : `<p class="muted">Artifact preview is unavailable because the patch was rejected or the patched source could not parse.</p>`;
+  function previewDocument(body) {
+    const previewChrome = themeMode === "dark" ? "#111820" : "#f4f1e9";
+    const previewBorder = themeMode === "dark" ? "#37323d" : "#e6dfd2";
+    const previewShadow = themeMode === "dark" ? "0 24px 70px -46px rgba(0,0,0,.86)" : "0 24px 70px -46px rgba(32,36,42,.42)";
     return `<!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Noma Workbench Proof</title>
-<style>${proofReportCss()}</style>
-<main>
-  <section class="hero">
-    <span class="badge status-${proof.status}">${proof.status.toUpperCase()}</span>
-    <h1>Agent Safety Proof</h1>
-    <p>${escapeHtml2(proofStatusMessage(proof))}</p>
-    ${proof.error ? `<p class="error-text">${escapeHtml2(proof.error)}</p>` : ""}
-    <div class="metrics">
-      <div><strong>${escapeHtml2(proof.patchResult)}</strong><span>Patch result</span></div>
-      <div><strong>${postErrors}</strong><span>Post errors</span></div>
-      <div><strong>${postWarnings}</strong><span>Post warnings</span></div>
-      <div><strong>${proof.preservedPercent}%</strong><span>Line preservation</span></div>
-    </div>
-  </section>
-  <section class="grid">
-    <article>
-      <h2>Hashes</h2>
-      <dl>
-        <dt>Before</dt><dd><code>${proof.preHash}</code></dd>
-        <dt>After</dt><dd><code>${proof.postHash}</code></dd>
-      </dl>
-    </article>
-    <article>
-      <h2>Source Metrics</h2>
-      <dl>
-        <dt>Bytes</dt><dd>${proof.beforeBytes} -> ${proof.afterBytes}</dd>
-        <dt>Lines</dt><dd>${proof.beforeLines} -> ${proof.afterLines}</dd>
-        <dt>Unchanged lines</dt><dd>${proof.unchangedLines}</dd>
-      </dl>
-    </article>
-  </section>
-  <section>
-    <h2>Patch Ops</h2>
-    <table><thead><tr><th>#</th><th>Op</th><th>Payload</th></tr></thead><tbody>${opRows}</tbody></table>
-  </section>
-  <section class="grid">
-    <article>
-      <h2>Pre-validation</h2>
-      ${diagnosticsHtml(proof.preDiagnostics)}
-    </article>
-    <article>
-      <h2>Post-validation</h2>
-      ${diagnosticsHtml(proof.postDiagnostics)}
-    </article>
-  </section>
-  <section>
-    <h2>Post-patch Artifact</h2>
-    ${preview}
-  </section>
-</main>
+<style>
+${default_default}
+body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
+.noma-document{max-width:${previewPaperWidth}px;margin:0 auto;background:#fffefa;border:1px solid ${previewBorder};box-shadow:${previewShadow};padding:44px 52px}
+@media(max-width:720px){body{padding:14px}.noma-document{padding:24px 20px}}
+</style>
+</head>
+<body><main class="noma-document">${body}</main></body>
 </html>`;
   }
-  function proofPlaceholderDocument(payload) {
-    if (payload) {
-      return `<!doctype html><html lang="en"><meta charset="utf-8" /><style>${proofReportCss()}</style><main>
-      <section class="hero">
-        <span class="badge status-${payload.status}">${payload.status.toUpperCase()}</span>
-        <h1>Shared Proof Summary</h1>
-        <p>This link carries proof metadata without embedding the source document.</p>
-        <div class="metrics">
-          <div><strong>${escapeHtml2(String(payload.canWrite))}</strong><span>Can write</span></div>
-          <div><strong>${escapeHtml2(payload.diagnostics)}</strong><span>Post diagnostics</span></div>
-          <div><strong>${payload.preservedPercent}%</strong><span>Line preservation</span></div>
-          <div><strong>${payload.ops.length}</strong><span>Ops</span></div>
-        </div>
-      </section>
-      <section><h2>Hashes</h2><dl><dt>Before</dt><dd><code>${escapeHtml2(payload.preHash)}</code></dd><dt>After</dt><dd><code>${escapeHtml2(payload.postHash)}</code></dd></dl></section>
-    </main></html>`;
-    }
-    return `<!doctype html><html lang="en"><meta charset="utf-8" /><style>${proofReportCss()}</style><main>
-    <section class="hero">
-      <span class="badge status-warn">READY</span>
-      <h1>Generate a Proof</h1>
-      <p>Paste patch ops in the Agent Proof panel, then run Prove. Noma simulates the change, validates the post-document, and enables Apply only when the write is safe.</p>
-    </section>
-  </main></html>`;
-  }
-  function proofStatusMessage(proof) {
-    if (proof.status === "fail") return "Patch simulation did not produce a writable post-document.";
-    if (proof.status === "warn") return "Patch simulation produced a writable post-document with warnings to review.";
-    return "Patch simulation produced a writable post-document with no validation errors.";
-  }
-  function diagnosticsHtml(diagnostics) {
-    if (diagnostics.length === 0) return `<p class="muted">No diagnostics.</p>`;
-    return `<ul class="diagnostic-report">${diagnostics.map((item) => {
-      const where = item.pos ? ` line ${item.pos.line}` : "";
-      return `<li class="${item.severity}"><strong>${escapeHtml2(item.severity)}</strong> <code>${escapeHtml2(item.code)}</code>${where}: ${escapeHtml2(item.message)}</li>`;
-    }).join("")}</ul>`;
-  }
-  function proofReportCss() {
-    return `
-    :root { --bg: #f4f6f5; --panel: #fff; --ink: #17201d; --muted: #63706b; --rule: #d8dfdc; --ok: #2f7048; --warn: #906327; --bad: #a33a32; --accent: #275d67; --mono: "SF Mono", Menlo, Consolas, monospace; --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.48; }
-    main { max-width: 1220px; margin: 0 auto; padding: 24px; display: grid; gap: 14px; }
-    section, article { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; min-width: 0; }
-    .hero { display: grid; gap: 10px; }
-    h1, h2, p { margin: 0; }
-    h1 { font-size: clamp(2rem, 4vw, 3rem); line-height: 1.04; letter-spacing: 0; }
-    h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-    code, pre { font-family: var(--mono); }
-    code { background: #eef2f0; border-radius: 4px; padding: 0.08rem 0.25rem; overflow-wrap: anywhere; }
-    pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-    th, td { border-bottom: 1px solid var(--rule); padding: 9px; text-align: left; vertical-align: top; }
-    dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin: 0; }
-    dt { color: var(--muted); }
-    dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 0; border: 0; background: transparent; }
-    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-    .metrics div { border: 1px solid var(--rule); border-radius: 7px; padding: 12px; background: #fbfcfb; }
-    .metrics strong, .metrics span { display: block; min-width: 0; overflow-wrap: anywhere; }
-    .metrics span, .muted { color: var(--muted); }
-    .badge { width: max-content; border: 1px solid currentColor; border-radius: 999px; padding: 5px 9px; font-weight: 800; font-size: .78rem; }
-    .status-pass, .ok { color: var(--ok); }
-    .status-warn, .warning, .info { color: var(--warn); }
-    .status-fail, .error, .error-text { color: var(--bad); }
-    .diagnostic-report { margin: 0; padding-left: 18px; }
-    .proof-artifact { width: 100%; height: 520px; border: 1px solid var(--rule); border-radius: 7px; background: #fff; }
-    @media (max-width: 760px) { main { padding: 12px; } .grid, .metrics { grid-template-columns: 1fr; } }
-  `;
-  }
-  function safeParse(source) {
-    try {
-      return { doc: parse(source, { filename: "workbench.noma" }) };
-    } catch (error) {
-      return { doc: null, error: error instanceof Error ? error.message : String(error) };
-    }
-  }
-  function parseDiagnostic(message) {
-    return { severity: "error", code: "parse", message };
-  }
-  async function sha256Hex(value) {
-    const bytes = utf8Encode(value);
-    if (globalThis.crypto?.subtle && typeof Uint8Array !== "undefined") {
-      const digest = await globalThis.crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-      return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-    }
-    return fallbackHash(value);
-  }
-  function fallbackHash(value) {
-    let hash = 2166136261;
-    for (let i = 0; i < value.length; i++) {
-      hash ^= value.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-    return Array.from({ length: 8 }, () => (hash >>> 0).toString(16).padStart(8, "0")).join("");
-  }
-  function utf8Bytes(value) {
-    return utf8Encode(value).length;
-  }
-  function formatBytes(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${Math.round(bytes / 102.4) / 10} KB`;
-    return `${Math.round(bytes / 104857.6) / 10} MB`;
-  }
-  function shortHash(hash) {
-    return hash.slice(0, 12);
-  }
-  function sourceLineCount(value) {
-    return value.length === 0 ? 0 : value.split("\n").length;
-  }
-  function measureSourcePreservation(before, after) {
-    const beforeLines = before.split("\n");
-    const afterLines = after.split("\n");
-    let unchangedLines = 0;
-    for (let i = 0; i < Math.min(beforeLines.length, afterLines.length); i++) {
-      if (beforeLines[i] === afterLines[i]) unchangedLines++;
-    }
-    const preservedPercent = beforeLines.length === 0 ? 100 : Math.round(unchangedLines / beforeLines.length * 100);
-    return { unchangedLines, preservedPercent };
-  }
-  function encodeBase64Url(value) {
-    const bytes = utf8Encode(value);
-    let out = "";
-    for (let i = 0; i < bytes.length; i += 3) {
-      const a = bytes[i] ?? 0;
-      const b = bytes[i + 1] ?? 0;
-      const c = bytes[i + 2] ?? 0;
-      const triplet = a << 16 | b << 8 | c;
-      out += base64Alphabet[triplet >> 18 & 63];
-      out += base64Alphabet[triplet >> 12 & 63];
-      out += i + 1 < bytes.length ? base64Alphabet[triplet >> 6 & 63] : "=";
-      out += i + 2 < bytes.length ? base64Alphabet[triplet & 63] : "=";
-    }
-    return out.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  }
-  function decodeBase64Url(value) {
-    const normalized = value.replace(/-/g, "+").replace(/_/g, "/").replace(/=+$/g, "");
-    const bytes = [];
-    let buffer = 0;
-    let bits = 0;
-    for (const char of normalized) {
-      const value2 = base64Alphabet.indexOf(char);
-      if (value2 < 0) continue;
-      buffer = buffer << 6 | value2;
-      bits += 6;
-      if (bits >= 8) {
-        bits -= 8;
-        bytes.push(buffer >> bits & 255);
-      }
-    }
-    return utf8Decode(bytes);
-  }
-  function utf8Encode(value) {
-    const bytes = [];
-    for (const char of value) {
-      const code = char.codePointAt(0) ?? 0;
-      if (code <= 127) {
-        bytes.push(code);
-      } else if (code <= 2047) {
-        bytes.push(192 | code >> 6, 128 | code & 63);
-      } else if (code <= 65535) {
-        bytes.push(224 | code >> 12, 128 | code >> 6 & 63, 128 | code & 63);
-      } else {
-        bytes.push(240 | code >> 18, 128 | code >> 12 & 63, 128 | code >> 6 & 63, 128 | code & 63);
-      }
-    }
-    return bytes;
-  }
-  function utf8Decode(bytes) {
-    let out = "";
-    for (let i = 0; i < bytes.length; ) {
-      const first = bytes[i++] ?? 0;
-      if (first < 128) {
-        out += String.fromCodePoint(first);
-      } else if (first < 224) {
-        const second = bytes[i++] ?? 0;
-        out += String.fromCodePoint((first & 31) << 6 | second & 63);
-      } else if (first < 240) {
-        const second = bytes[i++] ?? 0;
-        const third = bytes[i++] ?? 0;
-        out += String.fromCodePoint((first & 15) << 12 | (second & 63) << 6 | third & 63);
-      } else {
-        const second = bytes[i++] ?? 0;
-        const third = bytes[i++] ?? 0;
-        const fourth = bytes[i++] ?? 0;
-        out += String.fromCodePoint((first & 7) << 18 | (second & 63) << 12 | (third & 63) << 6 | fourth & 63);
-      }
-    }
-    return out;
-  }
-  function readSharedProofHash() {
-    const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
-    if (!hash) return null;
-    const encoded = new URLSearchParams(hash).get("noma-proof");
-    if (!encoded) return null;
-    try {
-      const parsed = JSON.parse(decodeBase64Url(encoded));
-      if (parsed.status !== "pass" && parsed.status !== "warn" && parsed.status !== "fail") return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }
-  function readSharedDraftHash() {
-    const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
-    if (!hash) return null;
-    const encoded = new URLSearchParams(hash).get("noma-source");
-    if (!encoded) return null;
-    try {
-      const parsed = JSON.parse(decodeBase64Url(encoded));
-      if (!parsed || typeof parsed.source !== "string") return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  }
   function installPreviewEditing() {
-    if (!previewEditMode || outputMode !== "preview" || state.error) return;
     const previewDoc = previewFrame.contentDocument;
     if (!previewDoc) return;
+    applyPreviewPaperWidth(previewDoc);
+    installPreviewWikiLinks(previewDoc);
+    if (!renderState.error && canEditPage()) installPreviewContextMenus(previewDoc);
+    if (viewMode !== "preview" || renderState.error || !canEditPage()) return;
     const style = previewDoc.createElement("style");
     style.textContent = previewEditCss();
     previewDoc.head.append(style);
-    const editableNodes = [...previewDoc.querySelectorAll("[data-noma-editable]")];
-    for (const element of editableNodes) {
+    let selectedElement;
+    const toolbar = createPreviewToolbar(previewDoc, (kind) => {
+      if (!selectedElement) return;
+      insertPreviewBlockAfter(selectedElement, kind);
+    }, () => {
+      if (!selectedElement) return;
+      deletePreviewSection(selectedElement);
+    });
+    const selectElement = (element) => {
+      if (selectedElement && selectedElement !== element) selectedElement.classList.remove("noma-preview-selected");
+      selectedElement = element;
+      selectedElement.classList.add("noma-preview-selected");
+      toolbar.dataset.selectedKind = element.dataset.nomaEditable ?? "";
+      placePreviewToolbar(toolbar, selectedElement);
+    };
+    previewDoc.addEventListener("scroll", () => {
+      if (selectedElement) placePreviewToolbar(toolbar, selectedElement);
+    });
+    for (const element of [...previewDoc.querySelectorAll("[data-noma-editable]")]) {
       const kind = element.dataset.nomaEditable;
       if (!isPreviewEditKind(kind)) continue;
       element.contentEditable = "true";
       element.spellcheck = true;
+      element.tabIndex = 0;
       element.dataset.nomaOriginalText = editableText(element);
-      element.title = "Edit rendered text; blur to sync source";
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectElement(element);
+      });
       element.addEventListener("focus", () => {
         element.dataset.nomaEditing = "true";
+        selectElement(element);
       });
       element.addEventListener("blur", () => {
         delete element.dataset.nomaEditing;
@@ -11347,23 +10624,418 @@ body { background: #ffffff; }`,
       element.addEventListener("keydown", (event) => handlePreviewEditKeydown(event, element));
       element.addEventListener("paste", (event) => pastePlainText(event, element));
     }
+    previewDoc.addEventListener("click", (event) => {
+      const view = previewDoc.defaultView;
+      const target = view && event.target instanceof view.Element ? event.target : void 0;
+      if (target?.closest(".noma-preview-toolbar, .noma-preview-resize-handle, .noma-preview-end-add")) return;
+      if (selectedElement) selectedElement.classList.remove("noma-preview-selected");
+      selectedElement = void 0;
+      toolbar.dataset.visible = "false";
+    });
+    installPreviewPaperResize(previewDoc);
+    installPreviewEndAdd(previewDoc);
+    focusPendingPreviewLine(previewDoc);
+  }
+  function installPreviewContextMenus(previewDoc) {
+    previewDoc.addEventListener("click", () => closeContextMenu());
+    previewDoc.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeContextMenu();
+    });
+    for (const element of [...previewDoc.querySelectorAll("[data-noma-editable]")]) {
+      const kind = element.dataset.nomaEditable;
+      if (!isPreviewEditKind(kind)) continue;
+      element.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const frameRect = previewFrame.getBoundingClientRect();
+        showPreviewContextMenuAt(frameRect.left + event.clientX, frameRect.top + event.clientY, element);
+      });
+    }
+  }
+  function showPreviewContextMenuAt(clientX, clientY, element) {
+    const line = positiveInt(element.dataset.nomaLine);
+    const kind = element.dataset.nomaEditable;
+    const blockId = previewElementBlockId(element);
+    showContextMenuAt(clientX, clientY, [
+      {
+        label: "Edit in source",
+        disabled: line === void 0,
+        hint: line ? `Line ${line}` : void 0,
+        action: () => {
+          if (line) focusSourceLine(line);
+        }
+      },
+      {
+        label: "Add section after",
+        action: () => insertPreviewBlockAfter(element, "section")
+      },
+      {
+        label: "Add text after",
+        action: () => insertPreviewBlockAfter(element, "paragraph")
+      },
+      {
+        label: "Copy block ID",
+        disabled: !blockId,
+        separatorBefore: true,
+        action: () => {
+          if (blockId) void copyText(blockId, "Copied block ID");
+        }
+      },
+      {
+        label: "Delete section",
+        disabled: kind !== "section",
+        danger: true,
+        action: () => deletePreviewSection(element)
+      }
+    ]);
+  }
+  function previewElementBlockId(element) {
+    const owned = element.closest("[id]");
+    return owned?.id || element.closest("section[id]")?.id;
   }
   function previewEditCss() {
     return `
+.noma-document {
+  position: relative;
+}
 [data-noma-editable][contenteditable="true"] {
   cursor: text;
-  outline: 1px dashed rgba(39, 93, 103, 0.38);
-  outline-offset: 4px;
-  border-radius: 2px;
+  outline: 1px dashed rgba(15, 102, 107, 0.36);
+  outline-offset: 5px;
+  border-radius: 3px;
 }
 [data-noma-editable][contenteditable="true"]:hover {
-  outline-color: rgba(39, 93, 103, 0.62);
+  outline-color: rgba(15, 102, 107, 0.62);
 }
 [data-noma-editable][data-noma-editing="true"] {
-  background: rgba(232, 246, 239, 0.72);
-  outline: 2px solid #275d67;
+  background: rgba(237, 247, 245, 0.72);
+  outline: 2px solid #0f666b;
+}
+[data-noma-editable].noma-preview-selected:not([data-noma-editing="true"]) {
+  outline: 2px solid rgba(15, 102, 107, 0.64);
+}
+.noma-preview-toolbar {
+  position: fixed;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(15, 102, 107, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: 0 14px 34px -24px rgba(20, 28, 34, 0.5);
+}
+.noma-preview-toolbar[data-visible="true"] {
+  display: inline-flex;
+}
+.noma-preview-toolbar button,
+.noma-preview-end-add {
+  min-height: 26px;
+  border: 1px solid rgba(15, 102, 107, 0.22);
+  border-radius: 6px;
+  background: #fffefa;
+  color: #124d55;
+  padding: 0 8px;
+  font: 700 12px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+}
+.noma-preview-toolbar button:hover,
+.noma-preview-end-add:hover {
+  border-color: rgba(15, 102, 107, 0.58);
+  background: #edf7f5;
+}
+.noma-preview-toolbar .noma-preview-delete-section {
+  display: none;
+  color: #9c342e;
+}
+.noma-preview-toolbar[data-selected-kind="section"] .noma-preview-delete-section {
+  display: inline-block;
+}
+.noma-preview-toolbar .noma-preview-delete-section:hover {
+  border-color: rgba(163, 58, 50, 0.48);
+  background: #fbebe9;
+}
+.noma-preview-resize-handle {
+  position: absolute;
+  z-index: 45;
+  top: 18px;
+  right: -13px;
+  bottom: 18px;
+  width: 18px;
+  cursor: ew-resize;
+  border-radius: 999px;
+}
+.noma-preview-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 4px;
+  height: 72px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: rgba(15, 102, 107, 0.38);
+}
+.noma-preview-resize-handle:hover::before,
+.noma-preview-resize-handle:focus-visible::before {
+  background: #0f666b;
+}
+.noma-preview-end-add {
+  display: block;
+  margin: 32px auto 0;
 }
 `;
+  }
+  function createPreviewToolbar(previewDoc, onInsert, onDeleteSection) {
+    const toolbar = previewDoc.createElement("div");
+    toolbar.className = "noma-preview-toolbar";
+    toolbar.dataset.visible = "false";
+    toolbar.setAttribute("aria-label", "Preview block actions");
+    const sectionButton = previewDoc.createElement("button");
+    sectionButton.type = "button";
+    sectionButton.textContent = "+ Section";
+    sectionButton.title = "Add a section after this block";
+    sectionButton.addEventListener("click", () => onInsert("section"));
+    const paragraphButton = previewDoc.createElement("button");
+    paragraphButton.type = "button";
+    paragraphButton.textContent = "+ Text";
+    paragraphButton.title = "Add a paragraph after this block";
+    paragraphButton.addEventListener("click", () => onInsert("paragraph"));
+    const deleteButton = previewDoc.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "noma-preview-delete-section";
+    deleteButton.textContent = "Delete";
+    deleteButton.title = "Delete this section";
+    deleteButton.addEventListener("click", () => onDeleteSection());
+    toolbar.addEventListener("pointerdown", (event) => event.preventDefault());
+    toolbar.append(sectionButton, paragraphButton, deleteButton);
+    previewDoc.body.append(toolbar);
+    return toolbar;
+  }
+  function placePreviewToolbar(toolbar, element) {
+    const doc = element.ownerDocument;
+    const rect = element.getBoundingClientRect();
+    const top = Math.max(8, rect.top - 38);
+    const maxLeft = Math.max(8, doc.documentElement.clientWidth - toolbar.offsetWidth - 8);
+    const left = Math.min(maxLeft, Math.max(8, rect.right - toolbar.offsetWidth));
+    toolbar.style.top = `${top}px`;
+    toolbar.style.left = `${left}px`;
+    toolbar.dataset.visible = "true";
+  }
+  function installPreviewPaperResize(previewDoc) {
+    const paper = previewDoc.querySelector(".noma-document");
+    if (!paper) return;
+    const handle = previewDoc.createElement("div");
+    handle.className = "noma-preview-resize-handle";
+    handle.tabIndex = 0;
+    handle.setAttribute("role", "separator");
+    handle.setAttribute("aria-orientation", "vertical");
+    handle.setAttribute("aria-label", "Resize preview paper");
+    handle.title = "Drag to resize preview paper";
+    handle.addEventListener("pointerdown", (event) => startPreviewPaperResize(event, paper));
+    handle.addEventListener("keydown", (event) => handlePreviewPaperResizeKeydown(event, paper));
+    paper.append(handle);
+  }
+  function installPreviewEndAdd(previewDoc) {
+    const paper = previewDoc.querySelector(".noma-document");
+    if (!paper) return;
+    const button = previewDoc.createElement("button");
+    button.type = "button";
+    button.className = "noma-preview-end-add";
+    button.textContent = "+ Section";
+    button.title = "Add a section at the end of the page";
+    button.addEventListener("click", () => insertSectionAtEnd());
+    paper.append(button);
+  }
+  function applyPreviewPaperWidth(previewDoc) {
+    const paper = previewDoc.querySelector(".noma-document");
+    if (paper) paper.style.maxWidth = `${previewPaperWidth}px`;
+  }
+  function startSplitResize(event) {
+    if (viewMode !== "split") return;
+    event.preventDefault();
+    const rect = documentGrid.getBoundingClientRect();
+    documentGrid.dataset.resizing = "true";
+    splitResizeHandle.setPointerCapture(event.pointerId);
+    const onMove = (moveEvent) => {
+      const nextRatio = (moveEvent.clientX - rect.left) / rect.width * 100;
+      setSplitSourceRatio(nextRatio);
+    };
+    const onUp = () => {
+      delete documentGrid.dataset.resizing;
+      splitResizeHandle.removeEventListener("pointermove", onMove);
+      splitResizeHandle.removeEventListener("pointerup", onUp);
+      splitResizeHandle.removeEventListener("pointercancel", onUp);
+      setCloudStatus("Resized split view", "ok");
+    };
+    splitResizeHandle.addEventListener("pointermove", onMove);
+    splitResizeHandle.addEventListener("pointerup", onUp);
+    splitResizeHandle.addEventListener("pointercancel", onUp);
+  }
+  function handleSplitResizeKeydown(event) {
+    if (viewMode !== "split") return;
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    setSplitSourceRatio(splitSourceRatio + (event.key === "ArrowRight" ? 3 : -3));
+    setCloudStatus("Resized split view", "ok");
+  }
+  function setSplitSourceRatio(value) {
+    splitSourceRatio = Math.round(clamp(value, 30, 66) * 10) / 10;
+    localStorage.setItem(splitSourceRatioStorageKey, String(splitSourceRatio));
+    documentGrid.style.setProperty("--source-pane-width", `${splitSourceRatio}%`);
+  }
+  function startPreviewPaperResize(event, paper) {
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = paper.getBoundingClientRect().width;
+    const ownerWindow = paper.ownerDocument.defaultView;
+    if (!handle || !ownerWindow) return;
+    handle.setPointerCapture(event.pointerId);
+    const onMove = (moveEvent) => {
+      const nextWidth = startWidth + (moveEvent.clientX - startX) * 2;
+      setPreviewPaperWidth(nextWidth, paper);
+    };
+    const onUp = () => {
+      ownerWindow.removeEventListener("pointermove", onMove);
+      ownerWindow.removeEventListener("pointerup", onUp);
+      ownerWindow.removeEventListener("pointercancel", onUp);
+      setCloudStatus("Resized preview paper", "ok");
+    };
+    ownerWindow.addEventListener("pointermove", onMove);
+    ownerWindow.addEventListener("pointerup", onUp);
+    ownerWindow.addEventListener("pointercancel", onUp);
+  }
+  function handlePreviewPaperResizeKeydown(event, paper) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    event.stopPropagation();
+    setPreviewPaperWidth(previewPaperWidth + (event.key === "ArrowRight" ? 40 : -40), paper);
+    setCloudStatus("Resized preview paper", "ok");
+  }
+  function setPreviewPaperWidth(value, paper) {
+    previewPaperWidth = Math.round(clamp(value, 680, 1280));
+    localStorage.setItem(previewPaperWidthStorageKey, String(previewPaperWidth));
+    if (paper) paper.style.maxWidth = `${previewPaperWidth}px`;
+  }
+  function insertPreviewBlockAfter(element, kind) {
+    const editableKind = element.dataset.nomaEditable;
+    const line = positiveInt(element.dataset.nomaLine);
+    const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
+    if (!isPreviewEditKind(editableKind) || line === void 0 || endLine === void 0) {
+      setCloudStatus("Preview insert cannot sync", "warning");
+      return;
+    }
+    if (kind === "section") {
+      const index2 = editableKind === "section" ? sectionEndInsertIndex(line) : endLine;
+      insertSourceBlockAtIndex(index2, newSectionSource(line), "Added section from preview");
+      return;
+    }
+    const index = editableKind === "section" ? line : endLine;
+    insertSourceBlockAtIndex(index, "New paragraph.", "Added paragraph from preview");
+  }
+  function insertSectionAtEnd() {
+    const lines = sourceInput.value.split("\n");
+    insertSourceBlockAtIndex(lines.length, newSectionSource(lines.length), "Added section at end");
+  }
+  function insertSectionAtCursor() {
+    const index = sourceCursorInsertIndex();
+    insertSourceBlockAtIndex(index, newSectionSource(index + 1), "Added section at cursor");
+  }
+  function insertParagraphAtCursor() {
+    insertSourceBlockAtIndex(sourceCursorInsertIndex(), "New paragraph.", "Added paragraph at cursor");
+  }
+  function sourceCursorInsertIndex() {
+    const beforeCursor = sourceInput.value.slice(0, sourceInput.selectionStart);
+    return beforeCursor.split("\n").length;
+  }
+  function insertSourceBlockAtIndex(index, sourceBlock, status) {
+    if (renderTimer !== void 0) {
+      window.clearTimeout(renderTimer);
+      renderTimer = void 0;
+    }
+    const lines = sourceInput.value.split("\n");
+    const boundedIndex = Math.max(0, Math.min(lines.length, index));
+    const needsPrefix = boundedIndex > 0 && lines[boundedIndex - 1]?.trim() !== "";
+    const needsSuffix = boundedIndex < lines.length && lines[boundedIndex]?.trim() !== "";
+    const insertLines = [
+      ...needsPrefix ? [""] : [],
+      ...sourceBlock.split("\n"),
+      ...needsSuffix ? [""] : []
+    ];
+    pendingPreviewFocusLine = boundedIndex + (needsPrefix ? 2 : 1);
+    lines.splice(boundedIndex, 0, ...insertLines);
+    sourceInput.value = lines.join("\n");
+    syncTitleFromSource();
+    markDirty();
+    setCloudStatus(status, "ok");
+    renderCurrent();
+  }
+  function newSectionSource(contextLine) {
+    const currentLevel = headingLevelAtLine(contextLine) ?? nearestHeadingLevelBefore(contextLine) ?? 2;
+    const level = Math.max(2, currentLevel);
+    const id = uniqueSourceId("new-section");
+    return `${"#".repeat(level)} New section {id="${id}"}
+
+Start writing here.`;
+  }
+  function sectionEndInsertIndex(headingLine) {
+    const lines = sourceInput.value.split("\n");
+    const level = headingLevelAtLine(headingLine);
+    if (level === void 0) return headingLine;
+    for (let index = headingLine; index < lines.length; index += 1) {
+      const nextLevel = headingLevel(lines[index]);
+      if (nextLevel !== void 0 && nextLevel <= level) return index;
+    }
+    return lines.length;
+  }
+  function headingLevelAtLine(line) {
+    const lines = sourceInput.value.split("\n");
+    return headingLevel(lines[line - 1]);
+  }
+  function nearestHeadingLevelBefore(line) {
+    const lines = sourceInput.value.split("\n");
+    for (let index = Math.min(line - 1, lines.length - 1); index >= 0; index -= 1) {
+      const level = headingLevel(lines[index]);
+      if (level !== void 0) return level;
+    }
+    return void 0;
+  }
+  function headingLevel(line) {
+    const match = /^(#{1,6})\s+/.exec(line ?? "");
+    return match?.[1]?.length;
+  }
+  function uniqueSourceId(base) {
+    const ids = new Set(
+      [...sourceInput.value.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]).filter((id) => id !== void 0)
+    );
+    if (!ids.has(base)) return base;
+    for (let suffix = 2; suffix < 1e3; suffix += 1) {
+      const candidate = `${base}-${suffix}`;
+      if (!ids.has(candidate)) return candidate;
+    }
+    return `${base}-${Date.now().toString(36)}`;
+  }
+  function focusPendingPreviewLine(previewDoc) {
+    const line = pendingPreviewFocusLine;
+    if (line === void 0) return;
+    pendingPreviewFocusLine = void 0;
+    window.setTimeout(() => {
+      const element = previewDoc.querySelector(`[data-noma-line="${line}"]`);
+      if (!element) return;
+      element.focus();
+      selectElementContents(element);
+    }, 0);
+  }
+  function selectElementContents(element) {
+    const selection = element.ownerDocument.getSelection();
+    if (!selection) return;
+    const range = element.ownerDocument.createRange();
+    range.selectNodeContents(element);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
   function handlePreviewEditKeydown(event, element) {
     const kind = element.dataset.nomaEditable;
@@ -11377,7 +11049,7 @@ body { background: #ffffff; }`,
     if ((event.metaKey || event.ctrlKey) && key === "s") {
       event.preventDefault();
       element.blur();
-      downloadText("document.noma", sourceInput.value, "text/plain");
+      void saveCurrentPage();
       return;
     }
     if (key === "enter" && !event.shiftKey && (kind === "section" || kind === "list_item")) {
@@ -11399,16 +11071,16 @@ body { background: #ffffff; }`,
     const line = positiveInt(element.dataset.nomaLine);
     const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
     if (!isPreviewEditKind(kind) || line === void 0) {
-      showTransientStatus("Rendered edit cannot sync", "warning");
+      setCloudStatus("Rendered edit cannot sync", "warning");
       return;
     }
     const replacement = previewSourceReplacement(kind, line, endLine, nextText);
     if (replacement === null) {
-      showTransientStatus("Rendered edit cannot sync", "warning");
+      setCloudStatus("Rendered edit cannot sync", "warning");
       return;
     }
     replaceSourceLines(line, endLine, replacement);
-    showTransientStatus("Synced rendered edit");
+    setCloudStatus("Synced preview edit", "ok");
   }
   function editableText(element) {
     return (element.innerText || element.textContent || "").replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").replace(/\n+$/g, "");
@@ -11421,17 +11093,14 @@ body { background: #ffffff; }`,
       case "section": {
         const match = /^(#{1,6}\s+)(.*?)(\s+\{[^}]+\})?\s*$/.exec(currentLine);
         if (!match) return null;
-        const prefix = match[1] ?? "";
-        const attrs = match[3] ?? "";
-        return `${prefix}${normalizeInlineText(text) || "Untitled"}${attrs}`;
+        return `${match[1] ?? ""}${normalizeInlineText(text) || "Untitled"}${match[3] ?? ""}`;
       }
       case "paragraph":
         return normalizeBlockText(text);
       case "list_item": {
         const match = /^(\s*(?:[-*]|\d+\.)\s+)(.*)$/.exec(currentLine);
         if (!match) return null;
-        const prefix = match[1] ?? "";
-        return `${prefix}${normalizeInlineText(text)}`;
+        return `${match[1] ?? ""}${normalizeInlineText(text)}`;
       }
       case "quote": {
         const body = normalizeBlockText(text);
@@ -11439,12 +11108,6 @@ body { background: #ffffff; }`,
         return quoteLines.map((quoteLine) => `> ${quoteLine}`).join("\n");
       }
     }
-  }
-  function normalizeInlineText(text) {
-    return text.replace(/\s+/g, " ").trim();
-  }
-  function normalizeBlockText(text) {
-    return text.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim()).filter((line) => line.length > 0).join("\n");
   }
   function replaceSourceLines(startLine, endLine, replacement) {
     if (renderTimer !== void 0) {
@@ -11456,11 +11119,65 @@ body { background: #ffffff; }`,
     const endIndex = Math.max(startIndex, Math.min(lines.length - 1, endLine - 1));
     lines.splice(startIndex, endIndex - startIndex + 1, ...replacement.split("\n"));
     sourceInput.value = lines.join("\n");
-    localStorage.setItem(storageKey, sourceInput.value);
-    lastProof = null;
-    lastProofApplied = false;
-    updateProofControls();
+    syncTitleFromSource();
+    markDirty();
     renderCurrent();
+  }
+  function deletePreviewSection(element) {
+    if (element.dataset.nomaEditable !== "section") {
+      setCloudStatus("Select a section heading to delete", "warning");
+      return;
+    }
+    deleteSectionAtLine(positiveInt(element.dataset.nomaLine));
+  }
+  function deleteSectionAtLine(line) {
+    if (!line || !canEditPage()) return;
+    const level = headingLevelAtLine(line);
+    if (level === void 0 || level <= 1) {
+      setCloudStatus("Root section cannot be deleted here", "warning");
+      return;
+    }
+    const title = sourceSectionTitleAtLine(line);
+    if (!window.confirm(`Delete section "${title}" and all nested content?`)) return;
+    if (renderTimer !== void 0) {
+      window.clearTimeout(renderTimer);
+      renderTimer = void 0;
+    }
+    const lines = sourceInput.value.split("\n");
+    const startIndex = line - 1;
+    const endIndex = sectionEndInsertIndex(line);
+    lines.splice(startIndex, Math.max(1, endIndex - startIndex));
+    collapseBlankAt(lines, startIndex);
+    sourceInput.value = lines.join("\n");
+    syncTitleFromSource();
+    markDirty();
+    setCloudStatus(`Deleted section: ${title}`, "ok");
+    renderCurrent();
+  }
+  function collapseBlankAt(lines, index) {
+    const bounded = Math.max(1, Math.min(lines.length - 1, index));
+    while (bounded < lines.length && lines[bounded - 1]?.trim() === "" && lines[bounded]?.trim() === "") {
+      lines.splice(bounded, 1);
+    }
+  }
+  function sourceSectionTitleAtLine(line) {
+    const currentLine = sourceInput.value.split("\n")[line - 1] ?? "";
+    return currentLine.replace(/^#{1,6}\s+/, "").replace(/\s+\{[^}]*\}\s*$/, "").trim() || "Untitled";
+  }
+  function focusSourceLine(line) {
+    const lines = sourceInput.value.split("\n");
+    const boundedLine = Math.max(1, Math.min(lines.length, line));
+    const offset = lines.slice(0, boundedLine - 1).join("\n").length + (boundedLine > 1 ? 1 : 0);
+    sourceInput.focus();
+    sourceInput.setSelectionRange(offset, offset);
+    const lineHeight = Number.parseFloat(window.getComputedStyle(sourceInput).lineHeight) || 20;
+    sourceInput.scrollTop = Math.max(0, (boundedLine - 4) * lineHeight);
+  }
+  function normalizeInlineText(text) {
+    return text.replace(/\s+/g, " ").trim();
+  }
+  function normalizeBlockText(text) {
+    return text.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim()).filter((line) => line.length > 0).join("\n");
   }
   function positiveInt(value) {
     if (!value) return void 0;
@@ -11470,183 +11187,221 @@ body { background: #ffffff; }`,
   function isPreviewEditKind(value) {
     return value === "section" || value === "paragraph" || value === "list_item" || value === "quote";
   }
-  function collectOutline(doc) {
-    const out = [];
-    for (const node of walk(doc)) {
-      if (node.type === "document" || node.type === "frontmatter") continue;
-      if (node.type === "section") {
-        out.push(sectionOutline(node));
-        continue;
-      }
-      if (node.type === "directive" && node.id) out.push(directiveOutline(node));
+  function previewError(message) {
+    return `<!doctype html><html lang="en"><body style="font:14px sans-serif;color:#a33a32;padding:20px">${escapeHtml2(message)}</body></html>`;
+  }
+  function starterPage(title, siteName) {
+    return `# ${title} {id="${slug(title) || "intro"}"}
+
+::abstract{id="abstract" status="draft"}
+${siteName} draft abstract. State the research question, method, primary result, and confidence in one paragraph.
+::
+
+## Research Question {id="research-question"}
+
+::claim{id="claim-main" confidence=0.68}
+The central claim of this paper goes here.
+::
+
+::evidence{id="evidence-primary" for="claim-main" source="source-primary"}
+Summarize the strongest evidence for the central claim.
+::
+
+## Methods {id="methods"}
+
+Describe the study design, corpus, data collection window, and analysis method.
+
+::table{id="review-checklist" header align="l,c,l"}
+| Section | Status | Owner |
+| Abstract | draft | Research |
+| Methods | draft | Research |
+| Evidence | needs source check | Reviewer |
+::
+
+## Findings {id="findings"}
+
+Draft the result narrative here. Use stable IDs on claims, evidence, figures, tables, citations, and review tasks so collaborators and agents can patch exactly the right block.
+
+::citation{id="source-primary" source="Primary source placeholder" url="https://example.com/source" accessed="2026-06-07"}
+Replace this placeholder with the paper's canonical source.
+::
+
+::bibliography{id="references"}
+::
+
+## Review Queue {id="review-queue"}
+
+::agent_task{id="task-source-check" scope="paper-review" owner="reviewer"}
+Verify the primary source, update the citation metadata, and leave unrelated blocks unchanged.
+::
+`;
+  }
+  function wikiPage(title, siteName, relatedTitle) {
+    const id = slug(title) || "wiki-page";
+    return `# ${title} {id="${id}"}
+
+::summary{id="summary"}
+Summarize what this page captures in ${siteName}. Keep it connected to the related pages below.
+::
+
+## Notes {id="notes"}
+
+Start writing the durable explanation here.
+
+## Related {id="related"}
+
+- [[${relatedTitle}]]
+
+## Agent Tasks {id="agent-tasks"}
+
+::agent_task{id="task-expand-${id}" scope="wiki-maintenance" owner="agent"}
+Expand this page with definitions, sources, backlinks, and missing related pages without rewriting unrelated pages.
+::
+`;
+  }
+  function replaceFirstHeading(source, title) {
+    if (/^#\s+.+$/m.test(source)) {
+      return source.replace(/^#\s+(.+?)(\s+\{[^}]*\})?\s*$/m, (_match, _oldTitle, attrs) => {
+        return `# ${title}${attrs ?? ""}`;
+      });
     }
-    return out;
+    return `# ${title} {id="${slug(title) || "intro"}"}
+
+${source}`;
   }
-  function sectionOutline(node) {
-    return {
-      id: node.id,
-      label: node.title,
-      kind: `h${node.level}`,
-      line: node.pos?.line,
-      level: node.level
-    };
+  function sourceTitle(source) {
+    return source.match(/^#\s+(.+)$/m)?.[1]?.replace(/\s+\{[^}]*\}\s*$/, "").trim() || "Untitled Page";
   }
-  function directiveOutline(node) {
-    return {
-      id: node.id,
-      label: directiveLabel(node),
-      kind: `::${node.name}`,
-      line: node.pos?.line,
-      level: 2
-    };
+  function slug(value) {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
   }
-  function directiveLabel(node) {
-    const title = textAttr(node, "title") ?? textAttr(node, "label") ?? textAttr(node, "name");
-    return title || node.id || node.name;
+  function promptName(label, fallback) {
+    const value = window.prompt(label, fallback);
+    return value?.trim() || fallback;
   }
-  function textAttr(node, key) {
-    const value = node.attrs[key];
-    return typeof value === "string" && value.trim() ? value.trim() : void 0;
+  function promptSecret(label) {
+    const value = window.prompt(label);
+    return value?.trim() || void 0;
   }
-  function countIds(doc) {
-    let count = 0;
-    for (const node of walk(doc)) {
-      if (node.id) count++;
-    }
-    return count;
+  function confirmDiscardDirty() {
+    return !dirty || window.confirm("Discard unsaved page changes?");
   }
-  function jumpToLine(line) {
-    const lines = sourceInput.value.split("\n");
-    const clamped = Math.max(1, Math.min(line, lines.length));
-    let start = 0;
-    for (let i = 0; i < clamped - 1; i++) start += lines[i].length + 1;
-    const end = start + lines[clamped - 1].length;
-    sourceInput.focus();
-    sourceInput.setSelectionRange(start, end);
+  function updateAddress() {
+    const params = new URLSearchParams();
+    if (currentSite) params.set("site", currentSite.id);
+    if (currentPage) params.set("doc", currentPage.id);
+    if (shareToken) params.set("share", shareToken);
+    const next = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState(null, "", next);
   }
-  function findInSource(direction) {
-    const matches = findMatches();
-    if (matches.length === 0) {
-      updateFindStatus();
-      return;
-    }
-    const cursor = direction === 1 ? sourceInput.selectionEnd : sourceInput.selectionStart;
-    const index = direction === 1 ? nextMatchIndex(matches, cursor) : previousMatchIndex(matches, cursor);
-    const match = matches[index];
-    sourceInput.focus();
-    sourceInput.setSelectionRange(match.start, match.end);
-    findStatus.textContent = `${index + 1}/${matches.length}`;
+  function absoluteUrl(path) {
+    return new URL(path, window.location.origin).toString();
   }
-  function updateFindStatus() {
-    const matches = findMatches();
-    if (matches.length === 0) {
-      findStatus.textContent = "0/0";
-      return;
-    }
-    const active = matches.findIndex((match) => match.start === sourceInput.selectionStart && match.end === sourceInput.selectionEnd);
-    findStatus.textContent = active >= 0 ? `${active + 1}/${matches.length}` : `0/${matches.length}`;
+  function cloudAppDocumentUrl(id, token) {
+    return absoluteUrl(`/cloud.html?doc=${encodeURIComponent(id)}&share=${encodeURIComponent(token)}`);
   }
-  function findMatches() {
-    const query = findInput.value;
-    if (!query) return [];
-    const source = sourceInput.value.toLowerCase();
-    const needle = query.toLowerCase();
-    const matches = [];
-    let index = source.indexOf(needle);
-    while (index !== -1) {
-      matches.push({ start: index, end: index + needle.length });
-      index = source.indexOf(needle, index + Math.max(1, needle.length));
-    }
-    return matches;
+  function cloudAppSiteUrl(id, token) {
+    return absoluteUrl(`/cloud.html?site=${encodeURIComponent(id)}&share=${encodeURIComponent(token)}`);
   }
-  function nextMatchIndex(matches, cursor) {
-    const next = matches.findIndex((match) => match.start >= cursor);
-    return next === -1 ? 0 : next;
-  }
-  function previousMatchIndex(matches, cursor) {
-    for (let i = matches.length - 1; i >= 0; i--) {
-      if (matches[i].end <= cursor) return i;
-    }
-    return matches.length - 1;
-  }
-  function printPreview() {
-    if (outputMode !== "preview") {
-      outputMode = "preview";
-      renderOutput();
-    }
+  function readCloudUser() {
+    const stored = localStorage.getItem(userStorageKey);
+    if (!stored) return void 0;
     try {
-      const win = previewFrame.contentWindow;
-      if (!win) {
-        showTransientStatus("Preview unavailable", "warning");
-        return;
+      const parsed = JSON.parse(stored);
+      if (parsed.id && parsed.name && parsed.token) {
+        return {
+          id: parsed.id,
+          name: parsed.name,
+          token: parsed.token,
+          tokenPreview: parsed.tokenPreview
+        };
       }
-      win.focus();
-      win.print();
-      showTransientStatus("Print dialog requested");
     } catch {
-      showTransientStatus("Preview print blocked by browser", "warning");
+      return void 0;
     }
+    return void 0;
   }
-  function downloadText(filename, text, type2) {
-    const blob = new Blob([text], { type: type2 });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+  function readShareToken() {
+    const token = query.get("share");
+    return token && /^ns_[A-Za-z0-9_-]{16,}$/.test(token) ? token : void 0;
   }
-  async function copyText(text, message) {
-    if (!navigator.clipboard) {
-      statusText.textContent = "Clipboard API unavailable";
-      statusText.dataset.state = "warning";
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      showTransientStatus(message);
-    } catch {
-      showTransientStatus("Clipboard write blocked by browser", "warning");
-    }
+  function readCloudId(value) {
+    return value && /^[A-Za-z0-9_-]{8,80}$/.test(value) ? value : void 0;
   }
-  function showTransientStatus(message, stateName = "ok") {
-    const previous = statusText.textContent ?? "";
-    const previousState = statusText.dataset.state;
-    statusText.textContent = message;
-    statusText.dataset.state = stateName;
-    window.setTimeout(() => {
-      statusText.textContent = previous;
-      if (previousState) statusText.dataset.state = previousState;
-    }, 1300);
+  function readViewMode() {
+    const stored = localStorage.getItem(viewModeStorageKey);
+    return stored === "source" || stored === "preview" ? stored : "split";
   }
-  function emptyState() {
+  function readPanelsOpen() {
+    return localStorage.getItem(panelsOpenStorageKey) !== "false";
+  }
+  function readSplitSourceRatio() {
+    const stored = localStorage.getItem(splitSourceRatioStorageKey);
+    if (stored === null) return 46;
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? clamp(parsed, 30, 66) : 46;
+  }
+  function readPreviewPaperWidth() {
+    const stored = localStorage.getItem(previewPaperWidthStorageKey);
+    if (stored === null) return 1040;
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? clamp(parsed, 680, 1280) : 1040;
+  }
+  function readThemeMode() {
+    const stored = localStorage.getItem(themeStorageKey);
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function applyThemeMode() {
+    document.documentElement.dataset.theme = themeMode;
+    document.documentElement.style.colorScheme = themeMode;
+  }
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+  function setBusy(value, message, state = "warning") {
+    busy = value;
+    if (message) setCloudStatus(message, state);
+    renderChrome();
+  }
+  function setCloudStatus(message, state) {
+    cloudStatus.textContent = message;
+    cloudStatus.dataset.state = state;
+  }
+  function setPanelStatus(element, message, state) {
+    element.textContent = message;
+    element.dataset.state = state;
+  }
+  function emptyRenderState() {
     return {
       doc: null,
       diagnostics: [],
-      html: "",
-      previewHtml: "",
-      json: "",
-      llm: "",
-      markdown: ""
+      llm: ""
     };
   }
-  function errorDocument(message) {
-    return `<!doctype html>
-<html lang="en">
-<meta charset="utf-8" />
-<style>
-body { margin: 0; font: 15px system-ui, sans-serif; color: #2f1b18; background: #fff8f6; }
-main { padding: 24px; }
-pre { white-space: pre-wrap; }
-</style>
-<main><h1>Render error</h1><pre>${escapeHtml2(message)}</pre></main>
-</html>`;
+  async function copyText(text, status) {
+    await navigator.clipboard.writeText(text);
+    setCloudStatus(status, "ok");
+  }
+  function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  function formatDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(void 0, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  }
+  function shortId(value) {
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
   }
   function escapeHtml2(value) {
-    return value.replace(/[&<>"']/g, (ch) => {
-      switch (ch) {
+    return value.replace(/[&<>"']/g, (char) => {
+      switch (char) {
         case "&":
           return "&amp;";
         case "<":
@@ -11659,9 +11414,6 @@ pre { white-space: pre-wrap; }
           return "&#39;";
       }
     });
-  }
-  function escapeAttr2(value) {
-    return escapeHtml2(value).replace(/"/g, "&quot;");
   }
 })();
 /*! Bundled license information:

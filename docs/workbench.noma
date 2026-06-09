@@ -1,13 +1,16 @@
 ---
 title: Web Workbench Guide
 version: 0.13.0
+updated: 2026-06-07
 ---
 
 # Web Workbench Guide
 
-The Noma Workbench is the static, browser-based editor for `.noma`
-documents. It is designed for people who want a Word-like authoring surface
-without giving up source control, block IDs, validation, and renderer output.
+The Noma Workbench is the browser-based editor for `.noma` documents. It can
+run as a static page for local/offline drafting, or behind Noma Cloud for
+persistent shared documents. It is designed for people who want a Word-like
+authoring surface without giving up source control, block IDs, validation, and
+renderer output.
 
 Open it from the built site:
 
@@ -19,6 +22,22 @@ open dist/workbench.html
 Or use the published page:
 
 [Open the workbench](../workbench.html)
+
+For the full hosted cloud app:
+
+```bash
+npm run build:cloud
+PORT=3000 npm start
+open http://localhost:3000/cloud.html
+```
+
+The hosted app is the multi-page collaboration surface: spaces, pages,
+viewer/editor/owner controls, user invites, share links, live preview, and
+site publishing. The workbench remains the detailed single-document proof and
+data-editing surface.
+
+For the full hosted workflow, screenshots, permissions, published sites, and
+the API query surface, read the [Noma Cloud guide](noma-cloud.noma).
 
 ::figure{id="workbench-overview" src="../assets/workbench-overview.png" alt="Noma Workbench overview showing the menu bar, active ribbon panel, source editor, live preview, diagnostics, and outline." caption="The workbench keeps source, preview, diagnostics, outline, and the active Word-style ribbon panel visible in one browser page."}
 ::
@@ -45,7 +64,19 @@ It covers the main Word-style workflows that fit Noma's source-first model:
   footnotes.
 - Find text in the source.
 - Preview safe HTML, inspect diagnostics, jump through the outline, and switch
-  to AST or LLM output.
+  to AST, LLM, or proof output.
+- Paste agent patch ops, generate a browser-side safety proof, and apply only
+  when the post-document validates without errors.
+- Copy a proof summary link that carries hashes, status, diagnostics, and the
+  operation list without embedding the private source document.
+- Copy a shared draft link that carries the current `.noma` source in the URL
+  fragment, or a review packet with the draft link, hash, diagnostics, IDs, and
+  LLM context for async handoff.
+- When served by Noma Cloud, save the current source to a persistent document,
+  copy a stable `workbench.html?doc=<id>` collaborator link, or open the
+  rendered reader artifact at `/d/<id>`.
+- Edit ID-bearing `::table` and `::dataset` blocks through a compact grid that
+  writes source-preserving table/dataset patch ops.
 - Download the current document as `.noma`, HTML, or JSON.
 - Copy Markdown, LLM context, or the DOCX CLI command for handoff.
 - Print the rendered preview from the browser.
@@ -58,8 +89,8 @@ The workbench has four persistent areas:
 |---|---|
 | Menu bar and ribbon | File, format, insert, layout, review, find, and export tabs. The active tab shows only the relevant commands. |
 | Source | The editable `.noma` source. This remains the source of truth. |
-| Output | Safe rendered preview, JSON AST, or deterministic LLM context. |
-| Inspector | Diagnostics and outline navigation derived from the current AST. |
+| Output | Safe rendered preview, JSON AST, deterministic LLM context, or the latest agent safety proof. |
+| Inspector | Agent proof controls, table/data editor, diagnostics, and outline navigation derived from the current AST. |
 
 The browser stores the current source in `localStorage` so a reload keeps the
 last draft. Use **Download Noma** before moving the draft into a repository.
@@ -72,12 +103,17 @@ last draft. Use **Download Noma** before moving the draft into a repository.
    common formatting and Noma block templates.
 4. Watch the status pill and diagnostics panel as the validator checks the
    document.
-5. Use the outline to jump to headings and ID-bearing blocks.
-6. Toggle **Edit Preview** when you want to revise simple rendered prose
+5. Use the diagnostics summary to decide whether to fix syntax, references,
+   evidence, stale citations, or profile rules before polishing output.
+6. Use the outline to jump to headings and ID-bearing blocks.
+7. Toggle **Edit Preview** when you want to revise simple rendered prose
    without moving your cursor back to the source pane.
-7. Switch to AST or LLM output when you need to inspect structure or copy
+8. Use **Tables & Data** when a `::table` or `::dataset` block needs a small
+   cell, row, or column update.
+9. Use **Agent Proof** when you want to simulate patch ops before writing them.
+10. Switch to AST or LLM output when you need to inspect structure or copy
    agent context.
-8. Download the source or rendered artifacts.
+11. Download the source or rendered artifacts.
 
 ::figure{id="workbench-authoring" src="../assets/workbench-authoring.png" alt="Noma Workbench authoring state showing inserted layout, review, control, table, and diagnostic blocks with a compact menu-driven ribbon." caption="A review-oriented document can show layout controls, comments, change requests, diagnostics, AST output, and find state without exposing every command at once."}
 ::
@@ -94,7 +130,7 @@ drafting:
 | Text formatting | **Format** tab with bold, italic, code, links, headings, lists, quote, and code-block commands. |
 | Insert menu | **Insert** tab with table, figure, callout, task, control, and math block templates. |
 | Page layout | **Layout** tab with TOC, header, footer, page setup, and page break templates. |
-| Review | **Review** tab with comment, change request, and footnote block templates. |
+| Review | **Review** tab with comment, change request, footnote, prove, apply, and share-proof controls. |
 | Find | **Find** tab with source search and previous/next navigation. |
 | Print/export | **Export** tab with Noma, HTML, JSON, Markdown, LLM, DOCX-command, and print actions. |
 
@@ -115,9 +151,119 @@ blur to cancel the current rendered edit. Pasted content is inserted as plain
 text so the preview cannot inject raw HTML into the source.
 
 Complex semantic blocks, tables, datasets, layout directives, comments, tracked
-changes, and DOCX-specific structures remain source-first. Editing rendered
-inline markup as plain text also means the changed span is serialized as plain
-prose, which is the expected tradeoff for this browser-only mode.
+changes, and DOCX-specific structures remain source-first unless they have a
+dedicated side-panel editor. Editing rendered inline markup as plain text also
+means the changed span is serialized as plain prose, which is the expected
+tradeoff for this browser-only mode.
+
+## Agent proof panel
+
+The **Agent Proof** panel makes the browser editor agent-oriented without
+turning it into an agent host. Paste one patch operation or an array of patch
+operations as JSON:
+
+```json
+[
+  {
+    "op": "update_attribute",
+    "id": "decision-q3-direction",
+    "key": "status",
+    "value": "accepted"
+  }
+]
+```
+
+Click **Prove** in the Review tab. The workbench simulates the patch against
+the current source, parses and validates the post-document, computes pre/post
+hashes, measures source-line preservation, and renders a proof report in the
+Output pane.
+
+**Apply** stays disabled until the proof has a writable post-document with no
+post-validation errors. A proof with warnings can still be applied, but it is
+visibly marked as warning state so a human or agent can review the diagnostics
+before writing.
+
+**Share Proof** copies a URL fragment that includes proof metadata:
+
+| Field | Why it is included |
+|---|---|
+| Status | Whether the proof passed, warned, or failed. |
+| Patch ops | The exact operation list under review. |
+| Pre/post hashes | The document state the proof describes. |
+| Diagnostics summary | The post-validation health without requiring source access. |
+| Preservation | A quick check that the edit stayed localized. |
+
+The share link deliberately does not embed the full source or post-source. It
+is safe to use as a review pointer while the canonical document remains in the
+repository, local draft, or agent host.
+
+## Shared draft handoff
+
+The **Collaboration** panel shows a live document fingerprint: source hash,
+line count, byte size, ID count, and diagnostic counts. Use it to confirm two
+reviewers are discussing the same draft before comparing proof output.
+
+**Copy Draft Link** creates a URL fragment containing the current `.noma`
+source, title, creation time, and SHA-style hash. URL fragments are not sent to
+the static server during normal navigation, so the deployed workbench can load a
+shared source without needing an account or database. Treat the resulting link
+as sensitive if the source document is sensitive.
+
+**Copy Review Packet** creates a Markdown handoff with the draft link,
+fingerprint, diagnostics, addressable IDs, and deterministic LLM context. It is
+designed for GitHub issues, email review, or an agent prompt when a teammate
+needs enough context to propose a patch without scraping the rendered preview.
+
+When the workbench is served by `npm start` or an EZKeel deployment, the
+**Save Cloud** action stores the current `.noma` source through
+`/api/documents`. The browser URL becomes `workbench.html?doc=<id>`, which
+collaborators can open later without embedding the source in the link. **Cloud
+Link** copies that editor URL, and **Open Artifact** opens the rendered reader
+view at `/d/<id>`.
+
+For multi-page collaboration, use `cloud.html`. It lists spaces and pages for
+the signed-in user, lets owners invite viewer/editor collaborators, creates
+viewer/editor share links, publishes reader sites at `/s/<id>`, and lets site
+editors update pages through workspace permissions. The hosted server persists
+users, spaces, documents, shares, and the block search index in SQLite. Agent
+tools can query that database through `/api/db/schema` and `/api/db/query`;
+results are filtered by the caller's Noma Cloud user permissions. Realtime
+cursors and enterprise identity remain later product work; role-gated async
+editing is now part of the hosted slice.
+
+## Tables and data
+
+The **Tables & Data** panel discovers ID-bearing `::table` and `::dataset`
+directives in the current AST.
+
+Supported editing paths:
+
+| Block | Supported in the grid |
+|---|---|
+| `::table{id="..." header}` | Edit cells, edit existing header cells, add rows, add columns. |
+| `::table{id="..."}` | Edit cells, add rows, add columns with inferred source column labels. |
+| `::dataset{id="..." format="csv"}` | Edit cells, add rows, add columns. |
+| `::dataset{id="..." format="tsv"}` | Edit cells, add rows, add columns. |
+| `::dataset{id="..." format="yaml"}` | Edit cells, add rows, add columns when rows are source-preserving arrays. |
+| `::dataset{id="..." format="json"}` | Edit cells, add rows, add columns for row-array and record-array datasets. |
+
+When you click **Apply**, the grid does not rewrite the whole block. It
+generates granular patch ops such as `update_table_cell`,
+`insert_table_row`, `insert_dataset_column`, and `update_dataset_cell`, places
+them in the Agent Proof panel, runs the proof, and writes only if the proof
+passes. Row and column deletion remain patch/source operations for now so the
+browser grid cannot accidentally remove data.
+
+## Diagnostics-first editing
+
+The diagnostics side panel now starts with a severity summary. Individual
+diagnostics remain clickable when they have line information, so syntax,
+reference, evidence, citation, and profile problems can be corrected at the
+source line instead of discovered only during export.
+
+This is intentionally different from typical Markdown preview panes. The
+workbench treats diagnostics as part of the writing loop, not as a terminal
+build step.
 
 For a true Word package, use the copied DOCX command after saving the source:
 
@@ -145,10 +291,13 @@ The workbench is deliberately source-first:
 
 - It does not hide the `.noma` syntax.
 - It does not offer full visual editing for every semantic block; rendered
-  editing covers simple text nodes and leaves complex structures in source.
-- It does not provide realtime collaboration.
+  editing covers simple text nodes, while the side panel covers proofed
+  table/dataset edits.
+- It does not provide realtime multi-cursor collaboration; shared draft links
+  cloud links, and review packets are async handoff tools.
 - It does not write directly back to a local file without using the browser's
-  download flow.
+  download flow; proofed changes update the browser draft and should still be
+  downloaded, copied into the repository, or saved to a hosted cloud document.
 - It does not edit DOCX packages in the browser. DOCX export and return paths
   stay in the CLI.
 

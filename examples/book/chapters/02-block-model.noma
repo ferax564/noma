@@ -1,3 +1,11 @@
+---
+tags: [reference, blocks]
+status: stable
+owner: Docs
+updated: 2026-06-05
+aliases: [block-model]
+---
+
 # The block model
 
 Noma documents are trees of typed blocks. Each block knows what it is, what it contains, and how it should render across HTML, PDF, and LLM context.

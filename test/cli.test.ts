@@ -170,6 +170,68 @@ test("noma prove renders an agent safety proof without mutating by default", () 
   assert.ok(proof.sourceMetrics.preservedPercent > 0);
 });
 
+test("noma proof alias can render a pull request markdown summary", () => {
+  const dir = scratch();
+  const input = join(dir, "proof-md.noma");
+  const summary = join(dir, "proof.md");
+  writeFileSync(input, `# Proof\n\n::risk{id="r1" owner="ops"}\nOld risk.\n::\n`);
+
+  const res = spawnSync(
+    "npx",
+    [
+      "tsx",
+      "src/cli.ts",
+      "proof",
+      input,
+      "--to",
+      "markdown",
+      "--op",
+      '{"op":"replace_body","id":"r1","content":"New risk."}',
+      "--out",
+      summary,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 0, res.stderr);
+  const md = readFileSync(summary, "utf8");
+  assert.match(md, /## Noma Proof: PASS/);
+  assert.match(md, /`replace_body` -> `r1`/);
+  assert.match(md, /Lines preserved/);
+});
+
+test("noma ingest converts Markdown headings to explicit stable IDs", () => {
+  const dir = scratch();
+  const input = join(dir, "README.md");
+  const output = join(dir, "README.noma");
+  writeFileSync(input, `# API Guide\n\n## Install\n\nText.\n\n## Install\n\n\`\`\`text\n# Not a heading\n\`\`\`\n`);
+
+  const res = spawnSync(
+    "npx",
+    ["tsx", "src/cli.ts", "ingest", input, "--out", output],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 0, res.stderr);
+  const source = readFileSync(output, "utf8");
+  assert.match(source, /# API Guide \{id="api-guide"\}/);
+  assert.match(source, /## Install \{id="install"\}/);
+  assert.match(source, /## Install \{id="install-2"\}/);
+  assert.match(source, /# Not a heading/);
+});
+
+test("noma check --profile applies validation profiles without frontmatter edits", () => {
+  const dir = scratch();
+  const input = join(dir, "memo.noma");
+  writeFileSync(input, `::claim{id="c1"}\nClaim.\n::\n\n::evidence{for="c1"}\nEvidence.\n::\n`);
+
+  const res = spawnSync(
+    "npx",
+    ["tsx", "src/cli.ts", "check", input, "--profile", "research-memo"],
+    { encoding: "utf8" },
+  );
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /claim-missing-confidence/);
+});
+
 test("noma prove --inplace refuses to write when the patch target is missing", () => {
   const dir = scratch();
   const input = join(dir, "proof-fail.noma");

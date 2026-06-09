@@ -25,7 +25,7 @@ noma check my-spec/demo.noma
 noma render my-spec/demo.noma --to html --strict --out my-spec/demo.html
 noma render my-spec/demo.noma --to llm --budget 12000
 noma ids my-spec/demo.noma
-noma prove my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"The first risk is now tracked without rewriting surrounding source."}' --out my-spec/proof.html
+noma proof my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"The first risk is now tracked without rewriting surrounding source."}' --out my-spec/proof.html
 noma patch my-spec/demo.noma --op '{"op":"replace_body","id":"first-risk","content":"The first risk is now tracked without rewriting surrounding source."}' --inplace
 noma check my-spec/demo.noma
 ```
@@ -71,14 +71,49 @@ npm install
 
 ## Use the web workbench
 
-The static site includes a browser workbench for editing `.noma` source, checking diagnostics, previewing safe HTML, inspecting the AST, and copying LLM context. Its ribbon covers the main Word-like workflows that fit Noma's source-first model: file open/new/export, selection formatting, headings, lists, links, tables, figures, layout blocks, comments, change requests, footnotes, find, and print:
+The static site includes a browser workbench for editing `.noma` source,
+checking diagnostics, previewing safe HTML, proving patch ops, editing
+ID-bearing tables/datasets, inspecting the AST, and copying LLM context. Its
+ribbon covers the main Word-like workflows that fit Noma's source-first model:
+file open/new/export, selection formatting, headings, lists, links, tables,
+figures, layout blocks, comments, change requests, footnotes, proof controls,
+find, and print:
 
 ```bash
 npm run build:site
 open dist/workbench.html
 ```
 
+For persistent spaces, pages, permissions, and share links, run the hosted
+server instead:
+
+```bash
+npm run build:cloud
+PORT=3000 npm start
+open http://localhost:3000/cloud.html
+```
+
+The hosted cloud app can create a space, edit multiple pages, save source
+through `/api/documents` and `/api/sites`, invite viewer/editor collaborators,
+copy share links, and publish a rendered reader site at `/s/<id>`. Runtime
+state is stored in SQLite, and `/api/db/schema` plus `/api/db/query` expose a
+permission-aware query surface for future plugins and agent tools.
+
 For screenshots and the full command map, read the [web workbench guide](workbench.noma).
+For hosted collaboration, permissions, published sites, and the query API, read
+the [Noma Cloud guide](noma-cloud.noma).
+
+The fastest no-install product test is:
+
+1. open the published workbench
+2. load the agent-plan example
+3. click **Review -> Prove**
+4. inspect the Proof output tab
+5. click **Apply** only after the proof passes
+6. switch to the research-thesis example and use **Tables & Data** on a dataset
+
+That path demonstrates the proof loop without installing the
+CLI first. The CLI remains the release and CI path for repository work.
 
 ## Render an example
 
@@ -405,16 +440,22 @@ rows:
 
 The rule of thumb: pipe table for readable prose, `::table` for compact report tables, `::dataset` when the numbers should be reusable or checked.
 
-## Render a multi-file book
+## Render a multi-file book or space
 
 Multi-file projects use a YAML manifest with a `.yml` / `.yaml` extension. The CLI auto-detects it:
 
 ```bash
 npm run noma -- render examples/book/book.noma.yml --to html --out dist/book.html
+npm run noma -- render examples/book/book.noma.yml --to site --out dist/book-site
 npm run noma -- render examples/book/book.noma.yml --to llm
 ```
 
-Chapter paths inside the manifest resolve relative to its directory.
+Chapter paths inside the manifest resolve relative to its directory. `--to html`
+concatenates the chapters into one continuous artifact. `--to site` publishes a
+static Noma Space: one page per chapter, a sidebar, breadcrumbs, search UI,
+`_assets/search-index.json` for agents, page metadata from frontmatter
+(`tags`, `status`, `owner`, `updated`), related pages, and backlinks discovered
+from cross-chapter `[[id]]` references.
 
 ## Patch a block (without rewriting the file)
 
@@ -491,7 +532,33 @@ jobs:
           artifact-name: spec-preview
 ```
 
-The action installs the CLI from the checked-out action ref by default, runs `noma check`, renders the requested target, and uploads the output with `actions/upload-artifact`. For book manifests, set `to: site` and point `output` at a directory. If you need an explicit package source, set `cli-package` to any npm package spec or `cli-version` to an `@ferax564/noma-cli` npm version range.
+The action can also generate a proof report and PR comment for a proposed docs patch:
+
+```yaml
+name: Proof Noma docs
+
+on: [pull_request]
+
+jobs:
+  noma-proof:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ferax564/noma@v0.13.0
+        with:
+          mode: proof
+          input: docs/spec.noma
+          ops: proposed-docs-patch.json
+          profile: technical-docs
+          proof-output: dist/spec-proof.html
+          comment-pr: true
+          artifact-name: spec-proof
+```
+
+The action installs the CLI from the checked-out action ref by default, runs `noma check`, and either renders the requested target or generates proof HTML plus a Markdown summary. For book manifests in render mode, set `to: site` and point `output` at a directory. If you need an explicit package source, set `cli-package` to any npm package spec or `cli-version` to an `@ferax564/noma-cli` npm version range.
 
 ## Re-align tables in source
 
@@ -531,7 +598,12 @@ profile: research
 ---
 ```
 
-Three built-in profiles ship: `minimal` (markdown-equivalent), `technical` (product docs, landing pages), and `research` (theses, ADRs, recap docs). The validator warns on any out-of-profile directive. Omit the field to keep the open surface.
+Built-in profiles include `minimal`, `technical`, `technical-docs`, `research`, `research-memo`, `investment-thesis`, `adr`, `spec`, `memory`, and `agent-memory`. The validator warns on any out-of-profile directive. Omit the field to keep the open surface, or enforce a profile in CI without editing source:
+
+```bash
+noma check docs/api.noma --profile technical-docs
+noma proof docs/api.noma --ops proposed-docs-patch.json --profile technical-docs --to markdown
+```
 
 ## Render to PDF
 

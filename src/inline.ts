@@ -3,6 +3,31 @@
  * Order matters: handle code spans first so emphasis inside `code` stays raw.
  */
 const MARKDOWN_LINK_RE = /\[((?:\\.|[^\]\\])+)\]\(([^)\s]+)\)/g;
+const WIKILINK_RE = /\[\[([^\]\n]+?)\]\]/g;
+const BLOCK_REFERENCE_WIKILINK_RE = /^[a-zA-Z_][\w\-./:]*$/;
+
+export interface Wikilink {
+  raw: string;
+  target: string;
+  label: string;
+}
+
+export function extractWikilinks(src: string): Wikilink[] {
+  const out: Wikilink[] = [];
+  for (const match of stripInlineCodeSpans(src).matchAll(WIKILINK_RE)) {
+    const parsed = parseWikilink(match[1] ?? "");
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+function stripInlineCodeSpans(src: string): string {
+  return src.replace(/`[^`\n]*`/g, "");
+}
+
+export function isBlockReferenceWikilinkTarget(target: string): boolean {
+  return BLOCK_REFERENCE_WIKILINK_RE.test(target);
+}
 
 export function inlineToHtml(src: string): string {
   let text = escapeHtml(src);
@@ -26,9 +51,7 @@ export function inlineToHtml(src: string): string {
     MARKDOWN_LINK_RE,
     (_m, label, href) => `<a href="${escapeAttr(href)}">${unescapeMarkdownLinkLabel(label)}</a>`,
   );
-  text = text.replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, (_m, id) =>
-    `<a class="noma-ref" href="#${escapeAttr(id)}">${id}</a>`,
-  );
+  text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
   // CommonMark: a single newline inside a paragraph is a soft line break
   // (renders as a space); two trailing spaces or a trailing backslash before
   // the newline make it a hard break (`<br/>`).
@@ -53,9 +76,32 @@ export function inlineToPlain(src: string): string {
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/\b_([^_]+)_\b/g, "$1")
     .replace(MARKDOWN_LINK_RE, (_m, label, href) => `${unescapeMarkdownLinkLabel(label)} (${href})`)
-    .replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, "$1");
+    .replace(WIKILINK_RE, (match, raw) => parseWikilink(raw)?.label ?? match);
   const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
   return text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
+}
+
+function renderWikilinkHtml(match: string, raw: string): string {
+  const parsed = parseWikilink(raw);
+  if (!parsed) return match;
+  const hrefTarget = isBlockReferenceWikilinkTarget(parsed.target)
+    ? parsed.target
+    : encodeURIComponent(parsed.target);
+  return `<a class="noma-ref" href="#${escapeAttr(hrefTarget)}">${parsed.label}</a>`;
+}
+
+function parseWikilink(raw: string): Wikilink | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.includes("[") || trimmed.includes("]")) return undefined;
+  const pipe = trimmed.indexOf("|");
+  const target = (pipe === -1 ? trimmed : trimmed.slice(0, pipe)).trim();
+  const label = (pipe === -1 ? defaultWikilinkLabel(target) : trimmed.slice(pipe + 1).trim()) || defaultWikilinkLabel(target);
+  if (!target) return undefined;
+  return { raw: trimmed, target, label };
+}
+
+function defaultWikilinkLabel(target: string): string {
+  return target.replace(/^#/, "").replace(/#/g, " > ");
 }
 
 export function unescapeMarkdownLinkLabel(label: string): string {

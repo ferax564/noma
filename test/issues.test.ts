@@ -272,8 +272,9 @@ test("issue #9: card description truncates at sentence boundary", () => {
   }
   renderSite(manifest, chapters, dir, { themeCss: "" });
   const idx = readFileSync(join(dir, "index.html"), "utf8");
+  const toc = idx.match(/<ol class="noma-site-toc">[\s\S]*?<\/ol>/)?.[0] ?? "";
   assert.match(idx, /First sentence here\./);
-  assert.ok(!/Second sentence/.test(idx));
+  assert.ok(!/Second sentence/.test(toc));
 });
 
 test("issue #8: package.json declares compiled dist entries in files and prepare script", () => {

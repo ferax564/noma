@@ -4,6 +4,7 @@ import { parse } from "../src/parser.js";
 import { renderHtml } from "../src/renderer-html.js";
 import { renderLlm } from "../src/renderer-llm.js";
 import { validate } from "../src/validator.js";
+import { extractWikilinks } from "../src/inline.js";
 import type { DirectiveNode, SectionNode, TableNode } from "../src/ast.js";
 
 test("table cells preserve pipes inside backticks", () => {
@@ -36,6 +37,22 @@ test("inline links preserve escaped brackets in labels", () => {
 
   assert.match(html, /<a href="https:\/\/example\.com\/report">\[source\]<\/a>/);
   assert.match(llm, /See \[source\] \(https:\/\/example\.com\/report\)\./);
+});
+
+test("Obsidian-style wikilinks support page titles, headings, and labels", () => {
+  const html = renderHtml(parse(`See [[Literature Review]], [[Paper Draft#Methods|methods]], and [[claim-main]].`));
+  const llm = renderLlm(parse(`See [[Literature Review]], [[Paper Draft#Methods|methods]], and [[claim-main]].`));
+
+  assert.match(html, /<a class="noma-ref" href="#Literature%20Review">Literature Review<\/a>/);
+  assert.match(html, /<a class="noma-ref" href="#Paper%20Draft%23Methods">methods<\/a>/);
+  assert.match(html, /<a class="noma-ref" href="#claim-main">claim-main<\/a>/);
+  assert.match(llm, /See Literature Review, methods, and claim-main\./);
+});
+
+test("wikilink extraction ignores inline code examples", () => {
+  assert.deepEqual(extractWikilinks("Use `[[Page Title]]` as an example, then link [[Real Page]]."), [
+    { raw: "Real Page", target: "Real Page", label: "Real Page" },
+  ]);
 });
 
 test("::table directive renders pipe-body without separator row", () => {

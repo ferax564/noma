@@ -12,7 +12,7 @@ import {
   formulaText,
   type ComputedEvalContext,
 } from "./computed.js";
-import { inlineToPlain, splitPipeRow, unescapeMarkdownLinkLabel, unescapeMarkdownTextEscapes } from "./inline.js";
+import { extractWikilinks, inlineToPlain, splitPipeRow, unescapeMarkdownLinkLabel, unescapeMarkdownTextEscapes } from "./inline.js";
 import { buildDatasetRegistry, renderPlotSvgForNode, type DatasetTable } from "./renderer-html.js";
 
 export interface DocxRenderOptions {
@@ -3394,14 +3394,15 @@ function inlineRunsWithTextElement(
     else if (next.kind === "italic") out.push(inlineRunsWithTextElement(next.text, ctx, { ...base, italic: true }, textElement, relationshipScope));
     else if (next.kind === "math") out.push(textElement === "t" ? officeMathRun(next.text) : textRunWithElement(next.text, base, textElement));
     else if (next.kind === "link") out.push(linkRunsWithTextElement(next.text, next.href ?? "", ctx, base, relationshipScope, textElement));
-    else if (next.kind === "wikilink") out.push(wikilinkRunsWithTextElement(next.text, ctx, base, textElement));
+    else if (next.kind === "wikilink") out.push(wikilinkRunsWithTextElement(next.target, next.text, ctx, base, textElement));
     i = next.end;
   }
   return out.join("");
 }
 
 type InlineToken =
-  | { kind: "code" | "boldItalic" | "bold" | "italic" | "math" | "wikilink"; index: number; end: number; text: string }
+  | { kind: "code" | "boldItalic" | "bold" | "italic" | "math"; index: number; end: number; text: string }
+  | { kind: "wikilink"; index: number; end: number; text: string; target: string }
   | { kind: "link"; index: number; end: number; text: string; href: string };
 
 function nextInlineToken(src: string, start: number): InlineToken | null {
@@ -3411,7 +3412,7 @@ function nextInlineToken(src: string, start: number): InlineToken | null {
     { kind: "boldItalic", re: /\*\*\*([^*\n]+)\*\*\*/ },
     { kind: "bold", re: /\*\*([^*]+)\*\*/ },
     { kind: "link", re: /\[((?:\\.|[^\]\\])+)\]\(([^)\s]+)\)/ },
-    { kind: "wikilink", re: /\[\[([a-zA-Z_][\w\-./:]*)\]\]/ },
+    { kind: "wikilink", re: /\[\[([^\]\n]+?)\]\]/ },
     { kind: "math", re: /\\\(([\s\S]+?)\\\)/ },
     { kind: "math", re: /\\\[([\s\S]+?)\\\]/ },
     { kind: "math", re: /\$\$([^$\n]+?)\$\$/ },
@@ -3425,10 +3426,35 @@ function nextInlineToken(src: string, start: number): InlineToken | null {
     if (!match || match.index === undefined) continue;
     const index = start + match.index;
     const full = match[0] ?? "";
-    const text = spec.kind === "link" ? unescapeMarkdownLinkLabel(match[1] ?? "") : match[1] ?? "";
-    const token = spec.kind === "link"
-      ? { kind: "link" as const, index, end: index + full.length, text, href: match[2] ?? "" }
-      : { kind: spec.kind as Exclude<InlineToken["kind"], "link">, index, end: index + full.length, text };
+    let token: InlineToken | null = null;
+    if (spec.kind === "link") {
+      token = {
+        kind: "link",
+        index,
+        end: index + full.length,
+        text: unescapeMarkdownLinkLabel(match[1] ?? ""),
+        href: match[2] ?? "",
+      };
+    } else if (spec.kind === "wikilink") {
+      const wiki = extractWikilinks(full)[0];
+      if (wiki) {
+        token = {
+          kind: "wikilink",
+          index,
+          end: index + full.length,
+          text: wiki.label,
+          target: wiki.target,
+        };
+      }
+    } else {
+      token = {
+        kind: spec.kind as "code" | "boldItalic" | "bold" | "italic" | "math",
+        index,
+        end: index + full.length,
+        text: match[1] ?? "",
+      };
+    }
+    if (!token) continue;
     if (!best || token.index < best.index) best = token;
   }
   return best;
@@ -3509,17 +3535,23 @@ function addHyperlinkRelationship(
 }
 
 function wikilinkRuns(id: string, ctx: DocxCtx, base: RunStyle): string {
-  return wikilinkRunsWithTextElement(id, ctx, base, "t");
+  return wikilinkRunsWithTextElement(id, id, ctx, base, "t");
 }
 
-function wikilinkRunsWithTextElement(id: string, ctx: DocxCtx, base: RunStyle, textElement: TextElementName): string {
+function wikilinkRunsWithTextElement(
+  id: string,
+  label: string,
+  ctx: DocxCtx,
+  base: RunStyle,
+  textElement: TextElementName,
+): string {
   const anchor = ctx.bookmarkNames.get(id);
-  if (!anchor) return textRunWithElement(id, base, textElement);
+  if (!anchor) return textRunWithElement(label, base, textElement);
   const captionLabel = ctx.captionCrossReferences.get(id);
   if (captionLabel && textElement === "t") {
     return fieldRun(`REF ${anchor} \\h`, captionLabel, { ...base, color: "0563C1", underline: true });
   }
-  return `<w:hyperlink w:anchor="${xmlAttr(anchor)}">${textRunWithElement(id, { ...base, color: "0563C1", underline: true }, textElement)}</w:hyperlink>`;
+  return `<w:hyperlink w:anchor="${xmlAttr(anchor)}">${textRunWithElement(label, { ...base, color: "0563C1", underline: true }, textElement)}</w:hyperlink>`;
 }
 
 function textRun(text: string, style: RunStyle = {}): string {

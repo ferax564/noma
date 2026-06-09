@@ -21,6 +21,7 @@ import { inlineDatasetSources } from "./loader.js";
  */
 export interface BookManifest {
   title?: string;
+  description?: string;
   author?: string;
   chapters: string[];
   outputs?: {

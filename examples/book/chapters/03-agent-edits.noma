@@ -1,3 +1,11 @@
+---
+tags: [agents, patching]
+status: stable
+owner: Docs
+updated: 2026-06-05
+aliases: [agent-edits]
+---
+
 # Edits agents can trust
 
 The single most important question this format answers is: *can an AI agent edit my document without breaking it?*

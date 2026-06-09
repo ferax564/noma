@@ -33,16 +33,49 @@ patch.
 | 1. Read | `noma render file.noma --to llm --budget 12000` | Get deterministic context without HTML noise. |
 | 2. Discover IDs | `noma ids file.noma` | Find canonical IDs and aliases before patching. |
 | 3. Validate | `noma check file.noma` | Record the pre-edit diagnostic state. |
-| 4. Prove | `noma prove file.noma --ops ops.json --out proof.html` | Dry-run the patch and render diagnostics, hashes, diff, source preservation, LLM context, ID registry, and a post-patch preview. |
+| 4. Prove | `noma proof file.noma --ops ops.json --out proof.html` | Dry-run the patch and render diagnostics, hashes, diff, source preservation, LLM context, ID registry, and a post-patch preview. |
 | 5. Patch | `noma patch file.noma --ops ops.json --inplace` | Apply the same transaction after the proof is accepted. |
 | 6. Re-check | `noma check file.noma` | Confirm the edit did not introduce errors. |
 | 7. Render | `noma render file.noma --to html --strict --out artifact.html` | Produce a safe published artifact. |
 ::
 
-Use `noma prove file.noma --ops ops.json --inplace --out proof.html` when the
+Use `noma proof file.noma --ops ops.json --inplace --out proof.html` when the
 proof artifact and source update should be one guarded operation. The command
 writes the source only if the simulated post-patch document has no validation
 errors.
+
+## Browser proof surface
+
+The web workbench exposes the same product contract for no-install review:
+
+1. paste one patch op or an ops array into **Agent Proof**
+2. click **Review -> Prove**
+3. inspect hashes, diagnostics, source preservation, ops, and post-preview in
+   the Proof output tab
+4. click **Apply** only when the proof is writable
+5. copy **Share Proof** when a reviewer needs proof metadata without the source
+
+Workbench table and dataset edits also travel through this path. The visual
+grid generates granular patch ops, runs a proof, and only writes the browser
+draft when post-validation has no errors.
+
+## Space maintenance
+
+For multi-page documentation, books, papers, or agent memory packs, treat the
+book manifest as the project boundary:
+
+```bash
+noma ids docs/book.noma.yml
+noma check docs/book.noma.yml
+noma render docs/book.noma.yml --to site --out dist/docs
+```
+
+The generated Noma Space is reader-facing, but it also gives agents useful
+orientation: `_assets/search-index.json` lists page titles, paths, tags, status,
+owners, updated dates, summaries, and plain text; page sidebars expose related
+pages and backlinks; cross-chapter `[[id]]` links use the same scoped ID/alias
+map as validation. Edits still go through source patches against `.noma` files,
+not HTML rewrites.
 
 ## Choose the smallest operation
 
@@ -95,7 +128,7 @@ Do not patch by line number unless the user explicitly asks. Noma IDs are the pu
 ::
 
 - Do not scrape rendered HTML when `--to llm` can provide scoped context.
-- Prefer `noma prove` before `noma patch` when the edit is user-visible,
+- Prefer `noma proof` before `noma patch` when the edit is user-visible,
   multi-operation, or needs an audit artifact.
 - Prefer `replace_body` over `replace_block` when attributes and children should survive.
 - Prefer `update_heading` over text replacement for section titles.
@@ -112,7 +145,7 @@ Copy agent editing prompt
 ::
 
 ::code{id="agent-safe-edit-prompt" lang="text"}
-You are editing a Noma document. First discover IDs with `noma ids`. Choose the smallest patch operation. Prove the edit with `noma prove --ops --out proof.html`. Apply edits with `noma patch --ops` only after the proof passes. Run `noma check` after the patch. Do not rewrite the whole file unless explicitly requested.
+You are editing a Noma document. First discover IDs with `noma ids`. Choose the smallest patch operation. Prove the edit with `noma proof --ops --out proof.html`. Apply edits with `noma patch --ops` only after the proof passes. Run `noma check` after the patch. Do not rewrite the whole file unless explicitly requested.
 ::
 
 ## When to ask a human

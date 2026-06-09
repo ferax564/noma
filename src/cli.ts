@@ -24,9 +24,11 @@ import { verifyFixtureDir } from "./verify.js";
 import { diffDocs } from "./diff.js";
 import { collectIdRegistry } from "./ids.js";
 import { writePdfFromHtml, type PdfMarginOptions } from "./pdf.js";
-import { createAgentSafetyProof, renderProofHtml } from "./proof.js";
+import { createAgentSafetyProof, renderProofHtml, renderProofMarkdownSummary } from "./proof.js";
+import { convertMarkdownToNoma } from "./ingest-markdown.js";
 import type { RenderLlmOptions } from "./renderer-llm.js";
 import type { DocumentNode } from "./ast.js";
+import type { ValidateOptions } from "./validator.js";
 
 const HELP = `noma — readable document format for humans and agents
 
@@ -36,9 +38,12 @@ Usage:
   noma check <file.noma|book.yml>            Validate the document
   noma export <file.noma|book.yml> [opts]    Alias for render --to json
   noma patch <file.noma> [opts]              Apply block-level patch ops
+  noma proof <file.noma> [opts]              Render an agent safety proof for patch ops
+  noma agent review <file.noma> [opts]       Alias for proof
+  noma ingest <file.md> [opts]               Convert Markdown to Noma-compatible source
   noma init [dir]                            Create a starter .noma document
   noma ids <file.noma|book.yml>              Print canonical ID and alias registry
-  noma prove <file.noma> [opts]              Render an agent safety proof for patch ops
+  noma prove <file.noma> [opts]              Alias for proof
   noma schema <name>                         Print bundled JSON Schema
   noma docx-data <file.docx>                 Extract DOCX control/task state as JSON
   noma docx-sync <file.noma> <file.docx>     Update ::control defaults and task state
@@ -82,6 +87,9 @@ Render options:
 
 Check options:
   --stale-days <n>          Override the citation staleness window (days)
+  --profile <name>          Apply a validator profile without editing frontmatter
+                            (repeatable; e.g. technical-docs, research-memo,
+                            adr, spec, agent-memory)
   --ignore-rule <name>      Suppress a validator rule (repeatable)
 
 Patch options:
@@ -94,10 +102,15 @@ Patch options:
 
 Proof options:
   --op/--ops                Patch operation(s) to simulate. Same shape as patch.
-  --to <html|json>          Proof output target (default: html)
+  --to <html|json|markdown|md>
+                            Proof output target (default: html)
   --inplace                 Apply the simulated patch only if the proof passes
   --select/--exclude/--budget
                             Scope the LLM context shown in the proof
+
+Ingest options:
+  --add-stable-ids          Add explicit IDs to Markdown headings (default)
+  --no-stable-ids           Preserve Markdown headings without explicit IDs
 
 DOCX sync options:
   --report <path>           Write a JSON report for docx-sync or
@@ -123,7 +136,8 @@ Examples:
   noma render examples/thesis.noma --to llm
   noma check examples/thesis.noma
   noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
-  noma prove examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --out dist/proof.html
+  noma proof examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --out dist/proof.html
+  noma ingest docs/README.md --out docs/README.noma
   noma diff before.noma after.noma --at 2026-05-12 --reason "Q1 refresh"
 `;
 
@@ -156,6 +170,8 @@ interface CliArgs {
   pdfPrintBackground: boolean;
   staleDays?: number;
   ignoreRules: string[];
+  profiles: string[];
+  addStableIds: boolean;
   math?: "katex" | "none";
   excludeStaleDays?: number;
   llmSelect: string[];
@@ -178,6 +194,8 @@ function parseArgs(argv: string[]): CliArgs {
     externalAssets: true,
     interactive: true,
     ignoreRules: [],
+    profiles: [],
+    addStableIds: true,
     llmSelect: [],
     llmExclude: [],
   };
@@ -223,6 +241,10 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--ignore-rule") {
       const v = argv[++i];
       if (v) args.ignoreRules.push(v);
+      i++;
+    } else if (a === "--profile") {
+      const v = argv[++i];
+      if (v) args.profiles.push(v);
       i++;
     } else if (a === "--math") {
       const v = argv[++i];
@@ -282,6 +304,12 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--inplace") {
       args.inplace = true;
+      i++;
+    } else if (a === "--add-stable-ids") {
+      args.addStableIds = true;
+      i++;
+    } else if (a === "--no-stable-ids") {
+      args.addStableIds = false;
       i++;
     } else if (a === "--reason") {
       args.diffReason = argv[++i];
@@ -506,8 +534,20 @@ function proofJson(proof: ReturnType<typeof createAgentSafetyProof>): string {
   return JSON.stringify(body, null, 2);
 }
 
+function validateOptionsFromArgs(args: CliArgs): ValidateOptions {
+  return {
+    ...(args.staleDays !== undefined ? { staleCitationDays: args.staleDays } : {}),
+    ...(args.ignoreRules.length > 0 ? { ignoreRules: args.ignoreRules } : {}),
+    ...(args.profiles.length > 0 ? { profiles: args.profiles } : {}),
+  };
+}
+
 async function main(): Promise<void> {
-  const argv = process.argv.slice(2);
+  const rawArgv = process.argv.slice(2);
+  const argv =
+    rawArgv[0] === "agent" && rawArgv[1] === "review"
+      ? ["proof", ...rawArgv.slice(2)]
+      : rawArgv;
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(HELP);
     return;
@@ -566,6 +606,16 @@ async function main(): Promise<void> {
       process.stderr.write(`error: ${(error as Error).message}\n`);
       process.exit(2);
     }
+    return;
+  }
+
+  if (cmd === "ingest") {
+    if (!args.file) {
+      process.stderr.write("noma ingest: <file.md> required\n");
+      process.exit(2);
+    }
+    const source = readFileSync(resolve(args.file), "utf8");
+    output(convertMarkdownToNoma(source, { addStableIds: args.addStableIds }), args.out);
     return;
   }
 
@@ -667,14 +717,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (cmd === "prove") {
+  if (cmd === "prove" || cmd === "proof") {
     if (isBookManifestPath(filePath)) {
-      process.stderr.write(`error: noma prove operates on .noma source files, not book manifests\n`);
+      process.stderr.write(`error: noma ${cmd} operates on .noma source files, not book manifests\n`);
       process.exit(2);
     }
     const tx = patchTransactionFromArgs(args);
     if (tx.ops.length === 0) {
-      process.stderr.write(`error: noma prove needs --op or --ops\n`);
+      process.stderr.write(`error: noma ${cmd} needs --op or --ops\n`);
       process.exit(2);
     }
     let llmOptions: RenderLlmOptions;
@@ -692,10 +742,7 @@ async function main(): Promise<void> {
       ops: tx.ops,
       prevalidate: tx.prevalidate,
       postvalidate: tx.postvalidate,
-      validateOptions: {
-        ...(args.staleDays !== undefined ? { staleCitationDays: args.staleDays } : {}),
-        ...(args.ignoreRules.length > 0 ? { ignoreRules: args.ignoreRules } : {}),
-      },
+      validateOptions: validateOptionsFromArgs(args),
       llmOptions,
       artifactOptions: {
         title: args.title,
@@ -708,8 +755,10 @@ async function main(): Promise<void> {
       output(proofJson(proof), args.out);
     } else if (args.to === "html") {
       output(renderProofHtml(proof), args.out);
+    } else if (args.to === "markdown" || args.to === "md") {
+      output(renderProofMarkdownSummary(proof), args.out);
     } else {
-      process.stderr.write(`error: noma prove supports --to html or --to json\n`);
+      process.stderr.write(`error: noma ${cmd} supports --to html, --to json, or --to markdown\n`);
       process.exit(2);
     }
     if (args.inplace) {
@@ -841,10 +890,7 @@ async function main(): Promise<void> {
       return;
     }
     case "check": {
-      const diagnostics = validate(doc, {
-        ...(args.staleDays !== undefined ? { staleCitationDays: args.staleDays } : {}),
-        ...(args.ignoreRules.length > 0 ? { ignoreRules: args.ignoreRules } : {}),
-      });
+      const diagnostics = validate(doc, validateOptionsFromArgs(args));
       const formatted = formatDiagnostics(diagnostics, args.file);
       process.stdout.write(formatted + "\n");
       const hasError = diagnostics.some((d) => d.severity === "error");

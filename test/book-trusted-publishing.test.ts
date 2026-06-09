@@ -38,6 +38,7 @@ function assertTrustedStaticHtml(html: string): void {
   assert.ok(!html.includes("<b>raw</b>"), "raw HTML must be filtered under trusted publishing");
   assert.ok(!/cdn\.jsdelivr\.net/.test(html), "trusted publishing must omit CDN runtimes");
   assert.ok(!/<script\b/.test(html), "trusted publishing must omit inline runtimes");
+  assert.ok(!/\son[a-z]+\s*=/.test(html), "trusted publishing must omit inline event handlers");
   assert.match(html, /interactive controls disabled in strict mode/);
   assert.equal(html.match(/interactive controls disabled in strict mode/g)?.length, 1);
   assert.match(html, /data-noma-control-input="growth-rate"[^>]*disabled/);

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Noma Cloud workspace editor for research papers, documentation spaces, permissioned pages, sharing, and agent patches." />
+<title>Noma Cloud</title>
+<link rel="icon" href="data:," />
+<link rel="preconnect" href="https://rsms.me/" />
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<link rel="stylesheet" href="assets/cloud.css" />
+</head>
+<body>
+<div class="cloud-shell">
+  <header class="cloud-topbar">
+    <a class="cloud-brand" href="cloud.html"><span class="cloud-brand-mark"></span>Noma Cloud</a>
+    <label class="top-field" for="cloudUserName">User
+      <input id="cloudUserName" type="text" autocomplete="name" />
+    </label>
+    <button id="newUserButton" type="button">Register User</button>
+    <button id="copyUserIdButton" type="button" disabled>Copy User ID</button>
+    <button id="copyUserTokenButton" type="button" disabled>Copy Token</button>
+    <button id="themeToggleButton" type="button" aria-pressed="false">Dark</button>
+    <span id="cloudStatus" class="cloud-status" aria-live="polite">Starting</span>
+  </header>
+
+  <aside class="space-rail" aria-label="Workspace navigation">
+    <div class="rail-head">
+      <label for="siteTitleInput">Workspace</label>
+      <input id="siteTitleInput" type="text" />
+    </div>
+    <div class="rail-actions">
+      <button id="newSpaceButton" type="button">New Space</button>
+      <button id="saveSpaceButton" type="button">Save Space</button>
+    </div>
+    <div class="rail-section">
+      <div class="rail-section-title">Spaces</div>
+      <div id="siteList" class="site-list"></div>
+    </div>
+    <div class="rail-section pages-section">
+      <div class="rail-section-title">Pages</div>
+      <div class="rail-actions">
+        <button id="newPageButton" type="button">New Page</button>
+        <button id="newFolderButton" type="button">New Folder</button>
+      </div>
+      <div id="pageList" class="page-list"></div>
+    </div>
+  </aside>
+
+  <main class="editor-shell">
+    <section class="page-header" aria-label="Current page">
+      <div class="page-title-group">
+        <input id="pageTitleInput" class="page-title-input" type="text" aria-label="Page title" />
+        <div class="page-meta">
+          <span id="roleBadge" class="meta-badge">viewer</span>
+          <span id="dirtyBadge" class="meta-badge">saved</span>
+          <span id="updatedText" class="updated-text"></span>
+        </div>
+      </div>
+      <div class="page-actions">
+        <div class="view-switch" role="group" aria-label="View mode">
+          <button id="sourceViewButton" type="button" data-view-mode="source">Source</button>
+          <button id="splitViewButton" type="button" data-view-mode="split">Split</button>
+          <button id="previewViewButton" type="button" data-view-mode="preview">Preview</button>
+        </div>
+        <button id="togglePanelsButton" type="button" aria-pressed="false">Panels</button>
+        <div class="action-cluster" aria-label="Page actions">
+          <button id="savePageButton" type="button">Save</button>
+          <button id="copyPageLinkButton" type="button">Page</button>
+          <button id="copyArtifactLinkButton" type="button">Artifact</button>
+          <button id="copySiteLinkButton" type="button">Space</button>
+          <button id="openPublishedSiteButton" type="button">Published</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="documentGrid" class="document-grid" aria-label="Document editor">
+      <div class="editor-pane">
+        <div class="pane-label">Noma Source</div>
+        <textarea id="sourceInput" class="source-input" spellcheck="false"></textarea>
+      </div>
+      <div id="splitResizeHandle" class="split-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize source and preview panes" tabindex="0"></div>
+      <div class="preview-pane">
+        <div class="pane-label">Paper Preview</div>
+        <iframe id="previewFrame" class="preview-frame" title="Rendered Noma page" sandbox="allow-same-origin"></iframe>
+      </div>
+    </section>
+  </main>
+
+  <aside class="inspector" aria-label="Workspace controls">
+    <section class="inspector-section">
+      <h2>Share</h2>
+      <label class="stack-field" for="shareRoleSelect">Link role
+        <select id="shareRoleSelect">
+          <option value="editor">Editor</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </label>
+      <label class="stack-field" for="inviteUserIdInput">Invite user ID
+        <input id="inviteUserIdInput" type="text" autocomplete="off" />
+      </label>
+      <label class="stack-field" for="inviteRoleSelect">Invite role
+        <select id="inviteRoleSelect">
+          <option value="editor">Editor</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </label>
+      <button id="inviteUserButton" type="button">Invite</button>
+      <div id="shareStatus" class="panel-status"></div>
+    </section>
+
+    <section class="inspector-section">
+      <h2>Agent Review</h2>
+      <textarea id="patchInput" class="patch-input" spellcheck="false" aria-label="Agent patch operations">[
+  {
+    "op": "update_heading",
+    "id": "research-paper-draft",
+    "title": "Updated paper title"
+  }
+]</textarea>
+      <div class="button-row">
+        <button id="applyPatchButton" type="button">Apply Patch</button>
+        <button id="copyLlmButton" type="button">Copy LLM</button>
+      </div>
+      <div id="agentStatus" class="panel-status"></div>
+    </section>
+
+    <section class="inspector-section">
+      <h2>Diagnostics</h2>
+      <div id="diagnosticsSummary" class="diagnostics-summary">No diagnostics</div>
+      <div id="diagnosticsList" class="diagnostics-list"></div>
+    </section>
+
+    <section class="inspector-section">
+      <h2>Outline</h2>
+      <div id="outlineList" class="outline-list"></div>
+    </section>
+
+    <section class="inspector-section">
+      <h2>Wiki</h2>
+      <div id="wikiSummary" class="diagnostics-summary">No wiki links</div>
+      <div id="wikiLinksList" class="wiki-list"></div>
+    </section>
+  </aside>
+</div>
+<script src="assets/cloud-app.js"></script>
+</body>
+</html>

@@ -1,7 +1,11 @@
-name: Render Noma artifact
-description: Validate and render a .noma file or book manifest with the Noma CLI.
+name: Noma artifact and proof
+description: Validate, render, or proof a .noma file or book manifest with the Noma CLI.
 
 inputs:
+  mode:
+    description: "Workflow mode: render or proof."
+    required: false
+    default: render
   input:
     description: Path to a .noma source file or book manifest.
     required: true
@@ -45,8 +49,36 @@ inputs:
     description: Optional stale-citation window for the validation step.
     required: false
     default: ""
+  profile:
+    description: Optional comma- or space-separated validator profiles to apply during validation/proof.
+    required: false
+    default: ""
   ignore-rule:
     description: Optional comma- or space-separated validator rules to ignore during validation.
+    required: false
+    default: ""
+  op:
+    description: Inline patch op JSON for proof mode.
+    required: false
+    default: ""
+  ops:
+    description: Path to a patch ops JSON file for proof mode.
+    required: false
+    default: ""
+  proof-output:
+    description: HTML proof artifact path when mode=proof.
+    required: false
+    default: noma-proof.html
+  proof-summary-output:
+    description: Markdown proof summary path when mode=proof.
+    required: false
+    default: noma-proof.md
+  comment-pr:
+    description: Post the Markdown proof summary as a pull request comment when mode=proof.
+    required: false
+    default: "false"
+  github-token:
+    description: GitHub token used for pull request proof comments.
     required: false
     default: ""
   upload-artifact:
@@ -62,6 +94,15 @@ outputs:
   output:
     description: Rendered output path.
     value: ${{ steps.render.outputs.output }}
+  proof-output:
+    description: Proof HTML output path.
+    value: ${{ steps.proof.outputs.proof-output }}
+  proof-summary:
+    description: Proof Markdown summary path.
+    value: ${{ steps.proof.outputs.proof-summary }}
+  proof-exit-code:
+    description: Exit code returned by the proof command.
+    value: ${{ steps.proof.outputs.exit-code }}
 
 runs:
   using: composite
@@ -96,6 +137,14 @@ runs:
         if [[ -n "${{ inputs.stale-days }}" ]]; then
           args+=(--stale-days "${{ inputs.stale-days }}")
         fi
+        if [[ -n "${{ inputs.profile }}" ]]; then
+          IFS=', ' read -r -a profiles <<< "${{ inputs.profile }}"
+          for profile in "${profiles[@]}"; do
+            if [[ -n "$profile" ]]; then
+              args+=(--profile "$profile")
+            fi
+          done
+        fi
         if [[ -n "${{ inputs.ignore-rule }}" ]]; then
           IFS=', ' read -r -a rules <<< "${{ inputs.ignore-rule }}"
           for rule in "${rules[@]}"; do
@@ -107,6 +156,7 @@ runs:
         noma "${args[@]}"
 
     - name: Render Noma artifact
+      if: ${{ inputs.mode == 'render' }}
       id: render
       shell: bash
       run: |
@@ -121,9 +171,109 @@ runs:
         noma "${args[@]}"
         echo "output=${{ inputs.output }}" >> "$GITHUB_OUTPUT"
 
+    - name: Generate Noma proof
+      if: ${{ inputs.mode == 'proof' }}
+      id: proof
+      shell: bash
+      env:
+        NOMA_INPUT: ${{ inputs.input }}
+        NOMA_OP: ${{ inputs.op }}
+        NOMA_OPS: ${{ inputs.ops }}
+        NOMA_PROOF_OUTPUT: ${{ inputs.proof-output }}
+        NOMA_PROOF_SUMMARY_OUTPUT: ${{ inputs.proof-summary-output }}
+        NOMA_THEME: ${{ inputs.theme }}
+        NOMA_STALE_DAYS: ${{ inputs.stale-days }}
+        NOMA_PROFILE: ${{ inputs.profile }}
+        NOMA_IGNORE_RULE: ${{ inputs.ignore-rule }}
+        NOMA_STRICT: ${{ inputs.strict }}
+        NOMA_MATH: ${{ inputs.math }}
+      run: |
+        set -uo pipefail
+        proof_args=(proof "$NOMA_INPUT" --out "$NOMA_PROOF_OUTPUT" --theme "$NOMA_THEME")
+        summary_args=(proof "$NOMA_INPUT" --to markdown --out "$NOMA_PROOF_SUMMARY_OUTPUT")
+        if [[ -n "$NOMA_OP" ]]; then
+          proof_args+=(--op "$NOMA_OP")
+          summary_args+=(--op "$NOMA_OP")
+        fi
+        if [[ -n "$NOMA_OPS" ]]; then
+          proof_args+=(--ops "$NOMA_OPS")
+          summary_args+=(--ops "$NOMA_OPS")
+        fi
+        if [[ -n "$NOMA_STALE_DAYS" ]]; then
+          proof_args+=(--stale-days "$NOMA_STALE_DAYS")
+          summary_args+=(--stale-days "$NOMA_STALE_DAYS")
+        fi
+        if [[ -n "$NOMA_PROFILE" ]]; then
+          IFS=', ' read -r -a profiles <<< "$NOMA_PROFILE"
+          for profile in "${profiles[@]}"; do
+            if [[ -n "$profile" ]]; then
+              proof_args+=(--profile "$profile")
+              summary_args+=(--profile "$profile")
+            fi
+          done
+        fi
+        if [[ -n "$NOMA_IGNORE_RULE" ]]; then
+          IFS=', ' read -r -a rules <<< "$NOMA_IGNORE_RULE"
+          for rule in "${rules[@]}"; do
+            if [[ -n "$rule" ]]; then
+              proof_args+=(--ignore-rule "$rule")
+              summary_args+=(--ignore-rule "$rule")
+            fi
+          done
+        fi
+        if [[ "$NOMA_STRICT" == "true" ]]; then
+          proof_args+=(--strict)
+        fi
+        if [[ -n "$NOMA_MATH" ]]; then
+          proof_args+=(--math "$NOMA_MATH")
+        fi
+        noma "${proof_args[@]}"
+        proof_status=$?
+        noma "${summary_args[@]}"
+        summary_status=$?
+        if [[ "$proof_status" -eq 0 ]]; then
+          proof_status="$summary_status"
+        fi
+        echo "proof-output=$NOMA_PROOF_OUTPUT" >> "$GITHUB_OUTPUT"
+        echo "proof-summary=$NOMA_PROOF_SUMMARY_OUTPUT" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$proof_status" >> "$GITHUB_OUTPUT"
+
+    - name: Comment Noma proof on pull request
+      if: ${{ inputs.mode == 'proof' && inputs.comment-pr == 'true' && github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
+      env:
+        NOMA_PROOF_SUMMARY: ${{ inputs.proof-summary-output }}
+      with:
+        github-token: ${{ inputs.github-token || github.token }}
+        script: |
+          const fs = require("fs");
+          const body = fs.readFileSync(process.env.NOMA_PROOF_SUMMARY, "utf8");
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.payload.pull_request.number,
+            body,
+          });
+
     - name: Upload Noma artifact
-      if: ${{ inputs.upload-artifact == 'true' }}
+      if: ${{ inputs.mode == 'render' && inputs.upload-artifact == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.output }}
+
+    - name: Upload Noma proof
+      if: ${{ inputs.mode == 'proof' && inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          ${{ inputs.proof-output }}
+          ${{ inputs.proof-summary-output }}
+
+    - name: Fail on proof rejection
+      if: ${{ inputs.mode == 'proof' && steps.proof.outputs.exit-code != '0' }}
+      shell: bash
+      run: |
+        echo "Noma proof failed with exit code ${{ steps.proof.outputs.exit-code }}" >&2
+        exit "${{ steps.proof.outputs.exit-code }}"

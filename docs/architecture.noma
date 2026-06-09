@@ -58,6 +58,22 @@ Pre-render source loaders for file-backed directives. `inlineDatasetSources` inl
 AST → semantic HTML. Special-cases the typed blocks (claim/evidence/reasoning metadata, grid, card, technical API/reference blocks, metric/code/computation blocks, computed controls/metrics/plots, memory profile blocks, review/collaboration blocks, plot, agent_task, state_change, table, ...), resolves `::plot{dataset=, column=}` against a per-render dataset registry, embeds a local runtime for standalone computed artifacts, and falls through to readable labeled panels for unknown or namespaced directive names.
 :::
 
+:::card{title="src/renderer-site.ts"}
+Book chapters → static Noma Space. Renders each chapter through the pure HTML
+renderer, rewrites cross-chapter wikilinks with depth-aware hrefs, writes shared
+theme/search assets, and injects sidebar navigation, breadcrumbs, page metadata,
+related pages, backlinks, copy/print actions, embedded search data, and a root
+`_assets/search-index.json` for agents.
+:::
+
+:::card{title="src/cloud-server.ts"}
+Hosted Noma Cloud surface. Serves the built workbench/site, persists shared
+`.noma` documents under `NOMA_CLOUD_DATA_DIR`, exposes `/api/documents` for
+create/read/update plus JSON/LLM/HTML artifacts, and publishes reader artifacts
+at `/d/<id>`. The server reuses the same parser, validator, and renderers rather
+than introducing a second document model.
+:::
+
 :::card{title="src/renderer-llm.ts"}
 AST → deterministic plain text with `[TAG attr=value]` markers. Designed to maximize signal density inside LLM context windows. Supports selection by node type or directive name plus a character budget for agent context windows, and evaluates computed formulas against control defaults so agents see static metric/series results without any browser runtime.
 :::

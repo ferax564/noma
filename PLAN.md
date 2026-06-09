@@ -759,7 +759,7 @@ complex CSS system
 real-time collaboration
 huge plugin marketplace
 enterprise permissions
-cloud platform
+multi-tenant SaaS cloud platform
 ```
 
 ## 18. Four-Week Prototype Plan
@@ -1253,6 +1253,25 @@ Launch line:
 > humans review and agents safely patch. It keeps source readable in Git,
 > renders polished artifacts, and gives agents stable block IDs for targeted
 > edits.**
+
+### 23.18 Hosted Collaboration Layer
+
+Noma's source-first core remains the product contract, but the collaboration
+surface should not stop at static HTML. The hosted layer is **Noma Cloud**:
+
+```txt
+.noma source → cloud document ID → workbench collaboration URL → rendered artifact URL
+```
+
+This layer should make Noma useful for shared research, paper drafting, books,
+technical documentation, and internal knowledge spaces. The MVP is intentionally
+smaller than realtime collaborative editing: persistent documents, stable share
+links, artifact publishing, diagnostics, LLM/JSON exports, and proofed patch
+operations. EZKeel is the default deployment path for user-owned VPS hosting.
+
+Realtime cursors, multi-tenant enterprise auth, billing, and organization-scale
+permissions are later product work. They must not weaken the source/artifact/
+agent contract or turn `.noma` into an opaque database-only format.
 
 ## 24. Shipped Tracker
 
@@ -1760,3 +1779,129 @@ trust artifact instead of a sequence of separate commands.
 - **Release metadata.** Root CLI and MCP server move to `0.13.0`; the
   TypeScript Agent SDK moves to `0.1.3` with `0.13.0` dependencies; versioned
   docs, README status, changelog, and lockfile metadata are aligned.
+
+### §24.26 — post-v0.13.0 live workbench proof/editor slice
+
+Implemented on 2026-06-05 after the public v0.13.0 proof release to make the
+proof loop usable directly from the browser workbench.
+
+- **Workbench proof surface.** The static workbench now includes an Agent Proof
+  panel, Review-tab prove/apply/share controls, and a Proof output tab. Browser
+  proofs simulate patch ops, compute pre/post hashes, validate the post-source,
+  measure line preservation, show operation payloads, and render a sandboxed
+  post-patch artifact preview. Apply is disabled unless the proof is writable.
+- **Workbench table/data editor.** ID-bearing `::table` and `::dataset` blocks
+  are discoverable from the side panel and editable through a compact grid.
+  Cell edits and row/column additions generate granular table/dataset patch
+  operations, run through the proof loop, and only update the browser draft when
+  validation permits the write.
+- **Diagnostics-first authoring.** The inspector now begins with a severity
+  summary while keeping click-to-source diagnostics and outline navigation.
+- **Async collaboration handoff.** The browser workbench now exposes a
+  Collaboration panel with a live source fingerprint, shared draft links that
+  carry source in the URL fragment, and Markdown review packets containing the
+  draft URL, hash, diagnostics, IDs, and LLM context.
+- **Agent-oriented narrative.** The landing page and docs now frame Noma around
+  LaTeX/Markdown/HTML pain: math/PDF-friendly reports, Markdown-like readable
+  source, HTML artifacts, and proofed agent patches from the same `.noma` file.
+
+### §24.27 — post-v0.13.0 Noma Spaces renderer
+
+Implemented on 2026-06-05 to make Noma useful as a source-controlled
+documentation, book, paper, and knowledge-space manager before the hosted
+collaboration layer.
+
+- **Static Noma Space output.** `noma render book.noma.yml --to site --out
+  dist/space` now writes one page per chapter, a root index, shared theme
+  assets, and `_assets/search-index.json`.
+- **Reader-facing knowledge chrome.** Space pages include sidebar navigation,
+  breadcrumbs, copy-link and print actions, page status/owner/updated/tag
+  metadata, related-page suggestions, and backlinks computed from cross-chapter
+  `[[id]]` references.
+- **Agent orientation.** The generated search index exposes titles, paths, tags,
+  status, owners, updated dates, summaries, and plain text so agents can inspect
+  a space without scraping rendered HTML.
+- **Example and docs.** The sample book now carries chapter metadata, and README,
+  getting-started, spec, direction, agent guide, changelog, and landing copy
+  describe Noma Spaces as the static sharing surface for documentation, internal
+  books, papers, and agent-maintained knowledge bases.
+
+### §24.28 — post-v0.13.0 Hetzner static deployment path
+
+Implemented on 2026-06-06 to make the static product deployable outside GitHub
+Pages while preserving the same source-controlled artifact model.
+
+- **Atomic rsync releases.** `npm run deploy:hetzner` builds `dist/`, uploads it
+  to a timestamped release directory on an SSH target, flips a `current`
+  symlink, and prunes older releases.
+- **Optional nginx bootstrap.** `HETZNER_PROVISION=1` installs/enables nginx when
+  needed and writes a static server block rooted at the `current` symlink.
+- **Health checks.** `HETZNER_URL=...` verifies the deployed URL after the
+  symlink flip, making the command usable from local shells or CI once SSH
+  credentials are present.
+
+### §24.29 — post-v0.13.0 Noma Cloud + EZKeel deployment path
+
+Implemented on 2026-06-06 to move beyond static HTML pages toward a hosted
+collaboration product for shared research, papers, books, and documentation.
+
+- **Persistent document API.** `src/cloud-server.ts` serves the existing
+  workbench/site and exposes `/api/documents` for creating, loading, and
+  updating shared `.noma` documents. The source remains the durable object; the
+  server adds stable IDs, hashes, timestamps, diagnostics, JSON, LLM context,
+  and rendered HTML artifacts.
+- **Cloud workbench links.** The workbench now detects the hosted API, saves a
+  document to cloud storage, opens `workbench.html?doc=<id>` for collaborators,
+  and publishes reader artifacts at `/d/<id>`. Static builds still support the
+  existing URL-fragment draft and review packet flow.
+- **EZKeel deploy surface.** `ezkeel.yaml`, `Dockerfile`, `.dockerignore`,
+  `npm run build:cloud`, `npm start`, and `npm run deploy:ezkeel(:dry-run)`
+  define the user-owned VPS deployment path. Runtime storage defaults to
+  `/data/noma/documents`, and `/healthz` is available for deployment checks.
+- **Product boundary update.** Static Noma Spaces remain valid publishable
+  artifacts, while Noma Cloud becomes the collaboration layer. Realtime editing,
+  enterprise auth/permissions, and multi-tenant SaaS operations remain later
+  work rather than v1 core format work.
+
+### §24.30 — post-v0.13.0 Noma Cloud workspace editor
+
+Implemented on 2026-06-07 to make the hosted product an editable workspace
+instead of only a single-document cloud workbench.
+
+- **Hosted cloud app.** `site/cloud.html` is now a first-screen product surface
+  for spaces, pages, editable Noma source, live rendered preview, save/publish
+  actions, share links, user invites, and an agent patch panel. It reuses the
+  existing parser, validator, HTML renderer, LLM renderer, and source-preserving
+  patch ops in the browser.
+- **Workspace page permissions.** `src/cloud-server.ts` now exposes
+  `/api/sites/:id?include=documents`, `/api/sites/:id/documents`, and
+  `/api/sites/:id/documents/:docId` so site viewers can read the pages inside a
+  space and site editors can update those pages through workspace permissions.
+  This makes space-level collaboration useful without separately sharing every
+  document.
+- **Role-aware browser controls.** The cloud app disables editing for viewers,
+  enables page saves for editors/owners, reserves invites for owners, and keeps
+  standalone page shares plus published site shares available from the same
+  workspace shell.
+- **Product boundary update.** This is still async collaboration, not realtime
+  multiplayer editing. Enterprise identity, audit logs, comments, Notion-style
+  database views, templates, and automation remain future cloud work, but the
+  deployed surface is now a real editable web app for shared Noma spaces.
+
+### §24.31 — post-v0.13.0 Noma Cloud SQLite database and query API
+
+Implemented on 2026-06-07 to make the hosted product database-backed and ready
+for future Codex/plugin integrations.
+
+- **SQLite-backed cloud storage.** Noma Cloud now persists users, documents,
+  sites, permissions, share links, site page membership, and a block-level
+  search index in `/data/noma/noma-cloud.sqlite` by default. Older JSON
+  user/document/site records are imported once on startup when present.
+- **Permission-aware DB query API.** `/api/db/schema` describes the available
+  query resources, and `/api/db/query` exposes bounded JSON queries for
+  `documents`, `sites`, `blocks`, and `users`. The API requires a user token,
+  never accepts raw SQL, limits result size, and filters document/block rows by
+  direct document access plus site-scoped workspace permissions.
+- **Deployment update.** The Docker image now installs the native SQLite
+  binding explicitly and sets `NOMA_CLOUD_DB=/data/noma/noma-cloud.sqlite` for
+  EZKeel deployments.

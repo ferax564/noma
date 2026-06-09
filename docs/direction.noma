@@ -18,43 +18,45 @@ to a collaborator who has never heard of the project.
 ## The one-liner
 
 ::callout{tone="tip"}
-**Noma is source-controlled artifacts agents can safely edit.**
+**Noma is proof-before-apply docs for AI agents.**
 ::
 
 ## The longer version
 
-> Noma is a plain-text source format for durable agent-editable documents. It
-> keeps source readable in Git, renders polished artifacts for humans, and gives
-> agents stable block IDs so they can patch the exact claim, table, task, or
-> citation that changed.
+> Noma is a plain-text source format for AI-maintained documents in Git. It
+> keeps source readable, gives agents scoped context and stable block IDs,
+> generates a proof before patches are applied, and renders polished artifacts
+> for human review.
 
-## The three-layer model
+## The proof loop
 
-::grid{columns=3}
+::grid{columns=4}
 :::card{title="1 · Source" icon="source"}
-What humans and agents edit. Plain-text, clean Git diffs, stable over
-time, easy to patch at the block level.
+Readable text in Git, with stable IDs on the blocks agents may touch.
 :::
 
-:::card{title="2 · Artifact" icon="artifact"}
-What humans consume. Standalone HTML by default — visual hierarchy,
-grids, cards, charts, review controls, mobile-responsive.
+:::card{title="2 · Context" icon="agent"}
+Scoped LLM output and an ID registry, instead of dumping whole docs into prompts.
 :::
 
-:::card{title="3 · Agent" icon="agent"}
-What AI systems use. Deterministic LLM context — more structured than
-Markdown, less noisy than HTML — plus IDs, validation, and patch operations.
+:::card{title="3 · Proof" icon="review"}
+Dry-run patches with validation, hashes, source preservation, diff, and preview.
+:::
+
+:::card{title="4 · Artifact" icon="artifact"}
+The approved source renders to HTML, PDF, DOCX, JSON, Markdown, or static Spaces.
 :::
 ::
 
 ## The central design test
 
 ::decision{id="design-test" status="accepted"}
-Every feature must answer **yes** to all three:
+Every feature must answer **yes** to all four:
 
 1. Can a human understand this in raw text?
-2. Can an agent edit this safely without destroying the document?
-3. Can it render into an artifact people actually want to read?
+2. Can an agent inspect enough scoped context to choose a narrow edit?
+3. Can Noma prove the patch before source is written?
+4. Can it render into an artifact people actually want to read?
 
 If any answer is "no", the feature does not belong in core Noma.
 ::
@@ -105,6 +107,25 @@ validation rule.
 | Validation                | Custom     | Built-in               |
 | Reusable components       | Possible   | Declarative            |
 
+## Why not LaTeX
+
+::claim{id="claim-vs-latex" confidence=0.8 noverify}
+LaTeX is excellent for publication-grade typesetting and equation-heavy
+papers, but it is a poor default collaboration surface for agent-maintained
+artifacts that need live diagnostics, semantic patch targets, table/data
+editing, and multi-format context export.
+::
+
+| Need                         | LaTeX                    | Noma                         |
+| ---------------------------- | ------------------------ | ---------------------------- |
+| Publication typography       | Excellent                | Export target, not core goal |
+| Equations                    | Excellent                | Supported via math blocks    |
+| Compiler/debug loop          | Heavy                    | Parser + validator feedback  |
+| Visual table/data editing    | External tooling         | Workbench grid + patch ops   |
+| Agent-safe edits             | Fragile without tooling  | Block-level operations       |
+| HTML/LLM artifact generation | Extra pipeline           | Native render targets        |
+| Source-control readability   | Strong for TeX experts   | Designed for mixed teams     |
+
 ## Five v1 pillars
 
 ::grid{columns=2}
@@ -135,7 +156,24 @@ interactive; PDF static; LLM summarizes.
 Agent-native from day one.
 ::
 
-## Artifact-first rendering
+## GitHub-first adoption
+
+The first market is Git-based teams whose docs, specs, ADRs, runbooks, and
+research memos are already being touched by AI agents. The product promise is
+not "a better wiki." It is:
+
+```bash
+noma ids docs/api.noma
+noma render docs/api.noma --to llm --select claim,evidence,risk --budget 12000
+noma proof docs/api.noma --ops proposed-docs-patch.json --out dist/api-proof.html
+noma check docs/api.noma --profile technical-docs
+```
+
+The reviewer should see which blocks changed, which IDs were targeted, whether
+references still validate, what rendered preview changed, and whether any
+warnings remain before the patch is applied or merged.
+
+## Artifact rendering
 
 A `.noma` source can render into:
 
@@ -147,6 +185,7 @@ A `.noma` source can render into:
 - a prototype
 - a code-review explainer
 - a book chapter
+- a searchable documentation space
 - a project plan
 - a decision record
 - a Word-compatible review handoff
@@ -157,6 +196,39 @@ noma render pr-review.noma --to html --strict --out pr-review.html
 ```
 
 Output: a single `.html` artifact that opens locally or uploads anywhere. Use `--strict` for team-published artifacts that should block unsafe escape hatches and external runtimes.
+
+## Noma Spaces
+
+::claim{id="claim-noma-spaces" confidence=0.86 noverify}
+Noma can be a better documentation manager than a wiki when the source must stay
+reviewable, portable, and safe for agents to maintain.
+::
+
+A book manifest can render to a static Noma Space:
+
+```bash
+noma render docs/book.noma.yml --to site --out dist/docs
+```
+
+That output gives teams the useful surface of a shared documentation system:
+multi-page navigation, search, page metadata, related pages, backlinks, copy
+links, print output, and a root JSON search index that agents can inspect.
+Static Spaces remain the durable publishing artifact when a team wants Git as
+the collaboration system.
+
+The hosted path is **Noma Cloud**, but it should follow CLI/CI adoption rather
+than lead it. Cloud is the place for hosted proof archives, rendered spaces,
+permissions, search, and review surfaces once teams already trust Noma in Git.
+A cloud space opens in `cloud.html`, carries multiple editable pages, enforces
+viewer/editor/owner controls, supports user invites and share links, renders
+reader artifacts at `/d/<id>` and `/s/<id>`, and deploys to a user-owned VPS
+with EZKeel. The hosted layer persists workspace data in SQLite and exposes a
+bounded `/api/db/query` endpoint for documents, spaces, blocks, and users.
+
+This is the natural shape for documentation, internal books, research papers,
+architecture records, onboarding guides, and long-lived agent memory packs: a
+readable source tree, a reader-facing space, and patchable IDs for every future
+agent edit.
 
 ## Adoption docs
 
@@ -227,7 +299,7 @@ Core Noma absorbs directives that are **shape-stable, domain-neutral, and useful
 2. **Renderer plug-in.** Packs ship a function `render(node, ctx) → string` that the core HTML renderer falls back to when it sees an unknown directive name with a registered prefix.
 3. **Validator plug-in.** Same shape for validator rules — packs export `validate(node) → Diagnostic[]` for their owned namespace.
 4. **No reserved attribute names.** Packs may not redefine `id`, `variant`, `noverify`, `for`, or any attribute the core validator already inspects.
-5. **Profile compatibility.** Pack directives are out-of-profile by default. Documents declaring `profile: research | technical | minimal` will warn on pack usage; pack consumers should declare `profile: <pack>` (or omit profile entirely).
+5. **Profile compatibility.** Pack directives are out-of-profile by default. Documents declaring built-in profiles such as `technical-docs`, `research-memo`, `adr`, `spec`, or `minimal` will warn on pack usage; pack consumers should declare `profile: <pack>` (or omit profile entirely).
 
 **Promotion rule.** A pack directive can be promoted to core if (a) two unrelated packs converge on the same shape, or (b) a renderer/validator rule in the pack would benefit every Noma document. Promotion is a versioned change that ships in a minor release.
 
@@ -243,7 +315,7 @@ work that matters more.
 - realtime collaboration
 - plugin marketplace
 - enterprise auth/permissions
-- cloud platform
+- multi-tenant enterprise cloud platform
 - complex CSS theming engine
 - a Markdown-to-Noma converter (Noma → Markdown is the supported direction)
 ::

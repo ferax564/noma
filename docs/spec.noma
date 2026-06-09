@@ -530,16 +530,28 @@ profile: research
 
 Built-in profiles:
 
-| Profile     | Intended for                              | Includes (beyond core text blocks)                                                                                                                                                                                                                                                            |
-| ----------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `minimal`   | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `page_setup`, `doc_protection`, `header`, `footer`, `toc`, `figure`, `citation`, `footnote`, `endnote`, `bibliography`, `math`, `code`, `table`, `pagebreak`                                                                                                    |
-| `technical` | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `api`, `endpoint`, `parameter`, `example`, `changelog`, `instruction`, `plot`, `dataset`, `query`, `code_cell`, `output`, `control`, `computed_metric`, `computed_plot`, `computed_table`, `export_button`, `agent_task`, `todo` |
-| `research`  | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `control`, `computed_metric`, `computed_plot`, `computed_table`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence` |
-| `memory`    | Agent memory stores (per-project, per-user) | `memory`, `memory_index` only. Strict: each `::memory` must declare `id` + `type` (one of `user`, `feedback`, `project`, `reference`). `confidence` must be a number in `[0, 1]`; `last_seen` must be an ISO date.                                                                            |
+| Profile                 | Intended for                              | Includes / extra checks                                                                                                                                                                                                                                                                       |
+| ----------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `minimal`               | Markdown-equivalent docs                  | `summary`, `abstract`, `callout`/`note`/`warning`/`tip`, `page_setup`, `doc_protection`, `header`, `footer`, `toc`, `figure`, `citation`, `footnote`, `endnote`, `bibliography`, `math`, `code`, `table`, `pagebreak`                                                                                                    |
+| `technical`             | Product docs, landing pages, manuals      | minimal + `hero`, `grid`, `card`, `columns`, `tabs`, `accordion`, `sidebar`, `button`, `api`, `endpoint`, `parameter`, `example`, `changelog`, `instruction`, `plot`, `dataset`, `query`, `code_cell`, `output`, `control`, `computed_metric`, `computed_plot`, `computed_table`, `export_button`, `agent_task`, `todo` |
+| `technical-docs`        | Git-based docs PR workflows               | Alias of `technical`, intended for CI with `noma check --profile technical-docs`.                                                                                                                                                                                                              |
+| `research`              | Theses, ADRs, post-mortems, weekly recaps | minimal + `claim`, `evidence`, `counterevidence`, `assumption`, `risk`, `hypothesis`, `result`, `limitation`, `open_question`, `decision`, `adr`, `dataset`, `plot`, `metric`, `control`, `computed_metric`, `computed_plot`, `computed_table`, `state_change`, `agent_task`, `review`, `comment`, `change_request`, `provenance`, `confidence` |
+| `research-memo`         | Living research memos                     | Alias of `research`, plus claims should carry `confidence=`.                                                                                                                                                                                                                                  |
+| `investment-thesis`     | Living investment theses                  | Alias of `research`, plus claims should carry `confidence=`.                                                                                                                                                                                                                                  |
+| `adr`                   | Architecture decision records             | Minimal + decision/review directives. Expects at least one `::decision` or `::adr`; each `::decision` / `::adr` should carry `status=`, `owner=`, and `date=` or `decided_at=`.                                                                                                               |
+| `spec`                  | Product/technical specs                   | Union of `technical` and `research`, for specs that mix requirements, code examples, risks, open questions, and agent tasks.                                                                                                                                                                  |
+| `memory` / `agent-memory` | Agent memory stores (per-project, per-user) | `memory`, `memory_index` only. Strict: each `::memory` must declare `id` + `type` (one of `user`, `feedback`, `project`, `reference`). `confidence` must be a number in `[0, 1]`; `last_seen` must be an ISO date.                                                                            |
 
 `math`, `code`, and `table` are content-neutral and shipped in every profile — they were the most common "out-of-profile" warnings authors hit before they learned the workaround.
 
 The validator emits a `out-of-profile-directive` warning for any directive outside the declared profile (`noverify` on a single block silences it). Authors who want the open surface should simply omit the `profile` field.
+
+Profiles can also be enforced without editing source:
+
+```bash
+noma check docs/api.noma --profile technical-docs
+noma proof docs/api.noma --ops proposed-docs-patch.json --profile technical-docs
+```
 
 **Composing profiles (v0.4).** A document can opt in to the union of multiple profiles via `profiles:` (note the plural):
 
@@ -649,10 +661,11 @@ file. It now rewrites only the targeted line range — frontmatter
 quoting, sibling blocks, blank-line padding, and attribute order on
 unchanged lines all survive intact. The programmatic API exposes the
 new function as `patchSource(source, ops)`; the AST-level
-`patch(doc, op)` stays for callers that already work in AST space. `noma prove`
+`patch(doc, op)` stays for callers that already work in AST space. `noma proof`
 uses the same patch operations for a guarded dry run: it renders pre/post
-validation, ID registry, LLM context, source preservation, diff, hashes, and a
-sandboxed post-patch preview before an agent writes the source. For
+validation, ID registry, LLM context, source preservation, diff, hashes, a
+Markdown review summary, and a sandboxed post-patch preview before an agent
+writes the source. `noma prove` remains a compatibility alias. For
 compatibility rules and bundled schemas, see [Noma Compatibility
 Policy](compatibility.noma). For the locked v1.0 protocol core, see the [Noma
 Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
@@ -671,7 +684,7 @@ Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 | `epub`   | planned |                                                                               |
 | `slides` | planned |                                                                               |
 
-The static site also ships a browser workbench at `workbench.html`. It is not a separate render target; it bundles the parser, validator, HTML renderer, JSON renderer, and LLM renderer into a client-side editing surface for `.noma` source, safe preview, diagnostics, outline navigation, export downloads, find, print, selection formatting, headings/lists/links, and Noma block insertion templates for tables, figures, layout, controls, comments, change requests, and notes.
+The static site also ships a browser workbench at `workbench.html`. It is not a separate render target; it bundles the parser, validator, HTML renderer, JSON renderer, and LLM renderer into a client-side editing surface for `.noma` source, safe preview, diagnostics, outline navigation, export downloads, find, print, selection formatting, headings/lists/links, and Noma block insertion templates for tables, figures, layout, controls, comments, change requests, and notes. When served by `npm start`, the same workbench can talk to `/api/documents` for persistent shared cloud documents and `/d/<id>` rendered artifact links.
 
 ```bash
 noma render report.noma --to pdf --out report.pdf
@@ -725,7 +738,22 @@ Block metadata sync follows the metadata labels exported for `::citation`, techn
 
 ### `--to site`
 
-Pass a book manifest to `noma render <book.yml> --to site --out <dir>`. The renderer writes one `<chapter-slug>.html` per chapter plus an `index.html` table-of-contents. Chapter slugs come from the chapter filename (or the chapter root H1's id when the filename is unstable). Cross-chapter wikilinks `[[block-id]]` resolve into `<other-chapter>.html#block-id` URLs, with same-page references staying as `#block-id`. Each page gets a top nav listing every chapter and a back-link to the index.
+Pass a book manifest to `noma render <book.yml> --to site --out <dir>`. The renderer writes a static Noma Space: one `<chapter-slug>.html` page per chapter, a root `index.html`, shared theme assets, and `_assets/search-index.json`.
+
+The output is intentionally serverless. It can be opened from disk, uploaded to GitHub Pages, or copied to any static host. Every page gets a sidebar, search box, breadcrumbs, copy-link and print actions, page metadata, related pages, and backlinks. The search UI reads an embedded per-page index; automation and agents can read the root JSON file directly.
+
+Chapter slugs come from the chapter filename, or from the chapter root H1's id when that id is explicit and path-safe. Slugs may contain `/`; links to pages, the shared theme, the search index, and cross-chapter references are depth-aware. Cross-chapter wikilinks `[[block-id]]` resolve into `<other-chapter>.html#block-id` URLs, while same-page references stay as `#block-id`. Backlinks are computed from those wikilinks.
+
+Page metadata comes from each chapter's frontmatter:
+
+| Field     | Space use                                      |
+| --------- | ---------------------------------------------- |
+| `tags`    | search terms, related-page grouping, tag chips |
+| `status`  | sidebar and page inspector                     |
+| `owner`   | sidebar and page inspector                     |
+| `updated` | page inspector and recent-pages list           |
+
+The manifest-level `title`, `description`, and `author` feed the space title, sidebar description, index header, and space inspector.
 
 ## Book manifests
 
@@ -733,6 +761,7 @@ Multi-file projects use a YAML manifest with a `.yml` / `.yaml` extension.
 
 ```yaml
 title: Agentic Documents
+description: Field guide for agent-editable documentation
 author: ferax564
 
 outputs:
@@ -754,7 +783,7 @@ noma render book.noma.yml --to llm  --out dist/book.llm.txt
 noma check  book.noma.yml
 ```
 
-The loader concatenates each chapter's parsed AST into a single `DocumentNode` (top-level `# Chapter` headings stay distinct so HTML renders one continuous page with chapter sections; LLM export keeps chapter boundaries via the heading prefix). The manifest's `title` / `author` land on `document.meta`; the `outputs.html.theme` value is honoured by future renderers and ignored for now.
+The loader concatenates each chapter's parsed AST into a single `DocumentNode` (top-level `# Chapter` headings stay distinct so HTML renders one continuous page with chapter sections; LLM export keeps chapter boundaries via the heading prefix). The manifest's `title` / `author` land on `document.meta`; the site renderer also reads `description` for Noma Space chrome. The `outputs.html.theme` value is honoured by future renderers and ignored for now.
 
 **Scoped heading IDs (v0.4).** In book mode, every level ≥ 2 heading has its slug path-prefixed by its chapter root: `## Risks` inside `# Risk Premia 3` becomes `risk-premia-3/risks`. The original (un-prefixed) slug is kept as an alias so legacy `[[risks]]` links still resolve. This eliminates the `duplicate-id` floods that 30-chapter books hit when every chapter has `## Risks` + `## Citations`. Single-file mode behaves exactly as before.
 

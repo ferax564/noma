@@ -11,7 +11,7 @@ import type {
   TableAlign,
   TableNode,
 } from "./ast.js";
-import { escapePipeTableCell, splitPipeRow, unescapeMarkdownTextEscapes } from "./inline.js";
+import { escapePipeTableCell, extractWikilinks, splitPipeRow, unescapeMarkdownTextEscapes } from "./inline.js";
 
 export interface MarkdownRenderOptions {
   /** Include YAML frontmatter when present or when document meta has public keys. Default: true. */
@@ -326,7 +326,11 @@ function wrapDirective(node: DirectiveNode, body: string, ctx: RenderCtx): strin
 function renderInline(src: string, ctx: RenderCtx): string {
   const text = unescapeMarkdownTextEscapes(src);
   if (!ctx.anchorWikilinks) return text;
-  return text.replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, (_match, id: string) => `[${id}](#${id})`);
+  return text.replace(/\[\[([^\]\n]+?)\]\]/g, (match) => {
+    const link = extractWikilinks(match)[0];
+    if (!link) return match;
+    return `[${link.label}](#${encodeURIComponent(link.target)})`;
+  });
 }
 
 function renderAnchors(values: Array<string | undefined>, ctx: RenderCtx): string {

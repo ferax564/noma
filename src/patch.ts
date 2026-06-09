@@ -553,9 +553,13 @@ function retargetReferences(node: Node, from: string, to: string): void {
 }
 
 function rewriteWikilinks(text: string, from: string, to: string): string {
-  return text.replace(/\[\[([a-zA-Z_][\w\-./:]*)\]\]/g, (m, id) =>
-    id === from ? `[[${to}]]` : m,
-  );
+  return text.replace(/\[\[([^\]\n]+?)\]\]/g, (match, raw: string) => {
+    const pipe = raw.indexOf("|");
+    const target = (pipe === -1 ? raw : raw.slice(0, pipe)).trim();
+    if (target !== from) return match;
+    const label = pipe === -1 ? "" : raw.slice(pipe);
+    return `[[${to}${label}]]`;
+  });
 }
 
 interface ParentRef {

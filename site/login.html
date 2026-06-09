@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Sign in to Noma Cloud with an access token or register with an invitation code." />
+<title>Noma Cloud Login</title>
+<link rel="icon" href="data:," />
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f5f6f4;
+  --panel: #ffffff;
+  --ink: #1f242b;
+  --muted: #5b6570;
+  --line: #d8dddc;
+  --accent: #126268;
+  --accent-strong: #173f45;
+  --warn: #9a5b12;
+  --error: #a33434;
+  --ok: #1e7047;
+  --soft-panel: rgba(255, 255, 255, 0.76);
+  --field-ink: #36404c;
+  --input-bg: #ffffff;
+  --shadow: 0 12px 32px -28px rgba(20, 28, 36, 0.48);
+  --brand-end: #46515f;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f141b;
+  --panel: #171f29;
+  --ink: #e8edf2;
+  --muted: #a8b2bd;
+  --line: #2b3540;
+  --accent: #5ec3c9;
+  --accent-strong: #2c727a;
+  --warn: #e5b96b;
+  --error: #ee8078;
+  --ok: #78c98f;
+  --soft-panel: #151d26;
+  --field-ink: #c2ccd6;
+  --input-bg: #111922;
+  --shadow: 0 18px 42px -30px rgba(0, 0, 0, 0.82);
+  --brand-end: #8b94ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 0.86fr) minmax(360px, 1.14fr);
+}
+
+.login-intro {
+  padding: 42px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 760;
+  font-size: 15px;
+}
+
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0)),
+    linear-gradient(135deg, var(--accent), var(--brand-end));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+h1 {
+  font-size: 34px;
+  line-height: 1.08;
+  margin: 34px 0 14px;
+  letter-spacing: 0;
+}
+
+.intro-copy {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.52;
+  max-width: 560px;
+}
+
+.policy-list {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.policy-list li {
+  border: 1px solid var(--line);
+  background: var(--soft-panel);
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--field-ink);
+}
+
+.login-main {
+  padding: 42px;
+  display: grid;
+  align-content: center;
+}
+
+.auth-grid {
+  display: grid;
+  gap: 14px;
+  max-width: 600px;
+  width: 100%;
+}
+
+.auth-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.auth-panel h2 {
+  font-size: 17px;
+  margin: 0 0 6px;
+}
+
+.auth-panel p {
+  color: var(--muted);
+  margin: 0 0 14px;
+  line-height: 1.45;
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--field-ink);
+}
+
+input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px 10px;
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+input:focus {
+  outline: 3px solid rgba(13, 95, 99, 0.18);
+  border-color: var(--accent);
+}
+
+button {
+  min-height: 36px;
+  border: 1px solid var(--accent-strong);
+  border-radius: 5px;
+  background: var(--accent-strong);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 680;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
+
+.theme-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 10;
+  min-height: 30px;
+  border-color: var(--line);
+  background: var(--soft-panel);
+  color: var(--ink);
+  padding: 6px 10px;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+  color: var(--accent);
+}
+
+.status {
+  min-height: 18px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.status[data-state="ok"] {
+  color: var(--ok);
+}
+
+.status[data-state="error"] {
+  color: var(--error);
+}
+
+.footnote {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 860px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .login-intro {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 28px 22px;
+  }
+
+  .login-main {
+    padding: 24px 22px 36px;
+  }
+
+  h1 {
+    font-size: 32px;
+    margin-top: 28px;
+  }
+}
+</style>
+</head>
+<body>
+<button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false">Dark</button>
+<div class="login-shell">
+  <section class="login-intro" aria-label="Noma Cloud access policy">
+    <div>
+      <div class="brand"><span class="brand-mark"></span>Noma Cloud</div>
+      <h1>Private workspace access</h1>
+      <p class="intro-copy">Noma Cloud is restricted to invited collaborators. Use the cloud access token to enter the app, then register a user only when you have an invitation code.</p>
+      <ul class="policy-list">
+        <li>Cloud access uses a server-side HttpOnly session cookie.</li>
+        <li>New user registration requires an invitation code.</li>
+        <li>Existing user tokens can be imported during login.</li>
+      </ul>
+    </div>
+    <p class="footnote">Shared published artifacts still require their own share tokens. This page does not expose the app shell until access is verified.</p>
+  </section>
+
+  <main class="login-main">
+    <div class="auth-grid">
+      <form id="loginForm" class="auth-panel">
+        <h2>Log in</h2>
+        <p>Enter the cloud access token. Add your existing Noma user token if you want this browser to load your workspaces immediately.</p>
+        <label class="field" for="accessToken">Cloud access token
+          <input id="accessToken" name="accessToken" type="password" autocomplete="current-password" required />
+        </label>
+        <label class="field" for="userToken">Existing user token
+          <input id="userToken" name="userToken" type="password" autocomplete="off" />
+        </label>
+        <button id="loginButton" type="submit">Log In</button>
+        <div id="loginStatus" class="status" aria-live="polite"></div>
+      </form>
+
+      <form id="registerForm" class="auth-panel">
+        <h2>Register with invitation</h2>
+        <p>Create a new Noma Cloud user. Registration is blocked unless the invitation code matches the server-side code.</p>
+        <label class="field" for="registerAccessToken">Cloud access token
+          <input id="registerAccessToken" name="registerAccessToken" type="password" autocomplete="current-password" required />
+        </label>
+        <label class="field" for="registerName">Name
+          <input id="registerName" name="registerName" type="text" autocomplete="name" value="Noma collaborator" required />
+        </label>
+        <label class="field" for="invitationCode">Invitation code
+          <input id="invitationCode" name="invitationCode" type="password" autocomplete="one-time-code" required />
+        </label>
+        <button id="registerButton" type="submit">Register</button>
+        <div id="registerStatus" class="status" aria-live="polite"></div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script>
+const userStorageKey = "noma.cloud.user.v1";
+const themeStorageKey = "noma.cloud.theme.v1";
+const params = new URLSearchParams(window.location.search);
+const nextPath = safeNext(params.get("next"));
+const themeToggle = document.getElementById("themeToggle");
+const loginForm = document.getElementById("loginForm");
+const registerForm = document.getElementById("registerForm");
+const accessTokenInput = document.getElementById("accessToken");
+const userTokenInput = document.getElementById("userToken");
+const registerAccessTokenInput = document.getElementById("registerAccessToken");
+const registerNameInput = document.getElementById("registerName");
+const invitationCodeInput = document.getElementById("invitationCode");
+const loginButton = document.getElementById("loginButton");
+const registerButton = document.getElementById("registerButton");
+const loginStatus = document.getElementById("loginStatus");
+const registerStatus = document.getElementById("registerStatus");
+let themeMode = readThemeMode();
+
+applyTheme();
+
+loginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void logIn();
+});
+
+registerForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void register();
+});
+
+themeToggle.addEventListener("click", () => {
+  themeMode = themeMode === "dark" ? "light" : "dark";
+  localStorage.setItem(themeStorageKey, themeMode);
+  applyTheme();
+});
+
+function safeNext(value) {
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/cloud.html";
+}
+
+function readThemeMode() {
+  const stored = localStorage.getItem(themeStorageKey);
+  if (stored === "light" || stored === "dark") return stored;
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = themeMode;
+  document.documentElement.style.colorScheme = themeMode;
+  themeToggle.textContent = themeMode === "dark" ? "Light" : "Dark";
+  themeToggle.setAttribute("aria-pressed", String(themeMode === "dark"));
+}
+
+async function logIn() {
+  setBusy(true, "Checking access token", loginStatus);
+  try {
+    const payload = await postJson("/api/auth/session", {
+      accessToken: accessTokenInput.value,
+      userToken: userTokenInput.value || undefined,
+    });
+    storeUser(payload.user);
+    setStatus(loginStatus, "Access granted", "ok");
+    window.location.assign(nextPath);
+  } catch (error) {
+    setStatus(loginStatus, errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function register() {
+  setBusy(true, "Checking invitation code", registerStatus);
+  try {
+    const payload = await postJson("/api/auth/register", {
+      accessToken: registerAccessTokenInput.value || accessTokenInput.value,
+      name: registerNameInput.value,
+      invitationCode: invitationCodeInput.value,
+    });
+    storeUser(payload.user);
+    setStatus(registerStatus, "Registered", "ok");
+    window.location.assign(nextPath);
+  } catch (error) {
+    setStatus(registerStatus, errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "accept": "application/json",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { error: text };
+  }
+  if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+  return payload;
+}
+
+function storeUser(user) {
+  if (!user || !user.id || !user.name || !user.token) return;
+  localStorage.setItem(userStorageKey, JSON.stringify({
+    id: user.id,
+    name: user.name,
+    token: user.token,
+    tokenPreview: user.tokenPreview,
+  }));
+}
+
+function setBusy(busy, message, target) {
+  loginButton.disabled = busy;
+  registerButton.disabled = busy;
+  if (target) setStatus(target, message, "");
+}
+
+function setStatus(target, message, state) {
+  target.textContent = message;
+  target.dataset.state = state;
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+</script>
+</body>
+</html>

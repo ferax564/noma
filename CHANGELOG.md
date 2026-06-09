@@ -8,7 +8,35 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Workbench proof loop:** the browser workbench now has an Agent Proof panel and Proof output tab. Patch ops are simulated in the browser with pre/post hashes, validation status, source-preservation metrics, operation payloads, and a sandboxed post-patch artifact preview; Apply is enabled only for writable proofs.
+- **Workbench table/data editor:** ID-bearing `::table` and `::dataset` blocks can be edited through a compact grid. Cell edits plus row/column additions generate granular patch ops, run through the proof loop, and update only after the proof passes.
+- **Proof share links:** the workbench can copy proof-summary links containing status, ops, hashes, diagnostics, and preservation metadata without embedding the source document.
+- **Workbench collaboration handoff:** the workbench now has a Collaboration panel with a live document fingerprint, shared draft links that carry source in a URL fragment, and copyable review packets with draft URL, hash, diagnostics, IDs, and LLM context.
 - **Workbench Markdown intake:** the workbench File tab can paste Markdown from the clipboard or upload `.md` / `.markdown` files into the current browser draft, and the Export tab can copy the current document as portable Markdown.
+- **Diagnostics-first workbench UX:** the inspector now starts with a diagnostics severity summary and keeps line-jump diagnostics, outline, proof controls, and data editing in one side panel.
+- **Noma Space renderer:** `noma render book.noma.yml --to site --out dist/space` now publishes a static, searchable documentation space with sidebar navigation, breadcrumbs, page status/owner/updated/tag metadata, related pages, cross-chapter backlinks, embedded search UI, and `_assets/search-index.json` for agents.
+- **Hetzner deploy helper:** `npm run deploy:hetzner` builds and deploys `dist/` to an SSH target with timestamped releases, an atomic `current` symlink, optional nginx provisioning, and optional URL health checks.
+- **Noma Cloud MVP:** `src/cloud-server.ts` serves the workbench/site plus a small persistent document API. Shared `.noma` documents can be created, reloaded by ID, updated, rendered at `/d/:id`, and exported as JSON/LLM/HTML artifacts from the same source.
+- **Noma Cloud app:** `site/cloud.html` is now a hosted workspace editor with spaces, page navigation, editable Noma source, live rendered preview, save/publish/share actions, viewer/editor/owner-aware controls, user invites, and an agent patch panel backed by source-preserving patch ops.
+- **Site-scoped page permissions:** Noma Cloud sites can now return their pages through `/api/sites/:id?include=documents` and let site editors read/update pages through `/api/sites/:id/documents/:docId`, so workspace permissions control page editing instead of requiring every page to be shared separately.
+- **Noma Cloud SQLite storage:** hosted users, documents, sites, permissions, share links, site page membership, and a block-level search index now persist in SQLite, with one-time import from older JSON records when present.
+- **Noma Cloud DB query API:** `/api/db/schema` and `/api/db/query` expose bounded, permission-aware JSON queries for `documents`, `sites`, `blocks`, and public user lookup so future Codex plugins can inspect workspaces without raw SQL access.
+- **EZKeel deployment path:** `ezkeel.yaml`, `Dockerfile`, `.dockerignore`, `npm run build:cloud`, `npm start`, and `npm run deploy:ezkeel(:dry-run)` define the hosted deployment path for a persistent Noma workbench on user-owned VPS infrastructure.
+- **Noma Cloud guide:** added a screenshot-backed guide for workspaces, page editing, scientific-paper authoring, permissions, published sites, agent review, EZKeel operation, mobile use, safety checks, and the plugin-ready DB query API.
+- **Noma Proof CLI:** `noma proof` is now the primary proof-before-apply command, with `noma prove` kept as an alias. Proofs can render reviewer-ready Markdown via `--to markdown`, and `noma agent review` aliases the same workflow for agent instructions.
+- **Markdown ingest:** `noma ingest <file.md> --out <file.noma>` converts Markdown-compatible source into Noma-compatible source and pins explicit stable heading IDs by default, giving existing docs an incremental migration path.
+- **PR proof Action mode:** the GitHub Action now supports `mode: proof`, patch `op` / `ops` inputs, uploaded proof HTML + Markdown summary artifacts, optional PR comments, and CI-enforced `profile:` checks.
+- **Validation workflow profiles:** `--profile` can be passed to `noma check` and `noma proof`, with new profile names for `technical-docs`, `research-memo`, `investment-thesis`, `adr`, `spec`, and `agent-memory`.
+
+### Changed
+
+- **Proof-first positioning:** README, direction docs, spec, and homepage copy now lead with the GitHub-native proof-before-apply workflow for AI-maintained docs, while Noma Cloud is framed as a hosted follow-on layer rather than the primary wedge.
+- **Landing narrative:** the homepage now leads with the live source/artifact/agent workflow, explicitly frames LaTeX/Markdown/HTML pain points, and points users to the workbench as the fastest product test.
+- **Workbench documentation:** the guide now documents browser proofing, proof links, table/data grid edits, diagnostics-first authoring, and the updated Review workflow.
+- **Cloud direction:** Noma Spaces remain valid static artifacts, but the roadmap now treats hosted Noma Cloud as the workspace/page collaboration layer for shared research, papers, books, and documentation.
+- **Noma Cloud polish:** the hosted app now uses a more professional research-workspace visual treatment and starts new workspaces with a paper-oriented Noma template covering abstract, claim, evidence, methods, review table, citation, bibliography, and agent review task blocks.
+- **Research memo:** the Markdown/HTML pain memo now includes LaTeX and Overleaf compile-loop frustration, while keeping the product stance LaTeX-friendly rather than anti-TeX.
+- **Book documentation:** README, getting-started, spec, direction, agent guide, landing page, and the sample book now describe multi-file projects as source-controlled Noma Spaces for documentation, books, papers, and agent-maintained knowledge bases.
 
 ## [0.13.0] — 2026-06-05
 

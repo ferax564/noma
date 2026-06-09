@@ -3,7 +3,7 @@ import type { Diagnostic, DirectiveNode, DocumentNode, Node } from "./ast.js";
 import { walk } from "./ast.js";
 import { computedDomainVars, controlDefaultNumber, formulaText, numericAttr as computedNumericAttr } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
-import { splitDelimitedRow } from "./inline.js";
+import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } from "./inline.js";
 
 export interface ValidateOptions {
   /**
@@ -24,6 +24,11 @@ export interface ValidateOptions {
    * `noverify` flag at file level. Used by `noma check --ignore-rule X`.
    */
   ignoreRules?: string[];
+  /**
+   * Additional validator profiles to apply without editing source frontmatter.
+   * Used by CI and Actions workflows for `noma check --profile technical-docs`.
+   */
+  profiles?: string[];
 }
 
 const DEFAULT_STALE_DAYS = 365;
@@ -165,6 +170,33 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
   memory: new Set(["memory", "memory_index"]),
 };
 
+const technicalProfile = PROFILES.technical!;
+const researchProfile = PROFILES.research!;
+const memoryProfile = PROFILES.memory!;
+const minimalProfile = PROFILES.minimal!;
+
+PROFILES["technical-docs"] = technicalProfile;
+PROFILES["research-memo"] = researchProfile;
+PROFILES["investment-thesis"] = researchProfile;
+PROFILES["agent-memory"] = memoryProfile;
+PROFILES.adr = new Set([
+  ...minimalProfile,
+  "decision",
+  "adr",
+  "risk",
+  "open_question",
+  "assumption",
+  "evidence",
+  "counterevidence",
+  "comment",
+  "change_request",
+  "agent_task",
+  "todo",
+  "citation",
+  "state_change",
+]);
+PROFILES.spec = new Set([...technicalProfile, ...researchProfile]);
+
 const MEMORY_TYPES = new Set(["user", "feedback", "project", "reference"]);
 const ISO_DATE_RE =
   /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
@@ -189,9 +221,11 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   const controls = new Map<string, DirectiveNode>();
   const computed = new Map<string, DirectiveNode>();
   const computedNodes: DirectiveNode[] = [];
+  const adrNodes: DirectiveNode[] = [];
 
   const aliasToNode = new Map<string, Node>();
-  const declaredProfiles = readDeclaredProfiles(doc.meta);
+  const declaredProfiles = readDeclaredProfiles(doc.meta, options.profiles);
+  const activeProfiles = new Set(declaredProfiles);
   const profileSet: Set<string> | undefined = (() => {
     if (declaredProfiles.length === 0) return undefined;
     const union = new Set<string>();
@@ -213,13 +247,12 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   })();
   const profileLabel = declaredProfiles.join("+");
 
-  const wikilinkRe = /\[\[([a-zA-Z_][\w\-./:]*)\]\]/g;
   const wikilinkRefs = new Set<string>();
   const collectWikilinks = (text: string): void => {
-    const stripped = text.replace(/`[^`]*`/g, "");
-    for (const m of stripped.matchAll(wikilinkRe)) {
-      referenced.add(m[1]!);
-      wikilinkRefs.add(m[1]!);
+    for (const link of extractWikilinks(text)) {
+      if (!isBlockReferenceWikilinkTarget(link.target)) continue;
+      referenced.add(link.target);
+      wikilinkRefs.add(link.target);
     }
   };
 
@@ -299,6 +332,8 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
     if (node.name === "claim" && node.id) claims.push(node);
 
+    if (node.name === "decision" || node.name === "adr") adrNodes.push(node);
+
     if (node.name === "claim" && !suppressed(node) && "confidence" in node.attrs) {
       const c = node.attrs.confidence;
       let num: number | null = null;
@@ -316,6 +351,21 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
           nodeId: node.id,
         });
       }
+    }
+
+    if (
+      node.name === "claim" &&
+      !suppressed(node) &&
+      (activeProfiles.has("research-memo") || activeProfiles.has("investment-thesis")) &&
+      !("confidence" in node.attrs)
+    ) {
+      diagnostics.push({
+        severity: "warning",
+        code: "claim-missing-confidence",
+        message: `Claim "${node.id ?? "?"}" has no \`confidence=\` attribute required by the research-style profile.`,
+        pos: node.pos,
+        nodeId: node.id,
+      });
     }
 
     if (node.name === "state_change" && !suppressed(node)) {
@@ -537,6 +587,31 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     }
 
     if (
+      (node.name === "decision" || node.name === "adr") &&
+      activeProfiles.has("adr") &&
+      !suppressed(node)
+    ) {
+      if (!node.attrs.owner) {
+        diagnostics.push({
+          severity: "warning",
+          code: "adr-missing-owner",
+          message: `${node.name} "${node.id ?? "?"}" has no \`owner=\` attribute required by the adr profile.`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
+      if (!node.attrs.date && !node.attrs.decided_at && !node.attrs.decidedAt) {
+        diagnostics.push({
+          severity: "warning",
+          code: "adr-missing-date",
+          message: `${node.name} "${node.id ?? "?"}" has no \`date=\` or \`decided_at=\` attribute required by the adr profile.`,
+          pos: node.pos,
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (
       (node.name === "agent_task" || node.name === "todo") &&
       !suppressed(node) &&
       !node.attrs.scope &&
@@ -664,7 +739,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     }
   }
 
-  if (declaredProfiles.includes("memory")) {
+  if (activeProfiles.has("memory") || activeProfiles.has("agent-memory")) {
     for (const target of wikilinkRefs) {
       const node = ids.get(target) ?? aliasToNode.get(target);
       if (!node) continue;
@@ -678,6 +753,14 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
         });
       }
     }
+  }
+
+  if (activeProfiles.has("adr") && adrNodes.length === 0) {
+    diagnostics.push({
+      severity: "warning",
+      code: "adr-missing-decision",
+      message: `ADR profile expects at least one ::decision or ::adr block.`,
+    });
   }
 
   if (requireEvidence) {
@@ -716,18 +799,23 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   return diagnostics;
 }
 
-function readDeclaredProfiles(meta: Record<string, unknown>): string[] {
-  if (Array.isArray(meta.profiles)) {
-    const out: string[] = [];
-    for (const p of meta.profiles) {
-      if (typeof p === "string" && p.trim()) out.push(p.trim());
+function readDeclaredProfiles(meta: Record<string, unknown>, optionProfiles: string[] = []): string[] {
+  const out: string[] = [];
+  const add = (value: unknown): void => {
+    if (typeof value !== "string") return;
+    for (const p of value.split(/[,\s]+/)) {
+      const trimmed = p.trim();
+      if (trimmed && !out.includes(trimmed)) out.push(trimmed);
     }
-    if (out.length > 0) return out;
+  };
+  if (Array.isArray(meta.profiles)) {
+    for (const p of meta.profiles) add(p);
   }
   if (typeof meta.profile === "string" && meta.profile.trim()) {
-    return [meta.profile.trim()];
+    add(meta.profile);
   }
-  return [];
+  for (const profile of optionProfiles) add(profile);
+  return out;
 }
 
 const KNOWN_RULES = [
@@ -763,6 +851,10 @@ const KNOWN_RULES = [
   "memory-missing-id",
   "memory-wikilink-non-memory-target",
   "claim-invalid-confidence",
+  "claim-missing-confidence",
+  "adr-missing-owner",
+  "adr-missing-date",
+  "adr-missing-decision",
   "citation-missing-source",
   "control-missing-default",
   "control-out-of-range-default",

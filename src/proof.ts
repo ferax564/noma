@@ -151,6 +151,47 @@ export function createAgentSafetyProof(options: ProofOptions): AgentSafetyProof 
   };
 }
 
+export function renderProofMarkdownSummary(proof: AgentSafetyProof): string {
+  const changedTargets = proof.ops
+    .map((op, index) => `${index + 1}. \`${op.op}\` -> \`${opTarget(op) || "document"}\``)
+    .join("\n");
+  const diagnostics = proof.postDiagnostics.length === 0
+    ? "No post-patch diagnostics."
+    : formatDiagnostics(proof.postDiagnostics, proof.file);
+  const error = proof.error
+    ? `\n\n**Patch error:** \`${proof.error.code}\` ${proof.error.message}`
+    : "";
+
+  return `## Noma Proof: ${proof.status.toUpperCase()}
+
+| Check | Result |
+| --- | --- |
+| File | \`${escapeMarkdownTableCell(proof.file)}\` |
+| Patch result | \`${proof.patchResult}\` |
+| Validation | \`${proof.preValidation}\` -> \`${proof.postValidation}\` |
+| Write allowed | ${proof.canWrite ? "yes" : "no"} |
+| Operations | ${proof.ops.length} |
+| Lines preserved | ${proof.sourceMetrics.preservedPercent.toFixed(1)}% |
+| Pre SHA | \`${proof.preHash.sha}\` |
+| Post SHA | \`${proof.postHash.sha}\` |
+
+### Changed Targets
+
+${changedTargets || "No patch operations were provided."}
+
+### Post-Validation
+
+\`\`\`text
+${diagnostics}
+\`\`\`
+
+### Review Notes
+
+- Agent context was scoped to ${proof.llmContext.length} characters.
+- Proof includes the ID registry, source diff, hashes, and sandboxed post-patch preview when rendered as HTML.${error}
+`;
+}
+
 export function renderProofHtml(proof: AgentSafetyProof): string {
   const title = "Noma Agent Safety Proof";
   const statusLabel = proof.status.toUpperCase();
@@ -496,6 +537,10 @@ function diffHtml(diff: string): string {
       return escaped;
     })
     .join("\n");
+}
+
+function escapeMarkdownTableCell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
 function opTarget(op: PatchOp): string {

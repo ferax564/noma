@@ -1,3 +1,11 @@
+---
+tags: [guide, positioning]
+status: stable
+owner: Docs
+updated: 2026-06-05
+aliases: [why-noma]
+---
+
 # Why Noma exists
 
 Markdown is excellent at the lightest end of the document spectrum. HTML is excellent at the rendering end. The space between them — *structured documents that humans still want to read in source* — is where Noma lives.

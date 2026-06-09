@@ -30,5 +30,7 @@ export { diffDocs } from "./diff.js";
 export type { DiffOptions } from "./diff.js";
 export { collectIdRegistry } from "./ids.js";
 export type { IdRecord, IdRegistry } from "./ids.js";
-export { createAgentSafetyProof, renderProofHtml } from "./proof.js";
+export { createAgentSafetyProof, renderProofHtml, renderProofMarkdownSummary } from "./proof.js";
 export type { AgentSafetyProof, ProofOptions } from "./proof.js";
+export { convertMarkdownToNoma } from "./ingest-markdown.js";
+export type { MarkdownIngestOptions } from "./ingest-markdown.js";
