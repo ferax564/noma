@@ -632,8 +632,7 @@ function childArrays(
 }
 
 function childArray(node: Node): Node[] {
-  for (const a of childArrays(node)) return a.list;
-  return [];
+  return childArrays(node)[0]?.list ?? [];
 }
 
 function hasChildren(node: Node): node is Node & { children: Node[] } {

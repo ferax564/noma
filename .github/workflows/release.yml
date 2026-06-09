@@ -1,0 +1,67 @@
+name: Release
+
+# Publishes @ferax564/noma-cli and @ferax564/noma-mcp-server to npm with
+# provenance when a v* tag is pushed (the local-tag-then-push flow from
+# CLAUDE.md). Requires an NPM_TOKEN repository secret with publish rights.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Verify tag matches package.json and versioned locations
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag v$tag does not match package.json $pkg" >&2
+            exit 1
+          fi
+          npm run release -- check
+
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run verify:conformance
+      - run: npm run smoke:package
+
+      - name: Publish @ferax564/noma-cli
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @ferax564/noma-mcp-server
+        run: npm publish --provenance --access public -w @ferax564/noma-mcp-server
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub release from CHANGELOG slice
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            /^## \[/ { if (found) exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file /tmp/notes.md || \
+            echo "release already exists — skipping"

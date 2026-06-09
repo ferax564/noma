@@ -162,6 +162,15 @@ Ask before editing when:
 
 The MCP server exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio. The Agent SDK wraps that server and remains experimental until the protocol annexes graduate. Treat the CLI and schemas as the stable contract; treat SDK ergonomics as subject to change during v0.x.
 
+## Concurrency-safe edits
+
+`read_doc` returns a `hash` for every ID-bearing block (sha256 of the block's source
+slice). Pass it back as `base_hash` on `patch_block` — or as the op's `baseHash` field
+when calling `patchSource` directly — and the patch is refused with `sha_mismatch` if
+the block changed between your read and your write. Preconditions are per block, so
+concurrent edits to *other* blocks of the same document do not conflict. Prefer this
+over the whole-file `expected_sha` when several actors share a document.
+
 ## MCP host setup
 
 Use the published stdio server from any MCP host that accepts command-based

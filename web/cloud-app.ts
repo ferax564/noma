@@ -152,7 +152,7 @@ const wikiLinksList = requireElement<HTMLElement>("wikiLinksList");
 let cloudAvailable = false;
 let busy = false;
 let cloudUser = readCloudUser();
-let shareToken = readShareToken();
+const shareToken = readShareToken();
 let sites: CloudSiteResponse[] = [];
 let currentSite: CloudSiteResponse | undefined;
 let pages: CloudDocumentResponse[] = [];

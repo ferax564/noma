@@ -32,6 +32,7 @@ test("root GitHub Action exposes render and proof inputs with composite steps", 
   assert.ok(steps.some((s) => s.uses === "actions/setup-node@v4"));
   assert.ok(steps.some((s) => s.run?.includes('package_spec="$GITHUB_ACTION_PATH"')));
   assert.ok(steps.some((s) => s.run?.includes('npm install -g "$package_spec"')));
+  // eslint-disable-next-line no-template-curly-in-string -- asserting a literal bash expansion in action.yml
   assert.ok(steps.some((s) => s.run?.includes("noma \"${args[@]}\"")));
   assert.ok(steps.some((s) => s.run?.includes('proof_args=(proof "$NOMA_INPUT"')));
   assert.ok(steps.some((s) => s.uses === "actions/github-script@v7"));
