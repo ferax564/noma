@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        node: ['20', '22']
+        include:
+          - os: macos-latest
+            node: '20'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run verify:conformance
+      - run: npm run check:memory
+      - run: npm run release -- check
+      - run: npm run smoke:package
+      - run: npm run build:agent-sdk
+      - run: npm run test:agent-sdk
+      - name: MCP server tests
+        run: npm test -w @ferax564/noma-mcp-server

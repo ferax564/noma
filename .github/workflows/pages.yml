@@ -27,11 +27,23 @@ jobs:
 
       - run: npm ci
 
+      - name: Cache Puppeteer Chrome
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-chrome-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install Chrome for Puppeteer
         run: npx puppeteer browsers install chrome
 
       - run: npx tsc --noEmit
       - run: npm test
+
+      - name: Check project-memory drift
+        run: npm run check:memory
+
+      - name: Check versioned locations
+        run: npm run release -- check
 
       - name: Smoke test packed CLI
         run: npm run smoke:package

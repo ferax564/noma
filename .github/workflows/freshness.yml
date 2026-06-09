@@ -1,0 +1,67 @@
+name: Docs freshness
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Validate docs and examples with a tight staleness window
+        id: freshness
+        run: |
+          set -uo pipefail
+          report=""
+          status=0
+          for f in docs/*.noma examples/*.noma examples/*/*.noma; do
+            [ -f "$f" ] || continue
+            rc=0
+            out=$(npm run --silent noma -- check "$f" --stale-days 120 2>&1) || rc=1
+            if [ "$rc" -ne 0 ] || ! grep -q "No issues found" <<<"$out"; then
+              status=$(( status || rc ))
+              report+=$'\n'"### \`$f\`"$'\n```\n'"$out"$'\n```\n'
+            fi
+          done
+          {
+            echo "report<<NOMA_EOF"
+            echo "$report"
+            echo "NOMA_EOF"
+            echo "status=$status"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the freshness issue
+        if: ${{ steps.freshness.outputs.report != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ steps.freshness.outputs.report }}
+        run: |
+          set -euo pipefail
+          title="Scheduled docs freshness report"
+          body=$(printf 'The weekly `noma check --stale-days 120` sweep found diagnostics in the repo'"'"'s own documents.\n%s\n\n_Auto-filed by .github/workflows/freshness.yml — fix the documents (or their citations) and this issue can be closed._' "$REPORT")
+          existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body" --label documentation
+          fi
+
+      - name: Fail the run when staleness errors were found
+        if: ${{ steps.freshness.outputs.status != '0' }}
+        run: |
+          echo "noma check reported errors — see the freshness issue" >&2
+          exit 1

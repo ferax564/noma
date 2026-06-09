@@ -537,6 +537,16 @@ engine's observed pre-state), the patch is still applied. The transcript carries
 concurrency signal — it tells reviewers that the document was modified between when the
 agent read it and when the patch arrived. It does not block.
 
+**`baseHash` block precondition (provisional, added post-v1.0).** Any op MAY carry a
+`baseHash` field: the sha256 hex (full, or a prefix of at least 8 chars) of the *target
+block's* current source slice, as returned by `blockSourceHash()` or the MCP `read_doc`
+tool's per-block `hash`. When present and the block's current hash does not start with the
+supplied value, the op is rejected with `sha_mismatch` before any bytes are written. Unlike
+`expected_sha` (whole-file), `baseHash` scopes the precondition to one block, so concurrent
+edits to *other* blocks of the same document do not conflict. For ops without an `id`
+target the hash applies to `rename_id.from`, `add_block.parent`, or the `target` of
+`add_comment` / `add_footnote` / `add_endnote` / `add_change_request`.
+
 Summary:
 
 | Condition | Default behavior | Strict mode |
@@ -545,6 +555,7 @@ Summary:
 | Post-apply validator errors | Always informational; patch written | Same |
 | `expected_sha` mismatch (Phase 0) | Reject (`sha_mismatch`) | Same |
 | `base_sha256` ≠ `pre_sha256` | Apply, warning diagnostic (`base_sha_drift`) | Same |
+| `baseHash` ≠ target block hash (provisional) | Reject (`sha_mismatch`) | Same |
 
 ### 3.5 Error taxonomy
 
@@ -559,7 +570,7 @@ errors as machine-readable `code` values in the `diagnostics` array of the trans
 | `id_conflict` | `rename_id.to` already exists in the document, or `add_block.content` declares an id that is already taken. |
 | `invalid_content` | `replace_block.content` or `add_block.content` is not a single parseable top-level directive block. Paragraphs, sections, headings, and other non-directive content are rejected with this code. |
 | `id_attribute_protected` | `update_attribute` was called with `key: "id"`. The block id MUST be changed only through `rename_id`. |
-| `sha_mismatch` | The caller-supplied `expected_sha` (8-char, Phase 0 field) did not match the document's pre-state hash. Also emitted when strict-mode `base_sha256` is checked and does not match. |
+| `sha_mismatch` | The caller-supplied `expected_sha` (8-char, Phase 0 field) did not match the document's pre-state hash. Also emitted when strict-mode `base_sha256` is checked and does not match, and when an op's provisional `baseHash` block precondition does not match the target block's current source hash. |
 | `pre_validation_blocked` | Strict mode is active and pre-validation returned `"error"`. The op-list was not applied. |
 | `op_list_aborted` | This op was virtually applied in memory before a later op in the same list failed. The list was rolled back; no bytes were written. Emitted in the transcript record for each preceding op in the failed list. |
 | `unsupported_op` | The `op` value is not in the §3.1 set, or the operation targets a book manifest (`.noma.yml`). Book manifests are not valid patch targets in v1.0. |

@@ -43,7 +43,9 @@
     "deploy:ezkeel": "ezkeel up",
     "demo": "npm run render:examples && npm run render:pdf",
     "test:agent-sdk": "npm run test -w @ferax564/noma-agent-sdk",
-    "build:agent-sdk": "tsc -p packages/agent-sdk/tsconfig.json"
+    "build:agent-sdk": "tsc -p packages/agent-sdk/tsconfig.json",
+    "check:memory": "tsx scripts/check-memory-drift.ts",
+    "release": "tsx scripts/release.ts"
   },
   "files": [
     "src",

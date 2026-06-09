@@ -14,52 +14,67 @@ Source files use the `.noma` extension. The full vision lives in `PLAN.md` — r
 ## Repo Layout
 
 ```
-src/                       TypeScript source for parser, AST, renderers, validator, CLI
-  ast.ts                   Typed AST node definitions (single source of truth)
-  parser.ts                .noma → AST (hand-written recursive descent)
-  renderer-html.ts         AST → semantic HTML (plot SVGs, escape hatches, KaTeX auto-inject, alias anchors)
-  renderer-llm.ts          AST → deterministic LLM context (escape-hatch bodies stripped; math passes through)
+src/                       TypeScript core — parser, AST, renderers, validator, patch engine, CLI
+  ast.ts                   Typed AST node definitions (single source of truth; Diagnostic carries pos+endLine)
+  parser.ts                .noma → AST (hand-written recursive descent; fence depth capped at 64 colons)
+  inline.ts                Inline markdown + shared `splitPipeRow` util
+  loader.ts                Filesystem inlining for dataset/figure `src=` (contained to the doc dir by default)
+  book.ts                  YAML manifest loader. `loadBook` (concat) + `loadBookChapters` (per-chapter, scoped IDs)
+  renderer-html.ts         AST → semantic HTML (plot SVGs, escape hatches, KaTeX, sanitized diagram runtimes)
+  renderer-llm.ts          AST → deterministic LLM context (select/exclude/budget/stale-memory filters)
   renderer-json.ts         AST → JSON
   renderer-noma.ts         AST → .noma source (roundtrip-safe; backs `noma patch`)
+  renderer-markdown.ts     AST → portable Markdown (`--to markdown`)
+  renderer-docx.ts         AST → Word .docx (comments, footnotes, tracked changes, controls, captions)
   renderer-site.ts         Multi-page HTML site for book manifests (`--to site`). Cross-chapter wikilink rewrite.
-  validator.ts             AST → diagnostics (`noverify` opt-out; composable profiles; wikilink refs incl. aliases; `--ignore-rule`)
-  inline.ts                Inline markdown + shared `splitPipeRow` util
-  patch.ts                 Block-level patch ops (replace/add/delete/update_attr/rename_id)
-  book.ts                  YAML manifest loader. `loadBook` (concat) + `loadBookChapters` (per-chapter, scoped IDs)
+  pdf.ts                   Rendered HTML → PDF via Puppeteer (`--to pdf`)
+  validator.ts             AST → diagnostics (composable profiles; `--ignore-rule`; alias-aware refs)
+  patch.ts                 Block-level patch ops (25 op types; `patchSource` is canonical; `baseHash` preconditions)
+  hash.ts                  Dependency-free sha256 (browser-safe; backs `blockSourceHash`)
+  proof.ts                 Agent safety proof — simulate ops, validate, hash, sandboxed preview (`noma proof`)
+  diff.ts                  Doc diff → `::state_change` blocks (`noma diff`)
+  ids.ts                   Canonical ID/alias registry (`noma ids`)
   fmt.ts                   Source formatter; re-aligns pipe tables, leaves rest byte-identical
-  cli.ts                   `noma parse|render|check|export|patch|fmt|diff|verify` (`--to site`, `--math`, `--ignore-rule`)
+  formula.ts, computed.ts  Formula AST + computed metrics (sandboxed evaluation, no eval())
+  docx-*.ts                Word review-loop sync (control data, comments, tracked changes)
+  ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
+  verify.ts                Conformance fixture runner (`noma verify`)
+  cloud-server.ts          Noma Cloud HTTP server (renders with escape hatches OFF)
+  cloud-db.ts              SQLite persistence for Noma Cloud
+  cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
+  index.ts                 Public library exports (npm package surface)
 bin/noma.mjs               Node CLI shim
-themes/default.css         Default HTML theme (tables, export buttons, controls, variants)
-themes/dark.css            Alternate dark theme — `noma render --theme dark`
-examples/                  Demo .noma files
-  thesis.noma              Original ASML investment-thesis demo (with real revenue plot)
-  landing.noma             Original landing-page demo
-  book-chapter.noma        Original single-chapter demo
-  agent-plan.noma          Demo 1 — Q3 roadmap decision artifact
-  tech-doc.noma            Demo 2 — CLI reference page
-  research-thesis.noma     Demo 3 — vertical-AI investment thesis (with real bar/line plots)
-  index.noma               Noma-rendered gallery (kept around as dist/_index-noma.html)
-  book/                    Multi-file demo book — book.noma.yml + 3 chapters
-  agent-stale-memo/        Killer demo — stale research memo + patches.json
+packages/
+  mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block over stdio
+  agent-sdk/               @ferax564/noma-agent-sdk — TS workflow layer (safePatch, capability checks, transcript replay)
+  agent-sdk-py/            Python agent SDK starter
+schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript (`noma schema <name>`)
+web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts (esbuild via build:web-ui)
+themes/                    default.css + dark.css HTML themes
+examples/                  Demo .noma files — agent-plan, tech-doc, research-thesis, word-review-loop, interactive-projection, …
+  conformance/             Golden-file conformance suite (valid/invalid/patch fixtures) — `npm run verify:conformance` gates CI
+  agent-stale-memo/        Killer demo — stale research memo + patches.json → trace.html
+  agent-memory/            Agent memory-block update demo
+  templates/               `noma init` starter templates (research-memo, decision-record, technical-spec, agent-refresh)
+  book/                    Multi-file demo book — book.noma.yml + chapters
 docs/                      Project docs, all written in .noma
   direction.noma           Canonical positioning (mirrors PLAN.md §23)
-  spec.noma                Block-type and AST reference (incl. variants, book manifests, escape hatches)
-  architecture.noma        Parser/renderer/validator design
-  agent-protocol.noma      Block-level patch operation schema
-  getting-started.noma     User-facing walkthrough
-site/                      Hand-crafted HTML landing page (NOT a .noma file)
-  index.html               Bespoke layout — copied to dist/index.html in build
-scripts/                   Build/render helpers
-  render-pdf.ts            Single HTML → PDF via Puppeteer
-  render-demo-pdfs.ts      All three demos → PDF (single browser instance)
-  agent-stale-memo.ts      Stale-memo demo runner — validate → patchSource → re-validate + trace.html
-tools/                     Developer tooling outside the core lib
-  vscode-noma/             VS Code language extension (TextMate grammar + lang config)
-test/                      node:test suites — parser, roundtrip, patch, validator, plot, book, escape-hatch
-.github/workflows/         CI
-  pages.yml                Typecheck + tests + build:site → GitHub Pages
+  spec.noma                Block-type and AST reference
+  spec-agent-protocol-v1.noma  Normative Agent Protocol RFC v1.0 (patch ops, transcripts, capabilities)
+  agent-protocol.noma      Legacy protocol doc — superseded by the v1 RFC above
+  agent-guide.noma, getting-started.noma, workbench.noma, noma-cloud.noma, architecture.noma, comparison.noma, …
+  runbooks/                npm / PyPI / VS Code Marketplace publish runbooks
+site/                      Hand-crafted HTML landing page (NOT a .noma file); assets/ holds web bundles
+scripts/                   Build/demo helpers — render PDFs, build-web-ui, stale-memo + agent-memory demos,
+                           package-smoke, deploy-hetzner, check-memory-drift, release
+tools/vscode-noma/         VS Code language extension (TextMate grammar; syntax-only, no LSP yet)
+test/                      node:test suites — parser, patch, validator, roundtrip, docx, cloud-server, conformance, …
+.github/workflows/         CI — pages.yml (typecheck+tests+conformance+site → GitHub Pages),
+                           ci.yml (PR matrix tests), freshness.yml (scheduled docs staleness check)
+action.yml                 Reusable GitHub Action — validate/render/proof .noma artifacts in CI (strict by default)
+Dockerfile, ezkeel.yaml    Noma Cloud container build + deployment config
 dist/                      Build output (gitignored). GH Pages deploys this.
-PLAN.md                    Full product vision (do NOT delete). §23 = revised direction. §24 = shipped tracker.
+PLAN.md                    Full product vision (do NOT delete). §23 = direction. §24 = shipped tracker per release.
 CHANGELOG.md               Keep-a-Changelog format. Add to [Unreleased] as you ship.
 ```
 
@@ -168,29 +183,32 @@ npm run noma -- parse examples/agent-plan.noma
 npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
 npm run noma -- render examples/agent-plan.noma --to llm
 npm run noma -- render examples/agent-plan.noma --to noma          # AST → .noma source
-npm run noma -- render examples/research-thesis.noma --to html --theme dark
+npm run noma -- render examples/agent-plan.noma --to markdown      # portable Markdown
+npm run noma -- render examples/word-review-loop.noma --to docx --out dist/review.docx
+npm run noma -- render examples/thesis.noma --to pdf --out dist/thesis.pdf
 npm run noma -- render examples/book/book.noma.yml --to html       # multi-file book (single page)
 npm run noma -- render examples/book/book.noma.yml --to site --out dist/book   # multi-page site
-npm run noma -- render examples/research-thesis.noma --math katex  # force KaTeX assets in HTML
 npm run noma -- check examples/research-thesis.noma
-npm run noma -- check examples/research-thesis.noma --stale-days 30   # tighter window for time-sensitive docs
-npm run noma -- check chapters/03.noma --ignore-rule broken-reference  # skip cross-book refs
+npm run noma -- check chapters/03.noma --ignore-rule broken-reference
 
-# block-level patch (rewrites only the addressed block)
+# agent safety proof — simulate ops, validate, hash, preview (exit 1 on fail)
+npm run noma -- proof examples/agent-plan.noma --op '{"op":"update_attribute","id":"decision-q3-direction","key":"status","value":"accepted"}' --out dist/proof.html
+
+# block-level patch (rewrites only the addressed block; add "baseHash" for optimistic concurrency)
 npm run noma -- patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.95}' --inplace
+
+# Markdown → Noma intake
+npm run noma -- ingest README.md --out readme.noma
 
 # re-align pipe tables in source (idempotent; skips fenced code blocks)
 npm run noma -- fmt examples/research-thesis.noma --inplace
 
-# render all examples and docs (HTML + LLM + JSON)
-npm run render:examples
-npm run render:docs
-
-# generate PDFs for the three demos (requires Puppeteer Chrome installed)
-npm run render:pdf:demos
-
-# full site build — examples + docs + book + dark-theme demo + landing + PDFs
-npm run build:site
+npm run render:examples         # render all examples (HTML + LLM + JSON + proof + docx)
+npm run render:docs             # render all docs
+npm run verify:conformance      # golden-file conformance suite
+npm test                        # full node:test suite
+npm run test:full               # tsc + tests + conformance + package smoke + agent-sdk + site build
+npm run build:site              # full site build (examples + docs + book + demos + PDFs)
 ```
 
 ## GitHub Pages
