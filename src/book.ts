@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import yaml from "js-yaml";
 import type { DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
 import { parse } from "./parser.js";
-import { inlineDatasetSources } from "./loader.js";
+import { inlineDatasetSources, resolveSourcePath } from "./loader.js";
 
 /**
  * Shape of `book.yml` manifests. Note: YAML keys are snake_case (`trusted_publishing`),
@@ -40,12 +40,21 @@ export interface LoadedChapter {
   doc: DocumentNode;
 }
 
+export interface LoadBookOptions {
+  /**
+   * Permit chapter and dataset paths that resolve outside the manifest's
+   * directory. Off by default so a manifest cannot pull in arbitrary files.
+   */
+  allowExternalPaths?: boolean;
+}
+
 /**
  * Load a YAML book manifest and assemble a single DocumentNode by
  * concatenating each chapter's parsed AST. Chapter file paths are
- * resolved relative to the manifest's directory.
+ * resolved relative to the manifest's directory and must stay within it
+ * unless `allowExternalPaths` is set.
  */
-export function loadBook(manifestPath: string): DocumentNode {
+export function loadBook(manifestPath: string, options: LoadBookOptions = {}): DocumentNode {
   const absManifest = resolve(manifestPath);
   const raw = readFileSync(absManifest, "utf8");
   const parsed = yaml.load(raw);
@@ -70,7 +79,7 @@ export function loadBook(manifestPath: string): DocumentNode {
   };
 
   const children: Node[] = [];
-  const loaded = loadChapters(chapters, baseDir);
+  const loaded = loadChapters(chapters, baseDir, options);
   for (const ch of loaded) {
     for (const child of ch.doc.children) children.push(child);
   }
@@ -83,7 +92,10 @@ export function loadBook(manifestPath: string): DocumentNode {
  * applying chapter-scoped heading IDs in book mode. Used by the multi-page
  * site renderer; loadBook() concatenates the same set into one doc.
  */
-export function loadBookChapters(manifestPath: string): {
+export function loadBookChapters(
+  manifestPath: string,
+  options: LoadBookOptions = {},
+): {
   manifest: Record<string, unknown>;
   chapters: LoadedChapter[];
   baseDir: string;
@@ -102,16 +114,25 @@ export function loadBookChapters(manifestPath: string): {
     throw new Error(`book manifest has no chapters: ${manifestPath}`);
   }
   const baseDir = dirname(absManifest);
-  return { manifest, chapters: loadChapters(chapterPaths, baseDir), baseDir };
+  return { manifest, chapters: loadChapters(chapterPaths, baseDir, options), baseDir };
 }
 
-function loadChapters(chapterPaths: string[], baseDir: string): LoadedChapter[] {
+function loadChapters(
+  chapterPaths: string[],
+  baseDir: string,
+  options: LoadBookOptions,
+): LoadedChapter[] {
   const out: LoadedChapter[] = [];
   for (const chapter of chapterPaths) {
-    const chapterPath = isAbsolute(chapter) ? chapter : resolve(baseDir, chapter);
+    const chapterPath = resolveSourcePath(baseDir, chapter, options.allowExternalPaths);
+    if (!chapterPath) {
+      throw new Error(
+        `chapter path escapes the manifest directory: ${chapter} (use --allow-external-paths to permit)`,
+      );
+    }
     const source = readFileSync(chapterPath, "utf8");
     const doc = parse(source, { filename: chapterPath });
-    inlineDatasetSources(doc, dirname(chapterPath));
+    inlineDatasetSources(doc, dirname(chapterPath), options);
     const slug = chapterSlug(chapterPath, doc);
     scopeHeadingIds(doc, slug);
     out.push({ slug, source: chapterPath, doc });

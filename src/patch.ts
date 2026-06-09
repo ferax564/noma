@@ -1619,7 +1619,7 @@ function parseFragment(content: string, op: PatchOp): Node {
 }
 
 function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 }
 
 /**

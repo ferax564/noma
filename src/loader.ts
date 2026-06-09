@@ -1,21 +1,49 @@
 import { readFileSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import type { DocumentNode } from "./ast.js";
 import { walk } from "./ast.js";
+
+export interface InlineSourceOptions {
+  /**
+   * Permit `src` references that resolve outside the document's directory
+   * (absolute paths or `../` escapes). Off by default so rendering an
+   * untrusted document cannot embed arbitrary local files into the output.
+   */
+  allowExternalPaths?: boolean;
+}
+
+/**
+ * Resolve a file reference against `baseDir`, refusing paths that land
+ * outside it unless `allowExternalPaths` is set. Returns `undefined` for
+ * refused paths.
+ */
+export function resolveSourcePath(
+  baseDir: string,
+  ref: string,
+  allowExternalPaths = false,
+): string | undefined {
+  const path = isAbsolute(ref) ? ref : resolve(baseDir, ref);
+  if (allowExternalPaths) return path;
+  const rel = relative(resolve(baseDir), path);
+  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return path;
+  return undefined;
+}
 
 /**
  * In-place: for every `::dataset{src="..."}` block without an inline body,
  * read the referenced file and stuff its contents into `body`. Sets the
  * `format` attribute (csv/tsv/json/yaml) when not already provided.
  *
- * Path resolution: absolute paths used as-is, relative paths resolved
- * against `baseDir` (or the document's own filename's directory).
+ * Path resolution: relative paths resolved against `baseDir` (or the
+ * document's own filename's directory) and contained within it; absolute
+ * or escaping paths require `allowExternalPaths`.
  *
  * Renderers stay pure — they read `body` and `format`, never the filesystem.
  */
 export function inlineDatasetSources(
   doc: DocumentNode,
   baseDir?: string,
+  options: InlineSourceOptions = {},
 ): DocumentNode {
   const dir =
     baseDir ??
@@ -27,7 +55,12 @@ export function inlineDatasetSources(
     const src = node.attrs.src;
     if (typeof src !== "string" || !src.trim()) continue;
     if (node.body && node.body.trim()) continue;
-    const path = isAbsolute(src) ? src : resolve(dir, src);
+    const path = resolveSourcePath(dir, src, options.allowExternalPaths);
+    if (!path) {
+      node.body = `# error loading ${src}: path escapes the document directory (use --allow-external-paths to permit)`;
+      node.attrs.format = "error";
+      continue;
+    }
     try {
       const content = readFileSync(path, "utf8");
       node.body = content;
@@ -45,6 +78,7 @@ export function inlineDatasetSources(
 export function inlineFigureSources(
   doc: DocumentNode,
   baseDir?: string,
+  options: InlineSourceOptions = {},
 ): DocumentNode {
   const dir =
     baseDir ??
@@ -59,7 +93,8 @@ export function inlineFigureSources(
     if (/^(?:https?:|data:)/i.test(src)) continue;
     const contentType = imageMimeType(src);
     if (!contentType) continue;
-    const path = isAbsolute(src) ? src : resolve(dir, src);
+    const path = resolveSourcePath(dir, src, options.allowExternalPaths);
+    if (!path) continue;
     try {
       node.attrs.data = `data:${contentType};base64,${readFileSync(path).toString("base64")}`;
     } catch {
