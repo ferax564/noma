@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, watch as fsWatch } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
@@ -69,6 +69,10 @@ Render options:
                             and generated interactive runtime
   --allow-external-paths    Permit dataset/figure src and book chapters that
                             resolve outside the document's own directory
+  --watch                   Re-run the command when the document's directory
+                            changes (render/check/export live loop)
+  --fix                     check: apply the validator's mechanical fixes
+                            (diagnostic "fix" patch ops) to the source file
   --math <katex|none>       Math rendering: enable KaTeX assets in standalone HTML
                             (default: auto-detect from doc / book manifest)
   --page-size <name>        PDF: page size passed to Chromium (default: A4)
@@ -162,6 +166,7 @@ interface CliArgs {
   customCss?: string;
   allowEscapeHatches: boolean;
   allowExternalPaths: boolean;
+  fix: boolean;
   externalAssets: boolean;
   interactive: boolean;
   pdfPageSize: string;
@@ -195,6 +200,7 @@ function parseArgs(argv: string[]): CliArgs {
     pdfPrintBackground: true,
     allowEscapeHatches: true,
     allowExternalPaths: false,
+    fix: false,
     externalAssets: true,
     interactive: true,
     ignoreRules: [],
@@ -235,6 +241,9 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--allow-external-paths") {
       args.allowExternalPaths = true;
+      i++;
+    } else if (a === "--fix") {
+      args.fix = true;
       i++;
     } else if (a === "--strict") {
       args.allowEscapeHatches = false;
@@ -555,6 +564,65 @@ async function main(): Promise<void> {
     rawArgv[0] === "agent" && rawArgv[1] === "review"
       ? ["proof", ...rawArgv.slice(2)]
       : rawArgv;
+  if (!argv.includes("--watch")) return run(argv);
+  const stripped = argv.filter((a) => a !== "--watch");
+  const args = parseArgs(stripped);
+  if (!args.file) {
+    process.stderr.write(`error: --watch requires an input file\n`);
+    process.exit(2);
+  }
+  await runWatch(stripped, args);
+}
+
+class CliExit extends Error {
+  constructor(public readonly code: number) {
+    super(`exit ${code}`);
+  }
+}
+
+const WATCH_SOURCE_RE = /\.(noma|ya?ml|csv|tsv|md)$/i;
+
+async function runWatch(argv: string[], args: CliArgs): Promise<void> {
+  const input = resolve(args.file!);
+  const watchDir = dirname(input);
+  const outPath = args.out ? resolve(args.out) : undefined;
+  const realExit = process.exit.bind(process);
+
+  const runOnce = async (): Promise<void> => {
+    const started = Date.now();
+    process.exit = ((code?: number) => {
+      throw new CliExit(typeof code === "number" ? code : 0);
+    }) as typeof process.exit;
+    try {
+      await run(argv);
+      process.stderr.write(`✓ ${new Date().toLocaleTimeString()} — ok (${Date.now() - started}ms)\n`);
+    } catch (error) {
+      if (error instanceof CliExit) {
+        if (error.code !== 0) {
+          process.stderr.write(`✗ ${new Date().toLocaleTimeString()} — exit ${error.code}; watching for fixes\n`);
+        }
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(`✗ ${new Date().toLocaleTimeString()} — ${message}; watching for fixes\n`);
+      }
+    } finally {
+      process.exit = realExit;
+    }
+  };
+
+  await runOnce();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  fsWatch(watchDir, { recursive: true }, (_event, name) => {
+    if (!name || !WATCH_SOURCE_RE.test(name)) return;
+    if (outPath && resolve(watchDir, name) === outPath) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => void runOnce(), 150);
+  });
+  process.stderr.write(`watching ${watchDir} for changes — Ctrl-C to stop\n`);
+  await new Promise(() => {});
+}
+
+async function run(argv: string[]): Promise<void> {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(HELP);
     return;
@@ -902,6 +970,25 @@ async function main(): Promise<void> {
     }
     case "check": {
       const diagnostics = validate(doc, validateOptionsFromArgs(args));
+      if (args.fix) {
+        if (isBookManifestPath(filePath)) {
+          process.stderr.write(`error: --fix operates on .noma source files, not book manifests\n`);
+          process.exit(2);
+        }
+        const fixes = diagnostics.filter((d) => d.fix).map((d) => d.fix as unknown as PatchOp);
+        if (fixes.length === 0) {
+          process.stdout.write(formatDiagnostics(diagnostics, args.file) + "\n");
+          process.stderr.write(`no mechanical fixes available\n`);
+          process.exit(diagnostics.some((d) => d.severity === "error") ? 1 : 0);
+        }
+        const before = readFileSync(filePath, "utf8");
+        const fixed = patchSource(before, fixes);
+        writeFileSync(filePath, fixed, "utf8");
+        const after = validate(parse(fixed, { filename: filePath }), validateOptionsFromArgs(args));
+        process.stdout.write(formatDiagnostics(after, args.file) + "\n");
+        process.stderr.write(`✓ applied ${fixes.length} fix${fixes.length === 1 ? "" : "es"} to ${args.file}\n`);
+        process.exit(after.some((d) => d.severity === "error") ? 1 : 0);
+      }
       const formatted = formatDiagnostics(diagnostics, args.file);
       process.stdout.write(formatted + "\n");
       const hasError = diagnostics.some((d) => d.severity === "error");

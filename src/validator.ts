@@ -216,6 +216,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   const claims: DirectiveNode[] = [];
   const evidenceTargets = new Set<string>();
   const referenced = new Set<string>();
+  const refSites: Array<{ target: string; node: Node; attrKey?: string }> = [];
   const datasetIds = new Map<string, DirectiveNode>();
   const datasetColumns = new Map<string, Set<string>>();
   const controls = new Map<string, DirectiveNode>();
@@ -248,22 +249,23 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   const profileLabel = declaredProfiles.join("+");
 
   const wikilinkRefs = new Set<string>();
-  const collectWikilinks = (text: string): void => {
+  const collectWikilinks = (text: string, node: Node): void => {
     for (const link of extractWikilinks(text)) {
       if (!isBlockReferenceWikilinkTarget(link.target)) continue;
       referenced.add(link.target);
       wikilinkRefs.add(link.target);
+      refSites.push({ target: link.target, node });
     }
   };
 
   for (const node of walk(doc)) {
-    if (node.type === "paragraph" || node.type === "quote") collectWikilinks(node.content);
-    else if (node.type === "list_item") collectWikilinks(node.content);
-    else if (node.type === "section") collectWikilinks(node.title);
-    else if (node.type === "directive" && node.body) collectWikilinks(node.body);
+    if (node.type === "paragraph" || node.type === "quote") collectWikilinks(node.content, node);
+    else if (node.type === "list_item") collectWikilinks(node.content, node);
+    else if (node.type === "section") collectWikilinks(node.title, node);
+    else if (node.type === "directive" && node.body) collectWikilinks(node.body, node);
     else if (node.type === "table") {
-      for (const cell of node.header) collectWikilinks(cell);
-      for (const row of node.rows) for (const cell of row) collectWikilinks(cell);
+      for (const cell of node.header) collectWikilinks(cell, node);
+      for (const row of node.rows) for (const cell of row) collectWikilinks(cell, node);
     }
     if (node.id) {
       if (ids.has(node.id)) {
@@ -372,6 +374,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       const block = node.attrs.block;
       if (typeof block === "string") {
         referenced.add(block);
+        refSites.push({ target: block, node, attrKey: "block" });
       } else {
         diagnostics.push({
           severity: "warning",
@@ -395,15 +398,24 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     }
 
     if (node.name === "comment" && !suppressed(node)) {
-      const target = readFirstStringAttr(node, ["target", "for", "parent", "block", "ref"]);
-      if (target) referenced.add(target);
-      const replyTo = readFirstStringAttr(node, ["reply_to", "replyTo", "reply"]);
-      if (replyTo) referenced.add(replyTo);
+      const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block", "ref"]);
+      if (target) {
+        referenced.add(target.value);
+        refSites.push({ target: target.value, node, attrKey: target.key });
+      }
+      const replyTo = readFirstStringAttrEntry(node, ["reply_to", "replyTo", "reply"]);
+      if (replyTo) {
+        referenced.add(replyTo.value);
+        refSites.push({ target: replyTo.value, node, attrKey: replyTo.key });
+      }
     }
 
     if (node.name === "change_request" && !suppressed(node)) {
-      const target = readFirstStringAttr(node, ["target", "for", "parent", "block"]);
-      if (target) referenced.add(target);
+      const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block"]);
+      if (target) {
+        referenced.add(target.value);
+        refSites.push({ target: target.value, node, attrKey: target.key });
+      }
       const action = readFirstStringAttr(node, ["action", "type"])?.toLowerCase();
       if (action) {
         if (action !== "insert" && action !== "delete" && action !== "replace") {
@@ -427,8 +439,11 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     }
 
     if ((node.name === "footnote" || node.name === "endnote") && !suppressed(node)) {
-      const target = readFirstStringAttr(node, ["target", "for", "parent", "block", "ref"]);
-      if (target) referenced.add(target);
+      const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block", "ref"]);
+      if (target) {
+        referenced.add(target.value);
+        refSites.push({ target: target.value, node, attrKey: target.key });
+      }
     }
 
     if (node.name === "evidence" || node.name === "counterevidence") {
@@ -436,6 +451,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
       if (typeof target === "string") {
         referenced.add(target);
         evidenceTargets.add(target);
+        refSites.push({ target, node, attrKey: "for" });
       } else {
         diagnostics.push({
           severity: "warning",
@@ -730,11 +746,35 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   }
 
   for (const target of referenced) {
-    if (!ids.has(target) && !aliasIds.has(target)) {
+    if (ids.has(target) || aliasIds.has(target)) continue;
+    const suggestion = nearestId(target, [...ids.keys(), ...aliasIds]);
+    const hint = suggestion ? ` Did you mean "${suggestion}"?` : "";
+    const sites = refSites.filter((site) => site.target === target);
+    if (sites.length === 0) {
       diagnostics.push({
         severity: "error",
         code: "broken-reference",
-        message: `Reference to unknown block ID "${target}".`,
+        message: `Reference to unknown block ID "${target}".${hint}`,
+      });
+      continue;
+    }
+    for (const site of sites) {
+      diagnostics.push({
+        severity: "error",
+        code: "broken-reference",
+        message: `Reference to unknown block ID "${target}".${hint}`,
+        pos: site.node.pos,
+        nodeId: site.node.id,
+        ...(suggestion && site.attrKey && site.node.id
+          ? {
+              fix: {
+                op: "update_attribute",
+                id: site.node.id,
+                key: site.attrKey,
+                value: suggestion,
+              },
+            }
+          : {}),
       });
     }
   }
@@ -880,11 +920,50 @@ function suppressed(node: DirectiveNode): boolean {
 }
 
 function readFirstStringAttr(node: DirectiveNode, keys: string[]): string | undefined {
+  return readFirstStringAttrEntry(node, keys)?.value;
+}
+
+function readFirstStringAttrEntry(
+  node: DirectiveNode,
+  keys: string[],
+): { key: string; value: string } | undefined {
   for (const key of keys) {
     const value = node.attrs[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "string" && value.trim()) return { key, value: value.trim() };
   }
   return undefined;
+}
+
+function levenshtein(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  const prev = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0]!;
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cur = prev[j]!;
+      prev[j] = Math.min(cur + 1, prev[j - 1]! + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = cur;
+    }
+  }
+  return prev[b.length]!;
+}
+
+function nearestId(target: string, candidates: Iterable<string>): string | undefined {
+  let best: string | undefined;
+  let bestDistance = 3;
+  for (const candidate of candidates) {
+    const distance = levenshtein(target, candidate);
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    } else if (distance === bestDistance && best !== undefined) {
+      best = undefined;
+      bestDistance = distance;
+    }
+  }
+  return bestDistance <= 2 && target.length > 3 ? best : undefined;
 }
 
 function hasChangeRequestRevisionText(node: DirectiveNode, action: "insert" | "delete" | "replace"): boolean {

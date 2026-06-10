@@ -6,6 +6,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Watch mode:** `noma render|check|export <file> --watch` re-runs the command whenever the document's directory changes (debounced; output files and non-source extensions ignored), giving authors and long-running agents a live render/validate loop.
+- **Mechanical fixits:** diagnostics now carry an optional `fix` field — a ready-to-apply patch op attached when the repair is unambiguous. Broken references with a single near-miss ID (edit distance ≤ 2) suggest the correction in the message and, for attribute-based references (`for=`, `target=`, `block=`, …), carry the exact `update_attribute` op. `noma check --fix` applies every available fix to the source file and re-validates.
+- **Broken-reference provenance:** each referencing site now gets its own `broken-reference` diagnostic with position, span, and `nodeId` (previously one anonymous diagnostic per missing target).
+
 ## [0.14.0] — 2026-06-10
 
 ### Added
