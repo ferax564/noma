@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — 2026-06-10
+
+- Language-server client: starts `@ferax564/noma-lsp` over stdio for `.noma` files — diagnostics, document symbols, alias-aware go-to-definition for wikilinks and `for=`/`target=` attributes, wikilink ID completion.
+- New `noma.lsp.path` setting overrides the server launch command (default `npx -y @ferax564/noma-lsp`).
+- Minimum VS Code version raised to 1.82 (required by `vscode-languageclient` 9).
+
 ## 0.2.1 — 2026-05-15
 
 - README now points at the live Marketplace install path.

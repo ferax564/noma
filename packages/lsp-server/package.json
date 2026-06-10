@@ -1,0 +1,51 @@
+{
+  "name": "@ferax564/noma-lsp",
+  "version": "0.14.0",
+  "description": "Language server for the Noma document format — diagnostics, document symbols, go-to-definition, and wikilink completion over stdio",
+  "type": "module",
+  "main": "dist/lib.js",
+  "types": "dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "import": "./dist/lib.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "ferax564",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ferax564/noma.git",
+    "directory": "packages/lsp-server"
+  },
+  "homepage": "https://ferax564.github.io/noma/",
+  "bugs": {
+    "url": "https://github.com/ferax564/noma/issues"
+  },
+  "bin": {
+    "noma-lsp": "dist/index.js"
+  },
+  "files": ["src", "dist", "README.md"],
+  "scripts": {
+    "prepack": "npm run build",
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ferax564/noma-cli": "0.14.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

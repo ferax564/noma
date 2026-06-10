@@ -48,6 +48,7 @@ packages/
   mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block over stdio
   agent-sdk/               @ferax564/noma-agent-sdk — TS workflow layer (safePatch, capability checks, transcript replay)
   agent-sdk-py/            Python agent SDK starter
+  lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
 schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript (`noma schema <name>`)
 web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts (esbuild via build:web-ui)
 themes/                    default.css + dark.css HTML themes
@@ -67,7 +68,7 @@ docs/                      Project docs, all written in .noma
 site/                      Hand-crafted HTML landing page (NOT a .noma file); assets/ holds web bundles
 scripts/                   Build/demo helpers — render PDFs, build-web-ui, stale-memo + agent-memory demos,
                            package-smoke, deploy-hetzner, check-memory-drift, release
-tools/vscode-noma/         VS Code language extension (TextMate grammar; syntax-only, no LSP yet)
+tools/vscode-noma/         VS Code language extension (TextMate grammar + bundled LSP client)
 test/                      node:test suites — parser, patch, validator, roundtrip, docx, cloud-server, conformance, …
 .github/workflows/         CI — pages.yml (typecheck+tests+conformance+site → GitHub Pages),
                            ci.yml (PR matrix tests), freshness.yml (scheduled docs staleness check)

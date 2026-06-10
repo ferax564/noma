@@ -85,6 +85,16 @@ function check(): number {
     "update the dependency pin",
   );
   expect(
+    "packages/lsp-server version matches",
+    packageVersion("packages/lsp-server/package.json") === version,
+    `bump packages/lsp-server/package.json to ${version}`,
+  );
+  expect(
+    "packages/lsp-server pins @ferax564/noma-cli to the release",
+    read("packages/lsp-server/package.json").includes(`"@ferax564/noma-cli": "${version}"`),
+    "update the dependency pin",
+  );
+  expect(
     "mcp-server McpServer version string matches",
     read("packages/mcp-server/src/index.ts").includes(`version: "${version}"`),
     "update the McpServer constructor version",
@@ -112,7 +122,12 @@ function bump(version: string): number {
 
   bumpJsonVersion("package.json", version);
   bumpJsonVersion("packages/mcp-server/package.json", version);
-  for (const path of ["packages/mcp-server/package.json", "packages/agent-sdk/package.json"]) {
+  bumpJsonVersion("packages/lsp-server/package.json", version);
+  for (const path of [
+    "packages/mcp-server/package.json",
+    "packages/agent-sdk/package.json",
+    "packages/lsp-server/package.json",
+  ]) {
     writeFileSync(
       path,
       read(path).replace(/"@ferax564\/noma-cli":\s*"\d+\.\d+\.\d+"/, `"@ferax564/noma-cli": "${version}"`),

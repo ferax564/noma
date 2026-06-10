@@ -45,3 +45,5 @@ jobs:
       - run: npm run test:agent-sdk
       - name: MCP server tests
         run: npm test -w @ferax564/noma-mcp-server
+      - name: LSP server tests
+        run: npm test -w @ferax564/noma-lsp
