@@ -370,6 +370,34 @@ For book manifests, chapter loading applies the same book-scoped IDs and aliases
 
 The CLI writes only after every operation has applied to an in-memory candidate. When `prevalidate` is true, existing validation errors block the transaction before patching. When `postvalidate` is true, validation errors in the patched candidate block the write, leaving the source file unchanged.
 
+### Patch preconditions (v0.14)
+
+Any operation may carry a `baseHash` — the sha256 of the target block's current
+source slice (full hex or a prefix of at least 8 chars), obtained from
+`blockSourceHash()` or the MCP `read_doc` tool's per-block `hash`. When the
+block changed since it was read, the op is refused with `sha_mismatch` before
+any bytes are written. Preconditions are per block, so concurrent edits to
+*other* blocks of the same document do not conflict. See the
+[Agent Protocol RFC](spec-agent-protocol-v1.noma) §3.4 for the normative
+behavior.
+
+```json
+{ "op": "update_attribute", "id": "claim-1", "key": "confidence", "value": 0.9,
+  "baseHash": "d2cf10ce02be" }
+```
+
+### Book patch transactions (v0.15)
+
+`noma patch book.noma.yml --ops tx.json --inplace` applies one transaction
+across a multi-file book. Each op is routed to the chapter that owns its
+target block ID — chapter-scoped section IDs (`chapter/heading`), their
+unscoped aliases, and directive IDs all resolve. All chapters are patched in
+memory first, the re-assembled book is validated, and files are written
+all-or-nothing. An ID that exists in more than one chapter is rejected with
+`id_conflict` (use the chapter-scoped form). `baseHash` preconditions verify
+against the owning chapter's file content. The library surface is
+`patchBookSource(manifestPath, ops, options)`.
+
 ### Patch schemas
 
 The CLI ships machine-readable JSON Schemas for tools that want to validate
@@ -518,6 +546,19 @@ Options surfaced on the API: `requireEvidenceForClaims` (default `true`), `stale
 
 **Precedence** (high → low): CLI `--stale-days`, per-citation `stale_after_days`, frontmatter `stale_citation_days`, default 365.
 
+**Diagnostic spans (v0.14).** Block-anchored diagnostics carry `endLine`
+alongside `pos`, so editors and agents get the full source range of the
+offending block. `noma check` prints spans as `file:line:column-endLine`.
+
+**Mechanical fixits (v0.15).** When a repair is unambiguous, the diagnostic
+carries a `fix` field: a ready-to-apply patch op. A broken reference whose
+target has exactly one near-miss ID (edit distance ≤ 2) suggests it in the
+message ("Did you mean …?") and — for attribute-based references such as
+`for=`, `target=`, `block=` — attaches the exact `update_attribute` op. Each
+referencing site gets its own positioned `broken-reference` diagnostic.
+`noma check <file> --fix` applies every available fix to the source file and
+re-validates; agents can pass `fix` payloads straight to `patchSource`.
+
 ## Profiles
 
 A document may declare a **profile** in frontmatter as a contract with downstream tools: "I only use these directives." Consumers (renderers, linters, schema generators) can then narrow safely instead of switching over the full `Node` union.
@@ -654,6 +695,14 @@ dataset body is already inlined and the format attribute is set
 (`csv`, `tsv`, `json`, `yaml`). Plots reference these datasets by id
 and column exactly as before.
 
+**Path containment (v0.14).** `src=` references (datasets and figures) and
+book-manifest chapter paths resolve only *within* the referencing document's
+directory by default — escaping paths produce an error-format dataset body,
+skip the figure, or fail the book load. Rendering an untrusted document
+therefore cannot embed arbitrary local files into the output. Pass
+`--allow-external-paths` (CLI) or `allowExternalPaths` (API) for trusted
+local workflows that share data across directories.
+
 ## Source-preserving patch (v0.5)
 
 `noma patch` no longer round-trips through `renderNoma` over the whole
@@ -683,6 +732,11 @@ Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 | `docx`   | experimental | WordprocessingML package for Word / Google Docs handoff. Requires `--out <file.docx>` |
 | `epub`   | planned |                                                                               |
 | `slides` | planned |                                                                               |
+
+**Watch mode (v0.15).** `noma render|check|export <file> --watch` re-runs the
+command whenever the document's directory changes (debounced; output files and
+non-source extensions are ignored), giving authors a live render loop and
+long-running agents a continuous validate loop without re-invoking the CLI.
 
 The static site also ships a browser workbench at `workbench.html`. It is not a separate render target; it bundles the parser, validator, HTML renderer, JSON renderer, and LLM renderer into a client-side editing surface for `.noma` source, safe preview, diagnostics, outline navigation, export downloads, find, print, selection formatting, headings/lists/links, and Noma block insertion templates for tables, figures, layout, controls, comments, change requests, and notes. When served by `npm start`, the same workbench can talk to `/api/documents` for persistent shared cloud documents and `/d/<id>` rendered artifact links.
 

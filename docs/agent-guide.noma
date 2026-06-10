@@ -121,6 +121,47 @@ Patch files should use the transaction wrapper when an edit has more than one op
 }
 ```
 
+## Book-wide transactions
+
+`noma patch book.noma.yml --ops tx.json --inplace` routes each op to the
+chapter that owns its target block ID. Chapter-scoped section IDs
+(`chapter/heading`), their unscoped aliases, and directive IDs all resolve, so
+an agent addresses blocks exactly as it discovered them via `noma ids`. All
+chapters patch in memory first; the re-assembled book is validated; files are
+written all-or-nothing. An ID that exists in more than one chapter is rejected
+with `id_conflict` — switch to the chapter-scoped form. `baseHash`
+preconditions verify against the owning chapter file, so the concurrency
+contract is identical to single-file patching.
+
+## Self-repair with fixits
+
+Validator diagnostics carry a `fix` field when the repair is mechanically
+unambiguous — today: broken attribute references (`for=`, `target=`, `block=`)
+whose target has exactly one near-miss ID. The `fix` payload is a complete
+patch op; pass it straight to `patchSource` or `patch_block`, or let the CLI
+do it:
+
+```bash
+noma check report.noma --fix    # applies every available fix, re-validates
+```
+
+Treat fixits as the *first* repair attempt in a validation loop: apply them,
+re-check, and only escalate to reasoning about the document when diagnostics
+remain. Never apply a fixit whose diagnostic you have not read — the patch is
+mechanical, but whether the near-miss ID is the *intended* target is a
+judgment the diagnostic message ("Did you mean …?") asks you to confirm.
+
+## Live validation
+
+Two continuous surfaces complement the one-shot CLI loop:
+
+- `noma check <file> --watch` re-validates on every change to the document's
+  directory — useful for a supervising agent that owns a long editing session.
+- `@ferax564/noma-lsp` serves the same validator over the Language Server
+  Protocol (diagnostics with full block spans, document symbols, alias-aware
+  go-to-definition for `[[wikilinks]]` and `for=` references, `[[`
+  completion). Editor-embedded agents get identical diagnostics to the CLI.
+
 ## Guardrails for agents
 
 ::callout{tone="warning"}

@@ -393,6 +393,39 @@ The validator catches duplicate IDs, broken references (including `[[wikilink]]`
 
 The staleness window defaults to 365 days. Override it for one document via `stale_citation_days: 30` in frontmatter, for one citation via `stale_after_days=30` on the citation, or globally with `--stale-days 30` on the CLI.
 
+## Fix what the validator can fix
+
+When a repair is mechanically unambiguous — a `for="asml-euv-mot"` pointing
+one typo away from a real ID — the diagnostic suggests it ("Did you mean
+…?") and carries the exact patch op. Apply every available fix in place:
+
+```bash
+npm run noma -- check examples/thesis.noma --fix
+```
+
+The file is patched block-by-block (everything else stays byte-identical) and
+re-validated in the same run.
+
+## Watch while you write
+
+```bash
+npm run noma -- render draft.noma --to html --out dist/draft.html --watch
+npm run noma -- check draft.noma --watch
+```
+
+`--watch` re-runs the command whenever the document's directory changes —
+save in your editor, reload the browser. Output files and non-source
+extensions are ignored, so rendering into the same directory doesn't loop.
+
+## Edit with live diagnostics in VS Code
+
+The [Noma VS Code extension](https://marketplace.visualstudio.com/items?itemName=ferax564.noma-language)
+(v0.3.0+) starts the `@ferax564/noma-lsp` language server automatically for
+`.noma` files: validator diagnostics as you type (with full block spans),
+outline symbols, go-to-definition for `[[wikilinks]]` and `for=` references
+(aliases included), and `[[` completion over every ID in the document. Any
+other LSP-capable editor can run the same server via `npx -y @ferax564/noma-lsp`.
+
 ## Pick a theme
 
 ```bash
@@ -474,6 +507,18 @@ The source-preserving patch path rewrites only addressed line ranges, moved
 blocks, or inserted blocks, so unrelated bytes stay byte-identical. See
 [agent-protocol.noma](agent-protocol.noma) and [compatibility.noma](compatibility.noma)
 for the schema and compatibility policy.
+
+Two safety rails compose with every op. Add `"baseHash"` (the block's sha256
+from `noma ids`-discovered tooling or the MCP `read_doc` hash) and the patch
+is refused with `sha_mismatch` if the block changed since you read it. And
+the same command accepts a book manifest — ops are routed to the chapter that
+owns each block ID and written all-or-nothing:
+
+```bash
+npm run noma -- patch examples/book/book.noma.yml \
+  --op '{"op":"update_attribute","id":"claim-block-trust","key":"confidence","value":0.91}' \
+  --inplace
+```
 
 For multi-op agent edits, use a transaction-shaped `--ops` file:
 
