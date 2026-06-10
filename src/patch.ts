@@ -1677,7 +1677,8 @@ export function blockSourceHash(source: string, id: string): string {
   return sha256Hex(source.split("\n").slice(start - 1, end).join("\n"));
 }
 
-function baseHashTargetId(op: PatchOp): string {
+/** The block ID an op is anchored to — its precondition target and, in book mode, its routing key. */
+export function patchTargetId(op: PatchOp): string {
   switch (op.op) {
     case "rename_id":
       return op.from;
@@ -1703,7 +1704,7 @@ function verifyBaseHash(source: string, op: PatchOp): void {
       op,
     );
   }
-  const targetId = baseHashTargetId(op);
+  const targetId = patchTargetId(op);
   let actual: string;
   try {
     actual = blockSourceHash(source, targetId);

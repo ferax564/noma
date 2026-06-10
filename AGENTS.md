@@ -30,6 +30,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   pdf.ts                   Rendered HTML → PDF via Puppeteer (`--to pdf`)
   validator.ts             AST → diagnostics (composable profiles; `--ignore-rule`; alias-aware refs)
   patch.ts                 Block-level patch ops (25 op types; `patchSource` is canonical; `baseHash` preconditions)
+  patch-book.ts            Book-wide patch transactions — ops routed to owning chapters by block ID
   hash.ts                  Dependency-free sha256 (browser-safe; backs `blockSourceHash`)
   proof.ts                 Agent safety proof — simulate ops, validate, hash, sandboxed preview (`noma proof`)
   diff.ts                  Doc diff → `::state_change` blocks (`noma diff`)

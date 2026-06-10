@@ -15,6 +15,7 @@ import { syncControlDefaultsFromDocx } from "./docx-control-sync.js";
 import { extractDocxReviewData } from "./docx-review-data.js";
 import { syncReviewCommentsFromDocx } from "./docx-review-sync.js";
 import { patchSource, type PatchOp } from "./patch.js";
+import { patchBookSource } from "./patch-book.js";
 import { loadBook, loadBookChapters, isBookManifestPath } from "./book.js";
 import { inlineDatasetSources, inlineFigureSources } from "./loader.js";
 import { renderSite } from "./renderer-site.js";
@@ -37,7 +38,9 @@ Usage:
   noma render <file.noma|book.yml> [opts]    Render to a target format
   noma check <file.noma|book.yml>            Validate the document
   noma export <file.noma|book.yml> [opts]    Alias for render --to json
-  noma patch <file.noma> [opts]              Apply block-level patch ops
+  noma patch <file.noma|book.yml> [opts]     Apply block-level patch ops; book
+                                             manifests route ops to the owning
+                                             chapter by block ID (--inplace)
   noma proof <file.noma> [opts]              Render an agent safety proof for patch ops
   noma agent review <file.noma> [opts]       Alias for proof
   noma ingest <file.md> [opts]               Convert Markdown to Noma-compatible source
@@ -1001,8 +1004,24 @@ async function run(argv: string[]): Promise<void> {
         process.exit(2);
       }
       if (isBookManifestPath(filePath)) {
-        process.stderr.write(`error: noma patch operates on .noma source files, not book manifests\n`);
-        process.exit(2);
+        if (!args.inplace) {
+          process.stderr.write(`error: book patches span multiple files; use --inplace (dry-run happens automatically before writing)\n`);
+          process.exit(2);
+        }
+        const result = patchBookSource(filePath, tx.ops, {
+          allowExternalPaths: args.allowExternalPaths,
+          write: true,
+          blockOnErrors: tx.postvalidate,
+          validateOptions: validateOptionsFromArgs(args),
+        });
+        for (const entry of result.files) {
+          if (entry.changed) process.stderr.write(`✓ patched ${entry.file}\n`);
+        }
+        const errors = result.postDiagnostics.filter((d) => d.severity === "error");
+        if (errors.length > 0) {
+          process.stderr.write(formatDiagnostics(errors, filePath) + "\n");
+        }
+        process.exit(0);
       }
       const before = readFileSync(filePath, "utf8");
       if (tx.prevalidate) {
