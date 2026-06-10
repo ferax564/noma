@@ -47,3 +47,62 @@ test("replace_block content not parseable throws invalid_content", () => {
     assert.equal((e as PatchError).code, "invalid_content");
   }
 });
+
+test("replace_body without content throws invalid_content, never a TypeError", () => {
+  try {
+    patchSource("::claim{id=a}\nx\n::\n", { op: "replace_body", id: "a" } as never);
+    assert.fail("expected throw");
+  } catch (e) {
+    assert.ok(e instanceof PatchError, `expected PatchError, got ${(e as Error).name}: ${(e as Error).message}`);
+    assert.equal((e as PatchError).code, "invalid_content");
+    assert.match((e as PatchError).message, /requires string field "content"/);
+  }
+});
+
+test("replace_body with a stray body field suggests content", () => {
+  try {
+    patchSource("::claim{id=a}\nx\n::\n", { op: "replace_body", id: "a", body: "new text" } as never);
+    assert.fail("expected throw");
+  } catch (e) {
+    assert.match((e as PatchError).message, /found "body"; did you mean "content"\?/);
+  }
+});
+
+test("update_table_cell with string row throws invalid_content", () => {
+  try {
+    patchSource("::claim{id=a}\nx\n::\n", { op: "update_table_cell", id: "a", row: "0", column: 0, value: "x" } as never);
+    assert.fail("expected throw");
+  } catch (e) {
+    assert.equal((e as PatchError).code, "invalid_content");
+    assert.match((e as PatchError).message, /requires number field "row"/);
+  }
+});
+
+test("insert_table_row with non-string cells throws invalid_content", () => {
+  try {
+    patchSource("::claim{id=a}\nx\n::\n", { op: "insert_table_row", id: "a", row: 0, cells: [1, 2] } as never);
+    assert.fail("expected throw");
+  } catch (e) {
+    assert.equal((e as PatchError).code, "invalid_content");
+    assert.match((e as PatchError).message, /requires string\[\] field "cells"/);
+  }
+});
+
+test("unknown op name throws unsupported_op", () => {
+  try {
+    patchSource("::claim{id=a}\nx\n::\n", { op: "set_body", id: "a", content: "x" } as never);
+    assert.fail("expected throw");
+  } catch (e) {
+    assert.equal((e as PatchError).code, "unsupported_op");
+  }
+});
+
+test("rename_id without to throws invalid_content listing received fields", () => {
+  try {
+    patchSource("::claim{id=a}\nx\n::\n", { op: "rename_id", from: "a" } as never);
+    assert.fail("expected throw");
+  } catch (e) {
+    assert.equal((e as PatchError).code, "invalid_content");
+    assert.match((e as PatchError).message, /received fields: op, from/);
+  }
+});

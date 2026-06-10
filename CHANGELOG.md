@@ -18,6 +18,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Malformed patch ops fail cleanly:** ops missing a required field (e.g. `replace_body` sent with `body` instead of `content`) previously crashed deep in the patch engine with `Cannot read properties of undefined`. Both `patch()` and `patchSource()` now validate op shape up front and reject with a precise `PatchError` — naming the missing field, its expected type, the fields actually received, and a did-you-mean hint for common aliases (`body`/`text` → `content`).
 - **Release pipeline silent skip:** `release.yml` treated a missing `NPM_TOKEN` secret as success and skipped npm publishing (the v0.14.0 release reached GitHub but never reached npm). The workflow now fails loudly when the secret is absent and publishes all four packages — `@ferax564/noma-cli`, `@ferax564/noma-mcp-server`, `@ferax564/noma-lsp`, `@ferax564/noma-agent-sdk` — skipping only versions already on the registry, so re-running a release is safe.
 
 ### Changed

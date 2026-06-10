@@ -96,6 +96,83 @@ export class PatchError extends Error {
   }
 }
 
+type FieldKind = "string" | "number" | "number|string" | "string[]" | "attr";
+
+const OP_REQUIRED_FIELDS: Record<PatchOp["op"], Array<readonly [string, FieldKind]>> = {
+  replace_block: [["id", "string"], ["content", "string"]],
+  replace_body: [["id", "string"], ["content", "string"]],
+  update_heading: [["id", "string"], ["title", "string"]],
+  add_comment: [["id", "string"], ["target", "string"], ["content", "string"]],
+  resolve_comment: [["id", "string"]],
+  add_footnote: [["id", "string"], ["target", "string"], ["content", "string"]],
+  add_endnote: [["id", "string"], ["target", "string"], ["content", "string"]],
+  add_change_request: [["id", "string"], ["target", "string"], ["action", "string"]],
+  update_table_cell: [["id", "string"], ["row", "number"], ["column", "number|string"], ["value", "string"]],
+  update_table_header_cell: [["id", "string"], ["column", "number|string"], ["value", "string"]],
+  insert_table_row: [["id", "string"], ["row", "number"], ["cells", "string[]"]],
+  delete_table_row: [["id", "string"], ["row", "number"]],
+  insert_table_column: [["id", "string"], ["column", "number"], ["cells", "string[]"]],
+  delete_table_column: [["id", "string"], ["column", "number|string"]],
+  update_dataset_cell: [["id", "string"], ["row", "number"], ["column", "number|string"], ["value", "string"]],
+  insert_dataset_row: [["id", "string"], ["row", "number"], ["cells", "string[]"]],
+  delete_dataset_row: [["id", "string"], ["row", "number"]],
+  insert_dataset_column: [["id", "string"], ["column", "number"], ["header", "string"], ["cells", "string[]"]],
+  delete_dataset_column: [["id", "string"], ["column", "number|string"]],
+  move_block: [["id", "string"], ["parent", "string"]],
+  add_block: [["parent", "string"], ["content", "string"]],
+  delete_block: [["id", "string"]],
+  update_attribute: [["id", "string"], ["key", "string"], ["value", "attr"]],
+  remove_attribute: [["id", "string"], ["key", "string"]],
+  rename_id: [["from", "string"], ["to", "string"]],
+};
+
+const FIELD_ALIASES: Record<string, string[]> = {
+  content: ["body", "text", "value"],
+  title: ["heading", "text"],
+  value: ["content"],
+};
+
+function fieldMatches(value: unknown, kind: FieldKind): boolean {
+  switch (kind) {
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "number|string":
+      return typeof value === "string" || (typeof value === "number" && Number.isFinite(value));
+    case "string[]":
+      return Array.isArray(value) && value.every((cell) => typeof cell === "string");
+    case "attr":
+      return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+  }
+}
+
+/**
+ * Rejects malformed ops with a precise message before they reach an op
+ * handler — a missing required field must produce a clean PatchError, never
+ * a TypeError from deep inside the patch engine.
+ */
+function validateOpShape(op: PatchOp): void {
+  const requirements = OP_REQUIRED_FIELDS[op.op];
+  if (!requirements) {
+    throw new PatchError("unsupported_op", `unknown patch op "${(op as { op?: unknown }).op}"`, op);
+  }
+  const record = op as unknown as Record<string, unknown>;
+  for (const [field, kind] of requirements) {
+    if (fieldMatches(record[field], kind)) continue;
+    let hint = "";
+    if (record[field] === undefined) {
+      const alias = (FIELD_ALIASES[field] ?? []).find((candidate) => record[candidate] !== undefined);
+      if (alias) hint = ` — found "${alias}"; did you mean "${field}"?`;
+    }
+    throw new PatchError(
+      "invalid_content",
+      `op "${op.op}" requires ${kind} field "${field}"${hint} (received fields: ${Object.keys(record).join(", ")})`,
+      op,
+    );
+  }
+}
+
 export function patch(doc: DocumentNode, op: PatchOp): DocumentNode {
   if (op.baseHash) {
     throw new PatchError(
@@ -116,6 +193,7 @@ export function patchAll(doc: DocumentNode, ops: PatchOp[]): DocumentNode {
 }
 
 function apply(doc: DocumentNode, op: PatchOp): void {
+  validateOpShape(op);
   switch (op.op) {
     case "replace_block":
       return applyReplace(doc, op);
@@ -1721,6 +1799,7 @@ function verifyBaseHash(source: string, op: PatchOp): void {
 }
 
 function applyToSource(source: string, op: PatchOp): string {
+  validateOpShape(op);
   verifyBaseHash(source, op);
   switch (op.op) {
     case "update_attribute":
