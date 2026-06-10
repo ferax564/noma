@@ -111,6 +111,16 @@ jobs:
           fi
           npm publish --provenance --access public -w @ferax564/noma-mcp-server
 
+      - name: Publish @ferax564/noma-lsp
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret not configured — skipping npm publish" >&2
+            exit 0
+          fi
+          npm publish --provenance --access public -w @ferax564/noma-lsp
+
       - name: Create GitHub release from CHANGELOG slice
         env:
           GH_TOKEN: ${{ github.token }}

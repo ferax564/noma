@@ -6,6 +6,14 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Watch mode:** `noma render|check|export <file> --watch` re-runs the command whenever the document's directory changes (debounced; output files and non-source extensions ignored), giving authors and long-running agents a live render/validate loop.
+- **Mechanical fixits:** diagnostics now carry an optional `fix` field — a ready-to-apply patch op attached when the repair is unambiguous. Broken references with a single near-miss ID (edit distance ≤ 2) suggest the correction in the message and, for attribute-based references (`for=`, `target=`, `block=`, …), carry the exact `update_attribute` op. `noma check --fix` applies every available fix to the source file and re-validates.
+- **Broken-reference provenance:** each referencing site now gets its own `broken-reference` diagnostic with position, span, and `nodeId` (previously one anonymous diagnostic per missing target).
+- **Book patch transactions:** `noma patch book.noma.yml --ops tx.json --inplace` (and the new `patchBookSource()` API) routes each op to the chapter that owns its target block ID — chapter-scoped section IDs, their unscoped aliases, and directive IDs all resolve — applies everything in memory, validates the re-assembled book, and writes all-or-nothing. Ambiguous IDs (same ID in two chapters) are rejected with `id_conflict`; `baseHash` preconditions verify against the chapter file.
+- **Language Server:** new `@ferax564/noma-lsp` package serves diagnostics (validator-backed, profile-aware, full block spans), document symbols (section/directive tree), go-to-definition for `[[wikilinks]]` and `for=`/`target=` references (alias-aware), and `[[` completion over stdio. The VS Code extension (v0.3.0) now bundles a language client that starts it automatically for `.noma` files; `noma.lsp.path` overrides the server command.
+
 ## [0.14.0] — 2026-06-10
 
 ### Added

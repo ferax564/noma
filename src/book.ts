@@ -140,7 +140,7 @@ function loadChapters(
   return out;
 }
 
-function chapterSlug(chapterPath: string, doc: DocumentNode): string {
+export function chapterSlug(chapterPath: string, doc: DocumentNode): string {
   const root = doc.children.find(
     (n): n is SectionNode => n.type === "section" && n.level === 1,
   );
@@ -156,7 +156,7 @@ function chapterSlug(chapterPath: string, doc: DocumentNode): string {
  * Original (un-prefixed) ID is kept as an alias on the same node so any
  * legacy `[[risks]]` writes still resolve to the first occurrence.
  */
-function scopeHeadingIds(doc: DocumentNode, chapterSlug: string): void {
+export function scopeHeadingIds(doc: DocumentNode, chapterSlug: string): void {
   for (const node of walk(doc)) {
     if (node.type !== "section") continue;
     if (node.level === 1) continue;

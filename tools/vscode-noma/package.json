@@ -1,12 +1,19 @@
 {
   "name": "noma-language",
   "displayName": "Noma",
-  "description": "Syntax highlighting for the Noma document format (.noma) — directives, blocks, frontmatter, math, wikilinks, embedded JSON/LaTeX/Mermaid/DOT.",
-  "version": "0.2.1",
+  "description": "Language support for the Noma document format (.noma) — syntax highlighting plus diagnostics, outline, go-to-definition, and wikilink completion via the Noma language server.",
+  "version": "0.3.0",
   "publisher": "ferax564",
   "license": "MIT",
+  "main": "./client.js",
   "engines": {
-    "vscode": "^1.70.0"
+    "vscode": "^1.82.0"
+  },
+  "activationEvents": [
+    "onLanguage:noma"
+  ],
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   },
   "categories": [
     "Programming Languages"
@@ -33,6 +40,16 @@
   },
   "//icon": "intentionally omitted in v0.2.0 — no asset to ship. Add in v0.3.0 with a 128x128 PNG.",
   "contributes": {
+    "configuration": {
+      "title": "Noma",
+      "properties": {
+        "noma.lsp.path": {
+          "type": "string",
+          "default": "",
+          "description": "Command used to launch the Noma language server (split on whitespace). Empty runs `npx -y @ferax564/noma-lsp`."
+        }
+      }
+    },
     "languages": [
       {
         "id": "noma",

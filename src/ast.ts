@@ -135,6 +135,12 @@ export interface Diagnostic {
   /** Last source line of the offending block, completing the span begun at pos. */
   endLine?: number;
   nodeId?: string;
+  /**
+   * Machine-applicable repair: a patch operation (see src/patch.ts PatchOp)
+   * that resolves this diagnostic. Agents can pass it straight to
+   * `patchSource`. Only attached when the fix is mechanically unambiguous.
+   */
+  fix?: { op: string } & Record<string, unknown>;
 }
 
 export const isDirective = (n: Node): n is DirectiveNode => n.type === "directive";

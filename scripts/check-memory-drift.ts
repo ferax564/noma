@@ -96,6 +96,7 @@ const IGNORED_TOP_LEVEL = new Set([
   "AGENTS.md",
   "CLAUDE.md",
   "LICENSE",
+  "eslint.config.mjs",
   "README.md",
   "package.json",
   "package-lock.json",
