@@ -3951,7 +3951,7 @@
     if (!start || !end) throw new Error(`block "${id}" has no source span`);
     return sha256Hex(source.split("\n").slice(start - 1, end).join("\n"));
   }
-  function baseHashTargetId(op) {
+  function patchTargetId(op) {
     switch (op.op) {
       case "rename_id":
         return op.from;
@@ -3976,7 +3976,7 @@
         op
       );
     }
-    const targetId = baseHashTargetId(op);
+    const targetId = patchTargetId(op);
     let actual;
     try {
       actual = blockSourceHash(source, targetId);
@@ -8755,6 +8755,7 @@ ${fence}`;
     const claims = [];
     const evidenceTargets = /* @__PURE__ */ new Set();
     const referenced = /* @__PURE__ */ new Set();
+    const refSites = [];
     const datasetIds = /* @__PURE__ */ new Map();
     const datasetColumns = /* @__PURE__ */ new Map();
     const controls = /* @__PURE__ */ new Map();
@@ -8785,21 +8786,22 @@ ${fence}`;
     })();
     const profileLabel = declaredProfiles.join("+");
     const wikilinkRefs = /* @__PURE__ */ new Set();
-    const collectWikilinks = (text) => {
+    const collectWikilinks = (text, node) => {
       for (const link of extractWikilinks(text)) {
         if (!isBlockReferenceWikilinkTarget(link.target)) continue;
         referenced.add(link.target);
         wikilinkRefs.add(link.target);
+        refSites.push({ target: link.target, node });
       }
     };
     for (const node of walk(doc)) {
-      if (node.type === "paragraph" || node.type === "quote") collectWikilinks(node.content);
-      else if (node.type === "list_item") collectWikilinks(node.content);
-      else if (node.type === "section") collectWikilinks(node.title);
-      else if (node.type === "directive" && node.body) collectWikilinks(node.body);
+      if (node.type === "paragraph" || node.type === "quote") collectWikilinks(node.content, node);
+      else if (node.type === "list_item") collectWikilinks(node.content, node);
+      else if (node.type === "section") collectWikilinks(node.title, node);
+      else if (node.type === "directive" && node.body) collectWikilinks(node.body, node);
       else if (node.type === "table") {
-        for (const cell of node.header) collectWikilinks(cell);
-        for (const row of node.rows) for (const cell of row) collectWikilinks(cell);
+        for (const cell of node.header) collectWikilinks(cell, node);
+        for (const row of node.rows) for (const cell of row) collectWikilinks(cell, node);
       }
       if (node.id) {
         if (ids.has(node.id)) {
@@ -8889,6 +8891,7 @@ ${fence}`;
         const block = node.attrs.block;
         if (typeof block === "string") {
           referenced.add(block);
+          refSites.push({ target: block, node, attrKey: "block" });
         } else {
           diagnostics.push({
             severity: "warning",
@@ -8911,14 +8914,23 @@ ${fence}`;
         }
       }
       if (node.name === "comment" && !suppressed(node)) {
-        const target = readFirstStringAttr(node, ["target", "for", "parent", "block", "ref"]);
-        if (target) referenced.add(target);
-        const replyTo = readFirstStringAttr(node, ["reply_to", "replyTo", "reply"]);
-        if (replyTo) referenced.add(replyTo);
+        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block", "ref"]);
+        if (target) {
+          referenced.add(target.value);
+          refSites.push({ target: target.value, node, attrKey: target.key });
+        }
+        const replyTo = readFirstStringAttrEntry(node, ["reply_to", "replyTo", "reply"]);
+        if (replyTo) {
+          referenced.add(replyTo.value);
+          refSites.push({ target: replyTo.value, node, attrKey: replyTo.key });
+        }
       }
       if (node.name === "change_request" && !suppressed(node)) {
-        const target = readFirstStringAttr(node, ["target", "for", "parent", "block"]);
-        if (target) referenced.add(target);
+        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block"]);
+        if (target) {
+          referenced.add(target.value);
+          refSites.push({ target: target.value, node, attrKey: target.key });
+        }
         const action = readFirstStringAttr(node, ["action", "type"])?.toLowerCase();
         if (action) {
           if (action !== "insert" && action !== "delete" && action !== "replace") {
@@ -8941,14 +8953,18 @@ ${fence}`;
         }
       }
       if ((node.name === "footnote" || node.name === "endnote") && !suppressed(node)) {
-        const target = readFirstStringAttr(node, ["target", "for", "parent", "block", "ref"]);
-        if (target) referenced.add(target);
+        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block", "ref"]);
+        if (target) {
+          referenced.add(target.value);
+          refSites.push({ target: target.value, node, attrKey: target.key });
+        }
       }
       if (node.name === "evidence" || node.name === "counterevidence") {
         const target = node.attrs.for;
         if (typeof target === "string") {
           referenced.add(target);
           evidenceTargets.add(target);
+          refSites.push({ target, node, attrKey: "for" });
         } else {
           diagnostics.push({
             severity: "warning",
@@ -9213,11 +9229,33 @@ ${fence}`;
       }
     }
     for (const target of referenced) {
-      if (!ids.has(target) && !aliasIds.has(target)) {
+      if (ids.has(target) || aliasIds.has(target)) continue;
+      const suggestion = nearestId(target, [...ids.keys(), ...aliasIds]);
+      const hint = suggestion ? ` Did you mean "${suggestion}"?` : "";
+      const sites = refSites.filter((site) => site.target === target);
+      if (sites.length === 0) {
         diagnostics.push({
           severity: "error",
           code: "broken-reference",
-          message: `Reference to unknown block ID "${target}".`
+          message: `Reference to unknown block ID "${target}".${hint}`
+        });
+        continue;
+      }
+      for (const site of sites) {
+        diagnostics.push({
+          severity: "error",
+          code: "broken-reference",
+          message: `Reference to unknown block ID "${target}".${hint}`,
+          pos: site.node.pos,
+          nodeId: site.node.id,
+          ...suggestion && site.attrKey && site.node.id ? {
+            fix: {
+              op: "update_attribute",
+              id: site.node.id,
+              key: site.attrKey,
+              value: suggestion
+            }
+          } : {}
         });
       }
     }
@@ -9350,11 +9388,44 @@ ${fence}`;
     return node.attrs.noverify === true;
   }
   function readFirstStringAttr(node, keys) {
+    return readFirstStringAttrEntry(node, keys)?.value;
+  }
+  function readFirstStringAttrEntry(node, keys) {
     for (const key of keys) {
       const value = node.attrs[key];
-      if (typeof value === "string" && value.trim()) return value.trim();
+      if (typeof value === "string" && value.trim()) return { key, value: value.trim() };
     }
     return void 0;
+  }
+  function levenshtein(a, b) {
+    if (Math.abs(a.length - b.length) > 2) return 3;
+    const prev = new Array(b.length + 1);
+    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      let diag = prev[0];
+      prev[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cur = prev[j];
+        prev[j] = Math.min(cur + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+        diag = cur;
+      }
+    }
+    return prev[b.length];
+  }
+  function nearestId(target, candidates) {
+    let best;
+    let bestDistance = 3;
+    for (const candidate of candidates) {
+      const distance = levenshtein(target, candidate);
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      } else if (distance === bestDistance && best !== void 0) {
+        best = void 0;
+        bestDistance = distance;
+      }
+    }
+    return bestDistance <= 2 && target.length > 3 ? best : void 0;
   }
   function hasChangeRequestRevisionText(node, action) {
     const from = readFirstStringAttr(node, ["from"]);

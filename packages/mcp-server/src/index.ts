@@ -144,7 +144,7 @@ const PatchOpSchema = z.discriminatedUnion("op", [
 
 const server = new McpServer({
   name: "@ferax564/noma-mcp-server",
-  version: "0.14.0",
+  version: "0.15.0",
 });
 
 server.tool(

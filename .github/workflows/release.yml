@@ -1,7 +1,8 @@
 name: Release
 
-# Publishes @ferax564/noma-cli and @ferax564/noma-mcp-server to npm with
-# provenance, and cuts the GitHub release from the CHANGELOG slice.
+# Publishes @ferax564/noma-cli, @ferax564/noma-mcp-server, @ferax564/noma-lsp,
+# and @ferax564/noma-agent-sdk to npm with provenance, and cuts the GitHub
+# release from the CHANGELOG slice.
 #
 # Two entry points:
 #   - push a v* tag (the local-tag-then-push flow from CLAUDE.md), or
@@ -9,8 +10,9 @@ name: Release
 #     on the current default-branch HEAD itself (useful when the operator
 #     cannot push tags directly).
 #
-# npm publishing requires an NPM_TOKEN repository secret; when it is absent
-# the publish steps are skipped and the tag + GitHub release still happen.
+# npm publishing requires an NPM_TOKEN repository secret; the job FAILS when
+# it is absent so a release can never silently skip publishing. Versions
+# already on the registry are skipped, so re-running a release is safe.
 
 on:
   push:
@@ -91,35 +93,28 @@ jobs:
       - run: npm run verify:conformance
       - run: npm run smoke:package
 
-      - name: Publish @ferax564/noma-cli
+      - name: Publish packages to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          set -euo pipefail
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN secret not configured — skipping npm publish" >&2
-            exit 0
+            echo "::error::NPM_TOKEN secret not configured — refusing to release without publishing. Add it with: gh secret set NPM_TOKEN" >&2
+            exit 1
           fi
-          npm publish --provenance --access public
-
-      - name: Publish @ferax564/noma-mcp-server
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN secret not configured — skipping npm publish" >&2
-            exit 0
-          fi
-          npm publish --provenance --access public -w @ferax564/noma-mcp-server
-
-      - name: Publish @ferax564/noma-lsp
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN secret not configured — skipping npm publish" >&2
-            exit 0
-          fi
-          npm publish --provenance --access public -w @ferax564/noma-lsp
+          for dir in . packages/mcp-server packages/lsp-server packages/agent-sdk; do
+            name=$(node -p "require('./$dir/package.json').name")
+            version=$(node -p "require('./$dir/package.json').version")
+            if [ "$(npm view "$name@$version" version 2>/dev/null || true)" = "$version" ]; then
+              echo "$name@$version already on npm — skipping"
+              continue
+            fi
+            if [ "$dir" = "." ]; then
+              npm publish --provenance --access public
+            else
+              npm publish --provenance --access public -w "$name"
+            fi
+          done
 
       - name: Create GitHub release from CHANGELOG slice
         env:

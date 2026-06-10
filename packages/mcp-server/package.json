@@ -1,6 +1,6 @@
 {
   "name": "@ferax564/noma-mcp-server",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "MCP server for @ferax564/noma-cli — block-level agent editing",
   "type": "module",
   "main": "dist/index.js",
@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@ferax564/noma-cli": "0.14.0",
+    "@ferax564/noma-cli": "0.15.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {

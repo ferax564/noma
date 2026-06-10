@@ -351,7 +351,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.14.0 public release. This line hardens the rendering and filesystem surfaces (path containment, sanitized diagram runtimes, strict-by-default CI Action), adds block-level `baseHash` preconditions so concurrent agent edits are detected per block instead of per file, and makes the repo self-maintaining (memory drift gate, release tooling, scheduled docs-freshness sweeps, provenance npm publishing); see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.32 for the full release tracker.
+**Status:** v0.15.0 public release. This line closes the live editing loop: `--watch` mode re-runs render/check/export on file change, diagnostics carry ready-to-apply fixits (`noma check --fix`), book-wide patch transactions route ops to the owning chapter with all-or-nothing writes, and a new language server (`@ferax564/noma-lsp`) powers diagnostics, symbols, go-to-definition, and `[[` completion in the VS Code extension; see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.33 for the full release tracker.
 
 ## License
 

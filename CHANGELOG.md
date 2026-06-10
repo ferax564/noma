@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-06-10
+
 ### Added
 
 - **Watch mode:** `noma render|check|export <file> --watch` re-runs the command whenever the document's directory changes (debounced; output files and non-source extensions ignored), giving authors and long-running agents a live render/validate loop.
@@ -13,6 +15,14 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **Broken-reference provenance:** each referencing site now gets its own `broken-reference` diagnostic with position, span, and `nodeId` (previously one anonymous diagnostic per missing target).
 - **Book patch transactions:** `noma patch book.noma.yml --ops tx.json --inplace` (and the new `patchBookSource()` API) routes each op to the chapter that owns its target block ID — chapter-scoped section IDs, their unscoped aliases, and directive IDs all resolve — applies everything in memory, validates the re-assembled book, and writes all-or-nothing. Ambiguous IDs (same ID in two chapters) are rejected with `id_conflict`; `baseHash` preconditions verify against the chapter file.
 - **Language Server:** new `@ferax564/noma-lsp` package serves diagnostics (validator-backed, profile-aware, full block spans), document symbols (section/directive tree), go-to-definition for `[[wikilinks]]` and `for=`/`target=` references (alias-aware), and `[[` completion over stdio. The VS Code extension (v0.3.0) now bundles a language client that starts it automatically for `.noma` files; `noma.lsp.path` overrides the server command.
+
+### Fixed
+
+- **Release pipeline silent skip:** `release.yml` treated a missing `NPM_TOKEN` secret as success and skipped npm publishing (the v0.14.0 release reached GitHub but never reached npm). The workflow now fails loudly when the secret is absent and publishes all four packages — `@ferax564/noma-cli`, `@ferax564/noma-mcp-server`, `@ferax564/noma-lsp`, `@ferax564/noma-agent-sdk` — skipping only versions already on the registry, so re-running a release is safe.
+
+### Changed
+
+- **Release metadata:** `@ferax564/noma-cli`, `@ferax564/noma-mcp-server`, and `@ferax564/noma-lsp` move to `0.15.0`; `@ferax564/noma-agent-sdk` moves to `0.1.4` with `0.15.0` toolchain dependencies.
 
 ## [0.14.0] — 2026-06-10
 

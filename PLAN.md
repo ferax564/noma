@@ -1927,3 +1927,26 @@ for future Codex/plugin integrations.
   files an issue; `release.yml` publishes to npm with provenance on `v*` tags;
   Dependabot watches npm and Actions; eslint + coverage scripts added; the
   cloud-server test suite grew from 3 to 11 test blocks.
+
+### §24.33 — v0.15.0 live editing loop: watch, fixits, LSP, book transactions (2026-06-10)
+
+- **Watch mode.** `noma render|check|export <file> --watch` re-runs on
+  document-directory changes (debounced; output files and non-source
+  extensions ignored) for live author/agent loops.
+- **Mechanical fixits.** Diagnostics carry an optional ready-to-apply `fix`
+  patch op when the repair is unambiguous; broken references with a single
+  near-miss ID suggest the correction; `noma check --fix` applies every
+  available fix and re-validates. Each referencing site now gets its own
+  positioned `broken-reference` diagnostic.
+- **Book patch transactions.** `noma patch book.noma.yml --ops tx.json
+  --inplace` (and `patchBookSource()`) routes each op to the chapter that owns
+  its target ID, validates the re-assembled book, and writes all-or-nothing;
+  cross-chapter ID conflicts are rejected; `baseHash` verifies against the
+  chapter file.
+- **Language server.** `@ferax564/noma-lsp` serves validator-backed
+  diagnostics, document symbols, alias-aware go-to-definition, and `[[`
+  completion over stdio; the VS Code extension (v0.3.0) bundles a language
+  client that starts it automatically.
+- **Release pipeline fix.** `release.yml` now fails loudly when `NPM_TOKEN`
+  is missing (the v0.14.0 run silently skipped npm publishing) and publishes
+  all four packages — cli, mcp-server, lsp, agent-sdk — idempotently.

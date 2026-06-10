@@ -1,6 +1,6 @@
 {
   "name": "@ferax564/noma-lsp",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Language server for the Noma document format — diagnostics, document symbols, go-to-definition, and wikilink completion over stdio",
   "type": "module",
   "main": "dist/lib.js",
@@ -36,7 +36,7 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@ferax564/noma-cli": "0.14.0",
+    "@ferax564/noma-cli": "0.15.0",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12"
   },
