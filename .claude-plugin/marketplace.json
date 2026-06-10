@@ -1,0 +1,11 @@
+{
+  "name": "noma",
+  "owner": { "name": "ferax564" },
+  "plugins": [
+    {
+      "name": "noma",
+      "source": ".",
+      "description": "Maintain Noma (.noma) documents safely: block-level patch ops, proof-before-apply, validation, and LLM context export."
+    }
+  ]
+}

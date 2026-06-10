@@ -1,0 +1,10 @@
+{
+  "name": "noma",
+  "description": "Maintain Noma (.noma) documents safely: block-level patch ops, proof-before-apply, validation, and LLM context export.",
+  "version": "0.15.0",
+  "author": { "name": "ferax564" },
+  "homepage": "https://github.com/ferax564/noma",
+  "repository": "https://github.com/ferax564/noma",
+  "license": "MIT",
+  "keywords": ["noma", "docs", "agent", "patch", "proof"]
+}

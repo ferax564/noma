@@ -15,6 +15,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **Broken-reference provenance:** each referencing site now gets its own `broken-reference` diagnostic with position, span, and `nodeId` (previously one anonymous diagnostic per missing target).
 - **Book patch transactions:** `noma patch book.noma.yml --ops tx.json --inplace` (and the new `patchBookSource()` API) routes each op to the chapter that owns its target block ID — chapter-scoped section IDs, their unscoped aliases, and directive IDs all resolve — applies everything in memory, validates the re-assembled book, and writes all-or-nothing. Ambiguous IDs (same ID in two chapters) are rejected with `id_conflict`; `baseHash` preconditions verify against the chapter file.
 - **Language Server:** new `@ferax564/noma-lsp` package serves diagnostics (validator-backed, profile-aware, full block spans), document symbols (section/directive tree), go-to-definition for `[[wikilinks]]` and `for=`/`target=` references (alias-aware), and `[[` completion over stdio. The VS Code extension (v0.3.0) now bundles a language client that starts it automatically for `.noma` files; `noma.lsp.path` overrides the server command.
+- **MCP registry listing prep:** `packages/mcp-server/server.json` and the `mcpName` field (`io.github.ferax564/noma`) ready the MCP server for the official registry; `docs/runbooks/mcp-registry-publish.md` documents the `mcp-publisher` flow.
+- **Claude Code plugin:** the repo is now an installable Claude Code plugin (`/plugin marketplace add ferax564/noma`) shipping a `noma-docs` skill that teaches agents the ids → proof → patch loop, the `content` field convention, `baseHash` preconditions, and book transactions.
 
 ### Fixed
 

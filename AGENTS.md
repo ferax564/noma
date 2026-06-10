@@ -70,6 +70,8 @@ site/                      Hand-crafted HTML landing page (NOT a .noma file); as
 scripts/                   Build/demo helpers — render PDFs, build-web-ui, stale-memo + agent-memory demos,
                            package-smoke, deploy-hetzner, check-memory-drift, release
 tools/vscode-noma/         VS Code language extension (TextMate grammar + bundled LSP client)
+.claude-plugin/            Claude Code plugin + marketplace manifests (`/plugin marketplace add ferax564/noma`)
+skills/noma-docs/          Claude Code skill — teaches agents the ids → proof → patch loop
 test/                      node:test suites — parser, patch, validator, roundtrip, docx, cloud-server, conformance, …
 .github/workflows/         CI — pages.yml (typecheck+tests+conformance+site → GitHub Pages),
                            ci.yml (PR matrix tests), freshness.yml (scheduled docs staleness check)
