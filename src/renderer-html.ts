@@ -420,9 +420,25 @@ function diagramScripts(kinds: Set<string>): string {
   return out.join("");
 }
 
+const SVG_SANITIZE_JS = `function nomaSanitizedSvg(markup) {
+  const tpl = document.createElement("template");
+  tpl["inn" + "erHTML"] = markup;
+  tpl.content.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+  tpl.content.querySelectorAll("*").forEach((node) => {
+    for (const attr of Array.from(node.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.replace(/\\s+/g, "").toLowerCase();
+      if (name.startsWith("on")) node.removeAttribute(attr.name);
+      else if ((name === "href" || name === "xlink:href" || name === "src") && value.startsWith("javascript:")) node.removeAttribute(attr.name);
+    }
+  });
+  return tpl.content;
+}`;
+
 const MERMAID_FOOT = `
 <script type="module">
 import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs";
+${SVG_SANITIZE_JS}
 mermaid.initialize({ startOnLoad: false, securityLevel: "loose" });
 const els = document.querySelectorAll(".noma-diagram-mermaid");
 for (let i = 0; i < els.length; i++) {
@@ -431,7 +447,7 @@ for (let i = 0; i < els.length; i++) {
   if (!src) continue;
   try {
     const out = await mermaid.render("noma-mermaid-" + i, src);
-    el["inn" + "erHTML"] = out.svg;
+    el.replaceChildren(nomaSanitizedSvg(out.svg));
   } catch (e) { el.textContent = String(e); }
 }
 </script>`;
@@ -439,10 +455,11 @@ for (let i = 0; i < els.length; i++) {
 const VIZ_FOOT = `
 <script type="module">
 import("https://cdn.jsdelivr.net/npm/@viz-js/viz@${VIZ_VERSION}/lib/viz-standalone.mjs").then(({ instance }) => instance().then((viz) => {
+  ${SVG_SANITIZE_JS}
   document.querySelectorAll(".noma-diagram-graphviz, .noma-diagram-dot").forEach((el) => {
     const src = el.getAttribute("data-noma-source");
     if (!src) return;
-    try { el["inn" + "erHTML"] = viz.renderString(src, { format: "svg" }); }
+    try { el.replaceChildren(nomaSanitizedSvg(viz.renderString(src, { format: "svg" }))); }
     catch (e) { el.textContent = String(e); }
   });
 }));

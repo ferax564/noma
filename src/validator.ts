@@ -780,6 +780,12 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
   validateComputedNodes(computedNodes, controls, computed, diagnostics);
 
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.endLine !== undefined || !diagnostic.nodeId) continue;
+    const node = ids.get(diagnostic.nodeId) ?? aliasToNode.get(diagnostic.nodeId);
+    if (node?.endLine !== undefined) diagnostic.endLine = node.endLine;
+  }
+
   const ignore = options.ignoreRules;
   if (ignore && ignore.length > 0) {
     const known = collectRuleCodes();
@@ -1132,7 +1138,8 @@ export function formatDiagnostics(diagnostics: Diagnostic[], filename?: string):
   if (diagnostics.length === 0) return "✓ No issues found.";
   const lines: string[] = [];
   for (const d of diagnostics) {
-    const where = d.pos ? `${filename ?? "input"}:${d.pos.line}:${d.pos.column}` : (filename ?? "");
+    const span = d.pos && d.endLine && d.endLine > d.pos.line ? `-${d.endLine}` : "";
+    const where = d.pos ? `${filename ?? "input"}:${d.pos.line}:${d.pos.column}${span}` : (filename ?? "");
     lines.push(`${d.severity.toUpperCase()} [${d.code}] ${where}: ${d.message}`);
   }
   return lines.join("\n");

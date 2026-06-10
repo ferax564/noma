@@ -67,6 +67,8 @@ Render options:
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
   --strict                  HTML: block escape hatches, external CDN assets,
                             and generated interactive runtime
+  --allow-external-paths    Permit dataset/figure src and book chapters that
+                            resolve outside the document's own directory
   --math <katex|none>       Math rendering: enable KaTeX assets in standalone HTML
                             (default: auto-detect from doc / book manifest)
   --page-size <name>        PDF: page size passed to Chromium (default: A4)
@@ -159,6 +161,7 @@ interface CliArgs {
   theme: string;
   customCss?: string;
   allowEscapeHatches: boolean;
+  allowExternalPaths: boolean;
   externalAssets: boolean;
   interactive: boolean;
   pdfPageSize: string;
@@ -191,6 +194,7 @@ function parseArgs(argv: string[]): CliArgs {
     pdfPageSize: "A4",
     pdfPrintBackground: true,
     allowEscapeHatches: true,
+    allowExternalPaths: false,
     externalAssets: true,
     interactive: true,
     ignoreRules: [],
@@ -228,6 +232,9 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--no-unsafe") {
       args.allowEscapeHatches = false;
+      i++;
+    } else if (a === "--allow-external-paths") {
+      args.allowExternalPaths = true;
       i++;
     } else if (a === "--strict") {
       args.allowEscapeHatches = false;
@@ -782,7 +789,9 @@ async function main(): Promise<void> {
       process.exit(2);
     }
     const themeCss = loadThemeCss(args);
-    const { manifest, chapters } = loadBookChapters(filePath);
+    const { manifest, chapters } = loadBookChapters(filePath, {
+      allowExternalPaths: args.allowExternalPaths,
+    });
     const safety = renderSafetyFromArgs(args, manifest.trusted_publishing === true);
     renderSite(manifest, chapters, args.out, {
       themeCss,
@@ -800,9 +809,9 @@ async function main(): Promise<void> {
   const safety = renderSafetyFromArgs(args, manifestForTrust?.trusted_publishing === true);
 
   const doc = isBookManifestPath(filePath)
-    ? loadBook(filePath)
+    ? loadBook(filePath, { allowExternalPaths: args.allowExternalPaths })
     : parse(readFileSync(filePath, "utf8"), { filename: filePath });
-  inlineDatasetSources(doc);
+  inlineDatasetSources(doc, undefined, { allowExternalPaths: args.allowExternalPaths });
 
   switch (cmd) {
     case "parse": {
@@ -855,7 +864,9 @@ async function main(): Promise<void> {
             process.stderr.write(`error: --to docx requires --out <file.docx>\n`);
             process.exit(2);
           }
-          inlineFigureSources(doc);
+          inlineFigureSources(doc, undefined, {
+            allowExternalPaths: args.allowExternalPaths,
+          });
           outputBinary(renderDocx(doc, { title: args.title }), args.out);
           return;
         }

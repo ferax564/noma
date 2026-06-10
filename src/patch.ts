@@ -8,7 +8,19 @@ import type {
 import { isDirective } from "./ast.js";
 import { escapePipeTableCell, serializeDelimitedRow, splitDelimitedRow, splitPipeRow } from "./inline.js";
 import { parse, slugify } from "./parser.js";
+import { sha256Hex } from "./hash.js";
 import yaml from "js-yaml";
+
+/**
+ * Optimistic-concurrency precondition shared by every patch op. When set,
+ * `patchSource` refuses the op unless the target block's current source
+ * slice still hashes to `baseHash` — so an agent can prove it is editing
+ * the version it read. Obtain hashes via `blockSourceHash()`.
+ */
+export interface PatchPrecondition {
+  /** sha256 hex of the target block's source slice; prefixes of ≥ 8 chars accepted. */
+  baseHash?: string;
+}
 
 /**
  * Block-level patch operations. Mutate a document by ID rather than rewriting
@@ -16,7 +28,7 @@ import yaml from "js-yaml";
  *
  * See docs/agent-protocol.noma for the public schema.
  */
-export type PatchOp =
+export type PatchOp = (
   | { op: "replace_block"; id: string; content: string }
   | { op: "replace_body"; id: string; content: string }
   | { op: "update_heading"; id: string; title: string }
@@ -58,7 +70,9 @@ export type PatchOp =
   | { op: "delete_block"; id: string }
   | { op: "update_attribute"; id: string; key: string; value: AttrValue }
   | { op: "remove_attribute"; id: string; key: string }
-  | { op: "rename_id"; from: string; to: string };
+  | { op: "rename_id"; from: string; to: string }
+) &
+  PatchPrecondition;
 
 export type PatchErrorCode =
   | "target_missing"
@@ -83,6 +97,13 @@ export class PatchError extends Error {
 }
 
 export function patch(doc: DocumentNode, op: PatchOp): DocumentNode {
+  if (op.baseHash) {
+    throw new PatchError(
+      "unsupported_op",
+      "baseHash preconditions require patchSource(); patch(doc, op) has no source text to verify against",
+      op,
+    );
+  }
   const next = clone(doc) as DocumentNode;
   apply(next, op);
   return next;
@@ -611,8 +632,7 @@ function childArrays(
 }
 
 function childArray(node: Node): Node[] {
-  for (const a of childArrays(node)) return a.list;
-  return [];
+  return childArrays(node)[0]?.list ?? [];
 }
 
 function hasChildren(node: Node): node is Node & { children: Node[] } {
@@ -1619,7 +1639,7 @@ function parseFragment(content: string, op: PatchOp): Node {
 }
 
 function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 }
 
 /**
@@ -1642,7 +1662,65 @@ export function patchSource(source: string, ops: PatchOp | PatchOp[]): string {
   return cur;
 }
 
+/**
+ * sha256 hex of a block's current source slice (the exact lines a patch op
+ * would rewrite). Agents read this before editing and pass it back as the
+ * op's `baseHash` so concurrent modifications are detected instead of lost.
+ */
+export function blockSourceHash(source: string, id: string): string {
+  const doc = parse(source);
+  const node = findById(doc, id);
+  if (!node) throw new Error(`block "${id}" not found`);
+  const start = node.pos?.line;
+  const end = node.endLine;
+  if (!start || !end) throw new Error(`block "${id}" has no source span`);
+  return sha256Hex(source.split("\n").slice(start - 1, end).join("\n"));
+}
+
+function baseHashTargetId(op: PatchOp): string {
+  switch (op.op) {
+    case "rename_id":
+      return op.from;
+    case "add_block":
+      return op.parent;
+    case "add_comment":
+    case "add_footnote":
+    case "add_endnote":
+    case "add_change_request":
+      return op.target;
+    default:
+      return op.id;
+  }
+}
+
+function verifyBaseHash(source: string, op: PatchOp): void {
+  const expected = op.baseHash?.trim().toLowerCase();
+  if (!expected) return;
+  if (!/^[0-9a-f]{8,64}$/.test(expected)) {
+    throw new PatchError(
+      "invalid_content",
+      `baseHash must be 8–64 hex chars of the block's sha256 (got "${op.baseHash}")`,
+      op,
+    );
+  }
+  const targetId = baseHashTargetId(op);
+  let actual: string;
+  try {
+    actual = blockSourceHash(source, targetId);
+  } catch {
+    throw new PatchError("target_missing", `block "${targetId}" not found`, op);
+  }
+  if (!actual.startsWith(expected)) {
+    throw new PatchError(
+      "sha_mismatch",
+      `block "${targetId}" changed since it was read: baseHash ${expected.slice(0, 12)} does not match current ${actual.slice(0, 12)}`,
+      op,
+    );
+  }
+}
+
 function applyToSource(source: string, op: PatchOp): string {
+  verifyBaseHash(source, op);
   switch (op.op) {
     case "update_attribute":
       return applySrcUpdateAttr(source, op);

@@ -34,9 +34,12 @@ inputs:
     required: false
     default: "true"
   strict:
-    description: Use strict HTML rendering; blocks escape hatches and external CDN runtimes.
+    description: >-
+      Use strict HTML rendering; blocks escape hatches and external CDN
+      runtimes. Defaults to true so CI-rendered artifacts are inert; set to
+      "false" to allow ::html/::svg/::script and CDN-backed diagram runtimes.
     required: false
-    default: "false"
+    default: "true"
   theme:
     description: HTML theme name.
     required: false

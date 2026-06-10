@@ -35,6 +35,13 @@ const THEMATIC_BREAK_RE = /^(?:-{3,}|\*{3,}|_{3,})\s*$/;
 const TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
 const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/;
 
+/**
+ * Directive nesting depth is one level per extra colon, so capping the fence
+ * width bounds parser/walker recursion on adversarial input. Real documents
+ * sit at depth 2–4.
+ */
+const MAX_FENCE_COLONS = 64;
+
 const matchOnce = (re: RegExp, s: string): RegExpMatchArray | null => s.match(re);
 
 export function parse(source: string, options: ParseOptions = {}): DocumentNode {
@@ -138,6 +145,11 @@ function parseBlocks(
     const directiveOpen = matchOnce(DIRECTIVE_OPEN_RE, line);
     if (directiveOpen) {
       const colons = directiveOpen[1]!.length;
+      if (colons > MAX_FENCE_COLONS) {
+        out.push(paragraph(line, i));
+        i++;
+        continue;
+      }
       if (colons > parentColons || parentColons === 0) {
         const result = parseDirective(lines, i, to, colons);
         out.push(result.node);

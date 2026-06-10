@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { parse, isBookManifestPath } from "@ferax564/noma-cli";
+import { parse, isBookManifestPath, sha256Hex } from "@ferax564/noma-cli";
 import type { AttrValue, Node } from "@ferax564/noma-cli";
 
 export interface BlockSummary {
@@ -13,6 +13,8 @@ export interface BlockSummary {
   childCount: number;
   lines: [number, number];
   patchable: boolean;
+  /** sha256 of the block's source slice — pass back as patch_block base_hash. */
+  hash?: string;
 }
 
 export function readDoc(file: string): BlockSummary[] {
@@ -22,7 +24,7 @@ export function readDoc(file: string): BlockSummary[] {
   const source = readFileSync(file, "utf8");
   const doc = parse(source);
   const summaries: BlockSummary[] = [];
-  collectBlocks(doc.children, summaries);
+  collectBlocks(doc.children, summaries, source.split("\n"));
   return summaries;
 }
 
@@ -32,7 +34,7 @@ function nodeChildren(node: Node): Node[] {
   return [];
 }
 
-function collectBlocks(nodes: Node[], out: BlockSummary[]): void {
+function collectBlocks(nodes: Node[], out: BlockSummary[], sourceLines: string[]): void {
   for (const node of nodes) {
     const startLine = node.pos?.line ?? 1;
     const endLine = node.endLine ?? startLine;
@@ -43,7 +45,10 @@ function collectBlocks(nodes: Node[], out: BlockSummary[]): void {
       lines: [startLine, endLine],
       patchable: typeof node.id === "string" && node.id.length > 0,
     };
-    if (node.id) base.id = node.id;
+    if (node.id) {
+      base.id = node.id;
+      base.hash = sha256Hex(sourceLines.slice(startLine - 1, endLine).join("\n"));
+    }
     if (node.aliases?.length) base.aliases = node.aliases;
 
     if (node.type === "section") {
@@ -57,6 +62,6 @@ function collectBlocks(nodes: Node[], out: BlockSummary[]): void {
     }
 
     out.push(base);
-    collectBlocks(children, out);
+    collectBlocks(children, out, sourceLines);
   }
 }

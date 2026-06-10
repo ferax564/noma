@@ -2826,6 +2826,7 @@
   var THEMATIC_BREAK_RE = /^(?:-{3,}|\*{3,}|_{3,})\s*$/;
   var TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
   var TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/;
+  var MAX_FENCE_COLONS = 64;
   var matchOnce = (re, s) => s.match(re);
   function parse(source, options = {}) {
     const normalized = source.replace(/\r\n?/g, "\n");
@@ -2897,6 +2898,11 @@
       const directiveOpen = matchOnce(DIRECTIVE_OPEN_RE, line);
       if (directiveOpen) {
         const colons = directiveOpen[1].length;
+        if (colons > MAX_FENCE_COLONS) {
+          out.push(paragraph(line, i));
+          i++;
+          continue;
+        }
         if (colons > parentColons || parentColons === 0) {
           const result = parseDirective(lines, i, to, colons);
           out.push(result.node);
@@ -3187,6 +3193,135 @@
   }
   function slugify(input) {
     return input.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  }
+
+  // src/hash.ts
+  var K = new Uint32Array([
+    1116352408,
+    1899447441,
+    3049323471,
+    3921009573,
+    961987163,
+    1508970993,
+    2453635748,
+    2870763221,
+    3624381080,
+    310598401,
+    607225278,
+    1426881987,
+    1925078388,
+    2162078206,
+    2614888103,
+    3248222580,
+    3835390401,
+    4022224774,
+    264347078,
+    604807628,
+    770255983,
+    1249150122,
+    1555081692,
+    1996064986,
+    2554220882,
+    2821834349,
+    2952996808,
+    3210313671,
+    3336571891,
+    3584528711,
+    113926993,
+    338241895,
+    666307205,
+    773529912,
+    1294757372,
+    1396182291,
+    1695183700,
+    1986661051,
+    2177026350,
+    2456956037,
+    2730485921,
+    2820302411,
+    3259730800,
+    3345764771,
+    3516065817,
+    3600352804,
+    4094571909,
+    275423344,
+    430227734,
+    506948616,
+    659060556,
+    883997877,
+    958139571,
+    1322822218,
+    1537002063,
+    1747873779,
+    1955562222,
+    2024104815,
+    2227730452,
+    2361852424,
+    2428436474,
+    2756734187,
+    3204031479,
+    3329325298
+  ]);
+  var rotr = (x, n) => x >>> n | x << 32 - n;
+  function sha256Hex(input) {
+    const bytes = new TextEncoder().encode(input);
+    const bitLen = bytes.length * 8;
+    const paddedLen = (bytes.length + 8 >> 6) + 1 << 6;
+    const data = new Uint8Array(paddedLen);
+    data.set(bytes);
+    data[bytes.length] = 128;
+    const view = new DataView(data.buffer);
+    view.setUint32(paddedLen - 8, Math.floor(bitLen / 4294967296));
+    view.setUint32(paddedLen - 4, bitLen >>> 0);
+    const h = new Uint32Array([
+      1779033703,
+      3144134277,
+      1013904242,
+      2773480762,
+      1359893119,
+      2600822924,
+      528734635,
+      1541459225
+    ]);
+    const w = new Uint32Array(64);
+    for (let offset = 0; offset < paddedLen; offset += 64) {
+      for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4);
+      for (let i = 16; i < 64; i++) {
+        const w15 = w[i - 15];
+        const w2 = w[i - 2];
+        const s0 = rotr(w15, 7) ^ rotr(w15, 18) ^ w15 >>> 3;
+        const s1 = rotr(w2, 17) ^ rotr(w2, 19) ^ w2 >>> 10;
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1 >>> 0;
+      }
+      let [a, b, c, d, e, f, g, hh] = h;
+      for (let i = 0; i < 64; i++) {
+        const s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        const ch = e & f ^ ~e & g;
+        const t1 = hh + s1 + ch + K[i] + w[i] >>> 0;
+        const s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        const maj = a & b ^ a & c ^ b & c;
+        const t2 = s0 + maj >>> 0;
+        hh = g;
+        g = f;
+        f = e;
+        e = d + t1 >>> 0;
+        d = c;
+        c = b;
+        b = a;
+        a = t1 + t2 >>> 0;
+      }
+      h[0] = h[0] + a >>> 0;
+      h[1] = h[1] + b >>> 0;
+      h[2] = h[2] + c >>> 0;
+      h[3] = h[3] + d >>> 0;
+      h[4] = h[4] + e >>> 0;
+      h[5] = h[5] + f >>> 0;
+      h[6] = h[6] + g >>> 0;
+      h[7] = h[7] + hh >>> 0;
+    }
+    let out = "";
+    for (let i = 0; i < 8; i++) out += h[i].toString(16).padStart(8, "0");
+    return out;
   }
 
   // src/patch.ts
@@ -3807,7 +3942,57 @@
     for (const op of list) cur = applyToSource(cur, op);
     return cur;
   }
+  function blockSourceHash(source, id) {
+    const doc = parse(source);
+    const node = findById(doc, id);
+    if (!node) throw new Error(`block "${id}" not found`);
+    const start = node.pos?.line;
+    const end = node.endLine;
+    if (!start || !end) throw new Error(`block "${id}" has no source span`);
+    return sha256Hex(source.split("\n").slice(start - 1, end).join("\n"));
+  }
+  function baseHashTargetId(op) {
+    switch (op.op) {
+      case "rename_id":
+        return op.from;
+      case "add_block":
+        return op.parent;
+      case "add_comment":
+      case "add_footnote":
+      case "add_endnote":
+      case "add_change_request":
+        return op.target;
+      default:
+        return op.id;
+    }
+  }
+  function verifyBaseHash(source, op) {
+    const expected = op.baseHash?.trim().toLowerCase();
+    if (!expected) return;
+    if (!/^[0-9a-f]{8,64}$/.test(expected)) {
+      throw new PatchError(
+        "invalid_content",
+        `baseHash must be 8\u201364 hex chars of the block's sha256 (got "${op.baseHash}")`,
+        op
+      );
+    }
+    const targetId = baseHashTargetId(op);
+    let actual;
+    try {
+      actual = blockSourceHash(source, targetId);
+    } catch {
+      throw new PatchError("target_missing", `block "${targetId}" not found`, op);
+    }
+    if (!actual.startsWith(expected)) {
+      throw new PatchError(
+        "sha_mismatch",
+        `block "${targetId}" changed since it was read: baseHash ${expected.slice(0, 12)} does not match current ${actual.slice(0, 12)}`,
+        op
+      );
+    }
+  }
   function applyToSource(source, op) {
+    verifyBaseHash(source, op);
     switch (op.op) {
       case "update_attribute":
         return applySrcUpdateAttr(source, op);
@@ -5887,9 +6072,24 @@ ${body}
     }
     return out.join("");
   }
+  var SVG_SANITIZE_JS = `function nomaSanitizedSvg(markup) {
+  const tpl = document.createElement("template");
+  tpl["inn" + "erHTML"] = markup;
+  tpl.content.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+  tpl.content.querySelectorAll("*").forEach((node) => {
+    for (const attr of Array.from(node.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.replace(/\\s+/g, "").toLowerCase();
+      if (name.startsWith("on")) node.removeAttribute(attr.name);
+      else if ((name === "href" || name === "xlink:href" || name === "src") && value.startsWith("javascript:")) node.removeAttribute(attr.name);
+    }
+  });
+  return tpl.content;
+}`;
   var MERMAID_FOOT = `
 <script type="module">
 import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs";
+${SVG_SANITIZE_JS}
 mermaid.initialize({ startOnLoad: false, securityLevel: "loose" });
 const els = document.querySelectorAll(".noma-diagram-mermaid");
 for (let i = 0; i < els.length; i++) {
@@ -5898,17 +6098,18 @@ for (let i = 0; i < els.length; i++) {
   if (!src) continue;
   try {
     const out = await mermaid.render("noma-mermaid-" + i, src);
-    el["inn" + "erHTML"] = out.svg;
+    el.replaceChildren(nomaSanitizedSvg(out.svg));
   } catch (e) { el.textContent = String(e); }
 }
 <\/script>`;
   var VIZ_FOOT = `
 <script type="module">
 import("https://cdn.jsdelivr.net/npm/@viz-js/viz@${VIZ_VERSION}/lib/viz-standalone.mjs").then(({ instance }) => instance().then((viz) => {
+  ${SVG_SANITIZE_JS}
   document.querySelectorAll(".noma-diagram-graphviz, .noma-diagram-dot").forEach((el) => {
     const src = el.getAttribute("data-noma-source");
     if (!src) return;
-    try { el["inn" + "erHTML"] = viz.renderString(src, { format: "svg" }); }
+    try { el.replaceChildren(nomaSanitizedSvg(viz.renderString(src, { format: "svg" }))); }
     catch (e) { el.textContent = String(e); }
   });
 }));
@@ -8694,6 +8895,11 @@ ${bodyRows}
       }
     }
     validateComputedNodes(computedNodes, controls, computed, diagnostics);
+    for (const diagnostic of diagnostics) {
+      if (diagnostic.endLine !== void 0 || !diagnostic.nodeId) continue;
+      const node = ids.get(diagnostic.nodeId) ?? aliasToNode.get(diagnostic.nodeId);
+      if (node?.endLine !== void 0) diagnostic.endLine = node.endLine;
+    }
     const ignore = options.ignoreRules;
     if (ignore && ignore.length > 0) {
       const known = collectRuleCodes();

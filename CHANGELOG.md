@@ -6,7 +6,17 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-06-10
+
 ### Added
+
+- **Block-level patch preconditions:** every patch op now accepts an optional `baseHash` (sha256 of the target block's source slice, full or ≥8-char prefix). `patchSource` refuses ops with `sha_mismatch` when the block changed since it was read, so concurrent agent/human edits are detected per block instead of conflicting at file level. `blockSourceHash()` and a browser-safe `sha256Hex()` are exported; the MCP server returns each block's `hash` from `read_doc` and accepts `base_hash` on `patch_block`.
+- **Diagnostic spans:** validator diagnostics anchored to a block now carry `endLine` alongside `pos`, giving editors and agents the full source range.
+- **`--allow-external-paths` flag:** opts back into dataset/figure `src=` and book-chapter references that resolve outside the document's own directory (now blocked by default — see Security).
+- **Release tooling:** `npm run release -- check` verifies every versioned location (package versions, spec/protocol frontmatter, CHANGELOG, README status, PLAN §24, workspace pins) agrees; `npm run release -- bump <version>` performs the mechanical bumps and promotes `[Unreleased]`.
+- **Project-memory drift gate:** `npm run check:memory` fails when `CLAUDE.md`/`AGENTS.md` diverge from each other or from the actual repository layout; runs in CI.
+- **CI workflows:** `ci.yml` runs typecheck/lint/tests/conformance on PRs across Node 20/22 and macOS; `freshness.yml` sweeps docs and examples weekly with `noma check --stale-days 120` and files/updates a GitHub issue with findings; `release.yml` publishes `@ferax564/noma-cli` and `@ferax564/noma-mcp-server` to npm with provenance (and cuts the GitHub release from the CHANGELOG slice) when a `v*` tag is pushed; Dependabot keeps npm and Action dependencies current; the Pages build caches Puppeteer Chrome.
+- **Lint and coverage:** `npm run lint` (eslint + typescript-eslint with a narrow correctness ruleset — tsc owns type safety) and `npm run test:coverage` (node:test built-in coverage). Lint runs in CI and `test:full`.
 
 - **Workbench proof loop:** the browser workbench now has an Agent Proof panel and Proof output tab. Patch ops are simulated in the browser with pre/post hashes, validation status, source-preservation metrics, operation payloads, and a sandboxed post-patch artifact preview; Apply is enabled only for writable proofs.
 - **Workbench table/data editor:** ID-bearing `::table` and `::dataset` blocks can be edited through a compact grid. Cell edits plus row/column additions generate granular patch ops, run through the proof loop, and update only after the proof passes.
@@ -27,6 +37,17 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **Markdown ingest:** `noma ingest <file.md> --out <file.noma>` converts Markdown-compatible source into Noma-compatible source and pins explicit stable heading IDs by default, giving existing docs an incremental migration path.
 - **PR proof Action mode:** the GitHub Action now supports `mode: proof`, patch `op` / `ops` inputs, uploaded proof HTML + Markdown summary artifacts, optional PR comments, and CI-enforced `profile:` checks.
 - **Validation workflow profiles:** `--profile` can be passed to `noma check` and `noma proof`, with new profile names for `technical-docs`, `research-memo`, `investment-thesis`, `adr`, `spec`, and `agent-memory`.
+
+### Security
+
+- **Filesystem containment:** dataset/figure `src=` references and book-manifest chapter paths now resolve only within the referencing document's directory by default; escaping paths produce an error body (datasets), are skipped (figures), or throw (chapters). Use `--allow-external-paths` for trusted local workflows.
+- **Diagram runtime sanitization:** Mermaid and Graphviz SVG output is sanitized client-side (scripts, iframes/objects/embeds, `on*` handlers, and `javascript:` URLs stripped) before insertion into the page.
+- **Parser recursion bound:** directive fences are capped at 64 colons; deeper fences parse as paragraph text, bounding recursion on adversarial input.
+- **GitHub Action strict by default:** the `strict` input now defaults to `"true"`, so CI-rendered artifacts block escape hatches and CDN runtimes unless explicitly opted out.
+
+### Fixed
+
+- **Patch metadata preservation:** `patch(doc, op)` now deep-clones with `structuredClone`, so non-JSON metadata (e.g. `Date` values in frontmatter meta) survives patching.
 
 ### Changed
 

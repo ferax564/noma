@@ -1,6 +1,6 @@
 {
   "name": "@ferax564/noma-cli",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Noma — readable document format for humans and agents",
   "type": "module",
   "main": "dist/index.js",
@@ -24,7 +24,7 @@
     "prepare": "tsc -p tsconfig.json",
     "test": "tsx --test test/*.test.ts",
     "test:quick": "tsx --test test/parser.test.ts test/patch.test.ts test/validator.test.ts test/formula.test.ts test/renderer-llm-select.test.ts",
-    "test:full": "npx tsc --noEmit && npm test && npm run verify:conformance && npm run smoke:package && npm run build:agent-sdk && npm run test:agent-sdk && npm run build:site",
+    "test:full": "npx tsc --noEmit && npm run lint && npm test && npm run verify:conformance && npm run smoke:package && npm run build:agent-sdk && npm run test:agent-sdk && npm run build:site",
     "smoke:package": "tsx scripts/package-smoke.ts",
     "verify:conformance": "npm run noma -- verify examples/conformance",
     "render:examples": "tsx src/cli.ts render examples/thesis.noma --to html --out dist/thesis.html && tsx src/cli.ts render examples/landing.noma --to html --out dist/landing.html && tsx src/cli.ts render examples/agent-plan.noma --to html --out dist/examples/agent-plan.html && tsx src/cli.ts render examples/agent-plan.noma --to llm --out dist/examples/agent-plan.llm.txt && tsx src/cli.ts render examples/agent-plan.noma --to json --out dist/examples/agent-plan.json && tsx src/cli.ts proof examples/agent-plan.noma --op '{\"op\":\"update_attribute\",\"id\":\"decision-q3-direction\",\"key\":\"status\",\"value\":\"accepted\"}' --out dist/examples/agent-plan-proof.html && tsx src/cli.ts render examples/tech-doc.noma --to html --out dist/examples/tech-doc.html && tsx src/cli.ts render examples/tech-doc.noma --to llm --out dist/examples/tech-doc.llm.txt && tsx src/cli.ts render examples/tech-doc.noma --to json --out dist/examples/tech-doc.json && tsx src/cli.ts render examples/research-thesis.noma --to html --out dist/examples/research-thesis.html && tsx src/cli.ts render examples/research-thesis.noma --to llm --out dist/examples/research-thesis.llm.txt && tsx src/cli.ts render examples/research-thesis.noma --to json --out dist/examples/research-thesis.json && tsx src/cli.ts render examples/interactive-projection.noma --to html --out dist/examples/interactive-projection.html && tsx src/cli.ts render examples/interactive-projection.noma --to llm --out dist/examples/interactive-projection.llm.txt && tsx src/cli.ts render examples/interactive-projection.noma --to json --out dist/examples/interactive-projection.json && tsx src/cli.ts render examples/word-review-loop.noma --to html --out dist/examples/word-review-loop.html && tsx src/cli.ts render examples/word-review-loop.noma --to llm --out dist/examples/word-review-loop.llm.txt && tsx src/cli.ts render examples/word-review-loop.noma --to json --out dist/examples/word-review-loop.json && tsx src/cli.ts render examples/word-review-loop.noma --to docx --out dist/examples/word-review-loop.docx",
@@ -43,7 +43,11 @@
     "deploy:ezkeel": "ezkeel up",
     "demo": "npm run render:examples && npm run render:pdf",
     "test:agent-sdk": "npm run test -w @ferax564/noma-agent-sdk",
-    "build:agent-sdk": "tsc -p packages/agent-sdk/tsconfig.json"
+    "build:agent-sdk": "tsc -p packages/agent-sdk/tsconfig.json",
+    "check:memory": "tsx scripts/check-memory-drift.ts",
+    "release": "tsx scripts/release.ts",
+    "lint": "eslint .",
+    "test:coverage": "NODE_OPTIONS=--experimental-test-coverage tsx --test test/*.test.ts"
   },
   "files": [
     "src",
@@ -87,9 +91,11 @@
     "@types/node": "^22.10.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "eslint": "^10.4.1",
     "puppeteer": "^23.10.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.61.0"
   },
   "directories": {
     "doc": "docs",

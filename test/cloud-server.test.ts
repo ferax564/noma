@@ -653,6 +653,552 @@ test("cloud app can require a global access token", async () => {
   }
 });
 
+test("document API supports create, read, update, and render lifecycle", async () => {
+  const harness = await startCloudServer("noma-cloud-lifecycle-");
+  try {
+    const owner = await createCloudUser(harness.base, "Lifecycle Owner");
+    const created = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: owner.token,
+      body: { source: "# Lifecycle Doc\n\nFirst draft body." },
+    });
+    assert.equal(created.title, "Lifecycle Doc");
+    assert.equal(created.access.role, "owner");
+    assert.equal(created.access.via, "user");
+
+    const loaded = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
+      token: owner.token,
+    });
+    assert.equal(loaded.source, "# Lifecycle Doc\n\nFirst draft body.");
+    assert.equal(loaded.hash, created.hash);
+
+    const updated = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
+      method: "PATCH",
+      token: owner.token,
+      body: { source: "# Lifecycle Doc\n\nSecond draft body." },
+    });
+    assert.equal(updated.source, "# Lifecycle Doc\n\nSecond draft body.");
+    assert.notEqual(updated.hash, created.hash);
+
+    const html = await fetch(`${harness.base}/api/documents/${created.id}/html`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(html.status, 200);
+    assert.match(html.headers.get("content-type") ?? "", /text\/html/);
+    const htmlText = await html.text();
+    assert.match(htmlText, /Second draft body/);
+    assert.match(htmlText, /owner access/);
+
+    const jsonArtifact = await fetch(`${harness.base}/api/documents/${created.id}/json`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(jsonArtifact.status, 200);
+    const ast = JSON.parse(await jsonArtifact.text()) as { type?: string };
+    assert.equal(ast.type, "document");
+
+    const llm = await fetch(`${harness.base}/api/documents/${created.id}/llm`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(llm.status, 200);
+    assert.match(llm.headers.get("content-type") ?? "", /text\/plain/);
+    assert.match(await llm.text(), /Second draft body/);
+
+    await json(`${harness.base}/api/documents/${created.id}/pdf`, {
+      token: owner.token,
+      expectedStatus: 404,
+    });
+
+    await json(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: owner.token,
+      body: { source: "   " },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: owner.token,
+      body: { source: 42 },
+      expectedStatus: 400,
+    });
+  } finally {
+    await harness.close();
+  }
+});
+
+test("document routes return 404 for unknown ids and 400 for malformed ids", async () => {
+  const harness = await startCloudServer("noma-cloud-missing-");
+  try {
+    const user = await createCloudUser(harness.base, "Missing Doc Reader");
+    const unknownId = "aaaaaaaaaaaaaaaaaa";
+
+    await json(`${harness.base}/api/documents/${unknownId}`, { token: user.token, expectedStatus: 404 });
+    await json(`${harness.base}/api/documents/${unknownId}`, {
+      method: "PUT",
+      token: user.token,
+      body: { source: "# Nope" },
+      expectedStatus: 404,
+    });
+    await json(`${harness.base}/api/documents/${unknownId}/html`, { token: user.token, expectedStatus: 404 });
+    await json(`${harness.base}/api/documents/nope`, { token: user.token, expectedStatus: 400 });
+    await fetchExpect(`${harness.base}/d/${unknownId}`, 404);
+    await fetchExpect(`${harness.base}/d/nope`, 400);
+    await fetchExpect(`${harness.base}/s/${unknownId}`, 404);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("document updates enforce viewer, editor, and owner permission tiers", async () => {
+  const harness = await startCloudServer("noma-cloud-tiers-");
+  try {
+    const owner = await createCloudUser(harness.base, "Tier Owner");
+    const viewer = await createCloudUser(harness.base, "Tier Viewer");
+    const editor = await createCloudUser(harness.base, "Tier Editor");
+    const stranger = await createCloudUser(harness.base, "Tier Stranger");
+
+    const created = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: owner.token,
+      body: { source: "# Tiered Doc\n\nOriginal content." },
+    });
+
+    await json(`${harness.base}/api/documents/${created.id}`, {
+      method: "PUT",
+      body: { source: "# Tiered Doc\n\nAnonymous edit." },
+      expectedStatus: 401,
+    });
+    await json(`${harness.base}/api/documents/${created.id}`, {
+      method: "PUT",
+      token: stranger.token,
+      body: { source: "# Tiered Doc\n\nStranger edit." },
+      expectedStatus: 403,
+    });
+
+    await json(`${harness.base}/api/documents/${created.id}/collaborators`, {
+      method: "POST",
+      token: owner.token,
+      body: { userId: viewer.id, role: "viewer" },
+    });
+    await json(`${harness.base}/api/documents/${created.id}/collaborators`, {
+      method: "POST",
+      token: owner.token,
+      body: { userId: editor.id, role: "editor" },
+    });
+
+    const viewerLoaded = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
+      token: viewer.token,
+    });
+    assert.equal(viewerLoaded.access.role, "viewer");
+    await json(`${harness.base}/api/documents/${created.id}`, {
+      method: "PUT",
+      token: viewer.token,
+      body: { source: "# Tiered Doc\n\nViewer edit." },
+      expectedStatus: 403,
+    });
+    await json(`${harness.base}/api/documents/${created.id}/shares`, {
+      method: "POST",
+      token: viewer.token,
+      body: { role: "viewer" },
+      expectedStatus: 403,
+    });
+    await json(`${harness.base}/api/documents/${created.id}/collaborators`, {
+      token: viewer.token,
+      expectedStatus: 403,
+    });
+
+    const editorUpdated = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
+      method: "PUT",
+      token: editor.token,
+      body: { source: "# Tiered Doc\n\nEditor edit." },
+    });
+    assert.equal(editorUpdated.source, "# Tiered Doc\n\nEditor edit.");
+    await json(`${harness.base}/api/documents/${created.id}/collaborators`, {
+      method: "POST",
+      token: editor.token,
+      body: { userId: stranger.id, role: "viewer" },
+      expectedStatus: 403,
+    });
+
+    await json(`${harness.base}/api/documents/${created.id}/collaborators`, {
+      method: "POST",
+      token: owner.token,
+      body: { userId: viewer.id, role: "owner" },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/documents/${created.id}/collaborators`, {
+      method: "POST",
+      token: owner.token,
+      body: { userId: "aaaaaaaaaaaaaaaaaa", role: "viewer" },
+      expectedStatus: 404,
+    });
+
+    const collaborators = await json<{ collaborators: Array<{ userId: string; role: string }> }>(
+      `${harness.base}/api/documents/${created.id}/collaborators`,
+      { token: owner.token },
+    );
+    assert.deepEqual(
+      collaborators.collaborators.map((item) => [item.userId, item.role]).sort(),
+      [
+        [editor.id, "editor"],
+        [owner.id, "owner"],
+        [viewer.id, "viewer"],
+      ].sort(),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("rendered HTML and LLM output never include escape-hatch bodies", async () => {
+  const harness = await startCloudServer("noma-cloud-escape-");
+  try {
+    const owner = await createCloudUser(harness.base, "Escape Owner");
+    const source = [
+      "# Escape Hatch Doc",
+      "",
+      "Safe paragraph content.",
+      "",
+      '::script{id="s1"}',
+      "alert(1)",
+      "::",
+      "",
+      '::html{id="h1"}',
+      "<script>alert(2)</script>",
+      "::",
+      "",
+    ].join("\n");
+    const created = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: owner.token,
+      body: { source },
+    });
+
+    const artifact = await fetch(`${harness.base}/d/${created.id}`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(artifact.status, 200);
+    const artifactHtml = await artifact.text();
+    assert.match(artifactHtml, /Safe paragraph content/);
+    assert.match(artifactHtml, /escape hatch disabled/);
+    assert.doesNotMatch(artifactHtml, /alert\(1\)/);
+    assert.doesNotMatch(artifactHtml, /alert\(2\)/);
+    assert.doesNotMatch(artifactHtml, /<script>alert/);
+
+    const apiHtml = await fetch(`${harness.base}/api/documents/${created.id}/html`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(apiHtml.status, 200);
+    const apiHtmlText = await apiHtml.text();
+    assert.doesNotMatch(apiHtmlText, /alert\(1\)/);
+    assert.doesNotMatch(apiHtmlText, /<script>alert/);
+
+    const llm = await fetch(`${harness.base}/api/documents/${created.id}/llm`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(llm.status, 200);
+    assert.doesNotMatch(await llm.text(), /alert\(1\)/);
+
+    const site = await json<CloudSiteResponse>(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: owner.token,
+      body: { title: "Escape Site", documentIds: [created.id] },
+    });
+    const renderedSite = await fetch(`${harness.base}/s/${site.id}`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(renderedSite.status, 200);
+    const renderedSiteHtml = await renderedSite.text();
+    assert.match(renderedSiteHtml, /Safe paragraph content/);
+    assert.doesNotMatch(renderedSiteHtml, /alert\(1\)/);
+    assert.doesNotMatch(renderedSiteHtml, /<script>alert/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("document share links are role scoped and validated", async () => {
+  const harness = await startCloudServer("noma-cloud-share-roles-");
+  try {
+    const owner = await createCloudUser(harness.base, "Share Owner");
+    const created = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: owner.token,
+      body: { source: "# Share Scoped\n\nReadable through links." },
+    });
+
+    await json(`${harness.base}/api/documents/${created.id}/shares`, {
+      method: "POST",
+      token: owner.token,
+      body: { role: "owner" },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/documents/aaaaaaaaaaaaaaaaaa/shares`, {
+      method: "POST",
+      token: owner.token,
+      body: { role: "viewer" },
+      expectedStatus: 404,
+    });
+
+    const viewerShare = await json<CloudShareResponse>(`${harness.base}/api/documents/${created.id}/shares`, {
+      method: "POST",
+      token: owner.token,
+      body: { role: "viewer", label: "Read only" },
+    });
+
+    const viaShare = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
+      share: viewerShare.token,
+    });
+    assert.equal(viaShare.access.role, "viewer");
+    assert.equal(viaShare.access.via, "share");
+
+    const artifact = await fetch(`${harness.base}/d/${created.id}?share=${viewerShare.token}`);
+    assert.equal(artifact.status, 200);
+    assert.match(await artifact.text(), /Readable through links/);
+
+    await json(`${harness.base}/api/documents/${created.id}`, {
+      method: "PUT",
+      share: viewerShare.token,
+      body: { source: "# Share Scoped\n\nViewer link edit." },
+      expectedStatus: 403,
+    });
+
+    const wrongToken = await fetch(`${harness.base}/d/${created.id}?share=ns_not_a_real_token`);
+    assert.equal(wrongToken.status, 403);
+
+    const shares = await json<{ shares: Array<Record<string, unknown>> }>(
+      `${harness.base}/api/documents/${created.id}/shares`,
+      { token: owner.token },
+    );
+    assert.equal(shares.shares.length, 1);
+    assert.equal(Object.hasOwn(shares.shares[0] ?? {}, "tokenHash"), false);
+    assert.equal(typeof shares.shares[0]?.tokenPreview, "string");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("db query endpoint rejects malformed input", async () => {
+  const harness = await startCloudServer("noma-cloud-db-input-");
+  try {
+    const user = await createCloudUser(harness.base, "Query Validator");
+
+    await json(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: user.token,
+      body: {},
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: user.token,
+      body: { resource: "everything" },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: user.token,
+      body: { resource: "documents", limit: "10" },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: user.token,
+      body: { resource: "documents", limit: 0 },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: user.token,
+      body: { resource: "documents", offset: 10_001 },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: user.token,
+      body: { resource: "documents", offset: 1.5 },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: user.token,
+      body: { resource: "blocks", documentId: "x!" },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/db/query`, {
+      token: user.token,
+      expectedStatus: 404,
+    });
+
+    const invalidJson = await fetch(`${harness.base}/api/db/query`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${user.token}`, "content-type": "application/json" },
+      body: "not json",
+    });
+    assert.equal(invalidJson.status, 400);
+    const arrayBody = await fetch(`${harness.base}/api/db/query`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${user.token}`, "content-type": "application/json" },
+      body: JSON.stringify([{ resource: "documents" }]),
+    });
+    assert.equal(arrayBody.status, 400);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("db query results are permission scoped and bounded", async () => {
+  const harness = await startCloudServer("noma-cloud-db-scope-");
+  try {
+    const alice = await createCloudUser(harness.base, "Scope Alice");
+    const bob = await createCloudUser(harness.base, "Scope Bob");
+
+    const aliceIds: string[] = [];
+    for (const title of ["Alpha One", "Alpha Two", "Alpha Three"]) {
+      const doc = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+        method: "POST",
+        token: alice.token,
+        body: { source: `# ${title}\n\nAlpha secret phrase.` },
+      });
+      aliceIds.push(doc.id);
+    }
+    const bobDoc = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: bob.token,
+      body: { source: "# Bravo Doc\n\nBravo only content." },
+    });
+
+    const bobDocuments = await json<CloudDbQueryResponse>(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: bob.token,
+      body: { resource: "documents" },
+    });
+    assert.deepEqual(bobDocuments.rows.map((row) => row.id), [bobDoc.id]);
+
+    const bobBlocks = await json<CloudDbQueryResponse>(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: bob.token,
+      body: { resource: "blocks", q: "Alpha secret phrase" },
+    });
+    assert.equal(bobBlocks.rows.length, 0);
+
+    const pageOne = await json<CloudDbQueryResponse>(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: alice.token,
+      body: { resource: "documents", limit: 2 },
+    });
+    const pageTwo = await json<CloudDbQueryResponse>(`${harness.base}/api/db/query`, {
+      method: "POST",
+      token: alice.token,
+      body: { resource: "documents", limit: 2, offset: 2 },
+    });
+    assert.equal(pageOne.rows.length, 2);
+    assert.equal(pageTwo.rows.length, 1);
+    assert.deepEqual(
+      [...pageOne.rows, ...pageTwo.rows].map((row) => String(row.id)).sort(),
+      [...aliceIds].sort(),
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("site endpoints enforce membership and document edit access", async () => {
+  const harness = await startCloudServer("noma-cloud-site-access-");
+  try {
+    const alice = await createCloudUser(harness.base, "Site Alice");
+    const bob = await createCloudUser(harness.base, "Site Bob");
+
+    const doc = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: { source: "# Site Page\n\nSite scoped content." },
+    });
+
+    await json(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: bob.token,
+      body: { title: "Bob Steals Pages", documentIds: [doc.id] },
+      expectedStatus: 403,
+    });
+
+    const site = await json<CloudSiteResponse>(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Members Only", documentIds: [doc.id] },
+    });
+
+    await json(`${harness.base}/api/sites/${site.id}`, { token: bob.token, expectedStatus: 403 });
+    await fetchExpect(`${harness.base}/s/${site.id}`, 401);
+
+    const share = await json<CloudShareResponse>(`${harness.base}/api/sites/${site.id}/shares`, {
+      method: "POST",
+      token: alice.token,
+      body: { role: "viewer", label: "Site readers" },
+    });
+
+    const rendered = await fetch(`${harness.base}/s/${site.id}?share=${share.token}`);
+    assert.equal(rendered.status, 200);
+    const renderedHtml = await rendered.text();
+    assert.match(renderedHtml, /Site scoped content/);
+    assert.match(renderedHtml, /viewer access/);
+
+    await json(`${harness.base}/api/sites/${site.id}`, {
+      method: "PUT",
+      share: share.token,
+      body: { title: "Viewer Rename", documentIds: [doc.id] },
+      expectedStatus: 403,
+    });
+    await json(`${harness.base}/api/sites/${site.id}/documents`, {
+      method: "POST",
+      share: share.token,
+      body: { source: "# Viewer Page\n\nShould fail." },
+      expectedStatus: 403,
+    });
+
+    const wiki = await json<{ pages: Array<{ id: string }> }>(`${harness.base}/api/sites/${site.id}/wiki`, {
+      share: share.token,
+    });
+    assert.deepEqual(wiki.pages.map((page) => page.id), [doc.id]);
+  } finally {
+    await harness.close();
+  }
+});
+
+interface CloudTestHarness {
+  base: string;
+  close(): Promise<void>;
+}
+
+async function startCloudServer(prefix: string): Promise<CloudTestHarness> {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  const publicDir = join(root, "public");
+  await mkdir(publicDir, { recursive: true });
+  await writeFile(join(publicDir, "index.html"), "<h1>Noma</h1>", "utf8");
+  const server = createNomaCloudServer({
+    dataDir: join(root, "data", "documents"),
+    usersDir: join(root, "data", "users"),
+    sitesDir: join(root, "data", "sites"),
+    dbPath: join(root, "data", "noma-cloud.sqlite"),
+    publicDir,
+    maxBodyBytes: 100_000,
+    now: () => new Date("2026-06-06T12:00:00.000Z"),
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return {
+    base: `http://127.0.0.1:${address.port}`,
+    close: async () => {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      await rm(root, { recursive: true, force: true });
+    },
+  };
+}
+
+async function createCloudUser(base: string, name: string): Promise<CloudUserResponse> {
+  return json<CloudUserResponse>(`${base}/api/users`, { method: "POST", body: { name } });
+}
+
 async function json<T = { error?: string }>(url: string, options: JsonRequestOptions = {}): Promise<T> {
   const headers = new Headers({ accept: "application/json" });
   if (options.token) headers.set("authorization", `Bearer ${options.token}`);

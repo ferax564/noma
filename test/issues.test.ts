@@ -8,7 +8,7 @@ import { validate } from "../src/validator.js";
 import { renderHtml } from "../src/renderer-html.js";
 import { loadBook, loadBookChapters } from "../src/book.js";
 import { renderSite } from "../src/renderer-site.js";
-import type { SectionNode } from "../src/ast.js";
+import type { Node, SectionNode } from "../src/ast.js";
 
 test("issue #6: ::table is allowed inside profile=research", () => {
   const doc = parse(
@@ -141,9 +141,9 @@ test("issue #4: heading {id=...} attribute overrides slug", () => {
 test("issue #4: book mode scopes heading IDs by chapter", () => {
   const doc = loadBook("examples/book/book.noma.yml");
   const ids: string[] = [];
-  const collect = (n: any): void => {
+  const collect = (n: Node): void => {
     if (n.id) ids.push(n.id);
-    if (n.children) for (const c of n.children) collect(c);
+    if ("children" in n) for (const c of n.children) collect(c);
   };
   for (const c of doc.children) collect(c);
   assert.ok(ids.some((id) => id.includes("/")), "expected at least one scoped ID");

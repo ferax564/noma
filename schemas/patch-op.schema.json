@@ -7,340 +7,840 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "content"],
+      "required": [
+        "op",
+        "id",
+        "content"
+      ],
       "properties": {
-        "op": { "const": "replace_block" },
-        "id": { "$ref": "#/$defs/id" },
-        "content": { "type": "string", "minLength": 1 }
+        "op": {
+          "const": "replace_block"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "content"],
+      "required": [
+        "op",
+        "id",
+        "content"
+      ],
       "properties": {
-        "op": { "const": "replace_body" },
-        "id": { "$ref": "#/$defs/id" },
-        "content": { "type": "string" }
+        "op": {
+          "const": "replace_body"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "content": {
+          "type": "string"
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "title"],
+      "required": [
+        "op",
+        "id",
+        "title"
+      ],
       "properties": {
-        "op": { "const": "update_heading" },
-        "id": { "$ref": "#/$defs/id" },
-        "title": { "type": "string", "minLength": 1 }
+        "op": {
+          "const": "update_heading"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "target", "content"],
+      "required": [
+        "op",
+        "id",
+        "target",
+        "content"
+      ],
       "properties": {
-        "op": { "const": "add_comment" },
-        "id": { "$ref": "#/$defs/id" },
-        "target": { "$ref": "#/$defs/id" },
-        "content": { "type": "string", "minLength": 1 },
-        "author": { "type": "string", "minLength": 1 },
-        "initials": { "type": "string", "minLength": 1 },
-        "date": { "type": "string", "minLength": 1 },
-        "reply_to": { "$ref": "#/$defs/id" }
+        "op": {
+          "const": "add_comment"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "target": {
+          "$ref": "#/$defs/id"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1
+        },
+        "initials": {
+          "type": "string",
+          "minLength": 1
+        },
+        "date": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reply_to": {
+          "$ref": "#/$defs/id"
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id"],
+      "required": [
+        "op",
+        "id"
+      ],
       "properties": {
-        "op": { "const": "resolve_comment" },
-        "id": { "$ref": "#/$defs/id" },
-        "resolved_by": { "type": "string", "minLength": 1 },
-        "resolved_at": { "type": "string", "minLength": 1 }
+        "op": {
+          "const": "resolve_comment"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "resolved_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolved_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "target", "content"],
+      "required": [
+        "op",
+        "id",
+        "target",
+        "content"
+      ],
       "properties": {
-        "op": { "const": "add_footnote" },
-        "id": { "$ref": "#/$defs/id" },
-        "target": { "$ref": "#/$defs/id" },
-        "content": { "type": "string", "minLength": 1 },
-        "label": { "type": "string", "minLength": 1 }
+        "op": {
+          "const": "add_footnote"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "target": {
+          "$ref": "#/$defs/id"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "target", "content"],
+      "required": [
+        "op",
+        "id",
+        "target",
+        "content"
+      ],
       "properties": {
-        "op": { "const": "add_endnote" },
-        "id": { "$ref": "#/$defs/id" },
-        "target": { "$ref": "#/$defs/id" },
-        "content": { "type": "string", "minLength": 1 },
-        "label": { "type": "string", "minLength": 1 }
+        "op": {
+          "const": "add_endnote"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "target": {
+          "$ref": "#/$defs/id"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "target", "action"],
+      "required": [
+        "op",
+        "id",
+        "target",
+        "action"
+      ],
       "properties": {
-        "op": { "const": "add_change_request" },
-        "id": { "$ref": "#/$defs/id" },
-        "target": { "$ref": "#/$defs/id" },
-        "action": { "enum": ["insert", "delete", "replace"] },
-        "from": { "type": "string", "minLength": 1 },
-        "to": { "type": "string", "minLength": 1 },
-        "text": { "type": "string", "minLength": 1 },
-        "content": { "type": "string" },
-        "author": { "type": "string", "minLength": 1 },
-        "date": { "type": "string", "minLength": 1 }
+        "op": {
+          "const": "add_change_request"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "target": {
+          "$ref": "#/$defs/id"
+        },
+        "action": {
+          "enum": [
+            "insert",
+            "delete",
+            "replace"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1
+        },
+        "date": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       },
       "allOf": [
         {
-          "if": { "properties": { "action": { "const": "replace" } } },
-          "then": { "required": ["from", "to"] }
+          "if": {
+            "properties": {
+              "action": {
+                "const": "replace"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from",
+              "to"
+            ]
+          }
         },
         {
-          "if": { "properties": { "action": { "const": "insert" } } },
-          "then": { "anyOf": [{ "required": ["to"] }, { "required": ["text"] }] }
+          "if": {
+            "properties": {
+              "action": {
+                "const": "insert"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "to"
+                ]
+              },
+              {
+                "required": [
+                  "text"
+                ]
+              }
+            ]
+          }
         },
         {
-          "if": { "properties": { "action": { "const": "delete" } } },
-          "then": { "anyOf": [{ "required": ["from"] }, { "required": ["text"] }] }
+          "if": {
+            "properties": {
+              "action": {
+                "const": "delete"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "from"
+                ]
+              },
+              {
+                "required": [
+                  "text"
+                ]
+              }
+            ]
+          }
         }
       ]
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "row", "column", "value"],
+      "required": [
+        "op",
+        "id",
+        "row",
+        "column",
+        "value"
+      ],
       "properties": {
-        "op": { "const": "update_table_cell" },
-        "id": { "$ref": "#/$defs/id" },
-        "row": { "type": "integer", "minimum": 0 },
+        "op": {
+          "const": "update_table_cell"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
         "column": {
           "oneOf": [
-            { "type": "integer", "minimum": 0 },
-            { "type": "string", "minLength": 1 }
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
           ]
         },
-        "value": { "type": "string" }
+        "value": {
+          "type": "string"
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "column", "value"],
+      "required": [
+        "op",
+        "id",
+        "column",
+        "value"
+      ],
       "properties": {
-        "op": { "const": "update_table_header_cell" },
-        "id": { "$ref": "#/$defs/id" },
+        "op": {
+          "const": "update_table_header_cell"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
         "column": {
           "oneOf": [
-            { "type": "integer", "minimum": 0 },
-            { "type": "string", "minLength": 1 }
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
           ]
         },
-        "value": { "type": "string" }
+        "value": {
+          "type": "string"
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "row", "cells"],
+      "required": [
+        "op",
+        "id",
+        "row",
+        "cells"
+      ],
       "properties": {
-        "op": { "const": "insert_table_row" },
-        "id": { "$ref": "#/$defs/id" },
-        "row": { "type": "integer", "minimum": 0 },
+        "op": {
+          "const": "insert_table_row"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
         "cells": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
         }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "row"],
+      "required": [
+        "op",
+        "id",
+        "row"
+      ],
       "properties": {
-        "op": { "const": "delete_table_row" },
-        "id": { "$ref": "#/$defs/id" },
-        "row": { "type": "integer", "minimum": 0 }
+        "op": {
+          "const": "delete_table_row"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "column", "header", "cells"],
+      "required": [
+        "op",
+        "id",
+        "column",
+        "header",
+        "cells"
+      ],
       "properties": {
-        "op": { "const": "insert_dataset_column" },
-        "id": { "$ref": "#/$defs/id" },
-        "column": { "type": "integer", "minimum": 0 },
-        "header": { "type": "string", "minLength": 1 },
+        "op": {
+          "const": "insert_dataset_column"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "header": {
+          "type": "string",
+          "minLength": 1
+        },
         "cells": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
         }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "column"],
+      "required": [
+        "op",
+        "id",
+        "column"
+      ],
       "properties": {
-        "op": { "const": "delete_dataset_column" },
-        "id": { "$ref": "#/$defs/id" },
+        "op": {
+          "const": "delete_dataset_column"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
         "column": {
           "oneOf": [
-            { "type": "integer", "minimum": 0 },
-            { "type": "string", "minLength": 1 }
-          ]
-        }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["op", "id", "column", "cells"],
-      "properties": {
-        "op": { "const": "insert_table_column" },
-        "id": { "$ref": "#/$defs/id" },
-        "column": { "type": "integer", "minimum": 0 },
-        "header": { "type": "string" },
-        "cells": {
-          "type": "array",
-          "items": { "type": "string" }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["op", "id", "column"],
-      "properties": {
-        "op": { "const": "delete_table_column" },
-        "id": { "$ref": "#/$defs/id" },
-        "column": {
-          "oneOf": [
-            { "type": "integer", "minimum": 0 },
-            { "type": "string", "minLength": 1 }
-          ]
-        }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["op", "id", "row", "column", "value"],
-      "properties": {
-        "op": { "const": "update_dataset_cell" },
-        "id": { "$ref": "#/$defs/id" },
-        "row": { "type": "integer", "minimum": 0 },
-        "column": {
-          "oneOf": [
-            { "type": "integer", "minimum": 0 },
-            { "type": "string", "minLength": 1 }
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
           ]
         },
-        "value": { "type": "string" }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["op", "id", "row", "cells"],
-      "properties": {
-        "op": { "const": "insert_dataset_row" },
-        "id": { "$ref": "#/$defs/id" },
-        "row": { "type": "integer", "minimum": 0 },
-        "cells": {
-          "type": "array",
-          "items": { "type": "string" }
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
         }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "row"],
+      "required": [
+        "op",
+        "id",
+        "column",
+        "cells"
+      ],
       "properties": {
-        "op": { "const": "delete_dataset_row" },
-        "id": { "$ref": "#/$defs/id" },
-        "row": { "type": "integer", "minimum": 0 }
+        "op": {
+          "const": "insert_table_column"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "header": {
+          "type": "string"
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "parent", "content"],
+      "required": [
+        "op",
+        "id",
+        "column"
+      ],
       "properties": {
-        "op": { "const": "add_block" },
-        "parent": { "$ref": "#/$defs/id" },
-        "content": { "type": "string", "minLength": 1 },
-        "position": { "type": "integer", "minimum": 0 }
+        "op": {
+          "const": "delete_table_column"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "column": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "parent"],
+      "required": [
+        "op",
+        "id",
+        "row",
+        "column",
+        "value"
+      ],
       "properties": {
-        "op": { "const": "move_block" },
-        "id": { "$ref": "#/$defs/id" },
-        "parent": { "$ref": "#/$defs/id" },
-        "position": { "type": "integer", "minimum": 0 }
+        "op": {
+          "const": "update_dataset_cell"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "column": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id"],
+      "required": [
+        "op",
+        "id",
+        "row",
+        "cells"
+      ],
       "properties": {
-        "op": { "const": "delete_block" },
-        "id": { "$ref": "#/$defs/id" }
+        "op": {
+          "const": "insert_dataset_row"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "id", "key", "value"],
+      "required": [
+        "op",
+        "id",
+        "row"
+      ],
       "properties": {
-        "op": { "const": "update_attribute" },
-        "id": { "$ref": "#/$defs/id" },
+        "op": {
+          "const": "delete_dataset_row"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "parent",
+        "content"
+      ],
+      "properties": {
+        "op": {
+          "const": "add_block"
+        },
+        "parent": {
+          "$ref": "#/$defs/id"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id",
+        "parent"
+      ],
+      "properties": {
+        "op": {
+          "const": "move_block"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "parent": {
+          "$ref": "#/$defs/id"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id"
+      ],
+      "properties": {
+        "op": {
+          "const": "delete_block"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id",
+        "key",
+        "value"
+      ],
+      "properties": {
+        "op": {
+          "const": "update_attribute"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
         "key": {
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
-          "not": { "const": "id" }
+          "not": {
+            "const": "id"
+          }
         },
-        "value": { "$ref": "#/$defs/attrValue" }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["op", "id", "key"],
-      "properties": {
-        "op": { "const": "remove_attribute" },
-        "id": { "$ref": "#/$defs/id" },
-        "key": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
-          "not": { "const": "id" }
+        "value": {
+          "$ref": "#/$defs/attrValue"
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
         }
       }
     },
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["op", "from", "to"],
+      "required": [
+        "op",
+        "id",
+        "key"
+      ],
       "properties": {
-        "op": { "const": "rename_id" },
-        "from": { "$ref": "#/$defs/id" },
-        "to": { "$ref": "#/$defs/id" }
+        "op": {
+          "const": "remove_attribute"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+          "not": {
+            "const": "id"
+          }
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "from",
+        "to"
+      ],
+      "properties": {
+        "op": {
+          "const": "rename_id"
+        },
+        "from": {
+          "$ref": "#/$defs/id"
+        },
+        "to": {
+          "$ref": "#/$defs/id"
+        },
+        "baseHash": {
+          "$ref": "#/$defs/baseHash"
+        }
       }
     }
   ],
@@ -350,7 +850,16 @@
       "pattern": "^[A-Za-z_][A-Za-z0-9_./:-]*$"
     },
     "attrValue": {
-      "type": ["string", "number", "boolean"]
+      "type": [
+        "string",
+        "number",
+        "boolean"
+      ]
+    },
+    "baseHash": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8,64}$",
+      "description": "Optimistic-concurrency precondition: sha256 hex (full or >=8-char prefix) of the target block source slice, from blockSourceHash(). The op is refused when the block changed since it was read."
     }
   }
 }
