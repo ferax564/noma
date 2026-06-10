@@ -10,9 +10,11 @@ name: Release
 #     on the current default-branch HEAD itself (useful when the operator
 #     cannot push tags directly).
 #
-# npm publishing requires an NPM_TOKEN repository secret; the job FAILS when
-# it is absent so a release can never silently skip publishing. Versions
-# already on the registry are skipped, so re-running a release is safe.
+# npm publishing: versions already on the registry are skipped, so the
+# local-publish flow (npm login + npm publish before pushing the tag) keeps
+# this job green. The job FAILS only when a version still needs publishing
+# and no NPM_TOKEN secret is configured — a release can never silently skip
+# publishing, but local publishing remains a first-class path.
 
 on:
   push:
@@ -98,17 +100,26 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN secret not configured — refusing to release without publishing. Add it with: gh secret set NPM_TOKEN" >&2
-            exit 1
-          fi
+          unpublished=()
           for dir in . packages/mcp-server packages/lsp-server packages/agent-sdk; do
             name=$(node -p "require('./$dir/package.json').name")
             version=$(node -p "require('./$dir/package.json').version")
             if [ "$(npm view "$name@$version" version 2>/dev/null || true)" = "$version" ]; then
               echo "$name@$version already on npm — skipping"
-              continue
+            else
+              unpublished+=("$dir")
             fi
+          done
+          if [ "${#unpublished[@]}" -eq 0 ]; then
+            echo "all package versions already on npm — nothing to publish"
+            exit 0
+          fi
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::${#unpublished[@]} package version(s) need publishing but no NPM_TOKEN secret is configured. Either publish locally (npm login, then npm publish per package) and re-run, or add a secret with: gh secret set NPM_TOKEN" >&2
+            exit 1
+          fi
+          for dir in "${unpublished[@]}"; do
+            name=$(node -p "require('./$dir/package.json').name")
             if [ "$dir" = "." ]; then
               npm publish --provenance --access public
             else
