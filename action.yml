@@ -260,14 +260,14 @@ runs:
 
     - name: Upload Noma artifact
       if: ${{ inputs.mode == 'render' && inputs.upload-artifact == 'true' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.output }}
 
     - name: Upload Noma proof
       if: ${{ inputs.mode == 'proof' && inputs.upload-artifact == 'true' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact-name }}
         path: |
