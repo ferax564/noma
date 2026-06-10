@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-06-10
+
 ### Added
 
 - **Block-level patch preconditions:** every patch op now accepts an optional `baseHash` (sha256 of the target block's source slice, full or ≥8-char prefix). `patchSource` refuses ops with `sha_mismatch` when the block changed since it was read, so concurrent agent/human edits are detected per block instead of conflicting at file level. `blockSourceHash()` and a browser-safe `sha256Hex()` are exported; the MCP server returns each block's `hash` from `read_doc` and accepts `base_hash` on `patch_block`.

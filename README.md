@@ -351,7 +351,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.13.0 public release. This line adds agent safety proofs for patch operations, proof-first docs/examples, cleaner published static pages, and a sharper agent-oriented landing flow; see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.25 for the full release tracker.
+**Status:** v0.14.0 public release. This line hardens the rendering and filesystem surfaces (path containment, sanitized diagram runtimes, strict-by-default CI Action), adds block-level `baseHash` preconditions so concurrent agent edits are detected per block instead of per file, and makes the repo self-maintaining (memory drift gate, release tooling, scheduled docs-freshness sweeps, provenance npm publishing); see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.32 for the full release tracker.
 
 ## License
 

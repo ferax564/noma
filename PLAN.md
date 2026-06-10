@@ -1905,3 +1905,25 @@ for future Codex/plugin integrations.
 - **Deployment update.** The Docker image now installs the native SQLite
   binding explicitly and sets `NOMA_CLOUD_DB=/data/noma/noma-cloud.sqlite` for
   EZKeel deployments.
+
+### §24.32 — v0.14.0 hardening, block-level concurrency, self-maintaining repo (2026-06-10)
+
+- **Security hardening.** Dataset/figure `src=` and book-chapter paths are
+  contained to the document's directory by default (`--allow-external-paths`
+  opts out); Mermaid/Graphviz SVG output is sanitized client-side before
+  insertion; directive fence depth is capped at 64 colons; the GitHub Action
+  renders strict by default; `patch(doc, op)` clones with `structuredClone`.
+- **Block-level optimistic concurrency.** Every patch op accepts a `baseHash`
+  precondition (sha256 of the target block's source slice, from the new
+  browser-safe `src/hash.ts`). `patchSource` rejects stale edits with
+  `sha_mismatch`; `blockSourceHash()` is exported; the MCP server returns a
+  per-block `hash` from `read_doc` and accepts `base_hash` on `patch_block`;
+  the protocol RFC documents the field as provisional. Diagnostics now carry
+  `endLine` so consumers get full block spans.
+- **Self-maintaining repo.** `npm run check:memory` fails CI when
+  CLAUDE.md/AGENTS.md drift from the repo layout; `npm run release -- check|bump`
+  encodes the versioned-locations ritual; `ci.yml` runs the matrix gates on
+  PRs; `freshness.yml` sweeps docs weekly with `noma check --stale-days` and
+  files an issue; `release.yml` publishes to npm with provenance on `v*` tags;
+  Dependabot watches npm and Actions; eslint + coverage scripts added; the
+  cloud-server test suite grew from 3 to 11 test blocks.
