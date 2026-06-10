@@ -1,0 +1,21 @@
+name: Cut release (one-off helper)
+
+# Temporary helper: this environment cannot push tags or dispatch workflows
+# directly, so pushing this branch dispatches release.yml on main with the
+# version tag. Delete this branch after the release completes.
+
+on:
+  push:
+    branches: [release-cut-v0.14.0]
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch release.yml on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag=v0.14.0
