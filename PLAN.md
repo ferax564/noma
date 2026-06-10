@@ -1950,3 +1950,65 @@ for future Codex/plugin integrations.
 - **Release pipeline fix.** `release.yml` now fails loudly when `NPM_TOKEN`
   is missing (the v0.14.0 run silently skipped npm publishing) and publishes
   all four packages — cli, mcp-server, lsp, agent-sdk — idempotently.
+
+## 25. Road to v1.0 — Spec Freeze and Second Implementation
+
+A format becomes a standard when someone else can implement it and a user can
+rely on it not breaking. v1.0 is a **stability promise**, not a feature
+milestone. Distribution work (template repo, MCP registry, Claude Code
+plugin, launch) runs in parallel and does not gate the freeze.
+
+### 25.1 What v1.0 freezes
+
+- **Source syntax:** directive fences, attribute grammar, heading-ID
+  derivation and aliasing, frontmatter, inline Markdown subset, pipe tables.
+- **Block-ID semantics:** determinism, stability across re-parses, book-mode
+  scoping, alias resolution order.
+- **Patch op surface:** the op names, required fields (`content`, not
+  `body`), error codes, `baseHash` precondition semantics, transaction
+  all-or-nothing behavior. Annex A+B of the Agent Protocol RFC graduate from
+  provisional to normative.
+- **Conformance suite as the contract:** a v1.0-conformant implementation
+  passes `examples/conformance` verbatim. New fixtures may be added; existing
+  fixtures only change with a major version.
+
+### 25.2 What v1.0 explicitly does NOT freeze
+
+Renderer output (HTML/DOCX/PDF byte stability), validator profile contents,
+LLM context format details, Noma Cloud APIs, workbench UI, and any directive
+marked experimental in the spec.
+
+### 25.3 Exit criteria (all must hold)
+
+1. Conformance suite covers every frozen syntax feature and every patch op
+   (currently 14 fixtures — needs expansion to ~1 fixture per op, ~50 total).
+2. One external consumer (not ferax564) has run the agent → proof → merge
+   loop on a real repo and the patch-op surface survived contact unchanged
+   for 30 days.
+3. A second implementation — even partial — exists outside this repo:
+   parser + `noma ids` + `replace_body`/`update_attribute`/`add_block` in
+   another language passes the relevant conformance fixtures. The Python
+   agent SDK is the natural seed; a community binding is better.
+4. Zero `provisional` markers left in `docs/spec-agent-protocol-v1.noma`.
+5. Six weeks without a breaking change to any frozen surface.
+
+### 25.4 Sequence
+
+```txt
+v0.15 (now)  publish funnel fixed, plugin + registry + template distribution
+v0.16        conformance suite expansion to full op coverage; spec audit
+             pass marking every feature frozen|experimental
+v0.17        external-user feedback window; breaking changes land here
+             or wait for v2
+v1.0         freeze + SemVer promise: breaking source/patch changes → major,
+             additive → minor
+```
+
+### 25.5 Third-party binding recruitment
+
+Concrete asks, smallest first: (a) a Python `noma-ids` reader against the
+conformance fixtures, (b) a Rust or Go parser for the valid/ fixtures,
+(c) a non-TS patch engine for the patch/ fixtures. Offer: conformance
+fixtures as the test suite (no design work needed), listed as official
+binding in README + spec. Channel: the launch posts + a `help wanted:
+second implementation` GitHub issue pinned on the repo.
