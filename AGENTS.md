@@ -49,6 +49,7 @@ packages/
   mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block over stdio
   agent-sdk/               @ferax564/noma-agent-sdk — TS workflow layer (safePatch, capability checks, transcript replay)
   agent-sdk-py/            Python agent SDK starter
+  noma-py-seed/            Native Python second-implementation seed — parser + ids + 3 patch ops vs conformance corpus (no Node dep)
   lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
 schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript (`noma schema <name>`)
 web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts (esbuild via build:web-ui)

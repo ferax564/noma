@@ -2002,6 +2002,28 @@ Protocol Annexes A and B to normative. Closes exit criterion §25.3 #4.
   summary pointing at the register, and its stale `0.13.0` body version is
   corrected to `0.15.0`.
 
+### §24.36 — v0.16.0 native Python conformance seed (2026-06-13)
+
+Seeds v1.0 exit criterion §25.3 #3. `packages/noma-py-seed/` is a partial,
+**native** second implementation in pure Python — no dependency on the Node
+reference (unlike `agent-sdk-py`, which spawns the MCP server).
+
+- **Parser + `noma ids`.** Heading-slug IDs, explicit section/directive IDs,
+  heading `{aliases}`, frontmatter `aliases:` (attached to the first H1),
+  code-fence directive suppression, directive nesting by colon depth.
+- **Patch ops.** `replace_body`, `update_attribute`, `add_block` —
+  source-preserving and byte-exact against `expected.post.noma`. Plus the
+  `baseHash` precondition and `add_block` content validation, so the error
+  fixtures (`target_missing`, `id_attribute_protected`, `parent_missing`,
+  `invalid_content`, `sha_mismatch`) are exercised too.
+- **Runner + tests.** `run_conformance.py` runs the seed-covered fixtures from
+  the shared corpus; `python3 -m unittest discover -s tests` adds unit checks.
+  All 13 seed-covered fixtures pass. Stdlib only — no third-party deps.
+
+The criterion fully closes when this (or a community binding) ships in its own
+repo; until then it is in-repo evidence that the frozen surface is implementable
+from the spec alone.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can
@@ -2042,8 +2064,13 @@ marked experimental in the spec.
    for 30 days.
 3. A second implementation — even partial — exists outside this repo:
    parser + `noma ids` + `replace_body`/`update_attribute`/`add_block` in
-   another language passes the relevant conformance fixtures. The Python
-   agent SDK is the natural seed; a community binding is better.
+   another language passes the relevant conformance fixtures.
+   **SEEDED (v0.16):** `packages/noma-py-seed/` is a native pure-Python
+   implementation (no Node subprocess) that passes all 13 seed-covered
+   fixtures — 6 `valid/` ID/alias fixtures, the 3 patch ops, and 4 error
+   codes (`target_missing`/`id_attribute_protected`/`parent_missing`/
+   `invalid_content`/`sha_mismatch`). It still lives in-repo; the criterion
+   is met once it (or a community binding) lives in its own repo.
 4. Zero `provisional` markers left in `docs/spec-agent-protocol-v1.noma`.
    **DONE (v0.16):** Annexes A and B and the `baseHash` precondition graduated
    from provisional to normative; the only remaining occurrences of the word
