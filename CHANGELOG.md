@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-06-13
+
 ### Added
 
 - **Conformance suite — full patch-op coverage.** The golden corpus under `examples/conformance/` grows from 14 to 40 fixtures, closing the first v1.0 exit criterion (PLAN §25.3 #1). Every reference patch op now has a happy-path `patch/<op>/` fixture (20 new: `replace_body`, `update_heading`, `move_block`, `remove_attribute`, the comment/footnote/endnote/change-request ops, and the complete table and dataset cell/row/column families), each verified byte-exact through `patchSource`.
