@@ -351,7 +351,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.15.0 public release. This line closes the live editing loop: `--watch` mode re-runs render/check/export on file change, diagnostics carry ready-to-apply fixits (`noma check --fix`), book-wide patch transactions route ops to the owning chapter with all-or-nothing writes, and a new language server (`@ferax564/noma-lsp`) powers diagnostics, symbols, go-to-definition, and `[[` completion in the VS Code extension; see [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.33 for the full release tracker.
+**Status:** v0.16.0 — the v1.0 spec-freeze groundwork. The conformance corpus grows to 40 golden fixtures (full patch-op coverage plus a `patch-error/` track that pins every reachable error code); the spec audit freezes the full op catalog, the `baseHash` precondition, and Agent Protocol Annexes A and B to normative, with a per-surface stability register in [`docs/compatibility.noma`](docs/compatibility.noma); and `packages/noma-py-seed/` lands a native pure-Python second-implementation seed that passes the shared conformance contract with no Node dependency. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.34–§24.36 for the full release tracker.
 
 ## License
 

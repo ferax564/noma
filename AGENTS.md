@@ -49,12 +49,13 @@ packages/
   mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block over stdio
   agent-sdk/               @ferax564/noma-agent-sdk — TS workflow layer (safePatch, capability checks, transcript replay)
   agent-sdk-py/            Python agent SDK starter
+  noma-py-seed/            Native Python second-implementation seed — parser + ids + 3 patch ops vs conformance corpus (no Node dep)
   lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
 schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript (`noma schema <name>`)
 web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts (esbuild via build:web-ui)
 themes/                    default.css + dark.css HTML themes
 examples/                  Demo .noma files — agent-plan, tech-doc, research-thesis, word-review-loop, interactive-projection, …
-  conformance/             Golden-file conformance suite (valid/invalid/patch fixtures) — `npm run verify:conformance` gates CI
+  conformance/             Golden-file conformance suite (valid/invalid/patch/patch-error fixtures) — `npm run verify:conformance` gates CI
   agent-stale-memo/        Killer demo — stale research memo + patches.json → trace.html
   agent-memory/            Agent memory-block update demo
   templates/               `noma init` starter templates (research-memo, decision-record, technical-spec, agent-refresh)

@@ -1,0 +1,6 @@
+{
+  "op": "add_footnote",
+  "id": "fn1",
+  "target": "c1",
+  "content": "Source: internal model."
+}

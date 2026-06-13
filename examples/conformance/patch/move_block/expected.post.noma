@@ -1,0 +1,9 @@
+::section{id="b"}
+:::claim{id="m"}
+movable.
+:::
+
+:::claim{id="keep"}
+stays.
+:::
+::

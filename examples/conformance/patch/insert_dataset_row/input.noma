@@ -1,0 +1,7 @@
+::dataset{id="d1"}
+schema:
+  vertical: string
+  growth: number
+rows:
+  - [legal, 3.4]
+::

@@ -6,6 +6,21 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-06-13
+
+### Added
+
+- **Conformance suite — full patch-op coverage.** The golden corpus under `examples/conformance/` grows from 14 to 40 fixtures, closing the first v1.0 exit criterion (PLAN §25.3 #1). Every reference patch op now has a happy-path `patch/<op>/` fixture (20 new: `replace_body`, `update_heading`, `move_block`, `remove_attribute`, the comment/footnote/endnote/change-request ops, and the complete table and dataset cell/row/column families), each verified byte-exact through `patchSource`.
+- **Conformance suite — error-code fixtures.** New `patch-error/` track. A fixture declares `expected.error.json` (`{ "code": "..." }`) and the `noma verify` harness asserts the op is rejected with a matching `PatchError.code`, failing loudly if the patch instead succeeds, throws a non-`PatchError`, or throws a different code. Six fixtures pin `target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, and `sha_mismatch`.
+- **Native Python conformance seed.** `packages/noma-py-seed/` is a partial, native second implementation in pure Python — no Node subprocess (unlike `agent-sdk-py`). It implements a parser + `noma ids` (heading slugs, explicit/section IDs, heading + frontmatter aliases, code-fence suppression), the `replace_body`/`update_attribute`/`add_block` patch ops (source-preserving, byte-exact), and the `baseHash` precondition. `run_conformance.py` and a stdlib `unittest` suite run it against the shared corpus; all 13 seed-covered fixtures pass. Seeds v1.0 exit criterion §25.3 #3 (an independent implementation passing the conformance contract).
+
+### Changed
+
+- **v0.16 spec audit — freeze the full surface.** Decision: graduate the full patch-op catalog, the `baseHash` block precondition, and Agent Protocol Annexes A (capability descriptor) and B (MCP-over-stdio binding) from provisional/extension status to **normative**, closing v1.0 exit criterion §25.3 #4.
+  - **Agent Protocol RFC.** Removed every active `provisional` marker (summary, §1.2 callout, §1.4, Annex A heading/A.3/A.5, Annex B heading/B.8); §1.4 is rewritten as "Annexes A and B (normative)". §1.5 reframed from "Implementation extensions after v1.0" to "Extended operations (normative)"; §3.1 and the `unsupported_op` taxonomy now describe a core+extended op catalog; the `baseHash` qualifier "(provisional, added post-v1.0)" is dropped in §3.4 and the failure/error tables. §C documents the new `patch-error/` track and `expected.error.json` vocabulary; §C.5 + §C.5.1 present all 40 fixtures (19 core + 21 extended) as the normative v1.0 conformance minimum.
+  - **Compatibility Policy.** `docs/compatibility.noma` Stability classes now enumerate every surface as `frozen` / `experimental` / `proposed`: core syntax, AST discriminants, the full op catalog, `baseHash`, Annex A, Annex B, and CLI commands are **frozen**; the Agent SDK package API, DOCX/PDF byte-output, and Noma Cloud / workbench are **experimental**.
+  - **Format spec.** `docs/spec.noma` adds a "Stability and the road to v1.0" summary pointing at the register; its stale `0.13.0` body version is corrected to `0.15.0`.
+
 ## [0.15.0] — 2026-06-10
 
 ### Added

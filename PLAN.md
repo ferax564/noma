@@ -1951,6 +1951,79 @@ for future Codex/plugin integrations.
   is missing (the v0.14.0 run silently skipped npm publishing) and publishes
   all four packages — cli, mcp-server, lsp, agent-sdk — idempotently.
 
+### §24.34 — v0.16.0 conformance suite expansion to full op coverage (2026-06-13)
+
+First v1.0 exit-criterion (§25.3 #1) closed. The golden conformance corpus
+grows from 14 to 40 fixtures.
+
+- **Full patch-op coverage.** Added one happy-path `patch/<op>/` fixture for
+  every reference patch op that lacked one (20 new): `replace_body`,
+  `update_heading`, `move_block`, `remove_attribute`, the
+  comment/footnote/endnote/change-request ops, and the complete table and
+  dataset cell/row/column families. Each is `input.noma` + `patch.json` →
+  `expected.post.noma`, byte-exact through `patchSource`.
+- **Error-code fixtures.** New `patch-error/` track with `expected.error.json`
+  asserting the thrown `PatchError.code`. Six fixtures pin `target_missing`,
+  `parent_missing`, `id_conflict`, `invalid_content`,
+  `id_attribute_protected`, and `sha_mismatch`. The `noma verify` harness now
+  evaluates rejection fixtures (fails loudly if the op succeeds, throws a
+  non-`PatchError`, or throws the wrong code).
+- **RFC §C updated.** The Agent Protocol RFC documents the new `patch-error/`
+  track and `expected.error.json` vocabulary. (The §C.5/§C.5.1 normative split
+  introduced here was reframed by §24.35 once the freeze scope was decided —
+  the full corpus is now normative.)
+- **Authoring aid.** `scripts/gen-patch-fixtures.ts` regenerates the
+  happy-path patch fixtures from their declared inputs/ops (manual, not in CI).
+
+### §24.35 — v0.16.0 spec audit: freeze the full surface (2026-06-13)
+
+Second half of the v0.16 milestone (§25.4). Decision: **freeze everything** —
+graduate the full patch-op catalog, the `baseHash` precondition, and Agent
+Protocol Annexes A and B to normative. Closes exit criterion §25.3 #4.
+
+- **Annexes A and B → normative.** Removed every active `provisional` marker
+  from `docs/spec-agent-protocol-v1.noma`: the summary, §1.2 callout, §1.4
+  (rewritten as "Annexes A and B (normative)"), Annex A heading / A.3 / A.5,
+  Annex B heading / B.8. Both annexes now carry the §1.2 SemVer promises; only
+  two past-tense mentions of the word remain, describing the graduation.
+- **Extended ops → normative.** §1.5 reframed from "Implementation extensions
+  after v1.0 (not in the conformance set)" to "Extended operations (normative)";
+  §3.1 and the `unsupported_op` taxonomy now describe a core+extended catalog.
+- **`baseHash` → normative.** Dropped the "(provisional, added post-v1.0)"
+  qualifier in §3.4 and the failure-policy / error tables.
+- **Conformance corpus is fully normative.** §C.5 + new §C.5.1 present all 40
+  fixtures (19 core + 21 extended) as the v1.0 minimum an implementation MUST
+  pass.
+- **Per-surface stability register.** `docs/compatibility.noma` Stability
+  classes now enumerate every surface as `frozen` / `experimental` / `proposed`
+  (core syntax, AST discriminants, full op catalog, `baseHash`, Annex A, Annex
+  B, CLI all frozen; Agent SDK API, DOCX/PDF byte-output, Noma Cloud/workbench
+  experimental). `docs/spec.noma` adds a "Stability and the road to v1.0"
+  summary pointing at the register, and its stale `0.13.0` body version is
+  corrected to `0.15.0`.
+
+### §24.36 — v0.16.0 native Python conformance seed (2026-06-13)
+
+Seeds v1.0 exit criterion §25.3 #3. `packages/noma-py-seed/` is a partial,
+**native** second implementation in pure Python — no dependency on the Node
+reference (unlike `agent-sdk-py`, which spawns the MCP server).
+
+- **Parser + `noma ids`.** Heading-slug IDs, explicit section/directive IDs,
+  heading `{aliases}`, frontmatter `aliases:` (attached to the first H1),
+  code-fence directive suppression, directive nesting by colon depth.
+- **Patch ops.** `replace_body`, `update_attribute`, `add_block` —
+  source-preserving and byte-exact against `expected.post.noma`. Plus the
+  `baseHash` precondition and `add_block` content validation, so the error
+  fixtures (`target_missing`, `id_attribute_protected`, `parent_missing`,
+  `invalid_content`, `sha_mismatch`) are exercised too.
+- **Runner + tests.** `run_conformance.py` runs the seed-covered fixtures from
+  the shared corpus; `python3 -m unittest discover -s tests` adds unit checks.
+  All 13 seed-covered fixtures pass. Stdlib only — no third-party deps.
+
+The criterion fully closes when this (or a community binding) ships in its own
+repo; until then it is in-repo evidence that the frozen surface is implementable
+from the spec alone.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can
@@ -1980,26 +2053,39 @@ marked experimental in the spec.
 
 ### 25.3 Exit criteria (all must hold)
 
-1. Conformance suite covers every frozen syntax feature and every patch op
-   (currently 14 fixtures — needs expansion to ~1 fixture per op, ~50 total).
+1. Conformance suite covers every frozen syntax feature and every patch op.
+   **DONE (v0.16):** the corpus is 40 fixtures — one happy-path fixture per
+   reference patch op (25 ops + a replay chain), one `patch-error/` fixture per
+   reachable error code (6), plus the 6 valid and 2 invalid parse/validate
+   fixtures. Per the freeze-everything decision, the full corpus is the
+   normative minimum (RFC §C.5 core + §C.5.1 extended).
 2. One external consumer (not ferax564) has run the agent → proof → merge
    loop on a real repo and the patch-op surface survived contact unchanged
    for 30 days.
 3. A second implementation — even partial — exists outside this repo:
    parser + `noma ids` + `replace_body`/`update_attribute`/`add_block` in
-   another language passes the relevant conformance fixtures. The Python
-   agent SDK is the natural seed; a community binding is better.
+   another language passes the relevant conformance fixtures.
+   **SEEDED (v0.16):** `packages/noma-py-seed/` is a native pure-Python
+   implementation (no Node subprocess) that passes all 13 seed-covered
+   fixtures — 6 `valid/` ID/alias fixtures, the 3 patch ops, and 4 error
+   codes (`target_missing`/`id_attribute_protected`/`parent_missing`/
+   `invalid_content`/`sha_mismatch`). It still lives in-repo; the criterion
+   is met once it (or a community binding) lives in its own repo.
 4. Zero `provisional` markers left in `docs/spec-agent-protocol-v1.noma`.
+   **DONE (v0.16):** Annexes A and B and the `baseHash` precondition graduated
+   from provisional to normative; the only remaining occurrences of the word
+   describe that graduation in the past tense.
 5. Six weeks without a breaking change to any frozen surface.
 
 ### 25.4 Sequence
 
 ```txt
-v0.15 (now)  publish funnel fixed, plugin + registry + template distribution
-v0.16        conformance suite expansion to full op coverage; spec audit
-             pass marking every feature frozen|experimental
+v0.15        publish funnel fixed, plugin + registry + template distribution
+v0.16 (now)  conformance suite expanded to full op coverage + error-code
+             fixtures (DONE); spec audit pass — full op catalog, baseHash, and
+             Annexes A/B frozen/normative; per-surface stability register (DONE)
 v0.17        external-user feedback window; breaking changes land here
-             or wait for v2
+             or wait for v2. Recruit the second implementation (§25.5)
 v1.0         freeze + SemVer promise: breaking source/patch changes → major,
              additive → minor
 ```

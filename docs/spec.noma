@@ -1,13 +1,13 @@
 ---
-title: Noma — Format Specification (v0.15.0)
-version: 0.15.0
+title: Noma — Format Specification (v0.16.0)
+version: 0.16.0
 status: stable
 ---
 
 # Noma Format Specification
 
 ::summary
-This document defines the **Noma** plain-text document format at version 0.13.0. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small.
+This document defines the **Noma** plain-text document format at version 0.16.0. It covers the file model, lexical rules, block syntax, attribute grammar, AST shape, and renderer contracts. It is intentionally small. For the per-surface stability classification (what is frozen vs experimental on the road to v1.0), see the [Compatibility Policy](compatibility.html).
 ::
 
 ## Conventions
@@ -856,6 +856,23 @@ The loader concatenates each chapter's parsed AST into a single `DocumentNode` (
   After this, `[[rp3]]`, `[[risk-premia-3]]`, and `[[risk-premia-3-rp3]]` all resolve to the same section.
 
 Resolution order: explicit `id=` on the heading → auto-slug from the title → frontmatter `aliases:` → filename slug. Any of those paths matching the wikilink target counts as resolved.
+
+## Stability and the road to v1.0 (v0.16)
+
+The v0.16 spec audit classifies every surface as **frozen** or **experimental** ahead of the
+v1.0 SemVer freeze. The authoritative per-surface register is the
+[Compatibility Policy](compatibility.html); in summary:
+
+- **Frozen** (breaking change ⇒ major version): `.noma` core syntax, heading-ID derivation
+  and aliasing, AST node discriminants, the full patch-op catalog (the five core ops plus
+  every extended table/dataset/comment/note/change-request op), the `baseHash` block
+  precondition, and the Agent Protocol Annexes A (capability descriptor) and B
+  (MCP-over-stdio binding) — both graduated from provisional to normative at v1.0.
+- **Experimental** (may still change): the Agent SDK package API, the DOCX/PDF render
+  targets' byte-level output, and Noma Cloud / workbench APIs and UI.
+
+See the [Agent Protocol RFC](spec-agent-protocol-v1.html) §1 for the normative compatibility
+promises and Annex C for the 40-fixture conformance corpus that pins the frozen surface.
 
 ## Compatibility promises (v0.13.0)
 

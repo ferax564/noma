@@ -1,0 +1,5 @@
+{
+  "op": "delete_table_column",
+  "id": "t1",
+  "column": 2
+}

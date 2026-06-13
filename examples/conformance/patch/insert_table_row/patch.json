@@ -1,0 +1,9 @@
+{
+  "op": "insert_table_row",
+  "id": "t1",
+  "row": 1,
+  "cells": [
+    "Healthcare",
+    "2.9"
+  ]
+}

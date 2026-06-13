@@ -1,0 +1,7 @@
+::claim{id="c1"}
+A claim needing a note.
+::
+
+::footnote{id="fn1" for="c1"}
+Source: internal model.
+::

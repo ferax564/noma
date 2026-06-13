@@ -1,0 +1,7 @@
+::claim{id="c1"}
+A claim under review.
+::
+
+::comment{id="cm1" target="c1" author="ferax564" status="resolved" resolved_by="reviewer"}
+Please verify this number.
+::

@@ -1,0 +1,7 @@
+::claim{id="c1"}
+A claim needing an endnote.
+::
+
+::endnote{id="en1" for="c1"}
+See appendix B.
+::

@@ -3335,6 +3335,72 @@
     code;
     op;
   };
+  var OP_REQUIRED_FIELDS = {
+    replace_block: [["id", "string"], ["content", "string"]],
+    replace_body: [["id", "string"], ["content", "string"]],
+    update_heading: [["id", "string"], ["title", "string"]],
+    add_comment: [["id", "string"], ["target", "string"], ["content", "string"]],
+    resolve_comment: [["id", "string"]],
+    add_footnote: [["id", "string"], ["target", "string"], ["content", "string"]],
+    add_endnote: [["id", "string"], ["target", "string"], ["content", "string"]],
+    add_change_request: [["id", "string"], ["target", "string"], ["action", "string"]],
+    update_table_cell: [["id", "string"], ["row", "number"], ["column", "number|string"], ["value", "string"]],
+    update_table_header_cell: [["id", "string"], ["column", "number|string"], ["value", "string"]],
+    insert_table_row: [["id", "string"], ["row", "number"], ["cells", "string[]"]],
+    delete_table_row: [["id", "string"], ["row", "number"]],
+    insert_table_column: [["id", "string"], ["column", "number"], ["cells", "string[]"]],
+    delete_table_column: [["id", "string"], ["column", "number|string"]],
+    update_dataset_cell: [["id", "string"], ["row", "number"], ["column", "number|string"], ["value", "string"]],
+    insert_dataset_row: [["id", "string"], ["row", "number"], ["cells", "string[]"]],
+    delete_dataset_row: [["id", "string"], ["row", "number"]],
+    insert_dataset_column: [["id", "string"], ["column", "number"], ["header", "string"], ["cells", "string[]"]],
+    delete_dataset_column: [["id", "string"], ["column", "number|string"]],
+    move_block: [["id", "string"], ["parent", "string"]],
+    add_block: [["parent", "string"], ["content", "string"]],
+    delete_block: [["id", "string"]],
+    update_attribute: [["id", "string"], ["key", "string"], ["value", "attr"]],
+    remove_attribute: [["id", "string"], ["key", "string"]],
+    rename_id: [["from", "string"], ["to", "string"]]
+  };
+  var FIELD_ALIASES = {
+    content: ["body", "text", "value"],
+    title: ["heading", "text"],
+    value: ["content"]
+  };
+  function fieldMatches(value, kind) {
+    switch (kind) {
+      case "string":
+        return typeof value === "string";
+      case "number":
+        return typeof value === "number" && Number.isFinite(value);
+      case "number|string":
+        return typeof value === "string" || typeof value === "number" && Number.isFinite(value);
+      case "string[]":
+        return Array.isArray(value) && value.every((cell) => typeof cell === "string");
+      case "attr":
+        return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+    }
+  }
+  function validateOpShape(op) {
+    const requirements = OP_REQUIRED_FIELDS[op.op];
+    if (!requirements) {
+      throw new PatchError("unsupported_op", `unknown patch op "${op.op}"`, op);
+    }
+    const record = op;
+    for (const [field, kind] of requirements) {
+      if (fieldMatches(record[field], kind)) continue;
+      let hint = "";
+      if (record[field] === void 0) {
+        const alias = (FIELD_ALIASES[field] ?? []).find((candidate) => record[candidate] !== void 0);
+        if (alias) hint = ` \u2014 found "${alias}"; did you mean "${field}"?`;
+      }
+      throw new PatchError(
+        "invalid_content",
+        `op "${op.op}" requires ${kind} field "${field}"${hint} (received fields: ${Object.keys(record).join(", ")})`,
+        op
+      );
+    }
+  }
   function findById(node, id) {
     if (node.id === id) return node;
     for (const arr of childArrays(node)) {
@@ -3992,6 +4058,7 @@
     }
   }
   function applyToSource(source, op) {
+    validateOpShape(op);
     verifyBaseHash(source, op);
     switch (op.op) {
       case "update_attribute":
