@@ -1556,20 +1556,24 @@ The suite exercises the following areas of the protocol:
   MUST have `startLine` and `endLine` matching the fixture's declared values.
 - **Patch op semantics.** Applying the op(s) in `patch.json` to `input.noma` MUST produce
   byte-exact output matching `expected.post.noma`.
+- **Patch error semantics.** Fixtures that declare `expected.error.json` MUST cause the
+  reference `patchSource` to reject the op with a `PatchError` carrying the expected `code`
+  (§3.5). This freezes the error-code surface alongside the happy-path op surface.
 
-Passing the corpus confirms that the five locked patch operations (§3.4), the validation
-contract (§4), the span guarantees (§6), and the roundtrip property all behave as
-specified.
+Passing the corpus confirms that every locked patch operation (§3.4), the validation
+contract (§4), the span guarantees (§6), the error-code surface (§3.5), and the roundtrip
+property all behave as specified.
 
 ### C.2 Fixture directory layout
 
-All fixtures live under `examples/conformance/`, organized into three tracks:
+All fixtures live under `examples/conformance/`, organized into four tracks:
 
 ```
 examples/conformance/
-  valid/<name>/    — happy-path inputs; no validator errors expected
-  invalid/<name>/  — inputs that exercise validator diagnostics
-  patch/<name>/    — patch op application; at least one op in patch.json
+  valid/<name>/        — happy-path inputs; no validator errors expected
+  invalid/<name>/      — inputs that exercise validator diagnostics
+  patch/<name>/        — patch op application; at least one op in patch.json
+  patch-error/<name>/  — patch ops that MUST be rejected with a known error code
 ```
 
 A fixture is a **directory** containing `input.noma` plus zero or more expected-output
@@ -1641,10 +1645,24 @@ A single `PatchOp` object or a JSON array of `PatchOp` objects. When present (an
 `input.noma` in order using the reference `patchSource` implementation, then compare
 the result against `expected.post.noma` byte-exactly.
 
-**`expected.post.noma` — OPTIONAL, REQUIRED if `patch.json` is present.**
+**`expected.post.noma` — OPTIONAL, REQUIRED if `patch.json` is present and
+`expected.error.json` is absent.**
 The exact byte sequence of the document after all patch ops in `patch.json` have been
-applied. The verify harness MUST NOT pass a fixture that declares `patch.json` but
-omits `expected.post.noma`.
+applied. The verify harness MUST NOT pass a fixture that declares `patch.json` but omits
+both `expected.post.noma` and `expected.error.json`.
+
+**`expected.error.json` — OPTIONAL.**
+A JSON object with schema:
+
+```json
+{ "code": "target_missing" }
+```
+
+When present, the verify harness MUST apply the op(s) in `patch.json` and assert that
+application rejects with a `PatchError` whose `code` equals the declared value (one of the
+§3.5 error codes). A fixture that declares `expected.error.json` MUST NOT also declare
+`expected.post.noma`; the harness MUST fail the fixture if the patch succeeds, throws a
+non-`PatchError`, or throws a `PatchError` with a different `code`.
 
 ### C.4 The `noma verify` CLI
 
@@ -1694,7 +1712,10 @@ the test suite. A non-zero exit code MUST fail the build.
 
 ### C.5 Minimum corpus (v1.0)
 
-v1.0 ships 14 fixtures. Implementations claiming v1.0 conformance MUST pass all 14.
+The **normative v1.0 minimum corpus** is the set an implementation MUST pass to claim
+"Noma Agent Protocol v1.0 compliant." It covers only the five locked operations (§3.1),
+the error codes reachable through them (§3.5), and the core parse/validate properties —
+nothing outside the frozen surface.
 
 ::table{align="l,l"}
 | Fixture | Exercises |
@@ -1704,19 +1725,40 @@ v1.0 ships 14 fixtures. Implementations claiming v1.0 conformance MUST pass all 
 | `valid/inline-table` | Pipe-table parsing, column alignment, inline markdown inside cells. |
 | `valid/code-fence-with-colons` | Fenced code blocks suppress `::` directive detection inside their body (§3.9). |
 | `valid/frontmatter-only` | YAML frontmatter sub-node; document span when no block content follows. |
-| `patch/replace_block` | `replace_block` op: target resolves, content replaces the addressed block byte-exactly. |
-| `patch/add_block` | `add_block` op: new block inserted at the declared position relative to `parent`. |
-| `patch/delete_block` | `delete_block` op: addressed block and its children removed; surrounding whitespace normalized. |
-| `patch/update_attribute` | `update_attribute` op: named attribute updated on target node; `id` attribute is protected (`id_attribute_protected`). |
-| `patch/rename_id` | `rename_id` op: canonical ID changed; `for=`, `parent=`, `dataset=`, and `[[wikilink]]` references retargeted; `aliases=` attribute untouched. |
-| `patch/replay-chain` | Three-op list applied in order; final state matches `expected.post.noma`; establishes transcript-replay equivalence. |
+| `patch/replace_block` | `replace_block`: target resolves, content replaces the addressed block byte-exactly. |
+| `patch/add_block` | `add_block`: new block inserted at the declared position relative to `parent`. |
+| `patch/delete_block` | `delete_block`: addressed block and its children removed; surrounding whitespace normalized. |
+| `patch/update_attribute` | `update_attribute`: named attribute updated on target node; `id` attribute is protected. |
+| `patch/rename_id` | `rename_id`: canonical ID changed; `for=`, `[[wikilink]]`, and reference attributes retargeted; `aliases=` untouched. |
+| `patch/replay-chain` | Multi-op list applied in order; final state matches `expected.post.noma`; establishes transcript-replay equivalence. |
+| `patch-error/target_missing` | `replace_block` addressing a non-existent `id` rejects with `target_missing`. |
+| `patch-error/parent_missing` | `add_block` against a non-existent `parent` rejects with `parent_missing`. |
+| `patch-error/id_conflict` | `rename_id` onto an existing canonical ID rejects with `id_conflict`. |
+| `patch-error/invalid_content` | `add_block` whose `content` is not a parseable directive rejects with `invalid_content`. |
+| `patch-error/id_attribute_protected` | `update_attribute` targeting the `id` key rejects with `id_attribute_protected`. |
 | `invalid/duplicate-id` | Two nodes carry the same canonical `id`; validator emits `duplicate-id` at `error` severity. |
 | `invalid/missing-evidence-target` | An `evidence` directive references a non-existent `claim` ID via `for=`; validator emits a broken-reference diagnostic at `error` severity. |
 ::
 
-The 6 valid fixtures cover core parsing properties. The 6 patch fixtures cover one fixture
-per op plus a multi-op replay chain. The 2 invalid fixtures cover the two most common
-validator error classes.
+The 6 valid fixtures cover core parsing properties; the 5 patch fixtures cover one fixture
+per locked op plus a multi-op replay chain; the 5 patch-error fixtures pin the error codes
+reachable through the locked ops; the 2 invalid fixtures cover the two most common validator
+error classes. These 18 fixtures are the protocol-conformance bar.
+
+### C.5.1 Extended reference fixtures (non-normative)
+
+The reference implementation's `examples/conformance/` corpus ships **additional** fixtures
+that exercise patch operations OUTSIDE the frozen §3.1 set — `replace_body`,
+`update_heading`, `move_block`, `remove_attribute`, the comment/footnote/endnote/change-request
+ops, and the full table and dataset cell/row/column families — plus the `sha_mismatch`
+precondition (which depends on the provisional `baseHash` field, Annex / §3.5). These ops
+are implementation extensions: they are real, tested surface in the TypeScript reference,
+but a Protocol v1.0-compliant implementation is NOT required to support them, and they MAY
+change before they are folded into a future normative op set (v1.1+).
+
+Extended fixtures use the same directory layout and expected-file vocabulary as the minimum
+corpus, so the same `noma verify` harness runs both. An implementation MAY advertise which
+extended fixtures it passes to signal coverage beyond the protocol floor.
 
 **Corpus evolution rules:**
 

@@ -1,0 +1,9 @@
+{
+  "op": "insert_dataset_column",
+  "id": "d1",
+  "column": 2,
+  "header": "companies",
+  "cells": [
+    "14"
+  ]
+}

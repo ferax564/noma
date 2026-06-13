@@ -1,0 +1,9 @@
+{
+  "op": "insert_table_column",
+  "id": "t1",
+  "column": 2,
+  "header": "Companies",
+  "cells": [
+    "14"
+  ]
+}

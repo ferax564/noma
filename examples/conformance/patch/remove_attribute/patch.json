@@ -1,0 +1,5 @@
+{
+  "op": "remove_attribute",
+  "id": "c1",
+  "key": "status"
+}

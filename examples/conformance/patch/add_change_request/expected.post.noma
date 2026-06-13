@@ -1,0 +1,6 @@
+::claim{id="c1"}
+The market is worth ten billion.
+::
+
+::change_request{id="cr1" target="c1" action="replace" from="ten billion" to="twelve billion" author="reviewer"}
+::

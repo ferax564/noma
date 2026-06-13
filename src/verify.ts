@@ -4,7 +4,7 @@ import { parse } from "./parser.js";
 import { renderNoma } from "./renderer-noma.js";
 import { validate } from "./validator.js";
 import { walk } from "./ast.js";
-import { patchSource, type PatchOp } from "./patch.js";
+import { patchSource, PatchError, type PatchOp } from "./patch.js";
 
 export interface FixtureReport {
   name: string;
@@ -106,9 +106,28 @@ function checkSpans(doc: ReturnType<typeof parse>, expectedPath: string): string
 function checkPatch(source: string, fixturePath: string): string | null {
   const patchPath = join(fixturePath, "patch.json");
   const postPath = join(fixturePath, "expected.post.noma");
-  if (!existsSync(patchPath) || !existsSync(postPath)) return null;
+  const errorPath = join(fixturePath, "expected.error.json");
+  if (!existsSync(patchPath)) return null;
   const raw = JSON.parse(readFileSync(patchPath, "utf8")) as PatchOp | PatchOp[];
   const ops = Array.isArray(raw) ? raw : [raw];
+
+  if (existsSync(errorPath)) {
+    const expected = JSON.parse(readFileSync(errorPath, "utf8")) as { code: string };
+    try {
+      let cur = source;
+      for (const op of ops) cur = patchSource(cur, op);
+    } catch (err) {
+      if (err instanceof PatchError) {
+        return err.code === expected.code
+          ? null
+          : `error code mismatch: got "${err.code}", expected "${expected.code}"`;
+      }
+      return `expected PatchError("${expected.code}"), got ${(err as Error).name}: ${(err as Error).message}`;
+    }
+    return `expected PatchError("${expected.code}"), but patch succeeded`;
+  }
+
+  if (!existsSync(postPath)) return null;
   let cur = source;
   for (const op of ops) {
     cur = patchSource(cur, op);

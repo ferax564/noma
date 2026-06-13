@@ -1,0 +1,1 @@
+{ "op": "add_block", "parent": "c1", "content": "not a directive at all" }

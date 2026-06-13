@@ -1951,6 +1951,31 @@ for future Codex/plugin integrations.
   is missing (the v0.14.0 run silently skipped npm publishing) and publishes
   all four packages — cli, mcp-server, lsp, agent-sdk — idempotently.
 
+### §24.34 — v0.16.0 conformance suite expansion to full op coverage (2026-06-13)
+
+First v1.0 exit-criterion (§25.3 #1) closed. The golden conformance corpus
+grows from 14 to 40 fixtures.
+
+- **Full patch-op coverage.** Added one happy-path `patch/<op>/` fixture for
+  every reference patch op that lacked one (20 new): `replace_body`,
+  `update_heading`, `move_block`, `remove_attribute`, the
+  comment/footnote/endnote/change-request ops, and the complete table and
+  dataset cell/row/column families. Each is `input.noma` + `patch.json` →
+  `expected.post.noma`, byte-exact through `patchSource`.
+- **Error-code fixtures.** New `patch-error/` track with `expected.error.json`
+  asserting the thrown `PatchError.code`. Six fixtures pin `target_missing`,
+  `parent_missing`, `id_conflict`, `invalid_content`,
+  `id_attribute_protected`, and `sha_mismatch`. The `noma verify` harness now
+  evaluates rejection fixtures (fails loudly if the op succeeds, throws a
+  non-`PatchError`, or throws the wrong code).
+- **RFC §C updated.** The Agent Protocol RFC documents the new `patch-error/`
+  track and `expected.error.json` vocabulary, and §C.5 now separates the
+  normative 18-fixture protocol minimum (five frozen ops only) from the
+  non-normative extended reference fixtures (§C.5.1) so the extra op coverage
+  does not silently widen the frozen surface.
+- **Authoring aid.** `scripts/gen-patch-fixtures.ts` regenerates the
+  happy-path patch fixtures from their declared inputs/ops (manual, not in CI).
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can
@@ -1980,8 +2005,12 @@ marked experimental in the spec.
 
 ### 25.3 Exit criteria (all must hold)
 
-1. Conformance suite covers every frozen syntax feature and every patch op
-   (currently 14 fixtures — needs expansion to ~1 fixture per op, ~50 total).
+1. Conformance suite covers every frozen syntax feature and every patch op.
+   **DONE (v0.16):** the corpus is 40 fixtures — one happy-path fixture per
+   reference patch op (25 ops + a replay chain), one `patch-error/` fixture per
+   reachable error code (6), plus the 6 valid and 2 invalid parse/validate
+   fixtures. The RFC §C.5 minimum corpus (18) stays scoped to the five frozen
+   ops; the extra op fixtures are labelled non-normative reference coverage.
 2. One external consumer (not ferax564) has run the agent → proof → merge
    loop on a real repo and the patch-op surface survived contact unchanged
    for 30 days.
@@ -1995,9 +2024,10 @@ marked experimental in the spec.
 ### 25.4 Sequence
 
 ```txt
-v0.15 (now)  publish funnel fixed, plugin + registry + template distribution
-v0.16        conformance suite expansion to full op coverage; spec audit
-             pass marking every feature frozen|experimental
+v0.15        publish funnel fixed, plugin + registry + template distribution
+v0.16 (now)  conformance suite expanded to full op coverage + error-code
+             fixtures (DONE); spec audit pass marking every feature
+             frozen|experimental (NEXT)
 v0.17        external-user feedback window; breaking changes land here
              or wait for v2
 v1.0         freeze + SemVer promise: breaking source/patch changes → major,

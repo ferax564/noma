@@ -1,0 +1,7 @@
+{
+  "op": "update_dataset_cell",
+  "id": "d1",
+  "row": 0,
+  "column": 1,
+  "value": "3.8"
+}

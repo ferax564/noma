@@ -1,0 +1,6 @@
+{
+  "op": "add_endnote",
+  "id": "en1",
+  "target": "c1",
+  "content": "See appendix B."
+}

@@ -6,6 +6,15 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Conformance suite — full patch-op coverage.** The golden corpus under `examples/conformance/` grows from 14 to 40 fixtures, closing the first v1.0 exit criterion (PLAN §25.3 #1). Every reference patch op now has a happy-path `patch/<op>/` fixture (20 new: `replace_body`, `update_heading`, `move_block`, `remove_attribute`, the comment/footnote/endnote/change-request ops, and the complete table and dataset cell/row/column families), each verified byte-exact through `patchSource`.
+- **Conformance suite — error-code fixtures.** New `patch-error/` track. A fixture declares `expected.error.json` (`{ "code": "..." }`) and the `noma verify` harness asserts the op is rejected with a matching `PatchError.code`, failing loudly if the patch instead succeeds, throws a non-`PatchError`, or throws a different code. Six fixtures pin `target_missing`, `parent_missing`, `id_conflict`, `invalid_content`, `id_attribute_protected`, and `sha_mismatch`.
+
+### Changed
+
+- **Agent Protocol RFC §C.** Documents the new `patch-error/` track and `expected.error.json` expected-file vocabulary. §C.5 now separates the normative 18-fixture protocol-conformance minimum (the five frozen ops, their reachable error codes, and the core parse/validate fixtures) from a new §C.5.1 listing the extended reference fixtures (the out-of-frozen-set ops and the provisional `sha_mismatch` precondition) as explicitly non-normative, so broader reference coverage does not silently widen the frozen v1.0 surface.
+
 ## [0.15.0] — 2026-06-10
 
 ### Added

@@ -54,7 +54,7 @@ schemas/                   JSON Schemas — ast, patch-op, patch-transaction, ca
 web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts (esbuild via build:web-ui)
 themes/                    default.css + dark.css HTML themes
 examples/                  Demo .noma files — agent-plan, tech-doc, research-thesis, word-review-loop, interactive-projection, …
-  conformance/             Golden-file conformance suite (valid/invalid/patch fixtures) — `npm run verify:conformance` gates CI
+  conformance/             Golden-file conformance suite (valid/invalid/patch/patch-error fixtures) — `npm run verify:conformance` gates CI
   agent-stale-memo/        Killer demo — stale research memo + patches.json → trace.html
   agent-memory/            Agent memory-block update demo
   templates/               `noma init` starter templates (research-memo, decision-record, technical-spec, agent-refresh)

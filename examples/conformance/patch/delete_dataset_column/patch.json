@@ -1,0 +1,5 @@
+{
+  "op": "delete_dataset_column",
+  "id": "d1",
+  "column": 2
+}

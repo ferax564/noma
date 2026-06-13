@@ -103,3 +103,48 @@ test("verifyFixtureDir applies patch.json and checks expected.post.noma", () => 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("verifyFixtureDir passes when patch throws the expected error code", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-verify-"));
+  try {
+    const fixDir = join(dir, "patch-error/missing");
+    mkdirSync(fixDir, { recursive: true });
+    writeFileSync(join(fixDir, "input.noma"), `::claim{id="x"}\nhello\n::\n`);
+    writeFileSync(join(fixDir, "patch.json"), JSON.stringify({ op: "replace_body", id: "nope", content: "y" }));
+    writeFileSync(join(fixDir, "expected.error.json"), JSON.stringify({ code: "target_missing" }));
+    const report = verifyFixtureDir(dir);
+    assert.equal(report.ok, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("verifyFixtureDir fails when the patch error code differs from expected", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-verify-"));
+  try {
+    const fixDir = join(dir, "patch-error/wrong-code");
+    mkdirSync(fixDir, { recursive: true });
+    writeFileSync(join(fixDir, "input.noma"), `::claim{id="x"}\nhello\n::\n`);
+    writeFileSync(join(fixDir, "patch.json"), JSON.stringify({ op: "replace_body", id: "nope", content: "y" }));
+    writeFileSync(join(fixDir, "expected.error.json"), JSON.stringify({ code: "id_conflict" }));
+    const report = verifyFixtureDir(dir);
+    assert.equal(report.ok, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("verifyFixtureDir fails when an expected-error patch unexpectedly succeeds", () => {
+  const dir = mkdtempSync(join(tmpdir(), "noma-verify-"));
+  try {
+    const fixDir = join(dir, "patch-error/no-throw");
+    mkdirSync(fixDir, { recursive: true });
+    writeFileSync(join(fixDir, "input.noma"), `::claim{id="x" confidence=0.5}\nhello\n::\n`);
+    writeFileSync(join(fixDir, "patch.json"), JSON.stringify({ op: "update_attribute", id: "x", key: "confidence", value: 0.9 }));
+    writeFileSync(join(fixDir, "expected.error.json"), JSON.stringify({ code: "target_missing" }));
+    const report = verifyFixtureDir(dir);
+    assert.equal(report.ok, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
