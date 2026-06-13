@@ -13,7 +13,10 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **Agent Protocol RFC §C.** Documents the new `patch-error/` track and `expected.error.json` expected-file vocabulary. §C.5 now separates the normative 18-fixture protocol-conformance minimum (the five frozen ops, their reachable error codes, and the core parse/validate fixtures) from a new §C.5.1 listing the extended reference fixtures (the out-of-frozen-set ops and the provisional `sha_mismatch` precondition) as explicitly non-normative, so broader reference coverage does not silently widen the frozen v1.0 surface.
+- **v0.16 spec audit — freeze the full surface.** Decision: graduate the full patch-op catalog, the `baseHash` block precondition, and Agent Protocol Annexes A (capability descriptor) and B (MCP-over-stdio binding) from provisional/extension status to **normative**, closing v1.0 exit criterion §25.3 #4.
+  - **Agent Protocol RFC.** Removed every active `provisional` marker (summary, §1.2 callout, §1.4, Annex A heading/A.3/A.5, Annex B heading/B.8); §1.4 is rewritten as "Annexes A and B (normative)". §1.5 reframed from "Implementation extensions after v1.0" to "Extended operations (normative)"; §3.1 and the `unsupported_op` taxonomy now describe a core+extended op catalog; the `baseHash` qualifier "(provisional, added post-v1.0)" is dropped in §3.4 and the failure/error tables. §C documents the new `patch-error/` track and `expected.error.json` vocabulary; §C.5 + §C.5.1 present all 40 fixtures (19 core + 21 extended) as the normative v1.0 conformance minimum.
+  - **Compatibility Policy.** `docs/compatibility.noma` Stability classes now enumerate every surface as `frozen` / `experimental` / `proposed`: core syntax, AST discriminants, the full op catalog, `baseHash`, Annex A, Annex B, and CLI commands are **frozen**; the Agent SDK package API, DOCX/PDF byte-output, and Noma Cloud / workbench are **experimental**.
+  - **Format spec.** `docs/spec.noma` adds a "Stability and the road to v1.0" summary pointing at the register; its stale `0.13.0` body version is corrected to `0.15.0`.
 
 ## [0.15.0] — 2026-06-10
 

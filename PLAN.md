@@ -1969,12 +1969,38 @@ grows from 14 to 40 fixtures.
   evaluates rejection fixtures (fails loudly if the op succeeds, throws a
   non-`PatchError`, or throws the wrong code).
 - **RFC §C updated.** The Agent Protocol RFC documents the new `patch-error/`
-  track and `expected.error.json` vocabulary, and §C.5 now separates the
-  normative 18-fixture protocol minimum (five frozen ops only) from the
-  non-normative extended reference fixtures (§C.5.1) so the extra op coverage
-  does not silently widen the frozen surface.
+  track and `expected.error.json` vocabulary. (The §C.5/§C.5.1 normative split
+  introduced here was reframed by §24.35 once the freeze scope was decided —
+  the full corpus is now normative.)
 - **Authoring aid.** `scripts/gen-patch-fixtures.ts` regenerates the
   happy-path patch fixtures from their declared inputs/ops (manual, not in CI).
+
+### §24.35 — v0.16.0 spec audit: freeze the full surface (2026-06-13)
+
+Second half of the v0.16 milestone (§25.4). Decision: **freeze everything** —
+graduate the full patch-op catalog, the `baseHash` precondition, and Agent
+Protocol Annexes A and B to normative. Closes exit criterion §25.3 #4.
+
+- **Annexes A and B → normative.** Removed every active `provisional` marker
+  from `docs/spec-agent-protocol-v1.noma`: the summary, §1.2 callout, §1.4
+  (rewritten as "Annexes A and B (normative)"), Annex A heading / A.3 / A.5,
+  Annex B heading / B.8. Both annexes now carry the §1.2 SemVer promises; only
+  two past-tense mentions of the word remain, describing the graduation.
+- **Extended ops → normative.** §1.5 reframed from "Implementation extensions
+  after v1.0 (not in the conformance set)" to "Extended operations (normative)";
+  §3.1 and the `unsupported_op` taxonomy now describe a core+extended catalog.
+- **`baseHash` → normative.** Dropped the "(provisional, added post-v1.0)"
+  qualifier in §3.4 and the failure-policy / error tables.
+- **Conformance corpus is fully normative.** §C.5 + new §C.5.1 present all 40
+  fixtures (19 core + 21 extended) as the v1.0 minimum an implementation MUST
+  pass.
+- **Per-surface stability register.** `docs/compatibility.noma` Stability
+  classes now enumerate every surface as `frozen` / `experimental` / `proposed`
+  (core syntax, AST discriminants, full op catalog, `baseHash`, Annex A, Annex
+  B, CLI all frozen; Agent SDK API, DOCX/PDF byte-output, Noma Cloud/workbench
+  experimental). `docs/spec.noma` adds a "Stability and the road to v1.0"
+  summary pointing at the register, and its stale `0.13.0` body version is
+  corrected to `0.15.0`.
 
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
@@ -2009,8 +2035,8 @@ marked experimental in the spec.
    **DONE (v0.16):** the corpus is 40 fixtures — one happy-path fixture per
    reference patch op (25 ops + a replay chain), one `patch-error/` fixture per
    reachable error code (6), plus the 6 valid and 2 invalid parse/validate
-   fixtures. The RFC §C.5 minimum corpus (18) stays scoped to the five frozen
-   ops; the extra op fixtures are labelled non-normative reference coverage.
+   fixtures. Per the freeze-everything decision, the full corpus is the
+   normative minimum (RFC §C.5 core + §C.5.1 extended).
 2. One external consumer (not ferax564) has run the agent → proof → merge
    loop on a real repo and the patch-op surface survived contact unchanged
    for 30 days.
@@ -2019,6 +2045,9 @@ marked experimental in the spec.
    another language passes the relevant conformance fixtures. The Python
    agent SDK is the natural seed; a community binding is better.
 4. Zero `provisional` markers left in `docs/spec-agent-protocol-v1.noma`.
+   **DONE (v0.16):** Annexes A and B and the `baseHash` precondition graduated
+   from provisional to normative; the only remaining occurrences of the word
+   describe that graduation in the past tense.
 5. Six weeks without a breaking change to any frozen surface.
 
 ### 25.4 Sequence
@@ -2026,10 +2055,10 @@ marked experimental in the spec.
 ```txt
 v0.15        publish funnel fixed, plugin + registry + template distribution
 v0.16 (now)  conformance suite expanded to full op coverage + error-code
-             fixtures (DONE); spec audit pass marking every feature
-             frozen|experimental (NEXT)
+             fixtures (DONE); spec audit pass — full op catalog, baseHash, and
+             Annexes A/B frozen/normative; per-surface stability register (DONE)
 v0.17        external-user feedback window; breaking changes land here
-             or wait for v2
+             or wait for v2. Recruit the second implementation (§25.5)
 v1.0         freeze + SemVer promise: breaking source/patch changes → major,
              additive → minor
 ```

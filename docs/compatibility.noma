@@ -1,6 +1,6 @@
 ---
 title: Noma — Compatibility Policy
-version: 0.13.0
+version: 0.15.0
 status: stable
 ---
 
@@ -17,12 +17,17 @@ which contracts are durable.
 
 | Surface                    | Status       | Compatibility promise                                                       |
 | -------------------------- | ------------ | --------------------------------------------------------------------------- |
-| `.noma` core syntax        | stable       | Existing valid documents keep parsing across minor releases.                |
-| AST node discriminants     | stable       | Existing node `type` names are not renamed or removed in minor releases.    |
-| Patch op names             | stable       | Existing `op` names keep their semantics unless a major version says so.    |
-| CLI command names          | stable       | Existing commands keep working; new flags are additive.                     |
+| `.noma` core syntax        | frozen       | Existing valid documents keep parsing across minor releases.                |
+| AST node discriminants     | frozen       | Existing node `type` names are not renamed or removed in minor releases.    |
+| Patch op names (full catalog) | frozen    | All shipped `op` names — the five core ops and every extended op — keep their semantics unless a major version says so. |
+| `baseHash` block precondition | frozen    | The per-block `baseHash` precondition and its `sha_mismatch` rejection are normative (Agent Protocol §3.4). |
+| Agent Protocol Annex A      | frozen       | Capability-descriptor field set (`schemas/capability`) is normative as of v1.0; new fields/checks are additive. |
+| Agent Protocol Annex B      | frozen       | MCP-over-stdio tool/argument/error shapes are normative as of v1.0; new transports ship as new annexes. |
+| CLI command names          | frozen       | Existing commands keep working; new flags are additive.                     |
 | HTML class names           | best effort  | Semantic classes remain where practical; visual markup may evolve.          |
-| Agent SDK                  | experimental | API may change until the Agent Protocol v1.1 graduation criteria are met.   |
+| Agent SDK package API       | experimental | The TS/Python workflow-layer API may still change; the protocol it speaks (above) is frozen. |
+| DOCX / PDF render targets   | experimental | Output is functional but byte-stability is not promised (Agent Protocol §1.0 non-goals). |
+| Noma Cloud / workbench      | experimental | Hosted APIs and editor UI may change; not part of the format freeze.        |
 | Community directive packs  | proposed     | Namespacing and plug-in contracts are not frozen yet.                       |
 | Hosted/team workflow       | future       | Not part of the open-source compatibility promise.                          |
 

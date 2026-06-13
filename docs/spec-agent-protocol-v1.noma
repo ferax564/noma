@@ -9,22 +9,25 @@ date: 2026-05-11
 
 ::summary
 The contract agents follow when editing Noma documents. Covers block identity, patch
-operations, validation, transcript records, and source-span guarantees. Annexes (A, B)
-are provisional and may change before they reach stability in v1.1.
+operations, validation, transcript records, and source-span guarantees. As of the v1.0
+freeze the full patch-op catalog (core + extended), the `baseHash` block precondition, and
+Annexes A and B are all normative.
 ::
 
 ## 1. Conformance and versioning
 
 ### 1.1 What v1.0 stabilizes
 
-v1.0 locks the following five invariants. Downstream consumers (agent SDKs, third-party
+v1.0 locks the following invariants. Downstream consumers (agent SDKs, third-party
 tools) MAY depend on these without expecting breaking changes within the v1.x line.
 
 - **Block identity on the wire.** Patch operations address blocks by canonical `id` only.
   Aliases are resolution aids; they are not patch identity.
-- **Patch operation semantics.** The five ops — `replace_block`, `add_block`,
-  `delete_block`, `update_attribute`, `rename_id` — have stable names, required fields,
-  and observable effects as specified in §3. No new ops are added in v1.0.
+- **Patch operation semantics.** The full op catalog — the five core ops (`replace_block`,
+  `add_block`, `delete_block`, `update_attribute`, `rename_id`, detailed in §3) plus the
+  extended ops (enumerated in §1.5) — have stable names, required fields, and observable
+  effects. Removing any op or changing its semantics is a major-version change. New ops
+  remain additive (minor).
 - **Validation contract (pre/post).** Every patch attempt yields a `pre_validation` and
   `post_validation` summary (`ok` | `warn` | `error`). The conditions under which each
   value is assigned are normative (§4).
@@ -37,13 +40,15 @@ tools) MAY depend on these without expecting breaking changes within the v1.x li
 
 ### 1.2 Compatibility promises
 
-This spec follows [Semantic Versioning](https://semver.org) for the normative core (§§1–6).
+This spec follows [Semantic Versioning](https://semver.org) for the normative core (§§1–6)
+**and for Annexes A and B**, which graduated to normative at the v1.0 freeze.
 
 **Major version bump** — a breaking change that implementations MUST handle explicitly:
 - Removing a required field from the transcript record.
 - Changing the type of a required field.
-- Removing a patch op from the normative op set.
+- Removing a patch op (core or extended) from the normative op set.
 - Changing an op's semantics in a way that alters previously-correct behavior.
+- A backward-incompatible change to an Annex A capability descriptor or Annex B binding shape.
 
 **Minor version bump** — backward-compatible additions:
 - Adding optional transcript fields.
@@ -53,8 +58,8 @@ This spec follows [Semantic Versioning](https://semver.org) for the normative co
 **Patch version bump** — clarifications and documentation only. No normative changes.
 
 ::callout{tone="info"}
-Provisional annexes (A and B) are NOT covered by these promises. They may change in any
-v1.x release. See §1.4.
+Annexes A and B were provisional through the v0.15 line; they graduated to normative at the
+v1.0 freeze and are now covered by the same SemVer promises as the core. See §1.4.
 ::
 
 ### 1.3 Extension model
@@ -71,25 +76,28 @@ backward-compatible with implementations that pre-date them.
 Adding optional fields — to transcript records or to directive syntax — is always a
 backward-compatible change under this model.
 
-### 1.4 Provisional annexes
+### 1.4 Annexes A and B (normative)
 
-Annex A (capability descriptor) and Annex B (MCP-over-stdio binding) are included in this
-RFC for discoverability. Each carries its own `status: provisional` marker and is versioned
-independently of the normative core.
+Annex A (capability descriptor) and Annex B (MCP-over-stdio binding) graduated from
+provisional to normative at the v1.0 freeze. They carry the same SemVer promises as the
+core (§1.2): the descriptor field set and the binding's tool/error shapes are stable, and a
+backward-incompatible change to either requires a major version.
 
-No compatibility promise applies to either annex. They MAY change — including in
-backward-incompatible ways — in any v1.x release. Provisional status reflects that real
-consumer pressure has not yet shaped these schemas into a stable form. The current expectation
-is that both will stabilize in v1.1 once the reference SDK (Phase 3) and at least one
-third-party binding exercise them under production conditions.
+The reference MCP server (`@ferax564/noma-mcp-server`) implements Annex B; the capability
+descriptor schema (Annex A) ships at `schemas/capability` and is exercised by the agent SDK
+capability-check surface. Enforcement tightening (e.g., additional descriptor-driven
+rejections) remains additive: new optional fields and new advisory checks are minor changes;
+existing fields and their meanings do not change within v1.x.
 
-### 1.5 Implementation extensions after v1.0
+### 1.5 Extended operations (normative)
 
-The current reference implementation may expose additive patch operations before a
-new normative protocol minor version is cut. These are implementation extensions, not
-part of the v1.0 conformance set in §§1–6.
+Beyond the five core ops of §3, the v1.0 op catalog includes the extended operations below.
+At the v1.0 freeze these graduated from implementation extensions to **normative**: their
+names, required fields, and observable effects carry the same SemVer promises as the core
+(§1.2). They are fully covered by the conformance corpus (Annex C). A v1.0-conformant
+implementation MUST support them.
 
-As of the v0.12.0 line, the reference implementation also supports:
+The extended operations are:
 
 - `replace_body` — replace body text on a body-only directive or text node while
   preserving the wrapper, attributes, and sibling blocks.
@@ -135,9 +143,10 @@ As of the v0.12.0 line, the reference implementation also supports:
 - `move_block` — move an existing directive block under a new ID-bearing parent
   while preserving the block body/attributes and normalizing fence depth when needed.
 
-Tools that need strict v1.0 interoperability SHOULD continue to emit only the five
-v1.0 ops. Tools targeting the reference implementation may discover the extended
-wire shape with `noma schema patch-op`.
+Implementations may discover the full op wire shape with `noma schema patch-op`. Tools that
+only need the smallest interoperable core MAY restrict themselves to the five core ops, but
+the extended ops are now part of the frozen v1.0 surface and will not change incompatibly
+within the v1.x line.
 
 ## 2. Document model
 
@@ -219,11 +228,13 @@ This section is normative. It defines the five patch operations that constitute 
 set, their atomicity guarantees, the reference-retargeting contract for `rename_id`, the
 validation failure policy, and the complete error-code taxonomy.
 
-### 3.1 The five operations
+### 3.1 The five core operations
 
-v1.0 locks the op set at five. Implementations MUST support all five. Operations NOT in this
-set MUST be rejected with `code: "unsupported_op"` (§3.5). No additional ops are added in
-v1.0.
+This section details the five **core** operations. They are the smallest interoperable set;
+the v1.0 op catalog also includes the **extended** operations of §1.5, which are equally
+normative. Implementations MUST support all five core ops; a v1.0-conformant implementation
+also supports the extended ops. An `op` value outside the full catalog MUST be rejected with
+`code: "unsupported_op"` (§3.5).
 
 All operations address blocks by **canonical id only** (see §2.1). Addressing a block by
 alias is a protocol violation; conforming implementations SHOULD reject such requests.
@@ -537,7 +548,7 @@ engine's observed pre-state), the patch is still applied. The transcript carries
 concurrency signal — it tells reviewers that the document was modified between when the
 agent read it and when the patch arrived. It does not block.
 
-**`baseHash` block precondition (provisional, added post-v1.0).** Any op MAY carry a
+**`baseHash` block precondition (normative).** Any op MAY carry a
 `baseHash` field: the sha256 hex (full, or a prefix of at least 8 chars) of the *target
 block's* current source slice, as returned by `blockSourceHash()` or the MCP `read_doc`
 tool's per-block `hash`. When present and the block's current hash does not start with the
@@ -555,7 +566,7 @@ Summary:
 | Post-apply validator errors | Always informational; patch written | Same |
 | `expected_sha` mismatch (Phase 0) | Reject (`sha_mismatch`) | Same |
 | `base_sha256` ≠ `pre_sha256` | Apply, warning diagnostic (`base_sha_drift`) | Same |
-| `baseHash` ≠ target block hash (provisional) | Reject (`sha_mismatch`) | Same |
+| `baseHash` ≠ target block hash | Reject (`sha_mismatch`) | Same |
 
 ### 3.5 Error taxonomy
 
@@ -570,10 +581,10 @@ errors as machine-readable `code` values in the `diagnostics` array of the trans
 | `id_conflict` | `rename_id.to` already exists in the document, or `add_block.content` declares an id that is already taken. |
 | `invalid_content` | `replace_block.content` or `add_block.content` is not a single parseable top-level directive block. Paragraphs, sections, headings, and other non-directive content are rejected with this code. |
 | `id_attribute_protected` | `update_attribute` was called with `key: "id"`. The block id MUST be changed only through `rename_id`. |
-| `sha_mismatch` | The caller-supplied `expected_sha` (8-char, Phase 0 field) did not match the document's pre-state hash. Also emitted when strict-mode `base_sha256` is checked and does not match, and when an op's provisional `baseHash` block precondition does not match the target block's current source hash. |
+| `sha_mismatch` | The caller-supplied `expected_sha` (8-char, Phase 0 field) did not match the document's pre-state hash. Also emitted when strict-mode `base_sha256` is checked and does not match, and when an op's `baseHash` block precondition does not match the target block's current source hash. |
 | `pre_validation_blocked` | Strict mode is active and pre-validation returned `"error"`. The op-list was not applied. |
 | `op_list_aborted` | This op was virtually applied in memory before a later op in the same list failed. The list was rolled back; no bytes were written. Emitted in the transcript record for each preceding op in the failed list. |
-| `unsupported_op` | The `op` value is not in the §3.1 set, or the operation targets a book manifest (`.noma.yml`). Book manifests are not valid patch targets in v1.0. |
+| `unsupported_op` | The `op` value is not in the v1.0 op catalog (the §3.1 core ops or the §1.5 extended ops), or the operation targets a book manifest (`.noma.yml`). Book manifests are not valid patch targets in v1.0. |
 
 New codes MAY be added in a minor version without breaking conforming implementations (the
 extension model in §1.3 applies: unknown codes in transcript records MUST be tolerated by
@@ -1155,10 +1166,12 @@ Cross-reference: §2.1 covers the wire-identity consequences of collision suffix
 prohibition on using an un-resolved alias or pre-suffix slug in patch operations.
 ::
 
-## Annex A — Capability descriptor (provisional)
+## Annex A — Capability descriptor (normative)
 
-::callout{tone="warning"}
-**status: provisional.** Shape may change before enforcement code ships in v1.1.
+::callout{tone="info"}
+**status: normative (since v1.0).** The descriptor field set below is frozen under the §1.2
+SemVer promises. New optional fields and new advisory checks are additive (minor); existing
+fields and their meanings do not change within v1.x.
 ::
 
 ### A.1 Sidecar location and frontmatter pointer
@@ -1204,7 +1217,7 @@ Implementations MUST NOT default to "permit everything" when no sidecar is found
 absence of a capability descriptor MUST be treated as equivalent to a descriptor that
 grants no ops.
 
-### A.3 Sidecar schema (provisional)
+### A.3 Sidecar schema (normative)
 
 The sidecar is a YAML file with a single top-level key `nomaAgent`. The following example
 illustrates the full v1 descriptor shape:
@@ -1259,7 +1272,7 @@ v1.0 reference implementation.
 
 Specifically:
 - The `patch_block` MCP tool (Annex B) does NOT consult the sidecar before applying a
-  patch in v1.0. All five ops remain available to any caller regardless of what the
+  patch in v1.0. All ops remain available to any caller regardless of what the
   descriptor says.
 - Implementations MAY parse and validate the descriptor's YAML structure for early
   feedback (e.g., reject malformed YAML or unknown `version` values) but MUST NOT block
@@ -1275,22 +1288,25 @@ Implementers planning ahead MAY parse the descriptor and surface advisory warnin
 a proposed op has no matching grant. They MUST label such warnings as advisory only and
 MUST NOT reject the patch on their basis in a v1.0-conforming implementation.
 
-### A.5 Provisional shape warning
+### A.5 Versioning and forward compatibility
 
-The schema defined in A.3 is the v1.0 design intent. It MAY change — including in
-backward-incompatible ways — before v1.1 enforcement code ships, based on feedback from
-real consumers (the Phase 3 Agent SDK and any third-party implementations).
+The schema defined in A.3 is frozen under the §1.2 SemVer promises as of v1.0. Additional
+optional fields and additional advisory checks are additive (minor); removing a field or
+changing its meaning is a major change.
 
 Implementations that consume the descriptor SHOULD pin to a specific `nomaAgent.version`
 value and treat an unexpected version number as a signal to fall back to the default
 read-only / unspecified policy rather than attempting to interpret an unknown schema.
 
-No compatibility promise applies to this annex. See §1.4.
+This annex is covered by the compatibility promises of §1.2. See §1.4.
 
-## Annex B — MCP-over-stdio binding (provisional)
+## Annex B — MCP-over-stdio binding (normative)
 
-::callout{tone="warning"}
-**status: provisional.** One binding among future bindings; shape may change.
+::callout{tone="info"}
+**status: normative (since v1.0).** This is the reference binding, implemented by
+`@ferax564/noma-mcp-server`. Its tool names, arguments, and error shapes are frozen under the
+§1.2 SemVer promises. Future transports MAY be added as additional annexes without changing
+this one.
 ::
 
 ### B.1 What this binding is
@@ -1513,10 +1529,10 @@ two-tier distinction means:
 Implementations MUST NOT surface user-facing patch errors as `isError: true`. Doing so
 would collapse the distinction and force callers to parse error strings for `code` values.
 
-### B.8 Provisional notes
+### B.8 Forward-compatibility notes
 
-This binding is `status: provisional`. The following items are known to be subject to
-change before v1.1 freezes the binding shape:
+This binding is `status: normative`. Its current tool/argument/error shapes are frozen under
+§1.2. The items below are **additive** directions that do not change the v1.0 binding:
 
 - **Non-functional fixes.** The binding MAY receive patch releases (v1.0.x) for
   documentation corrections, field rename clarity, or schema alignment with the normative
@@ -1531,10 +1547,12 @@ change before v1.1 freezes the binding shape:
   (read-only transcript introspection), and `describe_capabilities` (sidecar descriptor
   query). These are not in scope for v1.0.
 - **Capability enforcement.** The `patch_block` tool does NOT consult the capability
-  descriptor sidecar (Annex A) in v1.0. All five ops remain available to any caller. See
-  Annex A.4 for the enforcement deferral rationale.
+  descriptor sidecar (Annex A) in v1.0; all ops remain available to any caller. The
+  descriptor is advisory — consumers MAY enforce it at the SDK layer. Tightening the MCP
+  server to enforce descriptors is additive (new optional behavior). See Annex A.4 for the
+  rationale.
 
-No compatibility promise applies to this annex. See §1.4.
+This annex is covered by the compatibility promises of §1.2. See §1.4.
 
 ## Annex C — Conformance suite
 
@@ -1693,7 +1711,7 @@ PASS  examples/conformance/valid/basic-section
 FAIL  examples/conformance/patch/rename_id  — span mismatch for "intro": got [3, 9], expected [3, 7]
 SKIP  examples/conformance/valid/aliases
 
-14 fixtures, 13 passed
+40 fixtures, 39 passed
 ```
 
 Fixtures are sorted alphabetically by path before output. Output MUST be deterministic:
@@ -1713,9 +1731,12 @@ the test suite. A non-zero exit code MUST fail the build.
 ### C.5 Minimum corpus (v1.0)
 
 The **normative v1.0 minimum corpus** is the set an implementation MUST pass to claim
-"Noma Agent Protocol v1.0 compliant." It covers only the five locked operations (§3.1),
-the error codes reachable through them (§3.5), and the core parse/validate properties —
-nothing outside the frozen surface.
+"Noma Agent Protocol v1.0 compliant." With the v1.0 freeze it covers the entire frozen
+surface: all parse/validate properties, the five core ops (§3.1), the extended ops (§1.5),
+and every error code reachable through them (§3.5). The corpus ships 40 fixtures.
+
+This section lists the **core** fixtures; §C.5.1 lists the **extended-op** fixtures. Both
+groups are normative — an implementation MUST pass all 40.
 
 ::table{align="l,l"}
 | Fixture | Exercises |
@@ -1740,25 +1761,44 @@ nothing outside the frozen surface.
 | `invalid/missing-evidence-target` | An `evidence` directive references a non-existent `claim` ID via `for=`; validator emits a broken-reference diagnostic at `error` severity. |
 ::
 
-The 6 valid fixtures cover core parsing properties; the 5 patch fixtures cover one fixture
-per locked op plus a multi-op replay chain; the 5 patch-error fixtures pin the error codes
-reachable through the locked ops; the 2 invalid fixtures cover the two most common validator
-error classes. These 18 fixtures are the protocol-conformance bar.
+These 19 core fixtures cover the parse/validate properties (6 valid + 2 invalid), the five
+core ops plus a multi-op replay chain (6 patch), and the error codes reachable through the
+core ops (5 patch-error).
 
-### C.5.1 Extended reference fixtures (non-normative)
+### C.5.1 Extended-op fixtures (normative)
 
-The reference implementation's `examples/conformance/` corpus ships **additional** fixtures
-that exercise patch operations OUTSIDE the frozen §3.1 set — `replace_body`,
-`update_heading`, `move_block`, `remove_attribute`, the comment/footnote/endnote/change-request
-ops, and the full table and dataset cell/row/column families — plus the `sha_mismatch`
-precondition (which depends on the provisional `baseHash` field, Annex / §3.5). These ops
-are implementation extensions: they are real, tested surface in the TypeScript reference,
-but a Protocol v1.0-compliant implementation is NOT required to support them, and they MAY
-change before they are folded into a future normative op set (v1.1+).
+The remaining 21 fixtures exercise the §1.5 extended operations (20) and the `baseHash`
+precondition (1) — all normative as of v1.0. A v1.0-conformant implementation MUST pass
+these too.
 
-Extended fixtures use the same directory layout and expected-file vocabulary as the minimum
-corpus, so the same `noma verify` harness runs both. An implementation MAY advertise which
-extended fixtures it passes to signal coverage beyond the protocol floor.
+::table{align="l,l"}
+| Fixture | Exercises |
+| `patch/replace_body` | `replace_body`: inner body replaced while the opening attribute line is preserved. |
+| `patch/update_heading` | `update_heading`: heading title replaced while an explicit `id=` stays stable. |
+| `patch/move_block` | `move_block`: block relocated under a new parent; fence depth re-normalized at the destination. |
+| `patch/remove_attribute` | `remove_attribute`: a non-`id` attribute removed source-preservingly. |
+| `patch/add_comment` | `add_comment`: targeted `::comment` block inserted with author metadata. |
+| `patch/resolve_comment` | `resolve_comment`: existing `::comment` marked resolved without rewriting its body. |
+| `patch/add_footnote` | `add_footnote`: targeted `::footnote` inserted near the referenced block. |
+| `patch/add_endnote` | `add_endnote`: targeted `::endnote` inserted near the referenced block. |
+| `patch/add_change_request` | `add_change_request`: tracked insert/delete/replace revision block inserted. |
+| `patch/update_table_cell` | `update_table_cell`: one body cell rewritten; untouched rows preserved verbatim. |
+| `patch/update_table_header_cell` | `update_table_header_cell`: one header cell rewritten without touching body rows. |
+| `patch/insert_table_row` | `insert_table_row`: a body row inserted at the declared index. |
+| `patch/delete_table_row` | `delete_table_row`: a body row removed by zero-based index. |
+| `patch/insert_table_column` | `insert_table_column`: a column (header + cells) inserted at the declared index. |
+| `patch/delete_table_column` | `delete_table_column`: a column removed by index or header label. |
+| `patch/update_dataset_cell` | `update_dataset_cell`: one data cell rewritten inside an inline YAML row array. |
+| `patch/insert_dataset_row` | `insert_dataset_row`: a data row inserted at the declared index. |
+| `patch/delete_dataset_row` | `delete_dataset_row`: a data row removed by index. |
+| `patch/insert_dataset_column` | `insert_dataset_column`: a schema field + per-row cell inserted. |
+| `patch/delete_dataset_column` | `delete_dataset_column`: a schema field + per-row cell removed. |
+| `patch-error/sha_mismatch` | An op whose `baseHash` precondition does not match the target block rejects with `sha_mismatch`. |
+::
+
+The 19 core fixtures plus these 21 extended fixtures total 40. All fixtures use the same
+directory layout and expected-file vocabulary, so the same `noma verify` harness runs the
+entire corpus.
 
 **Corpus evolution rules:**
 
