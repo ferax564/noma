@@ -2081,6 +2081,39 @@ surface without changing the v1 source or patch compatibility promise.
   cited Ask, health/inbox/agent panels, PWA registration, local draft caching,
   and explicit conflict merge recovery.
 
+### §24.39 — v0.17.0 Noma Cloud technical-preview launch candidate (2026-07-14)
+
+Prepared for a public technical-preview launch without changing the frozen v1
+source, AST, patch, or Agent Protocol contracts. v0.16.0 was never tagged or
+published, so v0.17.0 is the next public candidate after v0.15.0 and includes
+both the v0.16 conformance/spec work and the §24.37–§24.38 Cloud work.
+
+- **Permission and integrity hardening.** Connector values are server-only,
+  connector mutations require editor access, custom recipes cannot cross
+  workspace boundaries, webhook hashes stay private, agent runs cannot request
+  ungranted capabilities or complete through another identity, deterministic
+  backups verify their full digest/manifest, and document compare-and-swap is
+  atomic inside the SQLite write transaction.
+- **Truthful preview scope.** Launch documentation distinguishes implemented
+  trust/proof/permission contracts from deployment-specific follow-up: local
+  extractive Ask is not a hosted LLM, connector records are not provider sync
+  workers, recipe triggers require an external worker/scheduler, SSO/SCIM use a
+  trusted identity proxy, realtime is a pollable operation feed, and metadata
+  retention does not replace canonical document backups.
+- **Release safety.** Manual dispatch checks out an existing tag or creates a
+  missing tag only after `test:full`; the release job installs Python and
+  Chromium dependencies, runs every package/SDK/MCP/LSP/site/PDF gate, refuses
+  masked GitHub-release errors, and mechanically checks/bumps the MCP registry
+  descriptor. The container exposes SQLite readiness, a Docker health check,
+  and graceful SIGTERM shutdown.
+- **Operator runbook.** `docs/runbooks/cloud-launch.md` defines no-go criteria,
+  production secrets, persistent storage, staging soak, permission/citation/
+  conflict/restore smoke tests, backup practice, rollback, and the final launch
+  decision record.
+
+Tagging, npm/MCP publication, and production deployment remain explicit
+maintainer actions after the candidate is reviewed from a clean checkout.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can

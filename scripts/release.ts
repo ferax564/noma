@@ -6,12 +6,13 @@
  *   npm run release -- check            verify every location agrees with package.json
  *   npm run release -- bump <version>   rewrite the mechanical locations + roll CHANGELOG
  *
- * `bump` updates: package.json (+ mcp-server version and its noma-cli pin,
- * agent-sdk's noma-cli pin), docs/spec.noma, docs/agent-protocol.noma, the
- * mcp-server's hardcoded server version, and turns CHANGELOG's [Unreleased]
- * into a dated release section. It then re-runs `check`, which also demands
- * the two prose locations (README Status, PLAN.md §24) mention the new
- * version — those need a human or agent to actually write the narrative.
+ * `bump` updates: package.json (+ lockstep workspace versions, an independent
+ * Agent SDK patch, and dependency pins), docs/spec.noma,
+ * docs/agent-protocol.noma, the MCP runtime and registry versions, and turns
+ * CHANGELOG's [Unreleased] into a dated release section.
+ * It then re-runs `check`, which also demands the two prose locations (README
+ * Status, PLAN.md §24) mention the new version — those need a human or agent
+ * to actually write the narrative.
  */
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -120,6 +121,17 @@ function check(): number {
     read("packages/mcp-server/src/index.ts").includes(`version: "${version}"`),
     "update the McpServer constructor version",
   );
+  const mcpRegistry = JSON.parse(read("packages/mcp-server/server.json")) as { version?: string; packages?: Array<{ version?: string }> };
+  expect(
+    "MCP registry server version matches",
+    mcpRegistry.version === version,
+    `set packages/mcp-server/server.json version to ${version}`,
+  );
+  expect(
+    "MCP registry package version matches",
+    mcpRegistry.packages?.[0]?.version === version,
+    `set packages/mcp-server/server.json packages[0].version to ${version}`,
+  );
 
   if (failures > 0) {
     console.error(`\n${failures} versioned location(s) out of sync.`);
@@ -133,17 +145,25 @@ function bumpJsonVersion(path: string, version: string): void {
   writeFileSync(path, read(path).replace(/"version":\s*"\d+\.\d+\.\d+"/, `"version": "${version}"`));
 }
 
+function nextPatch(version: string): string {
+  const [major, minor, patch] = version.split(".").map(Number);
+  return `${major}.${minor}.${patch + 1}`;
+}
+
 function bump(version: string): number {
   if (!VERSION_RE.test(version)) {
     console.error(`usage: npm run release -- bump <major.minor.patch> (got "${version}")`);
     return 2;
   }
   const previous = packageVersion("package.json");
+  const previousAgentSdk = packageVersion("packages/agent-sdk/package.json");
+  const agentSdkVersion = nextPatch(previousAgentSdk);
   const today = new Date().toISOString().slice(0, 10);
 
   bumpJsonVersion("package.json", version);
   bumpJsonVersion("packages/mcp-server/package.json", version);
   bumpJsonVersion("packages/lsp-server/package.json", version);
+  bumpJsonVersion("packages/agent-sdk/package.json", agentSdkVersion);
   for (const path of [
     "packages/mcp-server/package.json",
     "packages/agent-sdk/package.json",
@@ -164,6 +184,12 @@ function bump(version: string): number {
   writeFileSync(
     "packages/mcp-server/src/index.ts",
     read("packages/mcp-server/src/index.ts").replace(/version: "\d+\.\d+\.\d+"/, `version: "${version}"`),
+  );
+  writeFileSync(
+    "packages/mcp-server/server.json",
+    read("packages/mcp-server/server.json")
+      .replace(/"version": "\d+\.\d+\.\d+"/, `"version": "${version}"`)
+      .replace(/("identifier": "@ferax564\/noma-mcp-server",\s*\n\s*"version": ")\d+\.\d+\.\d+"/, `$1${version}"`),
   );
   writeFileSync(
     "docs/spec.noma",
@@ -190,7 +216,7 @@ function bump(version: string): number {
 
   execSync("npm install --package-lock-only --ignore-scripts", { stdio: "inherit" });
 
-  console.log(`\nBumped ${previous} → ${version}. Remaining manual steps:`);
+  console.log(`\nBumped ${previous} → ${version}; agent SDK ${previousAgentSdk} → ${agentSdkVersion}. Remaining manual steps:`);
   console.log(`  1. Write the README ## Status paragraph and PLAN.md §24 entry for v${version}`);
   console.log("  2. npm run release -- check");
   console.log("  3. npx tsc --noEmit && npm test && npm run build:site");

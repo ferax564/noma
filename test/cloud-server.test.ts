@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { openNomaCloudDatabase, type CloudDocumentRecord } from "../src/cloud-db.js";
 import { createNomaCloudServer, type NomaCloudServerOptions } from "../src/cloud-server.js";
 
 interface CloudUserResponse {
@@ -54,6 +55,7 @@ interface JsonRequestOptions {
   token?: string;
   share?: string;
   cloudAccess?: string;
+  headers?: Record<string, string>;
   body?: Record<string, unknown>;
   expectedStatus?: number;
 }
@@ -2171,6 +2173,168 @@ See [[Missing escalation policy]].
   }
 });
 
+test("cloud launch boundaries isolate connectors and recipes, validate agent runs, and reject tampered backups", async () => {
+  const harness = await startCloudServer("noma-cloud-launch-boundaries-");
+  try {
+    const alice = await createCloudUser(harness.base, "Alice Launch Owner");
+    const bob = await createCloudUser(harness.base, "Bob Launch Viewer");
+    const mallory = await createCloudUser(harness.base, "Mallory Other Workspace");
+    const page = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Launch runbook", source: "# Launch runbook\n\n::decision{id=\"launch\" status=\"open\"}\nStage before production.\n::\n" },
+    });
+    const site = await json<CloudSiteResponse>(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Launch", documentIds: [page.id] },
+    });
+    await json(`${harness.base}/api/sites/${site.id}/collaborators`, {
+      method: "POST",
+      token: alice.token,
+      body: { userId: bob.id, role: "viewer" },
+    });
+
+    const connector = await json<{ id: string; configurationKeys: string[]; configuration?: unknown }>(`${harness.base}/api/connectors`, {
+      method: "POST",
+      token: alice.token,
+      body: { kind: "github", name: "Launch repository", siteId: site.id, configuration: { repository: "acme/launch", token: "do-not-return" } },
+    });
+    assert.deepEqual(connector.configurationKeys, ["repository", "token"]);
+    assert.equal(Object.hasOwn(connector, "configuration"), false);
+    const bobConnectors = await json<{ connectors: Array<{ id: string; configuration?: unknown }> }>(`${harness.base}/api/connectors`, { token: bob.token });
+    assert.ok(bobConnectors.connectors.some((item) => item.id === connector.id));
+    assert.ok(bobConnectors.connectors.every((item) => !Object.hasOwn(item, "configuration")));
+    await json(`${harness.base}/api/connectors/${connector.id}/sources`, {
+      method: "POST",
+      token: bob.token,
+      body: { externalId: "issue-1", documentId: page.id, upstreamPermissions: [], upstreamModifiedAt: "2026-07-14T00:00:00.000Z", sourceUrl: "https://example.com/issue-1", contentHash: "one" },
+      expectedStatus: 403,
+    });
+
+    const readAgent = await json<{ id: string }>(`${harness.base}/api/agents`, {
+      method: "POST",
+      token: alice.token,
+      body: { name: "Read agent", capabilities: ["read_doc"], budgetUsd: 1 },
+    });
+    await json(`${harness.base}/api/agents/${readAgent.id}/runs`, {
+      method: "POST",
+      token: alice.token,
+      body: { requestedCapabilities: ["patch_block"] },
+      expectedStatus: 409,
+    });
+    const otherAgent = await json<{ id: string }>(`${harness.base}/api/agents`, {
+      method: "POST",
+      token: alice.token,
+      body: { name: "Other agent", capabilities: ["read_doc"], budgetUsd: 1 },
+    });
+    const otherRun = await json<{ id: string }>(`${harness.base}/api/agents/${otherAgent.id}/runs`, {
+      method: "POST",
+      token: alice.token,
+      body: { requestedCapabilities: ["read_doc"] },
+    });
+    await json(`${harness.base}/api/agents/${readAgent.id}/runs/${otherRun.id}/complete`, {
+      method: "POST",
+      token: alice.token,
+      body: { status: "completed", costUsd: 0 },
+      expectedStatus: 404,
+    });
+
+    const webhookSecret = "launch-hook-secret";
+    const recipe = await json<{ id: string; trigger: { webhookSecretConfigured: boolean; webhookSecretHash?: string } }>(`${harness.base}/api/recipes`, {
+      method: "POST",
+      token: alice.token,
+      body: {
+        name: "Launch review",
+        siteId: site.id,
+        trigger: { modes: ["webhook"], webhookSecretHash: sha256Hex(webhookSecret) },
+        capabilitySet: ["read_doc"],
+        steps: ["Review launch evidence", "Draft a proposal"],
+      },
+    });
+    assert.equal(recipe.trigger.webhookSecretConfigured, true);
+    assert.equal(Object.hasOwn(recipe.trigger, "webhookSecretHash"), false);
+    const bobRecipes = await json<{ recipes: Array<{ id: string }> }>(`${harness.base}/api/recipes`, { token: bob.token });
+    assert.ok(bobRecipes.recipes.some((item) => item.id === recipe.id));
+    const malloryRecipes = await json<{ recipes: Array<{ id: string }> }>(`${harness.base}/api/recipes`, { token: mallory.token });
+    assert.ok(!malloryRecipes.recipes.some((item) => item.id === recipe.id));
+    await json(`${harness.base}/api/recipes/${recipe.id}/runs`, {
+      method: "POST",
+      token: bob.token,
+      body: { triggerMode: "webhook", input: {} },
+      expectedStatus: 403,
+    });
+    await json(`${harness.base}/api/gateway/webhooks/${recipe.id}`, {
+      method: "POST",
+      token: alice.token,
+      headers: { "x-noma-recipe-webhook-secret": "wrong" },
+      body: { release: "candidate" },
+      expectedStatus: 401,
+    });
+    const webhookRun = await json<{ mutationPolicy: string }>(`${harness.base}/api/gateway/webhooks/${recipe.id}`, {
+      method: "POST",
+      token: alice.token,
+      headers: { "x-noma-recipe-webhook-secret": webhookSecret },
+      body: { release: "candidate" },
+    });
+    assert.equal(webhookRun.mutationPolicy, "proof_proposal_only");
+
+    const backup = await json<NomaBackupBundleResponse>(`${harness.base}/api/backup/export`, {
+      method: "POST",
+      token: alice.token,
+      body: { siteId: site.id },
+    });
+    const tampered = structuredClone(backup);
+    tampered.files[0]!.source += "\nTampered after export.\n";
+    await json(`${harness.base}/api/backup/import`, {
+      method: "POST",
+      token: alice.token,
+      body: { siteId: site.id, bundle: tampered },
+      expectedStatus: 400,
+    });
+  } finally {
+    await harness.close();
+  }
+});
+
+test("cloud database compare-and-swap rejects a second writer with a stale hash", async () => {
+  const root = await mkdtemp(join(tmpdir(), "noma-cloud-cas-"));
+  const store = openNomaCloudDatabase({
+    dataDir: join(root, "documents"),
+    usersDir: join(root, "users"),
+    sitesDir: join(root, "sites"),
+    dbPath: join(root, "noma-cloud.sqlite"),
+  });
+  try {
+    const now = "2026-07-14T00:00:00.000Z";
+    const source = "# Concurrent document\n\nBase.\n";
+    const base: CloudDocumentRecord = {
+      version: 2,
+      id: "document_launch_cas",
+      title: "Concurrent document",
+      source,
+      hash: sha256Hex(source),
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "user_launch_owner",
+      updatedBy: "user_launch_owner",
+      permissions: { user_launch_owner: { role: "owner", addedAt: now } },
+      shareLinks: [],
+    };
+    assert.equal(store.writeDocument(base), true);
+    const firstSource = source.replace("Base.", "First writer.");
+    const secondSource = source.replace("Base.", "Second writer.");
+    const first = { ...base, source: firstSource, hash: sha256Hex(firstSource), updatedAt: "2026-07-14T00:01:00.000Z" };
+    const second = { ...base, source: secondSource, hash: sha256Hex(secondSource), updatedAt: "2026-07-14T00:02:00.000Z" };
+    assert.equal(store.writeDocument(first, base.hash), true);
+    assert.equal(store.writeDocument(second, base.hash), false);
+    assert.equal(store.readDocument(base.id)?.hash, first.hash);
+  } finally {
+    store.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 interface NomaBackupBundleResponse {
   manifest: { format: string; exportedAt: string; files: unknown[]; git?: { pullRequestReview: boolean } };
   files: Array<{ documentId: string; source: string; hash: string }>;
@@ -2219,6 +2383,7 @@ async function createCloudUser(base: string, name: string): Promise<CloudUserRes
 
 async function json<T = { error?: string }>(url: string, options: JsonRequestOptions = {}): Promise<T> {
   const headers = new Headers({ accept: "application/json" });
+  for (const [name, value] of Object.entries(options.headers ?? {})) headers.set(name, value);
   if (options.token) headers.set("authorization", `Bearer ${options.token}`);
   if (options.share) headers.set("x-noma-share-token", options.share);
   if (options.cloudAccess) headers.set("x-noma-cloud-access-token", options.cloudAccess);

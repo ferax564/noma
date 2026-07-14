@@ -1,6 +1,6 @@
 ---
 title: Noma Cloud Guide
-version: 0.16.0
+version: 0.17.0
 updated: 2026-07-14
 audience: collaborators, researchers, documentation teams, agents
 ---
@@ -33,6 +33,31 @@ Use Noma Cloud when a `.noma` document should move beyond a local HTML file:
 The source remains plain Noma. The cloud layer adds persistence, users,
 permissions, share links, site membership, rendered artifacts, and the database
 index around that source.
+
+## Technical preview boundaries
+
+The v0.17 Cloud release is a self-hosted technical preview, not a managed
+multi-tenant SaaS or a completed enterprise integration suite:
+
+- Ask Noma uses deterministic local hybrid retrieval and extractive source
+  summaries. It does not call a hosted LLM or claim generative-answer quality.
+- Connector endpoints persist permission, URL, hash, timestamp, and tombstone
+  lineage. OAuth clients, provider polling, and background synchronization
+  workers are deployment-specific follow-up work.
+- Recipe runs produce reviewable plans with a `proof_proposal_only` policy.
+  There is no built-in scheduler or autonomous worker loop.
+- OIDC/SAML and SCIM routes are trusted-proxy and provisioning contracts. The
+  reverse proxy or identity gateway performs protocol validation before sending
+  a shared-secret assertion to Noma.
+- Realtime collaboration is an ordered, pollable operation feed with atomic
+  hash preconditions. It is not a WebSocket presence, cursor, or CRDT system.
+- Retention and legal-hold cleanup currently cover platform metadata records.
+  Canonical documents, immutable revisions, and SQLite backup retention remain
+  explicit operator responsibilities.
+
+These boundaries keep launch claims aligned with the implementation while the
+retrieval, proof, permission, and source-portability contracts are evaluated
+with real teams.
 
 ::figure{id="cloud-workspace-shot" src="../assets/docs/noma-cloud-workspace.png" alt="Noma Cloud workspace with navigation, paper source editor, rendered paper preview, share panel, agent review panel, diagnostics, and outline." caption="Noma Cloud keeps the workspace, pages, source, paper preview, permissions, agent review, diagnostics, and outline visible in one hosted app."}
 ::
@@ -263,16 +288,17 @@ human review, and hash-checked apply. `tools/list` and `tools/call` use JSON-RPC
 
 ## Connected and self-maintaining knowledge
 
-Connector records support GitHub, Slack, Google Drive, Jira, Linear, and
-filesystem sources. Every synchronized source retains upstream permissions,
+Connector record contracts support GitHub, Slack, Google Drive, Jira, Linear,
+and filesystem sources. Every recorded source retains upstream permissions,
 modified time, source URL, content hash, predecessor lineage, synchronization
 time, and deletion tombstone rather than erasing its history.
 
-Six built-in recipes cover stale-document review, meeting-to-decision,
+Six built-in proposal templates cover stale-document review, meeting-to-decision,
 issue-to-runbook, research refresh, onboarding answers, and release
-maintenance. Manual, schedule, event, and webhook triggers are explicit. A
-recipe run produces a plan and `proof_proposal_only` mutation policy; it never
-writes around the agent review contract.
+maintenance. Manual, schedule, event, and webhook trigger intent is explicit;
+an external scheduler or worker invokes those routes. A recipe run produces a
+plan and `proof_proposal_only` mutation policy; it never writes around the agent
+review contract.
 
 Semantic collections query typed blocks across permitted pages: open
 decisions, claims missing evidence, risks by owner, stale citations, and agent
@@ -321,8 +347,9 @@ GET|POST /api/realtime/documents/<document-id>/operations
 ## Enterprise policy
 
 Workspace-owner enterprise policy configures trusted-proxy OIDC/SAML login,
-SCIM provisioning, retention days, legal hold, data residency, connector allowlists, model
-allowlists, zero-retention model requirements, and audit export. Connector and
+SCIM identity records, platform-metadata retention days and legal hold, declared
+data residency, connector allowlists, model allowlists, zero-retention model
+requirements, and audit export. Connector and
 agent creation enforce the active allowlists immediately. Agent completion
 cannot exceed its remaining spend budget. Retention cleanup excludes records
 protected by an active legal hold.

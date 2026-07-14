@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to create and release (e.g. v0.14.0); must match package.json
+        description: Tag to create and release (e.g. v0.17.0); must match package.json
         required: true
         type: string
 
@@ -53,6 +53,20 @@ jobs:
           esac
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release source
+        id: source
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch --depth=1 origin "refs/tags/$TAG"
+            git checkout --detach FETCH_HEAD
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Verify tag matches package.json
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -64,36 +78,43 @@ jobs:
             exit 1
           fi
 
-      - name: Create tag (manual dispatch only)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        env:
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          set -euo pipefail
-          if git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "tag $TAG already exists on origin — releasing it as-is"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag "$TAG"
-            git push origin "refs/tags/$TAG"
-          fi
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           registry-url: https://registry.npmjs.org
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - run: npm ci
 
-      - name: Verify versioned locations
-        run: npm run release -- check
+      - name: Install Python SDK test dependencies
+        run: python -m pip install -e 'packages/agent-sdk-py[test]'
 
-      - run: npx tsc --noEmit
-      - run: npm test
-      - run: npm run verify:conformance
-      - run: npm run smoke:package
+      - name: Cache Puppeteer Chrome
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-chrome-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chrome for release artifacts
+        run: npx puppeteer browsers install chrome
+
+      - name: Run complete release gate
+        run: npm run test:full
+
+      - name: Create tag after gates (manual dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.source.outputs.tag_exists != 'true' }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
 
       - name: Publish packages to npm
         env:
@@ -139,5 +160,8 @@ jobs:
             /^## \[/ { if (found) exit }
             found { print }
           ' CHANGELOG.md > /tmp/notes.md
-          gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md || \
-            echo "release already exists — skipping"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — skipping"
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md
+          fi

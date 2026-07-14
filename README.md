@@ -172,7 +172,7 @@ npm run noma -- patch examples/thesis.noma \
 npm run noma -- check examples/research-thesis.noma
 
 # render in GitHub Actions
-# - uses: ferax564/noma@v0.13.0
+# - uses: ferax564/noma@v0.17.0
 #   with:
 #     input: docs/spec.noma
 #     output: dist/spec.html
@@ -253,7 +253,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.13.0
+      - uses: ferax564/noma@v0.17.0
         with:
           input: docs/spec.noma
           output: dist/spec.html
@@ -277,7 +277,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.13.0
+      - uses: ferax564/noma@v0.17.0
         with:
           mode: proof
           input: docs/spec.noma
@@ -312,6 +312,7 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 - [Starter templates](docs/templates.noma) — copyable research memo, decision record, technical spec, and agent refresh templates under `examples/templates/`.
 - [Web workbench guide](docs/workbench.noma) — screenshots and workflows for the browser-based Word-style `.noma` editor.
 - [Noma Cloud guide](docs/noma-cloud.noma) — guide for hybrid retrieval, cited Ask, knowledge health, scoped agents, connectors/recipes, offline and realtime collaboration, enterprise controls, workspaces, permissions, publishing, and deployment.
+- [Noma Cloud launch runbook](docs/runbooks/cloud-launch.md) — technical-preview boundaries, no-go criteria, staging smoke tests, production secrets, backups, rollback, and release verification.
 - [Agent-human knowledge platform research](docs/research-agent-human-knowledge-platforms.noma) — July 2026 Confluence, Notion, Glean, Guru, and Slite market scan plus the prioritized block-native RAG, LLM Wiki, trust, and agent collaboration roadmap.
 
 ## What ships today
@@ -334,7 +335,7 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 - Plot/dataset linkage — `::plot{dataset="<id>" column="<name>" xcolumn="<name>"}` resolves against sibling `::dataset` blocks at render time.
 - Citation staleness — global default 365 days, override via frontmatter `stale_citation_days`, per-citation `stale_after_days=N`, or CLI `--stale-days <n>`.
 - CLI — `noma --version`, `noma init`, `noma ingest`, `noma parse | render | ids | schema | check | export | proof | prove | patch | fmt | docx-data | docx-sync | docx-review-data | docx-review-sync | diff`. `noma ingest docs/README.md --out docs/README.noma` keeps Markdown-compatible source and pins explicit heading IDs for incremental migration. `noma proof report.noma --ops ops.json --out proof.html` dry-runs a patch transaction and renders an agent safety proof with diagnostics, hashes, source preservation, diff, LLM context, ID registry, and a sandboxed post-patch artifact preview; `--to json` emits the same proof metadata for automation, `--to markdown` emits a PR-ready summary, and `--inplace` writes only if the proof passes. `noma render --to markdown --out report.md` writes a portable Markdown handoff; `noma render --to pdf --out report.pdf` prints through Chromium via Puppeteer and accepts `--page-size`, margin flags, `--no-print-background`, and `--css`; `noma render --to docx --out report.docx` writes a Word-compatible package; `noma docx-data report.docx --out controls.json` extracts bound `::control` values from the DOCX custom XML part or visible `noma-control:<id>` content controls in the document body, headers, or footers plus native `::agent_task` / `::todo` checkbox state from those Word content controls; `noma docx-sync report.noma report.docx --out synced.noma --report sync.json` source-preservingly updates matching `::control default=` attributes and task done/status attributes from those values and can write a JSON change/unmatched report; `noma docx-review-data report.docx` extracts native Word comment/note bodies, authors, resolved state, reply links, tracked revisions and wrapper or range-marker moves, footnotes, endnotes, bookmarked headings, and bookmarked tables as JSON, including lightweight Markdown for bold/emphasis/code/internal wikilinks/external links in comments, notes, accepted heading titles, tracked revision text, and bookmarked table cells plus comment, note-reference, tracked-revision, and tracked-move anchors inside the document body, native headers/footers, and bookmarked native tables; `noma docx-review-sync report.noma report.docx --out reviewed.noma --report review-sync.json` source-preservingly updates accepted heading edits, adds anchored Word comments, threaded replies, and notes, updates/resolves/reopens/deletes existing source comments and replies from Word state, updates/deletes targeted source footnotes and endnotes from Word state when they can be matched, adds/updates/deletes source `::change_request` blocks from Word revisions and moves when they can be matched, applies simple accepted `::table` edits with granular header/cell/row/column patch ops, and applies simple accepted inline `::dataset` cell/row/column edits with `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, or `delete_dataset_column` before falling back to safe full-body dataset replacement. The review-sync report records applied changes and skipped native review items without duplicating the patched source. `noma diff before.noma after.noma --at YYYY-MM-DD` emits `::state_change` blocks for attribute additions, changes, and removals. Patch ops include `replace_block`, `replace_body`, `update_heading`, `add_comment`, `resolve_comment`, `remove_attribute`, `add_footnote`, `add_endnote`, `add_change_request`, `update_table_cell`, `update_table_header_cell`, `insert_table_row`, `delete_table_row`, `insert_table_column`, `delete_table_column`, `update_dataset_cell`, `insert_dataset_row`, `delete_dataset_row`, `insert_dataset_column`, `delete_dataset_column`, `move_block`, `add_block`, `delete_block`, `update_attribute`, and `rename_id`, plus transaction-shaped `--ops` files with optional pre/post validation.
-- GitHub Action — `uses: ferax564/noma@v0.13.0` validates, renders, and uploads HTML/LLM/JSON/Noma/Markdown/site artifacts in CI; `mode: proof` generates proof HTML, a Markdown PR summary, optional PR comments, and uploaded proof archives.
+- GitHub Action — `uses: ferax564/noma@v0.17.0` validates, renders, and uploads HTML/LLM/JSON/Noma/Markdown/site artifacts in CI; `mode: proof` generates proof HTML, a Markdown PR summary, optional PR comments, and uploaded proof archives.
 - VS Code extension — `ext install ferax564.noma-language` adds syntax highlighting, folding, embedded YAML/JSON/LaTeX/Mermaid/DOT scopes, and warning scopes for raw escape hatches.
 - MCP server — `@ferax564/noma-mcp-server` exposes `read_doc`, `list_ids`, `validate_doc`, and `patch_block` over stdio.
 - Agent SDK — `@ferax564/noma-agent-sdk` wraps the MCP server with TypeScript helpers for safe patching, capability descriptors, and transcript replay. Experimental during v0.x.
@@ -352,7 +353,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.16.0 plus post-release experimental Cloud work. The v1 source/patch freeze groundwork remains unchanged; Noma Cloud now implements PLAN §26 P0/P1/P2 as an experimental agent-human knowledge platform with exact-source hybrid RAG, cited Ask/abstention, trust and health, scoped agents, connectors/recipes, MCP/API/webhooks, portable backups, offline/realtime continuity, and enterprise policy. See [`CHANGELOG.md`](CHANGELOG.md) and `PLAN.md` §24.34–§24.38.
+**Status:** v0.17.0 technical-preview release candidate, not yet tagged, published, or deployed. The v1 source/patch freeze remains unchanged; the candidate combines the unpublished v0.16 conformance/spec work with the experimental Noma Cloud agent-human platform, atomic conflict checks, launch-boundary permission hardening, verified portable backups, full release gates, and an operator launch runbook. See [`CHANGELOG.md`](CHANGELOG.md), `PLAN.md` §24.34–§24.39, and [`docs/runbooks/cloud-launch.md`](docs/runbooks/cloud-launch.md).
 
 ## License
 

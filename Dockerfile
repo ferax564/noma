@@ -34,4 +34,9 @@ COPY --from=build /app/dist ./dist
 
 EXPOSE 3000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "require('node:http').get('http://127.0.0.1:3000/healthz',response=>process.exit(response.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+
+STOPSIGNAL SIGTERM
+
 CMD ["node", "dist/cloud-server.js"]

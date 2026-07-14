@@ -574,7 +574,8 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
   const method = req.method ?? "GET";
 
   if (method === "GET" && url.pathname === "/healthz") {
-    sendJson(res, 200, { ok: true });
+    const ready = config.platform.ready();
+    sendJson(res, ready ? 200 : 503, { ok: ready, storage: "sqlite" });
     return;
   }
 
@@ -1068,6 +1069,7 @@ async function routeAgents(req: IncomingMessage, res: ServerResponse, parts: str
     return;
   }
   if (action === "runs" && childId && parts[5] === "complete" && method === "POST") {
+    if (!config.platform.listAgentRuns(agent.id).some((run) => run.id === childId)) throw new HttpError(404, "Agent run not found");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const status = input.status === "completed" || input.status === "failed" || input.status === "cancelled" ? input.status : undefined;
     if (!status) throw new HttpError(400, "status must be completed, failed, or cancelled");
@@ -1088,8 +1090,8 @@ async function routeConnectors(req: IncomingMessage, res: ServerResponse, parts:
   const connectorId = parts[2];
   const action = parts[3];
   if (!connectorId && method === "GET") {
-    const visibleSites = config.store.listSites(user).map((site) => site.id);
-    sendJson(res, 200, { connectors: config.platform.listConnectors(visibleSites) });
+    const connectors = config.platform.listConnectors().filter((connector) => connectorRole(config, user, connector));
+    sendJson(res, 200, { connectors: connectors.map(publicConnector) });
     return;
   }
   if (!connectorId && method === "POST") {
@@ -1108,12 +1110,12 @@ async function routeConnectors(req: IncomingMessage, res: ServerResponse, parts:
       createdAt: now,
       updatedAt: now,
     };
-    sendJson(res, 201, platformInput(() => config.platform.putConnector(connector)));
+    sendJson(res, 201, publicConnector(platformInput(() => config.platform.putConnector(connector))));
     return;
   }
   const connector = visibleConnector(config, user, stringPathPart(connectorId, "Connector ID"));
   if (!action && method === "GET") {
-    sendJson(res, 200, { ...connector, sources: config.platform.listConnectorSources(connector.id) });
+    sendJson(res, 200, { ...publicConnector(connector), sources: config.platform.listConnectorSources(connector.id) });
     return;
   }
   if (action === "sources" && method === "GET") {
@@ -1121,9 +1123,15 @@ async function routeConnectors(req: IncomingMessage, res: ServerResponse, parts:
     return;
   }
   if (action === "sources" && method === "POST") {
+    requireConnectorRole(config, user, connector, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const documentId = optionalCloudId(input.documentId, "Document");
-    if (documentId) await requireResourceAccess(config, principal, "document", documentId, "editor");
+    if (documentId) {
+      await requireResourceAccess(config, principal, "document", documentId, "editor");
+      if (connector.siteId && !config.store.readSite(connector.siteId)?.documentIds.includes(documentId)) {
+        throw new HttpError(409, "Connector sources must belong to the connector's space");
+      }
+    }
     const syncedAt = config.now().toISOString();
     const source: ConnectorSourceRecord = {
       id: `${connector.id}:${sha256Hex(stringInput(input, "externalId")).slice(0, 18)}`,
@@ -1150,7 +1158,8 @@ async function routeRecipes(req: IncomingMessage, res: ServerResponse, parts: st
   const recipeId = parts[2];
   const action = parts[3];
   if (!recipeId && method === "GET") {
-    sendJson(res, 200, { recipes: config.platform.recipes() });
+    const recipes = config.platform.recipes().filter((recipe) => recipeRole(config, user, recipe));
+    sendJson(res, 200, { recipes: recipes.map(publicRecipe) });
     return;
   }
   if (!recipeId && method === "POST") {
@@ -1159,39 +1168,51 @@ async function routeRecipes(req: IncomingMessage, res: ServerResponse, parts: st
     if (siteId) await requireResourceAccess(config, principal, "site", siteId, "editor");
     const now = config.now().toISOString();
     const trigger = optionalRecord(input.trigger, "trigger") ?? {};
+    const agentId = optionalString(input.agentId);
+    const capabilitySet = requiredStringArray(input.capabilitySet, "capabilitySet", 100);
+    if (agentId) {
+      const agent = ownedAgent(config, user, agentId);
+      const ungranted = capabilitySet.find((capability) => !agent.capabilities.includes(capability));
+      if (ungranted) throw new HttpError(409, `Recipe requests an ungranted agent capability: ${ungranted}`);
+    }
+    const webhookSecretHash = trigger.webhookSecretHash === undefined ? undefined : shaInput(trigger.webhookSecretHash, "trigger.webhookSecretHash");
     const recipe: AgentRecipe = {
       id: uniqueId(config),
       name: stringInput(input, "name").slice(0, 120),
       purpose: "custom",
       ...(siteId ? { siteId } : {}),
-      ...(optionalString(input.agentId) ? { agentId: optionalString(input.agentId) } : {}),
+      ...(agentId ? { agentId } : {}),
       trigger: {
         modes: recipeTriggerModes(trigger.modes),
         ...(optionalString(trigger.schedule) ? { schedule: optionalString(trigger.schedule) } : {}),
         ...(optionalString(trigger.event) ? { event: optionalString(trigger.event) } : {}),
-        ...(optionalString(trigger.webhookSecretHash) ? { webhookSecretHash: optionalString(trigger.webhookSecretHash) } : {}),
+        ...(webhookSecretHash ? { webhookSecretHash } : {}),
       },
-      capabilitySet: requiredStringArray(input.capabilitySet, "capabilitySet", 100),
+      capabilitySet,
       steps: requiredStringArray(input.steps, "steps", 100),
       enabled: input.enabled !== false,
       createdBy: user.id,
       createdAt: now,
       updatedAt: now,
     };
-    sendJson(res, 201, config.platform.putRecipe(recipe));
+    sendJson(res, 201, publicRecipe(config.platform.putRecipe(recipe)));
     return;
   }
   if (action === "runs" && method === "GET") {
+    requireRecipeRole(config, user, stringPathPart(recipeId, "Recipe ID"), "viewer");
     sendJson(res, 200, { runs: config.platform.listRecipeRuns(recipeId) });
     return;
   }
   if (action === "runs" && method === "POST") {
     const input = await readJsonBody(req, config.maxBodyBytes);
+    const recipe = requireRecipeRole(config, user, stringPathPart(recipeId, "Recipe ID"), "editor");
+    const triggerMode = recipeTriggerMode(input.triggerMode);
+    if (triggerMode === "webhook") requireRecipeWebhookSecret(req, recipe);
     const run: RecipeRun = {
       id: uniqueId(config),
       recipeId: stringPathPart(recipeId, "Recipe ID"),
       triggeredBy: user.id,
-      triggerMode: recipeTriggerMode(input.triggerMode),
+      triggerMode,
       input: optionalRecord(input.input, "input") ?? {},
       status: "planned",
       plan: [],
@@ -1275,6 +1296,8 @@ async function routeAgentGateway(req: IncomingMessage, res: ServerResponse, part
     throw new HttpError(400, "Unsupported MCP method");
   }
   if (action === "webhooks" && parts[3] && method === "POST") {
+    const recipe = requireRecipeRole(config, user, parts[3], "editor");
+    requireRecipeWebhookSecret(req, recipe);
     const input = await readJsonBody(req, config.maxBodyBytes);
     const run: RecipeRun = { id: uniqueId(config), recipeId: parts[3], triggeredBy: user.id, triggerMode: "webhook", input, status: "planned", plan: [], mutationPolicy: "proof_proposal_only", startedAt: config.now().toISOString() };
     sendJson(res, 202, platformInput(() => config.platform.runRecipe(run)));
@@ -2884,7 +2907,7 @@ async function routeCollaborators(
       updatedAt: config.now().toISOString(),
       updatedBy: principal.user?.id ?? record.updatedBy,
     };
-    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord);
+    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord, (record as CloudDocumentRecord).hash);
     else await writeSite(config, next as CloudSiteRecord);
     if (principal.user) recordActivity(config, principal.user, "permission.updated", kind, record.id, { userId, role });
     sendJson(res, 200, { collaborators: Object.entries(next.permissions).map(([id, permission]) => ({ userId: id, ...permission })) });
@@ -2903,7 +2926,7 @@ async function routeCollaborators(
       updatedAt: config.now().toISOString(),
       updatedBy: principal.user?.id ?? record.updatedBy,
     };
-    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord);
+    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord, (record as CloudDocumentRecord).hash);
     else await writeSite(config, next as CloudSiteRecord);
     if (principal.user) recordActivity(config, principal.user, "permission.removed", kind, record.id, { userId: collaboratorId });
     sendJson(res, 200, { collaborators: Object.entries(next.permissions).map(([id, permission]) => ({ userId: id, ...permission })) });
@@ -2994,7 +3017,7 @@ async function routeShares(
       updatedAt: now,
       updatedBy: access.user?.id ?? record.updatedBy,
     };
-    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord);
+    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord, (record as CloudDocumentRecord).hash);
     else await writeSite(config, next as CloudSiteRecord);
     recordActivity(config, user, "share.created", kind, record.id, { shareId: share.id, role });
     sendJson(res, 201, {
@@ -3016,7 +3039,7 @@ async function routeShares(
       updatedAt: now,
       updatedBy: user.id,
     };
-    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord);
+    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord, (record as CloudDocumentRecord).hash);
     else await writeSite(config, next as CloudSiteRecord);
     recordActivity(config, user, "share.revoked", kind, record.id, { shareId });
     sendJson(res, 200, { shares: next.shareLinks.map(shareSummary) });
@@ -3096,7 +3119,7 @@ async function updateDocument(
     updatedAt: config.now().toISOString(),
     updatedBy: access.user?.id ?? `share:${access.share?.id ?? "unknown"}`,
   };
-  await writeDocument(config, record);
+  await writeDocument(config, record, existing.hash);
   if (access.user) recordActivity(config, access.user, "document.updated", "document", record.id, { hash: record.hash });
   return record;
 }
@@ -3335,8 +3358,15 @@ async function readUser(config: CloudServerConfig, id: string): Promise<CloudUse
   return record;
 }
 
-async function writeDocument(config: CloudServerConfig, record: CloudDocumentRecord): Promise<void> {
-  config.store.writeDocument(record);
+async function writeDocument(config: CloudServerConfig, record: CloudDocumentRecord, expectedHash?: string): Promise<void> {
+  if (config.store.writeDocument(record, expectedHash)) return;
+  const current = config.store.readDocument(record.id);
+  throw new HttpError(409, "Document changed while the update was being applied", {
+    code: "document_conflict",
+    expectedHash,
+    currentHash: current?.hash,
+    currentUpdatedAt: current?.updatedAt,
+  });
 }
 
 async function writeSite(config: CloudServerConfig, record: CloudSiteRecord): Promise<void> {
@@ -4214,8 +4244,48 @@ function connectorKinds(value: unknown): ConnectorKind[] {
 function visibleConnector(config: CloudServerConfig, user: CloudUserRecord, connectorId: string): KnowledgeConnector {
   const connector = config.platform.listConnectors().find((item) => item.id === connectorId);
   if (!connector) throw new HttpError(404, "Connector not found");
-  if (connector.createdBy !== user.id && (!connector.siteId || !config.store.resourceAccess(user.id, "site", connector.siteId))) throw new HttpError(403, "Connector access is required");
+  if (!connectorRole(config, user, connector)) throw new HttpError(403, "Connector access is required");
   return connector;
+}
+
+function connectorRole(config: CloudServerConfig, user: CloudUserRecord, connector: KnowledgeConnector): CloudRole | undefined {
+  if (connector.createdBy === user.id) return "owner";
+  return connector.siteId ? config.store.resourceAccess(user.id, "site", connector.siteId)?.role : undefined;
+}
+
+function requireConnectorRole(config: CloudServerConfig, user: CloudUserRecord, connector: KnowledgeConnector, role: CloudRole): CloudRole {
+  const actual = connectorRole(config, user, connector);
+  if (!actual || roleRank[actual] < roleRank[role]) throw new HttpError(403, `${role} connector access is required`);
+  return actual;
+}
+
+function publicConnector(connector: KnowledgeConnector): Omit<KnowledgeConnector, "configuration"> & { configurationKeys: string[] } {
+  const { configuration, ...safe } = connector;
+  return { ...safe, configurationKeys: Object.keys(configuration).sort() };
+}
+
+function recipeRole(config: CloudServerConfig, user: CloudUserRecord, recipe: AgentRecipe): CloudRole | undefined {
+  if (recipe.createdBy === "system" || recipe.createdBy === user.id) return "owner";
+  return recipe.siteId ? config.store.resourceAccess(user.id, "site", recipe.siteId)?.role : undefined;
+}
+
+function requireRecipeRole(config: CloudServerConfig, user: CloudUserRecord, recipeId: string, role: CloudRole): AgentRecipe {
+  const recipe = config.platform.recipes().find((item) => item.id === recipeId);
+  if (!recipe) throw new HttpError(404, "Recipe not found");
+  const actual = recipeRole(config, user, recipe);
+  if (!actual || roleRank[actual] < roleRank[role]) throw new HttpError(403, `${role} recipe access is required`);
+  return recipe;
+}
+
+function publicRecipe(recipe: AgentRecipe): Record<string, unknown> {
+  const { webhookSecretHash, ...trigger } = recipe.trigger;
+  return { ...recipe, trigger: { ...trigger, webhookSecretConfigured: webhookSecretHash !== undefined } };
+}
+
+function requireRecipeWebhookSecret(req: IncomingMessage, recipe: AgentRecipe): void {
+  if (!recipe.trigger.webhookSecretHash) return;
+  const secret = headerValue(req, "x-noma-recipe-webhook-secret");
+  if (!secret || sha256Hex(secret) !== recipe.trigger.webhookSecretHash) throw new HttpError(401, "Valid recipe webhook secret required");
 }
 
 function permissionLineage(value: unknown): ConnectorSourceRecord["upstreamPermissions"] {
@@ -4257,17 +4327,33 @@ function backupBundleInput(value: unknown): NomaBackupBundle {
   const manifest = optionalRecord(bundle.manifest, "bundle.manifest");
   if (!manifest || manifest.format !== "noma-cloud-backup-v1") throw new HttpError(400, "Unsupported backup format");
   requiredIsoDate(manifest.exportedAt, "bundle.manifest.exportedAt");
+  if (!Array.isArray(manifest.files)) throw new HttpError(400, "bundle.manifest.files must be an array");
   if (!Array.isArray(bundle.files)) throw new HttpError(400, "bundle.files must be an array");
+  const documentIds = new Set<string>();
+  const paths = new Set<string>();
   for (const [index, item] of bundle.files.entries()) {
     const file = optionalRecord(item, `bundle.files[${index}]`)!;
-    stringInput(file, "path");
-    stringInput(file, "documentId");
+    const path = stringInput(file, "path");
+    const documentId = stringInput(file, "documentId");
+    assertCloudId(documentId, "Document");
+    if (path !== `documents/${documentId}.noma`) throw new HttpError(400, `bundle.files[${index}].path must match its document ID`);
+    if (documentIds.has(documentId) || paths.has(path)) throw new HttpError(400, "Backup bundle contains duplicate documents or paths");
+    documentIds.add(documentId);
+    paths.add(path);
     stringInput(file, "title");
     shaInput(file.hash, `bundle.files[${index}].hash`);
     if (typeof file.source !== "string") throw new HttpError(400, `bundle.files[${index}].source must be a string`);
     requiredIsoDate(file.updatedAt, `bundle.files[${index}].updatedAt`);
   }
-  return bundle as unknown as NomaBackupBundle;
+  const typed = bundle as unknown as NomaBackupBundle;
+  const expectedManifestFiles = typed.files.map(({ source: _source, ...file }) => file);
+  if (JSON.stringify(typed.manifest.files) !== JSON.stringify(expectedManifestFiles)) {
+    throw new HttpError(400, "Backup manifest does not match bundle files");
+  }
+  const digest = shaInput(bundle.digest, "bundle.digest");
+  const actualDigest = sha256Hex(`${JSON.stringify(typed.manifest)}\n${typed.files.map((file) => `${file.path}\n${file.source}`).join("\n")}`);
+  if (digest !== actualDigest) throw new HttpError(400, "Backup bundle digest does not match its contents");
+  return typed;
 }
 
 function shaInput(value: unknown, label: string): string {
@@ -4511,4 +4597,16 @@ if (mainPath && fileURLToPath(import.meta.url) === mainPath) {
   server.listen(port, host, () => {
     console.log(`noma cloud listening on http://${host}:${port}`);
   });
+  const shutdown = (signal: NodeJS.Signals): void => {
+    console.log(`noma cloud received ${signal}; closing`);
+    server.close((error) => {
+      if (error) {
+        console.error(error);
+        process.exitCode = 1;
+      }
+    });
+    server.closeIdleConnections();
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
 }

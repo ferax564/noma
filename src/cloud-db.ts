@@ -824,9 +824,10 @@ export class NomaCloudDatabase {
     });
   }
 
-  writeDocument(record: CloudDocumentRecord): void {
-    const write = this.db.transaction((next: CloudDocumentRecord) => {
+  writeDocument(record: CloudDocumentRecord, expectedHash?: string): boolean {
+    const write = this.db.transaction((next: CloudDocumentRecord, expected: string | undefined): boolean => {
       const previous = this.db.prepare("SELECT title, hash FROM documents WHERE id = ?").get(next.id) as DocumentHeadRow | undefined;
+      if (expected !== undefined && previous?.hash !== expected) return false;
       const payload = JSON.stringify(next);
       this.db
         .prepare(
@@ -866,8 +867,9 @@ export class NomaCloudDatabase {
       this.replacePermissions("document", next.id, next.permissions);
       this.replaceShares("document", next.id, next.shareLinks);
       this.replaceBlocks(next);
+      return true;
     });
-    write(record);
+    return write(record, expectedHash);
   }
 
   readSite(id: string): CloudSiteRecord | undefined {

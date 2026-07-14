@@ -11,7 +11,7 @@ experimental until the v0.2.0 workflow layer lands.
 - Node.js 20+ and the matching npm packages published
 - Clean working tree on the release tag:
   ```bash
-  git checkout v0.13.0
+  git checkout v0.17.0
   git status
   ```
 
@@ -22,7 +22,7 @@ npm run build -w @ferax564/noma-mcp-server
 python -m venv /tmp/noma-py-verify
 . /tmp/noma-py-verify/bin/activate
 python -m pip install --upgrade pip build twine
-python -m pip install -e 'packages/agent-sdk-py/[test]'
+python -m pip install -e 'packages/agent-sdk-py[test]'
 python -m pytest packages/agent-sdk-py/tests
 ```
 

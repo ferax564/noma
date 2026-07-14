@@ -231,6 +231,10 @@ export class CloudKnowledgePlatform {
     this.db.close();
   }
 
+  ready(): boolean {
+    return this.db.prepare("SELECT 1").pluck().get() === 1;
+  }
+
   putTrust(trust: KnowledgeTrust): KnowledgeTrust {
     this.put("trust", `${trust.documentId}:${trust.blockId}`, trust, {
       ownerId: trust.ownerId,
@@ -553,6 +557,8 @@ export class CloudKnowledgePlatform {
   startAgentRun(run: AgentRun): AgentRun {
     const agent = this.readAgent(run.agentId);
     if (!agent || agent.status !== "active") throw new Error("Agent identity is not active");
+    const ungranted = run.requestedCapabilities.find((capability) => !agent.capabilities.includes(capability));
+    if (ungranted) throw new Error(`Agent run requests an ungranted capability: ${ungranted}`);
     const policy = this.enterprisePolicy();
     if (!policy.modelAllowlist.includes(agent.modelPolicy.model)) throw new Error("Agent model is no longer allowed");
     if (policy.requireZeroRetentionModels && !agent.modelPolicy.zeroRetention) throw new Error("Agent model does not meet zero-retention policy");

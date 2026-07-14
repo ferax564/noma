@@ -568,7 +568,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.13.0
+      - uses: ferax564/noma@v0.17.0
         with:
           input: docs/spec.noma
           output: dist/spec.html
@@ -592,7 +592,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: ferax564/noma@v0.13.0
+      - uses: ferax564/noma@v0.17.0
         with:
           mode: proof
           input: docs/spec.noma

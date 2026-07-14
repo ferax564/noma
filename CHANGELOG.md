@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-07-14
+
 ### Added
 
 - **Complete Noma Cloud agent-human knowledge platform (PLAN §26 P0/P1/P2):** block-native hybrid retrieval now preserves exact `.noma` source spans, stable block IDs, version hashes, content types, provenance, trust/freshness, and query-time access decisions; Ask Noma returns confidence, source conflicts, exact citations, or explicit abstention; trust graphs, RAG evaluation fixtures, knowledge health queues, LLM Wiki suggestions/merge drafts, enriched change inboxes, and explicitly scoped/budgeted agent identities complete the P0 trust loop.
@@ -25,15 +27,20 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Launch-boundary permission isolation:** connector configuration values no longer leave the server; viewers can inspect connector lineage but only editors can synchronize sources, and a source cannot be attached across space boundaries. Custom recipes are visible only to their creator or permitted space, editor access is required to trigger them, webhook secret hashes are never returned, agent runs reject ungranted capabilities, and a run cannot be completed through another agent's route.
+- **Atomic Cloud writes and backup integrity:** document compare-and-swap now executes inside the SQLite write transaction, closing the race between an accepted hash precondition and persistence. Backup import verifies the deterministic bundle digest, manifest/file agreement, paths, IDs, and duplicates before planning or applying changes.
 - **Cloud account sessions:** the Cloud header now has explicit invitation-code and existing-user-token fields plus Register, Log In, and Sign Out actions. Registration no longer depends on a blocking browser prompt, and a newly authenticated user enters a ready starter workspace immediately.
 - **Cloud control accessibility:** the source editor, link actions, repeated refresh actions, folder shortcuts, issue transitions, and page/issue comment fields now expose specific accessible names. The browser regression test rejects duplicate IDs, unnamed controls, and unlabeled symbol-only actions.
 
 ### Changed
 
+- **Release metadata:** the CLI, MCP server/registry descriptor, and LSP move to v0.17.0; the independently versioned TypeScript Agent SDK moves to v0.1.5 with v0.17.0 toolchain dependencies. This is the next public candidate after v0.15.0 because v0.16.0 was prepared but never tagged or published.
+- **Launch and release gates:** the release workflow now runs the complete TypeScript, lint, core, conformance, package, SDK, MCP, LSP, Python, memory, release-consistency, site, and PDF gate before a manually dispatched tag is created or packages are published. Existing manual tags are checked out before verification, release creation no longer masks unrelated failures, Docker exposes a real SQLite readiness check and graceful shutdown, and the MCP registry descriptor is part of mechanical version checks and bumps.
 - **Repository gates:** `test:full` now includes MCP, LSP, Python SDK, memory-drift, and release-consistency checks; the coverage command works without invalid `NODE_OPTIONS`; release checks cover every current spec heading and the Agent SDK MCP pin; the dependency tree audits with zero known vulnerabilities.
 
 ### Security
 
+- **Technical-preview hardening:** custom recipe and connector APIs now fail closed across workspace boundaries, recipe webhooks can require a stored SHA-256 secret, agent run requests cannot exceed the identity capability set, and deterministic backups reject digest or manifest tampering before any write.
 - **Fail-closed production Cloud:** production startup now requires access and invitation secrets unless deliberately overridden, API and registration routes have bounded per-client rate limits with `429`/retry metadata, collaboration responses no longer expose permission maps or hashed share records, and static/dynamic responses emit CSP, referrer, framing, MIME-sniffing, and permissions-policy headers.
 
 ## [0.16.0] — 2026-06-13

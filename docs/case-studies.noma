@@ -61,7 +61,7 @@ See the rendered planning demo at [examples/agent-plan.html](../examples/agent-p
 Technical docs need code blocks, warnings, diagrams, examples, cross-links, and CI previews. Noma keeps the source small while the GitHub Action validates and renders the artifact.
 
 ```yaml
-- uses: ferax564/noma@v0.13.0
+- uses: ferax564/noma@v0.17.0
   with:
     input: docs/spec.noma
     output: dist/spec.html

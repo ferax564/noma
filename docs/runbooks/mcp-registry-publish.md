@@ -32,9 +32,9 @@ curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.fe
 ## On each release
 
 `server.json` carries the release version twice (top-level `version` and
-`packages[0].version`). `npm run release -- bump` does not yet know about this
-file — bump both fields manually, then re-run `mcp-publisher publish` after
-the npm release is live.
+`packages[0].version`). `npm run release -- bump <version>` updates both fields,
+and `npm run release -- check` rejects drift. Re-run `mcp-publisher publish`
+after the matching npm release is live.
 
 ## Aggregators (optional, after the official registry)
 
