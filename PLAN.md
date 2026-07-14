@@ -2024,6 +2024,32 @@ The criterion fully closes when this (or a community binding) ships in its own
 repo; until then it is in-repo evidence that the frozen surface is implementable
 from the spec alone.
 
+### §24.37 — post-v0.16 agent-native Cloud collaboration (2026-07-14)
+
+The `codex/agent-native-cloud` feature branch was reconciled onto the v0.16
+baseline as the first complete human-and-agent collaboration slice for Noma
+Cloud.
+
+- **Safe shared editing.** Immutable document revisions, restore-as-new-version,
+  and hash-preconditioned writes preserve local drafts instead of allowing a
+  stale human or agent save to overwrite newer work.
+- **Confluence-style navigation and lifecycle.** Permission-scoped FTS5 search,
+  current/all-space scope, recents, favorites, six page templates, Markdown/
+  Noma/text import, and recoverable page/space trash now surround the source.
+- **Human collaboration.** Block/line-anchored threaded comments, stable user
+  mentions, notifications, version-bound approvals, activity history, and
+  managed group grants share one permission model across pages and spaces.
+- **Work beside knowledge.** Space-backed projects provide issue keys, typed
+  work items, workflows, boards, backlog, sprints, estimates, due dates,
+  comments, links, and immutable issue history.
+- **Proofed agent collaboration.** Agents and editors propose block-level patch
+  transactions linked to work issues; the server records a Noma safety proof,
+  requires an independent editor approval, and rechecks the current document
+  before apply.
+- **Production posture.** Fail-closed production secrets, rate limits, security
+  headers, reduced collaboration payloads, accessible browser controls, and a
+  real browser regression test cover the deployed Cloud surface.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can
@@ -2098,3 +2124,104 @@ conformance fixtures, (b) a Rust or Go parser for the valid/ fixtures,
 fixtures as the test suite (no design work needed), listed as official
 binding in README + spec. Channel: the launch posts + a `help wanted:
 second implementation` GitHub issue pinned on the repo.
+
+## 26. Noma Cloud — Agent-Human Knowledge Roadmap
+
+This roadmap is informed by the July 2026 market scan in
+`docs/research-agent-human-knowledge-platforms.noma`. It does not change the
+v1 format freeze: Noma Cloud, its retrieval system, and its UI remain
+experimental surfaces outside the v1 source/patch compatibility promise.
+
+### 26.1 Product thesis
+
+> **Noma Cloud should be the knowledge workspace where humans author durable
+> source, agents retrieve exact evidence, and every machine write is reviewed
+> as a proofed block patch.**
+
+Confluence, Notion, Glean, Guru, and Slite have made permission-aware search,
+cited answers, connected sources, configurable agents, and content verification
+the competitive baseline. Noma's opening is not another generic AI chat panel.
+It is a coherent read/write trust loop built from stable IDs, typed blocks,
+source spans, hashes, validation, provenance, and independent approval.
+
+### 26.2 Required architecture
+
+```txt
+permission-scoped sources
+  → FTS + embeddings + typed-block + graph retrieval
+  → rerank by relevance + verification + freshness
+  → cited answer or explicit abstention
+  → plan + proofed patch proposal
+  → independent human approval
+  → apply against current block hashes
+  → immutable activity + evaluation record
+```
+
+Every retrieval record must preserve document ID, block ID, source span,
+version hash, content type, trust/freshness metadata, provenance, and the access
+decision used at query time. Search, RAG, LLM export, and agent tools must use
+the same permission filter.
+
+### 26.3 P0 — trustworthy retrieval and LLM Wiki
+
+1. **Block-native hybrid RAG** over SQLite FTS, embeddings, typed metadata,
+   graph edges, verification, and freshness. Do not index anonymous copied
+   chunks that cannot return to exact `.noma` source.
+2. **Ask Noma** with exact block/version citations, visible confidence, source
+   conflict display, and an insufficient-evidence refusal state.
+3. **Knowledge trust graph** with owner, verified-by/at, review-by,
+   supersedes, canonical-for, and source-of metadata.
+4. **RAG evaluation fixtures** for required sources, forbidden sources,
+   citation coverage, permission leakage, stale-source use, abstention,
+   latency, and cost.
+5. **Knowledge health queue** for stale pages, orphans, broken links, duplicate
+   candidates, contradictory claims, missing owners, and unanswered queries.
+6. **LLM Wiki mode** extending existing wikilinks/backlinks with suggested
+   links, missing concepts, canonical concept pages, typed relationships, and
+   agent-drafted merge proposals.
+7. **Agent change inbox** turning proofed patch proposals into a shared review
+   queue with plan, sources, requested capabilities, diff, validation, affected
+   IDs, reviewer, and apply status.
+8. **Scoped agent identities** with explicit page/space access, model policy,
+   capability set, budget, and run history. An agent never silently inherits
+   the triggering human's full access.
+
+### 26.4 P1 — connected and self-maintaining knowledge
+
+1. Connector framework for GitHub, Slack, Google Drive, Jira/Linear, and
+   filesystem sources with upstream permission, modified time, source URL, and
+   deletion/tombstone lineage.
+2. Narrow agent recipes for stale-doc review, meeting-to-decision conversion,
+   issue-to-runbook updates, research refresh, onboarding answers, and release
+   maintenance, with manual/scheduled/event/webhook triggers.
+3. Semantic collections across source blocks: open decisions, claims missing
+   evidence, risks by owner, stale citations, and agent changes awaiting review.
+4. External agent gateway over MCP/API/webhooks for scoped search, cited answer,
+   ID discovery, proof, proposal, review, and apply.
+5. Search/answer analytics for no-result queries, citation opens, rejected
+   answers, and completed tasks, aggregated without crossing access boundaries.
+6. Deterministic Git/backup bridge for `.noma` export/import, conflict reports,
+   and optional pull-request review.
+
+### 26.5 P2 — continuity and enterprise depth
+
+- Offline-capable PWA/local cache with full draft recovery and explicit merge
+  semantics.
+- Realtime human co-editing that preserves stable IDs, version history, and
+  proof preconditions; async proofed agent collaboration remains the default.
+- SSO/SCIM, retention, legal hold, data residency, audit export, connector and
+  model allowlists, zero-retention model options, and per-agent spend controls.
+
+### 26.6 Guardrails and success gates
+
+- Do not ship a generic vector-search chat box without exact citations,
+  permission parity, freshness signals, abstention, and evaluation fixtures.
+- Do not let agents mutate source outside the existing proof/approval/apply
+  contract.
+- Do not move canonical source into opaque Cloud-only rows; `.noma` export and
+  deterministic reconstruction remain product requirements.
+- Do not prioritize realtime cursors over retrieval trust, knowledge health,
+  conflict safety, or large-workspace performance.
+- Before committing to broad connectors or realtime work, validate the top
+  problems with five to eight target teams and collect real failed-search and
+  stale-answer examples.

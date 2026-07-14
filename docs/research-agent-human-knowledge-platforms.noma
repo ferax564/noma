@@ -1,0 +1,385 @@
+---
+title: Noma Cloud Research -- Agent-Human Knowledge Platforms
+date: 2026-07-14
+updated: 2026-07-14
+status: proposed
+profile: research
+stale_citation_days: 120
+tags: [research, noma-cloud, confluence, notion, rag, wiki, agents, collaboration]
+---
+
+# Noma Cloud Research -- Agent-Human Knowledge Platforms
+
+::summary
+The market has moved beyond adding a chat box to a wiki. Confluence, Notion,
+Glean, Guru, and Slite now compete on permission-aware search, cited answers,
+connected sources, governed agents, and knowledge freshness. The remaining
+opening for Noma is sharper: a block-native knowledge system where retrieval
+returns exact source-backed blocks, every answer exposes versioned citations,
+and every agent write becomes a proofed patch that a human can inspect and
+approve.
+::
+
+## Research scope
+
+This memo reviews public product material and user feedback available on
+2026-07-14 for:
+
+- Atlassian Confluence and Rovo
+- Notion, Notion AI, Custom Agents, and the developer platform
+- AI-native knowledge products including Glean, Guru, and Slite
+- recent Confluence and Notion user reviews and feature-request discussions
+
+The target audience is technical, research, product, and documentation teams.
+The time horizon is the next 12 to 24 months. Product pages establish shipped
+capabilities; review aggregations and community threads provide directional
+pain signals. Anecdotes are treated as evidence of a problem shape, not as
+market-size estimates.
+
+## Executive read
+
+::claim{id="claim-market-shift" confidence=0.92}
+Enterprise knowledge products are converging on one bundle: permission-aware
+retrieval, source-cited answers, cross-tool connectors, configurable agents,
+and governance around what agents can read and do.
+::
+
+::evidence{id="evidence-confluence-rovo" for="claim-market-shift" source="source-atlassian-rovo"}
+Atlassian positions Rovo around search, chat, agents, and studio, with connected
+knowledge across Confluence, Jira, Slack, and other enterprise applications.
+Its 2026 Confluence direction adds MCP-based partner agents and preserves
+context about source, author, project, and connected decisions.
+::
+
+::evidence{id="evidence-notion-agents" for="claim-market-shift" source="source-notion-releases"}
+Notion now combines enterprise search, connected sources, Custom Agents,
+agent-specific permissions, activity/version history, Plan Mode, and an
+External Agents API intended to make Notion an orchestration layer.
+::
+
+::evidence{id="evidence-ai-native-trust" for="claim-market-shift" source="source-guru-features"}
+Guru and Slite make verification, source citations, permissions, and freshness
+first-class parts of AI answers. Glean makes a permission-aware enterprise
+knowledge graph the retrieval foundation rather than treating the wiki as a
+flat folder of pages.
+::
+
+The competitive baseline is therefore higher than "RAG inside the wiki."
+Users expect answers to respect permissions, cite sources, and reflect current
+content. Admins expect agent scopes, activity trails, cost controls, and the
+ability to stop unsafe automation. Authors still report slow large workspaces,
+hard navigation, confusing permissions, stale duplicates, and setup complexity.
+
+Noma should not copy the breadth of Confluence or Notion. It should use the
+assets those products do not have as a coherent contract: readable source,
+stable block IDs, typed knowledge, block hashes, validation, deterministic LLM
+context, and proof-before-apply patch operations.
+
+## Market baseline
+
+::table{header align="l,l,l,l"}
+| Product | Current center of gravity | Strong market signal | Opening for Noma |
+| Confluence + Rovo | Jira-connected wiki, enterprise search, chat, agents, studio, MCP partner skills | Deep work graph and action across Atlassian tools | Simpler source-first workspace with transparent block-level lineage and lower governance complexity |
+| Notion | Flexible docs/databases plus enterprise search, agents, external-agent orchestration, and developer platform | Excellent authoring flexibility and fast agent platform expansion | Durable portable source, safer writes, clearer knowledge contracts, and less workspace sprawl |
+| Glean | Permission-aware enterprise search and knowledge graph across many systems | Best-of-breed cross-source retrieval context | Authoritative creation and maintenance layer, not only a search overlay |
+| Guru | Verified knowledge, cited answers, knowledge agents, MCP delivery | Trust, verification, and auditability | Typed evidence and versioned block proofs that remain portable outside the service |
+| Slite | Self-maintaining AI knowledge base with Ask/Agent, verification, and block edits | Tight loop from answer to document maintenance | Open source-backed format plus rigorous agent change review |
+::
+
+## What users keep asking for
+
+### Confluence pain clusters
+
+G2's 2026 review aggregation identifies navigation/search friction and slow
+performance as repeated themes, each with 83 mentions; difficult page
+management appears in 70, learning curve in 64, and overwhelming complexity in
+59. Recent individual reviews add stale or duplicate search results, confusing
+permissions, notification fatigue, plugin dependence, and rising cost. These
+counts describe G2's review corpus, not the whole market, but the clustering is
+consistent enough to guide product priorities.
+
+::table{header align="l,l,l,l"}
+| Problem | User goal | What breaks | Noma response |
+| Find the current answer | Retrieve one trustworthy page or block quickly | Search returns stale duplicates and deep page trees hide context | Hybrid retrieval ranked by permission, verification, freshness, type, and graph relationships |
+| Keep the space understandable | Add knowledge without creating a maze | Nested pages, macros, and inconsistent naming produce sprawl | Opinionated spaces, typed templates, automatic link suggestions, orphan/duplicate detection |
+| Share safely | Understand who can see and change knowledge | Layered permissions are easy to misconfigure | Explainable effective-access view plus small role vocabulary and agent-specific scopes |
+| Work at scale | Open and edit large spaces predictably | Heavy pages and large spaces become slow | Block-indexed reads, progressive loading, bounded views, performance budgets |
+| Maintain knowledge | Know what is stale, unused, or duplicated | Governance depends on discipline or add-ons | Verification owners, review-by dates, supersession, and automatic health queues |
+::
+
+### Notion's most requested feature themes
+
+Offline access was the clearest long-running request. Notion itself described
+the August 2025 offline release as the feature people had been waiting for, but
+said only essential blocks worked initially. 2026 reviews still describe
+limited database synchronization and unreliable access to some offline content.
+That distinction matters: the headline feature shipped, while the reliability
+and coverage request remains open.
+
+Granular permissions are another persistent theme. Notion added a
+"can create pages" database permission in March 2026, allowing users to create
+records without seeing other restricted entries. Community requests still ask
+for clearer row, column, property, and shared-view boundaries. Recurring tasks,
+performance with large databases, faster mobile capture, simpler setup, better
+search in grown workspaces, richer API throughput, and tighter Calendar/Mail
+integration recur across recent reviews and request threads.
+
+::table{header align="l,l,l,l"}
+| Request theme | Status by July 2026 | Frequency signal | Product lesson |
+| Offline/local reliability | Shipped in 2025, still partial for some blocks and database depth | Historically the loudest request; still present in 2026 reviews | Offline is a trust property, not a checkbox |
+| Granular permissions | Improving, including 2026 create-only database access | Repeated in team-focused request threads and reviews | Users need comprehensible boundaries more than dozens of opaque roles |
+| Performance at scale | Ongoing improvement, still reported for large pages/databases | Repeated in G2 reviews | Flexibility without performance budgets becomes product debt |
+| Recurring work and scheduling | Improved, but advanced recurrence remains requested | Repeated in 2025 community threads | Knowledge maintenance needs native schedules and triggers |
+| Simpler setup and navigation | Templates and AI help, but flexibility still overwhelms | G2: learning curve 1,907 mentions; limited features 1,032; unintuitive setup 944 | Progressive disclosure and opinionated defaults beat a blank canvas |
+| API and cross-app continuity | Developer platform expanding rapidly | Reviews still request higher limits and tighter Mail/Calendar/database flow | Agents and integrations must be first-class, observable clients |
+::
+
+## Ranked product problems
+
+::table{header align="l,c,c,c,l"}
+| Problem | Severity | Frequency signal | Confidence | Recommended move |
+| Untrusted or stale answers | Critical | High across wiki reviews and AI-native positioning | High | Build verification, freshness, supersession, citations, and answer refusal before broad autonomy |
+| Search returns documents, not usable context | High | High | High | Retrieve typed blocks with surrounding section, graph links, and exact source/version |
+| Agents can read but safe write-back is weak | Critical | Growing platform-level signal | High | Make plan -> proof -> independent approval -> apply the universal agent write path |
+| Knowledge sprawl and duplicate truth | High | High in both Confluence and Notion feedback | High | Add canonical pages, duplicate suggestions, orphans, missing concepts, and merge proposals |
+| Permission behavior is hard to reason about | Critical | High for team use | High | Provide effective-access explanations and use the same filter for search, RAG, exports, and agents |
+| Large workspaces become slow and noisy | High | High | Medium-high | Set page/block/query budgets and measure latency before adding realtime editing |
+| Automation lacks governance | High | Rising as agent directories grow | High | Add scoped agent identities, run logs, budgets, model policy, triggers, and kill switches |
+| Offline and portable continuity remains fragile | Medium-high | Persistent Notion signal | Medium-high | Preserve export/Git strengths now; research local-first sync after server correctness |
+::
+
+## Proposal portfolio
+
+### P0 -- trust and retrieval foundation
+
+1. **Block-native hybrid RAG.** Combine SQLite FTS, embeddings, typed block
+   metadata, page/space graph edges, freshness, verification, and access
+   checks. Index canonical source blocks rather than anonymous copied chunks.
+   Retrieval results must include document ID, block ID, source span, version
+   hash, visibility decision, and neighboring context.
+
+2. **Ask Noma with versioned citations.** Add a workspace question surface and
+   API that returns a short answer, exact block citations, confidence, and a
+   visible "insufficient evidence" state. Opening a citation should highlight
+   the source block and the version used to answer.
+
+3. **Knowledge trust graph.** Add owner, verified-by, verified-at, review-by,
+   supersedes, canonical-for, and source-of fields around existing Noma
+   blocks. Verified/current sources rank above unverified/stale ones. Conflicts
+   should be shown, not silently averaged by the model.
+
+4. **RAG evaluation harness.** Let a space keep golden questions with required
+   sources and forbidden sources. Measure retrieval recall, citation coverage,
+   permission leakage, stale-source use, answer abstention, latency, and cost
+   before changing models or index settings.
+
+5. **Knowledge health queue.** Generate actionable queues for stale pages,
+   missing owners, orphan pages, broken links, duplicate candidates,
+   contradictory claims, unanswered high-frequency queries, and documents an
+   agent used despite low trust.
+
+### P0 -- LLM Wiki and safe collaboration
+
+6. **LLM Wiki mode.** Extend existing page wikilinks/backlinks with suggested
+   links, missing-concept pages, canonical concept pages, typed relationships,
+   and duplicate merge proposals. Agents may draft or reorganize pages, but
+   every generated block carries provenance and every write remains a patch
+   proposal.
+
+7. **Agent change inbox.** Turn the existing proofed patch-proposal API into a
+   shared review queue. Show agent plan, requested capabilities, sources used,
+   diff, validations, affected IDs, reviewer, and apply status. Keep self-
+   approval blocked for material changes.
+
+8. **Human/agent presence model.** Treat an agent as a scoped collaborator with
+   its own identity, page/space access, model, budget, and action capabilities.
+   Never inherit the triggering human's full access implicitly.
+
+### P1 -- connected and self-maintaining knowledge
+
+9. **Connector framework with source lineage.** Start with GitHub, Slack, Google
+   Drive, Jira/Linear, and filesystem imports. Preserve upstream permission,
+   modified time, deletion/tombstone, and source URL. Avoid a shadow vector
+   store that loses the source system's access semantics.
+
+10. **Agent directory and recipes.** Ship narrow agents for stale-doc review,
+    meeting-to-decision conversion, issue-to-runbook updates, research refresh,
+    onboarding answers, and release-note maintenance. Support manual, scheduled,
+    event, and webhook triggers with per-run logs and budgets.
+
+11. **Semantic collections and views.** Let users query typed blocks across
+    pages -- all open decisions, claims missing evidence, risks by owner,
+    agent changes awaiting review -- without moving the source of truth into an
+    opaque database.
+
+12. **External agent gateway.** Expose permission-aware search, cited answer,
+    IDs, proof, proposal, and approval through MCP/API/webhooks. External agents
+    should receive the same scoped context and safety gates as native agents.
+
+13. **Search and answer analytics.** Record no-result queries, reopened search
+    sessions, citation opens, answer rejection, and successful task completion.
+    Use aggregates to prioritize missing knowledge; never expose hidden query
+    content across permission boundaries.
+
+### P2 -- continuity and enterprise depth
+
+14. **Git and backup bridge.** Provide scheduled `.noma` export/import with
+    deterministic paths, version hashes, conflict reports, and optional pull
+    request review. Portability is a product feature and a hedge against
+    knowledge-platform lock-in.
+
+15. **Offline-capable app.** Research a local-first/PWA cache only after save,
+    history, and merge semantics are explicit. The acceptance bar is full draft
+    recovery, deterministic conflict presentation, and predictable database/
+    asset coverage.
+
+16. **Realtime co-editing.** Add presence and multiplayer editing only when it
+    can preserve block IDs, version history, proof preconditions, and portable
+    `.noma` source. Async proofed collaboration remains the safer default for
+    agent-authored changes.
+
+17. **Enterprise governance.** SSO/SCIM, retention, legal hold, data residency,
+    audit export, connector allowlists, model allowlists, zero-retention model
+    options, and per-agent spend controls belong after the core trust loop is
+    proven.
+
+## Recommended sequence
+
+::table{header align="l,l,l"}
+| Horizon | Build | Success evidence |
+| This week | Specify block retrieval records, trust metadata, citation payload, agent identity, and golden-question fixtures | One fixture space can prove no permission leakage and exact block/version citations |
+| This quarter | Ship hybrid retrieval, Ask Noma, trust/health queues, LLM Wiki suggestions, and the agent change inbox | Users find current answers faster; cited blocks are opened; stale/duplicate content is repaired through approved patches |
+| Following quarter | Add two high-value connectors, agent recipes/triggers, semantic collections, and external-agent gateway | Agents complete bounded maintenance tasks with visible sources, budgets, and reviewer acceptance |
+| Deeper research | Offline sync, realtime co-editing, enterprise identity/retention, large-scale embedding operations | Architecture tests preserve source portability, block IDs, and proof semantics under concurrency |
+::
+
+## Product rules
+
+::decision{id="decision-rag-contract" status="proposed"}
+Noma Cloud should not ship a generic vector-search chat box. Embedded RAG is
+acceptable only when every retrieved item maps to permission-checked Noma
+source, a stable block ID, and a version hash; answers cite those items; weak
+evidence produces abstention; and any write returns through the proofed patch
+review loop.
+::
+
+::decision{id="decision-agent-collaborator" status="proposed"}
+Agents are collaborators, not invisible background features. Each agent has an
+identity, explicit access, declared capabilities, a model/budget policy, run
+history, and a human-owned approval boundary.
+::
+
+::risk{id="risk-generic-ai-suite" severity="high" owner="ferax564"}
+Copying Confluence or Notion feature for feature would bury Noma's defensible
+advantage under a broad SaaS roadmap. The product should lead with trustworthy
+block retrieval and proofed write-back, then add adjacent collaboration
+features only when they reinforce that loop.
+::
+
+::risk{id="risk-shadow-permissions" severity="critical" owner="ferax564"}
+A RAG index that does not share the source permission model can leak knowledge
+even when the page UI is secure. Permission filtering must happen during
+candidate retrieval, reranking, citation expansion, answer generation, and
+agent tool execution -- not only after an answer is produced.
+::
+
+## Source map
+
+Strongest capability evidence came from first-party Atlassian, Notion, Glean,
+Guru, and Slite product/help material. G2 supplied broader review clusters and
+recent individual examples. Reddit and community threads helped identify
+feature-request language, especially around offline mode, permissions, and
+recurring work, but those anecdotes are not used as quantitative market shares.
+No internal customer interviews, support tickets, or Noma usage analytics were
+available; the next research step should validate the top five problems with
+five to eight target teams before committing to connector or realtime work.
+
+## Source notes
+
+::citation{id="source-atlassian-rovo" url="https://www.atlassian.com/software/confluence/ai" accessed="2026-07-14"}
+Atlassian overview of Rovo search, chat, agents, studio, and connected knowledge
+inside Confluence.
+::
+
+::citation{id="source-atlassian-mcp" url="https://www.atlassian.com/blog/announcements/rovo-remix-3p-agents-confluence" accessed="2026-07-14"}
+Atlassian's 2026 direction for Confluence partner agents, MCP skills, and source
+context carried through the Teamwork Graph.
+::
+
+::citation{id="source-confluence-g2" url="https://www.g2.com/products/confluence/reviews?qs=pros-and-cons" accessed="2026-07-14"}
+G2 review aggregation for Confluence, including repeated navigation/search,
+performance, page-management, learning-curve, and complexity themes.
+::
+
+::citation{id="source-notion-search" url="https://www.notion.com/help/enterprise-search" accessed="2026-07-14"}
+Notion Enterprise Search documentation covering workspace, connected-app, web,
+and cited answer retrieval.
+::
+
+::citation{id="source-notion-releases" url="https://www.notion.com/releases" accessed="2026-07-14"}
+Notion release stream covering Plan Mode, Custom Agent admin controls, the
+agent directory, developer platform, and External Agents orchestration.
+::
+
+::citation{id="source-notion-custom-agents" url="https://www.notion.com/help/custom-agents" accessed="2026-07-14"}
+Notion documentation for agent tools/access, model choice, permissions,
+activity, version history, triggers, and maintenance.
+::
+
+::citation{id="source-notion-offline" url="https://www.notion.com/id/releases/2025-08-19" accessed="2026-07-14"}
+Notion's offline-mode release, described by the company as the feature users
+had been waiting for and initially covering the most essential blocks.
+::
+
+::citation{id="source-notion-create-permission" url="https://www.notion.com/releases/2026-03-05" accessed="2026-07-14"}
+Notion's create-only database permission, allowing new entries without access
+to other restricted records.
+::
+
+::citation{id="source-notion-g2" url="https://www.g2.com/products/notion/reviews?qs=pros-and-cons" accessed="2026-07-14"}
+G2 Notion review aggregation and recent review examples covering learning
+curve, missing features, large-workspace performance, permissions, search,
+offline limitations, API limits, and cross-app continuity.
+::
+
+::citation{id="source-notion-reddit-features" url="https://www.reddit.com/r/Notion/comments/1ikq64n/most_wanted_features/" accessed="2026-07-14"}
+2025 community feature-request thread with recurring requests for offline mode,
+granular database permissions, automation improvements, and recurring tasks.
+::
+
+::citation{id="source-guru-features" url="https://www.getguru.com/features" accessed="2026-07-14"}
+Guru product overview for verified knowledge, permissions, citations, audit
+lineage, MCP delivery, and agent actions in connected systems.
+::
+
+::citation{id="source-guru-verification" url="https://help.getguru.com/docs/what-is-verifcation" accessed="2026-07-14"}
+Guru documentation for automated verification signals and verification badges
+in search and AI-generated answers.
+::
+
+::citation{id="source-slite" url="https://slite.com/" accessed="2026-07-14"}
+Slite's self-maintaining knowledge-base direction, including agent search,
+block edits, verification, archive, comments, and connected sources.
+::
+
+::citation{id="source-slite-verification" url="https://slite.slite.page/p/F9erHftuXmOHY0/Doc-Verification" accessed="2026-07-14"}
+Slite documentation describing verified documents ranking above outdated ones
+in search and AI answers.
+::
+
+::citation{id="source-glean" url="https://www.glean.com/" accessed="2026-07-14"}
+Glean product overview for permission-aware enterprise search, agents, and
+cross-company context.
+::
+
+::citation{id="source-glean-knowledge-graph" url="https://docs.glean.com/security/knowledge-graph" accessed="2026-07-14"}
+Glean documentation describing its real-time enterprise knowledge graph and
+permission management foundation.
+::
+
+::agent_task{id="task-validate-market-research" scope="product-research"}
+Interview five to eight technical, research, or product teams that currently
+use Confluence, Notion, or both. Test the ranked problems, ask for recent failed
+search examples, and measure willingness to adopt block-cited answers plus
+proofed agent write-back before expanding the roadmap.
+::

@@ -312,6 +312,7 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 - [Starter templates](docs/templates.noma) — copyable research memo, decision record, technical spec, and agent refresh templates under `examples/templates/`.
 - [Web workbench guide](docs/workbench.noma) — screenshots and workflows for the browser-based Word-style `.noma` editor.
 - [Noma Cloud guide](docs/noma-cloud.noma) — screenshot-backed guide for workspaces, permissions, page editing, published sites, agent review, EZKeel deployment, and the query API.
+- [Agent-human knowledge platform research](docs/research-agent-human-knowledge-platforms.noma) — July 2026 Confluence, Notion, Glean, Guru, and Slite market scan plus the prioritized block-native RAG, LLM Wiki, trust, and agent collaboration roadmap.
 
 ## What ships today
 

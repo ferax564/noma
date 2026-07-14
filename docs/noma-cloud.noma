@@ -1,7 +1,7 @@
 ---
 title: Noma Cloud Guide
-version: 0.13.0
-updated: 2026-06-07
+version: 0.16.0
+updated: 2026-07-14
 audience: collaborators, researchers, documentation teams, agents
 ---
 
@@ -584,3 +584,9 @@ payload handling.
 Noma Cloud is the collaboration layer. The `.noma` source, renderer outputs,
 block IDs, validator, proof/patch ops, and CLI remain the durable product
 contract underneath it.
+
+For the market evidence and the next agent-human knowledge roadmap -- including
+block-native RAG, Ask Noma, LLM Wiki maintenance, scoped agent identities,
+knowledge health, connectors, and offline/realtime sequencing -- see
+[Agent-Human Knowledge Platform Research](research-agent-human-knowledge-platforms.html)
+and PLAN.md §26.
