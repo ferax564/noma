@@ -249,6 +249,11 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.top-secret-field input {
+  width: min(136px, 14vw);
+  min-width: 92px;
+}
+
 .cloud-status {
   margin-left: auto;
   min-width: 0;
@@ -296,6 +301,71 @@ textarea {
   padding: 8px;
 }
 
+.rail-search {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rail-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+}
+
+.rail-search input,
+.rail-search select,
+.rail-template-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 27px;
+  padding: 0 7px;
+  color: var(--ink);
+  font-size: 0.76rem;
+  text-transform: none;
+}
+
+.search-results {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.search-result,
+.navigation-row {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 30px;
+  gap: 1px;
+  padding: 5px 7px;
+  text-align: left;
+  white-space: normal;
+}
+
+.search-result .row-title,
+.navigation-row .row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result .row-meta,
+.navigation-row .row-meta {
+  color: var(--muted);
+  font-size: 0.67rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
 .rail-head {
   display: grid;
   gap: 4px;
@@ -337,6 +407,51 @@ textarea {
   margin-bottom: 5px;
 }
 
+.rail-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rail-section-title-row button {
+  min-height: 21px;
+  padding: 0 6px;
+  font-size: 0.65rem;
+  text-transform: none;
+}
+
+.rail-template-field {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 8px;
+  color: var(--faint);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.navigation-list {
+  display: grid;
+  gap: 3px;
+}
+
+.navigation-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.navigation-entry .navigation-row {
+  overflow: hidden;
+}
+
+.navigation-entry > button:last-child:not(:only-child) {
+  min-width: 0;
+  padding: 0 6px;
+}
+
 .pages-section {
   padding-bottom: 20px;
 }
@@ -345,7 +460,9 @@ textarea {
 .page-list,
 .diagnostics-list,
 .outline-list,
-.wiki-list {
+.wiki-list,
+.history-list,
+.collaboration-list {
   display: grid;
   gap: 5px;
 }
@@ -357,7 +474,9 @@ textarea {
 .site-row,
 .page-row,
 .diagnostic-row,
-.outline-row {
+.outline-row,
+.history-row,
+.collaboration-row {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--rule);
@@ -370,6 +489,74 @@ textarea {
   text-align: left;
   box-shadow: none;
   overflow: hidden;
+}
+
+.inspector-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inspector-heading-row h2 {
+  margin: 0;
+}
+
+.access-heading {
+  margin-top: 12px;
+  padding-top: 9px;
+  border-top: 1px solid var(--rule);
+}
+
+.history-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.history-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.history-meta {
+  color: var(--faint);
+  font-size: 0.66rem;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-list {
+  margin-top: 8px;
+}
+
+.collaboration-row {
+  gap: 4px;
+}
+
+.collaboration-row[data-unread="true"] {
+  border-color: rgba(18, 98, 104, 0.4);
+  background: var(--selected-bg);
+}
+
+.collaboration-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.collaboration-actions button {
+  min-height: 23px;
+  padding: 0 6px;
+  font-size: 0.67rem;
 }
 
 .site-row,
@@ -818,10 +1005,93 @@ textarea {
 }
 
 .stack-field input,
-.stack-field select {
+.stack-field select,
+.stack-field textarea {
   width: 100%;
   min-height: 25px;
   padding: 0 7px;
+}
+
+.compact-textarea {
+  min-height: 64px;
+  resize: vertical;
+  padding: 7px;
+  font: inherit;
+  line-height: 1.35;
+}
+
+.work-subsection {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+
+.work-subsection h3 {
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.work-create-grid {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.7fr) minmax(0, 1.3fr);
+  gap: 6px;
+}
+
+.work-board {
+  display: grid;
+  gap: 8px;
+}
+
+.work-column {
+  display: grid;
+  gap: 4px;
+}
+
+.work-column-title {
+  color: var(--faint);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.work-issue-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 7px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--panel);
+}
+
+.work-issue-row[aria-current="true"] {
+  border-color: var(--selected-border);
+  background: var(--selected-bg);
+}
+
+.work-issue-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.work-issue-actions {
+  display: flex;
+  gap: 3px;
+}
+
+.work-issue-actions button {
+  min-width: 23px;
+  min-height: 23px;
+  padding: 0 5px;
 }
 
 .patch-input {
@@ -1018,6 +1288,10 @@ button.wiki-row {
     flex: 1 1 130px;
     width: 100%;
     min-width: 0;
+  }
+
+  .top-secret-field {
+    flex-basis: 180px;
   }
 
   .space-rail,

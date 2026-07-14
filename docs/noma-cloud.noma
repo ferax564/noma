@@ -24,6 +24,8 @@ Use Noma Cloud when a `.noma` document should move beyond a local HTML file:
 - give viewers and editors different access
 - share stable page, artifact, and published-site links
 - let an agent patch a named block without rewriting the whole source
+- discuss and approve changes at a stable block or saved document version
+- manage delivery work with projects, issues, boards, backlog, and sprints in the same space
 - expose a permission-aware query API for future Codex plugins and automation
 
 The source remains plain Noma. The cloud layer adds persistence, users,
@@ -68,14 +70,23 @@ The EZKeel deployment uses `Dockerfile`, `ezkeel.yaml`, `npm run build:cloud`,
 
 ## Protect the cloud app
 
-Production deployments can put a global token gate in front of the cloud app
-and cloud APIs, plus a separate invitation code for user registration:
+Production deployments must provide a global token gate for the cloud app and
+cloud APIs plus a separate invitation code for user registration:
 
 ```bash
 NOMA_CLOUD_ACCESS_TOKEN_FILE=/data/noma/access-token \
 NOMA_CLOUD_INVITATION_CODE_FILE=/data/noma/invitation-code \
 npm start
 ```
+
+Noma Cloud refuses to start with `NODE_ENV=production` when either secret is
+missing. A deliberately public deployment can opt out explicitly with
+`NOMA_CLOUD_ALLOW_OPEN_ACCESS=1` and/or
+`NOMA_CLOUD_ALLOW_OPEN_REGISTRATION=1`. API requests are rate-limited by
+client address; deployments behind a trusted reverse proxy should set
+`NOMA_CLOUD_TRUST_PROXY=1`. `NOMA_CLOUD_RATE_LIMIT_MAX`,
+`NOMA_CLOUD_AUTH_RATE_LIMIT_MAX`, and `NOMA_CLOUD_RATE_LIMIT_WINDOW_MS` tune
+the defaults.
 
 Open the login page:
 
@@ -106,18 +117,130 @@ share tokens.
 After login, Noma Cloud uses a browser-stored Noma user token as the editing
 identity for API calls and UI permissions.
 
-1. Register from `login.html` with the cloud access token and invitation code,
-   or log in with an existing Noma user token.
-2. Edit the **User** field if you want a recognizable collaborator name.
-3. Use **Copy User ID** when another owner needs to invite you.
-4. Use **Copy Token** only for your own API calls or plugin development.
-5. Click **New Workspace** to create a separate research, book, or docs space.
-6. Use **New Page** to add another paper section, chapter, or reference page.
-7. Click a page in the left rail to switch documents.
+1. Pass the deployment gate in `login.html` when the server has a global access
+   token.
+2. In the Cloud header, enter a name and invitation code, then choose
+   **Register**. On deliberately open development deployments the invitation
+   field can stay empty.
+3. To resume an existing identity, paste its user token in **Token** and choose
+   **Log In**. **Sign Out** clears that browser session without deleting data.
+4. Use **Copy User ID** when another owner needs to invite you.
+5. Use **Copy Token** only for your own API calls or plugin development.
+6. Registration creates a starter workspace and paper page automatically.
+   Choose **New Space** when you need another research, book, or docs space.
+7. Use **New Page** to add another paper section, chapter, or reference page,
+   then click pages in the left rail to switch documents.
 
 The default first page is paper-oriented: abstract, research question, claim,
 evidence, methods, review table, findings, citation, bibliography, and review
 task. It is only a starter. Replace it with the structure your team needs.
+
+## Find, favorite, import, and recover content
+
+The left rail provides workspace navigation beyond the page tree:
+
+| Control | Behavior |
+|---|---|
+| Search | Full-text search over visible page titles, block titles, stable IDs, and body text. Scope it to the current space or every space you can access. Results open the matching page and source line. |
+| Page template | Starts a new page from blank, meeting-notes, decision-record, project-overview, technical-spec, or research-paper structure. |
+| Import | Uploads `.noma`, `.md`, `.markdown`, or plain text into the current space. Markdown intake pins stable heading IDs. |
+| Favorite | Adds the current page to a per-user Favorites list. Spaces can be favorited from their context menu. |
+| Recent | Tracks the pages and spaces opened by the current user. |
+| Trash | Lists pages and spaces moved out of active navigation and restores them without losing source or document history. |
+
+Search uses SQLite FTS5 and always intersects results with the caller's page or
+space permissions. Trashed content is excluded from active lists, search,
+published spaces, and database queries. Moving a page to trash preserves its
+space membership so restoration returns it to the same workspace and folder.
+
+Agents and integrations use the same lifecycle APIs:
+
+```text
+GET    /api/search?q=<text>&site=<optional-site-id>&limit=25
+GET    /api/navigation
+POST   /api/navigation/recent
+PUT    /api/navigation/favorites
+DELETE /api/navigation/favorites
+GET    /api/templates
+GET    /api/trash
+POST   /api/trash/document/<id>
+POST   /api/trash/document/<id>/restore
+POST   /api/trash/site/<id>
+POST   /api/trash/site/<id>/restore
+```
+
+When creating a page through `/api/documents` or
+`/api/sites/<site-id>/documents`, send `templateId` instead of `source`, or
+send `format: "markdown"` with Markdown source for server-side intake.
+
+## Collaborate, notify, and approve
+
+The inspector keeps review context beside the source instead of scattering it
+across email and a separate ticket system:
+
+| Panel | Behavior |
+|---|---|
+| Comments | Creates threads anchored to an optional stable block ID/alias and line. Replies retain the parent thread; authors and editors can resolve or reopen them. |
+| Notifications | Shows mentions, comment replies, approval requests, and approval decisions for the signed-in user. |
+| Approvals | Binds a reviewer decision to the current document hash. An approval for an older version cannot be accepted or applied as if it covered new content. |
+| Activity | Lists permission-scoped document and space events, including comments, approvals, sharing changes, trash/restore, and agent patch reviews. |
+| Groups | Creates managed user groups and grants a group viewer/editor access to a page or space. Space grants inherit to every page and update dynamically as membership changes. |
+
+Mention another collaborator with the stable syntax `@{user-id}`. Mentions are
+delivered only when that user can access the document. A group grant never
+copies hidden direct permissions to every member: search, navigation, API reads,
+and edit checks resolve current membership at request time.
+
+Core collaboration routes are available in both standalone document form and
+under `/api/sites/<site-id>/documents/<document-id>`:
+
+```text
+GET|POST /api/documents/<id>/comments
+POST     /api/documents/<id>/comments/<comment-id>/resolve
+GET|POST /api/documents/<id>/approvals
+PATCH    /api/documents/<id>/approvals/<approval-id>
+GET      /api/notifications
+POST     /api/notifications/read-all
+GET      /api/activity?document=<id>&site=<id>
+GET|POST /api/groups
+POST     /api/groups/<id>/members
+GET|POST /api/documents/<id>/group-collaborators
+```
+
+## Manage work beside knowledge
+
+The **Work** inspector gives each space an integrated Jira-style project. This
+keeps delivery context attached to the specs, decisions, research, and runbooks
+that define the work.
+
+Projects support:
+
+- unique keys such as `NOM`, producing stable issue keys like `NOM-42`
+- task, story, bug, and epic issue types
+- backlog, to-do, in-progress, in-review, and done workflow states with checked transitions
+- priorities, assignees, labels, estimates, due dates, and parent issues
+- query filters over text, status, type, priority, assignee, label, and sprint
+- board columns, a no-sprint backlog, planned/active/closed sprints, and one active sprint per project
+- unfinished-work carry-over when a sprint closes
+- issue comments, related/blocks/duplicates links, and immutable issue change history
+
+Project access comes from its space, including group grants. Viewers can browse
+and comment; editors can create and transition issues, manage sprints, and add
+links. The bounded API is suitable for agents and integrations:
+
+```text
+GET|POST /api/projects
+GET|PATCH /api/projects/<project-id-or-key>
+GET|POST /api/projects/<id>/issues
+GET|PATCH /api/projects/<id>/issues/<issue-id-or-key>
+GET|POST /api/projects/<id>/issues/<issue>/comments
+GET|POST /api/projects/<id>/issues/<issue>/links
+GET      /api/projects/<id>/issues/<issue>/history
+GET      /api/projects/<id>/board
+GET      /api/projects/<id>/backlog
+GET|POST /api/projects/<id>/sprints
+GET|PATCH /api/projects/<id>/sprints/<sprint-id>
+```
 
 ## Edit a page
 
@@ -194,8 +317,19 @@ The strongest evidence goes here.
 ::
 ```
 
-Click **Save** when the diagnostics are acceptable. The cloud server stores the
-source, title, hash, diagnostics, and block index in SQLite.
+Click **Save** when the diagnostics are acceptable. Every save includes the
+hash of the version you loaded. If another human or agent saved first, Noma
+keeps your draft intact and reports a conflict instead of overwriting their
+work. Use **Reload** to discard the draft and open the latest saved page.
+
+The **History** panel lists every saved content version. Owners and editors can
+restore an older version; restoration creates a new version, so the versions
+between the old state and the restored state remain available for comparison
+and audit. Permission and share-link changes do not create noisy content
+versions.
+
+The cloud server stores the source, title, hash, immutable revision history,
+diagnostics, and block index in SQLite.
 
 ::figure{id="cloud-editing-shot" src="../assets/docs/noma-cloud-editing.png" alt="Noma Cloud editing a paper with live preview, diagnostics, and outline derived from the Noma source." caption="Editing is source-first, but the preview, diagnostics, and outline update from the current AST so authors can catch structure issues while drafting."}
 ::
@@ -248,8 +382,10 @@ Noma Cloud has three roles:
 | Viewer | yes | no | no |
 
 Owners can invite another browser user by pasting that user's ID into **Invite
-user ID** and choosing viewer or editor. Site invitations also grant matching
-access to the pages currently in the workspace.
+user ID** and choosing viewer or editor. Space access is inherited by its pages,
+including pages created later. Owners can also invite a managed group; changing
+group membership immediately changes effective access without rewriting each
+page's permission list.
 
 Share links are token-based:
 
@@ -267,12 +403,21 @@ they require a real Noma Cloud user token.
 ::figure{id="cloud-share-shot" src="../assets/docs/noma-cloud-sharing.png" alt="Noma Cloud share panel with viewer/editor links, collaborator invite controls, and agent patch controls." caption="Owners can invite collaborators, create viewer/editor links, and run agent patches from the same inspector."}
 ::
 
-## Agent review
+## Proofed agent review linked to work
 
 The **Agent Review** panel accepts one patch op or an array of patch ops in
-JSON. The browser applies the patch to the current source, parses the result,
-validates it, and only writes the changed source into the editor if validation
-has no errors.
+JSON. **Preview in Draft** runs a local parse/validation preview without saving.
+**Propose for Review** sends the operations to the server, where Noma creates a
+safety proof against the current saved document hash. If a Work issue is
+selected, the proposal and every later review/apply event are linked into that
+issue's immutable history.
+
+The proof records pre/post hashes, patch result, diagnostics, stable IDs,
+source-preservation metrics, a compact diff, and a sandboxed post-patch artifact
+preview. A different editor must approve the proposal. Apply re-runs the proof
+against the current source and rejects the proposal if a human or agent changed
+the document after it was proposed. Self-approval, failed proofs, unapproved
+apply attempts, and stale versions are blocked.
 
 Example:
 
@@ -302,6 +447,20 @@ Common ops:
 Use **Copy LLM** to copy deterministic LLM context for the current page. That
 context strips unsafe escape hatch bodies and keeps block IDs visible so an
 agent can propose a focused patch transaction.
+
+The same review gate is available to API clients:
+
+```text
+GET|POST /api/documents/<id>/patch-proposals
+GET      /api/documents/<id>/patch-proposals/<proposal-id>
+POST     /api/documents/<id>/patch-proposals/<proposal-id>/review
+POST     /api/documents/<id>/patch-proposals/<proposal-id>/apply
+```
+
+Create proposals with `{ "ops": [...], "issueId": "optional-issue-id" }`.
+Review with `{ "decision": "approved" }` or `"rejected"`. The document and
+linked issue both receive auditable proposed, approved/rejected, and applied
+events.
 
 ## Published sites and artifacts
 
@@ -388,6 +547,9 @@ Noma Cloud follows the same safety posture as the workbench:
 - raw `::html`, `::svg`, and `::script` escape hatches are blocked in preview
 - external figure, math, diagram, and Plotly loads are disabled in preview
 - permissions are checked on document, site, export, share, collaborator, and DB endpoints
+- group grants are resolved dynamically and participate in the same permission checks
+- approvals and agent patch proposals are bound to immutable document hashes
+- agent patches are re-proofed after independent review and immediately before apply
 - share links are role-scoped and token-based
 - DB queries are resource-bounded and permission-aware, not arbitrary SQL
 - request bodies have size limits
@@ -402,8 +564,10 @@ npm run build:site
 ```
 
 For browser acceptance, verify owner, editor, viewer, page edit, site edit,
-share links, published site, artifact export, DB schema/query, diagnostics,
-agent patches, mobile layout, and XSS payload handling.
+group inheritance, comments, mentions, notifications, approvals, project/issue
+workflows, sprint carry-over, issue-linked patch review, share links, published
+site, artifact export, DB schema/query, diagnostics, mobile layout, and XSS
+payload handling.
 
 ## Troubleshooting
 

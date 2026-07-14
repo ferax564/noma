@@ -6,6 +6,31 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Noma Cloud version history:** every document content/title change now creates an immutable SQLite revision. New standalone and workspace-scoped APIs list and read revisions, and owners/editors can restore an older revision as a new current version. The Cloud inspector exposes refreshable history and restore controls.
+- **Conflict-safe Cloud saves:** document writes now require `expectedHash` or `If-Match`; stale writes return `409 document_conflict`, missing preconditions return `428`, and the browser preserves the local draft instead of silently overwriting a newer human or agent edit.
+- **Cloud browser regression test:** a real headless browser now covers registration, automatic starter-workspace creation, sign-out/token login, content saves, history restore, and two-client conflict preservation through the shipped Cloud UI.
+- **Confluence-style content navigation:** Noma Cloud now maintains a permission-scoped SQLite FTS5 index over page titles, block titles, IDs, and text; the workspace UI adds current-space/all-space search with block and line targets, per-user recents and favorites, and matching `/api/search` and `/api/navigation` endpoints.
+- **Templates and import:** six built-in page templates cover blank pages, meeting notes, decision records, project overviews, technical specs, and research papers. New pages can start from a selected template, and `.noma`, Markdown, and plain-text uploads create Cloud pages; Markdown headings receive explicit stable IDs during import.
+- **Recoverable Cloud trash:** editors can move pages to trash and owners can trash spaces without deleting source or history. Permission-scoped trash APIs and UI controls list and restore resources; trashed pages disappear from search, rendered spaces, and active page lists while preserving their workspace membership.
+- **Confluence-style collaboration:** Noma Cloud now has block/line-anchored threaded comments, stable `@{user-id}` mentions, per-user notifications, permission-scoped activity history, version-bound approvals, and managed groups. Group viewer/editor grants inherit from spaces to pages and participate in reads, search, navigation, queries, comments, approvals, and activity without copying permissions onto each member.
+- **Integrated Jira-style work management:** space-backed projects now provide unique issue keys, task/story/bug/epic types, priorities, assignees, labels, estimates, due dates, parent relationships, query filters, workflow-checked board columns, backlog views, one-active-sprint enforcement, sprint carry-over, issue links, comments, and immutable issue history. The Cloud inspector exposes project, sprint, board, issue-transition, comment, and link controls beside the relevant documents.
+- **Proofed agent change requests:** agents and editors can create document patch proposals linked to work issues. The server reuses Noma's safety proof engine for hashes, validation, stable-ID discovery, source-preservation metrics, diff, and sandboxed preview; a different editor must approve before apply, and stale document versions are rejected at review and apply. Proposal, review, and apply events appear in both document activity and linked issue history.
+
+### Fixed
+
+- **Cloud account sessions:** the Cloud header now has explicit invitation-code and existing-user-token fields plus Register, Log In, and Sign Out actions. Registration no longer depends on a blocking browser prompt, and a newly authenticated user enters a ready starter workspace immediately.
+- **Cloud control accessibility:** the source editor, link actions, repeated refresh actions, folder shortcuts, issue transitions, and page/issue comment fields now expose specific accessible names. The browser regression test rejects duplicate IDs, unnamed controls, and unlabeled symbol-only actions.
+
+### Changed
+
+- **Repository gates:** `test:full` now includes MCP, LSP, Python SDK, memory-drift, and release-consistency checks; the coverage command works without invalid `NODE_OPTIONS`; release checks cover every current spec heading and the Agent SDK MCP pin; the dependency tree audits with zero known vulnerabilities.
+
+### Security
+
+- **Fail-closed production Cloud:** production startup now requires access and invitation secrets unless deliberately overridden, API and registration routes have bounded per-client rate limits with `429`/retry metadata, collaboration responses no longer expose permission maps or hashed share records, and static/dynamic responses emit CSP, referrer, framing, MIME-sniffing, and permissions-policy headers.
+
 ## [0.16.0] — 2026-06-13
 
 ### Added
@@ -19,7 +44,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **v0.16 spec audit — freeze the full surface.** Decision: graduate the full patch-op catalog, the `baseHash` block precondition, and Agent Protocol Annexes A (capability descriptor) and B (MCP-over-stdio binding) from provisional/extension status to **normative**, closing v1.0 exit criterion §25.3 #4.
   - **Agent Protocol RFC.** Removed every active `provisional` marker (summary, §1.2 callout, §1.4, Annex A heading/A.3/A.5, Annex B heading/B.8); §1.4 is rewritten as "Annexes A and B (normative)". §1.5 reframed from "Implementation extensions after v1.0" to "Extended operations (normative)"; §3.1 and the `unsupported_op` taxonomy now describe a core+extended op catalog; the `baseHash` qualifier "(provisional, added post-v1.0)" is dropped in §3.4 and the failure/error tables. §C documents the new `patch-error/` track and `expected.error.json` vocabulary; §C.5 + §C.5.1 present all 40 fixtures (19 core + 21 extended) as the normative v1.0 conformance minimum.
   - **Compatibility Policy.** `docs/compatibility.noma` Stability classes now enumerate every surface as `frozen` / `experimental` / `proposed`: core syntax, AST discriminants, the full op catalog, `baseHash`, Annex A, Annex B, and CLI commands are **frozen**; the Agent SDK package API, DOCX/PDF byte-output, and Noma Cloud / workbench are **experimental**.
-  - **Format spec.** `docs/spec.noma` adds a "Stability and the road to v1.0" summary pointing at the register; its stale `0.13.0` body version is corrected to `0.15.0`.
+  - **Format spec.** `docs/spec.noma` adds a "Stability and the road to v1.0" summary pointing at the register; its stale `0.13.0` body version is corrected to `0.16.0`.
 
 ## [0.15.0] — 2026-06-10
 

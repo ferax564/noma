@@ -719,7 +719,7 @@ compatibility rules and bundled schemas, see [Noma Compatibility
 Policy](compatibility.noma). For the locked v1.0 protocol core, see the [Noma
 Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 
-## Render targets (v0.13.0)
+## Render targets (v0.16.0)
 
 | Target   | Status  | Notes                                                                         |
 | -------- | ------- | ----------------------------------------------------------------------------- |
@@ -874,7 +874,7 @@ v1.0 SemVer freeze. The authoritative per-surface register is the
 See the [Agent Protocol RFC](spec-agent-protocol-v1.html) §1 for the normative compatibility
 promises and Annex C for the 40-fixture conformance corpus that pins the frozen surface.
 
-## Compatibility promises (v0.13.0)
+## Compatibility promises (v0.16.0)
 
 - Public npm package names live under the `@ferax564` scope:
   `@ferax564/noma-cli`, `@ferax564/noma-mcp-server`, and
