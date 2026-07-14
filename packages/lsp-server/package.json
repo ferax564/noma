@@ -41,7 +41,7 @@
     "vscode-languageserver-textdocument": "^1.0.12"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^25.9.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
