@@ -121,7 +121,16 @@ function check(): number {
     read("packages/mcp-server/src/index.ts").includes(`version: "${version}"`),
     "update the McpServer constructor version",
   );
-  const mcpRegistry = JSON.parse(read("packages/mcp-server/server.json")) as { version?: string; packages?: Array<{ version?: string }> };
+  const mcpRegistry = JSON.parse(read("packages/mcp-server/server.json")) as {
+    description?: string;
+    version?: string;
+    packages?: Array<{ version?: string }>;
+  };
+  expect(
+    "MCP registry description fits the registry limit",
+    typeof mcpRegistry.description === "string" && mcpRegistry.description.length <= 100,
+    "keep packages/mcp-server/server.json description at 100 characters or fewer",
+  );
   expect(
     "MCP registry server version matches",
     mcpRegistry.version === version,

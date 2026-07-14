@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ferax564/noma",
-  "description": "Block-level safe editing of Noma documents: read_doc with per-block hashes, list_ids, validate_doc, and patch_block with optimistic-concurrency preconditions",
+  "description": "Safe block-level Noma editing with hashes, validation, patches, and optimistic concurrency.",
   "repository": {
     "url": "https://github.com/ferax564/noma",
     "source": "github"
