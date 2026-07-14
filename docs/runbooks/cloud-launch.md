@@ -99,14 +99,14 @@ The in-app retention/legal-hold endpoint currently governs platform metadata. It
 Preview EZKeel intent first:
 
 ```bash
-ezkeel up . --dry-run
+ezkeel up --dry-run
 ezkeel doctor
 ```
 
 After an operator explicitly approves the production target:
 
 ```bash
-ezkeel up .
+ezkeel up
 ezkeel apps
 ezkeel logs noma-cloud
 ```
