@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createNomaCloudServer } from "../src/cloud-server.js";
+import { createNomaCloudServer, type NomaCloudServerOptions } from "../src/cloud-server.js";
 
 interface CloudUserResponse {
   id: string;
@@ -25,6 +25,7 @@ interface CloudDocumentResponse {
 }
 
 interface CloudShareResponse {
+  id: string;
   token: string;
   role: string;
   url: string;
@@ -188,6 +189,7 @@ test("cloud server enforces users, permissions, shares, and editable sites", asy
       token: bob.token,
       body: {
         source: "# Shared Research\n\nUpdated by Bob.",
+        expectedHash: bobLoaded.hash,
       },
     });
     assert.equal(updated.source, "# Shared Research\n\nUpdated by Bob.");
@@ -226,6 +228,7 @@ test("cloud server enforces users, permissions, shares, and editable sites", asy
       share: editorShare.token,
       body: {
         source: "# Shared Research\n\nUpdated through an editor link.",
+        expectedHash: updated.hash,
       },
     });
     assert.equal(sharedEdit.access.via, "share");
@@ -294,10 +297,10 @@ test("cloud server enforces users, permissions, shares, and editable sites", asy
       body: { userId: charlie.id, role: "editor" },
     });
 
-    await json(`${base}/api/documents/${created.id}`, {
+    const inheritedDocument = await json<CloudDocumentResponse>(`${base}/api/documents/${created.id}`, {
       token: charlie.token,
-      expectedStatus: 403,
     });
+    assert.equal(inheritedDocument.access.role, "editor");
 
     const charlieSite = await json<CloudSiteResponse & { documents: CloudDocumentResponse[] }>(
       `${base}/api/sites/${site.id}?include=documents`,
@@ -322,6 +325,7 @@ test("cloud server enforces users, permissions, shares, and editable sites", asy
       token: charlie.token,
       body: {
         source: "# Shared Research\n\nUpdated through workspace page permissions.",
+        expectedHash: sharedEdit.hash,
       },
     });
     assert.equal(siteScopedEdit.access.role, "editor");
@@ -361,6 +365,7 @@ test("cloud server enforces users, permissions, shares, and editable sites", asy
       token: charlie.token,
       body: {
         source: "# Shared Research\n\nUpdated through workspace page permissions.\n\nSee [[Literature Review]] and [[Missing Concept]].\n\n```noma\n[[Code Only]]\n```",
+        expectedHash: siteScopedEdit.hash,
       },
     });
 
@@ -430,8 +435,8 @@ test("cloud server enforces users, permissions, shares, and editable sites", asy
     const bobDocs = await json<{ documents: Array<{ id: string }> }>(`${base}/api/documents`, {
       token: bob.token,
     });
-    assert.deepEqual(aliceDocs.documents.map((item) => item.id), [created.id]);
-    assert.deepEqual(bobDocs.documents.map((item) => item.id), [created.id]);
+    assert.deepEqual(new Set(aliceDocs.documents.map((item) => item.id)), new Set([created.id, literaturePage.id]));
+    assert.deepEqual(new Set(bobDocs.documents.map((item) => item.id)), new Set([created.id, literaturePage.id]));
 
     const index = await fetch(base);
     assert.equal(index.status, 200);
@@ -675,7 +680,7 @@ test("document API supports create, read, update, and render lifecycle", async (
     const updated = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
       method: "PATCH",
       token: owner.token,
-      body: { source: "# Lifecycle Doc\n\nSecond draft body." },
+      body: { source: "# Lifecycle Doc\n\nSecond draft body.", expectedHash: created.hash },
     });
     assert.equal(updated.source, "# Lifecycle Doc\n\nSecond draft body.");
     assert.notEqual(updated.hash, created.hash);
@@ -720,6 +725,112 @@ test("document API supports create, read, update, and render lifecycle", async (
       body: { source: 42 },
       expectedStatus: 400,
     });
+  } finally {
+    await harness.close();
+  }
+});
+
+test("document updates require current hashes and retain restorable history", async () => {
+  const harness = await startCloudServer("noma-cloud-history-");
+  try {
+    const owner = await createCloudUser(harness.base, "History Owner");
+    const created = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: owner.token,
+      body: { title: "History Doc", source: "# History Doc\n\nFirst version." },
+    });
+
+    await json(`${harness.base}/api/documents/${created.id}`, {
+      method: "PUT",
+      token: owner.token,
+      body: { source: "# History Doc\n\nMissing precondition." },
+      expectedStatus: 428,
+    });
+
+    const updated = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
+      method: "PUT",
+      token: owner.token,
+      body: { source: "# History Doc\n\nSecond version.", expectedHash: created.hash },
+    });
+
+    const stale = await fetch(`${harness.base}/api/documents/${created.id}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ source: "# History Doc\n\nStale overwrite.", expectedHash: created.hash }),
+    });
+    assert.equal(stale.status, 409);
+    const conflict = (await stale.json()) as { code?: string; currentHash?: string };
+    assert.equal(conflict.code, "document_conflict");
+    assert.equal(conflict.currentHash, updated.hash);
+
+    const unchanged = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, { token: owner.token });
+    assert.equal(unchanged.source, "# History Doc\n\nSecond version.");
+
+    const history = await json<{ revisions: Array<Record<string, unknown>> }>(`${harness.base}/api/documents/${created.id}/revisions`, {
+      token: owner.token,
+    });
+    assert.deepEqual(history.revisions.map((revision) => revision.revision), [2, 1]);
+    assert.equal(Object.hasOwn(history.revisions[0] ?? {}, "source"), false);
+
+    const first = await json<{ source: string; revision: number }>(`${harness.base}/api/documents/${created.id}/revisions/1`, {
+      token: owner.token,
+    });
+    assert.equal(first.revision, 1);
+    assert.equal(first.source, "# History Doc\n\nFirst version.");
+
+    const restored = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}/revisions/1/restore`, {
+      method: "POST",
+      token: owner.token,
+      body: { expectedHash: updated.hash },
+    });
+    assert.equal(restored.source, first.source);
+
+    const restoredHistory = await json<{ revisions: Array<{ revision: number }> }>(`${harness.base}/api/documents/${created.id}/revisions`, {
+      token: owner.token,
+    });
+    assert.deepEqual(restoredHistory.revisions.map((revision) => revision.revision), [3, 2, 1]);
+
+    const site = await json<CloudSiteResponse>(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: owner.token,
+      body: { title: "History Space", documentIds: [created.id] },
+    });
+    const siteHistory = await json<{ revisions: Array<{ revision: number }> }>(
+      `${harness.base}/api/sites/${site.id}/documents/${created.id}/revisions`,
+      { token: owner.token },
+    );
+    assert.deepEqual(siteHistory.revisions.map((revision) => revision.revision), [3, 2, 1]);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("production cloud fails closed without access and invitation secrets", () => {
+  assert.throws(
+    () => createNomaCloudServer({ production: true }),
+    /requires NOMA_CLOUD_ACCESS_TOKEN/,
+  );
+  assert.throws(
+    () => createNomaCloudServer({ production: true, accessToken: "production-access" }),
+    /requires NOMA_CLOUD_INVITATION_CODE/,
+  );
+});
+
+test("cloud rate limits registration and returns retry metadata", async () => {
+  const harness = await startCloudServer("noma-cloud-rate-limit-", { authRateLimitMaxRequests: 2 });
+  try {
+    await createCloudUser(harness.base, "Rate One");
+    await createCloudUser(harness.base, "Rate Two");
+    const limited = await fetch(`${harness.base}/api/users`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Rate Three" }),
+    });
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get("x-ratelimit-limit"), "2");
+    assert.equal(limited.headers.get("x-ratelimit-remaining"), "0");
+    assert.ok(Number(limited.headers.get("retry-after")) >= 1);
+    assert.equal(((await limited.json()) as { code?: string }).code, "rate_limit_exceeded");
   } finally {
     await harness.close();
   }
@@ -809,7 +920,7 @@ test("document updates enforce viewer, editor, and owner permission tiers", asyn
     const editorUpdated = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
       method: "PUT",
       token: editor.token,
-      body: { source: "# Tiered Doc\n\nEditor edit." },
+      body: { source: "# Tiered Doc\n\nEditor edit.", expectedHash: created.hash },
     });
     assert.equal(editorUpdated.source, "# Tiered Doc\n\nEditor edit.");
     await json(`${harness.base}/api/documents/${created.id}/collaborators`, {
@@ -888,6 +999,10 @@ test("rendered HTML and LLM output never include escape-hatch bodies", async () 
       headers: { authorization: `Bearer ${owner.token}` },
     });
     assert.equal(apiHtml.status, 200);
+    assert.match(apiHtml.headers.get("content-security-policy") ?? "", /default-src 'none'/);
+    assert.equal(apiHtml.headers.get("referrer-policy"), "no-referrer");
+    assert.equal(apiHtml.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(apiHtml.headers.get("x-frame-options"), "DENY");
     const apiHtmlText = await apiHtml.text();
     assert.doesNotMatch(apiHtmlText, /alert\(1\)/);
     assert.doesNotMatch(apiHtmlText, /<script>alert/);
@@ -948,6 +1063,8 @@ test("document share links are role scoped and validated", async () => {
     const viaShare = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${created.id}`, {
       share: viewerShare.token,
     });
+    assert.equal(Object.hasOwn(viaShare, "permissions"), false);
+    assert.equal(Object.hasOwn(viaShare, "shareLinks"), false);
     assert.equal(viaShare.access.role, "viewer");
     assert.equal(viaShare.access.via, "share");
 
@@ -972,6 +1089,12 @@ test("document share links are role scoped and validated", async () => {
     assert.equal(shares.shares.length, 1);
     assert.equal(Object.hasOwn(shares.shares[0] ?? {}, "tokenHash"), false);
     assert.equal(typeof shares.shares[0]?.tokenPreview, "string");
+    await json(`${harness.base}/api/documents/${created.id}/shares/${viewerShare.id}`, {
+      method: "DELETE",
+      token: owner.token,
+    });
+    const revokedArtifact = await fetch(`${harness.base}/d/${created.id}?share=${viewerShare.token}`);
+    assert.equal(revokedArtifact.status, 403);
   } finally {
     await harness.close();
   }
@@ -1164,12 +1287,602 @@ test("site endpoints enforce membership and document edit access", async () => {
   }
 });
 
+test("cloud navigation supports templates, Markdown import, full-text search, favorites, recents, and trash restore", async () => {
+  const harness = await startCloudServer("noma-cloud-navigation-");
+  try {
+    const alice = await createCloudUser(harness.base, "Navigation Alice");
+    const bob = await createCloudUser(harness.base, "Navigation Bob");
+    const templates = await json<{ templates: Array<{ id: string; source: string }>; count: number }>(`${harness.base}/api/templates`, {
+      token: alice.token,
+    });
+    assert.ok(templates.count >= 6);
+    assert.ok(templates.templates.some((template) => template.id === "technical-spec"));
+
+    const seed = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Navigation Home", templateId: "project-overview" },
+    });
+    assert.match(seed.source, /# Navigation Home \{id="navigation-home"\}/);
+
+    const site = await json<CloudSiteResponse>(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Navigation Space", documentIds: [seed.id] },
+    });
+    const imported = await json<CloudDocumentResponse>(`${harness.base}/api/sites/${site.id}/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: {
+        title: "Imported Notes",
+        format: "markdown",
+        source: "# Imported Notes\n\n## Quantum Zeppelin\n\nA uniquely searchable phrase for navigation testing.\n",
+      },
+    });
+    assert.match(imported.source, /## Quantum Zeppelin \{id="quantum-zeppelin"\}/);
+
+    const technical = await json<CloudDocumentResponse>(`${harness.base}/api/sites/${site.id}/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Service Contract", templateId: "technical-spec", folder: "Specs" },
+    });
+    assert.match(technical.source, /profile: technical-docs/);
+
+    const search = await json<{ results: Array<{ documentId: string; excerpt: string; access: { role: string } }> }>(
+      `${harness.base}/api/search?q=${encodeURIComponent("quantum zeppelin")}&site=${site.id}`,
+      { token: alice.token },
+    );
+    assert.ok(search.results.some((result) => result.documentId === imported.id));
+    assert.ok(search.results.every((result) => result.access.role === "owner"));
+    const bobSearch = await json<{ results: unknown[] }>(`${harness.base}/api/search?q=quantum`, { token: bob.token });
+    assert.equal(bobSearch.results.length, 0);
+    const punctuationSearch = await json<{ results: unknown[] }>(
+      `${harness.base}/api/search?q=${encodeURIComponent('"quantum" OR zeppelin:')}`,
+      { token: alice.token },
+    );
+    assert.ok(punctuationSearch.results.length > 0);
+
+    await json(`${harness.base}/api/sites/${site.id}`, { token: alice.token });
+    await json(`${harness.base}/api/sites/${site.id}/documents/${imported.id}`, { token: alice.token });
+    await json(`${harness.base}/api/navigation/favorites`, {
+      method: "PUT",
+      token: alice.token,
+      body: { resourceType: "document", resourceId: imported.id },
+    });
+    const navigation = await json<{
+      recents: Array<{ resourceType: string; resourceId: string }>;
+      favorites: Array<{ resourceType: string; resourceId: string }>;
+    }>(`${harness.base}/api/navigation`, { token: alice.token });
+    assert.ok(navigation.recents.some((item) => item.resourceType === "site" && item.resourceId === site.id));
+    assert.ok(navigation.recents.some((item) => item.resourceType === "document" && item.resourceId === imported.id));
+    assert.deepEqual(navigation.favorites.map((item) => item.resourceId), [imported.id]);
+
+    await json(`${harness.base}/api/navigation/favorites`, {
+      method: "PUT",
+      token: bob.token,
+      body: { resourceType: "document", resourceId: imported.id },
+      expectedStatus: 403,
+    });
+
+    await json(`${harness.base}/api/trash/document/${imported.id}`, { method: "POST", token: alice.token });
+    await json(`${harness.base}/api/documents/${imported.id}`, { token: alice.token, expectedStatus: 410 });
+    const trashedSearch = await json<{ results: unknown[] }>(`${harness.base}/api/search?q=quantum`, { token: alice.token });
+    assert.equal(trashedSearch.results.length, 0);
+    const trash = await json<{ items: Array<{ resourceType: string; resourceId: string; trashedBy: string }> }>(
+      `${harness.base}/api/trash`,
+      { token: alice.token },
+    );
+    assert.ok(trash.items.some((item) => item.resourceType === "document" && item.resourceId === imported.id && item.trashedBy === alice.id));
+    const siteWithoutTrashedPage = await json<CloudSiteResponse & { documents: CloudDocumentResponse[] }>(
+      `${harness.base}/api/sites/${site.id}?include=documents`,
+      { token: alice.token },
+    );
+    assert.equal(siteWithoutTrashedPage.documentIds.includes(imported.id), true);
+    assert.equal(siteWithoutTrashedPage.documents.some((document) => document.id === imported.id), false);
+
+    await json(`${harness.base}/api/trash/document/${imported.id}/restore`, { method: "POST", token: alice.token });
+    const restored = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${imported.id}`, { token: alice.token });
+    assert.match(restored.source, /Quantum Zeppelin/);
+
+    await json(`${harness.base}/api/trash/site/${site.id}`, { method: "POST", token: alice.token });
+    await json(`${harness.base}/api/sites/${site.id}`, { token: alice.token, expectedStatus: 410 });
+    const listedSites = await json<{ sites: Array<{ id: string }> }>(`${harness.base}/api/sites`, { token: alice.token });
+    assert.equal(listedSites.sites.some((listed) => listed.id === site.id), false);
+    await json(`${harness.base}/api/trash/site/${site.id}/restore`, { method: "POST", token: alice.token });
+    const restoredSite = await json<CloudSiteResponse>(`${harness.base}/api/sites/${site.id}`, { token: alice.token });
+    assert.equal(restoredSite.id, site.id);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("cloud collaboration supports comments, mentions, notifications, approvals, activity, and groups", async () => {
+  const harness = await startCloudServer("noma-cloud-collaboration-");
+  try {
+    const alice = await createCloudUser(harness.base, "Collaboration Alice");
+    const bob = await createCloudUser(harness.base, "Collaboration Bob");
+    const carol = await createCloudUser(harness.base, "Collaboration Carol");
+    const document = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: { source: '# Collaboration brief {id="collaboration-brief"}\n\nReview this proposal.\n' },
+    });
+    await json(`${harness.base}/api/documents/${document.id}/collaborators`, {
+      method: "POST",
+      token: alice.token,
+      body: { userId: bob.id, role: "editor" },
+    });
+    await json(`${harness.base}/api/documents/${document.id}/collaborators`, {
+      method: "POST",
+      token: alice.token,
+      body: { userId: carol.id, role: "viewer" },
+    });
+    await json(`${harness.base}/api/documents/${document.id}`, { token: carol.token });
+    await json(`${harness.base}/api/documents/${document.id}/collaborators/${carol.id}`, {
+      method: "DELETE",
+      token: alice.token,
+    });
+    await json(`${harness.base}/api/documents/${document.id}`, { token: carol.token, expectedStatus: 403 });
+
+    await json(`${harness.base}/api/documents/${document.id}/comments`, {
+      method: "POST",
+      token: bob.token,
+      body: { body: "Invalid block", blockId: "missing-block" },
+      expectedStatus: 400,
+    });
+    const comment = await json<{
+      id: string;
+      body: string;
+      blockId: string;
+      createdBy: string;
+      resolvedAt?: string;
+    }>(`${harness.base}/api/documents/${document.id}/comments`, {
+      method: "POST",
+      token: bob.token,
+      body: {
+        body: `Please review this detail @{${alice.id}}`,
+        blockId: "collaboration-brief",
+        line: 1,
+      },
+    });
+    assert.equal(comment.createdBy, bob.id);
+    assert.equal(comment.blockId, "collaboration-brief");
+
+    const comments = await json<{ comments: Array<{ id: string; createdByName: string }> }>(
+      `${harness.base}/api/documents/${document.id}/comments`,
+      { token: alice.token },
+    );
+    assert.equal(comments.comments[0]?.id, comment.id);
+    assert.equal(comments.comments[0]?.createdByName, "Collaboration Bob");
+    const resolved = await json<{ resolvedAt?: string }>(`${harness.base}/api/documents/${document.id}/comments/${comment.id}/resolve`, {
+      method: "POST",
+      token: alice.token,
+    });
+    assert.ok(resolved.resolvedAt);
+    const reopened = await json<{ resolvedAt?: string }>(`${harness.base}/api/documents/${document.id}/comments/${comment.id}/resolve`, {
+      method: "POST",
+      token: alice.token,
+    });
+    assert.equal(reopened.resolvedAt, undefined);
+
+    const aliceNotifications = await json<{
+      unread: number;
+      notifications: Array<{ id: string; type: string; resourceId?: string; readAt?: string }>;
+    }>(`${harness.base}/api/notifications`, { token: alice.token });
+    assert.ok(aliceNotifications.unread >= 1);
+    assert.ok(
+      aliceNotifications.notifications.some(
+        (notification) => notification.type === "mention" && notification.resourceId === document.id,
+      ),
+    );
+    const mention = aliceNotifications.notifications.find((notification) => notification.type === "mention");
+    assert.ok(mention);
+    await json(`${harness.base}/api/notifications/${mention.id}/read`, { method: "POST", token: alice.token });
+    const afterRead = await json<{ notifications: Array<{ id: string; readAt?: string }> }>(`${harness.base}/api/notifications`, {
+      token: alice.token,
+    });
+    assert.ok(afterRead.notifications.find((notification) => notification.id === mention.id)?.readAt);
+    await json(`${harness.base}/api/notifications/read-all`, { method: "POST", token: alice.token });
+
+    const staleApproval = await json<{ id: string; documentHash: string; status: string }>(
+      `${harness.base}/api/documents/${document.id}/approvals`,
+      { method: "POST", token: alice.token, body: { reviewerId: bob.id, note: "Review version one" } },
+    );
+    assert.equal(staleApproval.documentHash, document.hash);
+    await json(`${harness.base}/api/documents/${document.id}/approvals`, {
+      method: "POST",
+      token: alice.token,
+      body: { reviewerId: bob.id },
+      expectedStatus: 409,
+    });
+    const updated = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${document.id}`, {
+      method: "PUT",
+      token: alice.token,
+      body: {
+        source: '# Collaboration brief {id="collaboration-brief"}\n\nReview this revised proposal.\n',
+        expectedHash: document.hash,
+      },
+    });
+    await json(`${harness.base}/api/documents/${document.id}/approvals/${staleApproval.id}`, {
+      method: "PATCH",
+      token: bob.token,
+      body: { status: "approved" },
+      expectedStatus: 409,
+    });
+    await json(`${harness.base}/api/documents/${document.id}/approvals/${staleApproval.id}`, {
+      method: "PATCH",
+      token: alice.token,
+      body: { status: "cancelled" },
+    });
+    const currentApproval = await json<{ id: string; documentHash: string }>(
+      `${harness.base}/api/documents/${document.id}/approvals`,
+      { method: "POST", token: alice.token, body: { reviewerId: bob.id } },
+    );
+    assert.equal(currentApproval.documentHash, updated.hash);
+    const approved = await json<{ status: string }>(`${harness.base}/api/documents/${document.id}/approvals/${currentApproval.id}`, {
+      method: "PATCH",
+      token: bob.token,
+      body: { status: "approved", note: "Ready to publish" },
+    });
+    assert.equal(approved.status, "approved");
+    const approvals = await json<{ approvals: Array<{ id: string; status: string; reviewerName: string }> }>(
+      `${harness.base}/api/documents/${document.id}/approvals`,
+      { token: alice.token },
+    );
+    assert.equal(approvals.approvals.find((item) => item.id === currentApproval.id)?.reviewerName, "Collaboration Bob");
+
+    const group = await json<{
+      id: string;
+      name: string;
+      members: Array<{ userId: string; role: string }>;
+    }>(`${harness.base}/api/groups`, {
+      method: "POST",
+      token: alice.token,
+      body: { name: "Review Council" },
+    });
+    assert.equal(group.members[0]?.role, "manager");
+    const groupWithBob = await json<{ members: Array<{ userId: string; role: string }> }>(
+      `${harness.base}/api/groups/${group.id}/members`,
+      { method: "POST", token: alice.token, body: { userId: bob.id, role: "member" } },
+    );
+    assert.ok(groupWithBob.members.some((member) => member.userId === bob.id && member.role === "member"));
+    await json(`${harness.base}/api/groups/${group.id}/members`, {
+      method: "POST",
+      token: bob.token,
+      body: { userId: carol.id },
+      expectedStatus: 403,
+    });
+    await json(`${harness.base}/api/groups/${group.id}/members/${alice.id}`, {
+      method: "DELETE",
+      token: alice.token,
+      expectedStatus: 409,
+    });
+    await json(`${harness.base}/api/groups/${group.id}/members`, {
+      method: "POST",
+      token: alice.token,
+      body: { userId: carol.id, role: "member" },
+    });
+    const groupPermissions = await json<{
+      groups: Array<{ groupId: string; groupName: string; role: string }>;
+    }>(`${harness.base}/api/documents/${document.id}/group-collaborators`, {
+      method: "POST",
+      token: alice.token,
+      body: { groupId: group.id, role: "viewer" },
+    });
+    assert.deepEqual(groupPermissions.groups, [
+      { groupId: group.id, groupName: "Review Council", role: "viewer", addedAt: "2026-06-06T12:00:00.000Z" },
+    ]);
+    const carolViaGroup = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${document.id}`, {
+      token: carol.token,
+    });
+    assert.equal(carolViaGroup.access.role, "viewer");
+    assert.equal(carolViaGroup.access.via, "group");
+    await json(`${harness.base}/api/documents/${document.id}`, {
+      method: "PUT",
+      token: carol.token,
+      body: { source: "# Forbidden", expectedHash: carolViaGroup.hash },
+      expectedStatus: 403,
+    });
+    const carolSearch = await json<{ results: Array<{ documentId: string }> }>(
+      `${harness.base}/api/search?q=collaboration`,
+      { token: carol.token },
+    );
+    assert.ok(carolSearch.results.some((result) => result.documentId === document.id));
+    await json(`${harness.base}/api/documents/${document.id}/group-collaborators/${group.id}`, {
+      method: "DELETE",
+      token: alice.token,
+    });
+    await json(`${harness.base}/api/documents/${document.id}`, { token: carol.token, expectedStatus: 403 });
+    const bobGroups = await json<{ groups: Array<{ id: string }> }>(`${harness.base}/api/groups`, { token: bob.token });
+    assert.ok(bobGroups.groups.some((item) => item.id === group.id));
+    const carolGroups = await json<{ groups: Array<{ id: string }> }>(`${harness.base}/api/groups`, { token: carol.token });
+    assert.ok(carolGroups.groups.some((item) => item.id === group.id));
+
+    const activity = await json<{ events: Array<{ action: string; actorId: string }> }>(
+      `${harness.base}/api/activity?document=${document.id}`,
+      { token: alice.token },
+    );
+    const actions = new Set(activity.events.map((event) => event.action));
+    assert.ok(actions.has("document.created"));
+    assert.ok(actions.has("document.updated"));
+    assert.ok(actions.has("comment.created"));
+    assert.ok(actions.has("comment.resolved"));
+    assert.ok(actions.has("approval.requested"));
+    assert.ok(actions.has("approval.approved"));
+    const bobActivity = await json<{ events: Array<{ action: string }> }>(
+      `${harness.base}/api/activity?document=${document.id}`,
+      { token: bob.token },
+    );
+    assert.ok(bobActivity.events.some((event) => event.action === "approval.approved"));
+    const carolActivity = await json<{ events: unknown[] }>(`${harness.base}/api/activity`, { token: carol.token });
+    assert.equal(carolActivity.events.length, 0);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("cloud work management supports projects, workflows, boards, backlog, sprints, filters, links, and issue history", async () => {
+  const harness = await startCloudServer("noma-cloud-work-");
+  try {
+    const alice = await createCloudUser(harness.base, "Work Alice");
+    const bob = await createCloudUser(harness.base, "Work Bob");
+    const carol = await createCloudUser(harness.base, "Work Carol");
+    const page = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: { source: '# Delivery plan {id="delivery-plan"}\n' },
+    });
+    const site = await json<CloudSiteResponse>(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Delivery Space", documentIds: [page.id] },
+    });
+    await json(`${harness.base}/api/sites/${site.id}/collaborators`, {
+      method: "POST",
+      token: alice.token,
+      body: { userId: bob.id, role: "editor" },
+    });
+
+    const project = await json<{ id: string; key: string; name: string; siteId: string; access: { role: string } }>(
+      `${harness.base}/api/projects`,
+      {
+        method: "POST",
+        token: alice.token,
+        body: { siteId: site.id, key: "NOM", name: "Noma Delivery", description: "Integrated documentation and work." },
+      },
+    );
+    assert.equal(project.key, "NOM");
+    assert.equal(project.access.role, "owner");
+    await json(`${harness.base}/api/projects`, {
+      method: "POST",
+      token: alice.token,
+      body: { siteId: site.id, key: "nom", name: "Duplicate" },
+      expectedStatus: 409,
+    });
+    const bobProjects = await json<{ projects: Array<{ id: string; access: { role: string } }> }>(`${harness.base}/api/projects`, {
+      token: bob.token,
+    });
+    assert.equal(bobProjects.projects[0]?.id, project.id);
+    assert.equal(bobProjects.projects[0]?.access.role, "editor");
+    const carolProjects = await json<{ projects: unknown[] }>(`${harness.base}/api/projects`, { token: carol.token });
+    assert.equal(carolProjects.projects.length, 0);
+    await json(`${harness.base}/api/projects/${project.id}`, { token: carol.token, expectedStatus: 403 });
+
+    const sprint = await json<{ id: string; status: string }>(`${harness.base}/api/projects/${project.id}/sprints`, {
+      method: "POST",
+      token: alice.token,
+      body: { name: "Sprint 1", goal: "Ship collaboration" },
+    });
+    assert.equal(sprint.status, "planned");
+    const activeSprint = await json<{ id: string; status: string; startAt: string }>(
+      `${harness.base}/api/projects/${project.id}/sprints/${sprint.id}`,
+      { method: "PATCH", token: alice.token, body: { status: "active" } },
+    );
+    assert.equal(activeSprint.status, "active");
+    assert.ok(activeSprint.startAt);
+    await json(`${harness.base}/api/projects/${project.id}/sprints`, {
+      method: "POST",
+      token: alice.token,
+      body: { name: "Parallel sprint", status: "active" },
+      expectedStatus: 409,
+    });
+
+    const epic = await json<{ id: string; key: string; type: string }>(`${harness.base}/api/projects/${project.id}/issues`, {
+      method: "POST",
+      token: alice.token,
+      body: { summary: "Collaboration platform", type: "epic", priority: "highest" },
+    });
+    assert.equal(epic.key, "NOM-1");
+    const story = await json<{
+      id: string;
+      key: string;
+      status: string;
+      labels: string[];
+      assigneeName: string;
+      sprintId: string;
+      parentId: string;
+    }>(`${harness.base}/api/projects/${project.id}/issues`, {
+      method: "POST",
+      token: alice.token,
+      body: {
+        summary: "Review pages in context",
+        type: "story",
+        priority: "high",
+        assigneeId: bob.id,
+        sprintId: sprint.id,
+        parentId: epic.id,
+        labels: ["Cloud UX", "agents"],
+        estimate: 5,
+        dueDate: "2026-07-31",
+      },
+    });
+    assert.equal(story.key, "NOM-2");
+    assert.equal(story.assigneeName, "Work Bob");
+    assert.deepEqual(story.labels, ["cloud-ux", "agents"]);
+    const carryOver = await json<{ id: string }>(`${harness.base}/api/projects/${project.id}/issues`, {
+      method: "POST",
+      token: bob.token,
+      body: { summary: "Unfinished task", status: "todo", sprintId: sprint.id, assigneeId: bob.id },
+    });
+
+    const filtered = await json<{ issues: Array<{ id: string }> }>(
+      `${harness.base}/api/projects/${project.id}/issues?label=agents&assignee=${bob.id}&priority=high`,
+      { token: alice.token },
+    );
+    assert.deepEqual(filtered.issues.map((issue) => issue.id), [story.id]);
+    const board = await json<{ columns: Record<string, Array<{ id: string }>>; activeSprint: { id: string } }>(
+      `${harness.base}/api/projects/${project.id}/board`,
+      { token: bob.token },
+    );
+    assert.ok(board.columns.backlog?.some((issue) => issue.id === story.id));
+    assert.equal(board.activeSprint.id, sprint.id);
+    const backlog = await json<{ issues: Array<{ id: string }> }>(`${harness.base}/api/projects/${project.id}/backlog`, {
+      token: alice.token,
+    });
+    assert.ok(backlog.issues.some((issue) => issue.id === epic.id));
+    assert.equal(backlog.issues.some((issue) => issue.id === story.id), false);
+
+    await json(`${harness.base}/api/projects/${project.id}/issues/${story.id}`, {
+      method: "PATCH",
+      token: bob.token,
+      body: { status: "in_review" },
+      expectedStatus: 409,
+    });
+    for (const status of ["todo", "in_progress", "in_review", "done"]) {
+      const moved = await json<{ status: string }>(`${harness.base}/api/projects/${project.id}/issues/${story.id}`, {
+        method: "PATCH",
+        token: bob.token,
+        body: { status },
+      });
+      assert.equal(moved.status, status);
+    }
+    const issueComment = await json<{ body: string; createdByName: string }>(
+      `${harness.base}/api/projects/${project.id}/issues/${story.id}/comments`,
+      { method: "POST", token: bob.token, body: { body: "Ready for the release review." } },
+    );
+    assert.equal(issueComment.createdByName, "Work Bob");
+    const link = await json<{ targetIssueKey: string; type: string }>(
+      `${harness.base}/api/projects/${project.id}/issues/${story.id}/links`,
+      { method: "POST", token: alice.token, body: { targetIssueId: epic.id, type: "relates" } },
+    );
+    assert.equal(link.targetIssueKey, "NOM-1");
+    const issueDetail = await json<{
+      comments: Array<{ body: string }>;
+      links: Array<{ targetIssueKey: string }>;
+      events: Array<{ action: string; detail: Record<string, unknown> }>;
+    }>(`${harness.base}/api/projects/${project.id}/issues/${story.id}`, { token: alice.token });
+    assert.equal(issueDetail.comments[0]?.body, "Ready for the release review.");
+    assert.equal(issueDetail.links[0]?.targetIssueKey, "NOM-1");
+    assert.ok(issueDetail.events.some((event) => event.action === "issue.created"));
+    assert.ok(issueDetail.events.some((event) => event.action === "issue.updated" && Object.hasOwn(event.detail, "status")));
+    assert.ok(issueDetail.events.some((event) => event.action === "comment.created"));
+
+    await json(`${harness.base}/api/documents/${page.id}/patch-proposals`, {
+      method: "POST",
+      token: alice.token,
+      body: { ops: [{ op: "update_heading", id: "missing-heading", title: "No target" }], issueId: story.id },
+      expectedStatus: 422,
+    });
+    const proposal = await json<{
+      id: string;
+      issueId: string;
+      status: string;
+      proof: { status: string; canWrite: boolean; preHash: { sha256: string }; postHash: { sha256: string } };
+    }>(`${harness.base}/api/documents/${page.id}/patch-proposals`, {
+      method: "POST",
+      token: alice.token,
+      body: {
+        summary: "Agent updates the delivery title",
+        issueId: story.id,
+        ops: [{ op: "update_heading", id: "delivery-plan", title: "Delivery plan v2" }],
+      },
+    });
+    assert.equal(proposal.status, "pending");
+    assert.equal(proposal.issueId, story.id);
+    assert.equal(proposal.proof.status, "pass");
+    assert.equal(proposal.proof.canWrite, true);
+    assert.notEqual(proposal.proof.preHash.sha256, proposal.proof.postHash.sha256);
+    await json(`${harness.base}/api/documents/${page.id}/patch-proposals/${proposal.id}/review`, {
+      method: "POST",
+      token: alice.token,
+      body: { decision: "approved" },
+      expectedStatus: 409,
+    });
+    const approvedProposal = await json<{ status: string; reviewedBy: string }>(
+      `${harness.base}/api/documents/${page.id}/patch-proposals/${proposal.id}/review`,
+      { method: "POST", token: bob.token, body: { decision: "approved" } },
+    );
+    assert.equal(approvedProposal.status, "approved");
+    assert.equal(approvedProposal.reviewedBy, bob.id);
+    const applied = await json<{ proposal: { status: string; appliedHash: string }; document: CloudDocumentResponse }>(
+      `${harness.base}/api/documents/${page.id}/patch-proposals/${proposal.id}/apply`,
+      { method: "POST", token: alice.token },
+    );
+    assert.equal(applied.proposal.status, "applied");
+    assert.equal(applied.proposal.appliedHash, applied.document.hash);
+    assert.match(applied.document.source, /# Delivery plan v2/);
+    const proposalList = await json<{ proposals: Array<{ id: string; status: string }> }>(
+      `${harness.base}/api/documents/${page.id}/patch-proposals`,
+      { token: bob.token },
+    );
+    assert.equal(proposalList.proposals.find((item) => item.id === proposal.id)?.status, "applied");
+    const issueAfterPatch = await json<{ events: Array<{ action: string }> }>(
+      `${harness.base}/api/projects/${project.id}/issues/${story.id}`,
+      { token: alice.token },
+    );
+    assert.ok(issueAfterPatch.events.some((event) => event.action === "patch.proposed"));
+    assert.ok(issueAfterPatch.events.some((event) => event.action === "patch.approved"));
+    assert.ok(issueAfterPatch.events.some((event) => event.action === "patch.applied"));
+
+    const staleProposal = await json<{ id: string }>(`${harness.base}/api/documents/${page.id}/patch-proposals`, {
+      method: "POST",
+      token: alice.token,
+      body: { ops: [{ op: "update_heading", id: "delivery-plan", title: "Delivery plan v3" }] },
+    });
+    await json(`${harness.base}/api/documents/${page.id}`, {
+      method: "PUT",
+      token: alice.token,
+      body: { source: "# Delivery plan v2\n\nHuman edit after the proposal.\n", expectedHash: applied.document.hash },
+    });
+    await json(`${harness.base}/api/documents/${page.id}/patch-proposals/${staleProposal.id}/review`, {
+      method: "POST",
+      token: bob.token,
+      body: { decision: "approved" },
+      expectedStatus: 409,
+    });
+
+    const closed = await json<{ status: string }>(`${harness.base}/api/projects/${project.id}/sprints/${sprint.id}`, {
+      method: "PATCH",
+      token: alice.token,
+      body: { status: "closed" },
+    });
+    assert.equal(closed.status, "closed");
+    const carried = await json<{ status: string; sprintId?: string }>(
+      `${harness.base}/api/projects/${project.id}/issues/${carryOver.id}`,
+      { token: alice.token },
+    );
+    assert.equal(carried.status, "backlog");
+    assert.equal(carried.sprintId, undefined);
+    const completed = await json<{ status: string; sprintId?: string }>(
+      `${harness.base}/api/projects/${project.id}/issues/${story.id}`,
+      { token: alice.token },
+    );
+    assert.equal(completed.status, "done");
+    assert.equal(completed.sprintId, sprint.id);
+  } finally {
+    await harness.close();
+  }
+});
+
 interface CloudTestHarness {
   base: string;
   close(): Promise<void>;
 }
 
-async function startCloudServer(prefix: string): Promise<CloudTestHarness> {
+async function startCloudServer(
+  prefix: string,
+  options: Pick<NomaCloudServerOptions, "rateLimitWindowMs" | "rateLimitMaxRequests" | "authRateLimitMaxRequests"> = {},
+): Promise<CloudTestHarness> {
   const root = await mkdtemp(join(tmpdir(), prefix));
   const publicDir = join(root, "public");
   await mkdir(publicDir, { recursive: true });
@@ -1182,6 +1895,7 @@ async function startCloudServer(prefix: string): Promise<CloudTestHarness> {
     publicDir,
     maxBodyBytes: 100_000,
     now: () => new Date("2026-06-06T12:00:00.000Z"),
+    ...options,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();

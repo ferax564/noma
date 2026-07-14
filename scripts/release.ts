@@ -28,6 +28,7 @@ function packageVersion(path: string): string {
 
 function check(): number {
   const version = packageVersion("package.json");
+  const spec = read("docs/spec.noma");
   console.log(`package.json version: ${version}`);
   let failures = 0;
   const expect = (label: string, ok: boolean, hint: string): void => {
@@ -41,13 +42,28 @@ function check(): number {
 
   expect(
     "docs/spec.noma frontmatter version",
-    read("docs/spec.noma").includes(`version: ${version}`),
+    spec.includes(`version: ${version}`),
     `set frontmatter to version: ${version}`,
   );
   expect(
     "docs/spec.noma title carries the version",
-    read("docs/spec.noma").includes(`(v${version})`),
+    spec.includes(`title: Noma — Format Specification (v${version})`),
     `title should mention (v${version})`,
+  );
+  expect(
+    "docs/spec.noma summary carries the version",
+    spec.includes(`format at version ${version}`),
+    `summary should describe version ${version}`,
+  );
+  expect(
+    "docs/spec.noma render-target heading carries the version",
+    spec.includes(`## Render targets (v${version})`),
+    `render-target heading should mention (v${version})`,
+  );
+  expect(
+    "docs/spec.noma compatibility heading carries the version",
+    spec.includes(`## Compatibility promises (v${version})`),
+    `compatibility heading should mention (v${version})`,
   );
   expect(
     "docs/agent-protocol.noma frontmatter version",
@@ -83,6 +99,11 @@ function check(): number {
     "packages/agent-sdk pins @ferax564/noma-cli to the release",
     read("packages/agent-sdk/package.json").includes(`"@ferax564/noma-cli": "${version}"`),
     "update the dependency pin",
+  );
+  expect(
+    "packages/agent-sdk pins @ferax564/noma-mcp-server to the release",
+    read("packages/agent-sdk/package.json").includes(`"@ferax564/noma-mcp-server": "${version}"`),
+    "update the MCP dependency pin",
   );
   expect(
     "packages/lsp-server version matches",
@@ -134,6 +155,13 @@ function bump(version: string): number {
     );
   }
   writeFileSync(
+    "packages/agent-sdk/package.json",
+    read("packages/agent-sdk/package.json").replace(
+      /"@ferax564\/noma-mcp-server":\s*"\d+\.\d+\.\d+"/,
+      `"@ferax564/noma-mcp-server": "${version}"`,
+    ),
+  );
+  writeFileSync(
     "packages/mcp-server/src/index.ts",
     read("packages/mcp-server/src/index.ts").replace(/version: "\d+\.\d+\.\d+"/, `version: "${version}"`),
   );
@@ -141,7 +169,8 @@ function bump(version: string): number {
     "docs/spec.noma",
     read("docs/spec.noma")
       .replace(/^version: \d+\.\d+\.\d+$/m, `version: ${version}`)
-      .replace(`(v${previous})`, `(v${version})`),
+      .replaceAll(`(v${previous})`, `(v${version})`)
+      .replace(`format at version ${previous}`, `format at version ${version}`),
   );
   writeFileSync(
     "docs/agent-protocol.noma",
@@ -167,7 +196,7 @@ function bump(version: string): number {
   console.log("  3. npx tsc --noEmit && npm test && npm run build:site");
   console.log(`  4. git commit, git tag v${version}, git push origin main v${version}`);
   console.log(`  5. gh release create v${version} --notes-file <CHANGELOG slice>`);
-  return check() === 0 ? 0 : 0;
+  return check();
 }
 
 const [mode, arg] = process.argv.slice(2);

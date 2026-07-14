@@ -17,7 +17,15 @@
     <label class="top-field" for="cloudUserName">User
       <input id="cloudUserName" type="text" autocomplete="name" />
     </label>
-    <button id="newUserButton" type="button">Register User</button>
+    <label class="top-field top-secret-field" for="cloudInvitationCode">Invitation
+      <input id="cloudInvitationCode" type="password" autocomplete="one-time-code" placeholder="Invitation code" />
+    </label>
+    <button id="newUserButton" type="button">Register</button>
+    <label class="top-field top-secret-field" for="cloudUserToken">Token
+      <input id="cloudUserToken" type="password" autocomplete="off" placeholder="Existing user token" />
+    </label>
+    <button id="loginUserButton" type="button">Log In</button>
+    <button id="logoutUserButton" type="button" disabled>Sign Out</button>
     <button id="copyUserIdButton" type="button" disabled>Copy User ID</button>
     <button id="copyUserTokenButton" type="button" disabled>Copy Token</button>
     <button id="themeToggleButton" type="button" aria-pressed="false">Dark</button>
@@ -25,6 +33,18 @@
   </header>
 
   <aside class="space-rail" aria-label="Workspace navigation">
+    <div class="rail-search" role="search">
+      <label for="globalSearchInput">Search</label>
+      <div class="rail-search-row">
+        <input id="globalSearchInput" type="search" placeholder="Find pages and blocks" autocomplete="off" />
+        <button id="searchButton" type="button">Go</button>
+      </div>
+      <select id="searchScopeSelect" aria-label="Search scope">
+        <option value="site">Current space</option>
+        <option value="all">All spaces</option>
+      </select>
+      <div id="searchResults" class="search-results"></div>
+    </div>
     <div class="rail-head">
       <label for="siteTitleInput">Workspace</label>
       <input id="siteTitleInput" type="text" />
@@ -42,8 +62,28 @@
       <div class="rail-actions">
         <button id="newPageButton" type="button">New Page</button>
         <button id="newFolderButton" type="button">New Folder</button>
+        <button id="importPageButton" type="button">Import</button>
+        <input id="importPageInput" type="file" accept=".noma,.md,.markdown,text/plain,text/markdown" hidden />
       </div>
+      <label class="rail-template-field" for="pageTemplateSelect">Page template
+        <select id="pageTemplateSelect"></select>
+      </label>
       <div id="pageList" class="page-list"></div>
+    </div>
+    <div class="rail-section">
+      <div class="rail-section-title">Favorites</div>
+      <div id="favoriteList" class="navigation-list"></div>
+    </div>
+    <div class="rail-section">
+      <div class="rail-section-title">Recent</div>
+      <div id="recentList" class="navigation-list"></div>
+    </div>
+    <div class="rail-section">
+      <div class="rail-section-title rail-section-title-row">
+        <span>Trash</span>
+        <button id="refreshTrashButton" type="button" aria-label="Refresh trash">Refresh</button>
+      </div>
+      <div id="trashList" class="navigation-list"></div>
     </div>
   </aside>
 
@@ -66,10 +106,12 @@
         <button id="togglePanelsButton" type="button" aria-pressed="false">Panels</button>
         <div class="action-cluster" aria-label="Page actions">
           <button id="savePageButton" type="button">Save</button>
-          <button id="copyPageLinkButton" type="button">Page</button>
-          <button id="copyArtifactLinkButton" type="button">Artifact</button>
-          <button id="copySiteLinkButton" type="button">Space</button>
-          <button id="openPublishedSiteButton" type="button">Published</button>
+          <button id="reloadPageButton" type="button">Reload</button>
+          <button id="favoritePageButton" type="button" aria-pressed="false">Favorite</button>
+          <button id="copyPageLinkButton" type="button" aria-label="Copy page link">Page</button>
+          <button id="copyArtifactLinkButton" type="button" aria-label="Copy rendered artifact link">Artifact</button>
+          <button id="copySiteLinkButton" type="button" aria-label="Copy space link">Space</button>
+          <button id="openPublishedSiteButton" type="button" aria-label="Open published space">Published</button>
         </div>
       </div>
     </section>
@@ -77,7 +119,7 @@
     <section id="documentGrid" class="document-grid" aria-label="Document editor">
       <div class="editor-pane">
         <div class="pane-label">Noma Source</div>
-        <textarea id="sourceInput" class="source-input" spellcheck="false"></textarea>
+        <textarea id="sourceInput" class="source-input" spellcheck="false" aria-label="Noma source"></textarea>
       </div>
       <div id="splitResizeHandle" class="split-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize source and preview panes" tabindex="0"></div>
       <div class="preview-pane">
@@ -106,7 +148,212 @@
         </select>
       </label>
       <button id="inviteUserButton" type="button">Invite</button>
+      <label class="stack-field" for="inviteGroupSelect">Invite group
+        <select id="inviteGroupSelect"></select>
+      </label>
+      <button id="inviteGroupButton" type="button">Invite Group</button>
       <div id="shareStatus" class="panel-status"></div>
+      <div class="inspector-heading-row access-heading">
+        <h2>Active access</h2>
+        <button id="refreshAccessButton" type="button" aria-label="Refresh active access">Refresh</button>
+      </div>
+      <div id="accessList" class="collaboration-list"></div>
+    </section>
+
+    <section class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>Notifications</h2>
+        <div class="button-row">
+          <button id="refreshNotificationsButton" type="button" aria-label="Refresh notifications">Refresh</button>
+          <button id="readAllNotificationsButton" type="button">Read all</button>
+        </div>
+      </div>
+      <div id="notificationList" class="collaboration-list"></div>
+    </section>
+
+    <section class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>Comments</h2>
+        <button id="refreshCommentsButton" type="button" aria-label="Refresh page comments">Refresh</button>
+      </div>
+      <label class="stack-field" for="commentBlockIdInput">Block ID or alias (optional)
+        <input id="commentBlockIdInput" type="text" autocomplete="off" />
+      </label>
+      <label class="stack-field" for="commentBodyInput">Page comment
+        <textarea id="commentBodyInput" class="compact-textarea" placeholder="Use @{user-id} to mention someone"></textarea>
+      </label>
+      <button id="addCommentButton" type="button">Add Comment</button>
+      <div id="commentList" class="collaboration-list"></div>
+      <div id="commentStatus" class="panel-status"></div>
+    </section>
+
+    <section class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>Approvals</h2>
+        <button id="refreshApprovalsButton" type="button" aria-label="Refresh approvals">Refresh</button>
+      </div>
+      <label class="stack-field" for="approvalReviewerInput">Reviewer user ID
+        <input id="approvalReviewerInput" type="text" autocomplete="off" />
+      </label>
+      <label class="stack-field" for="approvalNoteInput">Review note (optional)
+        <input id="approvalNoteInput" type="text" />
+      </label>
+      <button id="requestApprovalButton" type="button">Request Approval</button>
+      <div id="approvalList" class="collaboration-list"></div>
+      <div id="approvalStatus" class="panel-status"></div>
+    </section>
+
+    <section class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>Activity</h2>
+        <button id="refreshActivityButton" type="button" aria-label="Refresh activity">Refresh</button>
+      </div>
+      <div id="activityList" class="collaboration-list"></div>
+    </section>
+
+    <section class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>Groups</h2>
+        <button id="refreshGroupsButton" type="button" aria-label="Refresh groups">Refresh</button>
+      </div>
+      <label class="stack-field" for="groupNameInput">New group name
+        <input id="groupNameInput" type="text" />
+      </label>
+      <button id="createGroupButton" type="button">Create Group</button>
+      <label class="stack-field" for="manageGroupSelect">Manage group
+        <select id="manageGroupSelect"></select>
+      </label>
+      <label class="stack-field" for="groupMemberIdInput">Member user ID
+        <input id="groupMemberIdInput" type="text" autocomplete="off" />
+      </label>
+      <label class="stack-field" for="groupMemberRoleSelect">Member role
+        <select id="groupMemberRoleSelect">
+          <option value="member">Member</option>
+          <option value="manager">Manager</option>
+        </select>
+      </label>
+      <button id="addGroupMemberButton" type="button">Add Member</button>
+      <div id="groupList" class="collaboration-list"></div>
+      <div id="groupStatus" class="panel-status"></div>
+    </section>
+
+    <section class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>History</h2>
+        <button id="refreshHistoryButton" type="button" aria-label="Refresh page history">Refresh</button>
+      </div>
+      <div id="historyList" class="history-list"></div>
+      <div id="historyStatus" class="panel-status"></div>
+    </section>
+
+    <section class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>Work</h2>
+        <button id="refreshWorkButton" type="button" aria-label="Refresh work board">Refresh</button>
+      </div>
+      <label class="stack-field" for="workProjectSelect">Project
+        <select id="workProjectSelect"></select>
+      </label>
+      <div class="work-create-grid">
+        <label class="stack-field" for="projectKeyInput">Key
+          <input id="projectKeyInput" type="text" maxlength="10" placeholder="NOM" />
+        </label>
+        <label class="stack-field" for="projectNameInput">Project name
+          <input id="projectNameInput" type="text" placeholder="Noma Delivery" />
+        </label>
+      </div>
+      <button id="createProjectButton" type="button">Create Project</button>
+
+      <div class="work-subsection">
+        <h3>Create issue</h3>
+        <label class="stack-field" for="issueSummaryInput">Summary
+          <input id="issueSummaryInput" type="text" />
+        </label>
+        <div class="work-create-grid">
+          <label class="stack-field" for="issueTypeSelect">Type
+            <select id="issueTypeSelect">
+              <option value="task">Task</option>
+              <option value="story">Story</option>
+              <option value="bug">Bug</option>
+              <option value="epic">Epic</option>
+            </select>
+          </label>
+          <label class="stack-field" for="issuePrioritySelect">Priority
+            <select id="issuePrioritySelect">
+              <option value="medium">Medium</option>
+              <option value="highest">Highest</option>
+              <option value="high">High</option>
+              <option value="low">Low</option>
+              <option value="lowest">Lowest</option>
+            </select>
+          </label>
+        </div>
+        <label class="stack-field" for="issueAssigneeInput">Assignee user ID (optional)
+          <input id="issueAssigneeInput" type="text" autocomplete="off" />
+        </label>
+        <label class="stack-field" for="issueLabelsInput">Labels (comma-separated)
+          <input id="issueLabelsInput" type="text" />
+        </label>
+        <label class="stack-field" for="issueSprintSelect">Sprint
+          <select id="issueSprintSelect"></select>
+        </label>
+        <button id="createIssueButton" type="button">Create Issue</button>
+      </div>
+
+      <div class="work-subsection">
+        <h3>Sprints</h3>
+        <label class="stack-field" for="sprintNameInput">Sprint name
+          <input id="sprintNameInput" type="text" />
+        </label>
+        <button id="createSprintButton" type="button">Create Sprint</button>
+        <label class="stack-field" for="manageSprintSelect">Manage sprint
+          <select id="manageSprintSelect"></select>
+        </label>
+        <div class="button-row">
+          <button id="startSprintButton" type="button">Start</button>
+          <button id="completeSprintButton" type="button">Complete</button>
+        </div>
+      </div>
+
+      <div class="work-subsection">
+        <div class="inspector-heading-row">
+          <h3>Board</h3>
+          <select id="issueFilterSelect" aria-label="Filter issues by status">
+            <option value="all">All</option>
+            <option value="backlog">Backlog</option>
+            <option value="todo">To do</option>
+            <option value="in_progress">In progress</option>
+            <option value="in_review">In review</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <label class="stack-field" for="issueSearchInput">Filter issues
+          <input id="issueSearchInput" type="search" placeholder="Key, summary, label" />
+        </label>
+        <div id="workBoard" class="work-board"></div>
+      </div>
+
+      <div class="work-subsection">
+        <h3>Selected issue</h3>
+        <div id="selectedIssueSummary" class="diagnostics-summary">Select an issue</div>
+        <label class="stack-field" for="issueCommentInput">Issue comment
+          <textarea id="issueCommentInput" class="compact-textarea"></textarea>
+        </label>
+        <button id="addIssueCommentButton" type="button">Add Issue Comment</button>
+        <label class="stack-field" for="issueLinkTargetInput">Link target key or ID
+          <input id="issueLinkTargetInput" type="text" placeholder="NOM-12" />
+        </label>
+        <label class="stack-field" for="issueLinkTypeSelect">Link type
+          <select id="issueLinkTypeSelect">
+            <option value="relates">Relates</option>
+            <option value="blocks">Blocks</option>
+            <option value="duplicates">Duplicates</option>
+          </select>
+        </label>
+        <button id="addIssueLinkButton" type="button">Add Link</button>
+        <div id="issueDetailList" class="collaboration-list"></div>
+      </div>
+      <div id="workStatus" class="panel-status"></div>
     </section>
 
     <section class="inspector-section">
@@ -119,10 +366,13 @@
   }
 ]</textarea>
       <div class="button-row">
-        <button id="applyPatchButton" type="button">Apply Patch</button>
+        <button id="applyPatchButton" type="button">Preview in Draft</button>
+        <button id="proposePatchButton" type="button">Propose for Review</button>
         <button id="copyLlmButton" type="button">Copy LLM</button>
+        <button id="refreshPatchProposalsButton" type="button">Refresh Reviews</button>
       </div>
       <div id="agentStatus" class="panel-status"></div>
+      <div id="patchProposalList" class="collaboration-list"></div>
     </section>
 
     <section class="inspector-section">

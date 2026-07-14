@@ -26,9 +26,9 @@ interface CloudUserSession {
   tokenPreview?: string;
 }
 
-interface CloudUserResponse extends CloudUserSession {
-  createdAt: string;
-  updatedAt: string;
+interface CloudAuthResponse {
+  ok: boolean;
+  user?: CloudUserSession;
 }
 
 interface CloudStatusResponse {
@@ -51,6 +51,180 @@ interface CloudDocumentResponse {
   access?: AccessInfo;
 }
 
+interface CloudDocumentRevisionSummary {
+  documentId: string;
+  revision: number;
+  title: string;
+  hash: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+interface CloudPageTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  source: string;
+}
+
+interface CloudSearchResult {
+  documentId: string;
+  siteId?: string;
+  documentTitle: string;
+  blockId?: string;
+  nodeType: string;
+  directiveName?: string;
+  title?: string;
+  excerpt: string;
+  line?: number;
+}
+
+interface CloudNavigationItem {
+  resourceType: "document" | "site";
+  resourceId: string;
+  siteId?: string;
+  title: string;
+  updatedAt: string;
+  activityAt: string;
+  access: { role: CloudRole };
+}
+
+interface CloudTrashItem extends CloudNavigationItem {
+  trashedBy: string;
+}
+
+interface CloudComment {
+  id: string;
+  documentId: string;
+  blockId?: string;
+  line?: number;
+  parentId?: string;
+  body: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+interface CloudNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  resourceType?: "document" | "site";
+  resourceId?: string;
+  createdAt: string;
+  readAt?: string;
+}
+
+interface CloudApproval {
+  id: string;
+  documentId: string;
+  documentHash: string;
+  requestedBy: string;
+  reviewerId: string;
+  reviewerName: string;
+  status: "pending" | "approved" | "changes_requested" | "cancelled";
+  note?: string;
+  updatedAt: string;
+}
+
+interface CloudActivityEvent {
+  id: string;
+  actorId: string;
+  actorName: string;
+  action: string;
+  resourceType: "document" | "site";
+  resourceId: string;
+  detail: Record<string, unknown>;
+  createdAt: string;
+}
+
+interface CloudGroup {
+  id: string;
+  name: string;
+  createdBy: string;
+  members: Array<{ userId: string; userName: string; role: "member" | "manager"; addedAt: string }>;
+}
+
+type CloudIssueStatus = "backlog" | "todo" | "in_progress" | "in_review" | "done";
+type CloudSprintStatus = "planned" | "active" | "closed";
+
+interface CloudProject {
+  id: string;
+  key: string;
+  name: string;
+  siteId: string;
+  access?: { role: CloudRole };
+}
+
+interface CloudIssue {
+  id: string;
+  key: string;
+  projectId: string;
+  summary: string;
+  description?: string;
+  type: "task" | "story" | "bug" | "epic";
+  status: CloudIssueStatus;
+  priority: "lowest" | "low" | "medium" | "high" | "highest";
+  reporterId: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  labels: string[];
+  sprintId?: string;
+  estimate?: number;
+  dueDate?: string;
+  updatedAt: string;
+}
+
+interface CloudSprint {
+  id: string;
+  projectId: string;
+  name: string;
+  goal?: string;
+  status: CloudSprintStatus;
+}
+
+interface CloudIssueDetail extends CloudIssue {
+  comments: Array<{ id: string; body: string; createdByName: string; createdAt: string }>;
+  links: Array<{ id: string; type: string; targetIssueKey: string; targetIssueSummary: string }>;
+  events: Array<{ id: string; action: string; actorName: string; createdAt: string }>;
+}
+
+interface CloudPatchProposal {
+  id: string;
+  documentId: string;
+  documentHash: string;
+  issueId?: string;
+  proposedBy: string;
+  proposedByName: string;
+  summary?: string;
+  status: "pending" | "approved" | "rejected" | "applied";
+  appliedHash?: string;
+  proof: {
+    status?: string;
+    canWrite?: boolean;
+    diff?: string;
+    sourceMetrics?: { preservedPercent?: number };
+  };
+  createdAt: string;
+}
+
+interface CloudErrorPayload {
+  error?: string;
+  code?: string;
+  currentHash?: string;
+  currentUpdatedAt?: string;
+}
+
+class CloudRequestError extends Error {
+  constructor(readonly status: number, message: string, readonly payload: CloudErrorPayload) {
+    super(message);
+    this.name = "CloudRequestError";
+  }
+}
+
 interface CloudSiteResponse {
   id: string;
   title: string;
@@ -71,6 +245,27 @@ interface CloudShareResponse {
   token: string;
   url: string;
   artifactUrl: string;
+}
+
+interface CloudCollaboratorGrant {
+  userId: string;
+  role: CloudRole;
+  addedAt: string;
+}
+
+interface CloudGroupGrant {
+  groupId: string;
+  groupName: string;
+  role: Exclude<CloudRole, "owner">;
+  addedAt: string;
+}
+
+interface CloudShareGrant {
+  id: string;
+  role: Exclude<CloudRole, "owner">;
+  label?: string;
+  tokenPreview: string;
+  revokedAt?: string;
 }
 
 interface RenderState {
@@ -103,20 +298,36 @@ const splitSourceRatioStorageKey = "noma.cloud.splitSourceRatio.v1";
 const previewPaperWidthStorageKey = "noma.cloud.previewPaperWidth.v1";
 const themeStorageKey = "noma.cloud.theme.v1";
 const query = new URLSearchParams(window.location.search);
+const workIssueStatuses: CloudIssueStatus[] = ["backlog", "todo", "in_progress", "in_review", "done"];
 
 const cloudUserNameInput = requireElement<HTMLInputElement>("cloudUserName");
+const cloudInvitationCodeInput = requireElement<HTMLInputElement>("cloudInvitationCode");
+const cloudUserTokenInput = requireElement<HTMLInputElement>("cloudUserToken");
 const newUserButton = requireElement<HTMLButtonElement>("newUserButton");
+const loginUserButton = requireElement<HTMLButtonElement>("loginUserButton");
+const logoutUserButton = requireElement<HTMLButtonElement>("logoutUserButton");
 const copyUserIdButton = requireElement<HTMLButtonElement>("copyUserIdButton");
 const copyUserTokenButton = requireElement<HTMLButtonElement>("copyUserTokenButton");
 const themeToggleButton = requireElement<HTMLButtonElement>("themeToggleButton");
 const cloudStatus = requireElement<HTMLElement>("cloudStatus");
+const globalSearchInput = requireElement<HTMLInputElement>("globalSearchInput");
+const searchButton = requireElement<HTMLButtonElement>("searchButton");
+const searchScopeSelect = requireElement<HTMLSelectElement>("searchScopeSelect");
+const searchResults = requireElement<HTMLElement>("searchResults");
 const siteTitleInput = requireElement<HTMLInputElement>("siteTitleInput");
 const newSpaceButton = requireElement<HTMLButtonElement>("newSpaceButton");
 const saveSpaceButton = requireElement<HTMLButtonElement>("saveSpaceButton");
 const siteList = requireElement<HTMLElement>("siteList");
 const newPageButton = requireElement<HTMLButtonElement>("newPageButton");
 const newFolderButton = requireElement<HTMLButtonElement>("newFolderButton");
+const importPageButton = requireElement<HTMLButtonElement>("importPageButton");
+const importPageInput = requireElement<HTMLInputElement>("importPageInput");
+const pageTemplateSelect = requireElement<HTMLSelectElement>("pageTemplateSelect");
 const pageList = requireElement<HTMLElement>("pageList");
+const favoriteList = requireElement<HTMLElement>("favoriteList");
+const recentList = requireElement<HTMLElement>("recentList");
+const trashList = requireElement<HTMLElement>("trashList");
+const refreshTrashButton = requireElement<HTMLButtonElement>("refreshTrashButton");
 const pageTitleInput = requireElement<HTMLInputElement>("pageTitleInput");
 const roleBadge = requireElement<HTMLElement>("roleBadge");
 const dirtyBadge = requireElement<HTMLElement>("dirtyBadge");
@@ -126,6 +337,8 @@ const splitViewButton = requireElement<HTMLButtonElement>("splitViewButton");
 const previewViewButton = requireElement<HTMLButtonElement>("previewViewButton");
 const togglePanelsButton = requireElement<HTMLButtonElement>("togglePanelsButton");
 const savePageButton = requireElement<HTMLButtonElement>("savePageButton");
+const reloadPageButton = requireElement<HTMLButtonElement>("reloadPageButton");
+const favoritePageButton = requireElement<HTMLButtonElement>("favoritePageButton");
 const copyPageLinkButton = requireElement<HTMLButtonElement>("copyPageLinkButton");
 const copyArtifactLinkButton = requireElement<HTMLButtonElement>("copyArtifactLinkButton");
 const copySiteLinkButton = requireElement<HTMLButtonElement>("copySiteLinkButton");
@@ -138,11 +351,75 @@ const shareRoleSelect = requireElement<HTMLSelectElement>("shareRoleSelect");
 const inviteUserIdInput = requireElement<HTMLInputElement>("inviteUserIdInput");
 const inviteRoleSelect = requireElement<HTMLSelectElement>("inviteRoleSelect");
 const inviteUserButton = requireElement<HTMLButtonElement>("inviteUserButton");
+const inviteGroupSelect = requireElement<HTMLSelectElement>("inviteGroupSelect");
+const inviteGroupButton = requireElement<HTMLButtonElement>("inviteGroupButton");
 const shareStatus = requireElement<HTMLElement>("shareStatus");
+const refreshAccessButton = requireElement<HTMLButtonElement>("refreshAccessButton");
+const accessList = requireElement<HTMLElement>("accessList");
+const refreshNotificationsButton = requireElement<HTMLButtonElement>("refreshNotificationsButton");
+const readAllNotificationsButton = requireElement<HTMLButtonElement>("readAllNotificationsButton");
+const notificationList = requireElement<HTMLElement>("notificationList");
+const refreshCommentsButton = requireElement<HTMLButtonElement>("refreshCommentsButton");
+const commentBlockIdInput = requireElement<HTMLInputElement>("commentBlockIdInput");
+const commentBodyInput = requireElement<HTMLTextAreaElement>("commentBodyInput");
+const addCommentButton = requireElement<HTMLButtonElement>("addCommentButton");
+const commentList = requireElement<HTMLElement>("commentList");
+const commentStatus = requireElement<HTMLElement>("commentStatus");
+const refreshApprovalsButton = requireElement<HTMLButtonElement>("refreshApprovalsButton");
+const approvalReviewerInput = requireElement<HTMLInputElement>("approvalReviewerInput");
+const approvalNoteInput = requireElement<HTMLInputElement>("approvalNoteInput");
+const requestApprovalButton = requireElement<HTMLButtonElement>("requestApprovalButton");
+const approvalList = requireElement<HTMLElement>("approvalList");
+const approvalStatus = requireElement<HTMLElement>("approvalStatus");
+const refreshActivityButton = requireElement<HTMLButtonElement>("refreshActivityButton");
+const activityList = requireElement<HTMLElement>("activityList");
+const refreshGroupsButton = requireElement<HTMLButtonElement>("refreshGroupsButton");
+const groupNameInput = requireElement<HTMLInputElement>("groupNameInput");
+const createGroupButton = requireElement<HTMLButtonElement>("createGroupButton");
+const manageGroupSelect = requireElement<HTMLSelectElement>("manageGroupSelect");
+const groupMemberIdInput = requireElement<HTMLInputElement>("groupMemberIdInput");
+const groupMemberRoleSelect = requireElement<HTMLSelectElement>("groupMemberRoleSelect");
+const addGroupMemberButton = requireElement<HTMLButtonElement>("addGroupMemberButton");
+const groupList = requireElement<HTMLElement>("groupList");
+const groupStatus = requireElement<HTMLElement>("groupStatus");
+const refreshHistoryButton = requireElement<HTMLButtonElement>("refreshHistoryButton");
+const historyList = requireElement<HTMLElement>("historyList");
+const historyStatus = requireElement<HTMLElement>("historyStatus");
+const refreshWorkButton = requireElement<HTMLButtonElement>("refreshWorkButton");
+const workProjectSelect = requireElement<HTMLSelectElement>("workProjectSelect");
+const projectKeyInput = requireElement<HTMLInputElement>("projectKeyInput");
+const projectNameInput = requireElement<HTMLInputElement>("projectNameInput");
+const createProjectButton = requireElement<HTMLButtonElement>("createProjectButton");
+const issueSummaryInput = requireElement<HTMLInputElement>("issueSummaryInput");
+const issueTypeSelect = requireElement<HTMLSelectElement>("issueTypeSelect");
+const issuePrioritySelect = requireElement<HTMLSelectElement>("issuePrioritySelect");
+const issueAssigneeInput = requireElement<HTMLInputElement>("issueAssigneeInput");
+const issueLabelsInput = requireElement<HTMLInputElement>("issueLabelsInput");
+const issueSprintSelect = requireElement<HTMLSelectElement>("issueSprintSelect");
+const createIssueButton = requireElement<HTMLButtonElement>("createIssueButton");
+const sprintNameInput = requireElement<HTMLInputElement>("sprintNameInput");
+const createSprintButton = requireElement<HTMLButtonElement>("createSprintButton");
+const manageSprintSelect = requireElement<HTMLSelectElement>("manageSprintSelect");
+const startSprintButton = requireElement<HTMLButtonElement>("startSprintButton");
+const completeSprintButton = requireElement<HTMLButtonElement>("completeSprintButton");
+const issueFilterSelect = requireElement<HTMLSelectElement>("issueFilterSelect");
+const issueSearchInput = requireElement<HTMLInputElement>("issueSearchInput");
+const workBoard = requireElement<HTMLElement>("workBoard");
+const selectedIssueSummary = requireElement<HTMLElement>("selectedIssueSummary");
+const issueCommentInput = requireElement<HTMLTextAreaElement>("issueCommentInput");
+const addIssueCommentButton = requireElement<HTMLButtonElement>("addIssueCommentButton");
+const issueLinkTargetInput = requireElement<HTMLInputElement>("issueLinkTargetInput");
+const issueLinkTypeSelect = requireElement<HTMLSelectElement>("issueLinkTypeSelect");
+const addIssueLinkButton = requireElement<HTMLButtonElement>("addIssueLinkButton");
+const issueDetailList = requireElement<HTMLElement>("issueDetailList");
+const workStatus = requireElement<HTMLElement>("workStatus");
 const patchInput = requireElement<HTMLTextAreaElement>("patchInput");
 const applyPatchButton = requireElement<HTMLButtonElement>("applyPatchButton");
+const proposePatchButton = requireElement<HTMLButtonElement>("proposePatchButton");
 const copyLlmButton = requireElement<HTMLButtonElement>("copyLlmButton");
+const refreshPatchProposalsButton = requireElement<HTMLButtonElement>("refreshPatchProposalsButton");
 const agentStatus = requireElement<HTMLElement>("agentStatus");
+const patchProposalList = requireElement<HTMLElement>("patchProposalList");
 const diagnosticsSummary = requireElement<HTMLElement>("diagnosticsSummary");
 const diagnosticsList = requireElement<HTMLElement>("diagnosticsList");
 const outlineList = requireElement<HTMLElement>("outlineList");
@@ -157,6 +434,25 @@ let sites: CloudSiteResponse[] = [];
 let currentSite: CloudSiteResponse | undefined;
 let pages: CloudDocumentResponse[] = [];
 let currentPage: CloudDocumentResponse | undefined;
+let documentRevisions: CloudDocumentRevisionSummary[] = [];
+let pageTemplates: CloudPageTemplate[] = [];
+let cloudSearchResults: CloudSearchResult[] = [];
+let recentItems: CloudNavigationItem[] = [];
+let favoriteItems: CloudNavigationItem[] = [];
+let trashItems: CloudTrashItem[] = [];
+let notifications: CloudNotification[] = [];
+let comments: CloudComment[] = [];
+let approvals: CloudApproval[] = [];
+let activityEvents: CloudActivityEvent[] = [];
+let groups: CloudGroup[] = [];
+let workProjects: CloudProject[] = [];
+let workIssues: CloudIssue[] = [];
+let workSprints: CloudSprint[] = [];
+let selectedIssue: CloudIssueDetail | undefined;
+let patchProposals: CloudPatchProposal[] = [];
+let collaboratorGrants: CloudCollaboratorGrant[] = [];
+let groupGrants: CloudGroupGrant[] = [];
+let shareGrants: CloudShareGrant[] = [];
 let activeFolder = "";
 let dirty = false;
 let renderTimer: ReturnType<typeof window.setTimeout> | undefined;
@@ -191,6 +487,14 @@ function bindEvents(): void {
     void createCloudUser();
   });
 
+  loginUserButton.addEventListener("click", () => {
+    void loginCloudUser();
+  });
+
+  logoutUserButton.addEventListener("click", () => {
+    logoutCloudUser();
+  });
+
   copyUserIdButton.addEventListener("click", () => {
     if (cloudUser) void copyText(cloudUser.id, "Copied user ID");
   });
@@ -223,9 +527,63 @@ function bindEvents(): void {
     void createFolder();
   });
 
+  importPageButton.addEventListener("click", () => importPageInput.click());
+  importPageInput.addEventListener("change", () => {
+    const file = importPageInput.files?.[0];
+    if (file) void importPage(file);
+    importPageInput.value = "";
+  });
+
+  searchButton.addEventListener("click", () => {
+    void searchCloud();
+  });
+  globalSearchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") void searchCloud();
+    if (event.key === "Escape") {
+      globalSearchInput.value = "";
+      cloudSearchResults = [];
+      renderSearchResults();
+    }
+  });
+  globalSearchInput.addEventListener("input", () => {
+    searchButton.disabled = busy || !cloudUser || !globalSearchInput.value.trim();
+    if (!globalSearchInput.value.trim()) {
+      cloudSearchResults = [];
+      renderSearchResults();
+    }
+  });
+
+  favoritePageButton.addEventListener("click", () => {
+    if (currentPage) void toggleFavorite("document", currentPage.id);
+  });
+
+  refreshTrashButton.addEventListener("click", () => {
+    void refreshTrash();
+  });
+
   savePageButton.addEventListener("click", () => {
     void saveCurrentPage();
   });
+
+  reloadPageButton.addEventListener("click", () => {
+    void reloadCurrentPage();
+  });
+
+  refreshHistoryButton.addEventListener("click", () => {
+    void refreshHistory();
+  });
+
+  refreshWorkButton.addEventListener("click", () => void refreshWorkManagement());
+  workProjectSelect.addEventListener("change", () => void loadWorkProject(workProjectSelect.value));
+  createProjectButton.addEventListener("click", () => void createWorkProject());
+  createIssueButton.addEventListener("click", () => void createWorkIssue());
+  createSprintButton.addEventListener("click", () => void createWorkSprint());
+  startSprintButton.addEventListener("click", () => void updateWorkSprint("active"));
+  completeSprintButton.addEventListener("click", () => void updateWorkSprint("closed"));
+  issueFilterSelect.addEventListener("change", () => renderWorkBoard());
+  issueSearchInput.addEventListener("input", () => renderWorkBoard());
+  addIssueCommentButton.addEventListener("click", () => void addWorkIssueComment());
+  addIssueLinkButton.addEventListener("click", () => void addWorkIssueLink());
 
   copyPageLinkButton.addEventListener("click", () => {
     void copyPageLink();
@@ -247,9 +605,29 @@ function bindEvents(): void {
     void inviteCollaborator();
   });
 
+  inviteGroupButton.addEventListener("click", () => {
+    void inviteGroup();
+  });
+  refreshAccessButton.addEventListener("click", () => void refreshAccessManagement());
+
+  refreshNotificationsButton.addEventListener("click", () => void refreshNotifications());
+  readAllNotificationsButton.addEventListener("click", () => void readAllNotifications());
+  refreshCommentsButton.addEventListener("click", () => void refreshComments());
+  addCommentButton.addEventListener("click", () => void addComment());
+  refreshApprovalsButton.addEventListener("click", () => void refreshApprovals());
+  requestApprovalButton.addEventListener("click", () => void requestApproval());
+  refreshActivityButton.addEventListener("click", () => void refreshActivity());
+  refreshGroupsButton.addEventListener("click", () => void refreshGroups());
+  createGroupButton.addEventListener("click", () => void createGroup());
+  addGroupMemberButton.addEventListener("click", () => void addGroupMember());
+  manageGroupSelect.addEventListener("change", () => renderChrome());
+
   applyPatchButton.addEventListener("click", () => {
     void applyAgentPatch();
   });
+
+  proposePatchButton.addEventListener("click", () => void proposeAgentPatch());
+  refreshPatchProposalsButton.addEventListener("click", () => void refreshPatchProposals());
 
   copyLlmButton.addEventListener("click", () => {
     void copyLlmContext();
@@ -307,21 +685,7 @@ async function initializeCloud(): Promise<void> {
       return;
     }
 
-    const requestedSite = readCloudId(query.get("site")) ?? readCloudId(localStorage.getItem(activeSiteStorageKey));
-    const requestedDoc = readCloudId(query.get("doc")) ?? readCloudId(localStorage.getItem(activeDocumentStorageKey));
-
-    if (requestedSite) {
-      await refreshSites({ silent: true });
-      await loadSite(requestedSite, requestedDoc);
-    } else if (requestedDoc) {
-      await refreshSites({ silent: true });
-      await loadStandaloneDocument(requestedDoc);
-    } else {
-      await refreshSites({ silent: true });
-      const firstSite = sites[0];
-      if (firstSite) await loadSite(firstSite.id);
-      else await createStarterWorkspace("Research Workspace");
-    }
+    await openInitialWorkspace();
     setCloudStatus("Ready", "ok");
   } catch (error) {
     cloudAvailable = false;
@@ -330,6 +694,22 @@ async function initializeCloud(): Promise<void> {
     setBusy(false);
     renderChrome();
   }
+}
+
+async function openInitialWorkspace(): Promise<void> {
+  const requestedSite = readCloudId(query.get("site")) ?? readCloudId(localStorage.getItem(activeSiteStorageKey));
+  const requestedDoc = readCloudId(query.get("doc")) ?? readCloudId(localStorage.getItem(activeDocumentStorageKey));
+  await refreshSites({ silent: true });
+  if (requestedSite) {
+    await loadSite(requestedSite, requestedDoc);
+  } else if (requestedDoc) {
+    await loadStandaloneDocument(requestedDoc);
+  } else {
+    const firstSite = sites[0];
+    if (firstSite) await loadSite(firstSite.id);
+    else await createStarterWorkspace("Research Workspace");
+  }
+  await refreshWorkspaceTools();
 }
 
 function validateStoredCloudUser(statusUser: CloudStatusResponse["user"]): void {
@@ -356,8 +736,26 @@ function clearWorkspaceState(): void {
   currentSite = undefined;
   activeFolder = "";
   pages = [];
+  cloudSearchResults = [];
+  recentItems = [];
+  favoriteItems = [];
+  trashItems = [];
+  notifications = [];
+  comments = [];
+  approvals = [];
+  activityEvents = [];
+  groups = [];
+  workProjects = [];
+  workIssues = [];
+  workSprints = [];
+  selectedIssue = undefined;
+  patchProposals = [];
+  collaboratorGrants = [];
+  groupGrants = [];
+  shareGrants = [];
   setCurrentPage(undefined);
   siteTitleInput.value = "Research Workspace";
+  renderWorkspaceTools();
 }
 
 async function refreshSites(options: { silent?: boolean } = {}): Promise<void> {
@@ -369,6 +767,220 @@ async function refreshSites(options: { silent?: boolean } = {}): Promise<void> {
   } finally {
     if (!options.silent) setBusy(false);
     renderNavigation();
+  }
+}
+
+async function refreshWorkspaceTools(): Promise<void> {
+  if (!cloudUser) {
+    pageTemplates = [];
+    recentItems = [];
+    favoriteItems = [];
+    trashItems = [];
+    notifications = [];
+    groups = [];
+    workProjects = [];
+    workIssues = [];
+    workSprints = [];
+    selectedIssue = undefined;
+    patchProposals = [];
+    collaboratorGrants = [];
+    groupGrants = [];
+    shareGrants = [];
+    renderWorkspaceTools();
+    renderCollaborationPanels();
+    renderWorkManagement();
+    renderAccessManagement();
+    return;
+  }
+  await Promise.all([
+    refreshTemplates(),
+    refreshNavigationItems(),
+    refreshTrash(),
+    refreshNotifications(),
+    refreshGroups(),
+    refreshWorkManagement(),
+    refreshAccessManagement(),
+  ]);
+}
+
+async function refreshTemplates(): Promise<void> {
+  const selected = pageTemplateSelect.value;
+  const response = await fetchCloudJson<{ templates: CloudPageTemplate[] }>("/api/templates");
+  pageTemplates = response.templates;
+  pageTemplateSelect.textContent = "";
+  for (const template of pageTemplates) {
+    const option = document.createElement("option");
+    option.value = template.id;
+    option.textContent = `${template.title} · ${template.category}`;
+    option.title = template.description;
+    pageTemplateSelect.append(option);
+  }
+  pageTemplateSelect.value = pageTemplates.some((template) => template.id === selected) ? selected : "blank";
+}
+
+async function refreshNavigationItems(): Promise<void> {
+  const response = await fetchCloudJson<{ recents: CloudNavigationItem[]; favorites: CloudNavigationItem[] }>("/api/navigation");
+  recentItems = response.recents;
+  favoriteItems = response.favorites;
+  renderWorkspaceTools();
+}
+
+async function refreshTrash(): Promise<void> {
+  if (!cloudUser) {
+    trashItems = [];
+    renderWorkspaceTools();
+    return;
+  }
+  try {
+    const response = await fetchCloudJson<{ items: CloudTrashItem[] }>("/api/trash");
+    trashItems = response.items;
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    renderWorkspaceTools();
+  }
+}
+
+async function searchCloud(): Promise<void> {
+  const q = globalSearchInput.value.trim();
+  if (!q || !cloudUser) {
+    cloudSearchResults = [];
+    renderSearchResults();
+    return;
+  }
+  searchButton.disabled = true;
+  try {
+    const params = new URLSearchParams({ q });
+    if (searchScopeSelect.value === "site" && currentSite) params.set("site", currentSite.id);
+    const response = await fetchCloudJson<{ results: CloudSearchResult[] }>(`/api/search?${params.toString()}`);
+    cloudSearchResults = response.results;
+    setCloudStatus(`${cloudSearchResults.length} search result${cloudSearchResults.length === 1 ? "" : "s"}`, "ok");
+  } catch (error) {
+    cloudSearchResults = [];
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    searchButton.disabled = busy || !cloudUser;
+    renderSearchResults();
+  }
+}
+
+function renderWorkspaceTools(): void {
+  renderNavigationList(favoriteList, favoriteItems.slice(0, 8), "No favorites", true);
+  renderNavigationList(recentList, recentItems.slice(0, 8), "No recent items", false);
+  renderTrashList();
+  renderSearchResults();
+}
+
+function renderSearchResults(): void {
+  searchResults.textContent = "";
+  if (!globalSearchInput.value.trim()) return;
+  if (cloudSearchResults.length === 0) {
+    searchResults.append(emptyState("No matches"));
+    return;
+  }
+  for (const result of cloudSearchResults.slice(0, 20)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "search-result";
+    const title = document.createElement("span");
+    title.className = "row-title";
+    title.textContent = result.title || result.documentTitle;
+    const meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = `${result.documentTitle}${result.line ? ` · line ${result.line}` : ""} · ${result.excerpt}`;
+    button.append(title, meta);
+    button.addEventListener("click", () => void openSearchResult(result));
+    searchResults.append(button);
+  }
+}
+
+function renderNavigationList(container: HTMLElement, items: CloudNavigationItem[], emptyText: string, removable: boolean): void {
+  container.textContent = "";
+  if (items.length === 0) {
+    container.append(emptyState(emptyText));
+    return;
+  }
+  for (const item of items) {
+    const entry = document.createElement("div");
+    entry.className = "navigation-entry";
+    const button = navigationButton(item);
+    entry.append(button);
+    if (removable) {
+      entry.append(iconButton("×", `Remove ${item.title} from favorites`, () => void toggleFavorite(item.resourceType, item.resourceId)));
+    }
+    container.append(entry);
+  }
+}
+
+function navigationButton(item: CloudNavigationItem): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "navigation-row";
+  const title = document.createElement("span");
+  title.className = "row-title";
+  title.textContent = item.title;
+  const meta = document.createElement("span");
+  meta.className = "row-meta";
+  meta.textContent = `${item.resourceType} · ${formatDate(item.activityAt)}`;
+  button.append(title, meta);
+  button.addEventListener("click", () => void openNavigationItem(item));
+  return button;
+}
+
+function renderTrashList(): void {
+  trashList.textContent = "";
+  if (trashItems.length === 0) {
+    trashList.append(emptyState("Trash is empty"));
+    return;
+  }
+  for (const item of trashItems.slice(0, 20)) {
+    const entry = document.createElement("div");
+    entry.className = "navigation-entry";
+    entry.append(navigationButton(item), iconButton("Restore", `Restore ${item.title}`, () => void restoreTrashItem(item)));
+    trashList.append(entry);
+  }
+}
+
+async function openSearchResult(result: CloudSearchResult): Promise<void> {
+  if (result.siteId) await loadSite(result.siteId, result.documentId);
+  else await loadStandaloneDocument(result.documentId);
+  if (result.line) focusSourceLine(result.line);
+}
+
+async function openNavigationItem(item: CloudNavigationItem): Promise<void> {
+  if (item.resourceType === "site") await loadSite(item.resourceId);
+  else if (item.siteId) await loadSite(item.siteId, item.resourceId);
+  else await loadStandaloneDocument(item.resourceId);
+}
+
+async function toggleFavorite(resourceType: "document" | "site", resourceId: string): Promise<void> {
+  if (!cloudUser) return;
+  const exists = favoriteItems.some((item) => item.resourceType === resourceType && item.resourceId === resourceId);
+  try {
+    await fetchCloudJson("/api/navigation/favorites", {
+      method: exists ? "DELETE" : "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ resourceType, resourceId }),
+    });
+    await refreshNavigationItems();
+    renderChrome();
+    setCloudStatus(exists ? "Removed favorite" : "Added favorite", "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  }
+}
+
+async function recordRecent(resourceType: "document" | "site", resourceId: string): Promise<void> {
+  if (!cloudUser) return;
+  try {
+    await fetchCloudJson("/api/navigation/recent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ resourceType, resourceId }),
+    });
+    await refreshNavigationItems();
+  } catch {
+    return;
   }
 }
 
@@ -384,7 +996,7 @@ async function loadSite(siteId: string, preferredDocumentId?: string): Promise<v
     const selected = preferredDocumentId ? pages.find((page) => page.id === preferredDocumentId) : undefined;
     setCurrentPage(selected ?? pages[0]);
     updateAddress();
-    if (cloudUser) await refreshSites({ silent: true });
+    if (cloudUser) await Promise.all([refreshSites({ silent: true }), refreshWorkManagement(), refreshAccessManagement()]);
   } finally {
     setBusy(false);
     renderChrome();
@@ -402,6 +1014,7 @@ async function loadStandaloneDocument(documentId: string): Promise<void> {
     siteTitleInput.value = "Standalone Page";
     setCurrentPage(page);
     updateAddress();
+    await Promise.all([refreshWorkManagement(), refreshAccessManagement()]);
   } finally {
     setBusy(false);
     renderChrome();
@@ -459,7 +1072,8 @@ async function createPage(folder = activeFolder): Promise<void> {
   if (!confirmDiscardDirty()) return;
 
   const normalizedFolder = normalizeFolderName(folder);
-  const title = promptName(normalizedFolder ? `Page title in ${normalizedFolder}` : "Page title", "Untitled Page");
+  const template = selectedPageTemplate();
+  const title = promptName(normalizedFolder ? `Page title in ${normalizedFolder}` : "Page title", template?.title ?? "Untitled Page");
   setBusy(true, "Creating page", "warning");
   try {
     const page = await fetchCloudJson<CloudDocumentResponse>(`/api/sites/${encodeURIComponent(currentSite.id)}/documents`, {
@@ -467,7 +1081,7 @@ async function createPage(folder = activeFolder): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         title,
-        source: starterPage(title, currentSite.title),
+        templateId: template?.id ?? "blank",
         folder: normalizedFolder,
       }),
     });
@@ -485,7 +1099,118 @@ async function createPage(folder = activeFolder): Promise<void> {
     setCurrentPage(page);
     await refreshSites({ silent: true });
     updateAddress();
+    await refreshWorkspaceTools();
     setCloudStatus("Created page", "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
+}
+
+async function importPage(file: File): Promise<void> {
+  if (!currentSite) {
+    await createStarterWorkspace("Research Workspace");
+  }
+  if (!currentSite || !cloudUser || !canCreatePage()) return;
+  if (!confirmDiscardDirty()) return;
+  const source = await file.text();
+  if (!source.trim()) {
+    setCloudStatus("The imported file is empty", "error");
+    return;
+  }
+  const markdown = /\.(?:md|markdown)$/i.test(file.name);
+  const fileTitle = file.name.replace(/\.(?:noma|md|markdown)$/i, "").replace(/[-_]+/g, " ").trim();
+  const title = sourceTitle(source) || fileTitle || "Imported Page";
+  const folder = normalizeFolderName(activeFolder);
+  setBusy(true, `Importing ${file.name}`, "warning");
+  try {
+    const page = await fetchCloudJson<CloudDocumentResponse>(`/api/sites/${encodeURIComponent(currentSite.id)}/documents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title, source, format: markdown ? "markdown" : "noma", folder }),
+    });
+    pages = [...pages, page];
+    const documentIds = [...currentSite.documentIds, page.id];
+    const pageFolders = normalizedPageFolders({ ...currentSite.pageFolders, ...(folder ? { [page.id]: folder } : {}) }, documentIds);
+    currentSite = {
+      ...currentSite,
+      documentIds,
+      folders: normalizeFolders([...(currentSite.folders ?? []), folder, ...Object.values(pageFolders)]),
+      pageFolders,
+      documents: pages,
+    };
+    setCurrentPage(page);
+    await refreshSites({ silent: true });
+    await refreshWorkspaceTools();
+    updateAddress();
+    setCloudStatus(`Imported ${file.name}`, "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
+}
+
+function selectedPageTemplate(): CloudPageTemplate | undefined {
+  return pageTemplates.find((template) => template.id === pageTemplateSelect.value);
+}
+
+async function trashPage(page: CloudDocumentResponse): Promise<void> {
+  if (!canEditSite() && page.access?.role !== "owner" && page.access?.role !== "editor") return;
+  if (currentPage?.id === page.id && !confirmDiscardDirty()) return;
+  if (!window.confirm(`Move page "${page.title}" to trash? It can be restored later.`)) return;
+  setBusy(true, "Moving page to trash", "warning");
+  try {
+    await fetchCloudJson(`/api/trash/document/${encodeURIComponent(page.id)}`, { method: "POST" });
+    dirty = false;
+    if (currentSite) await loadSite(currentSite.id);
+    else if (currentPage?.id === page.id) setCurrentPage(undefined);
+    await refreshSites({ silent: true });
+    await refreshWorkspaceTools();
+    setCloudStatus("Moved page to trash", "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
+}
+
+async function trashSite(site: CloudSiteResponse): Promise<void> {
+  if (site.access?.role !== "owner" && site.currentRole !== "owner") return;
+  if (currentSite?.id === site.id && !confirmDiscardDirty()) return;
+  if (!window.confirm(`Move space "${site.title}" to trash? Its pages remain recoverable.`)) return;
+  setBusy(true, "Moving space to trash", "warning");
+  try {
+    await fetchCloudJson(`/api/trash/site/${encodeURIComponent(site.id)}`, { method: "POST" });
+    dirty = false;
+    await refreshSites({ silent: true });
+    const nextSite = sites.find((candidate) => candidate.id !== site.id);
+    if (nextSite) await loadSite(nextSite.id);
+    else clearWorkspaceState();
+    await refreshWorkspaceTools();
+    setCloudStatus("Moved space to trash", "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
+}
+
+async function restoreTrashItem(item: CloudTrashItem): Promise<void> {
+  setBusy(true, `Restoring ${item.title}`, "warning");
+  try {
+    await fetchCloudJson(`/api/trash/${item.resourceType}/${encodeURIComponent(item.resourceId)}/restore`, { method: "POST" });
+    await refreshSites({ silent: true });
+    await refreshWorkspaceTools();
+    if (item.resourceType === "site") await loadSite(item.resourceId);
+    else if (item.siteId) await loadSite(item.siteId, item.resourceId);
+    else await loadStandaloneDocument(item.resourceId);
+    setCloudStatus(`Restored ${item.title}`, "ok");
   } catch (error) {
     setCloudStatus(errorMessage(error), "error");
   } finally {
@@ -624,15 +1349,14 @@ async function saveCurrentPage(): Promise<void> {
 
   setBusy(true, "Saving page", "warning");
   try {
-    const endpoint = currentSite?.documentIds.includes(currentPage.id)
-      ? `/api/sites/${encodeURIComponent(currentSite.id)}/documents/${encodeURIComponent(currentPage.id)}`
-      : `/api/documents/${encodeURIComponent(currentPage.id)}`;
+    const endpoint = currentPageEndpoint();
     const saved = await fetchCloudJson<CloudDocumentResponse>(endpoint, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value),
         source: sourceInput.value,
+        expectedHash: currentPage.hash,
       }),
     });
     replacePage(saved);
@@ -641,12 +1365,41 @@ async function saveCurrentPage(): Promise<void> {
     syncTitleFromSource();
     setCloudStatus("Saved page", "ok");
     updateAddress();
+    await Promise.all([refreshHistory({ silent: true }), refreshApprovals(), refreshActivity()]);
+  } catch (error) {
+    if (error instanceof CloudRequestError && error.status === 409) {
+      setCloudStatus("This page changed elsewhere. Your draft is preserved; reload to review the latest saved version.", "error");
+      setPanelStatus(historyStatus, "Save conflict: reload the page before merging or saving again.", "error");
+    } else {
+      setCloudStatus(errorMessage(error), "error");
+    }
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
+}
+
+async function reloadCurrentPage(): Promise<void> {
+  if (!currentPage || !confirmDiscardDirty()) return;
+  setBusy(true, "Reloading page", "warning");
+  try {
+    const page = await fetchCloudJson<CloudDocumentResponse>(currentPageEndpoint());
+    replacePage(page);
+    setCurrentPage(page);
+    setCloudStatus("Reloaded latest page", "ok");
   } catch (error) {
     setCloudStatus(errorMessage(error), "error");
   } finally {
     setBusy(false);
     renderChrome();
   }
+}
+
+function currentPageEndpoint(): string {
+  if (!currentPage) throw new Error("No page is selected");
+  return currentSite?.documentIds.includes(currentPage.id)
+    ? `/api/sites/${encodeURIComponent(currentSite.id)}/documents/${encodeURIComponent(currentPage.id)}`
+    : `/api/documents/${encodeURIComponent(currentPage.id)}`;
 }
 
 async function saveCurrentSite(): Promise<void> {
@@ -717,13 +1470,11 @@ async function inviteCollaborator(): Promise<void> {
   try {
     if (currentSite) {
       await postCollaborator(`/api/sites/${encodeURIComponent(currentSite.id)}/collaborators`, userId, role);
-      for (const page of pages) {
-        await postCollaborator(`/api/documents/${encodeURIComponent(page.id)}/collaborators`, userId, role);
-      }
     } else if (currentPage) {
       await postCollaborator(`/api/documents/${encodeURIComponent(currentPage.id)}/collaborators`, userId, role);
     }
     inviteUserIdInput.value = "";
+    await refreshAccessManagement();
     setPanelStatus(shareStatus, `Invited ${userId} as ${role}`, "ok");
     setCloudStatus("Invited collaborator", "ok");
   } catch (error) {
@@ -740,6 +1491,1032 @@ async function postCollaborator(url: string, userId: string, role: Exclude<Cloud
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ userId, role }),
   });
+}
+
+async function refreshAccessManagement(): Promise<void> {
+  if (!cloudUser || (!currentSite && !currentPage)) {
+    collaboratorGrants = [];
+    groupGrants = [];
+    shareGrants = [];
+    renderAccessManagement();
+    return;
+  }
+  const base = accessTargetEndpoint();
+  try {
+    if (canManagePermissions()) {
+      const [collaborators, groupAccess, shares] = await Promise.all([
+        fetchCloudJson<{ collaborators: CloudCollaboratorGrant[] }>(`${base}/collaborators`),
+        fetchCloudJson<{ groups: CloudGroupGrant[] }>(`${base}/group-collaborators`),
+        fetchCloudJson<{ shares: CloudShareGrant[] }>(`${base}/shares`),
+      ]);
+      collaboratorGrants = collaborators.collaborators;
+      groupGrants = groupAccess.groups;
+      shareGrants = shares.shares;
+    } else if (canEditPage()) {
+      collaboratorGrants = [];
+      groupGrants = [];
+      shareGrants = (await fetchCloudJson<{ shares: CloudShareGrant[] }>(`${base}/shares`)).shares;
+    } else {
+      collaboratorGrants = [];
+      groupGrants = [];
+      shareGrants = [];
+    }
+  } catch (error) {
+    setPanelStatus(shareStatus, errorMessage(error), "error");
+  } finally {
+    renderAccessManagement();
+  }
+}
+
+async function removeCollaboratorGrant(userId: string): Promise<void> {
+  try {
+    await fetchCloudJson(`${accessTargetEndpoint()}/collaborators/${encodeURIComponent(userId)}`, { method: "DELETE" });
+    await refreshAccessManagement();
+  } catch (error) {
+    setPanelStatus(shareStatus, errorMessage(error), "error");
+  }
+}
+
+async function removeGroupGrant(groupId: string): Promise<void> {
+  try {
+    await fetchCloudJson(`${accessTargetEndpoint()}/group-collaborators/${encodeURIComponent(groupId)}`, { method: "DELETE" });
+    await refreshAccessManagement();
+  } catch (error) {
+    setPanelStatus(shareStatus, errorMessage(error), "error");
+  }
+}
+
+async function revokeShareGrant(shareId: string): Promise<void> {
+  try {
+    await fetchCloudJson(`${accessTargetEndpoint()}/shares/${encodeURIComponent(shareId)}`, { method: "DELETE" });
+    await refreshAccessManagement();
+  } catch (error) {
+    setPanelStatus(shareStatus, errorMessage(error), "error");
+  }
+}
+
+function renderAccessManagement(): void {
+  accessList.textContent = "";
+  const activeShares = shareGrants.filter((share) => !share.revokedAt);
+  if (collaboratorGrants.length === 0 && groupGrants.length === 0 && activeShares.length === 0) {
+    accessList.append(emptyState(canManagePermissions() || canEditPage() ? "No additional access" : "Owner/editor access required"));
+    return;
+  }
+  for (const grant of collaboratorGrants) {
+    const row = collaborationRow(`User ${shortId(grant.userId)}`, grant.role, formatDate(grant.addedAt));
+    if (grant.role !== "owner") row.append(collaborationActionsWith(actionButton("Remove", () => void removeCollaboratorGrant(grant.userId))));
+    accessList.append(row);
+  }
+  for (const grant of groupGrants) {
+    const row = collaborationRow(grant.groupName, `group · ${grant.role}`, formatDate(grant.addedAt));
+    row.append(collaborationActionsWith(actionButton("Remove", () => void removeGroupGrant(grant.groupId))));
+    accessList.append(row);
+  }
+  for (const share of activeShares) {
+    const row = collaborationRow(share.label || "Share link", `${share.role} · ${share.tokenPreview}`, "token link");
+    row.append(collaborationActionsWith(actionButton("Revoke", () => void revokeShareGrant(share.id))));
+    accessList.append(row);
+  }
+}
+
+function collaborationActionsWith(...buttons: HTMLButtonElement[]): HTMLElement {
+  const actions = collaborationActions();
+  actions.append(...buttons);
+  return actions;
+}
+
+function accessTargetEndpoint(): string {
+  if (currentSite) return `/api/sites/${encodeURIComponent(currentSite.id)}`;
+  if (currentPage) return `/api/documents/${encodeURIComponent(currentPage.id)}`;
+  throw new Error("No page or space is selected");
+}
+
+async function inviteGroup(): Promise<void> {
+  const groupId = inviteGroupSelect.value;
+  if (!groupId || (!currentSite && !currentPage)) {
+    setPanelStatus(shareStatus, "Create or join a group before inviting it", "error");
+    return;
+  }
+  const role = selectedInviteRole();
+  const endpoint = currentSite
+    ? `/api/sites/${encodeURIComponent(currentSite.id)}/group-collaborators`
+    : `/api/documents/${encodeURIComponent(currentPage?.id ?? "")}/group-collaborators`;
+  setBusy(true, "Inviting group", "warning");
+  try {
+    await fetchCloudJson(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ groupId, role }),
+    });
+    setPanelStatus(shareStatus, `Invited ${groupName(groupId)} as ${role}`, "ok");
+    await refreshAccessManagement();
+    setCloudStatus("Invited group", "ok");
+  } catch (error) {
+    setPanelStatus(shareStatus, errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function refreshNotifications(): Promise<void> {
+  if (!cloudUser) {
+    notifications = [];
+    renderNotifications();
+    return;
+  }
+  try {
+    const response = await fetchCloudJson<{ notifications: CloudNotification[] }>("/api/notifications");
+    notifications = response.notifications;
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    renderNotifications();
+  }
+}
+
+async function readAllNotifications(): Promise<void> {
+  if (!cloudUser) return;
+  try {
+    await fetchCloudJson("/api/notifications/read-all", { method: "POST" });
+    await refreshNotifications();
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  }
+}
+
+async function markNotificationRead(notification: CloudNotification): Promise<void> {
+  if (!notification.readAt) {
+    await fetchCloudJson(`/api/notifications/${encodeURIComponent(notification.id)}/read`, { method: "POST" });
+  }
+  if (notification.resourceType === "document" && notification.resourceId) {
+    if (pages.some((page) => page.id === notification.resourceId)) selectPage(notification.resourceId);
+    else await loadStandaloneDocument(notification.resourceId);
+  } else if (notification.resourceType === "site" && notification.resourceId) {
+    await loadSite(notification.resourceId);
+  }
+  await refreshNotifications();
+}
+
+function renderNotifications(): void {
+  notificationList.textContent = "";
+  if (notifications.length === 0) {
+    notificationList.append(emptyState("No notifications"));
+    return;
+  }
+  for (const notification of notifications.slice(0, 30)) {
+    const row = collaborationRow(notification.title, notification.body, `${notification.type.replaceAll("_", " ")} · ${formatDate(notification.createdAt)}`);
+    row.dataset.unread = String(!notification.readAt);
+    const actions = collaborationActions();
+    actions.append(actionButton(notification.readAt ? "Open" : "Read", () => void markNotificationRead(notification)));
+    row.append(actions);
+    notificationList.append(row);
+  }
+}
+
+async function refreshPageCollaboration(): Promise<void> {
+  await Promise.all([refreshComments(), refreshApprovals(), refreshActivity(), refreshPatchProposals()]);
+}
+
+async function refreshComments(): Promise<void> {
+  if (!currentPage) {
+    comments = [];
+    renderComments();
+    return;
+  }
+  const pageId = currentPage.id;
+  try {
+    const response = await fetchCloudJson<{ comments: CloudComment[] }>(`${currentPageEndpoint()}/comments`);
+    if (currentPage?.id === pageId) comments = response.comments;
+  } catch (error) {
+    setPanelStatus(commentStatus, errorMessage(error), "error");
+  } finally {
+    renderComments();
+  }
+}
+
+async function addComment(parentId?: string, replyBody?: string): Promise<void> {
+  if (!currentPage) return;
+  const body = (replyBody ?? commentBodyInput.value).trim();
+  if (!body) {
+    setPanelStatus(commentStatus, "Write a comment first", "error");
+    return;
+  }
+  try {
+    await fetchCloudJson(`${currentPageEndpoint()}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        body,
+        blockId: parentId ? undefined : commentBlockIdInput.value.trim() || undefined,
+        parentId,
+      }),
+    });
+    if (!parentId) {
+      commentBodyInput.value = "";
+      commentBlockIdInput.value = "";
+    }
+    setPanelStatus(commentStatus, parentId ? "Reply added" : "Comment added", "ok");
+    await Promise.all([refreshComments(), refreshActivity(), refreshNotifications()]);
+  } catch (error) {
+    setPanelStatus(commentStatus, errorMessage(error), "error");
+  }
+}
+
+async function replyToComment(comment: CloudComment): Promise<void> {
+  const body = window.prompt(`Reply to ${comment.createdByName}`)?.trim();
+  if (body) await addComment(comment.id, body);
+}
+
+async function toggleCommentResolution(comment: CloudComment): Promise<void> {
+  try {
+    await fetchCloudJson(`${currentPageEndpoint()}/comments/${encodeURIComponent(comment.id)}/resolve`, { method: "POST" });
+    await Promise.all([refreshComments(), refreshActivity()]);
+  } catch (error) {
+    setPanelStatus(commentStatus, errorMessage(error), "error");
+  }
+}
+
+function renderComments(): void {
+  commentList.textContent = "";
+  if (!currentPage) {
+    commentList.append(emptyState("Select a page"));
+    return;
+  }
+  if (comments.length === 0) {
+    commentList.append(emptyState("No comments"));
+    return;
+  }
+  for (const comment of comments) {
+    const target = [comment.blockId ? `#${comment.blockId}` : undefined, comment.line ? `line ${comment.line}` : undefined]
+      .filter(Boolean)
+      .join(" · ");
+    const row = collaborationRow(
+      `${comment.parentId ? "↳ " : ""}${comment.createdByName}${comment.resolvedAt ? " · resolved" : ""}`,
+      comment.body,
+      `${target ? `${target} · ` : ""}${formatDate(comment.createdAt)}`,
+    );
+    const actions = collaborationActions();
+    actions.append(actionButton("Reply", () => void replyToComment(comment)));
+    if (comment.createdBy === cloudUser?.id || canEditPage()) {
+      actions.append(actionButton(comment.resolvedAt ? "Reopen" : "Resolve", () => void toggleCommentResolution(comment)));
+    }
+    row.append(actions);
+    commentList.append(row);
+  }
+}
+
+async function refreshApprovals(): Promise<void> {
+  if (!currentPage) {
+    approvals = [];
+    renderApprovals();
+    return;
+  }
+  const pageId = currentPage.id;
+  try {
+    const response = await fetchCloudJson<{ approvals: CloudApproval[] }>(`${currentPageEndpoint()}/approvals`);
+    if (currentPage?.id === pageId) approvals = response.approvals;
+  } catch (error) {
+    setPanelStatus(approvalStatus, errorMessage(error), "error");
+  } finally {
+    renderApprovals();
+  }
+}
+
+async function requestApproval(): Promise<void> {
+  if (!currentPage) return;
+  const reviewerId = approvalReviewerInput.value.trim();
+  if (!readCloudId(reviewerId)) {
+    setPanelStatus(approvalStatus, "Enter a valid reviewer user ID", "error");
+    return;
+  }
+  try {
+    await fetchCloudJson(`${currentPageEndpoint()}/approvals`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reviewerId, note: approvalNoteInput.value.trim() || undefined }),
+    });
+    approvalReviewerInput.value = "";
+    approvalNoteInput.value = "";
+    setPanelStatus(approvalStatus, "Approval requested for the current saved version", "ok");
+    await Promise.all([refreshApprovals(), refreshActivity()]);
+  } catch (error) {
+    setPanelStatus(approvalStatus, errorMessage(error), "error");
+  }
+}
+
+async function updateApproval(approval: CloudApproval, status: Exclude<CloudApproval["status"], "pending">): Promise<void> {
+  try {
+    await fetchCloudJson(`${currentPageEndpoint()}/approvals/${encodeURIComponent(approval.id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    await Promise.all([refreshApprovals(), refreshActivity(), refreshNotifications()]);
+  } catch (error) {
+    setPanelStatus(approvalStatus, errorMessage(error), "error");
+  }
+}
+
+function renderApprovals(): void {
+  approvalList.textContent = "";
+  if (!currentPage) {
+    approvalList.append(emptyState("Select a page"));
+    return;
+  }
+  if (approvals.length === 0) {
+    approvalList.append(emptyState("No approval requests"));
+    return;
+  }
+  for (const approval of approvals) {
+    const currentVersion = approval.documentHash === currentPage.hash;
+    const row = collaborationRow(
+      `${approval.reviewerName} · ${approval.status.replaceAll("_", " ")}`,
+      approval.note || "No review note",
+      `${currentVersion ? "current version" : "older version"} · ${approval.documentHash.slice(0, 8)} · ${formatDate(approval.updatedAt)}`,
+    );
+    if (approval.status === "pending") {
+      const actions = collaborationActions();
+      if (approval.reviewerId === cloudUser?.id) {
+        actions.append(
+          actionButton("Approve", () => void updateApproval(approval, "approved"), !currentVersion),
+          actionButton("Request changes", () => void updateApproval(approval, "changes_requested")),
+        );
+      }
+      if (approval.requestedBy === cloudUser?.id) {
+        actions.append(actionButton("Cancel", () => void updateApproval(approval, "cancelled")));
+      }
+      row.append(actions);
+    }
+    approvalList.append(row);
+  }
+}
+
+async function refreshActivity(): Promise<void> {
+  if (!cloudUser || !currentPage) {
+    activityEvents = [];
+    renderActivity();
+    return;
+  }
+  const pageId = currentPage.id;
+  try {
+    const response = await fetchCloudJson<{ events: CloudActivityEvent[] }>(`/api/activity?document=${encodeURIComponent(pageId)}&limit=30`);
+    if (currentPage?.id === pageId) activityEvents = response.events;
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    renderActivity();
+  }
+}
+
+function renderActivity(): void {
+  activityList.textContent = "";
+  if (activityEvents.length === 0) {
+    activityList.append(emptyState(currentPage ? "No activity" : "Select a page"));
+    return;
+  }
+  for (const event of activityEvents) {
+    activityList.append(
+      collaborationRow(event.action.replaceAll(".", " "), event.actorName, `${event.resourceType} · ${formatDate(event.createdAt)}`),
+    );
+  }
+}
+
+async function refreshGroups(): Promise<void> {
+  if (!cloudUser) {
+    groups = [];
+    renderGroups();
+    return;
+  }
+  try {
+    const response = await fetchCloudJson<{ groups: CloudGroup[] }>("/api/groups");
+    groups = response.groups;
+  } catch (error) {
+    setPanelStatus(groupStatus, errorMessage(error), "error");
+  } finally {
+    renderGroups();
+  }
+}
+
+async function createGroup(): Promise<void> {
+  const name = groupNameInput.value.trim();
+  if (!name) {
+    setPanelStatus(groupStatus, "Enter a group name", "error");
+    return;
+  }
+  try {
+    const group = await fetchCloudJson<CloudGroup>("/api/groups", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    groupNameInput.value = "";
+    await refreshGroups();
+    manageGroupSelect.value = group.id;
+    inviteGroupSelect.value = group.id;
+    renderChrome();
+    setPanelStatus(groupStatus, `Created ${group.name}`, "ok");
+  } catch (error) {
+    setPanelStatus(groupStatus, errorMessage(error), "error");
+  }
+}
+
+async function addGroupMember(): Promise<void> {
+  const groupId = manageGroupSelect.value;
+  const userId = groupMemberIdInput.value.trim();
+  if (!groupId || !readCloudId(userId)) {
+    setPanelStatus(groupStatus, "Choose a group and enter a valid user ID", "error");
+    return;
+  }
+  try {
+    await fetchCloudJson(`/api/groups/${encodeURIComponent(groupId)}/members`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId, role: groupMemberRoleSelect.value }),
+    });
+    groupMemberIdInput.value = "";
+    await refreshGroups();
+    setPanelStatus(groupStatus, "Group member updated", "ok");
+  } catch (error) {
+    setPanelStatus(groupStatus, errorMessage(error), "error");
+  }
+}
+
+async function removeGroupMember(groupId: string, userId: string): Promise<void> {
+  try {
+    await fetchCloudJson(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" });
+    await refreshGroups();
+  } catch (error) {
+    setPanelStatus(groupStatus, errorMessage(error), "error");
+  }
+}
+
+function renderGroups(): void {
+  const managedSelection = manageGroupSelect.value;
+  const inviteSelection = inviteGroupSelect.value;
+  for (const select of [manageGroupSelect, inviteGroupSelect]) select.textContent = "";
+  for (const group of groups) {
+    for (const select of [manageGroupSelect, inviteGroupSelect]) {
+      const option = document.createElement("option");
+      option.value = group.id;
+      option.textContent = group.name;
+      select.append(option);
+    }
+  }
+  manageGroupSelect.value = groups.some((group) => group.id === managedSelection) ? managedSelection : groups[0]?.id ?? "";
+  inviteGroupSelect.value = groups.some((group) => group.id === inviteSelection) ? inviteSelection : groups[0]?.id ?? "";
+  groupList.textContent = "";
+  const selected = groups.find((group) => group.id === manageGroupSelect.value);
+  if (!selected) {
+    groupList.append(emptyState("No groups"));
+    return;
+  }
+  const isManager = selected.members.some((member) => member.userId === cloudUser?.id && member.role === "manager");
+  for (const member of selected.members) {
+    const row = collaborationRow(member.userName, member.role, shortId(member.userId));
+    if (isManager) {
+      const actions = collaborationActions();
+      actions.append(actionButton("Remove", () => void removeGroupMember(selected.id, member.userId)));
+      row.append(actions);
+    }
+    groupList.append(row);
+  }
+}
+
+function groupName(groupId: string): string {
+  return groups.find((group) => group.id === groupId)?.name ?? shortId(groupId);
+}
+
+function selectedGroupManagedByCurrentUser(): boolean {
+  return Boolean(
+    groups
+      .find((group) => group.id === manageGroupSelect.value)
+      ?.members.some((member) => member.userId === cloudUser?.id && member.role === "manager"),
+  );
+}
+
+function renderCollaborationPanels(): void {
+  renderNotifications();
+  renderComments();
+  renderApprovals();
+  renderActivity();
+  renderGroups();
+}
+
+function collaborationRow(titleText: string, bodyText: string, metaText: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "collaboration-row";
+  const copy = document.createElement("div");
+  copy.className = "collaboration-copy";
+  const title = document.createElement("strong");
+  title.textContent = titleText;
+  const body = document.createElement("span");
+  body.textContent = bodyText;
+  const meta = document.createElement("span");
+  meta.className = "history-meta";
+  meta.textContent = metaText;
+  copy.append(title, body, meta);
+  row.append(copy);
+  return row;
+}
+
+function collaborationActions(): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "collaboration-actions";
+  return actions;
+}
+
+function actionButton(label: string, action: () => void, disabled = false, accessibleLabel?: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.disabled = disabled;
+  if (accessibleLabel) {
+    button.setAttribute("aria-label", accessibleLabel);
+    button.title = accessibleLabel;
+  }
+  button.addEventListener("click", action);
+  return button;
+}
+
+async function refreshWorkManagement(): Promise<void> {
+  if (!cloudUser) {
+    workProjects = [];
+    workIssues = [];
+    workSprints = [];
+    selectedIssue = undefined;
+    renderWorkManagement();
+    return;
+  }
+  const selectedId = workProjectSelect.value;
+  try {
+    const response = await fetchCloudJson<{ projects: CloudProject[] }>("/api/projects");
+    const available = currentSite ? response.projects.filter((project) => project.siteId === currentSite?.id) : response.projects;
+    workProjects = available;
+    const projectId = available.some((project) => project.id === selectedId) ? selectedId : available[0]?.id;
+    if (projectId) await loadWorkProject(projectId);
+    else {
+      workIssues = [];
+      workSprints = [];
+      selectedIssue = undefined;
+    }
+  } catch (error) {
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  } finally {
+    renderWorkManagement();
+  }
+}
+
+async function loadWorkProject(projectId: string): Promise<void> {
+  if (!projectId) return;
+  const previousIssueId = selectedIssue?.id;
+  const [issueResponse, sprintResponse] = await Promise.all([
+    fetchCloudJson<{ issues: CloudIssue[] }>(`/api/projects/${encodeURIComponent(projectId)}/issues?limit=500`),
+    fetchCloudJson<{ sprints: CloudSprint[] }>(`/api/projects/${encodeURIComponent(projectId)}/sprints`),
+  ]);
+  workIssues = issueResponse.issues;
+  workSprints = sprintResponse.sprints;
+  const nextIssue = previousIssueId ? workIssues.find((issue) => issue.id === previousIssueId) : undefined;
+  if (nextIssue) await selectWorkIssue(nextIssue.id);
+  else selectedIssue = undefined;
+  renderWorkManagement();
+  renderChrome();
+}
+
+async function createWorkProject(): Promise<void> {
+  if (!currentSite || !canEditSite()) {
+    setPanelStatus(workStatus, "Open an editable space before creating a project", "error");
+    return;
+  }
+  const key = projectKeyInput.value.trim().toUpperCase();
+  const name = projectNameInput.value.trim();
+  if (!key || !name) {
+    setPanelStatus(workStatus, "Enter a project key and name", "error");
+    return;
+  }
+  try {
+    const project = await fetchCloudJson<CloudProject>("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key, name, siteId: currentSite.id }),
+    });
+    projectKeyInput.value = "";
+    projectNameInput.value = "";
+    await refreshWorkManagement();
+    workProjectSelect.value = project.id;
+    await loadWorkProject(project.id);
+    setPanelStatus(workStatus, `Created ${project.key}`, "ok");
+  } catch (error) {
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  }
+}
+
+async function createWorkIssue(): Promise<void> {
+  const project = selectedWorkProject();
+  const summary = issueSummaryInput.value.trim();
+  if (!project || !summary) {
+    setPanelStatus(workStatus, "Choose a project and enter an issue summary", "error");
+    return;
+  }
+  try {
+    const issue = await fetchCloudJson<CloudIssue>(`/api/projects/${encodeURIComponent(project.id)}/issues`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        summary,
+        type: issueTypeSelect.value,
+        priority: issuePrioritySelect.value,
+        assigneeId: issueAssigneeInput.value.trim() || undefined,
+        labels: issueLabelsInput.value.trim() || undefined,
+        sprintId: issueSprintSelect.value || undefined,
+      }),
+    });
+    issueSummaryInput.value = "";
+    issueAssigneeInput.value = "";
+    issueLabelsInput.value = "";
+    await loadWorkProject(project.id);
+    await selectWorkIssue(issue.id);
+    setPanelStatus(workStatus, `Created ${issue.key}`, "ok");
+  } catch (error) {
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  }
+}
+
+async function createWorkSprint(): Promise<void> {
+  const project = selectedWorkProject();
+  const name = sprintNameInput.value.trim();
+  if (!project || !name) {
+    setPanelStatus(workStatus, "Choose a project and enter a sprint name", "error");
+    return;
+  }
+  try {
+    const sprint = await fetchCloudJson<CloudSprint>(`/api/projects/${encodeURIComponent(project.id)}/sprints`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    sprintNameInput.value = "";
+    await loadWorkProject(project.id);
+    manageSprintSelect.value = sprint.id;
+    renderWorkManagement();
+    setPanelStatus(workStatus, `Created ${sprint.name}`, "ok");
+  } catch (error) {
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  }
+}
+
+async function updateWorkSprint(status: "active" | "closed"): Promise<void> {
+  const project = selectedWorkProject();
+  const sprint = selectedWorkSprint();
+  if (!project || !sprint) return;
+  try {
+    await fetchCloudJson(`/api/projects/${encodeURIComponent(project.id)}/sprints/${encodeURIComponent(sprint.id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    await loadWorkProject(project.id);
+    setPanelStatus(workStatus, status === "active" ? "Sprint started" : "Sprint completed; unfinished work returned to backlog", "ok");
+  } catch (error) {
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  }
+}
+
+async function moveWorkIssue(issue: CloudIssue, status: CloudIssueStatus): Promise<void> {
+  const project = selectedWorkProject();
+  if (!project) return;
+  try {
+    await fetchCloudJson(`/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(issue.id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    await loadWorkProject(project.id);
+    if (selectedIssue?.id === issue.id) await selectWorkIssue(issue.id);
+  } catch (error) {
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  }
+}
+
+async function selectWorkIssue(issueId: string): Promise<void> {
+  const project = selectedWorkProject();
+  if (!project) return;
+  try {
+    selectedIssue = await fetchCloudJson<CloudIssueDetail>(
+      `/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(issueId)}`,
+    );
+  } catch (error) {
+    selectedIssue = undefined;
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  } finally {
+    renderChrome();
+  }
+}
+
+async function addWorkIssueComment(): Promise<void> {
+  const project = selectedWorkProject();
+  const body = issueCommentInput.value.trim();
+  if (!project || !selectedIssue || !body) {
+    setPanelStatus(workStatus, "Select an issue and write a comment", "error");
+    return;
+  }
+  try {
+    await fetchCloudJson(`/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(selectedIssue.id)}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body }),
+    });
+    issueCommentInput.value = "";
+    await selectWorkIssue(selectedIssue.id);
+  } catch (error) {
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  }
+}
+
+async function addWorkIssueLink(): Promise<void> {
+  const project = selectedWorkProject();
+  const targetIssueId = issueLinkTargetInput.value.trim();
+  if (!project || !selectedIssue || !targetIssueId) {
+    setPanelStatus(workStatus, "Select an issue and enter a target issue key or ID", "error");
+    return;
+  }
+  try {
+    await fetchCloudJson(`/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(selectedIssue.id)}/links`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ targetIssueId, type: issueLinkTypeSelect.value }),
+    });
+    issueLinkTargetInput.value = "";
+    await selectWorkIssue(selectedIssue.id);
+  } catch (error) {
+    setPanelStatus(workStatus, errorMessage(error), "error");
+  }
+}
+
+function renderWorkManagement(): void {
+  renderWorkProjectSelect();
+  renderWorkSprintSelects();
+  renderWorkBoard();
+  renderSelectedWorkIssue();
+}
+
+function renderWorkProjectSelect(): void {
+  const selected = workProjectSelect.value;
+  workProjectSelect.textContent = "";
+  for (const project of workProjects) {
+    const option = document.createElement("option");
+    option.value = project.id;
+    option.textContent = `${project.key} · ${project.name}`;
+    workProjectSelect.append(option);
+  }
+  workProjectSelect.value = workProjects.some((project) => project.id === selected) ? selected : workProjects[0]?.id ?? "";
+}
+
+function renderWorkSprintSelects(): void {
+  const manageSelected = manageSprintSelect.value;
+  const issueSelected = issueSprintSelect.value;
+  manageSprintSelect.textContent = "";
+  issueSprintSelect.textContent = "";
+  const backlog = document.createElement("option");
+  backlog.value = "";
+  backlog.textContent = "Backlog / no sprint";
+  issueSprintSelect.append(backlog);
+  for (const sprint of workSprints) {
+    const manageOption = document.createElement("option");
+    manageOption.value = sprint.id;
+    manageOption.textContent = `${sprint.name} · ${sprint.status}`;
+    manageSprintSelect.append(manageOption);
+    if (sprint.status !== "closed") {
+      const issueOption = document.createElement("option");
+      issueOption.value = sprint.id;
+      issueOption.textContent = `${sprint.name} · ${sprint.status}`;
+      issueSprintSelect.append(issueOption);
+    }
+  }
+  manageSprintSelect.value = workSprints.some((sprint) => sprint.id === manageSelected) ? manageSelected : workSprints[0]?.id ?? "";
+  issueSprintSelect.value = workSprints.some((sprint) => sprint.id === issueSelected && sprint.status !== "closed") ? issueSelected : "";
+}
+
+function renderWorkBoard(): void {
+  workBoard.textContent = "";
+  const filter = issueFilterSelect.value;
+  const query = issueSearchInput.value.trim().toLowerCase();
+  const filtered = workIssues.filter((issue) => {
+    if (filter !== "all" && issue.status !== filter) return false;
+    if (!query) return true;
+    return [issue.key, issue.summary, issue.assigneeName ?? "", ...issue.labels].some((value) => value.toLowerCase().includes(query));
+  });
+  if (!selectedWorkProject()) {
+    workBoard.append(emptyState(currentSite ? "Create a project for this space" : "Open a space to manage work"));
+    return;
+  }
+  if (filtered.length === 0) {
+    workBoard.append(emptyState("No matching issues"));
+    return;
+  }
+  for (const status of workIssueStatuses) {
+    const issues = filtered.filter((issue) => issue.status === status);
+    if (issues.length === 0) continue;
+    const column = document.createElement("section");
+    column.className = "work-column";
+    const title = document.createElement("div");
+    title.className = "work-column-title";
+    title.textContent = `${issueStatusLabel(status)} · ${issues.length}`;
+    column.append(title);
+    for (const issue of issues) column.append(workIssueRow(issue));
+    workBoard.append(column);
+  }
+}
+
+function workIssueRow(issue: CloudIssue): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "work-issue-row";
+  row.setAttribute("aria-current", String(selectedIssue?.id === issue.id));
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "work-issue-copy";
+  const title = document.createElement("span");
+  title.className = "row-title";
+  title.textContent = `${issue.key} · ${issue.summary}`;
+  const meta = document.createElement("span");
+  meta.className = "row-meta";
+  meta.textContent = `${issue.type} · ${issue.priority}${issue.assigneeName ? ` · ${issue.assigneeName}` : ""}`;
+  copy.append(title, meta);
+  copy.addEventListener("click", () => void selectWorkIssue(issue.id));
+  const actions = document.createElement("div");
+  actions.className = "work-issue-actions";
+  const previous = previousIssueStatus(issue.status);
+  const next = nextIssueStatus(issue.status);
+  if (previous) {
+    actions.append(actionButton("←", () => void moveWorkIssue(issue, previous), false, `Move ${issue.key} to ${issueStatusLabel(previous)}`));
+  }
+  if (next) {
+    actions.append(actionButton("→", () => void moveWorkIssue(issue, next), false, `Move ${issue.key} to ${issueStatusLabel(next)}`));
+  }
+  row.append(copy, actions);
+  return row;
+}
+
+function renderSelectedWorkIssue(): void {
+  issueDetailList.textContent = "";
+  if (!selectedIssue) {
+    selectedIssueSummary.textContent = "Select an issue";
+    issueDetailList.append(emptyState("Comments, links, and history appear here"));
+    return;
+  }
+  selectedIssueSummary.textContent = `${selectedIssue.key} · ${selectedIssue.status.replaceAll("_", " ")}`;
+  for (const comment of selectedIssue.comments) {
+    issueDetailList.append(collaborationRow(comment.createdByName, comment.body, formatDate(comment.createdAt)));
+  }
+  for (const link of selectedIssue.links) {
+    issueDetailList.append(collaborationRow(`${link.type} ${link.targetIssueKey}`, link.targetIssueSummary, "issue link"));
+  }
+  for (const event of selectedIssue.events.slice(0, 8)) {
+    issueDetailList.append(collaborationRow(event.action.replaceAll(".", " "), event.actorName, formatDate(event.createdAt)));
+  }
+}
+
+function selectedWorkProject(): CloudProject | undefined {
+  return workProjects.find((project) => project.id === workProjectSelect.value);
+}
+
+function selectedWorkSprint(): CloudSprint | undefined {
+  return workSprints.find((sprint) => sprint.id === manageSprintSelect.value);
+}
+
+function issueStatusLabel(status: CloudIssueStatus): string {
+  if (status === "todo") return "To do";
+  const label = status.replaceAll("_", " ");
+  return `${label[0]?.toUpperCase() ?? ""}${label.slice(1)}`;
+}
+
+function previousIssueStatus(status: CloudIssueStatus): CloudIssueStatus | undefined {
+  if (status === "todo") return "backlog";
+  if (status === "in_progress") return "todo";
+  if (status === "in_review") return "in_progress";
+  if (status === "done") return "todo";
+  return undefined;
+}
+
+function nextIssueStatus(status: CloudIssueStatus): CloudIssueStatus | undefined {
+  if (status === "backlog") return "todo";
+  if (status === "todo") return "in_progress";
+  if (status === "in_progress") return "in_review";
+  if (status === "in_review") return "done";
+  return undefined;
+}
+
+async function refreshPatchProposals(): Promise<void> {
+  if (!currentPage) {
+    patchProposals = [];
+    renderPatchProposals();
+    return;
+  }
+  const pageId = currentPage.id;
+  try {
+    const response = await fetchCloudJson<{ proposals: CloudPatchProposal[] }>(`${currentPageEndpoint()}/patch-proposals`);
+    if (currentPage?.id === pageId) patchProposals = response.proposals;
+  } catch (error) {
+    setPanelStatus(agentStatus, errorMessage(error), "error");
+  } finally {
+    renderPatchProposals();
+  }
+}
+
+async function proposeAgentPatch(): Promise<void> {
+  if (!currentPage || !canEditPage()) return;
+  if (dirty) {
+    setPanelStatus(agentStatus, "Save the current draft before creating a version-bound patch proposal", "error");
+    return;
+  }
+  try {
+    const ops = parsePatchOps(patchInput.value);
+    const proposal = await fetchCloudJson<CloudPatchProposal>(`${currentPageEndpoint()}/patch-proposals`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ops,
+        issueId: selectedIssue?.id,
+        summary: selectedIssue ? `Agent patch for ${selectedIssue.key}` : "Agent patch proposal",
+      }),
+    });
+    await Promise.all([refreshPatchProposals(), refreshActivity()]);
+    if (selectedIssue) await selectWorkIssue(selectedIssue.id);
+    setPanelStatus(
+      agentStatus,
+      `Proof ${proposal.proof.status ?? "created"}; proposal awaits review${selectedIssue ? ` on ${selectedIssue.key}` : ""}`,
+      "ok",
+    );
+  } catch (error) {
+    setPanelStatus(agentStatus, errorMessage(error), "error");
+  }
+}
+
+async function reviewPatchProposal(proposal: CloudPatchProposal, decision: "approved" | "rejected"): Promise<void> {
+  try {
+    await fetchCloudJson(`${currentPageEndpoint()}/patch-proposals/${encodeURIComponent(proposal.id)}/review`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision }),
+    });
+    await Promise.all([refreshPatchProposals(), refreshActivity()]);
+    if (proposal.issueId && selectedIssue?.id === proposal.issueId) await selectWorkIssue(proposal.issueId);
+  } catch (error) {
+    setPanelStatus(agentStatus, errorMessage(error), "error");
+  }
+}
+
+async function applyPatchProposal(proposal: CloudPatchProposal): Promise<void> {
+  if (dirty && !window.confirm("Discard the unsaved draft and apply this reviewed patch to the saved page?")) return;
+  try {
+    const response = await fetchCloudJson<{ proposal: CloudPatchProposal; document: CloudDocumentResponse }>(
+      `${currentPageEndpoint()}/patch-proposals/${encodeURIComponent(proposal.id)}/apply`,
+      { method: "POST" },
+    );
+    replacePage(response.document);
+    setCurrentPage(response.document);
+    setPanelStatus(agentStatus, `Applied reviewed patch · ${response.document.hash.slice(0, 8)}`, "ok");
+    if (proposal.issueId && selectedIssue?.id === proposal.issueId) await selectWorkIssue(proposal.issueId);
+  } catch (error) {
+    setPanelStatus(agentStatus, errorMessage(error), "error");
+  }
+}
+
+function renderPatchProposals(): void {
+  patchProposalList.textContent = "";
+  if (!currentPage) {
+    patchProposalList.append(emptyState("Select a page"));
+    return;
+  }
+  if (patchProposals.length === 0) {
+    patchProposalList.append(emptyState("No patch proposals"));
+    return;
+  }
+  for (const proposal of patchProposals.slice(0, 20)) {
+    const linkedIssue = proposal.issueId ? workIssues.find((issue) => issue.id === proposal.issueId)?.key ?? shortId(proposal.issueId) : undefined;
+    const stale = proposal.documentHash !== currentPage.hash && proposal.status !== "applied";
+    const preserved = proposal.proof.sourceMetrics?.preservedPercent;
+    const row = collaborationRow(
+      `${proposal.status} · ${proposal.proposedByName}`,
+      proposal.summary || proposal.proof.diff?.slice(0, 260) || "Agent patch",
+      `${linkedIssue ? `${linkedIssue} · ` : ""}${proposal.proof.status ?? "proof"}${typeof preserved === "number" ? ` · ${preserved.toFixed(1)}% preserved` : ""}${stale ? " · stale" : ""} · ${formatDate(proposal.createdAt)}`,
+    );
+    const actions = collaborationActions();
+    if (proposal.status === "pending" && !stale) {
+      if (proposal.proposedBy !== cloudUser?.id && canEditPage()) {
+        actions.append(
+          actionButton("Approve", () => void reviewPatchProposal(proposal, "approved")),
+          actionButton("Reject", () => void reviewPatchProposal(proposal, "rejected")),
+        );
+      } else if (proposal.proposedBy === cloudUser?.id) {
+        actions.append(actionButton("Withdraw", () => void reviewPatchProposal(proposal, "rejected")));
+      }
+    }
+    if (proposal.status === "approved" && !stale && canEditPage()) {
+      actions.append(actionButton("Apply", () => void applyPatchProposal(proposal)));
+    }
+    row.append(actions);
+    patchProposalList.append(row);
+  }
 }
 
 async function applyAgentPatch(): Promise<void> {
@@ -774,26 +2551,20 @@ async function copyLlmContext(): Promise<void> {
 
 async function createCloudUser(options: { silent?: boolean } = {}): Promise<void> {
   if (!cloudAvailable && !options.silent) return;
-  const invitationCode = promptSecret("Invitation code");
-  if (!invitationCode) {
-    setCloudStatus("Invitation code required", "error");
-    return;
-  }
   setBusy(true, "Creating user", "warning");
   try {
-    const user = await fetchCloudJson<CloudUserResponse>("/api/users", {
+    const response = await fetchCloudJson<CloudAuthResponse>("/api/auth/register", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: cloudUserNameInput.value || "Noma collaborator", invitationCode }),
+      body: JSON.stringify({
+        name: cloudUserNameInput.value || "Noma collaborator",
+        invitationCode: cloudInvitationCodeInput.value || undefined,
+      }),
     });
-    cloudUser = {
-      id: user.id,
-      name: user.name,
-      token: user.token,
-      tokenPreview: user.tokenPreview,
-    };
-    localStorage.setItem(userStorageKey, JSON.stringify(cloudUser));
-    cloudUserNameInput.value = cloudUser.name;
+    if (!response.user) throw new Error("Registration did not return a user session");
+    activateCloudUser(response.user);
+    cloudInvitationCodeInput.value = "";
+    await openInitialWorkspace();
     if (!options.silent) setCloudStatus("Created user", "ok");
   } catch (error) {
     setCloudStatus(errorMessage(error), "error");
@@ -801,6 +2572,52 @@ async function createCloudUser(options: { silent?: boolean } = {}): Promise<void
     setBusy(false);
     renderChrome();
   }
+}
+
+async function loginCloudUser(): Promise<void> {
+  if (!cloudAvailable) return;
+  const userToken = cloudUserTokenInput.value.trim();
+  if (!userToken) {
+    setCloudStatus("Enter an existing user token", "error");
+    return;
+  }
+  setBusy(true, "Logging in", "warning");
+  try {
+    const response = await fetchCloudJson<CloudAuthResponse>("/api/auth/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userToken }),
+    });
+    if (!response.user) throw new Error("Invalid Noma user token");
+    activateCloudUser(response.user);
+    cloudUserTokenInput.value = "";
+    await openInitialWorkspace();
+    setCloudStatus("Logged in", "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
+}
+
+function activateCloudUser(user: CloudUserSession): void {
+  cloudUser = user;
+  localStorage.setItem(userStorageKey, JSON.stringify(user));
+  cloudUserNameInput.value = user.name;
+}
+
+function logoutCloudUser(): void {
+  if (!confirmDiscardDirty()) return;
+  cloudUser = undefined;
+  cloudUserTokenInput.value = "";
+  cloudInvitationCodeInput.value = "";
+  localStorage.removeItem(userStorageKey);
+  localStorage.removeItem(activeSiteStorageKey);
+  localStorage.removeItem(activeDocumentStorageKey);
+  clearWorkspaceState();
+  setCloudStatus("Signed out", "ok");
+  renderChrome();
 }
 
 async function ensureSavedBeforeShare(): Promise<void> {
@@ -812,20 +2629,29 @@ async function createShare(
   role: Exclude<CloudRole, "owner">,
   label: string,
 ): Promise<CloudShareResponse> {
-  return fetchCloudJson<CloudShareResponse>(url, {
+  const share = await fetchCloudJson<CloudShareResponse>(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ role, label }),
   });
+  await refreshAccessManagement();
+  return share;
 }
 
 function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   currentPage = page;
+  documentRevisions = [];
+  comments = [];
+  approvals = [];
+  activityEvents = [];
+  patchProposals = [];
   if (!page) {
     pageTitleInput.value = "";
     sourceInput.value = "";
     dirty = false;
     renderCurrent();
+    renderHistory();
+    renderCollaborationPanels();
     renderChrome();
     return;
   }
@@ -835,12 +2661,120 @@ function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   dirty = false;
   localStorage.setItem(activeDocumentStorageKey, page.id);
   renderCurrent();
+  renderHistory();
+  renderCollaborationPanels();
   renderChrome();
+  void refreshHistory({ silent: true });
+  void refreshPageCollaboration();
+  void recordRecent("document", page.id);
 }
 
 function replacePage(page: CloudDocumentResponse): void {
   pages = pages.map((item) => (item.id === page.id ? page : item));
   if (currentSite) currentSite = { ...currentSite, documents: pages };
+}
+
+async function refreshHistory(options: { silent?: boolean } = {}): Promise<void> {
+  if (!currentPage) {
+    documentRevisions = [];
+    renderHistory();
+    return;
+  }
+  const pageId = currentPage.id;
+  if (!options.silent) setPanelStatus(historyStatus, "Loading history", "warning");
+  try {
+    const response = await fetchCloudJson<{ revisions: CloudDocumentRevisionSummary[] }>(`${currentPageEndpoint()}/revisions`);
+    if (currentPage?.id !== pageId) return;
+    documentRevisions = response.revisions;
+    if (!options.silent) setPanelStatus(historyStatus, `${documentRevisions.length} saved version${documentRevisions.length === 1 ? "" : "s"}`, "ok");
+  } catch (error) {
+    if (!options.silent) setPanelStatus(historyStatus, errorMessage(error), "error");
+  } finally {
+    renderHistory();
+  }
+}
+
+function renderHistory(): void {
+  historyList.textContent = "";
+  refreshHistoryButton.disabled = busy || !currentPage;
+  refreshWorkButton.disabled = busy || !cloudUser;
+  workProjectSelect.disabled = busy || workProjects.length === 0;
+  projectKeyInput.disabled = busy || !canEditSite();
+  projectNameInput.disabled = busy || !canEditSite();
+  createProjectButton.disabled = busy || !canEditSite();
+  issueSummaryInput.disabled = busy || !canEditWorkProject();
+  issueTypeSelect.disabled = busy || !canEditWorkProject();
+  issuePrioritySelect.disabled = busy || !canEditWorkProject();
+  issueAssigneeInput.disabled = busy || !canEditWorkProject();
+  issueLabelsInput.disabled = busy || !canEditWorkProject();
+  issueSprintSelect.disabled = busy || !canEditWorkProject();
+  createIssueButton.disabled = busy || !canEditWorkProject();
+  sprintNameInput.disabled = busy || !canEditWorkProject();
+  createSprintButton.disabled = busy || !canEditWorkProject();
+  manageSprintSelect.disabled = busy || workSprints.length === 0;
+  startSprintButton.disabled = busy || !canEditWorkProject() || selectedWorkSprint()?.status !== "planned";
+  completeSprintButton.disabled = busy || !canEditWorkProject() || selectedWorkSprint()?.status !== "active";
+  issueFilterSelect.disabled = busy || !selectedWorkProject();
+  issueSearchInput.disabled = busy || !selectedWorkProject();
+  issueCommentInput.disabled = busy || !selectedIssue || !cloudUser;
+  addIssueCommentButton.disabled = busy || !selectedIssue || !cloudUser;
+  issueLinkTargetInput.disabled = busy || !selectedIssue || !canEditWorkProject();
+  issueLinkTypeSelect.disabled = busy || !selectedIssue || !canEditWorkProject();
+  addIssueLinkButton.disabled = busy || !selectedIssue || !canEditWorkProject();
+  if (!currentPage) {
+    historyList.append(emptyState("Select a page"));
+    return;
+  }
+  if (documentRevisions.length === 0) {
+    historyList.append(emptyState("No saved versions"));
+    return;
+  }
+  for (const [index, revision] of documentRevisions.entries()) {
+    const row = document.createElement("div");
+    row.className = "history-row";
+    const copy = document.createElement("div");
+    copy.className = "history-copy";
+    const title = document.createElement("strong");
+    const isCurrent = index === 0 && revision.hash === currentPage.hash;
+    title.textContent = `Version ${revision.revision}${isCurrent ? " · current" : ""}`;
+    const meta = document.createElement("span");
+    meta.className = "history-meta";
+    meta.textContent = `${formatDate(revision.createdAt)} · ${shortId(revision.createdBy)} · ${revision.hash.slice(0, 8)}`;
+    copy.append(title, meta);
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.textContent = "Restore";
+    restore.disabled = busy || isCurrent || !canEditPage();
+    restore.addEventListener("click", () => {
+      void restoreRevision(revision);
+    });
+    row.append(copy, restore);
+    historyList.append(row);
+  }
+}
+
+async function restoreRevision(revision: CloudDocumentRevisionSummary): Promise<void> {
+  if (!currentPage || !canEditPage()) return;
+  if (dirty && !window.confirm("Discard the unsaved draft and restore this saved version?")) return;
+  if (!window.confirm(`Restore version ${revision.revision} as a new current version?`)) return;
+  setBusy(true, `Restoring version ${revision.revision}`, "warning");
+  try {
+    const restored = await fetchCloudJson<CloudDocumentResponse>(`${currentPageEndpoint()}/revisions/${revision.revision}/restore`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedHash: currentPage.hash }),
+    });
+    replacePage(restored);
+    setCurrentPage(restored);
+    setCloudStatus(`Restored version ${revision.revision}`, "ok");
+    await refreshHistory({ silent: true });
+  } catch (error) {
+    setPanelStatus(historyStatus, errorMessage(error), "error");
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
 }
 
 function selectPage(pageId: string): boolean {
@@ -912,7 +2846,11 @@ function renderChrome(): void {
   documentGrid.style.setProperty("--source-pane-width", `${splitSourceRatio}%`);
 
   cloudUserNameInput.disabled = busy;
-  newUserButton.disabled = busy || !cloudAvailable;
+  cloudInvitationCodeInput.disabled = busy || Boolean(cloudUser);
+  cloudUserTokenInput.disabled = busy || Boolean(cloudUser);
+  newUserButton.disabled = busy || !cloudAvailable || Boolean(cloudUser);
+  loginUserButton.disabled = busy || !cloudAvailable || Boolean(cloudUser);
+  logoutUserButton.disabled = busy || !cloudUser;
   copyUserIdButton.disabled = busy || !cloudUser;
   copyUserTokenButton.disabled = busy || !cloudUser;
   themeToggleButton.textContent = themeMode === "dark" ? "Light" : "Dark";
@@ -921,7 +2859,15 @@ function renderChrome(): void {
   saveSpaceButton.disabled = busy || !canEditSite();
   newPageButton.disabled = busy || !canCreatePage();
   newFolderButton.disabled = busy || !canEditSite();
+  importPageButton.disabled = busy || !canCreatePage();
+  pageTemplateSelect.disabled = busy || !canCreatePage() || pageTemplates.length === 0;
+  globalSearchInput.disabled = busy || !cloudUser;
+  searchScopeSelect.disabled = busy || !cloudUser;
+  searchButton.disabled = busy || !cloudUser || !globalSearchInput.value.trim();
+  refreshTrashButton.disabled = busy || !cloudUser;
   savePageButton.disabled = busy || !canEditPage() || !currentPage;
+  reloadPageButton.disabled = busy || !currentPage;
+  favoritePageButton.disabled = busy || !cloudUser || !currentPage;
   sourceInput.disabled = busy || !canEditPage();
   pageTitleInput.disabled = busy || !canEditPage();
   copyPageLinkButton.disabled = busy || !currentPage;
@@ -929,7 +2875,29 @@ function renderChrome(): void {
   copySiteLinkButton.disabled = busy || !currentSite;
   openPublishedSiteButton.disabled = busy || !currentSite;
   inviteUserButton.disabled = busy || !canManagePermissions();
+  inviteGroupSelect.disabled = busy || !canManagePermissions() || groups.length === 0;
+  inviteGroupButton.disabled = busy || !canManagePermissions() || groups.length === 0;
+  refreshAccessButton.disabled = busy || (!canManagePermissions() && !canEditPage());
+  refreshNotificationsButton.disabled = busy || !cloudUser;
+  readAllNotificationsButton.disabled = busy || !cloudUser || !notifications.some((notification) => !notification.readAt);
+  refreshCommentsButton.disabled = busy || !currentPage;
+  addCommentButton.disabled = busy || !currentPage || !cloudUser;
+  commentBlockIdInput.disabled = busy || !currentPage;
+  commentBodyInput.disabled = busy || !currentPage;
+  refreshApprovalsButton.disabled = busy || !currentPage;
+  requestApprovalButton.disabled = busy || !currentPage || !canEditPage();
+  approvalReviewerInput.disabled = busy || !currentPage || !canEditPage();
+  approvalNoteInput.disabled = busy || !currentPage || !canEditPage();
+  refreshActivityButton.disabled = busy || !currentPage;
+  refreshGroupsButton.disabled = busy || !cloudUser;
+  createGroupButton.disabled = busy || !cloudUser;
+  manageGroupSelect.disabled = busy || groups.length === 0;
+  groupMemberIdInput.disabled = busy || !selectedGroupManagedByCurrentUser();
+  groupMemberRoleSelect.disabled = busy || !selectedGroupManagedByCurrentUser();
+  addGroupMemberButton.disabled = busy || !selectedGroupManagedByCurrentUser();
   applyPatchButton.disabled = busy || !canEditPage();
+  proposePatchButton.disabled = busy || !canEditPage() || !currentPage || dirty;
+  refreshPatchProposalsButton.disabled = busy || !currentPage;
   copyLlmButton.disabled = busy || Boolean(renderState.error) || !renderState.llm;
   togglePanelsButton.setAttribute("aria-pressed", String(panelsOpen));
   togglePanelsButton.textContent = panelsOpen ? "Hide Panels" : "Panels";
@@ -939,6 +2907,9 @@ function renderChrome(): void {
   }
 
   const role = currentPageRole();
+  const currentFavorite = Boolean(currentPage && favoriteItems.some((item) => item.resourceType === "document" && item.resourceId === currentPage?.id));
+  favoritePageButton.textContent = currentFavorite ? "Unfavorite" : "Favorite";
+  favoritePageButton.setAttribute("aria-pressed", String(currentFavorite));
   roleBadge.textContent = role;
   roleBadge.dataset.state = roleRank(role) >= roleRank("editor") ? "ok" : "warning";
   dirtyBadge.textContent = dirty ? "unsaved" : "saved";
@@ -946,6 +2917,12 @@ function renderChrome(): void {
   updatedText.textContent = currentPage ? `Updated ${formatDate(currentPage.updatedAt)}` : "";
 
   renderNavigation();
+  renderHistory();
+  renderWorkspaceTools();
+  renderCollaborationPanels();
+  renderWorkManagement();
+  renderPatchProposals();
+  renderAccessManagement();
 }
 
 function renderNavigation(): void {
@@ -1124,6 +3101,7 @@ function iconButton(text: string, title: string, onClick: () => void, variant?: 
   button.className = variant === "danger" ? "row-action row-action-danger" : "row-action";
   button.textContent = text;
   button.title = title;
+  button.setAttribute("aria-label", title);
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     onClick();
@@ -1194,6 +3172,7 @@ function closeContextMenu(): void {
 function showSiteContextMenu(event: MouseEvent, site: CloudSiteResponse): void {
   const isCurrent = currentSite?.id === site.id;
   const canEdit = canEditSiteRecord(site);
+  const favorite = favoriteItems.some((item) => item.resourceType === "site" && item.resourceId === site.id);
   showContextMenu(event, [
     {
       label: isCurrent ? "Refresh space" : "Open space",
@@ -1217,9 +3196,19 @@ function showSiteContextMenu(event: MouseEvent, site: CloudSiteResponse): void {
       action: () => void runWithLoadedSite(site.id, () => copySiteLink()),
     },
     {
+      label: favorite ? "Remove from favorites" : "Add to favorites",
+      action: () => void toggleFavorite("site", site.id),
+    },
+    {
       label: "Save space",
       disabled: !isCurrent || !canEditSite(),
       action: () => void saveCurrentSite(),
+    },
+    {
+      label: "Move space to trash",
+      disabled: site.access?.role !== "owner" && site.currentRole !== "owner",
+      danger: true,
+      action: () => void trashSite(site),
     },
   ]);
 }
@@ -1269,6 +3258,7 @@ function showFolderContextMenu(event: MouseEvent, folder: string): void {
 
 function showPageContextMenu(event: MouseEvent, page: CloudDocumentResponse): void {
   const isCurrent = currentPage?.id === page.id;
+  const favorite = favoriteItems.some((item) => item.resourceType === "document" && item.resourceId === page.id);
   showContextMenu(event, [
     {
       label: isCurrent ? "Focus page" : "Open page",
@@ -1306,10 +3296,20 @@ function showPageContextMenu(event: MouseEvent, page: CloudDocumentResponse): vo
       action: () => void copyText(page.id, "Copied page ID"),
     },
     {
+      label: favorite ? "Remove from favorites" : "Add to favorites",
+      action: () => void toggleFavorite("document", page.id),
+    },
+    {
       label: "Save page",
       disabled: !isCurrent || !canEditPage(),
       separatorBefore: true,
       action: () => void saveCurrentPage(),
+    },
+    {
+      label: "Move page to trash",
+      disabled: !canEditSite() && page.access?.role !== "owner" && page.access?.role !== "editor",
+      danger: true,
+      action: () => void trashPage(page),
     },
   ]);
 }
@@ -1759,6 +3759,10 @@ function canManagePermissions(): boolean {
   return role === "owner";
 }
 
+function canEditWorkProject(): boolean {
+  return roleRank(selectedWorkProject()?.access?.role ?? "viewer") >= roleRank("editor");
+}
+
 function currentPageRole(): CloudRole {
   return currentPage?.access?.role ?? currentSite?.access?.role ?? "viewer";
 }
@@ -1787,8 +3791,9 @@ async function fetchCloudJson<T>(url: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
     const text = await response.text();
+    let payload: CloudErrorPayload = {};
     try {
-      const payload = JSON.parse(text) as { error?: string };
+      payload = JSON.parse(text) as CloudErrorPayload;
       if (payload.error) message = payload.error;
     } catch {
       if (text) message = text;
@@ -1797,7 +3802,7 @@ async function fetchCloudJson<T>(url: string, init?: RequestInit): Promise<T> {
       const next = `${window.location.pathname}${window.location.search}`;
       window.location.assign(`/login.html?next=${encodeURIComponent(next)}`);
     }
-    throw new Error(message);
+    throw new CloudRequestError(response.status, message, payload);
   }
   return response.json() as Promise<T>;
 }
@@ -2642,11 +4647,6 @@ function slug(value: string): string {
 function promptName(label: string, fallback: string): string {
   const value = window.prompt(label, fallback);
   return value?.trim() || fallback;
-}
-
-function promptSecret(label: string): string | undefined {
-  const value = window.prompt(label);
-  return value?.trim() || undefined;
 }
 
 function confirmDiscardDirty(): boolean {

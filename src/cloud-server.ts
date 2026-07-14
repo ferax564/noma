@@ -9,18 +9,46 @@ import { walk } from "./ast.js";
 import {
   openNomaCloudDatabase,
   type CloudDbQuery,
+  type CloudActivityEvent,
+  type CloudApproval,
+  type CloudApprovalStatus,
+  type CloudComment,
   type CloudDocumentRecord,
+  type CloudDocumentRevision,
+  type CloudDocumentRevisionSummary,
+  type CloudGroup,
+  type CloudGroupPermission,
+  type CloudIssue,
+  type CloudIssueComment,
+  type CloudIssueEvent,
+  type CloudIssueFilter,
+  type CloudIssueLink,
+  type CloudIssueLinkType,
+  type CloudIssuePriority,
+  type CloudIssueStatus,
+  type CloudIssueType,
+  type CloudNavigationItem,
+  type CloudNotification,
+  type CloudPatchProposal,
   type CloudPermission,
+  type CloudProject,
+  type CloudResourceType,
   type CloudRole,
+  type CloudSearchResult,
   type CloudShareLink,
   type CloudSiteRecord,
+  type CloudSprint,
+  type CloudSprintStatus,
+  type CloudTrashItem,
   type CloudUserRecord,
-  type DocumentSummary,
   type NomaCloudDatabase,
-  type SiteSummary,
 } from "./cloud-db.js";
+import { cloudPageTemplates, instantiateCloudPageTemplate } from "./cloud-templates.js";
+import { convertMarkdownToNoma } from "./ingest-markdown.js";
 import { extractWikilinks } from "./inline.js";
+import type { PatchOp } from "./patch.js";
 import { slugify, parse } from "./parser.js";
+import { createAgentSafetyProof, type AgentSafetyProof } from "./proof.js";
 import { renderHtml } from "./renderer-html.js";
 import { renderJson } from "./renderer-json.js";
 import { renderLlm } from "./renderer-llm.js";
@@ -28,11 +56,37 @@ import { validate } from "./validator.js";
 
 export type {
   CloudDbQuery,
+  CloudActivityEvent,
+  CloudApproval,
+  CloudApprovalStatus,
+  CloudComment,
   CloudDocumentRecord,
+  CloudDocumentRevision,
+  CloudDocumentRevisionSummary,
+  CloudGroup,
+  CloudGroupPermission,
+  CloudIssue,
+  CloudIssueComment,
+  CloudIssueEvent,
+  CloudIssueFilter,
+  CloudIssueLink,
+  CloudIssueLinkType,
+  CloudIssuePriority,
+  CloudIssueStatus,
+  CloudIssueType,
+  CloudNavigationItem,
+  CloudNotification,
+  CloudPatchProposal,
   CloudPermission,
+  CloudProject,
+  CloudResourceType,
   CloudRole,
+  CloudSearchResult,
   CloudShareLink,
   CloudSiteRecord,
+  CloudSprint,
+  CloudSprintStatus,
+  CloudTrashItem,
   CloudUserRecord,
 } from "./cloud-db.js";
 
@@ -47,6 +101,13 @@ export interface NomaCloudServerOptions {
   accessTokenFile?: string;
   invitationCode?: string;
   invitationCodeFile?: string;
+  allowOpenAccess?: boolean;
+  allowOpenRegistration?: boolean;
+  production?: boolean;
+  rateLimitWindowMs?: number;
+  rateLimitMaxRequests?: number;
+  authRateLimitMaxRequests?: number;
+  trustProxy?: boolean;
   now?: () => Date;
 }
 
@@ -59,6 +120,8 @@ interface CloudServerConfig {
   maxBodyBytes: number;
   accessTokenHash?: string;
   invitationCodeHash?: string;
+  rateLimiter: CloudRateLimiter;
+  trustProxy: boolean;
   now: () => Date;
   store: NomaCloudDatabase;
 }
@@ -95,13 +158,57 @@ interface Principal {
 
 interface AccessContext {
   role: CloudRole;
-  via: "user" | "share";
+  via: "user" | "group" | "share";
   user?: CloudUserRecord;
   share?: CloudShareLink;
+  groupId?: string;
+}
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+interface RateLimitResult {
+  allowed: boolean;
+  limit: number;
+  remaining: number;
+  resetAt: number;
+}
+
+class CloudRateLimiter {
+  private readonly buckets = new Map<string, RateLimitBucket>();
+
+  constructor(
+    private readonly windowMs: number,
+    private readonly apiLimit: number,
+    private readonly authLimit: number,
+  ) {}
+
+  consume(key: string, auth: boolean, now: number): RateLimitResult {
+    const limit = auth ? this.authLimit : this.apiLimit;
+    const bucket = this.buckets.get(key);
+    const active = bucket && bucket.resetAt > now ? bucket : { count: 0, resetAt: now + this.windowMs };
+    active.count += 1;
+    this.buckets.set(key, active);
+    if (this.buckets.size > 10_000) this.prune(now);
+    return {
+      allowed: active.count <= limit,
+      limit,
+      remaining: Math.max(0, limit - active.count),
+      resetAt: active.resetAt,
+    };
+  }
+
+  private prune(now: number): void {
+    for (const [key, bucket] of this.buckets) {
+      if (bucket.resetAt <= now) this.buckets.delete(key);
+    }
+  }
 }
 
 class HttpError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly details: Record<string, unknown> = {}) {
     super(message);
   }
 }
@@ -112,6 +219,20 @@ const roleRank: Record<CloudRole, number> = {
   owner: 3,
 };
 
+const issueStatuses: CloudIssueStatus[] = ["backlog", "todo", "in_progress", "in_review", "done"];
+const issueTransitions: Record<CloudIssueStatus, CloudIssueStatus[]> = {
+  backlog: ["todo"],
+  todo: ["backlog", "in_progress"],
+  in_progress: ["todo", "in_review", "done"],
+  in_review: ["in_progress", "done"],
+  done: ["todo"],
+};
+const sprintTransitions: Record<CloudSprintStatus, CloudSprintStatus[]> = {
+  planned: ["active"],
+  active: ["closed"],
+  closed: [],
+};
+
 const cloudAccessCookieName = "noma_cloud_access";
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
@@ -120,6 +241,10 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
   const usersDir = resolve(options.usersDir ?? process.env.NOMA_CLOUD_USERS_DIR ?? join(storageRoot, "users"));
   const sitesDir = resolve(options.sitesDir ?? process.env.NOMA_CLOUD_SITES_DIR ?? join(storageRoot, "sites"));
   const dbPath = resolve(options.dbPath ?? process.env.NOMA_CLOUD_DB ?? join(storageRoot, "noma-cloud.sqlite"));
+  const accessTokenHash = cloudAccessTokenHash(options);
+  const invitationCodeHash = cloudInvitationCodeHash(options);
+  validateProductionSecurity(options, accessTokenHash, invitationCodeHash);
+  const now = options.now ?? (() => new Date());
   const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir });
   const config: CloudServerConfig = {
     dataDir,
@@ -128,9 +253,15 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     dbPath,
     publicDir: resolve(options.publicDir ?? process.env.NOMA_PUBLIC_DIR ?? "dist"),
     maxBodyBytes: options.maxBodyBytes ?? Number(process.env.NOMA_CLOUD_MAX_BODY_BYTES ?? 1_500_000),
-    accessTokenHash: cloudAccessTokenHash(options),
-    invitationCodeHash: cloudInvitationCodeHash(options),
-    now: options.now ?? (() => new Date()),
+    accessTokenHash,
+    invitationCodeHash,
+    rateLimiter: new CloudRateLimiter(
+      positiveInteger(options.rateLimitWindowMs ?? Number(process.env.NOMA_CLOUD_RATE_LIMIT_WINDOW_MS ?? 60_000), "rateLimitWindowMs"),
+      positiveInteger(options.rateLimitMaxRequests ?? Number(process.env.NOMA_CLOUD_RATE_LIMIT_MAX ?? 300), "rateLimitMaxRequests"),
+      positiveInteger(options.authRateLimitMaxRequests ?? Number(process.env.NOMA_CLOUD_AUTH_RATE_LIMIT_MAX ?? 20), "authRateLimitMaxRequests"),
+    ),
+    trustProxy: options.trustProxy ?? enabledEnvironmentFlag("NOMA_CLOUD_TRUST_PROXY"),
+    now,
     store,
   };
 
@@ -142,11 +273,37 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
       }
       const status = error instanceof HttpError ? error.status : 500;
       const message = error instanceof Error ? error.message : "Internal server error";
-      sendJson(res, status, { error: message });
+      sendJson(res, status, { error: message, ...(error instanceof HttpError ? error.details : {}) });
     });
   });
   server.on("close", () => store.close());
   return server;
+}
+
+function validateProductionSecurity(
+  options: NomaCloudServerOptions,
+  accessTokenHash: string | undefined,
+  invitationCodeHash: string | undefined,
+): void {
+  const production = options.production ?? process.env.NODE_ENV === "production";
+  if (!production) return;
+  const allowOpenAccess = options.allowOpenAccess ?? enabledEnvironmentFlag("NOMA_CLOUD_ALLOW_OPEN_ACCESS");
+  const allowOpenRegistration = options.allowOpenRegistration ?? enabledEnvironmentFlag("NOMA_CLOUD_ALLOW_OPEN_REGISTRATION");
+  if (!accessTokenHash && !allowOpenAccess) {
+    throw new Error("Production Noma Cloud requires NOMA_CLOUD_ACCESS_TOKEN or explicit NOMA_CLOUD_ALLOW_OPEN_ACCESS=1");
+  }
+  if (!invitationCodeHash && !allowOpenRegistration) {
+    throw new Error("Production Noma Cloud requires NOMA_CLOUD_INVITATION_CODE or explicit NOMA_CLOUD_ALLOW_OPEN_REGISTRATION=1");
+  }
+}
+
+function enabledEnvironmentFlag(name: string): boolean {
+  return /^(?:1|true|yes)$/i.test(process.env[name]?.trim() ?? "");
+}
+
+function positiveInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${label} must be a positive integer`);
+  return value;
 }
 
 function cloudAccessTokenHash(options: NomaCloudServerOptions): string | undefined {
@@ -312,6 +469,7 @@ function redirectWithCloudAccessCookie(req: IncomingMessage, res: ServerResponse
   next.searchParams.delete("access");
   const location = `${next.pathname}${next.search}`;
   res.statusCode = 302;
+  setSecurityHeaders(res);
   res.setHeader("location", location || url.pathname);
   res.setHeader("set-cookie", cloudAccessCookie(req, token));
   res.setHeader("cache-control", "no-store");
@@ -322,6 +480,7 @@ function redirectToLogin(res: ServerResponse, url: URL): void {
   const next = `${url.pathname}${url.search}`;
   const location = `/login.html?next=${encodeURIComponent(next)}`;
   res.statusCode = 302;
+  setSecurityHeaders(res);
   res.setHeader("location", location);
   res.setHeader("cache-control", "no-store");
   res.end();
@@ -367,6 +526,8 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     return;
   }
 
+  if (url.pathname.startsWith("/api/")) enforceRateLimit(req, res, url, config);
+
   if (url.pathname.startsWith("/api/auth/")) {
     await routeAuth(req, res, url.pathname.split("/").filter(Boolean), config);
     return;
@@ -395,7 +556,26 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
       storage: "sqlite",
       database: {
         queryApi: true,
-        resources: ["documents", "sites", "blocks", "users", "wiki"],
+        resources: [
+          "documents",
+          "sites",
+          "blocks",
+          "users",
+          "wiki",
+          "search",
+          "navigation",
+          "templates",
+          "trash",
+          "comments",
+          "notifications",
+          "activity",
+          "approvals",
+          "groups",
+          "projects",
+          "issues",
+          "sprints",
+          "patch-proposals",
+        ],
       },
       maxBodyBytes: config.maxBodyBytes,
       user: principal.user ? publicUser(principal.user) : undefined,
@@ -411,7 +591,8 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
   if (method === "GET" && url.pathname.startsWith("/d/")) {
     const id = decodeURIComponent(url.pathname.slice(3));
     const record = await readDocument(config, id);
-    const access = requireRecordAccess(record, principal, "viewer");
+    requireNotTrashed(config, "document", id);
+    const access = requireRecordAccess(config, record, principal, "viewer");
     sendText(res, 200, renderDocumentHtml(record, access), "text/html; charset=utf-8");
     return;
   }
@@ -419,7 +600,8 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
   if (method === "GET" && url.pathname.startsWith("/s/")) {
     const id = decodeURIComponent(url.pathname.slice(3));
     const site = await readSite(config, id);
-    const access = requireRecordAccess(site, principal, "viewer");
+    requireNotTrashed(config, "site", id);
+    const access = requireRecordAccess(config, site, principal, "viewer");
     sendText(res, 200, await renderSiteHtml(config, site, access), "text/html; charset=utf-8");
     return;
   }
@@ -430,6 +612,27 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
   }
 
   throw new HttpError(405, "Method not allowed");
+}
+
+function enforceRateLimit(req: IncomingMessage, res: ServerResponse, url: URL, config: CloudServerConfig): void {
+  const auth = url.pathname.startsWith("/api/auth/") || (url.pathname === "/api/users" && req.method === "POST");
+  const address = clientAddress(req, config.trustProxy);
+  const result = config.rateLimiter.consume(`${address}:${auth ? "auth" : "api"}`, auth, config.now().getTime());
+  res.setHeader("x-ratelimit-limit", String(result.limit));
+  res.setHeader("x-ratelimit-remaining", String(result.remaining));
+  res.setHeader("x-ratelimit-reset", String(Math.ceil(result.resetAt / 1000)));
+  if (result.allowed) return;
+  const retryAfter = Math.max(1, Math.ceil((result.resetAt - config.now().getTime()) / 1000));
+  res.setHeader("retry-after", String(retryAfter));
+  throw new HttpError(429, "Too many requests", { code: "rate_limit_exceeded", retryAfter });
+}
+
+function clientAddress(req: IncomingMessage, trustProxy: boolean): string {
+  if (trustProxy) {
+    const forwarded = headerValue(req, "x-forwarded-for")?.split(",")[0]?.trim();
+    if (forwarded) return forwarded;
+  }
+  return req.socket.remoteAddress ?? "unknown";
 }
 
 async function routeApi(
@@ -462,7 +665,576 @@ async function routeApi(
     return;
   }
 
+  if (resource === "search") {
+    routeSearch(req, res, url, config, principal);
+    return;
+  }
+
+  if (resource === "navigation") {
+    await routeNavigation(req, res, parts, config, principal);
+    return;
+  }
+
+  if (resource === "templates") {
+    routeTemplates(req, res, config, principal);
+    return;
+  }
+
+  if (resource === "trash") {
+    await routeTrash(req, res, parts, config, principal);
+    return;
+  }
+
+  if (resource === "notifications") {
+    await routeNotifications(req, res, parts, config, principal);
+    return;
+  }
+
+  if (resource === "activity") {
+    routeActivity(req, res, url, config, principal);
+    return;
+  }
+
+  if (resource === "groups") {
+    await routeGroups(req, res, parts, config, principal);
+    return;
+  }
+
+  if (resource === "projects") {
+    await routeProjects(req, res, url, parts, config, principal);
+    return;
+  }
+
   throw new HttpError(404, "Unknown API resource");
+}
+
+function routeSearch(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  config: CloudServerConfig,
+  principal: Principal,
+): void {
+  if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
+  const user = requireUser(principal);
+  const q = (url.searchParams.get("q") ?? "").trim().slice(0, 200);
+  const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
+  const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 25, 1, 100, "limit");
+  sendJson(res, 200, { q, results: config.store.search(user, q, siteId, limit) });
+}
+
+async function routeNavigation(
+  req: IncomingMessage,
+  res: ServerResponse,
+  parts: string[],
+  config: CloudServerConfig,
+  principal: Principal,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const action = parts[2];
+  const user = requireUser(principal);
+  if (!action && method === "GET") {
+    sendJson(res, 200, {
+      recents: config.store.listRecents(user),
+      favorites: config.store.listFavorites(user),
+    });
+    return;
+  }
+  if (action === "recent" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const resourceType = resourceTypeInput(input.resourceType);
+    const resourceId = resourceIdInput(input.resourceId, resourceType);
+    await requireResourceAccess(config, principal, resourceType, resourceId, "viewer");
+    config.store.recordRecent(user.id, resourceType, resourceId, config.now().toISOString());
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+  if (action === "favorites" && (method === "PUT" || method === "DELETE")) {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const resourceType = resourceTypeInput(input.resourceType);
+    const resourceId = resourceIdInput(input.resourceId, resourceType);
+    await requireResourceAccess(config, principal, resourceType, resourceId, "viewer");
+    if (method === "PUT") config.store.setFavorite(user.id, resourceType, resourceId, config.now().toISOString());
+    else config.store.removeFavorite(user.id, resourceType, resourceId);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+  throw new HttpError(404, "Unknown navigation route");
+}
+
+function routeTemplates(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig, principal: Principal): void {
+  if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
+  requireUser(principal);
+  sendJson(res, 200, { templates: cloudPageTemplates, count: cloudPageTemplates.length, storage: "built-in" });
+}
+
+async function routeTrash(
+  req: IncomingMessage,
+  res: ServerResponse,
+  parts: string[],
+  config: CloudServerConfig,
+  principal: Principal,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const user = requireUser(principal);
+  const rawType = parts[2];
+  if (!rawType && method === "GET") {
+    sendJson(res, 200, { items: config.store.listTrash(user) });
+    return;
+  }
+  const resourceType = resourceTypeInput(rawType);
+  const resourceId = resourceIdInput(parts[3], resourceType);
+  const action = parts[4];
+  if (method === "POST" && !action) {
+    await requireResourceAccess(config, principal, resourceType, resourceId, resourceType === "site" ? "owner" : "editor", true);
+    config.store.trashResource(resourceType, resourceId, config.now().toISOString(), user.id);
+    config.store.removeFavorite(user.id, resourceType, resourceId);
+    recordActivity(config, user, `${resourceType}.trashed`, resourceType, resourceId);
+    sendJson(res, 200, { ok: true, resourceType, resourceId });
+    return;
+  }
+  if (method === "POST" && action === "restore") {
+    await requireResourceAccess(config, principal, resourceType, resourceId, resourceType === "site" ? "owner" : "editor", true);
+    if (!config.store.isTrashed(resourceType, resourceId)) throw new HttpError(409, "Resource is not in trash");
+    config.store.restoreResource(resourceType, resourceId);
+    recordActivity(config, user, `${resourceType}.restored`, resourceType, resourceId);
+    sendJson(res, 200, { ok: true, resourceType, resourceId });
+    return;
+  }
+  throw new HttpError(404, "Unknown trash route");
+}
+
+async function routeNotifications(
+  req: IncomingMessage,
+  res: ServerResponse,
+  parts: string[],
+  config: CloudServerConfig,
+  principal: Principal,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const user = requireUser(principal);
+  const id = parts[2];
+  const action = parts[3];
+  if (!id && method === "GET") {
+    const notifications = config.store.listNotifications(user.id);
+    sendJson(res, 200, { notifications, unread: notifications.filter((notification) => !notification.readAt).length });
+    return;
+  }
+  if (id === "read-all" && method === "POST") {
+    const changed = config.store.markAllNotificationsRead(user.id, config.now().toISOString());
+    sendJson(res, 200, { ok: true, changed });
+    return;
+  }
+  if (id && action === "read" && method === "POST") {
+    if (!config.store.markNotificationRead(user.id, id, config.now().toISOString())) throw new HttpError(404, "Notification not found");
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+  throw new HttpError(404, "Unknown notification route");
+}
+
+function routeActivity(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  config: CloudServerConfig,
+  principal: Principal,
+): void {
+  if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
+  const user = requireUser(principal);
+  const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
+  const documentId = optionalCloudId(url.searchParams.get("document"), "Document");
+  const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 50, 1, 100, "limit");
+  sendJson(res, 200, { events: config.store.listActivity(user, siteId, documentId, limit) });
+}
+
+async function routeGroups(
+  req: IncomingMessage,
+  res: ServerResponse,
+  parts: string[],
+  config: CloudServerConfig,
+  principal: Principal,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const user = requireUser(principal);
+  const groupId = parts[2];
+  const action = parts[3];
+  const memberId = parts[4];
+  if (!groupId && method === "GET") {
+    sendJson(res, 200, { groups: config.store.listGroups(user.id) });
+    return;
+  }
+  if (!groupId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const now = config.now().toISOString();
+    const group: Omit<CloudGroup, "members"> = {
+      id: uniqueId(config),
+      name: stringInput(input, "name").slice(0, 100),
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      config.store.createGroup(group, user.id);
+    } catch (error) {
+      if (sqliteConstraint(error)) throw new HttpError(409, "A group with this name already exists");
+      throw error;
+    }
+    sendJson(res, 201, config.store.readGroup(group.id));
+    return;
+  }
+  if (!groupId) throw new HttpError(404, "Group ID is required");
+  assertCloudId(groupId, "Group");
+  const group = config.store.readGroup(groupId);
+  if (!group) throw new HttpError(404, "Group not found");
+  const membership = group.members.find((member) => member.userId === user.id);
+  if (!membership) throw new HttpError(403, "Group membership is required");
+  if (!action && method === "GET") {
+    sendJson(res, 200, group);
+    return;
+  }
+  if (action === "members" && !memberId && method === "POST") {
+    if (membership.role !== "manager") throw new HttpError(403, "Group manager access is required");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const userId = stringInput(input, "userId");
+    await readUser(config, userId);
+    const role = input.role === "manager" ? "manager" : "member";
+    config.store.addGroupMember(group.id, userId, role, config.now().toISOString());
+    sendJson(res, 200, config.store.readGroup(group.id));
+    return;
+  }
+  if (action === "members" && memberId && method === "DELETE") {
+    if (membership.role !== "manager") throw new HttpError(403, "Group manager access is required");
+    assertCloudId(memberId, "User");
+    const target = group.members.find((member) => member.userId === memberId);
+    if (!target) throw new HttpError(404, "Group member not found");
+    if (target.role === "manager" && group.members.filter((member) => member.role === "manager").length === 1) {
+      throw new HttpError(409, "A group must keep at least one manager");
+    }
+    config.store.removeGroupMember(group.id, memberId, config.now().toISOString());
+    sendJson(res, 200, config.store.readGroup(group.id));
+    return;
+  }
+  throw new HttpError(404, "Unknown group route");
+}
+
+async function routeProjects(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  parts: string[],
+  config: CloudServerConfig,
+  principal: Principal,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const user = requireUser(principal);
+  const projectId = parts[2];
+  if (!projectId && method === "GET") {
+    sendJson(res, 200, { projects: config.store.listProjects(user) });
+    return;
+  }
+  if (!projectId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const siteId = stringInput(input, "siteId");
+    const site = await readSite(config, siteId);
+    requireNotTrashed(config, "site", siteId);
+    requireRecordAccess(config, site, principal, "editor");
+    const now = config.now().toISOString();
+    const project: CloudProject = {
+      id: uniqueId(config),
+      key: projectKeyInput(input.key),
+      name: stringInput(input, "name").slice(0, 120),
+      siteId,
+      ...(optionalString(input.description) ? { description: optionalString(input.description)?.slice(0, 4_000) } : {}),
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      config.store.writeProject(project);
+    } catch (error) {
+      if (sqliteConstraint(error)) throw new HttpError(409, "Project key already exists");
+      throw error;
+    }
+    sendJson(res, 201, { ...project, access: { role: config.store.resourceAccess(user.id, "site", siteId)?.role ?? "viewer" } });
+    return;
+  }
+  if (!projectId) throw new HttpError(404, "Project ID or key is required");
+  const project = config.store.readProject(projectId);
+  if (!project) throw new HttpError(404, "Project not found");
+  const access = requireProjectAccess(config, project, principal, "viewer");
+  const resource = parts[3];
+  const resourceId = parts[4];
+  const subresource = parts[5];
+
+  if (!resource && method === "GET") {
+    sendJson(res, 200, { ...project, access: { role: access.role } });
+    return;
+  }
+  if (!resource && method === "PATCH") {
+    requireAccessRole(access, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const next: CloudProject = {
+      ...project,
+      name: optionalString(input.name)?.slice(0, 120) ?? project.name,
+      description: input.description === null ? undefined : optionalString(input.description)?.slice(0, 4_000) ?? project.description,
+      updatedAt: config.now().toISOString(),
+    };
+    config.store.writeProject(next);
+    sendJson(res, 200, { ...next, access: { role: access.role } });
+    return;
+  }
+  if (resource === "issues") {
+    await routeProjectIssues(req, res, url, resourceId, subresource, config, principal, user, project, access);
+    return;
+  }
+  if (resource === "sprints") {
+    await routeProjectSprints(req, res, resourceId, config, user, project, access);
+    return;
+  }
+  if ((resource === "board" || resource === "backlog") && method === "GET") {
+    const issues = config.store.listIssues(project.id, { limit: 500 });
+    const sprints = config.store.listSprints(project.id);
+    if (resource === "backlog") {
+      sendJson(res, 200, {
+        project,
+        issues: issues.filter((issue) => !issue.sprintId && (issue.status === "backlog" || issue.status === "todo")),
+        plannedSprints: sprints.filter((sprint) => sprint.status === "planned"),
+      });
+    } else {
+      sendJson(res, 200, {
+        project,
+        columns: Object.fromEntries(issueStatuses.map((status) => [status, issues.filter((issue) => issue.status === status)])),
+        activeSprint: sprints.find((sprint) => sprint.status === "active"),
+      });
+    }
+    return;
+  }
+  throw new HttpError(404, "Unknown project route");
+}
+
+async function routeProjectIssues(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  issueId: string | undefined,
+  subresource: string | undefined,
+  config: CloudServerConfig,
+  principal: Principal,
+  user: CloudUserRecord,
+  project: CloudProject,
+  access: AccessContext,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  if (!issueId && method === "GET") {
+    sendJson(res, 200, { issues: config.store.listIssues(project.id, issueFilterInput(url)) });
+    return;
+  }
+  if (!issueId && method === "POST") {
+    requireAccessRole(access, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const assigneeId = await issueAssignee(config, project, input.assigneeId);
+    const sprintId = issueSprint(config, project.id, input.sprintId);
+    const parentId = issueParent(config, project.id, input.parentId);
+    const now = config.now().toISOString();
+    const issue = config.store.createIssue(
+      {
+        id: uniqueId(config),
+        projectId: project.id,
+        summary: stringInput(input, "summary").slice(0, 240),
+        ...(optionalString(input.description) ? { description: optionalString(input.description)?.slice(0, 20_000) } : {}),
+        type: issueTypeInput(input.type, "task"),
+        status: issueStatusInput(input.status, "backlog"),
+        priority: issuePriorityInput(input.priority, "medium"),
+        reporterId: user.id,
+        ...(assigneeId ? { assigneeId } : {}),
+        labels: issueLabels(input.labels),
+        ...(sprintId ? { sprintId } : {}),
+        ...(parentId ? { parentId } : {}),
+        ...(issueEstimate(input.estimate) === undefined ? {} : { estimate: issueEstimate(input.estimate) }),
+        ...(issueDueDate(input.dueDate) ? { dueDate: issueDueDate(input.dueDate) } : {}),
+        createdAt: now,
+        updatedAt: now,
+      },
+      project.key,
+    );
+    recordIssueEvent(config, user, issue.id, "issue.created", { status: issue.status, assigneeId });
+    sendJson(res, 201, issue);
+    return;
+  }
+  if (!issueId) throw new HttpError(404, "Issue ID or key is required");
+  const issue = config.store.readIssue(issueId);
+  if (!issue || issue.projectId !== project.id) throw new HttpError(404, "Issue not found");
+  if (subresource === "comments") {
+    if (method === "GET") {
+      sendJson(res, 200, { comments: config.store.listIssueComments(issue.id) });
+      return;
+    }
+    if (method === "POST") {
+      const input = await readJsonBody(req, config.maxBodyBytes);
+      const now = config.now().toISOString();
+      const comment: Omit<CloudIssueComment, "createdByName"> = {
+        id: uniqueId(config),
+        issueId: issue.id,
+        body: stringInput(input, "body").slice(0, 10_000),
+        createdBy: user.id,
+        createdAt: now,
+        updatedAt: now,
+      };
+      config.store.writeIssueComment(comment);
+      recordIssueEvent(config, user, issue.id, "comment.created", { commentId: comment.id });
+      sendJson(res, 201, config.store.listIssueComments(issue.id).find((item) => item.id === comment.id));
+      return;
+    }
+  }
+  if (subresource === "links") {
+    if (method === "GET") {
+      sendJson(res, 200, { links: config.store.listIssueLinks(issue.id) });
+      return;
+    }
+    if (method === "POST") {
+      requireAccessRole(access, "editor");
+      const input = await readJsonBody(req, config.maxBodyBytes);
+      const target = config.store.readIssue(stringInput(input, "targetIssueId"));
+      if (!target) throw new HttpError(404, "Target issue not found");
+      const targetProject = config.store.readProject(target.projectId);
+      if (!targetProject) throw new HttpError(404, "Target project not found");
+      requireProjectAccess(config, targetProject, principal, "viewer");
+      if (target.id === issue.id) throw new HttpError(400, "An issue cannot link to itself");
+      const link: Omit<CloudIssueLink, "targetIssueKey" | "targetIssueSummary"> = {
+        id: uniqueId(config),
+        sourceIssueId: issue.id,
+        targetIssueId: target.id,
+        type: issueLinkTypeInput(input.type),
+        createdBy: user.id,
+        createdAt: config.now().toISOString(),
+      };
+      try {
+        config.store.writeIssueLink(link);
+      } catch (error) {
+        if (sqliteConstraint(error)) throw new HttpError(409, "This issue link already exists");
+        throw error;
+      }
+      recordIssueEvent(config, user, issue.id, "link.created", { targetIssueId: target.id, type: link.type });
+      sendJson(res, 201, config.store.listIssueLinks(issue.id).find((item) => item.id === link.id));
+      return;
+    }
+  }
+  if (subresource === "history" && method === "GET") {
+    sendJson(res, 200, { events: config.store.listIssueEvents(issue.id) });
+    return;
+  }
+  if (subresource) throw new HttpError(404, "Unknown issue route");
+  if (method === "GET") {
+    sendJson(res, 200, {
+      ...issue,
+      links: config.store.listIssueLinks(issue.id),
+      comments: config.store.listIssueComments(issue.id),
+      events: config.store.listIssueEvents(issue.id),
+    });
+    return;
+  }
+  if (method === "PATCH") {
+    requireAccessRole(access, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const nextStatus = input.status === undefined ? issue.status : issueStatusInput(input.status);
+    if (nextStatus !== issue.status && !issueTransitions[issue.status].includes(nextStatus)) {
+      throw new HttpError(409, `Issue cannot move from ${issue.status} to ${nextStatus}`);
+    }
+    const assigneeId = input.assigneeId === undefined ? issue.assigneeId : await issueAssignee(config, project, input.assigneeId);
+    const sprintId = input.sprintId === undefined ? issue.sprintId : issueSprint(config, project.id, input.sprintId);
+    const parentId = input.parentId === undefined ? issue.parentId : issueParent(config, project.id, input.parentId, issue.id);
+    const next: CloudIssue = {
+      ...issue,
+      summary: optionalString(input.summary)?.slice(0, 240) ?? issue.summary,
+      description: input.description === null ? undefined : optionalString(input.description)?.slice(0, 20_000) ?? issue.description,
+      type: input.type === undefined ? issue.type : issueTypeInput(input.type),
+      status: nextStatus,
+      priority: input.priority === undefined ? issue.priority : issuePriorityInput(input.priority),
+      assigneeId,
+      labels: input.labels === undefined ? issue.labels : issueLabels(input.labels),
+      sprintId,
+      parentId,
+      estimate: input.estimate === undefined ? issue.estimate : issueEstimate(input.estimate),
+      dueDate: input.dueDate === undefined ? issue.dueDate : issueDueDate(input.dueDate),
+      updatedAt: config.now().toISOString(),
+    };
+    config.store.writeIssue(next);
+    recordIssueEvent(config, user, issue.id, "issue.updated", issueChanges(issue, next));
+    sendJson(res, 200, config.store.readIssue(issue.id));
+    return;
+  }
+  throw new HttpError(405, "Method not allowed");
+}
+
+async function routeProjectSprints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  sprintId: string | undefined,
+  config: CloudServerConfig,
+  user: CloudUserRecord,
+  project: CloudProject,
+  access: AccessContext,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  if (!sprintId && method === "GET") {
+    sendJson(res, 200, { sprints: config.store.listSprints(project.id) });
+    return;
+  }
+  if (!sprintId && method === "POST") {
+    requireAccessRole(access, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const now = config.now().toISOString();
+    const status = sprintStatusInput(input.status, "planned");
+    if (status === "closed") throw new HttpError(400, "New sprints must be planned or active");
+    if (status === "active" && config.store.activeSprint(project.id)) throw new HttpError(409, "This project already has an active sprint");
+    const sprint: CloudSprint = {
+      id: uniqueId(config),
+      projectId: project.id,
+      name: stringInput(input, "name").slice(0, 160),
+      ...(optionalString(input.goal) ? { goal: optionalString(input.goal)?.slice(0, 4_000) } : {}),
+      status,
+      ...(status === "active" ? { startAt: issueDateTime(input.startAt) ?? now } : {}),
+      ...(issueDateTime(input.endAt) ? { endAt: issueDateTime(input.endAt) } : {}),
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    config.store.writeSprint(sprint);
+    sendJson(res, 201, sprint);
+    return;
+  }
+  if (!sprintId) throw new HttpError(404, "Sprint ID is required");
+  const sprint = config.store.readSprint(sprintId);
+  if (!sprint || sprint.projectId !== project.id) throw new HttpError(404, "Sprint not found");
+  if (method === "GET") {
+    sendJson(res, 200, sprint);
+    return;
+  }
+  if (method === "PATCH") {
+    requireAccessRole(access, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const status = input.status === undefined ? sprint.status : sprintStatusInput(input.status);
+    if (status !== sprint.status && !sprintTransitions[sprint.status].includes(status)) {
+      throw new HttpError(409, `Sprint cannot move from ${sprint.status} to ${status}`);
+    }
+    if (status === "active" && config.store.activeSprint(project.id)) throw new HttpError(409, "This project already has an active sprint");
+    const now = config.now().toISOString();
+    const next: CloudSprint = {
+      ...sprint,
+      name: optionalString(input.name)?.slice(0, 160) ?? sprint.name,
+      goal: input.goal === null ? undefined : optionalString(input.goal)?.slice(0, 4_000) ?? sprint.goal,
+      status,
+      startAt: status === "active" ? issueDateTime(input.startAt) ?? sprint.startAt ?? now : sprint.startAt,
+      endAt: issueDateTime(input.endAt) ?? sprint.endAt,
+      updatedAt: now,
+    };
+    if (status === "closed" && sprint.status !== "closed") config.store.closeSprint(next, now);
+    else config.store.writeSprint(next);
+    sendJson(res, 200, config.store.readSprint(sprint.id));
+    return;
+  }
+  throw new HttpError(405, "Method not allowed");
 }
 
 async function routeUsers(
@@ -513,7 +1285,7 @@ async function routeDocuments(
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
     const record = await createDocument(config, input, user);
-    sendJson(res, 201, documentResponse(record, requireRecordAccess(record, principal, "owner")));
+    sendJson(res, 201, documentResponse(record, requireRecordAccess(config, record, principal, "owner")));
     return;
   }
 
@@ -525,32 +1297,59 @@ async function routeDocuments(
 
   if (!id) throw new HttpError(404, "Document ID is required");
 
+  const record = await readDocument(config, id);
+  requireNotTrashed(config, "document", id);
+
   if (suffix === "collaborators") {
-    await routeCollaborators(req, res, config, principal, await readDocument(config, id), "document");
+    await routeCollaborators(req, res, parts[4], config, principal, record, "document");
+    return;
+  }
+
+  if (suffix === "group-collaborators") {
+    await routeGroupCollaborators(req, res, parts[4], config, principal, record, "document");
     return;
   }
 
   if (suffix === "shares") {
-    await routeShares(req, res, config, principal, await readDocument(config, id), "document");
+    await routeShares(req, res, parts[4], config, principal, record, "document");
     return;
   }
 
-  const record = await readDocument(config, id);
+  if (suffix === "revisions") {
+    const access = requireRecordAccess(config, record, principal, "viewer");
+    await routeDocumentRevisions(req, res, parts[4], parts[5], config, record, access);
+    return;
+  }
+
+  if (suffix === "comments") {
+    await routeDocumentComments(req, res, parts[4], parts[5], config, principal, record);
+    return;
+  }
+
+  if (suffix === "approvals") {
+    await routeDocumentApprovals(req, res, parts[4], config, principal, record);
+    return;
+  }
+
+  if (suffix === "patch-proposals") {
+    await routePatchProposals(req, res, parts[4], parts[5], config, principal, record);
+    return;
+  }
 
   if (suffix === "html" && method === "GET") {
-    const access = requireRecordAccess(record, principal, "viewer");
+    const access = requireRecordAccess(config, record, principal, "viewer");
     sendText(res, 200, renderDocumentHtml(record, access), "text/html; charset=utf-8");
     return;
   }
 
   if (suffix === "json" && method === "GET") {
-    requireRecordAccess(record, principal, "viewer");
+    requireRecordAccess(config, record, principal, "viewer");
     sendText(res, 200, inspectSource(record.source, record.id).json, "application/json; charset=utf-8");
     return;
   }
 
   if (suffix === "llm" && method === "GET") {
-    requireRecordAccess(record, principal, "viewer");
+    requireRecordAccess(config, record, principal, "viewer");
     sendText(res, 200, inspectSource(record.source, record.id).llm, "text/plain; charset=utf-8");
     return;
   }
@@ -558,16 +1357,18 @@ async function routeDocuments(
   if (suffix) throw new HttpError(404, "Unknown document artifact");
 
   if (method === "GET") {
-    const access = requireRecordAccess(record, principal, "viewer");
+    const access = requireRecordAccess(config, record, principal, "viewer");
+    if (access.user) config.store.recordRecent(access.user.id, "document", record.id, config.now().toISOString());
     sendJson(res, 200, documentResponse(record, access));
     return;
   }
 
   if (method === "PUT" || method === "PATCH") {
-    const access = requireRecordAccess(record, principal, "editor");
+    const access = requireRecordAccess(config, record, principal, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
+    requireDocumentPrecondition(req, record, input);
     const updated = await updateDocument(config, record, input, access);
-    sendJson(res, 200, documentResponse(updated, requireRecordAccess(updated, principal, "viewer")));
+    sendJson(res, 200, documentResponse(updated, requireRecordAccess(config, updated, principal, "viewer")));
     return;
   }
 
@@ -590,7 +1391,7 @@ async function routeSites(
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
     const record = await createSite(config, input, user, principal);
-    sendJson(res, 201, siteResponse(record, requireRecordAccess(record, principal, "owner")));
+    sendJson(res, 201, siteResponse(record, requireRecordAccess(config, record, principal, "owner")));
     return;
   }
 
@@ -602,32 +1403,39 @@ async function routeSites(
 
   if (!id) throw new HttpError(404, "Site ID is required");
 
+  const site = await readSite(config, id);
+  requireNotTrashed(config, "site", id);
+
   if (suffix === "collaborators") {
-    await routeCollaborators(req, res, config, principal, await readSite(config, id), "site");
+    await routeCollaborators(req, res, parts[4], config, principal, site, "site");
+    return;
+  }
+
+  if (suffix === "group-collaborators") {
+    await routeGroupCollaborators(req, res, parts[4], config, principal, site, "site");
     return;
   }
 
   if (suffix === "shares") {
-    await routeShares(req, res, config, principal, await readSite(config, id), "site");
+    await routeShares(req, res, parts[4], config, principal, site, "site");
     return;
   }
 
   if (suffix === "documents") {
-    await routeSiteDocuments(req, res, parts, config, principal, await readSite(config, id));
+    await routeSiteDocuments(req, res, parts, config, principal, site);
     return;
   }
 
   if (suffix === "wiki") {
-    await routeSiteWiki(req, res, config, principal, await readSite(config, id));
+    await routeSiteWiki(req, res, config, principal, site);
     return;
   }
 
   if (suffix) throw new HttpError(404, "Unknown site route");
 
-  const site = await readSite(config, id);
-
   if (method === "GET") {
-    const access = requireRecordAccess(site, principal, "viewer");
+    const access = requireRecordAccess(config, site, principal, "viewer");
+    if (access.user) config.store.recordRecent(access.user.id, "site", site.id, config.now().toISOString());
     const response = siteResponse(site, access);
     if (url.searchParams.get("include") === "documents") {
       sendJson(res, 200, {
@@ -641,10 +1449,10 @@ async function routeSites(
   }
 
   if (method === "PUT" || method === "PATCH") {
-    const access = requireRecordAccess(site, principal, "editor");
+    const access = requireRecordAccess(config, site, principal, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const updated = await updateSite(config, site, input, access, principal);
-    sendJson(res, 200, siteResponse(updated, requireRecordAccess(updated, principal, "viewer")));
+    sendJson(res, 200, siteResponse(updated, requireRecordAccess(config, updated, principal, "viewer")));
     return;
   }
 
@@ -722,16 +1530,16 @@ async function routeSiteDocuments(
   const docId = parts[4];
 
   if (!docId && method === "GET") {
-    const access = requireRecordAccess(site, principal, "viewer");
+    const access = requireRecordAccess(config, site, principal, "viewer");
     sendJson(res, 200, { documents: await siteDocumentResponses(config, site, access) });
     return;
   }
 
   if (!docId && method === "POST") {
-    const access = requireRecordAccess(site, principal, "editor");
+    const access = requireRecordAccess(config, site, principal, "editor");
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
-    const document = await createDocument(config, input, user);
+    const document = await createDocument(config, input, user, site.title);
     const now = config.now().toISOString();
     const documentIds = [...site.documentIds, document.id];
     const pageFolders = pageFolderMap(site.pageFolders, documentIds);
@@ -746,24 +1554,58 @@ async function routeSiteDocuments(
       updatedBy: access.user?.id ?? site.updatedBy,
     };
     await writeSite(config, nextSite);
-    sendJson(res, 201, documentResponse(document, requireRecordAccess(document, principal, "owner")));
+    sendJson(res, 201, documentResponse(document, requireRecordAccess(config, document, principal, "owner")));
     return;
   }
 
   if (!docId) throw new HttpError(404, "Document ID is required");
   assertCloudId(docId, "Document");
   if (!site.documentIds.includes(docId)) throw new HttpError(404, "Document is not in this site");
+  requireNotTrashed(config, "document", docId);
+
+  if (parts[5] === "revisions") {
+    const access = requireRecordAccess(config, site, principal, "viewer");
+    await routeDocumentRevisions(req, res, parts[6], parts[7], config, await readDocument(config, docId), access);
+    return;
+  }
+
+  if (parts[5] === "comments") {
+    await routeDocumentComments(req, res, parts[6], parts[7], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
+    return;
+  }
+
+  if (parts[5] === "approvals") {
+    await routeDocumentApprovals(req, res, parts[6], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
+    return;
+  }
+
+  if (parts[5] === "patch-proposals") {
+    await routePatchProposals(
+      req,
+      res,
+      parts[6],
+      parts[7],
+      config,
+      principal,
+      await readDocument(config, docId),
+      requireRecordAccess(config, site, principal, "viewer"),
+    );
+    return;
+  }
 
   if (method === "GET") {
-    const access = requireRecordAccess(site, principal, "viewer");
+    const access = requireRecordAccess(config, site, principal, "viewer");
+    if (access.user) config.store.recordRecent(access.user.id, "document", docId, config.now().toISOString());
     sendJson(res, 200, documentResponse(await readDocument(config, docId), access));
     return;
   }
 
   if (method === "PUT" || method === "PATCH") {
-    const access = requireRecordAccess(site, principal, "editor");
+    const access = requireRecordAccess(config, site, principal, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
-    const updated = await updateDocument(config, await readDocument(config, docId), input, access);
+    const document = await readDocument(config, docId);
+    requireDocumentPrecondition(req, document, input);
+    const updated = await updateDocument(config, document, input, access);
     sendJson(res, 200, documentResponse(updated, access));
     return;
   }
@@ -771,12 +1613,307 @@ async function routeSiteDocuments(
   throw new HttpError(405, "Method not allowed");
 }
 
+async function routeDocumentRevisions(
+  req: IncomingMessage,
+  res: ServerResponse,
+  revisionText: string | undefined,
+  action: string | undefined,
+  config: CloudServerConfig,
+  document: CloudDocumentRecord,
+  access: AccessContext,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  if (!revisionText && method === "GET") {
+    sendJson(res, 200, { revisions: config.store.listDocumentRevisions(document.id) });
+    return;
+  }
+
+  const revisionNumber = parseRevisionNumber(revisionText);
+  const revision = config.store.readDocumentRevision(document.id, revisionNumber);
+  if (!revision) throw new HttpError(404, "Document revision not found");
+
+  if (!action && method === "GET") {
+    sendJson(res, 200, revision);
+    return;
+  }
+
+  if (action === "restore" && method === "POST") {
+    requireAccessRole(access, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    requireDocumentPrecondition(req, document, input);
+    const restored = await updateDocument(
+      config,
+      document,
+      { title: revision.title, source: revision.source },
+      access,
+    );
+    sendJson(res, 200, documentResponse(restored, access));
+    return;
+  }
+
+  throw new HttpError(404, "Unknown document revision route");
+}
+
+async function routeDocumentComments(
+  req: IncomingMessage,
+  res: ServerResponse,
+  commentId: string | undefined,
+  action: string | undefined,
+  config: CloudServerConfig,
+  principal: Principal,
+  document: CloudDocumentRecord,
+  inheritedAccess?: AccessContext,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const access = inheritedAccess ?? requireRecordAccess(config, document, principal, "viewer");
+  const user = requireUser(principal);
+  if (!commentId && method === "GET") {
+    sendJson(res, 200, { comments: config.store.listComments(document.id) });
+    return;
+  }
+  if (!commentId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const body = stringInput(input, "body").slice(0, 10_000);
+    const blockId = optionalString(input.blockId)?.slice(0, 160);
+    const line = input.line === undefined ? undefined : boundedInteger(input.line, 1, 1, 1_000_000, "line");
+    const parentId = optionalString(input.parentId);
+    if (blockId && !documentHasBlock(document, blockId)) throw new HttpError(400, "Comment blockId does not exist in this document");
+    if (parentId) {
+      const parent = config.store.readComment(parentId);
+      if (!parent || parent.documentId !== document.id) throw new HttpError(400, "Comment parentId does not exist in this document");
+    }
+    const now = config.now().toISOString();
+    const comment: Omit<CloudComment, "createdByName"> = {
+      id: uniqueId(config),
+      documentId: document.id,
+      ...(blockId ? { blockId } : {}),
+      ...(line === undefined ? {} : { line }),
+      ...(parentId ? { parentId } : {}),
+      body,
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    config.store.writeComment(comment);
+    notifyCommentParticipants(config, document, comment, user);
+    recordActivity(config, user, parentId ? "comment.replied" : "comment.created", "document", document.id, {
+      commentId: comment.id,
+      blockId,
+      line,
+    });
+    sendJson(res, 201, config.store.readComment(comment.id));
+    return;
+  }
+  if (commentId && action === "resolve" && method === "POST") {
+    const existing = config.store.readComment(commentId);
+    if (!existing || existing.documentId !== document.id) throw new HttpError(404, "Comment not found");
+    if (existing.createdBy !== user.id) requireAccessRole(access, "editor");
+    const now = config.now().toISOString();
+    config.store.writeComment({
+      ...existing,
+      updatedAt: now,
+      resolvedAt: existing.resolvedAt ? undefined : now,
+      resolvedBy: existing.resolvedAt ? undefined : user.id,
+    });
+    recordActivity(config, user, existing.resolvedAt ? "comment.reopened" : "comment.resolved", "document", document.id, {
+      commentId,
+    });
+    sendJson(res, 200, config.store.readComment(commentId));
+    return;
+  }
+  throw new HttpError(404, "Unknown comment route");
+}
+
+async function routeDocumentApprovals(
+  req: IncomingMessage,
+  res: ServerResponse,
+  approvalId: string | undefined,
+  config: CloudServerConfig,
+  principal: Principal,
+  document: CloudDocumentRecord,
+  inheritedAccess?: AccessContext,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const access = inheritedAccess ?? requireRecordAccess(config, document, principal, "viewer");
+  const user = requireUser(principal);
+  if (!approvalId && method === "GET") {
+    sendJson(res, 200, { approvals: config.store.listApprovals(document.id) });
+    return;
+  }
+  if (!approvalId && method === "POST") {
+    requireAccessRole(access, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const reviewerId = stringInput(input, "reviewerId");
+    const reviewer = await readUser(config, reviewerId);
+    if (!config.store.documentAccessRole(reviewerId, document.id)) throw new HttpError(400, "Reviewer needs access to this document or its space");
+    if (
+      config.store
+        .listApprovals(document.id)
+        .some((approval) => approval.reviewerId === reviewerId && approval.documentHash === document.hash && approval.status === "pending")
+    ) {
+      throw new HttpError(409, "This reviewer already has a pending approval for the current version");
+    }
+    const now = config.now().toISOString();
+    const approval: Omit<CloudApproval, "reviewerName"> = {
+      id: uniqueId(config),
+      documentId: document.id,
+      documentHash: document.hash,
+      requestedBy: user.id,
+      reviewerId,
+      status: "pending",
+      note: optionalString(input.note)?.slice(0, 4_000),
+      createdAt: now,
+      updatedAt: now,
+    };
+    config.store.writeApproval(approval);
+    writeNotification(config, reviewer.id, "approval_requested", `Approval requested: ${document.title}`, `${user.name} requested your review.`, "document", document.id);
+    recordActivity(config, user, "approval.requested", "document", document.id, { approvalId: approval.id, reviewerId, documentHash: document.hash });
+    sendJson(res, 201, config.store.readApproval(approval.id));
+    return;
+  }
+  if (approvalId && method === "PATCH") {
+    const existing = config.store.readApproval(approvalId);
+    if (!existing || existing.documentId !== document.id) throw new HttpError(404, "Approval not found");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const status = approvalStatusInput(input.status);
+    if (status === "approved" && document.hash !== existing.documentHash) {
+      throw new HttpError(409, "This approval targets an older document version", {
+        code: "approval_version_stale",
+        approvalHash: existing.documentHash,
+        currentHash: document.hash,
+      });
+    }
+    if (status === "cancelled") {
+      if (existing.requestedBy !== user.id) throw new HttpError(403, "Only the requester can cancel this approval");
+    } else if (existing.reviewerId !== user.id) {
+      throw new HttpError(403, "Only the assigned reviewer can update this approval");
+    }
+    const now = config.now().toISOString();
+    config.store.writeApproval({
+      ...existing,
+      status,
+      note: optionalString(input.note)?.slice(0, 4_000) ?? existing.note,
+      updatedAt: now,
+    });
+    writeNotification(
+      config,
+      existing.requestedBy,
+      "approval_updated",
+      `Approval ${status.replace("_", " ")}: ${document.title}`,
+      `${user.name} set the review to ${status.replace("_", " ")}.`,
+      "document",
+      document.id,
+    );
+    recordActivity(config, user, `approval.${status}`, "document", document.id, { approvalId, documentHash: existing.documentHash });
+    sendJson(res, 200, config.store.readApproval(approvalId));
+    return;
+  }
+  throw new HttpError(404, "Unknown approval route");
+}
+
+async function routePatchProposals(
+  req: IncomingMessage,
+  res: ServerResponse,
+  proposalId: string | undefined,
+  action: string | undefined,
+  config: CloudServerConfig,
+  principal: Principal,
+  document: CloudDocumentRecord,
+  inheritedAccess?: AccessContext,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const access = inheritedAccess ?? requireRecordAccess(config, document, principal, "viewer");
+  const user = requireUser(principal);
+  if (!proposalId && method === "GET") {
+    sendJson(res, 200, { proposals: config.store.listPatchProposals(document.id) });
+    return;
+  }
+  if (!proposalId && method === "POST") {
+    requireAccessRole(access, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const ops = patchOpsInput(input.ops);
+    const issueId = optionalString(input.issueId);
+    const issue = issueId ? linkedPatchIssue(config, principal, document, issueId) : undefined;
+    const proof = createCloudPatchProof(config, document, ops);
+    const proofRecord = cloudProofRecord(proof);
+    if (!proof.canWrite) throw new HttpError(422, "Patch proof failed", { proof: proofRecord });
+    const now = config.now().toISOString();
+    const proposal: Omit<CloudPatchProposal, "proposedByName"> = {
+      id: uniqueId(config),
+      documentId: document.id,
+      documentHash: document.hash,
+      ...(issue ? { issueId: issue.id } : {}),
+      proposedBy: user.id,
+      ...(optionalString(input.summary) ? { summary: optionalString(input.summary)?.slice(0, 500) } : {}),
+      ops,
+      proof: proofRecord,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+    };
+    config.store.writePatchProposal(proposal);
+    recordActivity(config, user, "patch.proposed", "document", document.id, { proposalId: proposal.id, issueId: issue?.id });
+    if (issue) recordIssueEvent(config, user, issue.id, "patch.proposed", { proposalId: proposal.id, documentId: document.id, documentHash: document.hash });
+    sendJson(res, 201, config.store.readPatchProposal(proposal.id));
+    return;
+  }
+  if (!proposalId) throw new HttpError(404, "Patch proposal ID is required");
+  assertCloudId(proposalId, "Patch proposal");
+  const proposal = config.store.readPatchProposal(proposalId);
+  if (!proposal || proposal.documentId !== document.id) throw new HttpError(404, "Patch proposal not found");
+  if (!action && method === "GET") {
+    sendJson(res, 200, proposal);
+    return;
+  }
+  if (action === "review" && method === "POST") {
+    requireAccessRole(access, "editor");
+    if (proposal.status !== "pending") throw new HttpError(409, "Only pending proposals can be reviewed");
+    if (document.hash !== proposal.documentHash) throw stalePatchProposal(proposal, document);
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const decision = patchReviewDecision(input.decision);
+    if (decision === "approved" && proposal.proposedBy === user.id) {
+      throw new HttpError(409, "A different collaborator must approve an agent patch");
+    }
+    const now = config.now().toISOString();
+    config.store.writePatchProposal({ ...proposal, status: decision, reviewedBy: user.id, reviewedAt: now, updatedAt: now });
+    recordActivity(config, user, `patch.${decision}`, "document", document.id, { proposalId: proposal.id, issueId: proposal.issueId });
+    if (proposal.issueId) recordIssueEvent(config, user, proposal.issueId, `patch.${decision}`, { proposalId: proposal.id, documentId: document.id });
+    sendJson(res, 200, config.store.readPatchProposal(proposal.id));
+    return;
+  }
+  if (action === "apply" && method === "POST") {
+    requireAccessRole(access, "editor");
+    if (proposal.status !== "approved") throw new HttpError(409, "The proposal must be approved before it can be applied");
+    if (document.hash !== proposal.documentHash) throw stalePatchProposal(proposal, document);
+    const proof = createCloudPatchProof(config, document, proposal.ops as PatchOp[]);
+    if (!proof.canWrite || proof.preHash.sha256 !== proposal.documentHash) {
+      throw new HttpError(409, "Patch proof no longer matches the current document", { proof: cloudProofRecord(proof) });
+    }
+    const updated = await updateDocument(config, document, { source: proof.postSource }, access);
+    const now = config.now().toISOString();
+    config.store.writePatchProposal({ ...proposal, status: "applied", appliedHash: updated.hash, updatedAt: now });
+    recordActivity(config, user, "patch.applied", "document", document.id, { proposalId: proposal.id, issueId: proposal.issueId, hash: updated.hash });
+    if (proposal.issueId) {
+      recordIssueEvent(config, user, proposal.issueId, "patch.applied", {
+        proposalId: proposal.id,
+        documentId: document.id,
+        beforeHash: proposal.documentHash,
+        afterHash: updated.hash,
+      });
+    }
+    sendJson(res, 200, { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access) });
+    return;
+  }
+  throw new HttpError(404, "Unknown patch proposal route");
+}
+
 async function siteDocumentResponses(
   config: CloudServerConfig,
   site: CloudSiteRecord,
   access: AccessContext,
-): Promise<Array<CloudDocumentRecord & SourceInspection & { access: Record<string, unknown> }>> {
-  return Promise.all(site.documentIds.map(async (id) => documentResponse(await readDocument(config, id), access)));
+): Promise<Array<Record<string, unknown> & SourceInspection>> {
+  const visibleIds = site.documentIds.filter((id) => !config.store.isTrashed("document", id));
+  return Promise.all(visibleIds.map(async (id) => documentResponse(await readDocument(config, id), access)));
 }
 
 async function routeSiteWiki(
@@ -788,8 +1925,9 @@ async function routeSiteWiki(
 ): Promise<void> {
   const method = req.method ?? "GET";
   if (method !== "GET") throw new HttpError(405, "Method not allowed");
-  const access = requireRecordAccess(site, principal, "viewer");
-  const documents = await Promise.all(site.documentIds.map((id) => readDocument(config, id)));
+  const access = requireRecordAccess(config, site, principal, "viewer");
+  const visibleIds = site.documentIds.filter((id) => !config.store.isTrashed("document", id));
+  const documents = await Promise.all(visibleIds.map((id) => readDocument(config, id)));
   const pages = documents.map(wikiPageSummary);
   const links = buildWikiLinks(documents);
   const backlinks = new Map<string, WikiLinkSummary[]>();
@@ -817,13 +1955,14 @@ async function routeSiteWiki(
 async function routeCollaborators(
   req: IncomingMessage,
   res: ServerResponse,
+  collaboratorId: string | undefined,
   config: CloudServerConfig,
   principal: Principal,
   record: CloudDocumentRecord | CloudSiteRecord,
   kind: "document" | "site",
 ): Promise<void> {
   const method = req.method ?? "GET";
-  requireRecordAccess(record, principal, "owner");
+  requireRecordAccess(config, record, principal, "owner");
 
   if (method === "GET") {
     sendJson(res, 200, { collaborators: Object.entries(record.permissions).map(([userId, permission]) => ({ userId, ...permission })) });
@@ -847,6 +1986,26 @@ async function routeCollaborators(
     };
     if (kind === "document") await writeDocument(config, next as CloudDocumentRecord);
     else await writeSite(config, next as CloudSiteRecord);
+    if (principal.user) recordActivity(config, principal.user, "permission.updated", kind, record.id, { userId, role });
+    sendJson(res, 200, { collaborators: Object.entries(next.permissions).map(([id, permission]) => ({ userId: id, ...permission })) });
+    return;
+  }
+
+  if (collaboratorId && method === "DELETE") {
+    assertCloudId(collaboratorId, "User");
+    if (collaboratorId === record.createdBy) throw new HttpError(409, "The resource owner cannot be removed");
+    if (!record.permissions[collaboratorId]) throw new HttpError(404, "Collaborator not found");
+    const permissions = { ...record.permissions };
+    delete permissions[collaboratorId];
+    const next = {
+      ...record,
+      permissions,
+      updatedAt: config.now().toISOString(),
+      updatedBy: principal.user?.id ?? record.updatedBy,
+    };
+    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord);
+    else await writeSite(config, next as CloudSiteRecord);
+    if (principal.user) recordActivity(config, principal.user, "permission.removed", kind, record.id, { userId: collaboratorId });
     sendJson(res, 200, { collaborators: Object.entries(next.permissions).map(([id, permission]) => ({ userId: id, ...permission })) });
     return;
   }
@@ -854,16 +2013,61 @@ async function routeCollaborators(
   throw new HttpError(405, "Method not allowed");
 }
 
+async function routeGroupCollaborators(
+  req: IncomingMessage,
+  res: ServerResponse,
+  groupId: string | undefined,
+  config: CloudServerConfig,
+  principal: Principal,
+  record: CloudDocumentRecord | CloudSiteRecord,
+  kind: CloudResourceType,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const owner = requireRecordAccess(config, record, principal, "owner");
+  if (!groupId && method === "GET") {
+    sendJson(res, 200, { groups: config.store.listGroupPermissions(kind, record.id) });
+    return;
+  }
+  if (!groupId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const requestedGroupId = stringInput(input, "groupId");
+    assertCloudId(requestedGroupId, "Group");
+    const group = config.store.readGroup(requestedGroupId);
+    if (!group) throw new HttpError(404, "Group not found");
+    if (!group.members.some((member) => member.userId === owner.user?.id)) {
+      throw new HttpError(403, "You must belong to a group before granting it access");
+    }
+    const role = collaboratorRole(input.role);
+    const now = config.now().toISOString();
+    config.store.setGroupPermission(kind, record.id, group.id, role, now);
+    if (owner.user) recordActivity(config, owner.user, "group_permission.updated", kind, record.id, { groupId: group.id, role });
+    sendJson(res, 200, { groups: config.store.listGroupPermissions(kind, record.id) });
+    return;
+  }
+  if (groupId && method === "DELETE") {
+    assertCloudId(groupId, "Group");
+    if (!config.store.removeGroupPermission(kind, record.id, groupId)) throw new HttpError(404, "Group permission not found");
+    if (owner.user) recordActivity(config, owner.user, "group_permission.removed", kind, record.id, { groupId });
+    sendJson(res, 200, { groups: config.store.listGroupPermissions(kind, record.id) });
+    return;
+  }
+  throw new HttpError(405, "Method not allowed");
+}
+
 async function routeShares(
   req: IncomingMessage,
   res: ServerResponse,
+  shareId: string | undefined,
   config: CloudServerConfig,
   principal: Principal,
   record: CloudDocumentRecord | CloudSiteRecord,
   kind: "document" | "site",
 ): Promise<void> {
   const method = req.method ?? "GET";
-  const access = requireRecordAccess(record, principal, "editor");
+  const user = requireUser(principal);
+  const grant = config.store.resourceAccess(user.id, kind, record.id);
+  if (!grant || roleRank[grant.role] < roleRank.editor) throw new HttpError(403, "editor access is required");
+  const access: AccessContext = { role: grant.role, via: grant.via, user, ...(grant.groupId ? { groupId: grant.groupId } : {}) };
 
   if (method === "GET") {
     sendJson(res, 200, { shares: record.shareLinks.map(shareSummary) });
@@ -892,12 +2096,30 @@ async function routeShares(
     };
     if (kind === "document") await writeDocument(config, next as CloudDocumentRecord);
     else await writeSite(config, next as CloudSiteRecord);
+    recordActivity(config, user, "share.created", kind, record.id, { shareId: share.id, role });
     sendJson(res, 201, {
       ...shareSummary(share),
       token,
       url: kind === "document" ? `/workbench.html?doc=${record.id}&share=${token}` : `/s/${record.id}?share=${token}`,
       artifactUrl: kind === "document" ? `/d/${record.id}?share=${token}` : `/s/${record.id}?share=${token}`,
     });
+    return;
+  }
+
+  if (shareId && method === "DELETE") {
+    const existing = record.shareLinks.find((share) => share.id === shareId && !share.revokedAt);
+    if (!existing) throw new HttpError(404, "Active share link not found");
+    const now = config.now().toISOString();
+    const next = {
+      ...record,
+      shareLinks: record.shareLinks.map((share) => (share.id === shareId ? { ...share, revokedAt: now } : share)),
+      updatedAt: now,
+      updatedBy: user.id,
+    };
+    if (kind === "document") await writeDocument(config, next as CloudDocumentRecord);
+    else await writeSite(config, next as CloudSiteRecord);
+    recordActivity(config, user, "share.revoked", kind, record.id, { shareId });
+    sendJson(res, 200, { shares: next.shareLinks.map(shareSummary) });
     return;
   }
 
@@ -927,15 +2149,21 @@ async function createDocument(
   config: CloudServerConfig,
   input: Record<string, unknown>,
   user: CloudUserRecord,
+  spaceTitle = "Noma Workspace",
 ): Promise<CloudDocumentRecord> {
   const id = uniqueId(config);
-  const source = sourceFromInput(input);
+  const template = optionalString(input.templateId)
+    ? cloudPageTemplates.find((candidate) => candidate.id === optionalString(input.templateId))
+    : undefined;
+  if (input.templateId !== undefined && !template) throw new HttpError(400, "Unknown page template");
+  const requestedTitle = optionalString(input.title) ?? template?.title ?? "Untitled document";
+  const source = sourceFromCreateInput(input, requestedTitle, spaceTitle);
   inspectSource(source, id);
   const now = config.now().toISOString();
   const record: CloudDocumentRecord = {
     version: 2,
     id,
-    title: titleFromInput(input, source),
+    title: titleFromInput(template ? { ...input, title: requestedTitle } : input, source),
     source,
     hash: sha256Hex(source),
     createdAt: now,
@@ -948,6 +2176,7 @@ async function createDocument(
     shareLinks: [],
   };
   await writeDocument(config, record);
+  recordActivity(config, user, "document.created", "document", record.id, { title: record.title });
   return record;
 }
 
@@ -968,6 +2197,7 @@ async function updateDocument(
     updatedBy: access.user?.id ?? `share:${access.share?.id ?? "unknown"}`,
   };
   await writeDocument(config, record);
+  if (access.user) recordActivity(config, access.user, "document.updated", "document", record.id, { hash: record.hash });
   return record;
 }
 
@@ -1001,6 +2231,7 @@ async function createSite(
     shareLinks: [],
   };
   await writeSite(config, record);
+  recordActivity(config, user, "site.created", "site", record.id, { title: record.title });
   return record;
 }
 
@@ -1029,21 +2260,45 @@ async function updateSite(
     updatedBy: access.user?.id ?? `share:${access.share?.id ?? "unknown"}`,
   };
   await writeSite(config, record);
+  if (access.user) recordActivity(config, access.user, "site.updated", "site", record.id, { title: record.title });
   return record;
 }
 
 async function requireDocumentEditAccess(config: CloudServerConfig, ids: string[], principal: Principal): Promise<void> {
   for (const id of ids) {
-    requireRecordAccess(await readDocument(config, id), principal, "editor");
+    requireRecordAccess(config, await readDocument(config, id), principal, "editor");
   }
 }
 
-async function listDocuments(config: CloudServerConfig, user: CloudUserRecord): Promise<DocumentSummary[]> {
-  return config.store.listDocuments(user);
+async function listDocuments(config: CloudServerConfig, user: CloudUserRecord): Promise<Array<Record<string, unknown>>> {
+  return config.store.listDocuments(user).map((record) => ({
+    version: record.version,
+    id: record.id,
+    title: record.title,
+    hash: record.hash,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    createdBy: record.createdBy,
+    updatedBy: record.updatedBy,
+    currentRole: record.currentRole,
+  }));
 }
 
-async function listSites(config: CloudServerConfig, user: CloudUserRecord): Promise<SiteSummary[]> {
-  return config.store.listSites(user);
+async function listSites(config: CloudServerConfig, user: CloudUserRecord): Promise<Array<Record<string, unknown>>> {
+  return config.store.listSites(user).map((record) => ({
+    version: record.version,
+    id: record.id,
+    title: record.title,
+    slug: record.slug,
+    documentIds: record.documentIds,
+    folders: record.folders,
+    pageFolders: record.pageFolders,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    createdBy: record.createdBy,
+    updatedBy: record.updatedBy,
+    currentRole: record.currentRole,
+  }));
 }
 
 async function listUsers(config: CloudServerConfig): Promise<CloudUserRecord[]> {
@@ -1071,12 +2326,48 @@ function requireUser(principal: Principal): CloudUserRecord {
   return principal.user;
 }
 
+async function requireResourceAccess(
+  config: CloudServerConfig,
+  principal: Principal,
+  resourceType: CloudResourceType,
+  resourceId: string,
+  minimum: CloudRole,
+  allowTrashed = false,
+): Promise<AccessContext> {
+  const record = resourceType === "document" ? await readDocument(config, resourceId) : await readSite(config, resourceId);
+  if (!allowTrashed) requireNotTrashed(config, resourceType, resourceId);
+  return requireRecordAccess(config, record, principal, minimum);
+}
+
+function requireProjectAccess(
+  config: CloudServerConfig,
+  project: CloudProject,
+  principal: Principal,
+  minimum: CloudRole,
+): AccessContext {
+  const site = config.store.readSite(project.siteId);
+  if (!site) throw new HttpError(404, "Project space not found");
+  requireNotTrashed(config, "site", site.id);
+  return requireRecordAccess(config, site, principal, minimum);
+}
+
+function requireNotTrashed(config: CloudServerConfig, resourceType: CloudResourceType, resourceId: string): void {
+  if (config.store.isTrashed(resourceType, resourceId)) {
+    throw new HttpError(410, `${resourceType === "document" ? "Document" : "Site"} is in trash`, {
+      code: "resource_trashed",
+      resourceType,
+      resourceId,
+    });
+  }
+}
+
 function requireRecordAccess(
+  config: CloudServerConfig,
   record: CloudDocumentRecord | CloudSiteRecord,
   principal: Principal,
   minimum: CloudRole,
 ): AccessContext {
-  const access = recordAccess(record, principal);
+  const access = recordAccess(config, record, principal);
   if (!access || roleRank[access.role] < roleRank[minimum]) {
     const status = principal.user || principal.shareTokenHash ? 403 : 401;
     throw new HttpError(access ? 403 : status, `${minimum} access is required`);
@@ -1084,12 +2375,25 @@ function requireRecordAccess(
   return access;
 }
 
-function recordAccess(record: CloudDocumentRecord | CloudSiteRecord, principal: Principal): AccessContext | undefined {
+function requireAccessRole(access: AccessContext, minimum: CloudRole): void {
+  if (roleRank[access.role] < roleRank[minimum]) throw new HttpError(403, `${minimum} access is required`);
+}
+
+function recordAccess(
+  config: CloudServerConfig,
+  record: CloudDocumentRecord | CloudSiteRecord,
+  principal: Principal,
+): AccessContext | undefined {
   let best: AccessContext | undefined;
   if (principal.user) {
-    const permission = record.permissions[principal.user.id];
-    if (permission) {
-      best = { role: permission.role, via: "user", user: principal.user };
+    const grant = config.store.resourceAccess(principal.user.id, "source" in record ? "document" : "site", record.id);
+    if (grant) {
+      best = {
+        role: grant.role,
+        via: grant.via,
+        user: principal.user,
+        ...(grant.groupId ? { groupId: grant.groupId } : {}),
+      };
     }
   }
 
@@ -1143,21 +2447,35 @@ async function writeUser(config: CloudServerConfig, record: CloudUserRecord): Pr
   config.store.writeUser(record);
 }
 
-function documentResponse(record: CloudDocumentRecord, access: AccessContext): CloudDocumentRecord & SourceInspection & { access: Record<string, unknown> } {
+function documentResponse(record: CloudDocumentRecord, access: AccessContext): Record<string, unknown> & SourceInspection {
   return {
-    ...record,
+    version: record.version,
+    id: record.id,
+    title: record.title,
+    source: record.source,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    createdBy: record.createdBy,
+    updatedBy: record.updatedBy,
     ...inspectSource(record.source, record.id),
     access: accessResponse(access),
   };
 }
 
-function siteResponse(record: CloudSiteRecord, access: AccessContext): CloudSiteRecord & { access: Record<string, unknown> } {
+function siteResponse(record: CloudSiteRecord, access: AccessContext): Record<string, unknown> {
   const pageFolders = pageFolderMap(record.pageFolders, record.documentIds);
   return {
-    ...record,
+    version: record.version,
+    id: record.id,
+    title: record.title,
+    slug: record.slug,
+    documentIds: record.documentIds,
     folders: normalizeSiteFolders(record.folders ?? [], pageFolders),
     pageFolders,
-    shareLinks: record.shareLinks,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    createdBy: record.createdBy,
+    updatedBy: record.updatedBy,
     access: accessResponse(access),
   };
 }
@@ -1168,6 +2486,7 @@ function accessResponse(access: AccessContext): Record<string, unknown> {
     via: access.via,
     user: access.user ? publicUser(access.user) : undefined,
     shareId: access.share?.id,
+    groupId: access.groupId,
   };
 }
 
@@ -1257,7 +2576,8 @@ function renderDocumentHtml(record: CloudDocumentRecord, access?: AccessContext)
 }
 
 async function renderSiteHtml(config: CloudServerConfig, site: CloudSiteRecord, access: AccessContext): Promise<string> {
-  const documents = await Promise.all(site.documentIds.map((id) => readDocument(config, id)));
+  const visibleIds = site.documentIds.filter((id) => !config.store.isTrashed("document", id));
+  const documents = await Promise.all(visibleIds.map((id) => readDocument(config, id)));
   const articles = documents
     .map((record) => {
       const doc = parse(record.source, { filename: `${record.id}.noma` });
@@ -1345,6 +2665,147 @@ function sourceFromInput(input: Record<string, unknown>): string {
   return input.source;
 }
 
+function sourceFromCreateInput(input: Record<string, unknown>, title: string, spaceTitle: string): string {
+  const templateId = optionalString(input.templateId);
+  if (templateId) {
+    try {
+      return instantiateCloudPageTemplate(templateId, title, spaceTitle);
+    } catch (error) {
+      throw new HttpError(400, error instanceof Error ? error.message : "Unknown page template");
+    }
+  }
+  const source = sourceFromInput(input);
+  const format = optionalString(input.format)?.toLowerCase() ?? "noma";
+  if (format === "noma") return source.replace(/\r\n?/g, "\n");
+  if (format === "markdown" || format === "md") return convertMarkdownToNoma(source);
+  throw new HttpError(400, "format must be noma or markdown");
+}
+
+function documentHasBlock(document: CloudDocumentRecord, blockId: string): boolean {
+  const doc = parse(document.source, { filename: `${document.id}.noma` });
+  for (const node of walk(doc)) {
+    if (node.id === blockId || node.aliases?.includes(blockId)) return true;
+  }
+  return false;
+}
+
+function notifyCommentParticipants(
+  config: CloudServerConfig,
+  document: CloudDocumentRecord,
+  comment: Omit<CloudComment, "createdByName">,
+  actor: CloudUserRecord,
+): void {
+  const recipients = new Map<string, CloudNotification["type"]>();
+  for (const match of comment.body.matchAll(/@\{([A-Za-z0-9_-]{8,80})\}/g)) {
+    const userId = match[1];
+    if (userId && userId !== actor.id && config.store.documentAccessRole(userId, document.id)) recipients.set(userId, "mention");
+  }
+  if (comment.parentId) {
+    const parent = config.store.readComment(comment.parentId);
+    if (parent && parent.createdBy !== actor.id) recipients.set(parent.createdBy, recipients.get(parent.createdBy) ?? "comment");
+  } else if (document.createdBy !== actor.id) {
+    recipients.set(document.createdBy, recipients.get(document.createdBy) ?? "comment");
+  }
+  for (const [userId, type] of recipients) {
+    writeNotification(
+      config,
+      userId,
+      type,
+      type === "mention" ? `Mentioned in ${document.title}` : `New comment on ${document.title}`,
+      `${actor.name}: ${comment.body.slice(0, 240)}`,
+      "document",
+      document.id,
+    );
+  }
+}
+
+function writeNotification(
+  config: CloudServerConfig,
+  userId: string,
+  type: CloudNotification["type"],
+  title: string,
+  body: string,
+  resourceType?: CloudResourceType,
+  resourceId?: string,
+): void {
+  config.store.writeNotification({
+    id: randomId(),
+    userId,
+    type,
+    title,
+    body,
+    ...(resourceType ? { resourceType } : {}),
+    ...(resourceId ? { resourceId } : {}),
+    createdAt: config.now().toISOString(),
+  });
+}
+
+function recordActivity(
+  config: CloudServerConfig,
+  actor: CloudUserRecord,
+  action: string,
+  resourceType: CloudResourceType,
+  resourceId: string,
+  detail: Record<string, unknown> = {},
+): void {
+  config.store.writeActivity({
+    id: randomId(),
+    actorId: actor.id,
+    action,
+    resourceType,
+    resourceId,
+    detail,
+    createdAt: config.now().toISOString(),
+  });
+}
+
+function approvalStatusInput(value: unknown): Exclude<CloudApprovalStatus, "pending"> {
+  if (value === "approved" || value === "changes_requested" || value === "cancelled") return value;
+  throw new HttpError(400, "status must be approved, changes_requested, or cancelled");
+}
+
+function sqliteConstraint(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && String(error.code).startsWith("SQLITE_CONSTRAINT"));
+}
+
+function requireDocumentPrecondition(
+  req: IncomingMessage,
+  document: CloudDocumentRecord,
+  input: Record<string, unknown>,
+): void {
+  if (input.expectedHash !== undefined && typeof input.expectedHash !== "string") {
+    throw new HttpError(400, "expectedHash must be a SHA-256 string");
+  }
+  const bodyHash = optionalString(input.expectedHash);
+  const headerHash = ifMatchHash(headerValue(req, "if-match"));
+  if (bodyHash && headerHash && bodyHash !== headerHash) {
+    throw new HttpError(400, "expectedHash and If-Match must agree");
+  }
+  const expectedHash = bodyHash ?? headerHash;
+  if (!expectedHash) {
+    throw new HttpError(428, "Document updates require expectedHash or If-Match", {
+      code: "precondition_required",
+      currentHash: document.hash,
+    });
+  }
+  if (!/^[a-f0-9]{64}$/.test(expectedHash)) throw new HttpError(400, "expectedHash must be a lowercase SHA-256 hash");
+  if (expectedHash !== document.hash) {
+    throw new HttpError(409, "Document changed since it was loaded", {
+      code: "document_conflict",
+      expectedHash,
+      currentHash: document.hash,
+      currentUpdatedAt: document.updatedAt,
+    });
+  }
+}
+
+function ifMatchHash(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const match = /^(?:W\/)?"?([a-f0-9]{64})"?$/.exec(value.trim());
+  if (!match?.[1]) throw new HttpError(400, "If-Match must contain one SHA-256 hash");
+  return match[1];
+}
+
 function titleFromInput(input: Record<string, unknown>, source: string, fallback = "Untitled document"): string {
   const title = optionalString(input.title);
   if (title) return title.slice(0, 120);
@@ -1393,6 +2854,228 @@ function optionalCloudId(value: unknown, label: string): string | undefined {
   if (typeof value !== "string") throw new HttpError(400, `${label} ID must be a string`);
   assertCloudId(value, label);
   return value;
+}
+
+function resourceTypeInput(value: unknown): CloudResourceType {
+  if (value === "document" || value === "site") return value;
+  throw new HttpError(400, "resourceType must be document or site");
+}
+
+function resourceIdInput(value: unknown, resourceType: CloudResourceType): string {
+  if (typeof value !== "string") throw new HttpError(400, "resourceId must be a string");
+  assertCloudId(value, resourceType === "document" ? "Document" : "Site");
+  return value;
+}
+
+function projectKeyInput(value: unknown): string {
+  const key = optionalString(value)?.toUpperCase();
+  if (!key || !/^[A-Z][A-Z0-9]{1,9}$/.test(key)) throw new HttpError(400, "Project key must be 2-10 letters or digits and start with a letter");
+  return key;
+}
+
+function issueTypeInput(value: unknown, fallback?: CloudIssueType): CloudIssueType {
+  if (value === undefined && fallback) return fallback;
+  if (value === "task" || value === "story" || value === "bug" || value === "epic") return value;
+  throw new HttpError(400, "type must be task, story, bug, or epic");
+}
+
+function issueStatusInput(value: unknown, fallback?: CloudIssueStatus): CloudIssueStatus {
+  if (value === undefined && fallback) return fallback;
+  if (typeof value === "string" && issueStatuses.includes(value as CloudIssueStatus)) return value as CloudIssueStatus;
+  throw new HttpError(400, "status must be backlog, todo, in_progress, in_review, or done");
+}
+
+function issuePriorityInput(value: unknown, fallback?: CloudIssuePriority): CloudIssuePriority {
+  if (value === undefined && fallback) return fallback;
+  if (value === "lowest" || value === "low" || value === "medium" || value === "high" || value === "highest") return value;
+  throw new HttpError(400, "priority must be lowest, low, medium, high, or highest");
+}
+
+function sprintStatusInput(value: unknown, fallback?: CloudSprintStatus): CloudSprintStatus {
+  if (value === undefined && fallback) return fallback;
+  if (value === "planned" || value === "active" || value === "closed") return value;
+  throw new HttpError(400, "status must be planned, active, or closed");
+}
+
+function issueLinkTypeInput(value: unknown): CloudIssueLinkType {
+  if (value === "blocks" || value === "duplicates") return value;
+  if (value === undefined || value === "relates") return "relates";
+  throw new HttpError(400, "type must be blocks, relates, or duplicates");
+}
+
+function issueFilterInput(url: URL): CloudIssueFilter {
+  const sprint = url.searchParams.get("sprint");
+  return {
+    ...(optionalString(url.searchParams.get("q")) ? { q: optionalString(url.searchParams.get("q"))?.slice(0, 200) } : {}),
+    ...(url.searchParams.has("status") ? { status: issueStatusInput(url.searchParams.get("status")) } : {}),
+    ...(url.searchParams.has("type") ? { type: issueTypeInput(url.searchParams.get("type")) } : {}),
+    ...(url.searchParams.has("priority") ? { priority: issuePriorityInput(url.searchParams.get("priority")) } : {}),
+    ...(optionalString(url.searchParams.get("assignee")) ? { assigneeId: optionalString(url.searchParams.get("assignee")) } : {}),
+    ...(optionalString(url.searchParams.get("label")) ? { label: optionalString(url.searchParams.get("label"))?.slice(0, 80) } : {}),
+    ...(sprint === "none" ? { sprintId: null } : optionalString(sprint) ? { sprintId: optionalString(sprint) } : {}),
+    limit: boundedInteger(numberQuery(url.searchParams.get("limit")), 200, 1, 500, "limit"),
+  };
+}
+
+async function issueAssignee(config: CloudServerConfig, project: CloudProject, value: unknown): Promise<string | undefined> {
+  if (value === null || value === "" || value === undefined) return undefined;
+  if (typeof value !== "string") throw new HttpError(400, "assigneeId must be a user ID or null");
+  const assignee = await readUser(config, value);
+  if (!config.store.resourceAccess(assignee.id, "site", project.siteId)) throw new HttpError(400, "Assignee needs access to the project space");
+  return assignee.id;
+}
+
+function issueSprint(config: CloudServerConfig, projectId: string, value: unknown): string | undefined {
+  if (value === null || value === "" || value === undefined) return undefined;
+  if (typeof value !== "string") throw new HttpError(400, "sprintId must be a sprint ID or null");
+  const sprint = config.store.readSprint(value);
+  if (!sprint || sprint.projectId !== projectId) throw new HttpError(400, "Sprint does not belong to this project");
+  if (sprint.status === "closed") throw new HttpError(409, "Closed sprints cannot accept issues");
+  return sprint.id;
+}
+
+function issueParent(config: CloudServerConfig, projectId: string, value: unknown, issueId?: string): string | undefined {
+  if (value === null || value === "" || value === undefined) return undefined;
+  if (typeof value !== "string") throw new HttpError(400, "parentId must be an issue ID or null");
+  const parent = config.store.readIssue(value);
+  if (!parent || parent.projectId !== projectId) throw new HttpError(400, "Parent issue does not belong to this project");
+  if (parent.id === issueId) throw new HttpError(400, "An issue cannot be its own parent");
+  if (parent.type !== "epic") throw new HttpError(400, "Parent issues must be epics");
+  return parent.id;
+}
+
+function issueLabels(value: unknown): string[] {
+  if (value === undefined) return [];
+  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : undefined;
+  if (!values) throw new HttpError(400, "labels must be an array or comma-separated string");
+  const labels = values.map((label) => {
+    if (typeof label !== "string") throw new HttpError(400, "labels must contain strings");
+    const normalized = label.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 80);
+    if (!normalized || !/^[a-z0-9][a-z0-9._-]*$/.test(normalized)) throw new HttpError(400, "labels may contain letters, digits, dots, underscores, and dashes");
+    return normalized;
+  });
+  return [...new Set(labels)].slice(0, 20);
+}
+
+function issueEstimate(value: unknown): number | undefined {
+  if (value === null || value === "" || value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100_000) {
+    throw new HttpError(400, "estimate must be a number between 0 and 100000");
+  }
+  return value;
+}
+
+function issueDueDate(value: unknown): string | undefined {
+  if (value === null || value === "" || value === undefined) return undefined;
+  const parsed = typeof value === "string" ? new Date(`${value}T00:00:00Z`) : undefined;
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+    !parsed ||
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
+    throw new HttpError(400, "dueDate must be YYYY-MM-DD or null");
+  }
+  return value;
+}
+
+function issueDateTime(value: unknown): string | undefined {
+  if (value === null || value === "" || value === undefined) return undefined;
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) throw new HttpError(400, "Sprint dates must be ISO date-time strings");
+  return new Date(value).toISOString();
+}
+
+function issueChanges(before: CloudIssue, after: CloudIssue): Record<string, unknown> {
+  const detail: Record<string, unknown> = {};
+  for (const key of ["summary", "description", "type", "status", "priority", "assigneeId", "labels", "sprintId", "parentId", "estimate", "dueDate"] as const) {
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) detail[key] = { from: before[key], to: after[key] };
+  }
+  return detail;
+}
+
+function recordIssueEvent(
+  config: CloudServerConfig,
+  actor: CloudUserRecord,
+  issueId: string,
+  action: string,
+  detail: Record<string, unknown> = {},
+): void {
+  config.store.writeIssueEvent({ id: randomId(), issueId, actorId: actor.id, action, detail, createdAt: config.now().toISOString() });
+}
+
+function patchOpsInput(value: unknown): PatchOp[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) throw new HttpError(400, "ops must be an array with 1-100 patch operations");
+  for (const op of value) {
+    if (!op || typeof op !== "object" || Array.isArray(op) || typeof (op as { op?: unknown }).op !== "string") {
+      throw new HttpError(400, "Each patch operation must be an object with an op name");
+    }
+  }
+  return value as PatchOp[];
+}
+
+function linkedPatchIssue(
+  config: CloudServerConfig,
+  principal: Principal,
+  document: CloudDocumentRecord,
+  issueId: string,
+): CloudIssue {
+  const issue = config.store.readIssue(issueId);
+  if (!issue) throw new HttpError(404, "Linked issue not found");
+  const project = config.store.readProject(issue.projectId);
+  if (!project) throw new HttpError(404, "Linked issue project not found");
+  requireProjectAccess(config, project, principal, "editor");
+  const site = config.store.readSite(project.siteId);
+  if (!site?.documentIds.includes(document.id)) throw new HttpError(400, "Linked issue must belong to the space containing this document");
+  return issue;
+}
+
+function createCloudPatchProof(config: CloudServerConfig, document: CloudDocumentRecord, ops: PatchOp[]): AgentSafetyProof {
+  return createAgentSafetyProof({
+    filePath: join(config.dataDir, `${document.id}.noma`),
+    source: document.source,
+    ops,
+    prevalidate: true,
+    postvalidate: true,
+    artifactOptions: { allowEscapeHatches: false, externalAssets: false, interactive: false },
+  });
+}
+
+function cloudProofRecord(proof: AgentSafetyProof): Record<string, unknown> {
+  return {
+    status: proof.status,
+    patchResult: proof.patchResult,
+    canWrite: proof.canWrite,
+    preHash: proof.preHash,
+    postHash: proof.postHash,
+    preValidation: proof.preValidation,
+    postValidation: proof.postValidation,
+    preDiagnostics: proof.preDiagnostics,
+    postDiagnostics: proof.postDiagnostics,
+    sourceMetrics: proof.sourceMetrics,
+    diff: proof.diff,
+    idRegistry: proof.idRegistry,
+    artifactPreviewHtml: proof.artifactPreviewHtml,
+    ...(proof.error ? { error: proof.error } : {}),
+  };
+}
+
+function patchReviewDecision(value: unknown): "approved" | "rejected" {
+  if (value === "approved" || value === "rejected") return value;
+  throw new HttpError(400, "decision must be approved or rejected");
+}
+
+function stalePatchProposal(proposal: CloudPatchProposal, document: CloudDocumentRecord): HttpError {
+  return new HttpError(409, "This patch proposal targets an older document version", {
+    code: "patch_proposal_stale",
+    proposalHash: proposal.documentHash,
+    currentHash: document.hash,
+  });
+}
+
+function numberQuery(value: string | null): number | undefined {
+  if (value === null || value === "") return undefined;
+  return Number(value);
 }
 
 function boundedInteger(value: unknown, fallback: number, min: number, max: number, label: string): number {
@@ -1475,6 +3158,13 @@ function assertCloudId(id: string, label: string): void {
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(id)) throw new HttpError(400, `Invalid ${label.toLowerCase()} ID`);
 }
 
+function parseRevisionNumber(value: string | undefined): number {
+  if (!value || !/^\d+$/.test(value)) throw new HttpError(400, "Revision number is required");
+  const revision = Number(value);
+  if (!Number.isSafeInteger(revision) || revision < 1) throw new HttpError(400, "Invalid revision number");
+  return revision;
+}
+
 function authBearer(req: IncomingMessage): string | undefined {
   const value = headerValue(req, "authorization");
   if (!value) return undefined;
@@ -1521,8 +3211,10 @@ async function serveStatic(
   const filePath = await resolveStaticPath(config.publicDir, url.pathname);
   if (!filePath) throw new HttpError(404, "Not found");
   const info = await stat(filePath);
+  const type = contentType(filePath);
   res.statusCode = 200;
-  res.setHeader("content-type", contentType(filePath));
+  setSecurityHeaders(res, type.startsWith("text/html") ? staticHtmlContentSecurityPolicy : undefined);
+  res.setHeader("content-type", type);
   res.setHeader("content-length", String(info.size));
   if (req.method === "HEAD") {
     res.end();
@@ -1572,9 +3264,44 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
 
 function sendText(res: ServerResponse, status: number, body: string, type: string): void {
   res.statusCode = status;
+  setSecurityHeaders(res, type.startsWith("text/html") ? artifactContentSecurityPolicy : undefined);
   res.setHeader("content-type", type);
   res.setHeader("cache-control", "no-store");
   res.end(body);
+}
+
+const staticHtmlContentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://rsms.me",
+  "font-src 'self' https://rsms.me",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "frame-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+const artifactContentSecurityPolicy = [
+  "default-src 'none'",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  "font-src data:",
+  "img-src data:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+function setSecurityHeaders(res: ServerResponse, contentSecurityPolicy?: string): void {
+  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("referrer-policy", "no-referrer");
+  res.setHeader("x-frame-options", "DENY");
+  res.setHeader("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  if (contentSecurityPolicy) res.setHeader("content-security-policy", contentSecurityPolicy);
 }
 
 function sha256Hex(value: string): string {
