@@ -45,6 +45,73 @@
   --mono: "SF Mono", Menlo, Consolas, monospace;
 }
 
+.knowledge-copilot {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel) 92%, #0f666b 8%), var(--panel));
+}
+
+.knowledge-answer {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.knowledge-answer-text {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+  padding: 11px 12px;
+  line-height: 1.48;
+}
+
+.knowledge-citation {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  background: transparent;
+  padding: 8px 9px;
+  text-align: left;
+}
+
+.knowledge-citation:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.knowledge-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.knowledge-columns h3,
+.knowledge-copilot > h3 {
+  margin: 10px 0 7px;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.health-kind {
+  display: inline-flex;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 13%, transparent);
+  color: var(--warning);
+  padding: 2px 6px;
+  font-size: 0.68rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1240px) {
+  .knowledge-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #0f141b;

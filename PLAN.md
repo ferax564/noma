@@ -2050,6 +2050,37 @@ Cloud.
   headers, reduced collaboration payloads, accessible browser controls, and a
   real browser regression test cover the deployed Cloud surface.
 
+### §24.38 — Noma Cloud agent-human knowledge platform (2026-07-14)
+
+Implements the P0, P1, and P2 feature set in §26 on the experimental Cloud
+surface without changing the v1 source or patch compatibility promise.
+
+- **P0 retrieval trust loop.** `CloudKnowledgePlatform` persists exact-source
+  retrieval records and combines lexical, deterministic local-embedding,
+  typed-block, graph, verification, and freshness scores. Ask Noma returns
+  block/version/span citations, confidence, visible source conflicts, or an
+  explicit abstention. Trust metadata, evaluation fixtures, health queues,
+  LLM Wiki suggestions/relationships/merge drafts, a shared enriched change
+  inbox, and independently scoped/budgeted agent identities close the loop.
+- **P1 connected maintenance.** GitHub, Slack, Google Drive, Jira, Linear, and
+  filesystem connector records retain upstream permissions, modified time,
+  URL, tombstone, and lineage. Six narrow proposal-only recipes, typed semantic
+  collections, REST/webhook/JSON-RPC MCP gateway operations, permission-safe
+  analytics, and deterministic `.noma` backup/import conflict plans provide
+  connected maintenance without bypassing proof and approval.
+- **P2 continuity and enterprise.** The Cloud app is an installable PWA with a
+  cached shell, full local draft snapshots, automatic safe recovery, and
+  explicit three-way merge conflicts. Ordered human-only realtime operations
+  reuse stable IDs, proof, hashes, and immutable revisions. Trusted-proxy
+  OIDC/SAML login, SCIM provisioning, retention, legal hold, data residency,
+  audit export, connector/model allowlists, zero-retention model enforcement,
+  and per-agent spend limits complete the enterprise policy layer.
+- **Verification.** `test/cloud-platform.test.ts` covers every roadmap family
+  and its negative paths; the Cloud API integration test exercises the whole
+  loop, including permission non-inheritance and MCP; the browser test covers
+  cited Ask, health/inbox/agent panels, PWA registration, local draft caching,
+  and explicit conflict merge recovery.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can
@@ -2132,6 +2163,11 @@ This roadmap is informed by the July 2026 market scan in
 v1 format freeze: Noma Cloud, its retrieval system, and its UI remain
 experimental surfaces outside the v1 source/patch compatibility promise.
 
+**Implementation status (2026-07-14): P0, P1, and P2 shipped on the
+experimental Cloud surface.** §24.38 records the delivered scope. The market
+validation gate in §26.6 remains an ongoing product-research activity rather
+than a source-format or Cloud feature.
+
 ### 26.1 Product thesis
 
 > **Noma Cloud should be the knowledge workspace where humans author durable
@@ -2162,7 +2198,7 @@ version hash, content type, trust/freshness metadata, provenance, and the access
 decision used at query time. Search, RAG, LLM export, and agent tools must use
 the same permission filter.
 
-### 26.3 P0 — trustworthy retrieval and LLM Wiki
+### 26.3 P0 — trustworthy retrieval and LLM Wiki — SHIPPED
 
 1. **Block-native hybrid RAG** over SQLite FTS, embeddings, typed metadata,
    graph edges, verification, and freshness. Do not index anonymous copied
@@ -2186,7 +2222,7 @@ the same permission filter.
    capability set, budget, and run history. An agent never silently inherits
    the triggering human's full access.
 
-### 26.4 P1 — connected and self-maintaining knowledge
+### 26.4 P1 — connected and self-maintaining knowledge — SHIPPED
 
 1. Connector framework for GitHub, Slack, Google Drive, Jira/Linear, and
    filesystem sources with upstream permission, modified time, source URL, and
@@ -2203,7 +2239,7 @@ the same permission filter.
 6. Deterministic Git/backup bridge for `.noma` export/import, conflict reports,
    and optional pull-request review.
 
-### 26.5 P2 — continuity and enterprise depth
+### 26.5 P2 — continuity and enterprise depth — SHIPPED
 
 - Offline-capable PWA/local cache with full draft recovery and explicit merge
   semantics.

@@ -10,7 +10,9 @@ audience: collaborators, researchers, documentation teams, agents
 ::summary
 Noma Cloud is the hosted workspace for shared Noma documents: research papers,
 books, documentation spaces, live rendered artifacts, permissioned editing,
-agent patch review, published reader sites, and a queryable SQLite-backed API.
+hybrid retrieval with exact citations, knowledge health, scoped agents, proofed
+patch review, connected sources, offline recovery, published reader sites, and
+a queryable SQLite-backed API.
 ::
 
 [Open Noma Cloud](../cloud.html)
@@ -76,6 +78,7 @@ cloud APIs plus a separate invitation code for user registration:
 ```bash
 NOMA_CLOUD_ACCESS_TOKEN_FILE=/data/noma/access-token \
 NOMA_CLOUD_INVITATION_CODE_FILE=/data/noma/invitation-code \
+NOMA_CLOUD_SSO_TRUST_SECRET=<reverse-proxy-to-Noma-shared-secret> \
 npm start
 ```
 
@@ -141,22 +144,25 @@ The left rail provides workspace navigation beyond the page tree:
 
 | Control | Behavior |
 |---|---|
-| Search | Full-text search over visible page titles, block titles, stable IDs, and body text. Scope it to the current space or every space you can access. Results open the matching page and source line. |
+| Search | Hybrid lexical, local-embedding, typed-block, graph, trust, and freshness search over visible source blocks. Results preserve the exact source span, version hash, and access decision and open the matching page and source line. |
 | Page template | Starts a new page from blank, meeting-notes, decision-record, project-overview, technical-spec, or research-paper structure. |
 | Import | Uploads `.noma`, `.md`, `.markdown`, or plain text into the current space. Markdown intake pins stable heading IDs. |
 | Favorite | Adds the current page to a per-user Favorites list. Spaces can be favorited from their context menu. |
 | Recent | Tracks the pages and spaces opened by the current user. |
 | Trash | Lists pages and spaces moved out of active navigation and restores them without losing source or document history. |
 
-Search uses SQLite FTS5 and always intersects results with the caller's page or
-space permissions. Trashed content is excluded from active lists, search,
-published spaces, and database queries. Moving a page to trash preserves its
-space membership so restoration returns it to the same workspace and folder.
+Search uses SQLite FTS5 plus deterministic local embeddings, typed metadata,
+wiki/trust edges, verification, and freshness. It always intersects results
+with the caller's page or space permissions. Trashed content is excluded from
+active lists, search, published spaces, and database queries. Moving a page to
+trash preserves its space membership so restoration returns it to the same
+workspace and folder.
 
 Agents and integrations use the same lifecycle APIs:
 
 ```text
 GET    /api/search?q=<text>&site=<optional-site-id>&limit=25
+GET    /api/knowledge/search?q=<text>&site=<optional-site-id>&limit=25
 GET    /api/navigation
 POST   /api/navigation/recent
 PUT    /api/navigation/favorites
@@ -172,6 +178,163 @@ POST   /api/trash/site/<id>/restore
 When creating a page through `/api/documents` or
 `/api/sites/<site-id>/documents`, send `templateId` instead of `source`, or
 send `format: "markdown"` with Markdown source for server-side intake.
+
+## Ask Noma, trust, and knowledge health
+
+The **Ask Noma** inspector is retrieval-first rather than a generic chat box.
+An answer is returned only when the caller can access sufficiently relevant
+evidence. Every citation includes the document ID, stable block ID, exact
+source span, current document hash, content type, trust/freshness metadata,
+provenance, relevance score, and the access decision made for that query.
+
+When evidence is weak, Noma returns `insufficient_evidence` with no invented
+citations. When canonical sources disagree, the answer keeps the conflicting
+claims visible instead of averaging them silently.
+
+Trust metadata can be attached to any stable block:
+
+| Field | Meaning |
+|---|---|
+| `ownerId` | Human accountable for the knowledge |
+| `verifiedBy`, `verifiedAt` | Who checked the source and when |
+| `reviewBy` | Date after which the block is stale |
+| `supersedes` | Older block or external source replaced by this block |
+| `canonicalFor` | Concepts for which the block is authoritative |
+| `sourceOf` | Upstream source URLs or stable source identifiers |
+| `provenance` | Structured import, review, or generation lineage |
+
+The knowledge health queue detects stale/review-due blocks, pages without
+resolved links, broken wiki targets, semantic duplicate candidates,
+contradictory canonical claims, missing owners, and unanswered questions. LLM
+Wiki mode adds suggested links, missing concept pages, canonical concepts,
+typed relationships, and proof-first merge drafts.
+
+```text
+POST /api/ask
+GET  /api/knowledge/search
+GET  /api/knowledge/llm
+GET  /api/knowledge/health
+GET  /api/knowledge/wiki
+POST /api/knowledge/reindex
+GET|PUT /api/knowledge/trust/<document-id>/<block-id>
+POST /api/knowledge/evaluations
+```
+
+Evaluation fixtures declare required and forbidden sources plus abstention,
+latency, and cost expectations. Each run records source recall, forbidden
+hits, citation coverage, permission leakage, stale-source use, abstention
+correctness, latency, and estimated cost.
+
+## Scoped agents and the shared change inbox
+
+An agent identity has its own model policy, zero-retention flag, capability
+set, page/space grants, budget, spend, status, and run history. Supplying an
+agent ID to Ask or the gateway intersects the human-visible workspace with
+the agent's explicit grants. It never inherits the triggering human's other
+pages.
+
+The shared agent change inbox enriches each existing proofed patch proposal
+with its plan, source versions, requested capabilities, operations, diff,
+pre/post validation, affected stable IDs, reviewer, and apply state. Agents
+can proof and propose; a different editor must approve, and apply rechecks the
+current document hash.
+
+```text
+GET|POST /api/agents
+GET|POST /api/agents/<agent-id>/access
+GET|POST /api/agents/<agent-id>/runs
+POST     /api/agents/<agent-id>/runs/<run-id>/complete
+GET      /api/agent-inbox
+```
+
+External tools use the same permission and proof path through REST, webhook,
+or JSON-RPC MCP:
+
+```text
+GET  /api/gateway
+POST /api/gateway/list-ids
+POST /api/gateway/mcp
+POST /api/gateway/webhooks/<recipe-id>
+```
+
+MCP tools cover scoped search, cited answers, ID discovery, proof, proposal,
+human review, and hash-checked apply. `tools/list` and `tools/call` use JSON-RPC
+2.0; tool results include both MCP text content and structured content.
+
+## Connected and self-maintaining knowledge
+
+Connector records support GitHub, Slack, Google Drive, Jira, Linear, and
+filesystem sources. Every synchronized source retains upstream permissions,
+modified time, source URL, content hash, predecessor lineage, synchronization
+time, and deletion tombstone rather than erasing its history.
+
+Six built-in recipes cover stale-document review, meeting-to-decision,
+issue-to-runbook, research refresh, onboarding answers, and release
+maintenance. Manual, schedule, event, and webhook triggers are explicit. A
+recipe run produces a plan and `proof_proposal_only` mutation policy; it never
+writes around the agent review contract.
+
+Semantic collections query typed blocks across permitted pages: open
+decisions, claims missing evidence, risks by owner, stale citations, and agent
+changes awaiting review. Analytics count no-result queries, generated and
+rejected answers, citation opens, and completed tasks only inside the caller's
+accessible document scope.
+
+```text
+GET|POST /api/connectors
+GET|POST /api/connectors/<connector-id>/sources
+GET|POST /api/recipes
+GET|POST /api/recipes/<recipe-id>/runs
+GET      /api/collections
+GET|POST /api/analytics
+```
+
+## Portable backup, offline recovery, and realtime humans
+
+`POST /api/backup/export` produces a deterministic `.noma` bundle sorted by
+document ID, with per-file hashes, one bundle digest, and optional repository,
+branch, and pull-request-review metadata. Import verifies every source hash,
+reports corrupt bundles and concurrent edits, and applies creates/updates only
+when the conflict plan is clean. Canonical content remains reconstructable
+plain `.noma` source.
+
+Noma Cloud is an installable PWA. The service worker caches the application
+shell, while each edit stores a full local draft containing base hash, base
+source, draft source, title, user, document ID, and timestamp. A draft whose
+base still matches is restored automatically. If the server changed, the UI
+offers explicit recover, three-way merge, or discard choices and renders
+conflict markers rather than overwriting either author.
+
+Realtime human operations use the same stable IDs, proof engine, expected
+hash, immutable document revisions, and ordered operation sequence as normal
+writes. The feed is pollable with `after=<sequence>`. Realtime operations reject
+agent actors; asynchronous proofed proposals remain the agent default.
+
+```text
+POST /api/backup/export
+POST /api/backup/import
+GET|POST /api/offline/drafts
+POST /api/offline/drafts/<draft-id>/merge
+GET|POST /api/realtime/documents/<document-id>/operations
+```
+
+## Enterprise policy
+
+Workspace-owner enterprise policy configures trusted-proxy OIDC/SAML login,
+SCIM provisioning, retention days, legal hold, data residency, connector allowlists, model
+allowlists, zero-retention model requirements, and audit export. Connector and
+agent creation enforce the active allowlists immediately. Agent completion
+cannot exceed its remaining spend budget. Retention cleanup excludes records
+protected by an active legal hold.
+
+```text
+GET|PUT  /api/enterprise
+POST      /api/auth/sso
+GET|POST /api/enterprise/scim
+GET|POST /api/enterprise/legal-holds
+GET       /api/enterprise/audit
+POST      /api/enterprise/retention
+```
 
 ## Collaborate, notify, and approve
 

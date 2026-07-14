@@ -42,6 +42,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   verify.ts                Conformance fixture runner (`noma verify`)
   cloud-server.ts          Noma Cloud HTTP server (renders with escape hatches OFF)
   cloud-db.ts              SQLite persistence for Noma Cloud
+  cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
   index.ts                 Public library exports (npm package surface)

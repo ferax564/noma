@@ -9811,6 +9811,7 @@ ${bodyRows}
   var splitSourceRatioStorageKey = "noma.cloud.splitSourceRatio.v1";
   var previewPaperWidthStorageKey = "noma.cloud.previewPaperWidth.v1";
   var themeStorageKey = "noma.cloud.theme.v1";
+  var offlineDraftStorageKey = "noma.cloud.offlineDrafts.v1";
   var query = new URLSearchParams(window.location.search);
   var workIssueStatuses = ["backlog", "todo", "in_progress", "in_review", "done"];
   var cloudUserNameInput = requireElement("cloudUserName");
@@ -9938,6 +9939,19 @@ ${bodyRows}
   var outlineList = requireElement("outlineList");
   var wikiSummary = requireElement("wikiSummary");
   var wikiLinksList = requireElement("wikiLinksList");
+  var askNomaInput = requireElement("askNomaInput");
+  var askNomaButton = requireElement("askNomaButton");
+  var refreshKnowledgeButton = requireElement("refreshKnowledgeButton");
+  var askNomaStatus = requireElement("askNomaStatus");
+  var askNomaResult = requireElement("askNomaResult");
+  var knowledgeHealthList = requireElement("knowledgeHealthList");
+  var agentChangeInboxList = requireElement("agentChangeInboxList");
+  var agentDirectoryList = requireElement("agentDirectoryList");
+  var offlineStatus = requireElement("offlineStatus");
+  var draftRecoveryStatus = requireElement("draftRecoveryStatus");
+  var recoverDraftButton = requireElement("recoverDraftButton");
+  var mergeDraftButton = requireElement("mergeDraftButton");
+  var discardDraftButton = requireElement("discardDraftButton");
   var cloudAvailable = false;
   var busy = false;
   var cloudUser = readCloudUser();
@@ -9975,10 +9989,19 @@ ${bodyRows}
   var previewPaperWidth = readPreviewPaperWidth();
   var themeMode = readThemeMode();
   var pendingPreviewFocusLine;
+  var askNomaResponse;
+  var knowledgeHealth = [];
+  var agentInbox = [];
+  var scopedAgents = [];
+  var pendingLocalDraft;
+  var savedPageSource = "";
+  var savedPageHash = "";
+  var savedPageTitle = "";
   applyThemeMode();
   cloudUserNameInput.value = cloudUser?.name ?? "Noma collaborator";
   bindEvents();
   renderChrome();
+  registerCloudPwa();
   void initializeCloud();
   function requireElement(id) {
     const element = document.getElementById(id);
@@ -10113,6 +10136,27 @@ ${bodyRows}
     copyLlmButton.addEventListener("click", () => {
       void copyLlmContext();
     });
+    askNomaButton.addEventListener("click", () => void askNoma());
+    askNomaInput.addEventListener("input", () => renderKnowledgeWorkspace());
+    askNomaInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || !event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      void askNoma();
+    });
+    refreshKnowledgeButton.addEventListener("click", () => void refreshKnowledgeWorkspace());
+    recoverDraftButton.addEventListener("click", () => recoverLocalDraft());
+    mergeDraftButton.addEventListener("click", () => void mergeLocalDraft());
+    discardDraftButton.addEventListener("click", () => discardCurrentLocalDraft());
+    window.addEventListener("online", () => {
+      cloudAvailable = true;
+      renderKnowledgeWorkspace();
+      void refreshKnowledgeWorkspace();
+    });
+    window.addEventListener("offline", () => {
+      cloudAvailable = false;
+      renderKnowledgeWorkspace();
+      setCloudStatus("Offline \u2014 your draft remains editable and cached locally", "warning");
+    });
     for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
       button.addEventListener("click", () => {
         const mode = button.dataset.viewMode;
@@ -10126,6 +10170,7 @@ ${bodyRows}
     });
     sourceInput.addEventListener("input", () => {
       markDirty();
+      persistLocalDraft();
       syncTitleFromSource();
       scheduleRender();
     });
@@ -10134,6 +10179,7 @@ ${bodyRows}
       sourceInput.value = replaceFirstHeading(sourceInput.value, nextTitle);
       if (currentPage) currentPage = { ...currentPage, title: nextTitle, source: sourceInput.value };
       markDirty();
+      persistLocalDraft();
       scheduleRender();
     });
     sourceInput.addEventListener("keydown", (event) => {
@@ -10161,7 +10207,8 @@ ${bodyRows}
       setCloudStatus("Ready", "ok");
     } catch (error) {
       cloudAvailable = false;
-      setCloudStatus(errorMessage(error), "error");
+      if (restoreLatestOfflineDraft()) setCloudStatus("Offline draft recovered from this device", "warning");
+      else setCloudStatus(errorMessage(error), "error");
     } finally {
       setBusy(false);
       renderChrome();
@@ -10222,6 +10269,11 @@ ${bodyRows}
     collaboratorGrants = [];
     groupGrants = [];
     shareGrants = [];
+    askNomaResponse = void 0;
+    knowledgeHealth = [];
+    agentInbox = [];
+    scopedAgents = [];
+    pendingLocalDraft = void 0;
     setCurrentPage(void 0);
     siteTitleInput.value = "Research Workspace";
     renderWorkspaceTools();
@@ -10253,6 +10305,10 @@ ${bodyRows}
       collaboratorGrants = [];
       groupGrants = [];
       shareGrants = [];
+      askNomaResponse = void 0;
+      knowledgeHealth = [];
+      agentInbox = [];
+      scopedAgents = [];
       renderWorkspaceTools();
       renderCollaborationPanels();
       renderWorkManagement();
@@ -10266,7 +10322,8 @@ ${bodyRows}
       refreshNotifications(),
       refreshGroups(),
       refreshWorkManagement(),
-      refreshAccessManagement()
+      refreshAccessManagement(),
+      refreshKnowledgeWorkspace()
     ]);
   }
   async function refreshTemplates() {
@@ -10315,7 +10372,7 @@ ${bodyRows}
     try {
       const params = new URLSearchParams({ q });
       if (searchScopeSelect.value === "site" && currentSite) params.set("site", currentSite.id);
-      const response = await fetchCloudJson(`/api/search?${params.toString()}`);
+      const response = await fetchCloudJson(`/api/knowledge/search?${params.toString()}`);
       cloudSearchResults = response.results;
       setCloudStatus(`${cloudSearchResults.length} search result${cloudSearchResults.length === 1 ? "" : "s"}`, "ok");
     } catch (error) {
@@ -10348,11 +10405,178 @@ ${bodyRows}
       title.textContent = result.title || result.documentTitle;
       const meta = document.createElement("span");
       meta.className = "row-meta";
-      meta.textContent = `${result.documentTitle}${result.line ? ` \xB7 line ${result.line}` : ""} \xB7 ${result.excerpt}`;
+      const excerpt = result.excerpt ?? result.exactSource?.replace(/\s+/g, " ").slice(0, 180) ?? "";
+      const score = result.score === void 0 ? "" : ` \xB7 ${Math.round(result.score * 100)}%`;
+      const freshness = result.freshness ? ` \xB7 ${result.freshness.state.replace("_", " ")}` : "";
+      const line = result.line ?? result.sourceSpan?.line;
+      meta.textContent = `${result.documentTitle}${line ? ` \xB7 line ${line}` : ""}${score}${freshness} \xB7 ${excerpt}`;
       button.append(title, meta);
       button.addEventListener("click", () => void openSearchResult(result));
       searchResults.append(button);
     }
+  }
+  async function askNoma() {
+    const query2 = askNomaInput.value.trim();
+    if (!query2 || !cloudUser || !cloudAvailable) return;
+    askNomaButton.disabled = true;
+    setPanelStatus(askNomaStatus, "Retrieving exact, permission-scoped evidence", "warning");
+    try {
+      askNomaResponse = await fetchCloudJson("/api/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: query2, ...currentSite ? { siteId: currentSite.id } : {} })
+      });
+      setPanelStatus(
+        askNomaStatus,
+        askNomaResponse.state === "answered" ? `${askNomaResponse.confidence.label} confidence \xB7 ${askNomaResponse.citations.length} exact citation${askNomaResponse.citations.length === 1 ? "" : "s"}` : "Insufficient evidence \u2014 Noma abstained",
+        askNomaResponse.state === "answered" ? "ok" : "warning"
+      );
+    } catch (error) {
+      askNomaResponse = void 0;
+      setPanelStatus(askNomaStatus, errorMessage(error), "error");
+    } finally {
+      askNomaButton.disabled = false;
+      renderKnowledgeWorkspace();
+    }
+  }
+  async function refreshKnowledgeWorkspace() {
+    if (!cloudAvailable || !cloudUser) {
+      knowledgeHealth = [];
+      agentInbox = [];
+      scopedAgents = [];
+      renderKnowledgeWorkspace();
+      return;
+    }
+    const siteQuery = currentSite ? `?site=${encodeURIComponent(currentSite.id)}` : "";
+    try {
+      const [health, inbox, agents] = await Promise.all([
+        fetchCloudJson(`/api/knowledge/health${siteQuery}`),
+        fetchCloudJson(`/api/agent-inbox${siteQuery}`),
+        fetchCloudJson("/api/agents")
+      ]);
+      knowledgeHealth = health.items;
+      agentInbox = inbox.changes;
+      scopedAgents = agents.agents;
+    } catch (error) {
+      setPanelStatus(askNomaStatus, errorMessage(error), "error");
+    } finally {
+      renderKnowledgeWorkspace();
+    }
+  }
+  function renderKnowledgeWorkspace() {
+    offlineStatus.textContent = navigator.onLine && cloudAvailable ? "online" : "offline";
+    offlineStatus.dataset.state = navigator.onLine && cloudAvailable ? "ok" : "warning";
+    askNomaButton.disabled = busy || !cloudUser || !cloudAvailable || !askNomaInput.value.trim();
+    refreshKnowledgeButton.disabled = busy || !cloudUser || !cloudAvailable;
+    renderAskNomaAnswer();
+    renderKnowledgeHealth();
+    renderAgentInbox();
+    renderAgentDirectory();
+    renderDraftRecovery();
+  }
+  function renderAskNomaAnswer() {
+    askNomaResult.textContent = "";
+    if (!askNomaResponse) {
+      askNomaResult.append(emptyState("Ask a question to retrieve exact block and version citations"));
+      return;
+    }
+    const answer = document.createElement("div");
+    answer.className = "knowledge-answer-text";
+    answer.textContent = askNomaResponse.answer;
+    askNomaResult.append(answer);
+    for (const citation of askNomaResponse.citations) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "knowledge-citation";
+      const title = document.createElement("span");
+      title.className = "row-title";
+      title.textContent = `[${citation.citation}] ${citation.documentTitle} \xB7 #${citation.blockId}`;
+      const meta = document.createElement("span");
+      meta.className = "row-meta";
+      meta.textContent = `lines ${citation.sourceSpan.line}-${citation.sourceSpan.endLine} \xB7 ${citation.freshness.state.replace("_", " ")} \xB7 ${Math.round(citation.score * 100)}% \xB7 ${citation.versionHash.slice(0, 10)}`;
+      button.append(title, meta);
+      button.addEventListener("click", () => void openKnowledgeCitation(citation));
+      askNomaResult.append(button);
+    }
+    for (const conflict of askNomaResponse.conflicts) {
+      const row = knowledgePanelRow(`Conflict: ${conflict.concept}`, conflict.reason, "error");
+      askNomaResult.append(row);
+    }
+  }
+  async function openKnowledgeCitation(citation) {
+    const sitePage = currentSite?.documentIds.includes(citation.documentId);
+    if (sitePage && currentSite) await loadSite(currentSite.id, citation.documentId);
+    else await loadStandaloneDocument(citation.documentId);
+    focusSourceLine(citation.sourceSpan.line);
+    try {
+      await fetchCloudJson("/api/analytics", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "citation_opened", documentId: citation.documentId, query: askNomaInput.value.trim() })
+      });
+    } catch {
+      return;
+    }
+  }
+  function renderKnowledgeHealth() {
+    knowledgeHealthList.textContent = "";
+    if (knowledgeHealth.length === 0) {
+      knowledgeHealthList.append(emptyState("No active health issues"));
+      return;
+    }
+    for (const item of knowledgeHealth.slice(0, 12)) {
+      const row = knowledgePanelRow(item.kind.replaceAll("_", " "), item.message, item.severity);
+      if (item.documentId) row.addEventListener("click", () => void openHealthItem(item));
+      knowledgeHealthList.append(row);
+    }
+  }
+  async function openHealthItem(item) {
+    if (!item.documentId) return;
+    if (currentSite?.documentIds.includes(item.documentId)) await loadSite(currentSite.id, item.documentId);
+    else await loadStandaloneDocument(item.documentId);
+    if (item.blockId) focusBlock(item.blockId);
+  }
+  function renderAgentInbox() {
+    agentChangeInboxList.textContent = "";
+    if (agentInbox.length === 0) {
+      agentChangeInboxList.append(emptyState("No agent changes awaiting review"));
+      return;
+    }
+    for (const item of agentInbox.slice(0, 12)) {
+      const row = knowledgePanelRow(item.applyStatus.replaceAll("_", " "), item.plan[0] ?? "Agent change", item.applyStatus === "rejected" ? "error" : item.applyStatus === "applied" ? "ok" : "warning");
+      row.addEventListener("click", () => void openAgentInboxItem(item));
+      agentChangeInboxList.append(row);
+    }
+  }
+  async function openAgentInboxItem(item) {
+    if (currentSite?.documentIds.includes(item.documentId)) await loadSite(currentSite.id, item.documentId);
+    else await loadStandaloneDocument(item.documentId);
+    if (item.affectedIds[0]) focusBlock(item.affectedIds[0]);
+  }
+  function renderAgentDirectory() {
+    agentDirectoryList.textContent = "";
+    if (scopedAgents.length === 0) {
+      agentDirectoryList.append(emptyState("No scoped agents"));
+      return;
+    }
+    for (const agent of scopedAgents.slice(0, 10)) {
+      const retention = agent.modelPolicy.zeroRetention ? "zero retention" : "provider retention";
+      agentDirectoryList.append(knowledgePanelRow(`${agent.name} \xB7 ${agent.status}`, `${agent.modelPolicy.model} \xB7 ${retention} \xB7 $${agent.spentUsd.toFixed(2)} / $${agent.budgetUsd.toFixed(2)} \xB7 ${agent.capabilities.length} capabilities`, agent.status === "active" ? "ok" : "warning"));
+    }
+  }
+  function knowledgePanelRow(titleText, metaText, state) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "collaboration-row";
+    row.dataset.state = state;
+    const title = document.createElement("span");
+    title.className = "row-title";
+    title.textContent = titleText;
+    const meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = metaText;
+    row.append(title, meta);
+    return row;
   }
   function renderNavigationList(container, items, emptyText, removable) {
     container.textContent = "";
@@ -10401,7 +10625,8 @@ ${bodyRows}
   async function openSearchResult(result) {
     if (result.siteId) await loadSite(result.siteId, result.documentId);
     else await loadStandaloneDocument(result.documentId);
-    if (result.line) focusSourceLine(result.line);
+    const line = result.line ?? result.sourceSpan?.line;
+    if (line) focusSourceLine(line);
   }
   async function openNavigationItem(item) {
     if (item.resourceType === "site") await loadSite(item.resourceId);
@@ -10791,7 +11016,12 @@ ${bodyRows}
       });
       replacePage(saved);
       currentPage = saved;
+      savedPageSource = saved.source;
+      savedPageHash = saved.hash;
+      savedPageTitle = saved.title;
       dirty = false;
+      clearLocalDraft(saved.id);
+      pendingLocalDraft = void 0;
       syncTitleFromSource();
       setCloudStatus("Saved page", "ok");
       updateAddress();
@@ -11987,17 +12217,28 @@ ${bodyRows}
       pageTitleInput.value = "";
       sourceInput.value = "";
       dirty = false;
+      savedPageSource = "";
+      savedPageHash = "";
+      savedPageTitle = "";
+      pendingLocalDraft = void 0;
       renderCurrent();
       renderHistory();
       renderCollaborationPanels();
       renderChrome();
       return;
     }
-    pageTitleInput.value = page.title;
-    sourceInput.value = page.source;
+    savedPageSource = page.source;
+    savedPageHash = page.hash;
+    savedPageTitle = page.title;
+    pendingLocalDraft = readLocalDraft(page.id);
+    const recoverable = pendingLocalDraft?.baseHash === page.hash;
+    pageTitleInput.value = recoverable ? pendingLocalDraft.title : page.title;
+    sourceInput.value = recoverable ? pendingLocalDraft.source : page.source;
     activeFolder = pageFolder(page.id);
-    dirty = false;
+    dirty = Boolean(recoverable);
     localStorage.setItem(activeDocumentStorageKey, page.id);
+    if (recoverable) setPanelStatus(draftRecoveryStatus, `Recovered local draft from ${formatDate(pendingLocalDraft.updatedAt)}`, "warning");
+    else if (pendingLocalDraft) setPanelStatus(draftRecoveryStatus, "Saved source changed since this local draft. Recover or run an explicit three-way merge.", "error");
     renderCurrent();
     renderHistory();
     renderCollaborationPanels();
@@ -12005,6 +12246,142 @@ ${bodyRows}
     void refreshHistory({ silent: true });
     void refreshPageCollaboration();
     void recordRecent("document", page.id);
+  }
+  function persistLocalDraft() {
+    if (!cloudUser || !currentPage || !dirty) return;
+    const drafts = readLocalDrafts();
+    const existing = drafts[currentPage.id];
+    const draft = {
+      ...existing?.id ? { id: existing.id } : {},
+      userId: cloudUser.id,
+      documentId: currentPage.id,
+      title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value),
+      baseHash: existing?.baseHash ?? (savedPageHash || currentPage.hash),
+      baseSource: existing?.baseSource ?? savedPageSource,
+      source: sourceInput.value,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    drafts[currentPage.id] = draft;
+    localStorage.setItem(offlineDraftStorageKey, JSON.stringify(drafts));
+    pendingLocalDraft = draft;
+    renderDraftRecovery();
+  }
+  function readLocalDrafts() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(offlineDraftStorageKey) ?? "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      const drafts = {};
+      for (const [id, value] of Object.entries(parsed)) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+        const candidate = value;
+        if (typeof candidate.documentId !== "string" || typeof candidate.baseHash !== "string" || typeof candidate.baseSource !== "string" || typeof candidate.source !== "string" || typeof candidate.title !== "string" || typeof candidate.updatedAt !== "string" || typeof candidate.userId !== "string") continue;
+        if (cloudUser && candidate.userId !== cloudUser.id) continue;
+        drafts[id] = candidate;
+      }
+      return drafts;
+    } catch {
+      return {};
+    }
+  }
+  function readLocalDraft(documentId) {
+    return readLocalDrafts()[documentId];
+  }
+  function clearLocalDraft(documentId) {
+    const drafts = readLocalDrafts();
+    delete drafts[documentId];
+    localStorage.setItem(offlineDraftStorageKey, JSON.stringify(drafts));
+  }
+  function restoreLatestOfflineDraft() {
+    const draft = Object.values(readLocalDrafts()).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    if (!draft) return false;
+    const page = {
+      id: draft.documentId,
+      title: draft.title,
+      source: draft.baseSource,
+      hash: draft.baseHash,
+      createdAt: draft.updatedAt,
+      updatedAt: draft.updatedAt,
+      diagnostics: [],
+      access: { role: "editor", via: "offline-cache" }
+    };
+    currentSite = void 0;
+    pages = [page];
+    setCurrentPage(page);
+    return true;
+  }
+  function recoverLocalDraft() {
+    if (!pendingLocalDraft || !currentPage) return;
+    sourceInput.value = pendingLocalDraft.source;
+    pageTitleInput.value = pendingLocalDraft.title;
+    dirty = true;
+    setPanelStatus(draftRecoveryStatus, "Recovered the cached draft. Save or merge when connected.", "warning");
+    scheduleRender();
+    renderChrome();
+  }
+  async function mergeLocalDraft() {
+    if (!pendingLocalDraft || !currentPage) return;
+    setPanelStatus(draftRecoveryStatus, "Merging saved, current, and offline sources", "warning");
+    try {
+      let merged;
+      if (cloudAvailable && cloudUser) {
+        const savedDraft = await fetchCloudJson("/api/offline/drafts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ documentId: pendingLocalDraft.documentId, baseHash: pendingLocalDraft.baseHash, baseSource: pendingLocalDraft.baseSource, source: pendingLocalDraft.source })
+        });
+        merged = await fetchCloudJson(`/api/offline/drafts/${encodeURIComponent(savedDraft.id)}/merge`, { method: "POST" });
+      } else {
+        merged = mergeOfflineSources(pendingLocalDraft.baseSource, savedPageSource, pendingLocalDraft.source, savedPageHash);
+      }
+      sourceInput.value = merged.source;
+      pageTitleInput.value = sourceTitle(merged.source);
+      dirty = true;
+      persistLocalDraft();
+      setPanelStatus(draftRecoveryStatus, merged.state === "conflict" ? `${merged.conflicts.length} merge conflict${merged.conflicts.length === 1 ? "" : "s"}; resolve the markers before saving` : "Draft merged against the current saved source", merged.state === "conflict" ? "error" : "ok");
+      scheduleRender();
+    } catch (error) {
+      setPanelStatus(draftRecoveryStatus, errorMessage(error), "error");
+    } finally {
+      renderChrome();
+    }
+  }
+  function mergeOfflineSources(baseSource, currentSource, draftSource, expectedHash) {
+    const base = baseSource.split("\n");
+    const current = currentSource.split("\n");
+    const draft = draftSource.split("\n");
+    const output = [];
+    const conflicts = [];
+    for (let index = 0; index < Math.max(base.length, current.length, draft.length); index++) {
+      const baseLine = base[index] ?? "";
+      const currentLine = current[index] ?? "";
+      const draftLine = draft[index] ?? "";
+      if (currentLine === draftLine) output.push(currentLine);
+      else if (currentLine === baseLine) output.push(draftLine);
+      else if (draftLine === baseLine) output.push(currentLine);
+      else {
+        conflicts.push({ line: index + 1, base: baseLine, current: currentLine, draft: draftLine });
+        output.push(`<!-- NOMA MERGE CONFLICT: CURRENT -->
+${currentLine}
+<!-- NOMA MERGE CONFLICT: OFFLINE DRAFT -->
+${draftLine}
+<!-- NOMA MERGE CONFLICT: END -->`);
+      }
+    }
+    return { state: conflicts.length > 0 ? "conflict" : "merged", source: output.join("\n"), expectedHash, conflicts };
+  }
+  function discardCurrentLocalDraft() {
+    if (!currentPage || !pendingLocalDraft) return;
+    clearLocalDraft(currentPage.id);
+    pendingLocalDraft = void 0;
+    setPanelStatus(draftRecoveryStatus, "Cached draft discarded", "ok");
+    renderChrome();
+  }
+  function renderDraftRecovery() {
+    const hasDraft = Boolean(pendingLocalDraft && currentPage?.id === pendingLocalDraft.documentId);
+    recoverDraftButton.disabled = busy || !hasDraft;
+    mergeDraftButton.disabled = busy || !hasDraft;
+    discardDraftButton.disabled = busy || !hasDraft;
+    if (!hasDraft && !dirty) setPanelStatus(draftRecoveryStatus, "Drafts are cached locally as you type.", "ok");
   }
   function replacePage(page) {
     pages = pages.map((item) => item.id === page.id ? page : item);
@@ -12248,6 +12625,7 @@ ${bodyRows}
     renderWorkManagement();
     renderPatchProposals();
     renderAccessManagement();
+    renderKnowledgeWorkspace();
   }
   function renderNavigation() {
     siteList.textContent = "";
@@ -12974,6 +13352,7 @@ ${bodyRows}
   function markDirty() {
     dirty = true;
     if (currentPage) currentPage = { ...currentPage, source: sourceInput.value, title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value) };
+    persistLocalDraft();
     renderChrome();
   }
   function syncTitleFromSource() {
@@ -13771,7 +14150,18 @@ ${source}`;
     return value?.trim() || fallback;
   }
   function confirmDiscardDirty() {
-    return !dirty || window.confirm("Discard unsaved page changes?");
+    if (!dirty) return true;
+    if (!window.confirm("Discard unsaved page changes?")) return false;
+    if (currentPage) clearLocalDraft(currentPage.id);
+    pendingLocalDraft = void 0;
+    dirty = false;
+    return true;
+  }
+  function registerCloudPwa() {
+    if (!("serviceWorker" in navigator)) return;
+    window.addEventListener("load", () => {
+      void navigator.serviceWorker.register("/cloud-sw.js").catch(() => void 0);
+    });
   }
   function updateAddress() {
     const params = new URLSearchParams();

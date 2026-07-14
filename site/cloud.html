@@ -4,8 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="Noma Cloud workspace editor for research papers, documentation spaces, permissioned pages, sharing, and agent patches." />
+<meta name="theme-color" content="#0f666b" />
 <title>Noma Cloud</title>
 <link rel="icon" href="data:," />
+<link rel="manifest" href="manifest.webmanifest" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
 <link rel="stylesheet" href="assets/cloud.css" />
@@ -130,6 +132,44 @@
   </main>
 
   <aside class="inspector" aria-label="Workspace controls">
+    <section class="inspector-section knowledge-copilot">
+      <div class="inspector-heading-row">
+        <h2>Ask Noma</h2>
+        <button id="refreshKnowledgeButton" type="button" aria-label="Refresh knowledge health and agent changes">Refresh</button>
+      </div>
+      <label class="stack-field" for="askNomaInput">Question across permitted knowledge
+        <textarea id="askNomaInput" class="compact-textarea" placeholder="What is our current deployment policy?"></textarea>
+      </label>
+      <button id="askNomaButton" type="button">Ask with citations</button>
+      <div id="askNomaStatus" class="panel-status"></div>
+      <div id="askNomaResult" class="knowledge-answer"></div>
+      <div class="knowledge-columns">
+        <div>
+          <h3>Knowledge health</h3>
+          <div id="knowledgeHealthList" class="collaboration-list"></div>
+        </div>
+        <div>
+          <h3>Agent change inbox</h3>
+          <div id="agentChangeInboxList" class="collaboration-list"></div>
+        </div>
+      </div>
+      <h3>Scoped agents</h3>
+      <div id="agentDirectoryList" class="collaboration-list"></div>
+    </section>
+
+    <section class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>Offline draft</h2>
+        <span id="offlineStatus" class="meta-badge">online</span>
+      </div>
+      <div id="draftRecoveryStatus" class="panel-status">Drafts are cached locally as you type.</div>
+      <div class="button-row">
+        <button id="recoverDraftButton" type="button">Recover</button>
+        <button id="mergeDraftButton" type="button">Merge</button>
+        <button id="discardDraftButton" type="button">Discard</button>
+      </div>
+    </section>
+
     <section class="inspector-section">
       <h2>Share</h2>
       <label class="stack-field" for="shareRoleSelect">Link role

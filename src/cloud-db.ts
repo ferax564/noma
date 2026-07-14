@@ -802,7 +802,7 @@ export class NomaCloudDatabase {
     return row ? documentRevision(row) : undefined;
   }
 
-  listDocuments(user: CloudUserRecord): DocumentSummary[] {
+  listDocuments(user: CloudUserRecord, limit = 100): DocumentSummary[] {
     const rows = this.db
       .prepare(
         `WITH ${visibleResourcesCtes}
@@ -814,9 +814,9 @@ export class NomaCloudDatabase {
            WHERE t.resource_type = 'document' AND t.resource_id = d.id
          )
          ORDER BY d.updated_at DESC, d.id
-         LIMIT 100`,
+         LIMIT ?`,
       )
-      .all(user.id) as RecordJsonRankRow[];
+      .all(user.id, limit) as RecordJsonRankRow[];
 
     return rows.map((row) => {
       const { source, ...summary } = parseRecord<CloudDocumentRecord>(row.record_json);

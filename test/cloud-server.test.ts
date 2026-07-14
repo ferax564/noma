@@ -1874,6 +1874,309 @@ test("cloud work management supports projects, workflows, boards, backlog, sprin
   }
 });
 
+test("cloud agent-human platform exposes trustworthy RAG, governed agents, connected knowledge, continuity, and enterprise controls", async () => {
+  const harness = await startCloudServer("noma-cloud-platform-api-");
+  try {
+    const alice = await createCloudUser(harness.base, "Alice Platform Owner");
+    const source = `# Production handbook
+
+::decision{id="deployment-region" status="open" owner="alice"}
+Production services run in Zurich with a fifteen-minute recovery target.
+::
+
+See [[Missing escalation policy]].
+`;
+    const page = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Production handbook", source },
+    });
+    const site = await json<CloudSiteResponse>(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Operations", documentIds: [page.id] },
+    });
+
+    const trust = await json<{ blockId: string; verifiedBy: string }>(`${harness.base}/api/knowledge/trust/${page.id}/deployment-region`, {
+      method: "PUT",
+      token: alice.token,
+      body: {
+        ownerId: alice.id,
+        verifiedBy: alice.id,
+        verifiedAt: "2026-06-01T00:00:00.000Z",
+        reviewBy: "2027-01-01T00:00:00.000Z",
+        canonicalFor: ["production deployment region"],
+        sourceOf: ["https://ops.example/deployment"],
+      },
+    });
+    assert.equal(trust.blockId, "deployment-region");
+    assert.equal(trust.verifiedBy, alice.id);
+
+    const hybrid = await json<{ mode: string; results: Array<{ documentId: string; blockId: string; exactSource: string; versionHash: string; accessDecision: { principalId: string } }> }>(
+      `${harness.base}/api/knowledge/search?q=${encodeURIComponent("production Zurich recovery")}&site=${site.id}`,
+      { token: alice.token },
+    );
+    assert.equal(hybrid.mode, "hybrid");
+    assert.ok(hybrid.results.some((result) => result.documentId === page.id && result.blockId === "deployment-region" && result.versionHash === page.hash));
+    assert.ok(hybrid.results.every((result) => result.accessDecision.principalId === alice.id));
+    assert.ok(hybrid.results.some((result) => /Zurich/.test(result.exactSource)));
+
+    const answer = await json<{ state: string; answer: string; citations: Array<{ documentId: string; blockId: string; versionHash: string }> }>(`${harness.base}/api/ask`, {
+      method: "POST",
+      token: alice.token,
+      body: { query: "Where do production services run and what is the recovery target?", siteId: site.id },
+    });
+    assert.equal(answer.state, "answered");
+    assert.match(answer.answer, /Zurich/);
+    assert.ok(answer.citations.some((citation) => citation.documentId === page.id && citation.blockId === "deployment-region" && citation.versionHash === page.hash));
+
+    const refusal = await json<{ state: string; citations: unknown[] }>(`${harness.base}/api/ask`, {
+      method: "POST",
+      token: alice.token,
+      body: { query: "What food is served on Neptune?", siteId: site.id },
+    });
+    assert.equal(refusal.state, "insufficient_evidence");
+    assert.deepEqual(refusal.citations, []);
+
+    const evaluation = await json<{ passed: boolean; results: Array<{ permissionLeakage: number; citationCoverage: number; abstentionCorrect: boolean }> }>(`${harness.base}/api/knowledge/evaluations?site=${site.id}`, {
+      method: "POST",
+      token: alice.token,
+      body: {
+        fixtures: [
+          { id: "deployment", query: "Where do production services run?", requiredSources: [{ documentId: page.id, blockId: "deployment-region" }], expectAbstention: false, maxLatencyMs: 5_000, maxCostUsd: 0.01 },
+          { id: "unknown", query: "What is the Neptune cafeteria menu?", expectAbstention: true, maxLatencyMs: 5_000, maxCostUsd: 0.01 },
+        ],
+      },
+    });
+    assert.equal(evaluation.passed, true, JSON.stringify(evaluation));
+    assert.ok(evaluation.results.every((result) => result.permissionLeakage === 0 && result.citationCoverage === 1 && result.abstentionCorrect));
+
+    const health = await json<{ items: Array<{ kind: string }> }>(`${harness.base}/api/knowledge/health?site=${site.id}`, { token: alice.token });
+    assert.ok(health.items.some((item) => item.kind === "broken_link"));
+    const wiki = await json<{ missingConcepts: Array<{ target: string }>; canonicalConcepts: Array<{ concept: string }> }>(`${harness.base}/api/knowledge/wiki?site=${site.id}`, { token: alice.token });
+    assert.ok(wiki.missingConcepts.some((item) => item.target === "Missing escalation policy"));
+    assert.ok(wiki.canonicalConcepts.some((item) => item.concept === "production deployment region"));
+    const reindex = await json<{ indexed: number; documentCount: number }>(`${harness.base}/api/knowledge/reindex?site=${site.id}`, { method: "POST", token: alice.token, body: {} });
+    assert.ok(reindex.indexed > 0);
+    assert.equal(reindex.documentCount, 1);
+
+    const proposal = await json<{ id: string }>(`${harness.base}/api/documents/${page.id}/patch-proposals`, {
+      method: "POST",
+      token: alice.token,
+      body: { summary: "Accept the deployment region", ops: [{ op: "update_attribute", id: "deployment-region", key: "status", value: "accepted" }] },
+    });
+    const inbox = await json<{ changes: Array<{ id: string; plan: string[]; sources: unknown[]; requestedCapabilities: string[]; affectedIds: string[]; applyStatus: string; validation: { canWrite: boolean } }> }>(`${harness.base}/api/agent-inbox?site=${site.id}`, { token: alice.token });
+    const change = inbox.changes.find((item) => item.id === proposal.id);
+    assert.ok(change);
+    assert.ok(change.plan.length > 0);
+    assert.ok(change.sources.length > 0);
+    assert.ok(change.requestedCapabilities.includes("patch_block"));
+    assert.deepEqual(change.affectedIds, ["deployment-region"]);
+    assert.equal(change.applyStatus, "awaiting_review");
+    assert.equal(change.validation.canWrite, true);
+
+    const agent = await json<{ id: string; budgetUsd: number }>(`${harness.base}/api/agents`, {
+      method: "POST",
+      token: alice.token,
+      body: { name: "Operations curator", modelPolicy: { model: "local-deterministic", zeroRetention: true, maxTokensPerRun: 4_000 }, capabilities: ["read_doc", "list_ids", "validate_doc", "patch_block"], budgetUsd: 2 },
+    });
+    await json(`${harness.base}/api/agents/${agent.id}/access`, {
+      method: "POST",
+      token: alice.token,
+      body: { resourceType: "document", resourceId: page.id, role: "editor" },
+    });
+    await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Human-only notes", source: "# Human-only notes\n\nThe blue phoenix launch code is strictly human-only.\n" },
+    });
+    const ids = await json<{ versionHash: string; ids: Array<{ id: string }> }>(`${harness.base}/api/gateway/list-ids`, {
+      method: "POST",
+      token: alice.token,
+      body: { agentId: agent.id, documentId: page.id },
+    });
+    assert.equal(ids.versionHash, page.hash);
+    assert.ok(ids.ids.some((item) => item.id === "deployment-region"));
+    const agentAsk = await json<{ citations: Array<{ accessDecision: { principalId: string; via: string } }> }>(`${harness.base}/api/ask`, {
+      method: "POST",
+      token: alice.token,
+      body: { query: "Where do production services run?", agentId: agent.id },
+    });
+    assert.ok(agentAsk.citations.every((citation) => citation.accessDecision.principalId === agent.id && citation.accessDecision.via === "agent"));
+    const scopedRefusal = await json<{ state: string; citations: unknown[] }>(`${harness.base}/api/ask`, {
+      method: "POST",
+      token: alice.token,
+      body: { query: "What is the blue phoenix launch code?", agentId: agent.id },
+    });
+    assert.equal(scopedRefusal.state, "insufficient_evidence");
+    assert.deepEqual(scopedRefusal.citations, []);
+    const scopedLlm = await fetch(`${harness.base}/api/knowledge/llm?agent=${agent.id}`, { headers: { authorization: `Bearer ${alice.token}` } });
+    assert.equal(scopedLlm.status, 200);
+    const scopedContext = await scopedLlm.text();
+    assert.match(scopedContext, /Production services run in Zurich/);
+    assert.doesNotMatch(scopedContext, /blue phoenix/);
+    const run = await json<{ id: string; status: string }>(`${harness.base}/api/agents/${agent.id}/runs`, {
+      method: "POST",
+      token: alice.token,
+      body: { trigger: "manual", documentId: page.id, requestedCapabilities: ["read_doc"] },
+    });
+    const completedRun = await json<{ status: string; costUsd: number }>(`${harness.base}/api/agents/${agent.id}/runs/${run.id}/complete`, {
+      method: "POST",
+      token: alice.token,
+      body: { status: "completed", costUsd: 0.2, output: { proposalId: proposal.id } },
+    });
+    assert.equal(completedRun.status, "completed");
+    assert.equal(completedRun.costUsd, 0.2);
+
+    const connector = await json<{ id: string; kind: string }>(`${harness.base}/api/connectors`, {
+      method: "POST",
+      token: alice.token,
+      body: { kind: "github", name: "Operations repository", siteId: site.id, configuration: { repository: "acme/ops" } },
+    });
+    const connectorSource = await json<{ upstreamPermissions: unknown[]; tombstonedAt: string; sourceUrl: string }>(`${harness.base}/api/connectors/${connector.id}/sources`, {
+      method: "POST",
+      token: alice.token,
+      body: { externalId: "issue-42", documentId: page.id, upstreamPermissions: [{ principal: "team:ops", role: "read" }], upstreamModifiedAt: "2026-06-06T11:00:00.000Z", sourceUrl: "https://github.example/acme/ops/issues/42", contentHash: "deadbeef", lineage: ["github:issue-41"], tombstone: true },
+    });
+    assert.equal(connectorSource.upstreamPermissions.length, 1);
+    assert.ok(connectorSource.tombstonedAt);
+    assert.match(connectorSource.sourceUrl, /^https:/);
+
+    const recipes = await json<{ recipes: Array<{ id: string; purpose: string }> }>(`${harness.base}/api/recipes`, { token: alice.token });
+    assert.ok(recipes.recipes.some((item) => item.purpose === "meeting_to_decision"));
+    const recipeRun = await json<{ mutationPolicy: string; plan: string[] }>(`${harness.base}/api/recipes/meeting-to-decision/runs`, {
+      method: "POST",
+      token: alice.token,
+      body: { triggerMode: "webhook", input: { meetingId: "meeting-1" } },
+    });
+    assert.equal(recipeRun.mutationPolicy, "proof_proposal_only");
+    assert.ok(recipeRun.plan.length > 0);
+    const gateway = await json<{ protocol: string; transports: string[]; capabilities: Array<{ operation: string }> }>(`${harness.base}/api/gateway`, { token: alice.token });
+    assert.equal(gateway.protocol, "noma-agent-gateway-v1");
+    assert.ok(gateway.transports.includes("mcp"));
+    assert.ok(gateway.capabilities.some((item) => item.operation === "apply"));
+    const mcpTools = await json<{ jsonrpc: string; result: { tools: Array<{ name: string }> } }>(`${harness.base}/api/gateway/mcp`, {
+      method: "POST",
+      token: alice.token,
+      body: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+    });
+    assert.equal(mcpTools.jsonrpc, "2.0");
+    assert.ok(mcpTools.result.tools.some((tool) => tool.name === "cited_answer"));
+    const mcpSearch = await json<{ result: { structuredContent: { results: Array<{ documentId: string; accessDecision: { principalId: string } }> } } }>(`${harness.base}/api/gateway/mcp`, {
+      method: "POST",
+      token: alice.token,
+      body: { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "search", arguments: { agentId: agent.id, query: "production Zurich" } } },
+    });
+    assert.ok(mcpSearch.result.structuredContent.results.some((result) => result.documentId === page.id && result.accessDecision.principalId === agent.id));
+    const mcpProof = await json<{ result: { structuredContent: { proposed: boolean; proof: { canWrite: boolean; agentId: string } } } }>(`${harness.base}/api/gateway/mcp`, {
+      method: "POST",
+      token: alice.token,
+      body: { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "proof", arguments: { agentId: agent.id, documentId: page.id, ops: [{ op: "update_attribute", id: "deployment-region", key: "status", value: "accepted" }] } } },
+    });
+    assert.equal(mcpProof.result.structuredContent.proposed, false);
+    assert.equal(mcpProof.result.structuredContent.proof.canWrite, true);
+    assert.equal(mcpProof.result.structuredContent.proof.agentId, agent.id);
+    const collections = await json<{ collections: Array<{ id: string; items: Array<{ blockId: string }> }> }>(`${harness.base}/api/collections?site=${site.id}`, { token: alice.token });
+    assert.ok(collections.collections.find((item) => item.id === "open_decisions")?.items.some((item) => item.blockId === "deployment-region"));
+    assert.ok(collections.collections.find((item) => item.id === "pending_agent_changes")?.items.length);
+
+    await json(`${harness.base}/api/analytics`, { method: "POST", token: alice.token, body: { type: "citation_opened", documentId: page.id, query: "production region" } });
+    const analytics = await json<{ counts: { citation_opened: number }; scope: { accessibleDocumentIds: string[] } }>(`${harness.base}/api/analytics`, { token: alice.token });
+    assert.equal(analytics.counts.citation_opened, 1);
+    assert.ok(analytics.scope.accessibleDocumentIds.includes(page.id));
+
+    const backup = await json<NomaBackupBundleResponse>(`${harness.base}/api/backup/export`, {
+      method: "POST",
+      token: alice.token,
+      body: { siteId: site.id, git: { repository: "acme/knowledge", branch: "noma-backup", pullRequestReview: true } },
+    });
+    assert.equal(backup.manifest.format, "noma-cloud-backup-v1");
+    assert.equal(backup.files[0]?.source, source);
+    assert.equal(backup.digest.length, 64);
+    const importPlan = await json<{ applied: boolean; plan: { unchanged: string[]; pullRequestReview: boolean } }>(`${harness.base}/api/backup/import`, { method: "POST", token: alice.token, body: { siteId: site.id, bundle: backup } });
+    assert.equal(importPlan.applied, false);
+    assert.deepEqual(importPlan.plan.unchanged, [page.id]);
+    assert.equal(importPlan.plan.pullRequestReview, true);
+
+    const draft = await json<{ id: string }>(`${harness.base}/api/offline/drafts`, {
+      method: "POST",
+      token: alice.token,
+      body: { documentId: page.id, baseHash: page.hash, baseSource: page.source, source: page.source.replace("status=\"open\"", "status=\"accepted\"") },
+    });
+    const mergedDraft = await json<{ state: string; expectedHash: string; conflicts: unknown[] }>(`${harness.base}/api/offline/drafts/${draft.id}/merge`, { method: "POST", token: alice.token, body: {} });
+    assert.equal(mergedDraft.state, "clean");
+    assert.equal(mergedDraft.expectedHash, page.hash);
+    assert.deepEqual(mergedDraft.conflicts, []);
+
+    const realtime = await json<{ operation: { sequence: number; proofStatus: string; affectedIds: string[] }; document: CloudDocumentResponse }>(`${harness.base}/api/realtime/documents/${page.id}/operations`, {
+      method: "POST",
+      token: alice.token,
+      body: { expectedHash: page.hash, ops: [{ op: "update_attribute", id: "deployment-region", key: "status", value: "accepted" }] },
+    });
+    assert.equal(realtime.operation.sequence, 1);
+    assert.equal(realtime.operation.proofStatus, "pass");
+    assert.deepEqual(realtime.operation.affectedIds, ["deployment-region"]);
+    assert.notEqual(realtime.document.hash, page.hash);
+    const realtimeFeed = await json<{ operations: Array<{ sequence: number }>; currentHash: string }>(`${harness.base}/api/realtime/documents/${page.id}/operations?after=0`, { token: alice.token });
+    assert.deepEqual(realtimeFeed.operations.map((item) => item.sequence), [1]);
+    assert.equal(realtimeFeed.currentHash, realtime.document.hash);
+
+    const enterprise = await json<{ sso: { provider: string; enforced: boolean }; scim: { enabled: boolean }; dataResidency: string; requireZeroRetentionModels: boolean }>(`${harness.base}/api/enterprise`, {
+      method: "PUT",
+      token: alice.token,
+      body: {
+        sso: { enabled: true, provider: "oidc", issuer: "https://id.example", enforced: true },
+        scim: { enabled: true, baseUrl: "https://noma.example/scim/v2" },
+        retentionDays: 365,
+        legalHoldEnabled: true,
+        dataResidency: "ch-zurich",
+        connectorAllowlist: ["github", "filesystem"],
+        modelAllowlist: ["secure-model"],
+        requireZeroRetentionModels: true,
+        auditExportEnabled: true,
+      },
+    });
+    assert.equal(enterprise.sso.provider, "oidc");
+    assert.equal(enterprise.sso.enforced, true);
+    assert.equal(enterprise.scim.enabled, true);
+    assert.equal(enterprise.dataResidency, "ch-zurich");
+    assert.equal(enterprise.requireZeroRetentionModels, true);
+    await json(`${harness.base}/api/connectors`, { method: "POST", token: alice.token, body: { kind: "slack", name: "Denied Slack", siteId: site.id, configuration: {} }, expectedStatus: 409 });
+    const scim = await json<{ externalId: string; active: boolean }>(`${harness.base}/api/enterprise/scim`, { method: "POST", token: alice.token, body: { id: "scim-user-1", externalId: "00u1", userId: alice.id, userName: "Alice", active: true, groups: ["operations"] } });
+    assert.equal(scim.externalId, "00u1");
+    assert.equal(scim.active, true);
+    const hold = await json<{ resourceId: string }>(`${harness.base}/api/enterprise/legal-holds`, { method: "POST", token: alice.token, body: { resourceType: "document", resourceId: page.id, reason: "Regulatory review" } });
+    assert.equal(hold.resourceId, page.id);
+    const audit = await json<{ format: string; dataResidency: string; digest: string; events: Array<{ action: string }> }>(`${harness.base}/api/enterprise/audit`, { token: alice.token });
+    assert.equal(audit.format, "noma-cloud-audit-v1");
+    assert.equal(audit.dataResidency, "ch-zurich");
+    assert.equal(audit.digest.length, 64);
+    assert.ok(audit.events.some((event) => event.action === "enterprise.policy_updated"));
+    const retention = await json<{ deleted: number; protectedByLegalHold: number }>(`${harness.base}/api/enterprise/retention`, { method: "POST", token: alice.token, body: {} });
+    assert.ok(retention.deleted >= 0);
+    await json(`${harness.base}/api/auth/session`, { method: "POST", body: { userToken: alice.token }, expectedStatus: 403 });
+    const ssoResponse = await fetch(`${harness.base}/api/auth/sso`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-noma-sso-trust-secret": "test-sso-secret" },
+      body: JSON.stringify({ externalId: "00u1" }),
+    });
+    const ssoBody = await ssoResponse.text();
+    assert.equal(ssoResponse.status, 200, ssoBody);
+    const ssoSession = JSON.parse(ssoBody) as { provider: string; user: { id: string; token: string } };
+    assert.equal(ssoSession.provider, "oidc");
+    assert.equal(ssoSession.user.id, alice.id);
+    assert.match(ssoSession.user.token, /^noma_/);
+  } finally {
+    await harness.close();
+  }
+});
+
+interface NomaBackupBundleResponse {
+  manifest: { format: string; exportedAt: string; files: unknown[]; git?: { pullRequestReview: boolean } };
+  files: Array<{ documentId: string; source: string; hash: string }>;
+  digest: string;
+}
+
 interface CloudTestHarness {
   base: string;
   close(): Promise<void>;
@@ -1894,6 +2197,7 @@ async function startCloudServer(
     dbPath: join(root, "data", "noma-cloud.sqlite"),
     publicDir,
     maxBodyBytes: 100_000,
+    ssoTrustedHeaderSecret: "test-sso-secret",
     now: () => new Date("2026-06-06T12:00:00.000Z"),
     ...options,
   });

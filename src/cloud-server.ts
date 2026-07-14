@@ -43,6 +43,27 @@ import {
   type CloudUserRecord,
   type NomaCloudDatabase,
 } from "./cloud-db.js";
+import {
+  CloudKnowledgePlatform,
+  type AgentAccessGrant,
+  type AgentRecipe,
+  type AgentRun,
+  type AnalyticsEvent,
+  type CloudAgentIdentity,
+  type ConnectorKind,
+  type ConnectorSourceRecord,
+  type EnterprisePolicy,
+  type KnowledgeConnector,
+  type KnowledgeDocumentAccess,
+  type KnowledgeTrust,
+  type LegalHold,
+  type NomaBackupBundle,
+  type OfflineDraft,
+  type RagEvaluationFixture,
+  type RealtimeOperation,
+  type RecipeRun,
+  type ScimIdentity,
+} from "./cloud-platform.js";
 import { cloudPageTemplates, instantiateCloudPageTemplate } from "./cloud-templates.js";
 import { convertMarkdownToNoma } from "./ingest-markdown.js";
 import { extractWikilinks } from "./inline.js";
@@ -101,6 +122,7 @@ export interface NomaCloudServerOptions {
   accessTokenFile?: string;
   invitationCode?: string;
   invitationCodeFile?: string;
+  ssoTrustedHeaderSecret?: string;
   allowOpenAccess?: boolean;
   allowOpenRegistration?: boolean;
   production?: boolean;
@@ -120,10 +142,12 @@ interface CloudServerConfig {
   maxBodyBytes: number;
   accessTokenHash?: string;
   invitationCodeHash?: string;
+  ssoTrustedHeaderHash?: string;
   rateLimiter: CloudRateLimiter;
   trustProxy: boolean;
   now: () => Date;
   store: NomaCloudDatabase;
+  platform: CloudKnowledgePlatform;
 }
 
 interface SourceInspection {
@@ -243,9 +267,11 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
   const dbPath = resolve(options.dbPath ?? process.env.NOMA_CLOUD_DB ?? join(storageRoot, "noma-cloud.sqlite"));
   const accessTokenHash = cloudAccessTokenHash(options);
   const invitationCodeHash = cloudInvitationCodeHash(options);
+  const ssoTrustedHeaderHash = cleanSecret(options.ssoTrustedHeaderSecret ?? process.env.NOMA_CLOUD_SSO_TRUST_SECRET);
   validateProductionSecurity(options, accessTokenHash, invitationCodeHash);
   const now = options.now ?? (() => new Date());
   const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir });
+  const platform = new CloudKnowledgePlatform(dbPath);
   const config: CloudServerConfig = {
     dataDir,
     usersDir,
@@ -255,6 +281,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     maxBodyBytes: options.maxBodyBytes ?? Number(process.env.NOMA_CLOUD_MAX_BODY_BYTES ?? 1_500_000),
     accessTokenHash,
     invitationCodeHash,
+    ssoTrustedHeaderHash: ssoTrustedHeaderHash ? sha256Hex(ssoTrustedHeaderHash) : undefined,
     rateLimiter: new CloudRateLimiter(
       positiveInteger(options.rateLimitWindowMs ?? Number(process.env.NOMA_CLOUD_RATE_LIMIT_WINDOW_MS ?? 60_000), "rateLimitWindowMs"),
       positiveInteger(options.rateLimitMaxRequests ?? Number(process.env.NOMA_CLOUD_RATE_LIMIT_MAX ?? 300), "rateLimitMaxRequests"),
@@ -263,6 +290,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     trustProxy: options.trustProxy ?? enabledEnvironmentFlag("NOMA_CLOUD_TRUST_PROXY"),
     now,
     store,
+    platform,
   };
 
   const server = createServer((req, res) => {
@@ -276,7 +304,10 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
       sendJson(res, status, { error: message, ...(error instanceof HttpError ? error.details : {}) });
     });
   });
-  server.on("close", () => store.close());
+  server.on("close", () => {
+    platform.close();
+    store.close();
+  });
   return server;
 }
 
@@ -410,6 +441,7 @@ async function routeAuth(req: IncomingMessage, res: ServerResponse, parts: strin
   const action = parts[2];
 
   if (action === "session" && method === "POST") {
+    if (config.platform.enterprisePolicy().sso.enforced) throw new HttpError(403, "Workspace policy requires SSO login");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const accessToken = requireCloudAccessToken(config, req, input);
     const userToken = optionalString(input.userToken);
@@ -424,6 +456,7 @@ async function routeAuth(req: IncomingMessage, res: ServerResponse, parts: strin
   }
 
   if (action === "register" && method === "POST") {
+    if (config.platform.enterprisePolicy().sso.enforced) throw new HttpError(403, "Workspace policy requires SCIM provisioning and SSO login");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const accessToken = requireCloudAccessToken(config, req, input);
     requireInvitationCode(config, req, input);
@@ -433,6 +466,25 @@ async function routeAuth(req: IncomingMessage, res: ServerResponse, parts: strin
       ok: true,
       user: { ...publicUser(record), token },
     });
+    return;
+  }
+
+  if (action === "sso" && method === "POST") {
+    const policy = config.platform.enterprisePolicy();
+    if (!policy.sso.enabled || policy.sso.provider === "none") throw new HttpError(404, "SSO is not enabled");
+    if (!config.ssoTrustedHeaderHash) throw new HttpError(503, "SSO trust secret is not configured");
+    const trustSecret = headerValue(req, "x-noma-sso-trust-secret");
+    if (!trustSecret || sha256Hex(trustSecret) !== config.ssoTrustedHeaderHash) throw new HttpError(401, "Trusted SSO assertion required");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const externalId = stringInput(input, "externalId");
+    const identity = config.platform.listScimIdentities().find((item) => item.externalId === externalId && item.active);
+    if (!identity) throw new HttpError(403, "Active SCIM identity not found");
+    const user = config.store.readUser(identity.userId);
+    if (!user) throw new HttpError(404, "Provisioned Noma user not found");
+    const token = randomToken("noma");
+    const updated: CloudUserRecord = { ...user, tokenHash: sha256Hex(token), tokenPreview: tokenPreview(token), updatedAt: config.now().toISOString() };
+    config.store.writeUser(updated);
+    sendJson(res, 200, { ok: true, provider: policy.sso.provider, user: { ...publicUser(updated), token } });
     return;
   }
 
@@ -548,10 +600,12 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
   const principal = await resolvePrincipal(config, req, url);
 
   if (url.pathname === "/api/status" && method === "GET") {
+    const enterprisePolicy = config.platform.enterprisePolicy();
     sendJson(res, 200, {
       ok: true,
       mode: "cloud",
-      auth: "token",
+      auth: enterprisePolicy.sso.enforced ? "sso" : "token",
+      sso: enterprisePolicy.sso,
       access: config.accessTokenHash ? "gate-token" : "open",
       storage: "sqlite",
       database: {
@@ -575,6 +629,25 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
           "issues",
           "sprints",
           "patch-proposals",
+          "ask",
+          "knowledge-trust",
+          "knowledge-health",
+          "llm-wiki",
+          "rag-evaluations",
+          "agent-inbox",
+          "agent-identities",
+          "connectors",
+          "recipes",
+          "semantic-collections",
+          "agent-gateway",
+          "analytics",
+          "backup",
+          "offline-drafts",
+          "realtime-operations",
+          "enterprise-policy",
+          "scim",
+          "legal-hold",
+          "audit-export",
         ],
       },
       maxBodyBytes: config.maxBodyBytes,
@@ -705,6 +778,11 @@ async function routeApi(
     return;
   }
 
+  if (resource === "ask" || resource === "knowledge" || resource === "agent-inbox" || resource === "agents" || resource === "connectors" || resource === "recipes" || resource === "collections" || resource === "gateway" || resource === "analytics" || resource === "backup" || resource === "offline" || resource === "realtime" || resource === "enterprise") {
+    await routeKnowledgePlatform(req, res, url, parts, config, principal);
+    return;
+  }
+
   throw new HttpError(404, "Unknown API resource");
 }
 
@@ -721,6 +799,828 @@ function routeSearch(
   const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
   const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 25, 1, 100, "limit");
   sendJson(res, 200, { q, results: config.store.search(user, q, siteId, limit) });
+}
+
+async function routeKnowledgePlatform(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  parts: string[],
+  config: CloudServerConfig,
+  principal: Principal,
+): Promise<void> {
+  const resource = parts[1];
+  if (resource === "ask") {
+    await routeAskNoma(req, res, config, principal);
+    return;
+  }
+  if (resource === "knowledge") {
+    await routeKnowledge(req, res, url, parts, config, principal);
+    return;
+  }
+  if (resource === "agent-inbox") {
+    routeAgentInbox(req, res, url, config, principal);
+    return;
+  }
+  if (resource === "agents") {
+    await routeAgents(req, res, parts, config, principal);
+    return;
+  }
+  if (resource === "connectors") {
+    await routeConnectors(req, res, parts, config, principal);
+    return;
+  }
+  if (resource === "recipes") {
+    await routeRecipes(req, res, parts, config, principal);
+    return;
+  }
+  if (resource === "collections") {
+    routeSemanticCollections(req, res, url, config, principal);
+    return;
+  }
+  if (resource === "gateway") {
+    await routeAgentGateway(req, res, parts, config, principal);
+    return;
+  }
+  if (resource === "analytics") {
+    await routeKnowledgeAnalytics(req, res, config, principal);
+    return;
+  }
+  if (resource === "backup") {
+    await routeBackup(req, res, parts, config, principal);
+    return;
+  }
+  if (resource === "offline") {
+    await routeOffline(req, res, parts, config, principal);
+    return;
+  }
+  if (resource === "realtime") {
+    await routeRealtime(req, res, url, parts, config, principal);
+    return;
+  }
+  if (resource === "enterprise") {
+    await routeEnterprise(req, res, parts, config, principal);
+    return;
+  }
+  throw new HttpError(404, "Unknown knowledge platform route");
+}
+
+async function routeAskNoma(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig, principal: Principal): Promise<void> {
+  if ((req.method ?? "GET") !== "POST") throw new HttpError(405, "Method not allowed");
+  const user = requireUser(principal);
+  const input = await readJsonBody(req, config.maxBodyBytes);
+  const query = stringInput(input, "query").slice(0, 1_000);
+  const siteId = optionalCloudId(input.siteId, "Site");
+  const agentId = optionalString(input.agentId);
+  const documents = knowledgeDocuments(config, user, siteId, agentId);
+  const contentTypes = optionalStringArray(input.contentTypes, "contentTypes", 30);
+  const answer = config.platform.ask({
+    principalId: agentId ?? user.id,
+    query,
+    documents,
+    now: config.now().toISOString(),
+    limit: boundedInteger(input.limit, 8, 1, 25, "limit"),
+    ...(contentTypes ? { contentTypes } : {}),
+  });
+  sendJson(res, 200, answer);
+}
+
+async function routeKnowledge(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  parts: string[],
+  config: CloudServerConfig,
+  principal: Principal,
+): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  const action = parts[2];
+  if (action === "search" && method === "GET") {
+    const query = (url.searchParams.get("q") ?? "").trim().slice(0, 1_000);
+    const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
+    const agentId = optionalString(url.searchParams.get("agent"));
+    const results = config.platform.search({
+      principalId: agentId ?? user.id,
+      query,
+      documents: knowledgeDocuments(config, user, siteId, agentId),
+      now: config.now().toISOString(),
+      limit: boundedInteger(numberQuery(url.searchParams.get("limit")), 25, 1, 100, "limit"),
+    });
+    sendJson(res, 200, { query, mode: "hybrid", results });
+    return;
+  }
+  if (action === "trust") {
+    const documentId = stringPathPart(parts[3], "Document ID");
+    const blockId = stringPathPart(parts[4], "Block ID");
+    const document = await readDocument(config, documentId);
+    const access = requireRecordAccess(config, document, principal, method === "GET" ? "viewer" : "editor");
+    if (!documentHasBlock(document, blockId)) throw new HttpError(404, "Block not found");
+    if (method === "GET") {
+      sendJson(res, 200, { trust: config.platform.trustFor(documentId, blockId), access: accessResponse(access) });
+      return;
+    }
+    if (method === "PUT") {
+      const input = await readJsonBody(req, config.maxBodyBytes);
+      const now = config.now().toISOString();
+      const trust: KnowledgeTrust = {
+        documentId,
+        blockId,
+        ownerId: optionalString(input.ownerId),
+        verifiedBy: optionalString(input.verifiedBy),
+        verifiedAt: optionalIsoDate(input.verifiedAt, "verifiedAt"),
+        reviewBy: optionalIsoDate(input.reviewBy, "reviewBy"),
+        supersedes: optionalStringArray(input.supersedes, "supersedes", 100),
+        canonicalFor: optionalStringArray(input.canonicalFor, "canonicalFor", 100),
+        sourceOf: optionalStringArray(input.sourceOf, "sourceOf", 100),
+        provenance: optionalRecord(input.provenance, "provenance"),
+        updatedAt: now,
+        updatedBy: user.id,
+      };
+      sendJson(res, 200, config.platform.putTrust(trust));
+      return;
+    }
+    throw new HttpError(405, "Method not allowed");
+  }
+  const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
+  const agentId = optionalString(url.searchParams.get("agent"));
+  const documents = knowledgeDocuments(config, user, siteId, agentId);
+  if (action === "llm" && method === "GET") {
+    const context = documents.map((access) => `<!-- document:${access.document.id} hash:${access.document.hash} role:${access.role} via:${access.via} -->\n${renderLlm(parse(access.document.source, { filename: `${access.document.id}.noma` }))}`).join("\n\n");
+    sendText(res, 200, context, "text/plain; charset=utf-8");
+    return;
+  }
+  if (action === "health" && method === "GET") {
+    sendJson(res, 200, { generatedAt: config.now().toISOString(), items: config.platform.health(documents, config.now().toISOString()) });
+    return;
+  }
+  if (action === "wiki" && method === "GET") {
+    sendJson(res, 200, config.platform.wiki(documents, config.now().toISOString()));
+    return;
+  }
+  if (action === "reindex" && method === "POST") {
+    sendJson(res, 200, { indexed: config.platform.indexDocuments(documents, config.now().toISOString(), true), documentCount: documents.length });
+    return;
+  }
+  if (action === "evaluations" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const fixtures = ragEvaluationFixtures(input.fixtures);
+    const results = config.platform.evaluate(fixtures, { principalId: agentId ?? user.id, documents, now: config.now().toISOString() });
+    sendJson(res, 200, { passed: results.every((result) => result.passed), results });
+    return;
+  }
+  throw new HttpError(404, "Unknown knowledge route");
+}
+
+function routeAgentInbox(req: IncomingMessage, res: ServerResponse, url: URL, config: CloudServerConfig, principal: Principal): void {
+  if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
+  const user = requireUser(principal);
+  const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
+  const documents = knowledgeDocuments(config, user, siteId);
+  const proposals = documents.flatMap((item) => config.store.listPatchProposals(item.document.id));
+  const inbox = config.platform.agentChangeInbox(proposals, documents);
+  sendJson(res, 200, {
+    changes: inbox,
+    counts: {
+      awaitingReview: inbox.filter((item) => item.applyStatus === "awaiting_review").length,
+      ready: inbox.filter((item) => item.applyStatus === "ready").length,
+      rejected: inbox.filter((item) => item.applyStatus === "rejected").length,
+      applied: inbox.filter((item) => item.applyStatus === "applied").length,
+    },
+  });
+}
+
+async function routeAgents(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  const agentId = parts[2];
+  const action = parts[3];
+  const childId = parts[4];
+  if (!agentId && method === "GET") {
+    sendJson(res, 200, { agents: config.platform.listAgents().filter((agent) => agent.createdBy === user.id) });
+    return;
+  }
+  if (!agentId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const now = config.now().toISOString();
+    const modelPolicy = optionalRecord(input.modelPolicy, "modelPolicy") ?? {};
+    const agent: CloudAgentIdentity = {
+      id: uniqueId(config),
+      name: stringInput(input, "name").slice(0, 120),
+      ...(optionalString(input.description) ? { description: optionalString(input.description)?.slice(0, 2_000) } : {}),
+      createdBy: user.id,
+      modelPolicy: {
+        model: stringInput(modelPolicy, "model", "local-deterministic"),
+        zeroRetention: modelPolicy.zeroRetention === true,
+        maxTokensPerRun: boundedInteger(modelPolicy.maxTokensPerRun, 8_000, 128, 1_000_000, "maxTokensPerRun"),
+      },
+      capabilities: requiredStringArray(input.capabilities, "capabilities", 100),
+      budgetUsd: boundedNumber(input.budgetUsd, 25, 0, 1_000_000, "budgetUsd"),
+      spentUsd: 0,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    };
+    sendJson(res, 201, platformInput(() => config.platform.createAgent(agent)));
+    return;
+  }
+  const agent = ownedAgent(config, user, stringPathPart(agentId, "Agent ID"));
+  if (!action && method === "GET") {
+    sendJson(res, 200, { ...agent, access: config.platform.listAgentAccess(agent.id), runs: config.platform.listAgentRuns(agent.id) });
+    return;
+  }
+  if (action === "access" && method === "GET") {
+    sendJson(res, 200, { access: config.platform.listAgentAccess(agent.id) });
+    return;
+  }
+  if (action === "access" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const resourceType = input.resourceType === "site" ? "site" : input.resourceType === "document" ? "document" : undefined;
+    if (!resourceType) throw new HttpError(400, "resourceType must be document or site");
+    const resourceId = stringInput(input, "resourceId");
+    const role = input.role === "editor" ? "editor" : input.role === "viewer" ? "viewer" : undefined;
+    if (!role) throw new HttpError(400, "role must be viewer or editor");
+    await requireResourceAccess(config, principal, resourceType, resourceId, role);
+    const now = config.now().toISOString();
+    const grant: AgentAccessGrant = { id: uniqueId(config), agentId: agent.id, resourceType, resourceId, role, createdAt: now, updatedAt: now };
+    sendJson(res, 201, platformInput(() => config.platform.grantAgentAccess(grant, user.id, now)));
+    return;
+  }
+  if (action === "runs" && !childId && method === "GET") {
+    sendJson(res, 200, { runs: config.platform.listAgentRuns(agent.id) });
+    return;
+  }
+  if (action === "runs" && !childId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const documentId = optionalCloudId(input.documentId, "Document");
+    if (documentId) requireGatewayAgentDocumentAccess(config, agent.id, documentId, "read_doc");
+    const run: AgentRun = {
+      id: uniqueId(config),
+      agentId: agent.id,
+      triggeredBy: user.id,
+      trigger: agentRunTrigger(input.trigger),
+      ...(documentId ? { documentId } : {}),
+      status: "running",
+      requestedCapabilities: optionalStringArray(input.requestedCapabilities, "requestedCapabilities", 100) ?? [],
+      startedAt: config.now().toISOString(),
+    };
+    sendJson(res, 201, platformInput(() => config.platform.startAgentRun(run)));
+    return;
+  }
+  if (action === "runs" && childId && parts[5] === "complete" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const status = input.status === "completed" || input.status === "failed" || input.status === "cancelled" ? input.status : undefined;
+    if (!status) throw new HttpError(400, "status must be completed, failed, or cancelled");
+    sendJson(res, 200, platformInput(() => config.platform.finishAgentRun(childId, {
+      status,
+      costUsd: boundedNumber(input.costUsd, 0, 0, 1_000_000, "costUsd"),
+      completedAt: config.now().toISOString(),
+      ...(optionalRecord(input.output, "output") ? { output: optionalRecord(input.output, "output") } : {}),
+    })));
+    return;
+  }
+  throw new HttpError(404, "Unknown agent route");
+}
+
+async function routeConnectors(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  const connectorId = parts[2];
+  const action = parts[3];
+  if (!connectorId && method === "GET") {
+    const visibleSites = config.store.listSites(user).map((site) => site.id);
+    sendJson(res, 200, { connectors: config.platform.listConnectors(visibleSites) });
+    return;
+  }
+  if (!connectorId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const siteId = optionalCloudId(input.siteId, "Site");
+    if (siteId) await requireResourceAccess(config, principal, "site", siteId, "editor");
+    const now = config.now().toISOString();
+    const connector: KnowledgeConnector = {
+      id: uniqueId(config),
+      kind: connectorKind(input.kind),
+      name: stringInput(input, "name").slice(0, 120),
+      ...(siteId ? { siteId } : {}),
+      status: "active",
+      configuration: scalarRecord(input.configuration, "configuration"),
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    sendJson(res, 201, platformInput(() => config.platform.putConnector(connector)));
+    return;
+  }
+  const connector = visibleConnector(config, user, stringPathPart(connectorId, "Connector ID"));
+  if (!action && method === "GET") {
+    sendJson(res, 200, { ...connector, sources: config.platform.listConnectorSources(connector.id) });
+    return;
+  }
+  if (action === "sources" && method === "GET") {
+    sendJson(res, 200, { sources: config.platform.listConnectorSources(connector.id) });
+    return;
+  }
+  if (action === "sources" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const documentId = optionalCloudId(input.documentId, "Document");
+    if (documentId) await requireResourceAccess(config, principal, "document", documentId, "editor");
+    const syncedAt = config.now().toISOString();
+    const source: ConnectorSourceRecord = {
+      id: `${connector.id}:${sha256Hex(stringInput(input, "externalId")).slice(0, 18)}`,
+      connectorId: connector.id,
+      externalId: stringInput(input, "externalId").slice(0, 500),
+      ...(documentId ? { documentId } : {}),
+      upstreamPermissions: permissionLineage(input.upstreamPermissions),
+      upstreamModifiedAt: requiredIsoDate(input.upstreamModifiedAt, "upstreamModifiedAt"),
+      sourceUrl: absoluteUrl(input.sourceUrl, "sourceUrl"),
+      contentHash: stringInput(input, "contentHash"),
+      lineage: optionalStringArray(input.lineage, "lineage", 500) ?? [],
+      ...(input.tombstone === true ? { tombstonedAt: syncedAt } : {}),
+      syncedAt,
+    };
+    sendJson(res, 201, platformInput(() => config.platform.syncConnectorSource(source, user.id)));
+    return;
+  }
+  throw new HttpError(404, "Unknown connector route");
+}
+
+async function routeRecipes(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  const recipeId = parts[2];
+  const action = parts[3];
+  if (!recipeId && method === "GET") {
+    sendJson(res, 200, { recipes: config.platform.recipes() });
+    return;
+  }
+  if (!recipeId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const siteId = optionalCloudId(input.siteId, "Site");
+    if (siteId) await requireResourceAccess(config, principal, "site", siteId, "editor");
+    const now = config.now().toISOString();
+    const trigger = optionalRecord(input.trigger, "trigger") ?? {};
+    const recipe: AgentRecipe = {
+      id: uniqueId(config),
+      name: stringInput(input, "name").slice(0, 120),
+      purpose: "custom",
+      ...(siteId ? { siteId } : {}),
+      ...(optionalString(input.agentId) ? { agentId: optionalString(input.agentId) } : {}),
+      trigger: {
+        modes: recipeTriggerModes(trigger.modes),
+        ...(optionalString(trigger.schedule) ? { schedule: optionalString(trigger.schedule) } : {}),
+        ...(optionalString(trigger.event) ? { event: optionalString(trigger.event) } : {}),
+        ...(optionalString(trigger.webhookSecretHash) ? { webhookSecretHash: optionalString(trigger.webhookSecretHash) } : {}),
+      },
+      capabilitySet: requiredStringArray(input.capabilitySet, "capabilitySet", 100),
+      steps: requiredStringArray(input.steps, "steps", 100),
+      enabled: input.enabled !== false,
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    sendJson(res, 201, config.platform.putRecipe(recipe));
+    return;
+  }
+  if (action === "runs" && method === "GET") {
+    sendJson(res, 200, { runs: config.platform.listRecipeRuns(recipeId) });
+    return;
+  }
+  if (action === "runs" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const run: RecipeRun = {
+      id: uniqueId(config),
+      recipeId: stringPathPart(recipeId, "Recipe ID"),
+      triggeredBy: user.id,
+      triggerMode: recipeTriggerMode(input.triggerMode),
+      input: optionalRecord(input.input, "input") ?? {},
+      status: "planned",
+      plan: [],
+      mutationPolicy: "proof_proposal_only",
+      startedAt: config.now().toISOString(),
+    };
+    sendJson(res, 201, platformInput(() => config.platform.runRecipe(run)));
+    return;
+  }
+  throw new HttpError(404, "Unknown recipe route");
+}
+
+function routeSemanticCollections(req: IncomingMessage, res: ServerResponse, url: URL, config: CloudServerConfig, principal: Principal): void {
+  if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
+  const user = requireUser(principal);
+  const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
+  const collections = config.platform.semanticCollections(knowledgeDocuments(config, user, siteId), config.now().toISOString());
+  const pending = collections.find((collection) => collection.id === "pending_agent_changes");
+  if (pending) {
+    const documents = knowledgeDocuments(config, user, siteId);
+    const inbox = config.platform.agentChangeInbox(documents.flatMap((item) => config.store.listPatchProposals(item.document.id)), documents);
+    pending.items = inbox.filter((item) => item.applyStatus === "awaiting_review" || item.applyStatus === "ready").map((item) => ({
+      documentId: item.documentId,
+      documentTitle: documents.find((access) => access.document.id === item.documentId)?.document.title ?? item.documentId,
+      blockId: item.affectedIds[0] ?? item.id,
+      contentType: "agent_change",
+      title: item.plan[0],
+      freshness: { state: "current", score: 1 },
+      versionHash: item.documentHash,
+    }));
+  }
+  sendJson(res, 200, { collections });
+}
+
+async function routeAgentGateway(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  const action = parts[2];
+  if (!action && method === "GET") {
+    sendJson(res, 200, { protocol: "noma-agent-gateway-v1", transports: ["api", "mcp", "webhook"], capabilities: config.platform.gatewayCapabilities() });
+    return;
+  }
+  if (action === "list-ids" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const agentId = stringInput(input, "agentId");
+    ownedAgent(config, user, agentId);
+    const documentId = stringInput(input, "documentId");
+    requireGatewayAgentDocumentAccess(config, agentId, documentId, "list_ids");
+    const document = await readDocument(config, documentId);
+    const doc = parse(document.source, { filename: `${document.id}.noma` });
+    const ids = [...walk(doc)].filter((node) => node.id).map((node) => ({ id: node.id!, aliases: node.aliases ?? [], type: node.type, line: node.pos?.line, endLine: node.endLine }));
+    sendJson(res, 200, { documentId, versionHash: document.hash, ids });
+    return;
+  }
+  if (action === "mcp" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const requestId = input.id ?? null;
+    if (input.jsonrpc !== "2.0") throw new HttpError(400, "MCP request must use JSON-RPC 2.0");
+    if (input.method === "tools/list") {
+      sendJson(res, 200, {
+        jsonrpc: "2.0",
+        id: requestId,
+        result: {
+          tools: config.platform.gatewayCapabilities().filter((capability) => capability.operation !== "webhook").map((capability) => ({
+            name: capability.operation,
+            description: `Noma Cloud ${capability.operation.replace("_", " ")} with ${capability.permission} scope`,
+            inputSchema: { type: "object", additionalProperties: true },
+          })),
+        },
+      });
+      return;
+    }
+    if (input.method === "tools/call") {
+      const params = optionalRecord(input.params, "params") ?? {};
+      const name = stringInput(params, "name");
+      const args = optionalRecord(params.arguments, "params.arguments") ?? {};
+      const result = await callGatewayTool(name, args, config, principal, user);
+      sendJson(res, 200, { jsonrpc: "2.0", id: requestId, result: { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result } });
+      return;
+    }
+    throw new HttpError(400, "Unsupported MCP method");
+  }
+  if (action === "webhooks" && parts[3] && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const run: RecipeRun = { id: uniqueId(config), recipeId: parts[3], triggeredBy: user.id, triggerMode: "webhook", input, status: "planned", plan: [], mutationPolicy: "proof_proposal_only", startedAt: config.now().toISOString() };
+    sendJson(res, 202, platformInput(() => config.platform.runRecipe(run)));
+    return;
+  }
+  throw new HttpError(404, "Unknown gateway route");
+}
+
+async function callGatewayTool(
+  name: string,
+  args: Record<string, unknown>,
+  config: CloudServerConfig,
+  principal: Principal,
+  user: CloudUserRecord,
+): Promise<Record<string, unknown>> {
+  const now = config.now().toISOString();
+  if (name === "search" || name === "cited_answer") {
+    const agentId = stringInput(args, "agentId");
+    ownedAgent(config, user, agentId);
+    const query = stringInput(args, "query").slice(0, 1_000);
+    const siteId = optionalCloudId(args.siteId, "Site");
+    const documents = knowledgeDocuments(config, user, siteId, agentId);
+    if (name === "search") return { query, results: config.platform.search({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 12, 1, 100, "limit") }) };
+    return config.platform.ask({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 8, 1, 25, "limit") }) as unknown as Record<string, unknown>;
+  }
+  if (name === "llm_export") {
+    const agentId = stringInput(args, "agentId");
+    ownedAgent(config, user, agentId);
+    const siteId = optionalCloudId(args.siteId, "Site");
+    const documents = knowledgeDocuments(config, user, siteId, agentId);
+    return {
+      documents: documents.map((access) => ({
+        documentId: access.document.id,
+        versionHash: access.document.hash,
+        accessDecision: { principalId: agentId, allowed: true, role: access.role, via: access.via, decidedAt: now },
+        context: renderLlm(parse(access.document.source, { filename: `${access.document.id}.noma` })),
+      })),
+    };
+  }
+  if (name === "list_ids") {
+    const agentId = stringInput(args, "agentId");
+    ownedAgent(config, user, agentId);
+    const documentId = stringInput(args, "documentId");
+    requireGatewayAgentDocumentAccess(config, agentId, documentId, "list_ids");
+    const document = await readDocument(config, documentId);
+    const doc = parse(document.source, { filename: `${document.id}.noma` });
+    return { documentId, versionHash: document.hash, ids: [...walk(doc)].filter((node) => node.id).map((node) => ({ id: node.id!, aliases: node.aliases ?? [], type: node.type, line: node.pos?.line, endLine: node.endLine })) };
+  }
+  if (name === "proof" || name === "proposal") {
+    const agentId = stringInput(args, "agentId");
+    const documentId = stringInput(args, "documentId");
+    ownedAgent(config, user, agentId);
+    const grant = requireGatewayAgentDocumentAccess(config, agentId, documentId, "patch_block");
+    if (grant.role !== "editor") throw new HttpError(403, "Agent editor access is required for patch proposals");
+    const document = await readDocument(config, documentId);
+    const ops = patchOpsInput(args.ops);
+    const proof = createCloudPatchProof(config, document, ops);
+    const proofRecord = { ...cloudProofRecord(proof), agentId };
+    if (name === "proof" || !proof.canWrite) return { proof: proofRecord, proposed: false };
+    const proposal: Omit<CloudPatchProposal, "proposedByName"> = {
+      id: uniqueId(config),
+      documentId,
+      documentHash: document.hash,
+      proposedBy: user.id,
+      summary: optionalString(args.summary)?.slice(0, 500) ?? `Proposal from ${config.platform.readAgent(agentId)?.name ?? agentId}`,
+      ops,
+      proof: proofRecord,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+    };
+    config.store.writePatchProposal(proposal);
+    recordActivity(config, user, "patch.proposed", "document", documentId, { proposalId: proposal.id, agentId, transport: "mcp" });
+    return { proposed: true, proposal: config.store.readPatchProposal(proposal.id) };
+  }
+  if (name === "review") {
+    const documentId = stringInput(args, "documentId");
+    const document = await readDocument(config, documentId);
+    const access = requireRecordAccess(config, document, principal, "editor");
+    requireAccessRole(access, "editor");
+    const proposal = config.store.readPatchProposal(stringInput(args, "proposalId"));
+    if (!proposal || proposal.documentId !== document.id) throw new HttpError(404, "Patch proposal not found");
+    if (proposal.status !== "pending") throw new HttpError(409, "Only pending proposals can be reviewed");
+    if (proposal.documentHash !== document.hash) throw stalePatchProposal(proposal, document);
+    const decision = patchReviewDecision(args.decision);
+    if (decision === "approved" && proposal.proposedBy === user.id) throw new HttpError(409, "A different collaborator must approve an agent patch");
+    config.store.writePatchProposal({ ...proposal, status: decision, reviewedBy: user.id, reviewedAt: now, updatedAt: now });
+    return { proposal: config.store.readPatchProposal(proposal.id) };
+  }
+  if (name === "apply") {
+    const documentId = stringInput(args, "documentId");
+    const document = await readDocument(config, documentId);
+    const access = requireRecordAccess(config, document, principal, "editor");
+    const proposal = config.store.readPatchProposal(stringInput(args, "proposalId"));
+    if (!proposal || proposal.documentId !== document.id) throw new HttpError(404, "Patch proposal not found");
+    if (proposal.status !== "approved") throw new HttpError(409, "The proposal must be approved before it can be applied");
+    if (proposal.documentHash !== document.hash) throw stalePatchProposal(proposal, document);
+    const proof = createCloudPatchProof(config, document, proposal.ops as PatchOp[]);
+    if (!proof.canWrite || proof.preHash.sha256 !== proposal.documentHash) throw new HttpError(409, "Patch proof no longer matches the current document", { proof: cloudProofRecord(proof) });
+    const updated = await updateDocument(config, document, { source: proof.postSource }, access);
+    config.store.writePatchProposal({ ...proposal, status: "applied", appliedHash: updated.hash, updatedAt: now });
+    return { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access) };
+  }
+  throw new HttpError(400, `Unknown gateway tool: ${name}`);
+}
+
+async function routeKnowledgeAnalytics(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  const documents = knowledgeDocuments(config, user);
+  if (method === "GET") {
+    sendJson(res, 200, config.platform.analytics(user.id, documents.map((item) => item.document.id)));
+    return;
+  }
+  if (method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const type = analyticsType(input.type);
+    const documentId = optionalCloudId(input.documentId, "Document");
+    if (documentId) await requireResourceAccess(config, principal, "document", documentId, "viewer");
+    const event: AnalyticsEvent = {
+      id: uniqueId(config),
+      type,
+      actorId: user.id,
+      ...(documentId ? { documentId } : {}),
+      ...(optionalString(input.query) ? { query: optionalString(input.query)?.slice(0, 1_000) } : {}),
+      ...(typeof input.resultCount === "number" ? { resultCount: boundedInteger(input.resultCount, 0, 0, 1_000_000, "resultCount") } : {}),
+      createdAt: config.now().toISOString(),
+    };
+    sendJson(res, 201, config.platform.recordAnalytics(event));
+    return;
+  }
+  throw new HttpError(405, "Method not allowed");
+}
+
+async function routeBackup(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  const action = parts[2];
+  if (method !== "POST") throw new HttpError(405, "Method not allowed");
+  const input = await readJsonBody(req, config.maxBodyBytes);
+  const siteId = optionalCloudId(input.siteId, "Site");
+  const documents = knowledgeDocuments(config, user, siteId).map((item) => item.document);
+  if (action === "export") {
+    const requested = input.documentIds === undefined ? documents : documents.filter((document) => documentIdList(input.documentIds).includes(document.id));
+    const gitInput = optionalRecord(input.git, "git");
+    const git = gitInput ? { repository: stringInput(gitInput, "repository"), branch: stringInput(gitInput, "branch"), pullRequestReview: gitInput.pullRequestReview === true } : undefined;
+    sendJson(res, 200, config.platform.exportBackup(requested, config.now().toISOString(), git));
+    return;
+  }
+  if (action === "import") {
+    const bundle = backupBundleInput(input.bundle);
+    const plan = config.platform.planBackupImport(bundle, documents);
+    if (input.apply !== true || plan.conflicts.length > 0) {
+      sendJson(res, plan.conflicts.length > 0 ? 409 : 200, { applied: false, plan });
+      return;
+    }
+    const now = config.now().toISOString();
+    const created: string[] = [];
+    const updated: string[] = [];
+    for (const file of plan.create) {
+      if (config.store.hasRecordId(file.documentId)) throw new HttpError(409, `Backup document ID already exists: ${file.documentId}`);
+      const inspection = inspectSource(file.source, file.documentId);
+      const record: CloudDocumentRecord = {
+        version: 2,
+        id: file.documentId,
+        title: file.title,
+        source: file.source,
+        hash: inspection.hash,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: user.id,
+        updatedBy: user.id,
+        permissions: { [user.id]: { role: "owner", addedAt: now } },
+        shareLinks: [],
+      };
+      await writeDocument(config, record);
+      created.push(record.id);
+    }
+    for (const item of plan.update) {
+      const existing = await readDocument(config, item.file.documentId);
+      const access = requireRecordAccess(config, existing, principal, "editor");
+      if (existing.hash !== item.expectedHash) throw new HttpError(409, "Backup import precondition changed", { documentId: existing.id, currentHash: existing.hash });
+      await updateDocument(config, existing, { source: item.file.source, title: item.file.title }, access);
+      updated.push(existing.id);
+    }
+    sendJson(res, 200, { applied: true, created, updated, unchanged: plan.unchanged, pullRequestReview: plan.pullRequestReview });
+    return;
+  }
+  throw new HttpError(404, "Unknown backup route");
+}
+
+async function routeOffline(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  const action = parts[2];
+  const draftId = parts[3];
+  const subaction = parts[4];
+  if (action !== "drafts") throw new HttpError(404, "Unknown offline route");
+  if (!draftId && method === "GET") {
+    sendJson(res, 200, { drafts: config.platform.listOfflineDrafts(user.id) });
+    return;
+  }
+  if (!draftId && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const documentId = stringInput(input, "documentId");
+    await requireResourceAccess(config, principal, "document", documentId, "editor");
+    const now = config.now().toISOString();
+    const draft: OfflineDraft = {
+      id: uniqueId(config),
+      userId: user.id,
+      documentId,
+      baseHash: shaInput(input.baseHash, "baseHash"),
+      baseSource: stringInput(input, "baseSource"),
+      source: stringInput(input, "source"),
+      createdAt: now,
+      updatedAt: now,
+    };
+    sendJson(res, 201, config.platform.saveOfflineDraft(draft));
+    return;
+  }
+  if (draftId && subaction === "merge" && method === "POST") {
+    const draft = config.platform.listOfflineDrafts(user.id).find((item) => item.id === draftId);
+    if (!draft) throw new HttpError(404, "Offline draft not found");
+    const document = await readDocument(config, draft.documentId);
+    requireRecordAccess(config, document, principal, "editor");
+    sendJson(res, 200, config.platform.mergeOfflineDraft(draft.id, document.source, document.hash, config.now().toISOString()));
+    return;
+  }
+  throw new HttpError(404, "Unknown offline draft route");
+}
+
+async function routeRealtime(req: IncomingMessage, res: ServerResponse, url: URL, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  const method = req.method ?? "GET";
+  if (parts[2] !== "documents" || parts[4] !== "operations") throw new HttpError(404, "Unknown realtime route");
+  const documentId = stringPathPart(parts[3], "Document ID");
+  const document = await readDocument(config, documentId);
+  const access = requireRecordAccess(config, document, principal, method === "GET" ? "viewer" : "editor");
+  if (method === "GET") {
+    const after = boundedInteger(numberQuery(url.searchParams.get("after")), 0, 0, 1_000_000_000, "after");
+    sendJson(res, 200, { operations: config.platform.realtimeOperations(documentId, after), currentHash: document.hash });
+    return;
+  }
+  if (method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    requireDocumentPrecondition(req, document, input);
+    const ops = patchOpsInput(input.ops);
+    const proof = createCloudPatchProof(config, document, ops);
+    if (!proof.canWrite || proof.preHash.sha256 !== document.hash) throw new HttpError(422, "Realtime operation proof failed", { proof: cloudProofRecord(proof) });
+    const updated = await updateDocument(config, document, { source: proof.postSource }, access);
+    const prior = config.platform.realtimeOperations(documentId);
+    const operation: RealtimeOperation = {
+      id: uniqueId(config),
+      documentId,
+      userId: user.id,
+      actorType: "human",
+      sequence: (prior.at(-1)?.sequence ?? 0) + 1,
+      baseHash: document.hash,
+      resultHash: updated.hash,
+      operations: ops,
+      affectedIds: [...new Set(ops.flatMap((op) => operationTargetIds(op)))],
+      proofStatus: "pass",
+      createdAt: config.now().toISOString(),
+    };
+    sendJson(res, 201, { operation: config.platform.recordRealtimeOperation(operation), document: documentResponse(updated, access) });
+    return;
+  }
+  throw new HttpError(405, "Method not allowed");
+}
+
+async function routeEnterprise(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
+  const user = requireUser(principal);
+  requireWorkspaceOwner(config, user);
+  const method = req.method ?? "GET";
+  const action = parts[2];
+  if (!action && method === "GET") {
+    sendJson(res, 200, config.platform.enterprisePolicy());
+    return;
+  }
+  if (!action && method === "PUT") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const sso = optionalRecord(input.sso, "sso") ?? {};
+    const scim = optionalRecord(input.scim, "scim") ?? {};
+    const policy: EnterprisePolicy = {
+      id: "workspace",
+      sso: {
+        enabled: sso.enabled === true,
+        provider: sso.provider === "oidc" || sso.provider === "saml" ? sso.provider : "none",
+        ...(optionalString(sso.issuer) ? { issuer: optionalString(sso.issuer) } : {}),
+        enforced: sso.enforced === true,
+      },
+      scim: { enabled: scim.enabled === true, ...(optionalString(scim.baseUrl) ? { baseUrl: absoluteUrl(scim.baseUrl, "scim.baseUrl") } : {}) },
+      retentionDays: boundedInteger(input.retentionDays, 365, 1, 36_500, "retentionDays"),
+      legalHoldEnabled: input.legalHoldEnabled === true,
+      dataResidency: stringInput(input, "dataResidency", "local").slice(0, 100),
+      connectorAllowlist: connectorKinds(input.connectorAllowlist),
+      modelAllowlist: requiredStringArray(input.modelAllowlist, "modelAllowlist", 100),
+      requireZeroRetentionModels: input.requireZeroRetentionModels === true,
+      auditExportEnabled: input.auditExportEnabled !== false,
+      updatedAt: config.now().toISOString(),
+      updatedBy: user.id,
+    };
+    if (policy.sso.enforced && !config.ssoTrustedHeaderHash) throw new HttpError(409, "Configure NOMA_CLOUD_SSO_TRUST_SECRET before enforcing SSO");
+    sendJson(res, 200, platformInput(() => config.platform.setEnterprisePolicy(policy)));
+    return;
+  }
+  if (action === "scim" && method === "GET") {
+    sendJson(res, 200, { identities: config.platform.listScimIdentities() });
+    return;
+  }
+  if (action === "scim" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const identity: ScimIdentity = {
+      id: stringInput(input, "id"),
+      externalId: stringInput(input, "externalId"),
+      userId: stringInput(input, "userId"),
+      userName: stringInput(input, "userName"),
+      active: input.active !== false,
+      groups: optionalStringArray(input.groups, "groups", 500) ?? [],
+      updatedAt: config.now().toISOString(),
+    };
+    sendJson(res, 201, platformInput(() => config.platform.upsertScimIdentity(identity, user.id)));
+    return;
+  }
+  if (action === "legal-holds" && method === "GET") {
+    sendJson(res, 200, { holds: config.platform.listLegalHolds() });
+    return;
+  }
+  if (action === "legal-holds" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const resourceType = input.resourceType === "document" || input.resourceType === "site" || input.resourceType === "user" ? input.resourceType : undefined;
+    if (!resourceType) throw new HttpError(400, "resourceType must be document, site, or user");
+    const hold: LegalHold = { id: uniqueId(config), resourceType, resourceId: stringInput(input, "resourceId"), reason: stringInput(input, "reason").slice(0, 2_000), createdBy: user.id, createdAt: config.now().toISOString() };
+    sendJson(res, 201, platformInput(() => config.platform.putLegalHold(hold)));
+    return;
+  }
+  if (action === "audit" && method === "GET") {
+    const resources = [...config.store.listDocuments(user).map((document) => document.id), ...config.store.listSites(user).map((site) => site.id), "workspace"];
+    sendJson(res, 200, platformInput(() => config.platform.exportAudit(user.id, resources)));
+    return;
+  }
+  if (action === "retention" && method === "POST") {
+    sendJson(res, 200, config.platform.enforceRetention(config.now().toISOString()));
+    return;
+  }
+  throw new HttpError(404, "Unknown enterprise route");
 }
 
 async function routeNavigation(
@@ -3143,6 +4043,249 @@ function optionalFolderName(value: unknown): string | undefined {
   return folder || undefined;
 }
 
+function knowledgeDocuments(config: CloudServerConfig, user: CloudUserRecord, siteId?: string, agentId?: string): KnowledgeDocumentAccess[] {
+  let summaries = config.store.listDocuments(user, 10_000);
+  if (siteId) {
+    if (!config.store.resourceAccess(user.id, "site", siteId)) throw new HttpError(403, "Site access is required");
+    const site = config.store.readSite(siteId);
+    if (!site) throw new HttpError(404, "Site not found");
+    const siteDocuments = new Set(site.documentIds);
+    summaries = summaries.filter((summary) => siteDocuments.has(summary.id));
+  }
+  let agentGrants: AgentAccessGrant[] | undefined;
+  if (agentId) {
+    const agent = ownedAgent(config, user, agentId);
+    if (agent.status !== "active") throw new HttpError(403, "Agent identity is not active");
+    agentGrants = config.platform.listAgentAccess(agentId);
+  }
+  const access: KnowledgeDocumentAccess[] = [];
+  for (const summary of summaries) {
+    if (config.store.isTrashed("document", summary.id)) continue;
+    const humanAccess = config.store.resourceAccess(user.id, "document", summary.id);
+    if (!humanAccess) continue;
+    let role = humanAccess.role;
+    let via: KnowledgeDocumentAccess["via"] = humanAccess.via;
+    if (agentGrants) {
+      const direct = agentGrants.find((grant) => grant.resourceType === "document" && grant.resourceId === summary.id);
+      const siteGrant = agentGrants.find((grant) => grant.resourceType === "site" && config.store.readSite(grant.resourceId)?.documentIds.includes(summary.id));
+      const agentAccess = direct ?? siteGrant;
+      if (!agentAccess) continue;
+      role = agentAccess.role;
+      via = "agent";
+    }
+    const document = config.store.readDocument(summary.id);
+    if (document) access.push({ document, role, via });
+  }
+  return access;
+}
+
+function optionalStringArray(value: unknown, label: string, max: number): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new HttpError(400, `${label} must be an array`);
+  const items = value.map((item) => {
+    if (typeof item !== "string" || !item.trim()) throw new HttpError(400, `${label} must contain non-empty strings`);
+    return item.trim().slice(0, 1_000);
+  });
+  if (items.length > max) throw new HttpError(400, `${label} cannot contain more than ${max} items`);
+  return [...new Set(items)];
+}
+
+function requiredStringArray(value: unknown, label: string, max: number): string[] {
+  const items = optionalStringArray(value, label, max);
+  if (!items || items.length === 0) throw new HttpError(400, `${label} must contain at least one item`);
+  return items;
+}
+
+function optionalRecord(value: unknown, label: string): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new HttpError(400, `${label} must be an object`);
+  return value as Record<string, unknown>;
+}
+
+function scalarRecord(value: unknown, label: string): Record<string, string | number | boolean> {
+  const record = optionalRecord(value, label) ?? {};
+  const result: Record<string, string | number | boolean> = {};
+  for (const [key, item] of Object.entries(record)) {
+    if (typeof item !== "string" && typeof item !== "number" && typeof item !== "boolean") throw new HttpError(400, `${label}.${key} must be a string, number, or boolean`);
+    result[key] = item;
+  }
+  return result;
+}
+
+function boundedNumber(value: unknown, fallback: number, min: number, max: number, label: string): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new HttpError(400, `${label} must be a finite number`);
+  if (value < min || value > max) throw new HttpError(400, `${label} must be between ${min} and ${max}`);
+  return value;
+}
+
+function stringPathPart(value: string | undefined, label: string): string {
+  if (!value) throw new HttpError(400, `${label} is required`);
+  return value;
+}
+
+function optionalIsoDate(value: unknown, label: string): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) throw new HttpError(400, `${label} must be an ISO date`);
+  return value;
+}
+
+function requiredIsoDate(value: unknown, label: string): string {
+  const date = optionalIsoDate(value, label);
+  if (!date) throw new HttpError(400, `${label} is required`);
+  return date;
+}
+
+function ragEvaluationFixtures(value: unknown): RagEvaluationFixture[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 500) throw new HttpError(400, "fixtures must be an array with 1-500 entries");
+  return value.map((item, index) => {
+    const record = optionalRecord(item, `fixtures[${index}]`)!;
+    return {
+      id: stringInput(record, "id"),
+      query: stringInput(record, "query"),
+      requiredSources: evaluationSources(record.requiredSources, `fixtures[${index}].requiredSources`),
+      forbiddenSources: evaluationSources(record.forbiddenSources, `fixtures[${index}].forbiddenSources`),
+      ...(record.expectAbstention === undefined ? {} : { expectAbstention: record.expectAbstention === true }),
+      ...(typeof record.maxLatencyMs === "number" ? { maxLatencyMs: boundedNumber(record.maxLatencyMs, 0, 0, 3_600_000, "maxLatencyMs") } : {}),
+      ...(typeof record.maxCostUsd === "number" ? { maxCostUsd: boundedNumber(record.maxCostUsd, 0, 0, 1_000_000, "maxCostUsd") } : {}),
+    };
+  });
+}
+
+function evaluationSources(value: unknown, label: string): Array<{ documentId: string; blockId?: string }> | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new HttpError(400, `${label} must be an array`);
+  return value.map((item, index) => {
+    const record = optionalRecord(item, `${label}[${index}]`)!;
+    return { documentId: stringInput(record, "documentId"), ...(optionalString(record.blockId) ? { blockId: optionalString(record.blockId) } : {}) };
+  });
+}
+
+function platformInput<T>(operation: () => T): T {
+  try {
+    return operation();
+  } catch (error) {
+    throw new HttpError(409, error instanceof Error ? error.message : "Platform operation failed");
+  }
+}
+
+function platformForbidden<T>(operation: () => T): T {
+  try {
+    return operation();
+  } catch (error) {
+    throw new HttpError(403, error instanceof Error ? error.message : "Agent authorization failed");
+  }
+}
+
+function ownedAgent(config: CloudServerConfig, user: CloudUserRecord, agentId: string): CloudAgentIdentity {
+  const agent = config.platform.readAgent(agentId);
+  if (!agent) throw new HttpError(404, "Agent not found");
+  if (agent.createdBy !== user.id) throw new HttpError(403, "Agent owner access is required");
+  return agent;
+}
+
+function requireGatewayAgentDocumentAccess(config: CloudServerConfig, agentId: string, documentId: string, capability: string): AgentAccessGrant {
+  const agent = config.platform.readAgent(agentId);
+  if (!agent || agent.status !== "active") throw new HttpError(403, "Agent identity is not active");
+  if (!agent.capabilities.includes(capability)) throw new HttpError(403, `Agent lacks capability: ${capability}`);
+  const grants = config.platform.listAgentAccess(agentId);
+  const direct = grants.find((grant) => grant.resourceType === "document" && grant.resourceId === documentId);
+  const inherited = grants.find((grant) => grant.resourceType === "site" && config.store.readSite(grant.resourceId)?.documentIds.includes(documentId));
+  const grant = direct ?? inherited;
+  if (!grant) throw new HttpError(403, "Agent has no explicit page or space grant for this document");
+  return grant;
+}
+
+function agentRunTrigger(value: unknown): AgentRun["trigger"] {
+  if (value === "scheduled" || value === "event" || value === "webhook") return value;
+  if (value === undefined || value === "manual") return "manual";
+  throw new HttpError(400, "trigger must be manual, scheduled, event, or webhook");
+}
+
+function connectorKind(value: unknown): ConnectorKind {
+  if (value === "github" || value === "slack" || value === "google_drive" || value === "jira" || value === "linear" || value === "filesystem") return value;
+  throw new HttpError(400, "Unsupported connector kind");
+}
+
+function connectorKinds(value: unknown): ConnectorKind[] {
+  return requiredStringArray(value, "connectorAllowlist", 6).map(connectorKind);
+}
+
+function visibleConnector(config: CloudServerConfig, user: CloudUserRecord, connectorId: string): KnowledgeConnector {
+  const connector = config.platform.listConnectors().find((item) => item.id === connectorId);
+  if (!connector) throw new HttpError(404, "Connector not found");
+  if (connector.createdBy !== user.id && (!connector.siteId || !config.store.resourceAccess(user.id, "site", connector.siteId))) throw new HttpError(403, "Connector access is required");
+  return connector;
+}
+
+function permissionLineage(value: unknown): ConnectorSourceRecord["upstreamPermissions"] {
+  if (!Array.isArray(value)) throw new HttpError(400, "upstreamPermissions must be an array");
+  return value.map((item, index) => {
+    const record = optionalRecord(item, `upstreamPermissions[${index}]`)!;
+    return { principal: stringInput(record, "principal"), role: stringInput(record, "role") };
+  });
+}
+
+function absoluteUrl(value: unknown, label: string): string {
+  if (typeof value !== "string") throw new HttpError(400, `${label} must be a URL`);
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("invalid protocol");
+    return url.toString();
+  } catch {
+    throw new HttpError(400, `${label} must be an absolute HTTP URL`);
+  }
+}
+
+function recipeTriggerModes(value: unknown): AgentRecipe["trigger"]["modes"] {
+  return requiredStringArray(value, "trigger.modes", 4).map(recipeTriggerMode);
+}
+
+function recipeTriggerMode(value: unknown): RecipeRun["triggerMode"] {
+  if (value === "manual" || value === "scheduled" || value === "event" || value === "webhook") return value;
+  throw new HttpError(400, "trigger mode must be manual, scheduled, event, or webhook");
+}
+
+function analyticsType(value: unknown): AnalyticsEvent["type"] {
+  if (value === "no_result" || value === "answer_generated" || value === "citation_opened" || value === "answer_rejected" || value === "task_completed") return value;
+  throw new HttpError(400, "Unsupported analytics event type");
+}
+
+function backupBundleInput(value: unknown): NomaBackupBundle {
+  const bundle = optionalRecord(value, "bundle");
+  if (!bundle) throw new HttpError(400, "bundle is required");
+  const manifest = optionalRecord(bundle.manifest, "bundle.manifest");
+  if (!manifest || manifest.format !== "noma-cloud-backup-v1") throw new HttpError(400, "Unsupported backup format");
+  requiredIsoDate(manifest.exportedAt, "bundle.manifest.exportedAt");
+  if (!Array.isArray(bundle.files)) throw new HttpError(400, "bundle.files must be an array");
+  for (const [index, item] of bundle.files.entries()) {
+    const file = optionalRecord(item, `bundle.files[${index}]`)!;
+    stringInput(file, "path");
+    stringInput(file, "documentId");
+    stringInput(file, "title");
+    shaInput(file.hash, `bundle.files[${index}].hash`);
+    if (typeof file.source !== "string") throw new HttpError(400, `bundle.files[${index}].source must be a string`);
+    requiredIsoDate(file.updatedAt, `bundle.files[${index}].updatedAt`);
+  }
+  return bundle as unknown as NomaBackupBundle;
+}
+
+function shaInput(value: unknown, label: string): string {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) throw new HttpError(400, `${label} must be a lowercase SHA-256 hash`);
+  return value;
+}
+
+function operationTargetIds(operation: PatchOp): string[] {
+  const value = operation as unknown as Record<string, unknown>;
+  return [value.id, value.parentId, value.to].filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function requireWorkspaceOwner(config: CloudServerConfig, user: CloudUserRecord): void {
+  const ownsSite = config.store.listSites(user).some((site) => site.currentRole === "owner");
+  const bootstrapAdmin = config.store.listUsers()[0]?.id === user.id;
+  if (!ownsSite && !bootstrapAdmin) throw new HttpError(403, "Workspace owner access is required");
+}
+
 function stringInput(input: Record<string, unknown>, key: string, fallback?: string): string {
   const value = optionalString(input[key]);
   if (value) return value;
@@ -3340,6 +4483,8 @@ function contentType(filePath: string): string {
       return "text/javascript; charset=utf-8";
     case ".json":
       return "application/json; charset=utf-8";
+    case ".webmanifest":
+      return "application/manifest+json; charset=utf-8";
     case ".svg":
       return "image/svg+xml";
     case ".png":

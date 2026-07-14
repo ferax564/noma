@@ -51,6 +51,8 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
   assert.match(await text(page, "#siteList"), /Research Workspace/);
   assert.match(await text(page, "#historyList"), /Version 1 · current/);
   assert.ok((await page.$$eval("#pageTemplateSelect option", (options) => options.length)) >= 6);
+  assert.equal(await page.$eval('link[rel="manifest"]', (link) => link.getAttribute("href")), "manifest.webmanifest");
+  assert.equal(await page.evaluate(async () => Boolean(await navigator.serviceWorker.ready)), true);
 
   await appendSource(page, "\n\n## Browser History {id=\"browser-history\"}\nSaved as version two.\n");
   await page.locator("#savePageButton").click();
@@ -60,6 +62,12 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
   await page.locator("#globalSearchInput").fill("Browser History");
   await page.locator("#searchButton").click();
   await waitForText(page, "#searchResults", "Browser History");
+  assert.match(await text(page, "#searchResults"), /current|review due|stale/);
+  await page.locator("#askNomaInput").fill("What was saved in Browser History as version two?");
+  await page.locator("#askNomaButton").click();
+  await waitForText(page, "#askNomaResult", "Saved as version two");
+  assert.match(await text(page, "#askNomaStatus"), /confidence · \d+ exact citation/);
+  assert.match(await text(page, "#askNomaResult"), /browser-history/);
   await page.locator("#favoritePageButton").click();
   await waitForText(page, "#favoriteList", "Research Paper Draft");
   assert.equal(await page.$eval("#favoritePageButton", (button) => button.getAttribute("aria-pressed")), "true");
@@ -71,6 +79,14 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
   }, "noma.cloud.user.v1");
   const documentId = new URL(page.url()).searchParams.get("doc");
   assert.ok(documentId);
+  await requestJson(`${origin}/api/agents`, session.token, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Browser knowledge curator", modelPolicy: { model: "local-deterministic", zeroRetention: true, maxTokensPerRun: 4_000 }, capabilities: ["read_doc", "list_ids", "validate_doc", "patch_block"], budgetUsd: 3 }),
+  });
+  await page.locator("#refreshKnowledgeButton").click();
+  await waitForText(page, "#agentDirectoryList", "Browser knowledge curator");
+  assert.match(await text(page, "#agentDirectoryList"), /zero retention/);
   const reviewer = await requestJson<BrowserSession>(`${origin}/api/users`, session.token, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -134,6 +150,8 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
 
   await page.locator("#proposePatchButton").click();
   await waitForText(page, "#agentStatus", "Proof pass; proposal awaits review on BQA-2");
+  await page.locator("#refreshKnowledgeButton").click();
+  await waitForText(page, "#agentChangeInboxList", "awaiting review");
   const patchProposals = await requestJson<{ proposals: Array<{ id: string; issueId?: string; status: string }> }>(
     `${origin}/api/documents/${documentId}/patch-proposals`,
     reviewer.token,
@@ -206,6 +224,10 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
   assert.deepEqual(browserErrors, []);
 
   await appendSource(page, "\n\n## Local Draft {id=\"local-draft\"}\nKeep this unsaved text.\n");
+  assert.equal(await page.evaluate((key, id) => {
+    const drafts = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, { source?: string }>;
+    return drafts[id]?.source?.includes("Keep this unsaved text.") ?? false;
+  }, "noma.cloud.offlineDrafts.v1", documentId), true);
   const current = await requestJson<CloudDocument>(`${origin}/api/documents/${documentId}`, session.token);
   await requestJson<CloudDocument>(`${origin}/api/documents/${documentId}`, session.token, {
     method: "PUT",
@@ -221,6 +243,11 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
   assert.match(await value(page, "#sourceInput"), /Local Draft/);
   assert.doesNotMatch(await value(page, "#sourceInput"), /External Edit/);
   assert.equal(await text(page, "#dirtyBadge"), "unsaved");
+  await page.locator("#mergeDraftButton").click();
+  await waitForText(page, "#draftRecoveryStatus", "merge conflict");
+  assert.match(await value(page, "#sourceInput"), /NOMA MERGE CONFLICT: CURRENT/);
+  assert.match(await value(page, "#sourceInput"), /External Edit/);
+  assert.match(await value(page, "#sourceInput"), /Local Draft/);
   assert.equal(browserErrors.length, 1);
   assert.match(browserErrors[0] ?? "", /409 \(Conflict\)/);
 });

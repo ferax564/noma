@@ -73,11 +73,16 @@ interface CloudSearchResult {
   siteId?: string;
   documentTitle: string;
   blockId?: string;
-  nodeType: string;
+  nodeType?: string;
+  contentType?: string;
   directiveName?: string;
   title?: string;
-  excerpt: string;
+  excerpt?: string;
+  exactSource?: string;
+  score?: number;
+  freshness?: { state: string };
   line?: number;
+  sourceSpan?: { line: number; endLine: number };
 }
 
 interface CloudNavigationItem {
@@ -211,6 +216,73 @@ interface CloudPatchProposal {
   createdAt: string;
 }
 
+interface KnowledgeCitation {
+  citation: number;
+  documentId: string;
+  documentTitle: string;
+  blockId: string;
+  versionHash: string;
+  exactSource: string;
+  sourceSpan: { line: number; endLine: number };
+  confidence?: number;
+  score: number;
+  freshness: { state: "current" | "review_due" | "stale" };
+}
+
+interface AskNomaResponse {
+  state: "answered" | "insufficient_evidence";
+  answer: string;
+  confidence: { score: number; label: "low" | "medium" | "high" };
+  citations: KnowledgeCitation[];
+  conflicts: Array<{ concept: string; reason: string }>;
+}
+
+interface KnowledgeHealthItem {
+  id: string;
+  kind: string;
+  severity: "info" | "warning" | "error";
+  documentId?: string;
+  blockId?: string;
+  message: string;
+}
+
+interface AgentInboxItem {
+  id: string;
+  documentId: string;
+  plan: string[];
+  affectedIds: string[];
+  applyStatus: "awaiting_review" | "ready" | "rejected" | "applied";
+  updatedAt: string;
+}
+
+interface ScopedAgentSummary {
+  id: string;
+  name: string;
+  status: "active" | "paused" | "revoked";
+  modelPolicy: { model: string; zeroRetention: boolean };
+  capabilities: string[];
+  budgetUsd: number;
+  spentUsd: number;
+}
+
+interface LocalOfflineDraft {
+  id?: string;
+  userId: string;
+  documentId: string;
+  title: string;
+  baseHash: string;
+  baseSource: string;
+  source: string;
+  updatedAt: string;
+}
+
+interface OfflineMergeResponse {
+  state: "clean" | "merged" | "conflict";
+  source: string;
+  expectedHash: string;
+  conflicts: Array<{ line: number; base: string; current: string; draft: string }>;
+}
+
 interface CloudErrorPayload {
   error?: string;
   code?: string;
@@ -297,6 +369,7 @@ const panelsOpenStorageKey = "noma.cloud.panelsOpen.v1";
 const splitSourceRatioStorageKey = "noma.cloud.splitSourceRatio.v1";
 const previewPaperWidthStorageKey = "noma.cloud.previewPaperWidth.v1";
 const themeStorageKey = "noma.cloud.theme.v1";
+const offlineDraftStorageKey = "noma.cloud.offlineDrafts.v1";
 const query = new URLSearchParams(window.location.search);
 const workIssueStatuses: CloudIssueStatus[] = ["backlog", "todo", "in_progress", "in_review", "done"];
 
@@ -425,6 +498,19 @@ const diagnosticsList = requireElement<HTMLElement>("diagnosticsList");
 const outlineList = requireElement<HTMLElement>("outlineList");
 const wikiSummary = requireElement<HTMLElement>("wikiSummary");
 const wikiLinksList = requireElement<HTMLElement>("wikiLinksList");
+const askNomaInput = requireElement<HTMLTextAreaElement>("askNomaInput");
+const askNomaButton = requireElement<HTMLButtonElement>("askNomaButton");
+const refreshKnowledgeButton = requireElement<HTMLButtonElement>("refreshKnowledgeButton");
+const askNomaStatus = requireElement<HTMLElement>("askNomaStatus");
+const askNomaResult = requireElement<HTMLElement>("askNomaResult");
+const knowledgeHealthList = requireElement<HTMLElement>("knowledgeHealthList");
+const agentChangeInboxList = requireElement<HTMLElement>("agentChangeInboxList");
+const agentDirectoryList = requireElement<HTMLElement>("agentDirectoryList");
+const offlineStatus = requireElement<HTMLElement>("offlineStatus");
+const draftRecoveryStatus = requireElement<HTMLElement>("draftRecoveryStatus");
+const recoverDraftButton = requireElement<HTMLButtonElement>("recoverDraftButton");
+const mergeDraftButton = requireElement<HTMLButtonElement>("mergeDraftButton");
+const discardDraftButton = requireElement<HTMLButtonElement>("discardDraftButton");
 
 let cloudAvailable = false;
 let busy = false;
@@ -463,11 +549,20 @@ let splitSourceRatio = readSplitSourceRatio();
 let previewPaperWidth = readPreviewPaperWidth();
 let themeMode: ThemeMode = readThemeMode();
 let pendingPreviewFocusLine: number | undefined;
+let askNomaResponse: AskNomaResponse | undefined;
+let knowledgeHealth: KnowledgeHealthItem[] = [];
+let agentInbox: AgentInboxItem[] = [];
+let scopedAgents: ScopedAgentSummary[] = [];
+let pendingLocalDraft: LocalOfflineDraft | undefined;
+let savedPageSource = "";
+let savedPageHash = "";
+let savedPageTitle = "";
 
 applyThemeMode();
 cloudUserNameInput.value = cloudUser?.name ?? "Noma collaborator";
 bindEvents();
 renderChrome();
+registerCloudPwa();
 void initializeCloud();
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -633,6 +728,28 @@ function bindEvents(): void {
     void copyLlmContext();
   });
 
+  askNomaButton.addEventListener("click", () => void askNoma());
+  askNomaInput.addEventListener("input", () => renderKnowledgeWorkspace());
+  askNomaInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
+    event.preventDefault();
+    void askNoma();
+  });
+  refreshKnowledgeButton.addEventListener("click", () => void refreshKnowledgeWorkspace());
+  recoverDraftButton.addEventListener("click", () => recoverLocalDraft());
+  mergeDraftButton.addEventListener("click", () => void mergeLocalDraft());
+  discardDraftButton.addEventListener("click", () => discardCurrentLocalDraft());
+  window.addEventListener("online", () => {
+    cloudAvailable = true;
+    renderKnowledgeWorkspace();
+    void refreshKnowledgeWorkspace();
+  });
+  window.addEventListener("offline", () => {
+    cloudAvailable = false;
+    renderKnowledgeWorkspace();
+    setCloudStatus("Offline — your draft remains editable and cached locally", "warning");
+  });
+
   for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
     button.addEventListener("click", () => {
       const mode = button.dataset.viewMode;
@@ -648,6 +765,7 @@ function bindEvents(): void {
 
   sourceInput.addEventListener("input", () => {
     markDirty();
+    persistLocalDraft();
     syncTitleFromSource();
     scheduleRender();
   });
@@ -657,6 +775,7 @@ function bindEvents(): void {
     sourceInput.value = replaceFirstHeading(sourceInput.value, nextTitle);
     if (currentPage) currentPage = { ...currentPage, title: nextTitle, source: sourceInput.value };
     markDirty();
+    persistLocalDraft();
     scheduleRender();
   });
 
@@ -689,7 +808,8 @@ async function initializeCloud(): Promise<void> {
     setCloudStatus("Ready", "ok");
   } catch (error) {
     cloudAvailable = false;
-    setCloudStatus(errorMessage(error), "error");
+    if (restoreLatestOfflineDraft()) setCloudStatus("Offline draft recovered from this device", "warning");
+    else setCloudStatus(errorMessage(error), "error");
   } finally {
     setBusy(false);
     renderChrome();
@@ -753,6 +873,11 @@ function clearWorkspaceState(): void {
   collaboratorGrants = [];
   groupGrants = [];
   shareGrants = [];
+  askNomaResponse = undefined;
+  knowledgeHealth = [];
+  agentInbox = [];
+  scopedAgents = [];
+  pendingLocalDraft = undefined;
   setCurrentPage(undefined);
   siteTitleInput.value = "Research Workspace";
   renderWorkspaceTools();
@@ -786,6 +911,10 @@ async function refreshWorkspaceTools(): Promise<void> {
     collaboratorGrants = [];
     groupGrants = [];
     shareGrants = [];
+    askNomaResponse = undefined;
+    knowledgeHealth = [];
+    agentInbox = [];
+    scopedAgents = [];
     renderWorkspaceTools();
     renderCollaborationPanels();
     renderWorkManagement();
@@ -800,6 +929,7 @@ async function refreshWorkspaceTools(): Promise<void> {
     refreshGroups(),
     refreshWorkManagement(),
     refreshAccessManagement(),
+    refreshKnowledgeWorkspace(),
   ]);
 }
 
@@ -852,7 +982,7 @@ async function searchCloud(): Promise<void> {
   try {
     const params = new URLSearchParams({ q });
     if (searchScopeSelect.value === "site" && currentSite) params.set("site", currentSite.id);
-    const response = await fetchCloudJson<{ results: CloudSearchResult[] }>(`/api/search?${params.toString()}`);
+    const response = await fetchCloudJson<{ results: CloudSearchResult[] }>(`/api/knowledge/search?${params.toString()}`);
     cloudSearchResults = response.results;
     setCloudStatus(`${cloudSearchResults.length} search result${cloudSearchResults.length === 1 ? "" : "s"}`, "ok");
   } catch (error) {
@@ -887,11 +1017,191 @@ function renderSearchResults(): void {
     title.textContent = result.title || result.documentTitle;
     const meta = document.createElement("span");
     meta.className = "row-meta";
-    meta.textContent = `${result.documentTitle}${result.line ? ` · line ${result.line}` : ""} · ${result.excerpt}`;
+    const excerpt = result.excerpt ?? result.exactSource?.replace(/\s+/g, " ").slice(0, 180) ?? "";
+    const score = result.score === undefined ? "" : ` · ${Math.round(result.score * 100)}%`;
+    const freshness = result.freshness ? ` · ${result.freshness.state.replace("_", " ")}` : "";
+    const line = result.line ?? result.sourceSpan?.line;
+    meta.textContent = `${result.documentTitle}${line ? ` · line ${line}` : ""}${score}${freshness} · ${excerpt}`;
     button.append(title, meta);
     button.addEventListener("click", () => void openSearchResult(result));
     searchResults.append(button);
   }
+}
+
+async function askNoma(): Promise<void> {
+  const query = askNomaInput.value.trim();
+  if (!query || !cloudUser || !cloudAvailable) return;
+  askNomaButton.disabled = true;
+  setPanelStatus(askNomaStatus, "Retrieving exact, permission-scoped evidence", "warning");
+  try {
+    askNomaResponse = await fetchCloudJson<AskNomaResponse>("/api/ask", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query, ...(currentSite ? { siteId: currentSite.id } : {}) }),
+    });
+    setPanelStatus(
+      askNomaStatus,
+      askNomaResponse.state === "answered"
+        ? `${askNomaResponse.confidence.label} confidence · ${askNomaResponse.citations.length} exact citation${askNomaResponse.citations.length === 1 ? "" : "s"}`
+        : "Insufficient evidence — Noma abstained",
+      askNomaResponse.state === "answered" ? "ok" : "warning",
+    );
+  } catch (error) {
+    askNomaResponse = undefined;
+    setPanelStatus(askNomaStatus, errorMessage(error), "error");
+  } finally {
+    askNomaButton.disabled = false;
+    renderKnowledgeWorkspace();
+  }
+}
+
+async function refreshKnowledgeWorkspace(): Promise<void> {
+  if (!cloudAvailable || !cloudUser) {
+    knowledgeHealth = [];
+    agentInbox = [];
+    scopedAgents = [];
+    renderKnowledgeWorkspace();
+    return;
+  }
+  const siteQuery = currentSite ? `?site=${encodeURIComponent(currentSite.id)}` : "";
+  try {
+    const [health, inbox, agents] = await Promise.all([
+      fetchCloudJson<{ items: KnowledgeHealthItem[] }>(`/api/knowledge/health${siteQuery}`),
+      fetchCloudJson<{ changes: AgentInboxItem[] }>(`/api/agent-inbox${siteQuery}`),
+      fetchCloudJson<{ agents: ScopedAgentSummary[] }>("/api/agents"),
+    ]);
+    knowledgeHealth = health.items;
+    agentInbox = inbox.changes;
+    scopedAgents = agents.agents;
+  } catch (error) {
+    setPanelStatus(askNomaStatus, errorMessage(error), "error");
+  } finally {
+    renderKnowledgeWorkspace();
+  }
+}
+
+function renderKnowledgeWorkspace(): void {
+  offlineStatus.textContent = navigator.onLine && cloudAvailable ? "online" : "offline";
+  offlineStatus.dataset.state = navigator.onLine && cloudAvailable ? "ok" : "warning";
+  askNomaButton.disabled = busy || !cloudUser || !cloudAvailable || !askNomaInput.value.trim();
+  refreshKnowledgeButton.disabled = busy || !cloudUser || !cloudAvailable;
+  renderAskNomaAnswer();
+  renderKnowledgeHealth();
+  renderAgentInbox();
+  renderAgentDirectory();
+  renderDraftRecovery();
+}
+
+function renderAskNomaAnswer(): void {
+  askNomaResult.textContent = "";
+  if (!askNomaResponse) {
+    askNomaResult.append(emptyState("Ask a question to retrieve exact block and version citations"));
+    return;
+  }
+  const answer = document.createElement("div");
+  answer.className = "knowledge-answer-text";
+  answer.textContent = askNomaResponse.answer;
+  askNomaResult.append(answer);
+  for (const citation of askNomaResponse.citations) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "knowledge-citation";
+    const title = document.createElement("span");
+    title.className = "row-title";
+    title.textContent = `[${citation.citation}] ${citation.documentTitle} · #${citation.blockId}`;
+    const meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = `lines ${citation.sourceSpan.line}-${citation.sourceSpan.endLine} · ${citation.freshness.state.replace("_", " ")} · ${Math.round(citation.score * 100)}% · ${citation.versionHash.slice(0, 10)}`;
+    button.append(title, meta);
+    button.addEventListener("click", () => void openKnowledgeCitation(citation));
+    askNomaResult.append(button);
+  }
+  for (const conflict of askNomaResponse.conflicts) {
+    const row = knowledgePanelRow(`Conflict: ${conflict.concept}`, conflict.reason, "error");
+    askNomaResult.append(row);
+  }
+}
+
+async function openKnowledgeCitation(citation: KnowledgeCitation): Promise<void> {
+  const sitePage = currentSite?.documentIds.includes(citation.documentId);
+  if (sitePage && currentSite) await loadSite(currentSite.id, citation.documentId);
+  else await loadStandaloneDocument(citation.documentId);
+  focusSourceLine(citation.sourceSpan.line);
+  try {
+    await fetchCloudJson("/api/analytics", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "citation_opened", documentId: citation.documentId, query: askNomaInput.value.trim() }),
+    });
+  } catch {
+    return;
+  }
+}
+
+function renderKnowledgeHealth(): void {
+  knowledgeHealthList.textContent = "";
+  if (knowledgeHealth.length === 0) {
+    knowledgeHealthList.append(emptyState("No active health issues"));
+    return;
+  }
+  for (const item of knowledgeHealth.slice(0, 12)) {
+    const row = knowledgePanelRow(item.kind.replaceAll("_", " "), item.message, item.severity);
+    if (item.documentId) row.addEventListener("click", () => void openHealthItem(item));
+    knowledgeHealthList.append(row);
+  }
+}
+
+async function openHealthItem(item: KnowledgeHealthItem): Promise<void> {
+  if (!item.documentId) return;
+  if (currentSite?.documentIds.includes(item.documentId)) await loadSite(currentSite.id, item.documentId);
+  else await loadStandaloneDocument(item.documentId);
+  if (item.blockId) focusBlock(item.blockId);
+}
+
+function renderAgentInbox(): void {
+  agentChangeInboxList.textContent = "";
+  if (agentInbox.length === 0) {
+    agentChangeInboxList.append(emptyState("No agent changes awaiting review"));
+    return;
+  }
+  for (const item of agentInbox.slice(0, 12)) {
+    const row = knowledgePanelRow(item.applyStatus.replaceAll("_", " "), item.plan[0] ?? "Agent change", item.applyStatus === "rejected" ? "error" : item.applyStatus === "applied" ? "ok" : "warning");
+    row.addEventListener("click", () => void openAgentInboxItem(item));
+    agentChangeInboxList.append(row);
+  }
+}
+
+async function openAgentInboxItem(item: AgentInboxItem): Promise<void> {
+  if (currentSite?.documentIds.includes(item.documentId)) await loadSite(currentSite.id, item.documentId);
+  else await loadStandaloneDocument(item.documentId);
+  if (item.affectedIds[0]) focusBlock(item.affectedIds[0]);
+}
+
+function renderAgentDirectory(): void {
+  agentDirectoryList.textContent = "";
+  if (scopedAgents.length === 0) {
+    agentDirectoryList.append(emptyState("No scoped agents"));
+    return;
+  }
+  for (const agent of scopedAgents.slice(0, 10)) {
+    const retention = agent.modelPolicy.zeroRetention ? "zero retention" : "provider retention";
+    agentDirectoryList.append(knowledgePanelRow(`${agent.name} · ${agent.status}`, `${agent.modelPolicy.model} · ${retention} · $${agent.spentUsd.toFixed(2)} / $${agent.budgetUsd.toFixed(2)} · ${agent.capabilities.length} capabilities`, agent.status === "active" ? "ok" : "warning"));
+  }
+}
+
+function knowledgePanelRow(titleText: string, metaText: string, state: PanelState): HTMLElement {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "collaboration-row";
+  row.dataset.state = state;
+  const title = document.createElement("span");
+  title.className = "row-title";
+  title.textContent = titleText;
+  const meta = document.createElement("span");
+  meta.className = "row-meta";
+  meta.textContent = metaText;
+  row.append(title, meta);
+  return row;
 }
 
 function renderNavigationList(container: HTMLElement, items: CloudNavigationItem[], emptyText: string, removable: boolean): void {
@@ -944,7 +1254,8 @@ function renderTrashList(): void {
 async function openSearchResult(result: CloudSearchResult): Promise<void> {
   if (result.siteId) await loadSite(result.siteId, result.documentId);
   else await loadStandaloneDocument(result.documentId);
-  if (result.line) focusSourceLine(result.line);
+  const line = result.line ?? result.sourceSpan?.line;
+  if (line) focusSourceLine(line);
 }
 
 async function openNavigationItem(item: CloudNavigationItem): Promise<void> {
@@ -1361,7 +1672,12 @@ async function saveCurrentPage(): Promise<void> {
     });
     replacePage(saved);
     currentPage = saved;
+    savedPageSource = saved.source;
+    savedPageHash = saved.hash;
+    savedPageTitle = saved.title;
     dirty = false;
+    clearLocalDraft(saved.id);
+    pendingLocalDraft = undefined;
     syncTitleFromSource();
     setCloudStatus("Saved page", "ok");
     updateAddress();
@@ -2649,17 +2965,28 @@ function setCurrentPage(page: CloudDocumentResponse | undefined): void {
     pageTitleInput.value = "";
     sourceInput.value = "";
     dirty = false;
+    savedPageSource = "";
+    savedPageHash = "";
+    savedPageTitle = "";
+    pendingLocalDraft = undefined;
     renderCurrent();
     renderHistory();
     renderCollaborationPanels();
     renderChrome();
     return;
   }
-  pageTitleInput.value = page.title;
-  sourceInput.value = page.source;
+  savedPageSource = page.source;
+  savedPageHash = page.hash;
+  savedPageTitle = page.title;
+  pendingLocalDraft = readLocalDraft(page.id);
+  const recoverable = pendingLocalDraft?.baseHash === page.hash;
+  pageTitleInput.value = recoverable ? pendingLocalDraft.title : page.title;
+  sourceInput.value = recoverable ? pendingLocalDraft.source : page.source;
   activeFolder = pageFolder(page.id);
-  dirty = false;
+  dirty = Boolean(recoverable);
   localStorage.setItem(activeDocumentStorageKey, page.id);
+  if (recoverable) setPanelStatus(draftRecoveryStatus, `Recovered local draft from ${formatDate(pendingLocalDraft!.updatedAt)}`, "warning");
+  else if (pendingLocalDraft) setPanelStatus(draftRecoveryStatus, "Saved source changed since this local draft. Recover or run an explicit three-way merge.", "error");
   renderCurrent();
   renderHistory();
   renderCollaborationPanels();
@@ -2667,6 +2994,148 @@ function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   void refreshHistory({ silent: true });
   void refreshPageCollaboration();
   void recordRecent("document", page.id);
+}
+
+function persistLocalDraft(): void {
+  if (!cloudUser || !currentPage || !dirty) return;
+  const drafts = readLocalDrafts();
+  const existing = drafts[currentPage.id];
+  const draft: LocalOfflineDraft = {
+    ...(existing?.id ? { id: existing.id } : {}),
+    userId: cloudUser.id,
+    documentId: currentPage.id,
+    title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value),
+    baseHash: existing?.baseHash ?? (savedPageHash || currentPage.hash),
+    baseSource: existing?.baseSource ?? savedPageSource,
+    source: sourceInput.value,
+    updatedAt: new Date().toISOString(),
+  };
+  drafts[currentPage.id] = draft;
+  localStorage.setItem(offlineDraftStorageKey, JSON.stringify(drafts));
+  pendingLocalDraft = draft;
+  renderDraftRecovery();
+}
+
+function readLocalDrafts(): Record<string, LocalOfflineDraft> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(offlineDraftStorageKey) ?? "{}") as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const drafts: Record<string, LocalOfflineDraft> = {};
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const candidate = value as Partial<LocalOfflineDraft>;
+      if (typeof candidate.documentId !== "string" || typeof candidate.baseHash !== "string" || typeof candidate.baseSource !== "string" || typeof candidate.source !== "string" || typeof candidate.title !== "string" || typeof candidate.updatedAt !== "string" || typeof candidate.userId !== "string") continue;
+      if (cloudUser && candidate.userId !== cloudUser.id) continue;
+      drafts[id] = candidate as LocalOfflineDraft;
+    }
+    return drafts;
+  } catch {
+    return {};
+  }
+}
+
+function readLocalDraft(documentId: string): LocalOfflineDraft | undefined {
+  return readLocalDrafts()[documentId];
+}
+
+function clearLocalDraft(documentId: string): void {
+  const drafts = readLocalDrafts();
+  delete drafts[documentId];
+  localStorage.setItem(offlineDraftStorageKey, JSON.stringify(drafts));
+}
+
+function restoreLatestOfflineDraft(): boolean {
+  const draft = Object.values(readLocalDrafts()).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  if (!draft) return false;
+  const page: CloudDocumentResponse = {
+    id: draft.documentId,
+    title: draft.title,
+    source: draft.baseSource,
+    hash: draft.baseHash,
+    createdAt: draft.updatedAt,
+    updatedAt: draft.updatedAt,
+    diagnostics: [],
+    access: { role: "editor", via: "offline-cache" },
+  };
+  currentSite = undefined;
+  pages = [page];
+  setCurrentPage(page);
+  return true;
+}
+
+function recoverLocalDraft(): void {
+  if (!pendingLocalDraft || !currentPage) return;
+  sourceInput.value = pendingLocalDraft.source;
+  pageTitleInput.value = pendingLocalDraft.title;
+  dirty = true;
+  setPanelStatus(draftRecoveryStatus, "Recovered the cached draft. Save or merge when connected.", "warning");
+  scheduleRender();
+  renderChrome();
+}
+
+async function mergeLocalDraft(): Promise<void> {
+  if (!pendingLocalDraft || !currentPage) return;
+  setPanelStatus(draftRecoveryStatus, "Merging saved, current, and offline sources", "warning");
+  try {
+    let merged: OfflineMergeResponse;
+    if (cloudAvailable && cloudUser) {
+      const savedDraft = await fetchCloudJson<{ id: string }>("/api/offline/drafts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ documentId: pendingLocalDraft.documentId, baseHash: pendingLocalDraft.baseHash, baseSource: pendingLocalDraft.baseSource, source: pendingLocalDraft.source }),
+      });
+      merged = await fetchCloudJson<OfflineMergeResponse>(`/api/offline/drafts/${encodeURIComponent(savedDraft.id)}/merge`, { method: "POST" });
+    } else {
+      merged = mergeOfflineSources(pendingLocalDraft.baseSource, savedPageSource, pendingLocalDraft.source, savedPageHash);
+    }
+    sourceInput.value = merged.source;
+    pageTitleInput.value = sourceTitle(merged.source);
+    dirty = true;
+    persistLocalDraft();
+    setPanelStatus(draftRecoveryStatus, merged.state === "conflict" ? `${merged.conflicts.length} merge conflict${merged.conflicts.length === 1 ? "" : "s"}; resolve the markers before saving` : "Draft merged against the current saved source", merged.state === "conflict" ? "error" : "ok");
+    scheduleRender();
+  } catch (error) {
+    setPanelStatus(draftRecoveryStatus, errorMessage(error), "error");
+  } finally {
+    renderChrome();
+  }
+}
+
+function mergeOfflineSources(baseSource: string, currentSource: string, draftSource: string, expectedHash: string): OfflineMergeResponse {
+  const base = baseSource.split("\n");
+  const current = currentSource.split("\n");
+  const draft = draftSource.split("\n");
+  const output: string[] = [];
+  const conflicts: OfflineMergeResponse["conflicts"] = [];
+  for (let index = 0; index < Math.max(base.length, current.length, draft.length); index++) {
+    const baseLine = base[index] ?? "";
+    const currentLine = current[index] ?? "";
+    const draftLine = draft[index] ?? "";
+    if (currentLine === draftLine) output.push(currentLine);
+    else if (currentLine === baseLine) output.push(draftLine);
+    else if (draftLine === baseLine) output.push(currentLine);
+    else {
+      conflicts.push({ line: index + 1, base: baseLine, current: currentLine, draft: draftLine });
+      output.push(`<!-- NOMA MERGE CONFLICT: CURRENT -->\n${currentLine}\n<!-- NOMA MERGE CONFLICT: OFFLINE DRAFT -->\n${draftLine}\n<!-- NOMA MERGE CONFLICT: END -->`);
+    }
+  }
+  return { state: conflicts.length > 0 ? "conflict" : "merged", source: output.join("\n"), expectedHash, conflicts };
+}
+
+function discardCurrentLocalDraft(): void {
+  if (!currentPage || !pendingLocalDraft) return;
+  clearLocalDraft(currentPage.id);
+  pendingLocalDraft = undefined;
+  setPanelStatus(draftRecoveryStatus, "Cached draft discarded", "ok");
+  renderChrome();
+}
+
+function renderDraftRecovery(): void {
+  const hasDraft = Boolean(pendingLocalDraft && currentPage?.id === pendingLocalDraft.documentId);
+  recoverDraftButton.disabled = busy || !hasDraft;
+  mergeDraftButton.disabled = busy || !hasDraft;
+  discardDraftButton.disabled = busy || !hasDraft;
+  if (!hasDraft && !dirty) setPanelStatus(draftRecoveryStatus, "Drafts are cached locally as you type.", "ok");
 }
 
 function replacePage(page: CloudDocumentResponse): void {
@@ -2923,6 +3392,7 @@ function renderChrome(): void {
   renderWorkManagement();
   renderPatchProposals();
   renderAccessManagement();
+  renderKnowledgeWorkspace();
 }
 
 function renderNavigation(): void {
@@ -3732,6 +4202,7 @@ function emptyState(text: string): HTMLElement {
 function markDirty(): void {
   dirty = true;
   if (currentPage) currentPage = { ...currentPage, source: sourceInput.value, title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value) };
+  persistLocalDraft();
   renderChrome();
 }
 
@@ -4650,7 +5121,19 @@ function promptName(label: string, fallback: string): string {
 }
 
 function confirmDiscardDirty(): boolean {
-  return !dirty || window.confirm("Discard unsaved page changes?");
+  if (!dirty) return true;
+  if (!window.confirm("Discard unsaved page changes?")) return false;
+  if (currentPage) clearLocalDraft(currentPage.id);
+  pendingLocalDraft = undefined;
+  dirty = false;
+  return true;
+}
+
+function registerCloudPwa(): void {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/cloud-sw.js").catch(() => undefined);
+  });
 }
 
 function updateAddress(): void {
