@@ -46,7 +46,9 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
   enterprise.ts            Enterprise public barrel (Docs / Visuals / Work kernel)
-  enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops
+  enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM host, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops, Yjs, Atlassian, AWS, security review, paid-pilot
+  paperdom-*.ts            Vendored PaperDOM kernel from github.com/ferax564/paperDOM (pinned MIT extract)
+  paperdom-pin.ts          PaperDOM source commit pin
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
   index.ts                 Public library exports (npm package surface)
 bin/noma.mjs               Node CLI shim
@@ -57,9 +59,9 @@ packages/
   agent-sdk-py/            Python agent SDK starter
   noma-py-seed/            Native Python second-implementation seed — parser + ids + 3 patch ops vs conformance corpus (no Node dep)
   lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
-  document-core/, document-ui/, platform/, work/, knowledge/, connectors/, contracts/, paperdom-core/  Enterprise extraction boundaries re-exporting the CLI kernel
+  document-core/, document-ui/, platform/, work/, knowledge/, connectors/, contracts/, paperdom-core/, paperdom-react/, paperdom-io/  Enterprise extraction boundaries re-exporting the CLI kernel
 schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript, changeset, enterprise-resource (`noma schema <name>`)
-web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts (esbuild via build:web-ui)
+web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts, enterprise-collab.ts (esbuild via build:web-ui)
 themes/                    default.css + dark.css HTML themes
 examples/                  Demo .noma files — agent-plan, tech-doc, research-thesis, word-review-loop, interactive-projection, …
   conformance/             Golden-file conformance suite (valid/invalid/patch/patch-error fixtures) — `npm run verify:conformance` gates CI
@@ -70,7 +72,8 @@ examples/                  Demo .noma files — agent-plan, tech-doc, research-t
 docs/                      Project docs, all written in .noma
   direction.noma           Canonical positioning (mirrors PLAN.md §23)
   spec.noma                Block-type and AST reference
-  enterprise.noma          Enterprise workspace capability boundary (implemented vs not claimed)
+  enterprise.noma          Enterprise workspace capability boundary (implemented vs remaining operational concerns)
+  security-review.noma     Independent security-review findings pack
   spec-agent-protocol-v1.noma  Normative Agent Protocol RFC v1.0 (patch ops, transcripts, capabilities)
   agent-protocol.noma      Legacy protocol doc — superseded by the v1 RFC above
   agent-guide.noma, getting-started.noma, workbench.noma, noma-cloud.noma, architecture.noma, comparison.noma, …
@@ -85,6 +88,7 @@ test/                      node:test suites — parser, patch, validator, roundt
 .github/workflows/         CI — pages.yml (typecheck+tests+conformance+site → GitHub Pages),
                            ci.yml (PR matrix tests), freshness.yml (scheduled docs staleness check)
 action.yml                 Reusable GitHub Action — validate/render/proof .noma artifacts in CI (strict by default)
+infra/                     AWS/EU CloudFormation reference (eu-central-1, KMS, RDS, S3, Secrets Manager)
 Dockerfile, ezkeel.yaml    Noma Cloud container build + deployment config
 dist/                      Build output (gitignored). GH Pages deploys this.
 PLAN.md                    Full product vision (do NOT delete). §23 = direction. §24 = shipped tracker per release.

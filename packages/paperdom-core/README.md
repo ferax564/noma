@@ -1,5 +1,9 @@
 # @ferax564/noma-paperdom-core
 
-Pure PaperDOM JSON model and transaction engine.
+Pinned PaperDOM JSON model and transaction engine, extracted from
+[`ferax564/paperDOM`](https://github.com/ferax564/paperDOM) at the commit in
+`PAPERDOM_UPSTREAM_COMMIT`.
 
-This package is an extraction boundary over the published `@ferax564/noma-cli` kernel. Domain logic lives in `src/enterprise-*.ts` once; this package re-exports the public surface without dual-write copies.
+Host policy (server-derived actors, stale revision mapping) lives in Noma's
+`applyHostedPaperDomTransaction`. This package re-exports the CLI kernel
+without dual-write copies.

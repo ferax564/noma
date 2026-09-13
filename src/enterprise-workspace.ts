@@ -32,6 +32,12 @@ import {
   type StatusCategory,
 } from "./enterprise-contracts.js";
 import {
+  fetchConfluencePage,
+  fetchJiraIssuePayload,
+  type AtlassianAuth,
+  type AtlassianHttp,
+} from "./enterprise-atlassian.js";
+import {
   assertSafeImportUrl,
   nextCutoverStage,
   parseConfluenceStorage,
@@ -1349,6 +1355,29 @@ export class EnterpriseWorkspace {
     const mapped = parseConfluenceStorage(xml, title);
     const documentId = this.createDocument(actor, { spaceId, title: mapped.title, source: mapped.source });
     return { documentId, lossReport: mapped.lossReport };
+  }
+
+  async importLiveConfluencePage(
+    actor: ActorContext,
+    spaceId: string,
+    auth: AtlassianAuth,
+    pageId: string,
+    http?: AtlassianHttp,
+  ): Promise<{ documentId: string; lossReport: unknown[] }> {
+    this.requireRole(actor, "space", spaceId, "editor");
+    const mapped = await fetchConfluencePage(auth, pageId, http);
+    const documentId = this.createDocument(actor, { spaceId, title: mapped.title, source: mapped.source });
+    return { documentId, lossReport: mapped.lossReport };
+  }
+
+  async importLiveJiraIssue(
+    actor: ActorContext,
+    projectId: string,
+    auth: AtlassianAuth,
+    key: string,
+    http?: AtlassianHttp,
+  ): Promise<{ id: string; key: string }> {
+    return this.importJiraIssue(actor, projectId, await fetchJiraIssuePayload(auth, key, http));
   }
 
   importJiraIssue(actor: ActorContext, projectId: string, payload: Record<string, unknown>): { id: string; key: string } {

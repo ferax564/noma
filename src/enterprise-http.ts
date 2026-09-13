@@ -2,12 +2,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { EnterpriseError, type ActorContext } from "./enterprise-contracts.js";
 import { healthProbe } from "./enterprise-ops.js";
 import type { CrdtOp } from "./enterprise-crdt.js";
+import { attachEnterpriseYjs } from "./enterprise-yjs.js";
 import { EnterpriseWorkspace } from "./enterprise-workspace.js";
 
 export interface EnterpriseHttpOptions {
   workspace: EnterpriseWorkspace;
   host?: string;
   port?: number;
+  collabHtml?: string;
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -37,6 +39,11 @@ export function createEnterpriseHttpServer(options: EnterpriseHttpOptions) {
     void (async () => {
       try {
         const url = new URL(req.url ?? "/", "http://enterprise.local");
+        if (req.method === "GET" && (url.pathname === "/collab" || url.pathname === "/collab.html") && options.collabHtml) {
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+          res.end(options.collabHtml);
+          return;
+        }
         if (req.method === "GET" && url.pathname === "/health") {
           send(res, 200, healthProbe({ dbOk: true, objectStoreOk: true, killSwitch: false }));
           return;
@@ -92,6 +99,7 @@ export function createEnterpriseHttpServer(options: EnterpriseHttpOptions) {
 
 export function listenEnterpriseHttp(options: EnterpriseHttpOptions): Promise<{ port: number; close: () => Promise<void> }> {
   const server = createEnterpriseHttpServer(options);
+  const wss = attachEnterpriseYjs(server, options.workspace);
   const host = options.host ?? "127.0.0.1";
   return new Promise((resolve, reject) => {
     server.listen(options.port ?? 0, host, () => {
@@ -104,6 +112,7 @@ export function listenEnterpriseHttp(options: EnterpriseHttpOptions): Promise<{ 
         port: address.port,
         close: () =>
           new Promise((done, fail) => {
+            wss.close();
             server.close((err) => (err ? fail(err) : done()));
           }),
       });

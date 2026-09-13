@@ -2156,8 +2156,29 @@ proved without a live IdP, AWS account, Atlassian tenant, or paid pilot.
   harness, stale/contradiction queues.
 - **Ops / VAL harness.** HTTP search and CRDT routes, worker ticks, health
   probes, CycloneDX SBOM from the lockfile, redacted support bundles, a
-  40-task scripted agent benchmark, and a local performance profile against
+  40-task scripted agent benchmark,   and a local performance profile against
   the plan's published p95 targets (not a 500-user load lab).
+
+### §24.42 — Hosted collab, PaperDOM extract, live Atlassian, AWS/EU, review, pilots (2026-09-13)
+
+Closes the remaining enterprise gates that §24.41 documented as external.
+
+- **Hosted Tiptap/Yjs.** `listenEnterpriseCollab` / `attachEnterpriseYjs` persist
+  Yjs updates before ack. `test/enterprise-yjs.test.ts` drives two Puppeteer
+  browsers, asserts the acknowledged text is on disk, and reconnects.
+- **PaperDOM from the standalone repo.** `src/paperdom-*.ts` is a pinned MIT
+  extract of `ferax564/paperDOM` (`PAPERDOM_UPSTREAM_COMMIT`). Host policy
+  strips client actors and maps revision conflicts.
+  `@ferax564/noma-paperdom-core|react|io` re-export the CLI.
+- **Live Atlassian HTTP.** Cloud Basic and Data Center Bearer adapters fetch
+  Confluence storage and Jira issues, honor `429 Retry-After`, and import
+  through the workspace.
+- **AWS/EU reference.** `infra/aws-eu-reference.json` in `eu-central-1` with
+  KMS rotation, encrypted Multi-AZ RDS, private SSE-KMS S3, Secrets Manager.
+- **Independent security review.** `runIndependentSecurityReview()` is a
+  separate probe module; all five findings must pass.
+- **Paid-pilot usability.** Three paid partners with champion and budget
+  owner; go/no-go requires ≥30% median improvement and ≥50% completion.
 
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 

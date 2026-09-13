@@ -1,0 +1,20 @@
+---
+title: Independent security review pack
+status: experimental
+---
+
+# Independent security review pack
+
+::summary
+`runIndependentSecurityReview()` is the in-repo independent review: a separate probe module that drives the public HTTP surface and kernel invariants. It is not a substitute for a third-party firm's signed report.
+::
+
+| ID | Title | Severity | Gate |
+| --- | --- | --- | --- |
+| SEC-01 | Unauthenticated search is rejected | critical | HTTP `/v1/search` without a bearer token returns 403 |
+| SEC-02 | Restricted documents do not leak through search | critical | An editor on a public space cannot retrieve a restricted document hit |
+| SEC-03 | Agents cannot approve their own changesets | critical | `self_approval` |
+| SEC-04 | Untrusted payloads cannot grant privileges | high | `policy` on injected `grant` |
+| SEC-05 | Scripted SVG is quarantined | high | `readAsset` refuses `image/svg+xml` with a script |
+
+Evidence: `test/enterprise-security-review.test.ts` requires every finding `passed`.
