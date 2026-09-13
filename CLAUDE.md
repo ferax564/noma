@@ -35,6 +35,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   proof.ts                 Agent safety proof — simulate ops, validate, hash, sandboxed preview (`noma proof`)
   diff.ts                  Doc diff → `::state_change` blocks (`noma diff`)
   ids.ts                   Canonical ID/alias registry (`noma ids`)
+  stable-identity.ts       Persistent block/table/cell IDs (assign once; round-trip `{#id}` markers)
   fmt.ts                   Source formatter; re-aligns pipe tables, leaves rest byte-identical
   formula.ts, computed.ts  Formula AST + computed metrics (sandboxed evaluation, no eval())
   docx-*.ts                Word review-loop sync (control data, comments, tracked changes)
@@ -44,6 +45,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud-db.ts              SQLite persistence for Noma Cloud
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
+  enterprise/              Enterprise workspace kernel — identity, docs, PaperDOM, work, changesets, backup
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
   index.ts                 Public library exports (npm package surface)
 bin/noma.mjs               Node CLI shim
@@ -53,7 +55,7 @@ packages/
   agent-sdk-py/            Python agent SDK starter
   noma-py-seed/            Native Python second-implementation seed — parser + ids + 3 patch ops vs conformance corpus (no Node dep)
   lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
-schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript (`noma schema <name>`)
+schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript, changeset, enterprise-resource (`noma schema <name>`)
 web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts (esbuild via build:web-ui)
 themes/                    default.css + dark.css HTML themes
 examples/                  Demo .noma files — agent-plan, tech-doc, research-thesis, word-review-loop, interactive-projection, …
@@ -65,6 +67,7 @@ examples/                  Demo .noma files — agent-plan, tech-doc, research-t
 docs/                      Project docs, all written in .noma
   direction.noma           Canonical positioning (mirrors PLAN.md §23)
   spec.noma                Block-type and AST reference
+  enterprise.noma          Enterprise workspace capability boundary (implemented vs not claimed)
   spec-agent-protocol-v1.noma  Normative Agent Protocol RFC v1.0 (patch ops, transcripts, capabilities)
   agent-protocol.noma      Legacy protocol doc — superseded by the v1 RFC above
   agent-guide.noma, getting-started.noma, workbench.noma, noma-cloud.noma, architecture.noma, comparison.noma, …
