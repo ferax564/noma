@@ -96,6 +96,17 @@ export interface TableNode extends NodeBase {
   align: TableAlign[];
   /** Body rows, each with one entry per column. */
   rows: string[][];
+  /**
+   * Persistent column identities. Length matches `header` when present.
+   * Assigned once; never derived from header text or column index.
+   */
+  columnIds?: string[];
+  /** Persistent identities for header cells. Length matches `header` when present. */
+  headerIds?: string[];
+  /** Persistent identities for body rows. Length matches `rows` when present. */
+  rowIds?: string[];
+  /** Persistent identities for body cells. `cellIds[r][c]` matches `rows[r][c]`. */
+  cellIds?: string[][];
 }
 
 /**

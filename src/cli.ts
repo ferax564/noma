@@ -405,6 +405,8 @@ function loadSchema(name: string): string {
     "patch-op": "patch-op.schema.json",
     "patch-transaction": "patch-transaction.schema.json",
     transcript: "transcript.schema.json",
+    changeset: "changeset.schema.json",
+    "enterprise-resource": "enterprise-resource.schema.json",
   };
   const filename = filenames[safe];
   if (!filename) {
@@ -675,7 +677,7 @@ async function run(argv: string[]): Promise<void> {
 
   if (cmd === "schema") {
     if (!args.file) {
-      process.stderr.write("noma schema: <ast|capability|patch-op|patch-transaction|transcript> required\n");
+      process.stderr.write("noma schema: <ast|capability|patch-op|patch-transaction|transcript|changeset|enterprise-resource> required\n");
       process.exit(2);
     }
     try {

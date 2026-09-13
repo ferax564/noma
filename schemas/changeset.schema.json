@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "changeset.schema.json",
+  "title": "Noma enterprise changeset",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "tenantId", "actorId", "intent", "status", "operations", "idempotencyKey"],
+  "properties": {
+    "id": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "actorId": { "type": "string" },
+    "actorKind": { "type": "string", "enum": ["user", "agent", "group", "service"] },
+    "delegatedBy": { "type": "string" },
+    "intent": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "validated", "proposed", "approved", "rejected", "applied", "failed", "expired"]
+    },
+    "targetRevisions": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "sourceDependencies": { "type": "array" },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["resource", "op", "payload"],
+        "properties": {
+          "resource": { "type": "object" },
+          "op": { "type": "string" },
+          "payload": { "type": "object" }
+        }
+      }
+    },
+    "validation": { "type": "object" },
+    "diffs": { "type": "object" },
+    "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+    "reviewerIds": { "type": "array", "items": { "type": "string" } },
+    "idempotencyKey": { "type": "string" },
+    "issueOwnerOverride": { "type": "string" },
+    "result": { "type": "object" },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" }
+  }
+}

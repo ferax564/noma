@@ -15,6 +15,8 @@ const schemaNames = [
   "ast",
   "transcript",
   "capability",
+  "changeset",
+  "enterprise-resource",
 ] as const;
 
 function loadSchema(name: (typeof schemaNames)[number]): Record<string, unknown> {

@@ -2114,6 +2114,27 @@ both the v0.16 conformance/spec work and the §24.37–§24.38 Cloud work.
 Tagging, npm/MCP publication, and production deployment remain explicit
 maintainer actions after the candidate is reviewed from a clean checkout.
 
+### §24.40 — Enterprise Docs / Visuals / Work kernel (2026-09-13)
+
+Implements the enterprise implementation plan's R0/R1 vertical slice in-tree
+without claiming R2–R5 production deployment evidence.
+
+- **Persistent identity.** Optional `{#id}` block markers, table `cols`/`rows`
+  identity attributes, and `{#cell-id}` prefixes give every editable block and
+  addressable table row/column/cell a stable ID. Assignment is once-only and
+  is not derived from text, title, or index. Row insertion preserves existing
+  cell IDs; duplication remaps them.
+- **Workspace kernel.** `EnterpriseWorkspace` composes identity/policy,
+  document draft/publish coordination, a lossless visual adapter, a PaperDOM
+  command kernel (server-derived actors, revision preconditions, outlines),
+  native work (types, workflows, boards, sprints, worklogs, JQL subset),
+  governed changesets, permission-aware search/relations, importer
+  dispositions, digest-checked backup/restore, and legal holds.
+- **Evidence.** `test/stable-identity.test.ts`, `test/enterprise-workspace.test.ts`,
+  and `test/enterprise-e2e.test.ts` (the plan §17 demonstration) gate the
+  slice. `docs/enterprise.noma` states remaining non-claims: hosted CRDT,
+  live Atlassian APIs, AWS/EU reference deployment, and paid-pilot validation.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can

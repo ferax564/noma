@@ -1,5 +1,6 @@
 import type { DocumentNode, Node } from "./ast.js";
 import { walk } from "./ast.js";
+import { collectTableIdentityStrings } from "./stable-identity.js";
 
 export interface IdRecord {
   id: string;
@@ -22,19 +23,30 @@ export function collectIdRegistry(doc: DocumentNode): IdRegistry {
   const records: IdRecord[] = [];
 
   for (const node of walk(doc)) {
-    if (!node.id) continue;
-    ids.push(node.id);
-    const record: IdRecord = {
-      id: node.id,
-      type: node.type,
-      ...(node.aliases && node.aliases.length > 0 ? { aliases: node.aliases } : {}),
-      ...(node.pos?.line ? { line: node.pos.line } : {}),
-    };
-    if (node.type === "directive") record.name = node.name;
-    if (node.type === "section") record.title = node.title;
-    records.push(record);
-    for (const alias of node.aliases ?? []) {
-      aliases[alias] = node.id;
+    if (node.id) {
+      ids.push(node.id);
+      const record: IdRecord = {
+        id: node.id,
+        type: node.type,
+        ...(node.aliases && node.aliases.length > 0 ? { aliases: node.aliases } : {}),
+        ...(node.pos?.line ? { line: node.pos.line } : {}),
+      };
+      if (node.type === "directive") record.name = node.name;
+      if (node.type === "section") record.title = node.title;
+      records.push(record);
+      for (const alias of node.aliases ?? []) {
+        aliases[alias] = node.id;
+      }
+    }
+    if (node.type === "table") {
+      for (const tableId of collectTableIdentityStrings(node)) {
+        ids.push(tableId);
+        records.push({
+          id: tableId,
+          type: "table",
+          ...(node.pos?.line ? { line: node.pos.line } : {}),
+        });
+      }
     }
   }
 

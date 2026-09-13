@@ -80,3 +80,32 @@ export type {
   SemanticCollection,
   SemanticCollectionId,
 } from "./cloud-platform.js";
+export {
+  ENTERPRISE_SCHEMA_VERSION,
+  EnterpriseError,
+  EnterpriseWorkspace,
+  createTestOidc,
+  enterpriseSchema,
+  runEnterpriseReleaseDemonstration,
+  nomaToEditor,
+  editorToNoma,
+  applyVisualCommands,
+  createPaperDocument,
+} from "./enterprise/index.js";
+export {
+  assignPersistentIdentities,
+  locateTableCell,
+  updateTableCellById,
+  insertTableRowWithIdentities,
+  IDENTITY_FORMAT_VERSION,
+} from "./stable-identity.js";
+export type { IdentityFactory } from "./stable-identity.js";
+export type {
+  ActorContext,
+  ChangesetRecord,
+  Classification,
+  GrantRole,
+  QueryAst,
+  RelationType,
+  ResourceKind,
+} from "./enterprise/index.js";

@@ -6,6 +6,11 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Enterprise workspace kernel (Docs / Visuals / Work):** a modular in-process enterprise server covering shared identity and policy, persistent block/table identity, a lossless visual-document adapter, an embedded PaperDOM command kernel, native issues with configurable workflows, governed changesets, permission-aware search and relations, connector inventory/import dispositions, digest-checked backup/restore, and the section-17 end-to-end demonstration as an executable test. SQLite is the verified kernel datastore; PostgreSQL DDL is generated for the planned enterprise migration.
+- **Persistent block and table identity:** optional `{#id}` markers before blocks, `{#id cols="…" rows="…"}` table identity lines, and `{#cell-id}` cell prefixes round-trip through parse/render. Identities are assigned once, never derived from text or index, survive row insertion, and are remapped on duplication. The validator `duplicate-id` rule and `noma ids` registry include table identities.
+
 ## [0.17.0] — 2026-07-14
 
 ### Added

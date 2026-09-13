@@ -162,6 +162,13 @@
             "rows": {
               "type": "array",
               "items": { "type": "array", "items": { "type": "string" } }
+            },
+            "columnIds": { "type": "array", "items": { "type": "string" } },
+            "headerIds": { "type": "array", "items": { "type": "string" } },
+            "rowIds": { "type": "array", "items": { "type": "string" } },
+            "cellIds": {
+              "type": "array",
+              "items": { "type": "array", "items": { "type": "string" } }
             }
           }
         }
