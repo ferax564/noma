@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { visualRoundTrip } from "../src/enterprise/adapter.js";
-import { EnterpriseError } from "../src/enterprise/contracts.js";
-import { applyVisualCommands, createPaperDocument, exportFidelityReport, semanticOutline } from "../src/enterprise/paperdom.js";
-import { enterpriseSchema } from "../src/enterprise/store.js";
-import { createTestOidc, EnterpriseWorkspace } from "../src/enterprise/workspace.js";
+import { visualRoundTrip } from "../src/enterprise-adapter.js";
+import { EnterpriseError } from "../src/enterprise-contracts.js";
+import { applyVisualCommands, createPaperDocument, exportFidelityReport, semanticOutline } from "../src/enterprise-paperdom.js";
+import { enterpriseSchema } from "../src/enterprise-store.js";
+import { createTestOidc, EnterpriseWorkspace } from "../src/enterprise-workspace.js";
 import { resetIdentitySequence } from "../src/stable-identity.js";
 
 function workspace() {

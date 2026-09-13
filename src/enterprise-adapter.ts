@@ -1,7 +1,7 @@
-import type { DocumentNode, Node, TableNode } from "../ast.js";
-import { parse } from "../parser.js";
-import { renderNoma } from "../renderer-noma.js";
-import { assignPersistentIdentities, type IdentityFactory } from "../stable-identity.js";
+import type { DocumentNode, Node, TableNode } from "./ast.js";
+import { parse } from "./parser.js";
+import { renderNoma } from "./renderer-noma.js";
+import { assignPersistentIdentities, type IdentityFactory } from "./stable-identity.js";
 
 export const EDITOR_SCHEMA_VERSION = 1;
 

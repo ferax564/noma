@@ -1,0 +1,1 @@
+Enterprise process entry points. `server` is HTTP/realtime, `worker` drains outbox/jobs, and `workspace` is the human Docs/Visuals/Work shell. They import the in-tree kernel rather than duplicating domain logic.

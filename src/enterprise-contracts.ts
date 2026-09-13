@@ -1,4 +1,4 @@
-export const ENTERPRISE_SCHEMA_VERSION = 1;
+export const ENTERPRISE_SCHEMA_VERSION = 2;
 
 export type PrincipalKind = "user" | "agent" | "group" | "service";
 export type ResourceKind =
@@ -42,6 +42,41 @@ export type ImportDisposition = "imported" | "excluded" | "inaccessible" | "unsu
 export type FieldType = "text" | "number" | "date" | "boolean" | "select" | "multi_select" | "principal" | "reference";
 export type OutboxKind = "search_index" | "notification" | "external_write";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "dead_letter";
+export type CutoverStage =
+  | "inventory"
+  | "dry_run"
+  | "staging"
+  | "reconcile"
+  | "pilot"
+  | "catch_up"
+  | "freeze"
+  | "final_delta"
+  | "sign_off"
+  | "switch_authority"
+  | "rollback_window";
+export type KnowledgeHealthKind = "stale_review" | "changed_source" | "contradiction_candidate";
+export const CUTOVER_STAGES: CutoverStage[] = [
+  "inventory",
+  "dry_run",
+  "staging",
+  "reconcile",
+  "pilot",
+  "catch_up",
+  "freeze",
+  "final_delta",
+  "sign_off",
+  "switch_authority",
+  "rollback_window",
+];
+export const AGENT_RECIPES = [
+  "stale-source-refresh",
+  "changed-test-impact",
+  "issue-to-runbook",
+  "meeting-notes-to-decisions",
+  "release-note-preparation",
+  "orphaned-requirement-review",
+] as const;
+export type AgentRecipeName = (typeof AGENT_RECIPES)[number];
 
 export interface ActorContext {
   tenantId: string;

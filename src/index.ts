@@ -91,7 +91,18 @@ export {
   editorToNoma,
   applyVisualCommands,
   createPaperDocument,
-} from "./enterprise/index.js";
+  listenEnterpriseHttp,
+  runAgentBenchmark,
+  runPerformanceProfile,
+  parseConfluenceStorage,
+  parseJiraIssue,
+  assertSafeImportUrl,
+  evaluateRagFixture,
+  summarizeRagEvals,
+  AGENT_RECIPES,
+  CUTOVER_STAGES,
+  semanticOutline,
+} from "./enterprise.js";
 export {
   assignPersistentIdentities,
   locateTableCell,
@@ -108,4 +119,4 @@ export type {
   QueryAst,
   RelationType,
   ResourceKind,
-} from "./enterprise/index.js";
+} from "./enterprise.js";

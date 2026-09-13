@@ -2135,6 +2135,30 @@ without claiming R2–R5 production deployment evidence.
   slice. `docs/enterprise.noma` states remaining non-claims: hosted CRDT,
   live Atlassian APIs, AWS/EU reference deployment, and paid-pilot validation.
 
+### §24.41 — Enterprise gates expanded in-tree (2026-09-13)
+
+Extends §24.40 with executable coverage for later-gate contracts that can be
+proved without a live IdP, AWS account, Atlassian tenant, or paid pilot.
+
+- **Packaging.** Enterprise modules are flattened to `src/enterprise-*.ts` so
+  the published CLI remains a single `dist/*.js` layer. Process entry points
+  live in `apps/server|worker|workspace`. Extraction-boundary packages
+  re-export `@ferax564/noma-cli` without dual-write copies or unpublished
+  `workspace:` CLI dependencies.
+- **Collaboration.** Document drafts persist an operation log before ack.
+  Lost-ack retries are idempotent; reconnect replays unacked seqs;
+  independent block edits merge; overlapping edits conflict.
+- **Work depth.** Event-sourced throughput, cycle time, and cumulative flow;
+  bulk-edit preview; issue security levels; recipes that emit changesets;
+  JQL fragments that cannot be translated are reported, not guessed.
+- **Connectors / knowledge.** Confluence storage XML and Jira JSON fixture
+  adapters, SSRF denylist, inventory-complete cutover stages, RAG eval
+  harness, stale/contradiction queues.
+- **Ops / VAL harness.** HTTP search and CRDT routes, worker ticks, health
+  probes, CycloneDX SBOM from the lockfile, redacted support bundles, a
+  40-task scripted agent benchmark, and a local performance profile against
+  the plan's published p95 targets (not a 500-user load lab).
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can

@@ -1,0 +1,36 @@
+{
+  "name": "@ferax564/noma-paperdom-core",
+  "version": "0.17.0",
+  "description": "Pure PaperDOM JSON model and transaction engine",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "ferax564",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ferax564/noma.git",
+    "directory": "packages/paperdom-core"
+  },
+  "homepage": "https://ferax564.github.io/noma/",
+  "bugs": {
+    "url": "https://github.com/ferax564/noma/issues"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@ferax564/noma-cli": "0.17.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

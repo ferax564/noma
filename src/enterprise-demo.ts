@@ -1,8 +1,8 @@
-import { parse } from "../parser.js";
-import { assignPersistentIdentities, findNodeByAnyId, resetIdentitySequence } from "../stable-identity.js";
-import { nomaToEditor } from "./adapter.js";
-import { EnterpriseError, type ActorContext } from "./contracts.js";
-import { createTestOidc, EnterpriseWorkspace } from "./workspace.js";
+import { parse } from "./parser.js";
+import { assignPersistentIdentities, findNodeByAnyId, resetIdentitySequence } from "./stable-identity.js";
+import { nomaToEditor } from "./enterprise-adapter.js";
+import { EnterpriseError, type ActorContext } from "./enterprise-contracts.js";
+import { createTestOidc, EnterpriseWorkspace } from "./enterprise-workspace.js";
 
 export const TEST_REPORT_SOURCE = `---
 title: Thermal vacuum test report

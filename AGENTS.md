@@ -45,16 +45,19 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud-db.ts              SQLite persistence for Noma Cloud
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
-  enterprise/              Enterprise workspace kernel — identity, docs, PaperDOM, work, changesets, backup
+  enterprise.ts            Enterprise public barrel (Docs / Visuals / Work kernel)
+  enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
   index.ts                 Public library exports (npm package surface)
 bin/noma.mjs               Node CLI shim
+apps/                      Enterprise HTTP, worker, and Docs/Visuals/Work shell entry points
 packages/
   mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block over stdio
   agent-sdk/               @ferax564/noma-agent-sdk — TS workflow layer (safePatch, capability checks, transcript replay)
   agent-sdk-py/            Python agent SDK starter
   noma-py-seed/            Native Python second-implementation seed — parser + ids + 3 patch ops vs conformance corpus (no Node dep)
   lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
+  document-core/, document-ui/, platform/, work/, knowledge/, connectors/, contracts/, paperdom-core/  Enterprise extraction boundaries re-exporting the CLI kernel
 schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript, changeset, enterprise-resource (`noma schema <name>`)
 web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts (esbuild via build:web-ui)
 themes/                    default.css + dark.css HTML themes

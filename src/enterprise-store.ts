@@ -2,7 +2,7 @@ import DatabaseConstructor from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { ENTERPRISE_SCHEMA_VERSION } from "./contracts.js";
+import { ENTERPRISE_SCHEMA_VERSION } from "./enterprise-contracts.js";
 
 export function enterpriseSchema(dialect: "sqlite" | "postgres"): string {
   const json = dialect === "postgres" ? "JSONB" : "TEXT";
@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS issues (
   rank TEXT NOT NULL,
   estimate REAL,
   estimate_unit TEXT,
+  security_level_id TEXT,
   start_at TEXT,
   due_at TEXT,
   labels_json ${json} NOT NULL,
@@ -371,6 +372,62 @@ CREATE TABLE IF NOT EXISTS policy (
   kill_switch INTEGER NOT NULL DEFAULT 0,
   policy_version INTEGER NOT NULL DEFAULT 1,
   budget_json ${json} NOT NULL
+);
+CREATE TABLE IF NOT EXISTS crdt_updates (
+  id ${pk},
+  document_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  client_id TEXT NOT NULL,
+  client_seq INTEGER NOT NULL,
+  actor_id TEXT NOT NULL,
+  ops_json ${json} NOT NULL,
+  hash TEXT NOT NULL,
+  persisted_at TEXT NOT NULL,
+  UNIQUE (document_id, seq),
+  UNIQUE (document_id, client_id, client_seq)
+);
+CREATE TABLE IF NOT EXISTS issue_security_levels (
+  id ${pk},
+  tenant_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS issue_security_grants (
+  level_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  PRIMARY KEY (level_id, principal_id)
+);
+CREATE TABLE IF NOT EXISTS knowledge_health (
+  id ${pk},
+  tenant_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  block_id TEXT,
+  detail_json ${json} NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cutover_runs (
+  id ${pk},
+  tenant_id TEXT NOT NULL,
+  connector_id TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  report_json ${json} NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rag_evals (
+  id ${pk},
+  tenant_id TEXT NOT NULL,
+  fixture_id TEXT NOT NULL,
+  result_json ${json} NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS jobs_dead_letter (
+  id ${pk},
+  job_id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  error TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );
 `;
 }

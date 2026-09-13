@@ -1,5 +1,5 @@
-import { sha256Hex } from "../hash.js";
-import { EnterpriseError } from "./contracts.js";
+import { sha256Hex } from "./hash.js";
+import { EnterpriseError } from "./enterprise-contracts.js";
 
 export const PAPERDOM_SCHEMA_VERSION = 1;
 

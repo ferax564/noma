@@ -1,24 +1,24 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import type { DocumentNode, TableNode } from "../ast.js";
-import { sha256Hex } from "../hash.js";
-import { parse } from "../parser.js";
-import { renderNoma } from "../renderer-noma.js";
+import type { DocumentNode, TableNode } from "./ast.js";
+import { sha256Hex } from "./hash.js";
+import { parse } from "./parser.js";
+import { renderNoma } from "./renderer-noma.js";
 import {
   assignPersistentIdentities,
   defaultIdentityFactory,
   findNodeByAnyId,
   insertTableRowWithIdentities,
   updateTableCellById,
-} from "../stable-identity.js";
-import { editorToNoma, incompatibleEditorIsReadonly, nomaToEditor, type EditorDocument } from "./adapter.js";
+} from "./stable-identity.js";
+import { editorToNoma, incompatibleEditorIsReadonly, nomaToEditor, type EditorDocument } from "./enterprise-adapter.js";
 import {
   EnterpriseError,
   type ActorContext,
   type ChangesetOperation,
   type ChangesetRecord,
-  type ChangesetStatus,
   type Classification,
   type ConnectorMode,
+  type CutoverStage,
   type FieldType,
   type GrantRole,
   type ImportDisposition,
@@ -30,7 +30,18 @@ import {
   type ResourceKind,
   type ScimUserInput,
   type StatusCategory,
-} from "./contracts.js";
+} from "./enterprise-contracts.js";
+import {
+  assertSafeImportUrl,
+  nextCutoverStage,
+  parseConfluenceStorage,
+  parseJiraIssue,
+  reconcileInventory,
+} from "./enterprise-connectors.js";
+import { applyCrdtOps, crdtOpsConflict, type CrdtOp } from "./enterprise-crdt.js";
+import { evaluateRagFixture, summarizeRagEvals, type RagEvalFixture } from "./enterprise-knowledge.js";
+import { buildRecipePlan } from "./enterprise-recipes.js";
+import { cumulativeFlowFromEvents, cycleTimeFromEvents, throughputFromEvents } from "./enterprise-reports.js";
 import {
   applyVisualCommands,
   createPaperDocument,
@@ -39,8 +50,8 @@ import {
   semanticOutline,
   type PaperDocument,
   type VisualCommand,
-} from "./paperdom.js";
-import { EnterpriseStore } from "./store.js";
+} from "./enterprise-paperdom.js";
+import { EnterpriseStore } from "./enterprise-store.js";
 
 const CLASSIFICATION_RANK: Record<Classification, number> = {
   public: 0,
@@ -368,6 +379,63 @@ export class EnterpriseWorkspace {
     return { hash, revision: draftRevision };
   }
 
+  persistCollaborativeUpdate(
+    actor: ActorContext,
+    input: {
+      documentId: string;
+      clientId: string;
+      clientSeq: number;
+      ops: CrdtOp[];
+      lastAckedSeq?: number;
+      simulateLostAck?: boolean;
+    },
+  ): { seq: number; hash: string; replayed: boolean } {
+    const doc = this.documentRow(input.documentId, actor.tenantId);
+    this.requireRole(actor, "document", input.documentId, "editor");
+    const existing = this.store.db
+      .prepare("SELECT seq, hash FROM crdt_updates WHERE document_id = ? AND client_id = ? AND client_seq = ?")
+      .get(input.documentId, input.clientId, input.clientSeq) as { seq: number; hash: string } | undefined;
+    if (existing) return { seq: existing.seq, hash: existing.hash, replayed: true };
+    const unseen = this.store.db
+      .prepare("SELECT ops_json FROM crdt_updates WHERE document_id = ? AND seq > ? ORDER BY seq")
+      .all(input.documentId, input.lastAckedSeq ?? 0) as Array<{ ops_json: string }>;
+    const unseenOps = unseen.flatMap((row) => JSON.parse(row.ops_json) as CrdtOp[]);
+    if (crdtOpsConflict(unseenOps, input.ops)) {
+      throw new EnterpriseError("conflict", "overlapping collaborative ops require explicit resolution");
+    }
+    const source = applyCrdtOps(doc.draft_source, input.ops);
+    const hash = sha256Hex(source);
+    const maxSeq = this.store.db.prepare("SELECT COALESCE(MAX(seq), 0) AS n FROM crdt_updates WHERE document_id = ?").get(input.documentId) as {
+      n: number;
+    };
+    const seq = maxSeq.n + 1;
+    const persist = this.store.db.transaction(() => {
+      this.store.db
+        .prepare(
+          `INSERT INTO crdt_updates(id, document_id, seq, client_id, client_seq, actor_id, ops_json, hash, persisted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(this.id(), input.documentId, seq, input.clientId, input.clientSeq, actor.principalId, JSON.stringify(input.ops), hash, this.now());
+      const editor = nomaToEditor(assignPersistentIdentities(parse(source), { factory: this.identityFactory }));
+      this.store.db
+        .prepare(
+          `UPDATE documents SET draft_source = ?, draft_hash = ?, draft_revision = draft_revision + 1, crdt_json = ?, updated_at = ? WHERE id = ?`,
+        )
+        .run(source, hash, JSON.stringify(editor), this.now(), input.documentId);
+    });
+    persist();
+    if (input.simulateLostAck) throw new EnterpriseError("invalid", "simulated lost ack");
+    return { seq, hash, replayed: false };
+  }
+
+  reconnectDraft(actor: ActorContext, documentId: string, lastAckedSeq: number): Array<{ seq: number; ops: CrdtOp[]; hash: string }> {
+    this.requireRole(actor, "document", documentId, "viewer");
+    const rows = this.store.db
+      .prepare("SELECT seq, ops_json, hash FROM crdt_updates WHERE document_id = ? AND seq > ? ORDER BY seq")
+      .all(documentId, lastAckedSeq) as Array<{ seq: number; ops_json: string; hash: string }>;
+    return rows.map((row) => ({ seq: row.seq, ops: JSON.parse(row.ops_json) as CrdtOp[], hash: row.hash }));
+  }
+
   publishDocument(actor: ActorContext, documentId: string): { revision: number; hash: string } {
     this.requireRole(actor, "document", documentId, "editor");
     const doc = this.documentRow(documentId, actor.tenantId);
@@ -595,6 +663,8 @@ export class EnterpriseWorkspace {
       assigneeId?: string;
       accountableId?: string;
       labels?: string[];
+      estimate?: number;
+      securityLevelId?: string;
     },
   ): { id: string; key: string } {
     this.requireRole(actor, "project", input.projectId, "editor");
@@ -616,8 +686,8 @@ export class EnterpriseWorkspace {
     const rank = `n:${String(seq * 1000).padStart(8, "0")}`;
     this.store.db
       .prepare(
-        `INSERT INTO issues(id, tenant_id, project_id, key, type_id, summary, description, status_id, reporter_id, assignee_id, accountable_id, parent_id, rank, labels_json, components_json, versions_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?, ?, ?, ?, ?, '[]', '[]', ?, ?)`,
+        `INSERT INTO issues(id, tenant_id, project_id, key, type_id, summary, description, status_id, reporter_id, assignee_id, accountable_id, parent_id, rank, estimate, security_level_id, labels_json, components_json, versions_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?, ?, ?, ?, ?, ?, ?, '[]', '[]', ?, ?)`,
       )
       .run(
         id,
@@ -632,6 +702,8 @@ export class EnterpriseWorkspace {
         input.accountableId ?? (actor.kind === "user" ? actor.principalId : null),
         input.parentId ?? null,
         rank,
+        input.estimate ?? null,
+        input.securityLevelId ?? null,
         JSON.stringify(input.labels ?? []),
         this.now(),
         this.now(),
@@ -777,7 +849,11 @@ export class EnterpriseWorkspace {
     const issues = this.store.db.prepare("SELECT * FROM issues WHERE project_id = ? ORDER BY rank").all(projectId) as Array<
       Record<string, unknown>
     >;
-    return issues.filter((issue) => this.matchQuery(issue, parsed));
+    return issues.filter((issue) => this.canSeeIssue(actor, issue) && this.matchQuery(issue, parsed));
+  }
+
+  compileQuery(jql: string, currentUserId: string): QueryAst {
+    return this.parseJqlSubset(jql, currentUserId);
   }
 
   burndown(actor: ActorContext, sprintId: string): Array<{ at: string; remaining: number }> {
@@ -1038,7 +1114,7 @@ export class EnterpriseWorkspace {
          VALUES (?, ?, ?, 'running', ?, ?, ?, ?)`,
       )
       .run(jobId, actor.tenantId, recipe, actor.principalId, JSON.stringify(payload), this.now(), this.now());
-    const plan = this.recipePlan(recipe, payload);
+    const plan = this.materializeRecipe(actor, recipe, payload);
     this.store.db.prepare("UPDATE jobs SET status = 'succeeded', updated_at = ?, cost_actual = 0 WHERE id = ?").run(this.now(), jobId);
     return { jobId, changesetId: plan };
   }
@@ -1203,6 +1279,179 @@ export class EnterpriseWorkspace {
   artifactExportReport(actor: ActorContext, artifactId: string, target: "pptx" | "svg" | "png") {
     const { document } = this.readArtifact(actor, artifactId, "draft");
     return exportFidelityReport(document, target);
+  }
+
+  throughput(actor: ActorContext, projectId: string) {
+    this.requireRole(actor, "project", projectId, "viewer");
+    const events = this.projectIssueEvents(projectId);
+    return throughputFromEvents(events);
+  }
+
+  cycleTime(actor: ActorContext, projectId: string) {
+    this.requireRole(actor, "project", projectId, "viewer");
+    return cycleTimeFromEvents(this.projectIssueEvents(projectId));
+  }
+
+  cumulativeFlow(actor: ActorContext, projectId: string) {
+    this.requireRole(actor, "project", projectId, "viewer");
+    return cumulativeFlowFromEvents(this.projectIssueEvents(projectId));
+  }
+
+  bulkEditPreview(
+    actor: ActorContext,
+    issueIds: string[],
+    mutation: { status?: string; assigneeId?: string; labels?: string[] },
+  ): { wouldChange: Array<{ id: string; before: Record<string, unknown>; after: Record<string, unknown> }>; blocked: string[] } {
+    const wouldChange: Array<{ id: string; before: Record<string, unknown>; after: Record<string, unknown> }> = [];
+    const blocked: string[] = [];
+    for (const id of issueIds) {
+      const issue = this.store.db.prepare("SELECT * FROM issues WHERE id = ? AND tenant_id = ?").get(id, actor.tenantId) as
+        | Record<string, unknown>
+        | undefined;
+      if (!issue || !this.canSeeIssue(actor, issue)) {
+        blocked.push(id);
+        continue;
+      }
+      this.requireRole(actor, "project", String(issue.project_id), "editor");
+      const after = { ...issue };
+      if (mutation.status) after.status_id = mutation.status;
+      if (mutation.assigneeId) after.assignee_id = mutation.assigneeId;
+      if (mutation.labels) after.labels_json = JSON.stringify(mutation.labels);
+      wouldChange.push({ id, before: issue, after });
+    }
+    return { wouldChange, blocked };
+  }
+
+  defineIssueSecurityLevel(actor: ActorContext, projectId: string, name: string): string {
+    this.requireRole(actor, "project", projectId, "owner");
+    const id = this.id();
+    this.store.db
+      .prepare("INSERT INTO issue_security_levels(id, tenant_id, project_id, name) VALUES (?, ?, ?, ?)")
+      .run(id, actor.tenantId, projectId, name);
+    return id;
+  }
+
+  grantIssueSecurity(actor: ActorContext, levelId: string, principalId: string): void {
+    const level = this.store.db.prepare("SELECT project_id FROM issue_security_levels WHERE id = ?").get(levelId) as { project_id: string } | undefined;
+    if (!level) throw new EnterpriseError("not_found", "security level not found");
+    this.requireRole(actor, "project", level.project_id, "owner");
+    this.store.db.prepare("INSERT OR IGNORE INTO issue_security_grants(level_id, principal_id) VALUES (?, ?)").run(levelId, principalId);
+  }
+
+  setIssueSecurity(actor: ActorContext, issueId: string, levelId: string): void {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "owner");
+    this.store.db.prepare("UPDATE issues SET security_level_id = ?, updated_at = ? WHERE id = ?").run(levelId, this.now(), issueId);
+  }
+
+  importConfluenceStorage(actor: ActorContext, spaceId: string, xml: string, title: string): { documentId: string; lossReport: unknown[] } {
+    this.requireRole(actor, "space", spaceId, "editor");
+    const mapped = parseConfluenceStorage(xml, title);
+    const documentId = this.createDocument(actor, { spaceId, title: mapped.title, source: mapped.source });
+    return { documentId, lossReport: mapped.lossReport };
+  }
+
+  importJiraIssue(actor: ActorContext, projectId: string, payload: Record<string, unknown>): { id: string; key: string } {
+    this.requireRole(actor, "project", projectId, "editor");
+    const mapped = parseJiraIssue(payload);
+    const created = this.createIssue(actor, {
+      projectId,
+      typeKey: mapped.typeKey,
+      summary: mapped.summary,
+      labels: mapped.labels,
+    });
+    for (const comment of mapped.comments) {
+      this.store.db
+        .prepare("INSERT INTO issue_comments(id, issue_id, body, created_by, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(this.id(), created.id, comment, actor.principalId, mapped.createdAt ?? this.now());
+    }
+    for (const log of mapped.worklogs) {
+      this.logWork(actor, { issueId: created.id, durationSeconds: log.durationSeconds, note: `imported from ${log.author}` });
+    }
+    return created;
+  }
+
+  assertImporterUrl(url: string): void {
+    assertSafeImportUrl(url);
+  }
+
+  startCutover(
+    actor: ActorContext,
+    connectorId: string,
+    inventoried: Array<{ sourceId: string }>,
+    report: Array<{ sourceId: string; disposition: ImportDisposition }>,
+  ): string {
+    this.requireRole(actor, "tenant" as ResourceKind, actor.tenantId, "owner");
+    const reconciliation = reconcileInventory(inventoried, report);
+    if (!reconciliation.complete) throw new EnterpriseError("invalid", "inventory is incomplete", { missing: reconciliation.missing });
+    const id = this.id();
+    this.store.db
+      .prepare("INSERT INTO cutover_runs(id, tenant_id, connector_id, stage, report_json, updated_at) VALUES (?, ?, ?, 'inventory', ?, ?)")
+      .run(id, actor.tenantId, connectorId, JSON.stringify({ inventoried, report }), this.now());
+    return id;
+  }
+
+  advanceCutover(actor: ActorContext, runId: string): CutoverStage {
+    this.requireRole(actor, "tenant" as ResourceKind, actor.tenantId, "owner");
+    const row = this.store.db.prepare("SELECT * FROM cutover_runs WHERE id = ? AND tenant_id = ?").get(runId, actor.tenantId) as
+      | { stage: CutoverStage }
+      | undefined;
+    if (!row) throw new EnterpriseError("not_found", "cutover run not found");
+    const stage = nextCutoverStage(row.stage);
+    this.store.db.prepare("UPDATE cutover_runs SET stage = ?, updated_at = ? WHERE id = ?").run(stage, this.now(), runId);
+    return stage;
+  }
+
+  cutoverStage(runId: string): CutoverStage {
+    const row = this.store.db.prepare("SELECT stage FROM cutover_runs WHERE id = ?").get(runId) as { stage: CutoverStage } | undefined;
+    if (!row) throw new EnterpriseError("not_found", "cutover run not found");
+    return row.stage;
+  }
+
+  evaluateRetrieval(actor: ActorContext, fixtures: RagEvalFixture[]) {
+    const results = fixtures.map((fixture) => {
+      const hits = this.search(actor, fixture.question).map((hit) => ({
+        resourceId: String(hit.resourceId),
+        citation: hit.citation as { resource: string; blockId?: string | null; version?: string } | undefined,
+      }));
+      const scored = evaluateRagFixture(fixture, hits, (resourceId) => {
+        try {
+          return this.hasRole(actor, "document", resourceId, "viewer");
+        } catch {
+          return false;
+        }
+      });
+      this.store.db
+        .prepare("INSERT INTO rag_evals(id, tenant_id, fixture_id, result_json, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(this.id(), actor.tenantId, fixture.id, JSON.stringify(scored), this.now());
+      return scored;
+    });
+    return summarizeRagEvals(results);
+  }
+
+  recordKnowledgeHealth(
+    actor: ActorContext,
+    input: { kind: "stale_review" | "changed_source" | "contradiction_candidate"; resourceId: string; blockId?: string; detail: Record<string, unknown> },
+  ): string {
+    this.requireRole(actor, "document", input.resourceId, "editor");
+    const id = this.id();
+    this.store.db
+      .prepare(
+        `INSERT INTO knowledge_health(id, tenant_id, kind, resource_id, block_id, detail_json, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
+      )
+      .run(id, actor.tenantId, input.kind, input.resourceId, input.blockId ?? null, JSON.stringify(input.detail), this.now());
+    return id;
+  }
+
+  knowledgeQueue(actor: ActorContext): Array<Record<string, unknown>> {
+    return this.store.db
+      .prepare("SELECT * FROM knowledge_health WHERE tenant_id = ? ORDER BY created_at")
+      .all(actor.tenantId)
+      .filter((row) => {
+        const record = row as { resource_id: string };
+        return this.hasRole(actor, "document", record.resource_id, "viewer");
+      }) as Array<Record<string, unknown>>;
   }
 
   updateIdentifiedTableCell(actor: ActorContext, documentId: string, tableId: string, cellId: string, value: string): string {
@@ -1397,10 +1646,20 @@ export class EnterpriseWorkspace {
     return row?.hash;
   }
 
-  private recipePlan(recipe: string, payload: Record<string, unknown>): string | undefined {
-    void recipe;
-    void payload;
-    return undefined;
+  private materializeRecipe(actor: ActorContext, recipe: string, payload: Record<string, unknown>): string {
+    const plan = buildRecipePlan(recipe, payload);
+    const targetRevisions: Record<string, number> = {};
+    for (const op of plan.operations) {
+      if (op.resource.kind === "document" && op.resource.id !== "new") {
+        targetRevisions[op.resource.id] = this.documentRow(op.resource.id, actor.tenantId).draft_revision;
+      }
+    }
+    return this.draftChangeset(actor, {
+      intent: plan.intent,
+      operations: plan.operations,
+      targetRevisions,
+      idempotencyKey: `recipe:${recipe}:${this.id()}`,
+    });
   }
 
   private assertUntrustedPayload(payload: Record<string, unknown>): void {
@@ -1427,7 +1686,9 @@ export class EnterpriseWorkspace {
       if (value === "currentUser()") value = currentUserId;
       if (field === "status") clauses.push({ type: "eq", field: "status_id", value });
       else if (field === "assignee") clauses.push({ type: "eq", field: "assignee_id", value });
-      else throw new EnterpriseError("invalid", `unsupported JQL field ${field}`);
+      else if (field === "issuetype" || field === "type") clauses.push({ type: "eq", field: "type_id", value });
+      else if (field === "priority") clauses.push({ type: "eq", field: "priority", value });
+      else throw new EnterpriseError("invalid", `unsupported JQL field ${field}`, { field, reported: true });
     }
     return { type: "and", clauses };
   }
@@ -1632,6 +1893,28 @@ export class EnterpriseWorkspace {
       | undefined;
     if (!row) throw new EnterpriseError("invalid", "no active workflow");
     return JSON.parse(row.definition_json) as WorkflowDefinition;
+  }
+
+  private projectIssueEvents(projectId: string) {
+    return this.store.db
+      .prepare(
+        `SELECT e.issue_id, e.action, e.created_at, e.detail_json, i.estimate, i.status_id
+         FROM issue_events e JOIN issues i ON i.id = e.issue_id
+         WHERE i.project_id = ? ORDER BY e.created_at`,
+      )
+      .all(projectId) as Array<{ issue_id: string; action: string; created_at: string; detail_json: string; estimate: number | null; status_id: string }>;
+  }
+
+  private canSeeIssue(actor: ActorContext, issue: Record<string, unknown>): boolean {
+    if (!this.hasRole(actor, "project", String(issue.project_id), "viewer")) return false;
+    const levelId = issue.security_level_id;
+    if (!levelId) return true;
+    if (issue.reporter_id === actor.principalId || issue.assignee_id === actor.principalId) return true;
+    if (this.hasRole(actor, "project", String(issue.project_id), "owner")) return true;
+    const grant = this.store.db
+      .prepare("SELECT principal_id FROM issue_security_grants WHERE level_id = ? AND principal_id = ?")
+      .get(levelId, actor.principalId);
+    return grant !== undefined;
   }
 
   private issueEvent(issueId: string, actorId: string, action: string, detail: Record<string, unknown>): void {
