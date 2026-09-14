@@ -3,6 +3,8 @@ import type { Database as SqliteDatabase } from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { ENTERPRISE_SCHEMA_VERSION } from "./enterprise-contracts.js";
+import { PostgresDatabase, type SqlDatabase } from "./enterprise-sql.js";
+import { createPostgresBridge } from "./enterprise-pg-sync.js";
 
 export function enterpriseSchema(dialect: "sqlite" | "postgres"): string {
   const json = dialect === "postgres" ? "JSONB" : "TEXT";
@@ -84,6 +86,8 @@ CREATE TABLE IF NOT EXISTS documents (
   lifecycle TEXT NOT NULL,
   classification TEXT NOT NULL,
   owner_id TEXT NOT NULL,
+  parent_id TEXT,
+  rank TEXT NOT NULL DEFAULT 'n:00001000',
   published_revision INTEGER,
   draft_revision INTEGER NOT NULL DEFAULT 0,
   draft_source TEXT NOT NULL,
@@ -103,6 +107,22 @@ CREATE TABLE IF NOT EXISTS document_revisions (
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (document_id, revision)
+);
+CREATE TABLE IF NOT EXISTS document_comments (
+  id ${pk},
+  document_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  mentions_json ${json} NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS document_assets (
+  id ${pk},
+  document_id TEXT NOT NULL,
+  asset_id TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS artifacts (
   id ${pk},
@@ -432,18 +452,91 @@ CREATE TABLE IF NOT EXISTS jobs_dead_letter (
 `;
 }
 
-export class EnterpriseStore {
-  readonly db: SqliteDatabase;
+export interface EnterpriseStoreOptions {
+  path?: string;
+  postgresUrl?: string;
+}
 
-  constructor(dbPath: string) {
+class SqliteDatabaseAdapter implements SqlDatabase {
+  readonly dialect = "sqlite" as const;
+
+  constructor(private readonly raw: SqliteDatabase) {}
+
+  prepare(sql: string) {
+    return this.raw.prepare(sql);
+  }
+
+  exec(sql: string): void {
+    this.raw.exec(sql);
+  }
+
+  pragma(source: string): void {
+    this.raw.pragma(source);
+  }
+
+  transaction<T>(fn: () => T): () => T {
+    return this.raw.transaction(fn);
+  }
+
+  close(): void {
+    this.raw.close();
+  }
+}
+
+function columnNames(db: SqlDatabase, table: string): Set<string> {
+  if (db.dialect === "postgres") {
+    const rows = db
+      .prepare("SELECT column_name AS name FROM information_schema.columns WHERE table_name = ?")
+      .all(table) as Array<{ name: string }>;
+    return new Set(rows.map((row) => row.name));
+  }
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return new Set(rows.map((row) => row.name));
+}
+
+function migrateEnterpriseSchema(db: SqlDatabase): void {
+  const documents = columnNames(db, "documents");
+  if (!documents.has("parent_id")) db.exec("ALTER TABLE documents ADD COLUMN parent_id TEXT");
+  if (!documents.has("rank")) db.exec("ALTER TABLE documents ADD COLUMN rank TEXT DEFAULT 'n:00001000'");
+  db.exec(`CREATE TABLE IF NOT EXISTS document_comments (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    mentions_json TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS document_assets (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    asset_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`);
+  db.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)").run(String(ENTERPRISE_SCHEMA_VERSION));
+}
+
+export class EnterpriseStore {
+  readonly db: SqlDatabase;
+
+  constructor(pathOrOptions: string | EnterpriseStoreOptions = ":memory:") {
+    const options = typeof pathOrOptions === "string" ? { path: pathOrOptions } : pathOrOptions;
+    if (options.postgresUrl) {
+      const bridge = createPostgresBridge(options.postgresUrl);
+      this.db = new PostgresDatabase(bridge);
+      this.db.exec(enterpriseSchema("sqlite").replace(/\bBLOB\b/g, "BYTEA"));
+      migrateEnterpriseSchema(this.db);
+      return;
+    }
+    const dbPath = options.path ?? ":memory:";
     if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
-    this.db = new DatabaseConstructor(dbPath);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("foreign_keys = ON");
-    this.db.exec(enterpriseSchema("sqlite"));
-    this.db
-      .prepare("INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)")
-      .run(String(ENTERPRISE_SCHEMA_VERSION));
+    const sqlite = new DatabaseConstructor(dbPath);
+    sqlite.pragma("journal_mode = WAL");
+    sqlite.pragma("foreign_keys = ON");
+    sqlite.exec(enterpriseSchema("sqlite"));
+    this.db = new SqliteDatabaseAdapter(sqlite);
+    migrateEnterpriseSchema(this.db);
   }
 
   close(): void {

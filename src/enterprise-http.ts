@@ -3,11 +3,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { EnterpriseError, type ActorContext } from "./enterprise-contracts.js";
 import { healthProbe } from "./enterprise-ops.js";
-import type { CrdtOp } from "./enterprise-crdt.js";
 import { attachEnterpriseYjs } from "./enterprise-yjs.js";
 import { EnterpriseWorkspace } from "./enterprise-workspace.js";
 import { enterpriseWorkspaceHtml } from "./enterprise-shell.js";
-import { paperCanvasMarkup, paperCanvasStyles } from "./enterprise-paperdom.js";
+import { dispatchEnterpriseApi, send } from "./enterprise-http-api.js";
 
 export interface EnterpriseHttpOptions {
   workspace: EnterpriseWorkspace;
@@ -36,12 +35,6 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
-}
-
-function send(res: ServerResponse, status: number, body: unknown): void {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(payload) });
-  res.end(payload);
 }
 
 function sendHtml(res: ServerResponse, html: string): void {
@@ -130,59 +123,16 @@ export function createEnterpriseHttpServer(options: EnterpriseHttpOptions) {
           return;
         }
         const actor = actorFrom(ws, req);
-        if (req.method === "GET" && url.pathname === "/v1/workspace") {
-          send(res, 200, ws.workspaceShell(actor));
-          return;
-        }
-        if (req.method === "GET" && url.pathname === "/v1/search") {
-          send(res, 200, { hits: ws.search(actor, url.searchParams.get("q") ?? "") });
-          return;
-        }
-        const artifactMatch = url.pathname.match(/^\/v1\/artifacts\/([^/]+)$/);
-        if (artifactMatch && req.method === "GET") {
-          const artifactId = decodeURIComponent(artifactMatch[1]!);
-          const read = ws.readArtifact(actor, artifactId, "draft");
-          send(res, 200, {
-            ...read,
-            html: `<style>${paperCanvasStyles()}</style>${paperCanvasMarkup(read.document)}`,
-          });
-          return;
-        }
-        const issueMatch = url.pathname.match(/^\/v1\/issues\/([^/]+)\/transition$/);
-        if (issueMatch && req.method === "POST") {
-          const body = JSON.parse((await readBody(req)) || "{}") as { to: string; fields?: Record<string, unknown> };
-          ws.transitionIssue(actor, decodeURIComponent(issueMatch[1]!), body.to, body.fields);
-          send(res, 200, { ok: true });
-          return;
-        }
-        const docMatch = url.pathname.match(/^\/v1\/documents\/([^/]+)(\/crdt|\/updates)?$/);
-        if (docMatch && req.method === "GET" && !docMatch[2]) {
-          send(res, 200, ws.readDocument(actor, decodeURIComponent(docMatch[1]!)));
-          return;
-        }
-        if (docMatch && docMatch[2] === "/updates" && req.method === "GET") {
-          send(res, 200, ws.reconnectDraft(actor, decodeURIComponent(docMatch[1]!), Number(url.searchParams.get("since") ?? "0")));
-          return;
-        }
-        if (docMatch && docMatch[2] === "/crdt" && req.method === "POST") {
-          const body = JSON.parse((await readBody(req)) || "{}") as {
-            clientId: string;
-            clientSeq: number;
-            lastAckedSeq?: number;
-            ops: CrdtOp[];
-          };
-          send(res, 200, ws.persistCollaborativeUpdate(actor, { documentId: decodeURIComponent(docMatch[1]!), ...body }));
-          return;
-        }
-        if (req.method === "GET" && url.pathname === "/v1/notifications") {
-          send(res, 200, { notifications: ws.notifications(actor) });
-          return;
-        }
+        if (await dispatchEnterpriseApi(ws, actor, req, res, url)) return;
         send(res, 404, { error: "not_found" });
       } catch (error) {
         const code = error instanceof EnterpriseError ? error.code : "invalid";
         const status = code === "unauthorized" || code === "forbidden" ? 403 : 400;
-        send(res, status, { error: code, message: error instanceof Error ? error.message : String(error) });
+        send(res, status, {
+          error: code,
+          message: error instanceof Error ? error.message : String(error),
+          ...(error instanceof EnterpriseError ? error.details ?? {} : {}),
+        });
       }
     })();
   });

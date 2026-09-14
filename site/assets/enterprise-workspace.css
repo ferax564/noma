@@ -510,6 +510,64 @@ input {
 }
 .ew-hit { width: 100%; }
 .ew-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ew-rail-actions, .ew-sprint, .ew-jql { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.ew-rail-item { width: 100%; }
+.ew-rail-item[data-depth="1"] { padding-left: 18px; }
+.ew-rail-item[data-depth="2"] { padding-left: 28px; }
+.ew-discussion, .ew-admin, .ew-drawer {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+.ew-discussion {
+  margin: 0 28px 28px;
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+}
+.ew-discussion textarea, .ew-admin input, .ew-jql input, #import-xml, #doc-comment-input, #issue-comment, #worklog-note {
+  width: 100%;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 8px 10px;
+  font: inherit;
+}
+.ew-drawer {
+  position: fixed;
+  top: 88px;
+  right: 18px;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  z-index: 30;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
+}
+.ew-drawer[hidden], #import-modal[hidden] { display: none !important; }
+.ew-drawer-head { display: flex; align-items: center; gap: 8px; }
+.ew-drawer-head h2 { margin: 0; flex: 1; font-size: 1.1rem; }
+.ew-note {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--panel);
+}
+.ew-tree-loss {
+  border-left: 3px solid var(--warn);
+  padding-left: 8px;
+}
+.ew-admin { display: grid; gap: 18px; }
+.ew-admin section { display: grid; gap: 8px; }
+.ew-form-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.ew-form-row input, .ew-form-row select { min-width: 120px; flex: 1; }
+.ew-work-chrome { display: grid; gap: 6px; padding: 8px 4px 12px; }
+.ew-jql { display: grid; gap: 4px; font-size: 0.78rem; font-weight: 650; color: var(--muted); }
+#canvas-docs { overflow: auto; }
 
 .collab-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
 .collab-top {

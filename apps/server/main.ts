@@ -8,7 +8,12 @@ import { createTestOidc, EnterpriseWorkspace } from "../../src/enterprise-worksp
 const oidc = createTestOidc({
   alice: { sub: "alice", email: "alice@example.com", name: "Alice" },
 });
-const workspace = new EnterpriseWorkspace({ oidc, dbPath: process.env.NOMA_ENTERPRISE_DB ?? ":memory:" });
+const postgresUrl = process.env.DATABASE_URL?.startsWith("postgres") ? process.env.DATABASE_URL : undefined;
+const workspace = new EnterpriseWorkspace({
+  oidc,
+  dbPath: postgresUrl ? undefined : process.env.NOMA_ENTERPRISE_DB ?? ":memory:",
+  postgresUrl,
+});
 const tenantId = workspace.provisionTenant("Atlas").tenantId;
 workspace.scimUpsert(tenantId, { externalId: "alice", userName: "Alice Chen", active: true });
 const session = workspace.loginOidc(tenantId, "alice");

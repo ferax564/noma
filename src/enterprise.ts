@@ -10,6 +10,8 @@ export type {
   ResourceKind,
 } from "./enterprise-contracts.js";
 export { enterpriseSchema, EnterpriseStore } from "./enterprise-store.js";
+export { translateSqliteToPostgres } from "./enterprise-sql.js";
+export { postgresRuntimeAvailable } from "./enterprise-pg-sync.js";
 export { EnterpriseWorkspace, createTestOidc } from "./enterprise-workspace.js";
 export { enterpriseWorkspaceHtml, seedEnterpriseProductFixture } from "./enterprise-shell.js";
 export type { EnterpriseProductFixture, EnterpriseShellHtmlOptions } from "./enterprise-shell.js";

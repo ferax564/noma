@@ -76,10 +76,12 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
           <button id="mode-docs" type="button" role="tab" aria-selected="true" data-mode="docs">Docs</button>
           <button id="mode-visuals" type="button" role="tab" aria-selected="false" data-mode="visuals">Visuals</button>
           <button id="mode-work" type="button" role="tab" aria-selected="false" data-mode="work">Work</button>
+          <button id="mode-admin" type="button" role="tab" aria-selected="false" data-mode="admin">Admin</button>
         </div>
         <label class="ew-search" for="workspace-search">Search
           <input id="workspace-search" type="search" placeholder="Find pages, canvases, issues" autocomplete="off" />
         </label>
+        <button id="notify-toggle" type="button" aria-expanded="false" aria-controls="notify-drawer">Inbox</button>
         <button id="theme-toggle" type="button" aria-pressed="false">Dark</button>
         <span id="session-status" class="ew-status" data-state="connecting" aria-live="polite">Connecting</span>
       </header>
@@ -89,6 +91,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
             <p class="ew-kicker" id="rail-kicker">Pages</p>
             <h2 id="rail-title">Product</h2>
           </div>
+          <div id="rail-actions" class="ew-rail-actions"></div>
           <div id="rail-list" class="ew-rail-list"></div>
         </aside>
         <main class="ew-main">
@@ -102,12 +105,21 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <button type="button" data-cmd="bullet" aria-label="Bullet list">List</button>
               <button type="button" data-cmd="ordered" aria-label="Ordered list">1.</button>
               <span id="collab-status" class="ew-chip">idle</span>
+              <button id="doc-publish" type="button">Publish</button>
             </div>
             <article class="ew-paper">
               <p class="ew-kicker" id="doc-kicker">Draft</p>
               <h1 id="doc-title">Untitled</h1>
               <div id="editor" class="ew-editor"></div>
             </article>
+            <section id="doc-discussion" class="ew-discussion" aria-label="Page comments">
+              <h2>Comments</h2>
+              <div id="doc-comments"></div>
+              <label for="doc-comment-input">Comment
+                <textarea id="doc-comment-input" rows="2" placeholder="Write a comment. Mention with @alice"></textarea>
+              </label>
+              <button id="doc-comment-submit" type="button">Add comment</button>
+            </section>
           </section>
           <section id="canvas-visuals" class="ew-canvas" data-mode="visuals" hidden>
             <div class="ew-visual-chrome">
@@ -120,8 +132,20 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
             <div class="ew-work-chrome">
               <p class="ew-kicker">Board</p>
               <h1 id="work-title">Work</h1>
+              <div id="sprint-bar" class="ew-sprint"></div>
+              <label class="ew-jql" for="jql-input">JQL
+                <input id="jql-input" type="search" placeholder="status = in_progress AND assignee = currentUser()" autocomplete="off" />
+              </label>
+              <p id="jql-error" class="ew-error" role="alert"></p>
             </div>
             <div id="work-board" class="ew-board"></div>
+          </section>
+          <section id="canvas-admin" class="ew-canvas" data-mode="admin" hidden>
+            <div class="ew-work-chrome">
+              <p class="ew-kicker">Directory</p>
+              <h1>Spaces, projects, grants</h1>
+            </div>
+            <div id="admin-panel" class="ew-admin"></div>
           </section>
         </main>
         <aside class="ew-inspector" aria-label="Inspector">
@@ -131,6 +155,32 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
           <div id="search-results" class="ew-search-results" hidden></div>
           <div id="visual-outline" class="ew-outline"></div>
         </aside>
+      </div>
+    </div>
+    <aside id="notify-drawer" class="ew-drawer" hidden>
+      <div class="ew-drawer-head">
+        <p class="ew-kicker">Inbox</p>
+        <h2>Notifications</h2>
+        <button id="notify-close" type="button" aria-label="Close inbox">Close</button>
+      </div>
+      <div id="notify-list"></div>
+    </aside>
+    <div id="import-modal" class="ew-gate" hidden>
+      <div class="ew-gate-card">
+        <p class="ew-kicker">Confluence import</p>
+        <h1>Paste storage XML</h1>
+        <p class="ew-lede">Unsupported macros are kept as loss-report blocks, not dropped silently.</p>
+        <label for="import-title">Title
+          <input id="import-title" />
+        </label>
+        <label for="import-xml">Confluence storage
+          <textarea id="import-xml" rows="8" placeholder="<p>Imported page</p>"></textarea>
+        </label>
+        <div class="ew-gate-actions">
+          <button id="import-submit" type="button">Import</button>
+          <button id="import-cancel" type="button">Cancel</button>
+        </div>
+        <p id="import-error" class="ew-error" role="alert"></p>
       </div>
     </div>
     ${script}
@@ -144,6 +194,9 @@ export interface EnterpriseProductFixture {
   artifactId: string;
   projectId: string;
   issueKeys: string[];
+  childDocumentId: string;
+  boardId: string;
+  sprintId: string;
 }
 
 function advanceIssue(ws: EnterpriseWorkspace, actor: ActorContext, issueId: string, target: string): void {
@@ -180,6 +233,13 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
 `,
   });
   ws.publishDocument(actor, documentId);
+  const childId = ws.createDocument(actor, {
+    spaceId,
+    parentId: documentId,
+    title: "Risks and open questions",
+    source: `# Risks and open questions\n\nChild page in the Product tree.\n`,
+  });
+  ws.addDocumentComment(actor, documentId, "@alice please review the north-star claim.");
   const artifactId = ws.createArtifact(actor, { spaceId, title: "Atlas architecture" });
   const commands: VisualCommand[] = [
     {
@@ -283,11 +343,22 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
   advanceIssue(ws, actor, canvas.id, "todo");
   advanceIssue(ws, actor, board.id, "in_progress");
   advanceIssue(ws, actor, leak.id, "done");
+  const existingBoard = ws.listBoards(actor, projectId)[0] as { id: string } | undefined;
+  const boardId = existingBoard?.id ?? ws.createBoard(actor, { projectId, name: "Atlas board", kind: "scrum" });
+  const sprintId = ws.createSprint(actor, boardId, "Sprint 1", "Ship the product surface");
+  ws.startSprint(actor, sprintId);
+  ws.setIssueSprint(actor, collab.id, sprintId);
+  ws.setIssueSprint(actor, canvas.id, sprintId);
+  ws.addIssueComment(actor, collab.id, "Hosted collab is on the sprint.");
+  ws.logWork(actor, { issueId: collab.id, durationSeconds: 3600, note: "Wired persist-before-ack" });
   return {
     spaceId,
     documentId,
     artifactId,
     projectId,
     issueKeys: [epic.key, collab.key, canvas.key, board.key, leak.key],
+    childDocumentId: childId,
+    boardId,
+    sprintId,
   };
 }

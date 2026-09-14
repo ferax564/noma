@@ -36,6 +36,8 @@ index around that source.
 
 ## Technical preview boundaries
 
+The v0.17 Cloud release is a self-hosted **knowledge-platform preview**. It is not the Confluence/Jira substitution product. That product is **Noma Enterprise** (`docs/enterprise.noma`, `apps/server`): one login, one search, Docs / Visuals / Work. Cloud remains available for the hosted `.noma` wiki preview and must not be treated as a parallel Atlassian replacement.
+
 The v0.17 Cloud release is a self-hosted technical preview, not a managed
 multi-tenant SaaS or a completed enterprise integration suite:
 
