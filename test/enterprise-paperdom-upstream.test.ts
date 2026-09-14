@@ -52,6 +52,8 @@ test("hosted PaperDOM strips client actors and rejects stale revisions", () => {
   const target = { innerHTML: "" };
   mountPaperDomHost(target, doc);
   assert.match(html, /Hosted title/);
+  assert.match(html, /pd-el/);
+  assert.match(html, /data-id="title"/);
   assert.equal(target.innerHTML, html);
   const report = paperDomFidelityReport(doc, "pptx");
   assert.equal(report.completeOfficeFidelity, false);

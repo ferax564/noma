@@ -15,6 +15,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **AWS/EU reference:** `infra/aws-eu-reference.json` (`eu-central-1`) with rotating KMS CMK, encrypted Multi-AZ RDS, SSE-KMS public-access-blocked S3, and Secrets Manager.
 - **Independent security review pack:** `runIndependentSecurityReview()` probes unauthenticated search, search leakage, self-approval, grant injection, and SVG quarantine.
 - **Paid-pilot usability:** three paid partners with named champions and budget owners; timed retarget tasks must be ≥30% faster at ≥50% completion for go.
+- **Enterprise workspace product UI:** a real Docs / Visuals / Work shell — topbar, mode switch, paper editor with hosted Tiptap/Yjs, PaperDOM canvas frames, and a live issue board — served at `/` from the enterprise HTTP server.
 - **Persistent block and table identity:** optional `{#id}` markers before blocks, `{#id cols="…" rows="…"}` table identity lines, and `{#cell-id}` cell prefixes round-trip through parse/render. Identities are assigned once, never derived from text or index, survive row insertion, and are remapped on duplication. The validator `duplicate-id` rule and `noma ids` registry include table identities.
 
 ## [0.17.0] — 2026-07-14

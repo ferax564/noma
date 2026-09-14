@@ -6,7 +6,8 @@ import {
   type PaperDOMDocument,
 } from "./paperdom-document-model.js";
 import { PAPERDOM_UPSTREAM_COMMIT, PAPERDOM_UPSTREAM_REPO } from "./paperdom-pin.js";
-import { semanticOutline, type PaperDocument } from "./enterprise-paperdom.js";
+import { paperCanvasStyles, semanticOutline, type PaperDocument } from "./enterprise-paperdom.js";
+import { escapeAttr, escapeHtml } from "./inline.js";
 
 export { PAPERDOM_UPSTREAM_COMMIT, PAPERDOM_UPSTREAM_REPO };
 
@@ -71,19 +72,45 @@ export function paperDomOutline(document: PaperDOMDocument) {
   return semanticOutline(asNoma);
 }
 
+function finitePx(value: unknown, fallback = 0): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function safeCssColor(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) return value;
+  if (/^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(value)) return value;
+  return fallback;
+}
+
 export function paperDomHtmlExport(document: PaperDOMDocument): string {
-  const title = document.title;
+  const title = escapeHtml(document.title);
   const body = document.pages
     .map((page) => {
+      const width = finitePx(page.size?.width, 1280);
+      const height = finitePx(page.size?.height, 720);
+      const background = safeCssColor(page.background?.color, "#ffffff");
       const items = page.elements
         .filter((el) => !el.hidden)
         .sort((a, b) => a.z - b.z)
-        .map((el) => `<p data-id="${el.id}">${el.content?.text ?? el.name}</p>`)
+        .map((el) => {
+          const x = finitePx(el.frame?.x);
+          const y = finitePx(el.frame?.y);
+          const w = Math.max(24, finitePx(el.frame?.w, 160));
+          const h = Math.max(24, finitePx(el.frame?.h, 48));
+          const rotation = finitePx(el.frame?.rotation);
+          const fill = safeCssColor(el.style?.fill, el.type === "text" ? "transparent" : "#f4ebe4");
+          const color = safeCssColor(el.style?.color, "#1a1814");
+          const text = escapeHtml(el.content?.text ?? el.content?.alt ?? el.name);
+          const label = `<p data-id="${escapeAttr(el.id)}">${text}</p>`;
+          return `<div class="pd-el pd-el-${escapeAttr(el.type)}" data-id="${escapeAttr(el.id)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg);background:${fill};color:${color}">${label}</div>`;
+        })
         .join("");
-      return `<section data-page="${page.id}">${items}</section>`;
+      return `<section class="pd-page" data-page="${escapeAttr(page.id)}" style="width:${width}px;min-height:${height}px;background:${background}">${items}</section>`;
     })
     .join("");
-  return `<!doctype html><html><head><title>${title}</title></head><body>${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>${title}</title><style>body{margin:24px;background:#11161c;font-family:Inter,system-ui,sans-serif}${paperCanvasStyles()}</style></head><body>${body}</body></html>`;
 }
 
 export function paperDomFidelityReport(document: PaperDOMDocument, target: "pptx" | "svg" | "html"): {

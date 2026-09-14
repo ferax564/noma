@@ -61,7 +61,7 @@ packages/
   lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
   document-core/, document-ui/, platform/, work/, knowledge/, connectors/, contracts/, paperdom-core/, paperdom-react/, paperdom-io/  Enterprise extraction boundaries re-exporting the CLI kernel
 schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript, changeset, enterprise-resource (`noma schema <name>`)
-web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts, enterprise-collab.ts (esbuild via build:web-ui)
+web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts, enterprise-collab.ts, hosted-collab.ts, enterprise-workspace.ts (esbuild via build:web-ui)
 themes/                    default.css + dark.css HTML themes
 examples/                  Demo .noma files — agent-plan, tech-doc, research-thesis, word-review-loop, interactive-projection, …
   conformance/             Golden-file conformance suite (valid/invalid/patch/patch-error fixtures) — `npm run verify:conformance` gates CI

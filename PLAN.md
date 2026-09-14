@@ -2180,6 +2180,13 @@ Closes the remaining enterprise gates that §24.41 documented as external.
 - **Paid-pilot usability.** Three paid partners with champion and budget
   owner; go/no-go requires ≥30% median improvement and ≥50% completion.
 
+### §24.43 — Enterprise product shell (2026-09-14)
+
+Replaces the three-card `apps/workspace` placeholder with a hosted Docs /
+Visuals / Work UI: topbar and mode switch, Tiptap paper editor over `/yjs`,
+PaperDOM canvas frames instead of a paragraph dump, and a live issue board.
+`listenEnterpriseHttp` serves the shell at `/` and `/v1/workspace`.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can

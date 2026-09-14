@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { build } from "esbuild";
 
@@ -14,6 +14,10 @@ const builds = [
   {
     entryPoint: "web/enterprise-collab.ts",
     outfile: resolve("site/assets/enterprise-collab.js"),
+  },
+  {
+    entryPoint: "web/enterprise-workspace.ts",
+    outfile: resolve("site/assets/enterprise-workspace.js"),
   },
 ] as const;
 
@@ -37,3 +41,6 @@ for (const item of builds) {
 
   console.log(`wrote ${item.outfile}`);
 }
+
+await copyFile(resolve("web/enterprise-workspace.css"), resolve("site/assets/enterprise-workspace.css"));
+console.log("wrote site/assets/enterprise-workspace.css");

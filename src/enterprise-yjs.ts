@@ -92,17 +92,35 @@ export function enterpriseCollabHtml(script: string): string {
   <head>
     <meta charset="utf-8" />
     <title>Noma hosted collab</title>
+    <link rel="preconnect" href="https://rsms.me/" />
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
     <style>
-      html, body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
-      #status { padding: 0.5rem 1rem; background: #111; color: #fff; }
-      #editor { min-height: 12rem; }
-      .ProseMirror { min-height: 12rem; padding: 1rem; outline: none; }
+      :root { --ink:#1b1712; --muted:#6a6156; --paper:#fffdf8; --rule:rgba(48,36,24,.12); --accent:#a64f2b; --sans:Inter,system-ui,sans-serif; --serif:"Iowan Old Style",Charter,Georgia,serif; }
+      html, body { margin:0; min-height:100%; background:#efe8dc; color:var(--ink); font-family:var(--sans); }
+      .collab-shell { min-height:100vh; display:grid; grid-template-rows:auto auto 1fr; }
+      .collab-top { display:flex; align-items:center; gap:10px; padding:12px 18px; border-bottom:1px solid var(--rule); background:rgba(252,248,241,.92); }
+      .brand { font-weight:760; letter-spacing:-.02em; }
+      #status { margin-left:auto; border:1px solid var(--rule); border-radius:999px; padding:4px 10px; font-size:12px; color:var(--muted); }
+      .toolbar { display:flex; gap:6px; padding:10px 18px; }
+      .toolbar button { min-height:30px; border:1px solid var(--rule); border-radius:8px; background:#fff; padding:0 10px; font:650 12px var(--sans); }
+      #editor { width:min(820px, calc(100% - 48px)); margin:18px auto 48px; min-height:24rem; padding:42px 56px; border-radius:22px; background:var(--paper); box-shadow:0 24px 64px -36px rgba(40,28,16,.48); }
+      .ProseMirror { min-height:12rem; outline:none; font-family:var(--serif); font-size:1.12rem; line-height:1.65; }
     </style>
   </head>
   <body>
-    <div id="status">connecting</div>
-    <div id="editor"></div>
-    <script>${script}</script>
+    <div class="collab-shell">
+      <div class="collab-top">
+        <span class="brand">Noma collab</span>
+        <div id="status">connecting</div>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="Formatting">
+        <button type="button" data-cmd="bold" aria-label="Bold"><b>B</b></button>
+        <button type="button" data-cmd="italic" aria-label="Italic"><i>I</i></button>
+        <button type="button" data-cmd="heading" data-level="2" aria-label="Heading">H2</button>
+      </div>
+      <div id="editor"></div>
+    </div>
+    <script>${script.replace(/<\/script/gi, "<\\/script")}</script>
   </body>
 </html>`;
 }
