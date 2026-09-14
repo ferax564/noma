@@ -29155,6 +29155,12 @@ ${err.toString()}`);
       text: () => collab?.getText() ?? ""
     }
   });
+  window.addEventListener("pointermove", (event) => {
+    const x = `${Math.round(event.clientX / Math.max(window.innerWidth, 1) * 100)}%`;
+    const y = `${Math.round(event.clientY / Math.max(window.innerHeight, 1) * 100)}%`;
+    document.documentElement.style.setProperty("--mx", x);
+    document.documentElement.style.setProperty("--my", y);
+  });
   if (token) {
     void loadWorkspace().catch(() => {
       localStorage.removeItem(STORAGE_KEY);

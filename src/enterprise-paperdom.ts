@@ -230,17 +230,16 @@ export function paperCanvasMarkup(doc: PaperDocument): string {
 
 export function paperCanvasStyles(): string {
   return `.pd-page{position:relative;background:
-    linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,0)),
-    radial-gradient(1200px 480px at 20% -10%,rgba(166,79,43,.08),transparent 55%),
-    #fffdf8;border:1px solid rgba(40,32,24,.08);border-radius:18px;box-shadow:0 28px 70px -36px rgba(28,22,16,.55),0 1px 0 rgba(255,255,255,.8) inset;overflow:hidden}
-.pd-el{position:absolute;box-sizing:border-box;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.86);border:1px solid rgba(40,32,24,.08);box-shadow:0 10px 28px -22px rgba(28,22,16,.55);overflow:hidden}
+    linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,.06)),
+    rgba(255,252,248,.42);border:1px solid rgba(255,255,255,.46);border-radius:28px;box-shadow:0 30px 80px -40px rgba(8,10,16,.55),0 1px 0 rgba(255,255,255,.7) inset;backdrop-filter:blur(28px) saturate(170%);overflow:hidden}
+.pd-el{position:absolute;box-sizing:border-box;padding:14px 16px;border-radius:18px;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.42);box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 16px 36px -28px rgba(16,12,8,.55);backdrop-filter:blur(18px);overflow:hidden}
 .pd-el-text{font:650 15px/1.35 Inter,system-ui,sans-serif;color:#1a1814;white-space:pre-wrap}
-.pd-el-shape{background:linear-gradient(180deg,#f7efe8,#fff);border-color:rgba(166,79,43,.18)}
-.pd-el-chart{background:#141a21;color:#edf3f7}
+.pd-el-shape{background:rgba(255,248,242,.34);border-color:rgba(196,90,46,.22)}
+.pd-el-chart{background:rgba(10,14,20,.62);color:#edf3f7;border-color:rgba(255,255,255,.12)}
 .pd-el-chart .pd-el-text{color:#edf3f7}
 .pd-chart{display:flex;align-items:flex-end;gap:8px;height:100%;padding-top:8px}
 .pd-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;min-width:0;height:100%}
-.pd-bar{width:100%;border-radius:7px 7px 3px 3px;background:linear-gradient(180deg,#d9784d,#a64f2b)}
+.pd-bar{width:100%;border-radius:9px 9px 4px 4px;background:linear-gradient(180deg,#ffb089,#c45a2e)}
 .pd-bar-label{font:650 10px/1 Inter,system-ui,sans-serif;color:rgba(237,243,247,.72);text-transform:uppercase;letter-spacing:.04em}
 .pd-table{width:100%;border-collapse:collapse;font:13px/1.4 Inter,system-ui,sans-serif}
 .pd-table th,.pd-table td{border-bottom:1px solid rgba(40,32,24,.08);padding:4px 6px;text-align:left}

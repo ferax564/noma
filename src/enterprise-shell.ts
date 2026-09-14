@@ -38,6 +38,12 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
     ${css}
   </head>
   <body>
+    <div class="ew-atmosphere" aria-hidden="true">
+      <span class="ew-orb ew-orb-a"></span>
+      <span class="ew-orb ew-orb-b"></span>
+      <span class="ew-orb ew-orb-c"></span>
+      <span class="ew-noise"></span>
+    </div>
     <div id="login-gate" class="ew-gate" hidden>
       <div class="ew-gate-card">
         <div class="ew-brand-mark" aria-hidden="true"></div>
