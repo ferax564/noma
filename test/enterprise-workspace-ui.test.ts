@@ -76,6 +76,10 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
     timeout: 20_000,
   });
   await page.waitForSelector("#editor .ProseMirror");
+  await page.waitForFunction(
+    () => ((window as unknown as { nomaWorkspace: { text: () => string } }).nomaWorkspace.text() ?? "").length > 12,
+    { timeout: 20_000 },
+  );
   assert.match(await text(page, "#doc-title"), /Q3 strategy memo/);
   assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 

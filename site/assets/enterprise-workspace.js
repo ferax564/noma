@@ -28944,6 +28944,18 @@ ${err.toString()}`);
   function escapeHtml(value) {
     return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
+  function nomaToEditorHtml(title, source) {
+    const stripped = source.replace(/^---[\s\S]*?---\n/, "").trim();
+    const blocks = stripped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+    const body = blocks.map((block) => {
+      const text2 = escapeHtml(block.replace(/^#{1,6}\s+/, "").replace(/^::\w+.*$/gm, "").trim());
+      if (!text2) return "";
+      if (/^#\s+/.test(block)) return `<h1>${escapeHtml(block.replace(/^#\s+/, ""))}</h1>`;
+      if (/^##\s+/.test(block)) return `<h2>${escapeHtml(block.replace(/^##\s+/, ""))}</h2>`;
+      return `<p>${text2}</p>`;
+    }).filter(Boolean).join("");
+    return body || `<h1>${escapeHtml(title)}</h1><p></p>`;
+  }
   function openDocument(id2) {
     if (!id2 || !payload) return;
     selectedDocumentId = id2;
@@ -28962,8 +28974,16 @@ ${err.toString()}`);
       onStatus: (text2) => {
         $2("collab-status").textContent = text2;
         setStatus(`${payload?.actor.name ?? "Session"} \xB7 ${text2}`, text2.startsWith("ack") || text2 === "ready" ? "ok" : "connecting");
+        if (text2 === "ready") void seedEmptyEditor(id2, doc4?.title ?? "Untitled");
       }
     });
+  }
+  async function seedEmptyEditor(id2, title) {
+    if ((collab?.getText() ?? "").trim()) return;
+    const document2 = await api(`/v1/documents/${encodeURIComponent(id2)}`);
+    const editor = collab?.editor();
+    if (!editor || (editor.getText() ?? "").trim()) return;
+    editor.commands.setContent(nomaToEditorHtml(document2.title || title, document2.source));
   }
   async function openArtifact(id2) {
     if (!id2) return;
@@ -28971,6 +28991,14 @@ ${err.toString()}`);
     const data = await api(`/v1/artifacts/${encodeURIComponent(id2)}`);
     $2("visual-title").textContent = data.document.title;
     $2("visual-stage").innerHTML = data.html;
+    const page = $2("visual-stage").querySelector(".pd-page");
+    if (page instanceof HTMLElement) {
+      const width = Math.max(page.offsetWidth, 960);
+      const scale = Math.min(1, ($2("visual-stage").clientWidth - 32) / width);
+      page.style.transform = `scale(${scale})`;
+      page.style.transformOrigin = "top left";
+      page.style.marginBottom = `${Math.max(0, page.offsetHeight * (scale - 1))}px`;
+    }
     $2("visual-outline").innerHTML = data.outline.map((entry) => `<button type="button" data-frame="${escapeHtml(entry.id)}"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.type)}</small></button>`).join("");
     inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(data.document.title)}</strong><span>Revision ${data.document.revision}</span><span>${data.outline.length} frames</span></div>`;
     $2("inspector-title").textContent = "Canvas";

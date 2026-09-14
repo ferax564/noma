@@ -171,6 +171,22 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function nomaToEditorHtml(title: string, source: string): string {
+  const stripped = source.replace(/^---[\s\S]*?---\n/, "").trim();
+  const blocks = stripped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  const body = blocks
+    .map((block) => {
+      const text = escapeHtml(block.replace(/^#{1,6}\s+/, "").replace(/^::\w+.*$/gm, "").trim());
+      if (!text) return "";
+      if (/^#\s+/.test(block)) return `<h1>${escapeHtml(block.replace(/^#\s+/, ""))}</h1>`;
+      if (/^##\s+/.test(block)) return `<h2>${escapeHtml(block.replace(/^##\s+/, ""))}</h2>`;
+      return `<p>${text}</p>`;
+    })
+    .filter(Boolean)
+    .join("");
+  return body || `<h1>${escapeHtml(title)}</h1><p></p>`;
+}
+
 function openDocument(id: string | undefined): void {
   if (!id || !payload) return;
   selectedDocumentId = id;
@@ -189,8 +205,17 @@ function openDocument(id: string | undefined): void {
     onStatus: (text) => {
       $("collab-status").textContent = text;
       setStatus(`${payload?.actor.name ?? "Session"} · ${text}`, text.startsWith("ack") || text === "ready" ? "ok" : "connecting");
+      if (text === "ready") void seedEmptyEditor(id, doc?.title ?? "Untitled");
     },
   });
+}
+
+async function seedEmptyEditor(id: string, title: string): Promise<void> {
+  if ((collab?.getText() ?? "").trim()) return;
+  const document = await api<{ title: string; source: string }>(`/v1/documents/${encodeURIComponent(id)}`);
+  const editor = collab?.editor();
+  if (!editor || (editor.getText() ?? "").trim()) return;
+  editor.commands.setContent(nomaToEditorHtml(document.title || title, document.source));
 }
 
 async function openArtifact(id: string | undefined): Promise<void> {
@@ -199,6 +224,14 @@ async function openArtifact(id: string | undefined): Promise<void> {
   const data = await api<ArtifactPayload>(`/v1/artifacts/${encodeURIComponent(id)}`);
   $("visual-title").textContent = data.document.title;
   $("visual-stage").innerHTML = data.html;
+  const page = $("visual-stage").querySelector(".pd-page");
+  if (page instanceof HTMLElement) {
+    const width = Math.max(page.offsetWidth, 960);
+    const scale = Math.min(1, ($("visual-stage").clientWidth - 32) / width);
+    page.style.transform = `scale(${scale})`;
+    page.style.transformOrigin = "top left";
+    page.style.marginBottom = `${Math.max(0, page.offsetHeight * (scale - 1))}px`;
+  }
   $("visual-outline").innerHTML = data.outline
     .map((entry) => `<button type="button" data-frame="${escapeHtml(entry.id)}"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.type)}</small></button>`)
     .join("");

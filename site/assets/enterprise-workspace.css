@@ -142,6 +142,8 @@ input {
   border-bottom: 1px solid var(--rule);
   background: var(--chrome);
   backdrop-filter: blur(18px) saturate(140%);
+  flex-wrap: wrap;
+  min-height: 56px;
 }
 .ew-brand {
   display: inline-flex;
@@ -283,7 +285,7 @@ input {
     var(--paper);
   box-shadow: var(--shadow), 0 1px 0 rgba(255,255,255,.8) inset;
   border: 1px solid var(--rule);
-  min-height: calc(100vh - 160px);
+  min-height: min(72vh, 640px);
 }
 .ew-paper h1 {
   font-family: var(--serif);
@@ -309,8 +311,8 @@ input {
 .ew-editor .ProseMirror ul, .ew-editor .ProseMirror ol { padding-left: 1.2em; }
 
 .ew-visual-stage {
-  min-height: calc(100vh - 170px);
-  padding: 36px;
+  min-height: 560px;
+  padding: 28px;
   border-radius: 22px;
   background:
     linear-gradient(180deg, rgba(255,255,255,.03), transparent 30%),
