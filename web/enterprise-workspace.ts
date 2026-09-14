@@ -149,7 +149,7 @@ function currentProject(): ShellProject | undefined {
 }
 
 function currentSpaceId(): string {
-  return selectedSpaceId || payload?.spaces[0]?.id ?? "";
+  return selectedSpaceId || payload?.spaces[0]?.id || "";
 }
 
 function assetUrl(id: string): string {
