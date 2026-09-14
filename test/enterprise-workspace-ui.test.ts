@@ -81,11 +81,17 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
     { timeout: 20_000 },
   );
   assert.match(await text(page, "#doc-title"), /Q3 strategy memo/);
+  assert.match(await text(page, "#rail-list"), /Q3 strategy memo/);
+  assert.match(await text(page, "#rail-list"), /Risks and open questions/);
+  await page.waitForSelector("#doc-media img");
+  await page.waitForSelector("#inspector .ew-link");
+  assert.match(await text(page, "#inspector"), /github/i);
   assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 
   await page.locator("#mode-visuals").click();
   await page.waitForFunction(() => (window as unknown as { nomaWorkspace: { mode: () => string } }).nomaWorkspace.mode() === "visuals");
   await page.waitForSelector(".pd-el");
+  await page.waitForSelector(".pd-el-arrow");
   assert.match(await text(page, "#visual-title"), /Atlas architecture/);
   assert.match(await text(page, "#visual-stage"), /Atlas architecture/);
   assert.match(await text(page, "#visual-outline"), /Atlas architecture/);
@@ -103,7 +109,7 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   }, undefined, before);
 
   await page.locator("#workspace-search").fill("strategy");
-  await page.waitForSelector(".ew-hit");
+  await page.waitForSelector("#search-results .ew-hit");
   assert.match(await text(page, "#search-results"), /Q3 strategy memo/);
 
   await page.locator("#mode-docs").click();

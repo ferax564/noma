@@ -19,6 +19,7 @@ import {
   type Classification,
   type ConnectorMode,
   type CutoverStage,
+  type ExternalLinkProvider,
   type FieldType,
   type GrantRole,
   type ImportDisposition,
@@ -55,6 +56,7 @@ import {
   paperHash,
   semanticOutline,
   type PaperDocument,
+  type PaperElement,
   type VisualCommand,
 } from "./enterprise-paperdom.js";
 import { EnterpriseStore } from "./enterprise-store.js";
@@ -85,6 +87,7 @@ const DEFAULT_STATUSES: Array<{ id: string; name: string; category: StatusCatego
 
 export interface WorkspaceOptions {
   dbPath?: string;
+  postgresUrl?: string;
   now?: () => string;
   id?: () => string;
   oidc?: OidcAdapter;
@@ -138,7 +141,9 @@ export class EnterpriseWorkspace {
   private identityFactory = defaultIdentityFactory();
 
   constructor(options: WorkspaceOptions = {}) {
-    this.store = new EnterpriseStore(options.dbPath ?? ":memory:");
+    this.store = new EnterpriseStore(
+      options.postgresUrl ? { postgresUrl: options.postgresUrl } : options.dbPath ?? ":memory:",
+    );
     this.now = options.now ?? (() => new Date().toISOString());
     this.id = options.id ?? (() => randomUUID());
     this.oidc = options.oidc;
@@ -297,12 +302,19 @@ export class EnterpriseWorkspace {
     this.audit(actor, "revoke_grant", grant.resource_kind, grant.resource_id, { grantId });
   }
 
-  createSpace(actor: ActorContext, name: string, classification: Classification = "internal"): string {
+  createSpace(actor: ActorContext, name: string, classification: Classification = "internal", options: { homePage?: boolean } = {}): string {
     const id = this.id();
     this.store.db
       .prepare("INSERT INTO spaces(id, tenant_id, name, classification, created_at) VALUES (?, ?, ?, ?, ?)")
       .run(id, actor.tenantId, name, classification, this.now());
     this.bootstrapGrant(actor.tenantId, actor.principalId, "space", id, "owner");
+    if (options.homePage) {
+      this.createDocument(actor, {
+        spaceId: id,
+        title: "Home",
+        source: `# ${name}\n\nThis workspace is ready for pages, media, comments, and links to work and GitHub.\n`,
+      });
+    }
     return id;
   }
 
@@ -329,17 +341,19 @@ export class EnterpriseWorkspace {
 
   // --- documents ------------------------------------------------------------
 
-  createDocument(actor: ActorContext, input: { spaceId: string; title: string; source: string; classification?: Classification }): string {
+  createDocument(actor: ActorContext, input: { spaceId: string; title: string; source: string; classification?: Classification; parentId?: string }): string {
     this.requireRole(actor, "space", input.spaceId, "editor");
+    if (input.parentId) this.assertDocumentParent(actor.tenantId, input.spaceId, input.parentId);
     const parsed = assignPersistentIdentities(parse(input.source), { factory: this.identityFactory });
     const source = renderNoma(parsed);
     const id = this.id();
     const hash = sha256Hex(source);
     const editor = nomaToEditor(parsed);
+    const rank = this.nextDocumentRank(input.spaceId, input.parentId ?? null);
     this.store.db
       .prepare(
-        `INSERT INTO documents(id, tenant_id, space_id, title, lifecycle, classification, owner_id, draft_revision, draft_source, draft_hash, crdt_json, update_log_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'draft', ?, ?, 0, ?, ?, ?, '[]', ?, ?)`,
+        `INSERT INTO documents(id, tenant_id, space_id, title, lifecycle, classification, owner_id, parent_id, rank, draft_revision, draft_source, draft_hash, crdt_json, update_log_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, 0, ?, ?, ?, '[]', ?, ?)`,
       )
       .run(
         id,
@@ -348,6 +362,8 @@ export class EnterpriseWorkspace {
         input.title,
         input.classification ?? "internal",
         actor.principalId,
+        input.parentId ?? null,
+        rank,
         source,
         hash,
         JSON.stringify(editor),
@@ -355,7 +371,7 @@ export class EnterpriseWorkspace {
         this.now(),
       );
     this.bootstrapGrant(actor.tenantId, actor.principalId, "document", id, "owner");
-    this.audit(actor, "document.create", "document", id, { title: input.title });
+    this.audit(actor, "document.create", "document", id, { title: input.title, parentId: input.parentId ?? null });
     return id;
   }
 
@@ -483,6 +499,316 @@ export class EnterpriseWorkspace {
     };
   }
 
+  renameDocument(actor: ActorContext, documentId: string, title: string): void {
+    this.documentRow(documentId, actor.tenantId);
+    this.requireRole(actor, "document", documentId, "editor");
+    this.store.db.prepare("UPDATE documents SET title = ?, updated_at = ? WHERE id = ?").run(title, this.now(), documentId);
+    this.audit(actor, "document.rename", "document", documentId, { title });
+  }
+
+  moveDocument(actor: ActorContext, documentId: string, parentId: string | null): void {
+    const doc = this.documentRow(documentId, actor.tenantId);
+    this.requireRole(actor, "document", documentId, "editor");
+    if (parentId === documentId) throw new EnterpriseError("invalid", "a page cannot be its own parent");
+    if (parentId) {
+      this.assertDocumentParent(actor.tenantId, doc.space_id, parentId);
+      let cursor: string | null = parentId;
+      while (cursor) {
+        if (cursor === documentId) throw new EnterpriseError("invalid", "page tree cycle");
+        cursor =
+          (this.store.db.prepare("SELECT parent_id FROM documents WHERE id = ?").get(cursor) as { parent_id: string | null } | undefined)
+            ?.parent_id ?? null;
+      }
+    }
+    const rank = this.nextDocumentRank(doc.space_id, parentId);
+    this.store.db
+      .prepare("UPDATE documents SET parent_id = ?, rank = ?, updated_at = ? WHERE id = ?")
+      .run(parentId, rank, this.now(), documentId);
+    this.audit(actor, "document.move", "document", documentId, { parentId });
+  }
+
+  listDocumentRevisions(actor: ActorContext, documentId: string): Array<{
+    revision: number;
+    hash: string;
+    title: string;
+    createdBy: string;
+    createdAt: string;
+  }> {
+    this.requireRole(actor, "document", documentId, "viewer");
+    return this.store.db
+      .prepare(
+        "SELECT revision, hash, title, created_by AS createdBy, created_at AS createdAt FROM document_revisions WHERE document_id = ? ORDER BY revision DESC",
+      )
+      .all(documentId) as Array<{ revision: number; hash: string; title: string; createdBy: string; createdAt: string }>;
+  }
+
+  restoreDocumentRevision(actor: ActorContext, documentId: string, revision: number): { hash: string } {
+    this.requireRole(actor, "document", documentId, "editor");
+    const row = this.store.db
+      .prepare("SELECT source, hash, title FROM document_revisions WHERE document_id = ? AND revision = ?")
+      .get(documentId, revision) as { source: string; hash: string; title: string } | undefined;
+    if (!row) throw new EnterpriseError("not_found", "revision not found");
+    const editor = nomaToEditor(assignPersistentIdentities(parse(row.source), { factory: this.identityFactory }));
+    this.store.db
+      .prepare(
+        "UPDATE documents SET draft_source = ?, draft_hash = ?, title = ?, draft_revision = draft_revision + 1, crdt_json = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(row.source, row.hash, row.title, JSON.stringify(editor), this.now(), documentId);
+    this.audit(actor, "document.restore", "document", documentId, { revision, hash: row.hash });
+    return { hash: row.hash };
+  }
+
+  addDocumentComment(actor: ActorContext, documentId: string, body: string): { id: string; mentions: string[] } {
+    this.requireRole(actor, "document", documentId, "viewer");
+    const mentions = this.resolveMentions(actor.tenantId, body);
+    const id = this.id();
+    this.store.db
+      .prepare(
+        "INSERT INTO document_comments(id, document_id, body, mentions_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(id, documentId, body, JSON.stringify(mentions), actor.principalId, this.now());
+    const doc = this.documentRow(documentId, actor.tenantId);
+    this.notify(actor.tenantId, doc.owner_id ?? actor.principalId, "New comment", body.slice(0, 180), "document", documentId);
+    for (const mention of mentions) {
+      if (mention !== actor.principalId) {
+        this.notify(actor.tenantId, mention, "You were mentioned", body.slice(0, 180), "document", documentId);
+      }
+    }
+    return { id, mentions };
+  }
+
+  listDocumentComments(actor: ActorContext, documentId: string): Array<Record<string, unknown>> {
+    this.requireRole(actor, "document", documentId, "viewer");
+    return this.store.db
+      .prepare(
+        `SELECT c.id, c.body, c.mentions_json AS mentionsJson, c.created_by AS createdBy, c.created_at AS createdAt, p.name AS authorName
+         FROM document_comments c JOIN principals p ON p.id = c.created_by
+         WHERE c.document_id = ? ORDER BY c.created_at`,
+      )
+      .all(documentId) as Array<Record<string, unknown>>;
+  }
+
+  attachDocumentAsset(
+    actor: ActorContext,
+    documentId: string,
+    input: { bytes: Buffer; mime: string; filename: string },
+  ): { assetId: string; linkId: string } {
+    this.requireRole(actor, "document", documentId, "editor");
+    const assetId = this.uploadAsset(actor, { bytes: input.bytes, mime: input.mime, provenance: { filename: input.filename, documentId } });
+    const linkId = this.id();
+    this.store.db
+      .prepare(
+        "INSERT INTO document_assets(id, document_id, asset_id, filename, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(linkId, documentId, assetId, input.filename, actor.principalId, this.now());
+    return { assetId, linkId };
+  }
+
+  listDocumentAssets(actor: ActorContext, documentId: string): Array<{ id: string; assetId: string; filename: string; createdAt: string; mime: string }> {
+    this.requireRole(actor, "document", documentId, "viewer");
+    return this.store.db
+      .prepare(
+        `SELECT da.id, da.asset_id AS assetId, da.filename, da.created_at AS createdAt, a.mime
+         FROM document_assets da JOIN assets a ON a.id = da.asset_id
+         WHERE da.document_id = ? ORDER BY da.created_at`,
+      )
+      .all(documentId) as Array<{ id: string; assetId: string; filename: string; createdAt: string; mime: string }>;
+  }
+
+  embedDocumentMedia(
+    actor: ActorContext,
+    documentId: string,
+    input: { kind: "image" | "video"; assetId: string; filename: string },
+  ): { hash: string } {
+    this.requireRole(actor, "document", documentId, "editor");
+    const doc = this.documentRow(documentId, actor.tenantId);
+    const filename = input.filename.replace(/["\n\r]/g, "");
+    const src = `/v1/assets/${input.assetId}`;
+    const snippet =
+      input.kind === "video"
+        ? `\n::video{src="${src}" title="${filename}"}\n::\n`
+        : `\n::figure{src="${src}" alt="${filename}"}\n::\n`;
+    const source = `${doc.draft_source.trimEnd()}\n${snippet}`;
+    const hash = sha256Hex(source);
+    this.store.db
+      .prepare("UPDATE documents SET draft_source = ?, draft_hash = ?, draft_revision = draft_revision + 1, updated_at = ? WHERE id = ?")
+      .run(source, hash, this.now(), documentId);
+    this.audit(actor, "document.media", "document", documentId, { kind: input.kind, assetId: input.assetId });
+    return { hash };
+  }
+
+  listResourceGrants(actor: ActorContext, kind: ResourceKind, id: string): Array<{ id: string; principalId: string; role: GrantRole; name: string }> {
+    this.requireRole(actor, kind, id, "viewer");
+    return this.store.db
+      .prepare(
+        `SELECT g.id, g.principal_id AS principalId, g.role, p.name FROM grants g JOIN principals p ON p.id = g.principal_id
+         WHERE g.tenant_id = ? AND g.resource_kind = ? AND g.resource_id = ? ORDER BY g.created_at`,
+      )
+      .all(actor.tenantId, kind, id) as Array<{ id: string; principalId: string; role: GrantRole; name: string }>;
+  }
+
+  addExternalLink(
+    actor: ActorContext,
+    input: {
+      fromKind: ResourceKind;
+      fromId: string;
+      provider: ExternalLinkProvider;
+      url?: string;
+      issueId?: string;
+      documentId?: string;
+      label?: string;
+    },
+  ): string {
+    this.requireRole(actor, input.fromKind, input.fromId, "editor");
+    let url = input.url ?? null;
+    let targetKind: ResourceKind | null = null;
+    let targetId: string | null = null;
+    let label = input.label ?? "";
+    if (input.provider === "github") {
+      if (!url) throw new EnterpriseError("invalid", "GitHub link requires a url");
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      if (parsed.protocol !== "https:" || (host !== "github.com" && host !== "www.github.com")) {
+        throw new EnterpriseError("invalid", "GitHub links must be https://github.com/...");
+      }
+      label = label || parsed.pathname.replace(/^\//, "");
+    } else if (input.provider === "issue") {
+      if (!input.issueId) throw new EnterpriseError("invalid", "issue link requires issueId");
+      const issue = this.issueRow(input.issueId, actor.tenantId);
+      this.requireRole(actor, "project", issue.project_id, "viewer");
+      targetKind = "issue";
+      targetId = input.issueId;
+      const row = this.store.db.prepare("SELECT key, summary FROM issues WHERE id = ?").get(input.issueId) as { key: string; summary: string };
+      label = label || `${row.key} ${row.summary}`;
+      this.putReference(actor, {
+        from: { kind: input.fromKind, id: input.fromId },
+        to: { kind: "issue", id: input.issueId },
+        relation: "illustrates",
+      });
+    } else if (input.provider === "document") {
+      if (!input.documentId) throw new EnterpriseError("invalid", "document link requires documentId");
+      this.requireRole(actor, "document", input.documentId, "viewer");
+      targetKind = "document";
+      targetId = input.documentId;
+      label = label || this.documentRow(input.documentId, actor.tenantId).title;
+    } else {
+      if (!url) throw new EnterpriseError("invalid", "url link requires a url");
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new EnterpriseError("invalid", "link scheme is not allowed");
+      label = label || parsed.hostname;
+    }
+    const id = this.id();
+    this.store.db
+      .prepare(
+        `INSERT INTO external_links(id, tenant_id, from_kind, from_id, provider, url, label, target_kind, target_id, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, actor.tenantId, input.fromKind, input.fromId, input.provider, url, label, targetKind, targetId, actor.principalId, this.now());
+    return id;
+  }
+
+  listExternalLinks(actor: ActorContext, fromKind: ResourceKind, fromId: string): Array<Record<string, unknown>> {
+    this.requireRole(actor, fromKind, fromId, "viewer");
+    return this.store.db
+      .prepare(
+        "SELECT id, provider, url, label, target_kind AS targetKind, target_id AS targetId, created_at AS createdAt FROM external_links WHERE tenant_id = ? AND from_kind = ? AND from_id = ? ORDER BY created_at",
+      )
+      .all(actor.tenantId, fromKind, fromId) as Array<Record<string, unknown>>;
+  }
+
+  inspectAsset(actor: ActorContext, assetId: string): { bytes: Buffer; mime: string } {
+    this.requireRole(actor, "asset", assetId, "viewer");
+    const row = this.store.db.prepare("SELECT bytes, mime, scan_state FROM assets WHERE id = ? AND tenant_id = ?").get(assetId, actor.tenantId) as
+      | { bytes: Buffer; mime: string; scan_state: string }
+      | undefined;
+    if (!row) throw new EnterpriseError("not_found", "asset not found");
+    if (row.scan_state !== "clean") throw new EnterpriseError("forbidden", "asset is quarantined");
+    return { bytes: row.bytes, mime: row.mime };
+  }
+
+  insertArtifactElement(
+    actor: ActorContext,
+    artifactId: string,
+    input: {
+      type: PaperElement["type"];
+      text?: string;
+      altText?: string;
+      imageAssetId?: string;
+      videoAssetId?: string;
+      href?: string;
+      fromId?: string;
+      toId?: string;
+      geometry?: { x?: number; y?: number; width?: number; height?: number };
+    },
+  ): { id: string; revision: number } {
+    const read = this.readArtifact(actor, artifactId, "draft");
+    const id = this.id();
+    let geometry = {
+      x: input.geometry?.x ?? 48,
+      y: input.geometry?.y ?? 48 + read.document.elements.length * 24,
+      width: input.geometry?.width ?? (input.type === "arrow" ? 800 : 280),
+      height: input.geometry?.height ?? (input.type === "arrow" ? 220 : 140),
+    };
+    if (input.type === "arrow" && input.fromId && input.toId) {
+      const from = read.document.elements.find((item) => item.id === input.fromId);
+      const to = read.document.elements.find((item) => item.id === input.toId);
+      if (from && to) {
+        geometry = {
+          x: 0,
+          y: 0,
+          width: Math.max(960, from.geometry.x + from.geometry.width, to.geometry.x + to.geometry.width) + 24,
+          height: Math.max(540, from.geometry.y + from.geometry.height, to.geometry.y + to.geometry.height) + 24,
+        };
+      }
+    }
+    const element: PaperElement = {
+      id,
+      type: input.type,
+      geometry,
+      zIndex: input.type === "arrow" ? 8 : 5,
+      text: input.text,
+      altText: input.altText ?? input.text ?? input.type,
+      imageAssetId: input.imageAssetId,
+      videoAssetId: input.videoAssetId,
+      href: input.href,
+      fromId: input.fromId,
+      toId: input.toId,
+    };
+    const applied = this.applyArtifactCommands(actor, artifactId, [{ op: "insert_element", element }], read.document.revision);
+    return { id, revision: applied.revision };
+  }
+
+  markNotificationRead(actor: ActorContext, notificationId: string): void {
+    this.store.db
+      .prepare("UPDATE notifications SET read_at = ? WHERE id = ? AND tenant_id = ? AND user_id = ?")
+      .run(this.now(), notificationId, actor.tenantId, actor.principalId);
+  }
+
+  listAdminDirectory(actor: ActorContext): {
+    principals: Array<Record<string, unknown>>;
+    spaces: Array<Record<string, unknown>>;
+    projects: Array<Record<string, unknown>>;
+    grants: Array<Record<string, unknown>>;
+  } {
+    this.requireRole(actor, "tenant", actor.tenantId, "owner");
+    return {
+      principals: this.store.db
+        .prepare("SELECT id, name, kind, email, active FROM principals WHERE tenant_id = ? ORDER BY name")
+        .all(actor.tenantId) as Array<Record<string, unknown>>,
+      spaces: this.store.db
+        .prepare("SELECT id, name, classification FROM spaces WHERE tenant_id = ? ORDER BY name")
+        .all(actor.tenantId) as Array<Record<string, unknown>>,
+      projects: this.store.db
+        .prepare("SELECT id, key, name FROM projects WHERE tenant_id = ? ORDER BY key")
+        .all(actor.tenantId) as Array<Record<string, unknown>>,
+      grants: this.store.db
+        .prepare(
+          "SELECT id, principal_id AS principalId, resource_kind AS resourceKind, resource_id AS resourceId, role FROM grants WHERE tenant_id = ? ORDER BY created_at",
+        )
+        .all(actor.tenantId) as Array<Record<string, unknown>>,
+    };
+  }
+
   workspaceShell(actor: ActorContext): {
     actor: ActorContext & { name: string };
     spaces: Array<{ id: string; name: string; classification: Classification }>;
@@ -494,6 +820,8 @@ export class EnterpriseWorkspace {
       classification: Classification;
       updatedAt: string;
       hash: string;
+      parentId: string | null;
+      rank: string;
     }>;
     artifacts: Array<{
       id: string;
@@ -518,7 +846,15 @@ export class EnterpriseWorkspace {
       typeKey: string;
       estimate: number | null;
       assigneeId: string | null;
+      parentId: string | null;
+      rank: string;
+      sprintId: string | null;
     }>;
+    principals: Array<{ id: string; name: string; kind: PrincipalKind; email: string | null }>;
+    boards: Array<{ id: string; projectId: string; name: string; kind: string }>;
+    sprints: Array<{ id: string; boardId: string; name: string; goal: string | null; state: string }>;
+    grants: Array<{ id: string; principalId: string; resourceKind: string; resourceId: string; role: GrantRole }>;
+    issueTypes: Array<{ projectId: string; key: string; name: string; hierarchy: string }>;
     notifications: Array<Record<string, unknown>>;
   } {
     this.assertSession(actor);
@@ -531,7 +867,7 @@ export class EnterpriseWorkspace {
     const documents = (
       this.store.db
         .prepare(
-          "SELECT id, space_id AS spaceId, title, lifecycle, classification, updated_at AS updatedAt, draft_hash AS hash FROM documents WHERE tenant_id = ? ORDER BY updated_at DESC",
+          "SELECT id, space_id AS spaceId, title, lifecycle, classification, updated_at AS updatedAt, draft_hash AS hash, parent_id AS parentId, rank FROM documents WHERE tenant_id = ? ORDER BY rank, title",
         )
         .all(actor.tenantId) as Array<{
         id: string;
@@ -541,6 +877,8 @@ export class EnterpriseWorkspace {
         classification: Classification;
         updatedAt: string;
         hash: string;
+        parentId: string | null;
+        rank: string;
       }>
     ).filter((row) => this.hasRole(actor, "document", row.id, "viewer"));
     const artifacts = (
@@ -566,7 +904,7 @@ export class EnterpriseWorkspace {
     const issues = (
       this.store.db
         .prepare(
-          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId
+          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId
            FROM issues i JOIN issue_types t ON t.id = i.type_id
            WHERE i.tenant_id = ? ORDER BY i.rank`,
         )
@@ -582,6 +920,9 @@ export class EnterpriseWorkspace {
         assigneeId: string | null;
         reporterId: string | null;
         securityLevelId: string | null;
+        parentId: string | null;
+        rank: string;
+        sprintId: string | null;
       }>
     )
       .filter((row) =>
@@ -602,7 +943,39 @@ export class EnterpriseWorkspace {
         typeKey: row.typeKey,
         estimate: row.estimate,
         assigneeId: row.assigneeId,
+        parentId: row.parentId,
+        rank: row.rank,
+        sprintId: row.sprintId,
       }));
+    const principals = this.store.db
+      .prepare("SELECT id, name, kind, email FROM principals WHERE tenant_id = ? AND active = 1 ORDER BY name")
+      .all(actor.tenantId) as Array<{ id: string; name: string; kind: PrincipalKind; email: string | null }>;
+    const boards = (
+      this.store.db
+        .prepare("SELECT id, project_id AS projectId, name, kind FROM boards WHERE tenant_id = ? ORDER BY name")
+        .all(actor.tenantId) as Array<{ id: string; projectId: string; name: string; kind: string }>
+    ).filter((row) => this.hasRole(actor, "project", row.projectId, "viewer"));
+    const sprints = this.store.db
+      .prepare(
+        `SELECT s.id, s.board_id AS boardId, s.name, s.goal, s.state FROM sprints s JOIN boards b ON b.id = s.board_id WHERE s.tenant_id = ? ORDER BY s.created_at`,
+      )
+      .all(actor.tenantId) as Array<{ id: string; boardId: string; name: string; goal: string | null; state: string }>;
+    const grants = this.hasRole(actor, "tenant", actor.tenantId, "owner")
+      ? (this.store.db
+          .prepare("SELECT id, principal_id AS principalId, resource_kind AS resourceKind, resource_id AS resourceId, role FROM grants WHERE tenant_id = ? ORDER BY created_at")
+          .all(actor.tenantId) as Array<{
+          id: string;
+          principalId: string;
+          resourceKind: string;
+          resourceId: string;
+          role: GrantRole;
+        }>)
+      : [];
+    const issueTypes = (
+      this.store.db
+        .prepare("SELECT project_id AS projectId, key, name, hierarchy FROM issue_types WHERE tenant_id = ? ORDER BY key")
+        .all(actor.tenantId) as Array<{ projectId: string; key: string; name: string; hierarchy: string }>
+    ).filter((row) => this.hasRole(actor, "project", row.projectId, "viewer"));
     return {
       actor: { ...actor, name: principal.name },
       spaces,
@@ -610,6 +983,11 @@ export class EnterpriseWorkspace {
       artifacts,
       projects,
       issues,
+      principals,
+      boards,
+      sprints,
+      grants,
+      issueTypes,
       notifications: this.notifications(actor),
     };
   }
@@ -953,6 +1331,132 @@ export class EnterpriseWorkspace {
       .run(id, input.issueId, actor.principalId, input.durationSeconds, input.visibility ?? "internal", input.note ?? null, this.now());
     this.issueEvent(input.issueId, actor.principalId, "worklogged", { durationSeconds: input.durationSeconds });
     return id;
+  }
+
+  listWorklogs(actor: ActorContext, issueId: string): Array<Record<string, unknown>> {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    return this.store.db
+      .prepare(
+        `SELECT w.id, w.duration_seconds AS durationSeconds, w.note, w.created_at AS createdAt, p.name AS authorName
+         FROM worklogs w JOIN principals p ON p.id = w.author_id WHERE w.issue_id = ? ORDER BY w.created_at`,
+      )
+      .all(issueId) as Array<Record<string, unknown>>;
+  }
+
+  updateIssue(
+    actor: ActorContext,
+    issueId: string,
+    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[] },
+  ): void {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "editor");
+    if (patch.parentId) {
+      const type = this.store.db.prepare("SELECT hierarchy FROM issue_types WHERE id = (SELECT type_id FROM issues WHERE id = ?)").get(issueId) as {
+        hierarchy: IssueHierarchyType;
+      };
+      this.assertHierarchy(patch.parentId, type.hierarchy);
+    }
+    this.store.db
+      .prepare(
+        `UPDATE issues SET summary = COALESCE(?, summary), description = COALESCE(?, description), assignee_id = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
+         parent_id = CASE WHEN ? = 1 THEN ? ELSE parent_id END, labels_json = COALESCE(?, labels_json), updated_at = ? WHERE id = ?`,
+      )
+      .run(
+        patch.summary ?? null,
+        patch.description ?? null,
+        patch.assigneeId === undefined ? 0 : 1,
+        patch.assigneeId ?? null,
+        patch.parentId === undefined ? 0 : 1,
+        patch.parentId ?? null,
+        patch.labels ? JSON.stringify(patch.labels) : null,
+        this.now(),
+        issueId,
+      );
+    this.issueEvent(issueId, actor.principalId, "updated", patch as Record<string, unknown>);
+  }
+
+  addIssueComment(actor: ActorContext, issueId: string, body: string): string {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    const id = this.id();
+    this.store.db
+      .prepare("INSERT INTO issue_comments(id, issue_id, body, created_by, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(id, issueId, body, actor.principalId, this.now());
+    const mentions = this.resolveMentions(actor.tenantId, body);
+    for (const mention of mentions) {
+      this.notify(actor.tenantId, mention, "Mentioned on an issue", body.slice(0, 180), "issue", issueId);
+    }
+    this.issueEvent(issueId, actor.principalId, "commented", { id });
+    return id;
+  }
+
+  listIssueComments(actor: ActorContext, issueId: string): Array<Record<string, unknown>> {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    return this.store.db
+      .prepare(
+        `SELECT c.id, c.body, c.created_by AS createdBy, c.created_at AS createdAt, p.name AS authorName
+         FROM issue_comments c JOIN principals p ON p.id = c.created_by WHERE c.issue_id = ? ORDER BY c.created_at`,
+      )
+      .all(issueId) as Array<Record<string, unknown>>;
+  }
+
+  readIssue(actor: ActorContext, issueId: string): Record<string, unknown> {
+    const issue = this.store.db.prepare("SELECT * FROM issues WHERE id = ? AND tenant_id = ?").get(issueId, actor.tenantId) as
+      | Record<string, unknown>
+      | undefined;
+    if (!issue || !this.canSeeIssue(actor, issue)) throw new EnterpriseError("not_found", "issue not found");
+    const type = this.store.db.prepare("SELECT key, name, hierarchy FROM issue_types WHERE id = ?").get(issue.type_id as string) as {
+      key: string;
+      name: string;
+      hierarchy: string;
+    };
+    return {
+      ...issue,
+      typeKey: type.key,
+      typeName: type.name,
+      hierarchy: type.hierarchy,
+      comments: this.listIssueComments(actor, issueId),
+      worklogs: this.listWorklogs(actor, issueId),
+      transitions: this.listIssueTransitions(actor, issueId),
+    };
+  }
+
+  listIssueTransitions(actor: ActorContext, issueId: string): Array<{ id: string; from: string; to: string; requiredFields: string[] }> {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    const workflow = this.activeWorkflow(issue.project_id);
+    return workflow.transitions
+      .filter((item) => item.from === issue.status_id)
+      .map((item) => ({ id: item.id, from: item.from, to: item.to, requiredFields: item.requiredFields ?? [] }));
+  }
+
+  listBoards(actor: ActorContext, projectId: string): Array<Record<string, unknown>> {
+    this.requireRole(actor, "project", projectId, "viewer");
+    return this.store.db
+      .prepare("SELECT id, name, kind FROM boards WHERE project_id = ?")
+      .all(projectId) as Array<Record<string, unknown>>;
+  }
+
+  listSprints(actor: ActorContext, boardId: string): Array<Record<string, unknown>> {
+    const board = this.store.db.prepare("SELECT project_id FROM boards WHERE id = ?").get(boardId) as { project_id: string } | undefined;
+    if (!board) throw new EnterpriseError("not_found", "board not found");
+    this.requireRole(actor, "project", board.project_id, "viewer");
+    return this.store.db
+      .prepare("SELECT id, name, goal, state, start_at AS startAt, end_at AS endAt FROM sprints WHERE board_id = ? ORDER BY created_at")
+      .all(boardId) as Array<Record<string, unknown>>;
+  }
+
+  setIssueSprint(actor: ActorContext, issueId: string, sprintId: string | null): void {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "editor");
+    if (sprintId) {
+      const sprint = this.store.db.prepare("SELECT board_id FROM sprints WHERE id = ?").get(sprintId) as { board_id: string } | undefined;
+      if (!sprint) throw new EnterpriseError("not_found", "sprint not found");
+    }
+    this.store.db.prepare("UPDATE issues SET sprint_id = ?, updated_at = ? WHERE id = ?").run(sprintId, this.now(), issueId);
+    this.issueEvent(issueId, actor.principalId, "sprint_set", { sprintId });
   }
 
   defineCustomField(actor: ActorContext, projectId: string, input: { key: string; fieldType: FieldType; options?: string[] }): string {
@@ -1378,6 +1882,10 @@ export class EnterpriseWorkspace {
       this.store.db.prepare("SELECT * FROM artifact_revisions WHERE artifact_id = ?").all(id),
     );
     data.issue_events = issueIds.flatMap((id) => this.store.db.prepare("SELECT * FROM issue_events WHERE issue_id = ?").all(id));
+    data.issue_comments = issueIds.flatMap((id) => this.store.db.prepare("SELECT * FROM issue_comments WHERE issue_id = ?").all(id));
+    data.worklogs = issueIds.flatMap((id) => this.store.db.prepare("SELECT * FROM worklogs WHERE issue_id = ?").all(id));
+    data.document_comments = documentIds.flatMap((id) => this.store.db.prepare("SELECT * FROM document_comments WHERE document_id = ?").all(id));
+    data.document_assets = documentIds.flatMap((id) => this.store.db.prepare("SELECT * FROM document_assets WHERE document_id = ?").all(id));
     data.project_spaces = this.store.db
       .prepare("SELECT ps.* FROM project_spaces ps JOIN projects p ON p.id = ps.project_id WHERE p.tenant_id = ?")
       .all(tenantId);
@@ -1667,6 +2175,7 @@ export class EnterpriseWorkspace {
         { id: "reopen", from: "done", to: "todo" },
       ],
     });
+    this.createBoard(actor, { projectId, name: "Board", kind: "kanban" });
   }
 
   private assertHierarchy(parentId: string, child: IssueHierarchyType): void {
@@ -1932,6 +2441,49 @@ export class EnterpriseWorkspace {
       .run(this.id(), tenantId, userId, title, body, kind ?? null, id ?? null, this.now());
   }
 
+  private nextDocumentRank(spaceId: string, parentId: string | null): string {
+    const row = (
+      parentId
+        ? this.store.db.prepare("SELECT COUNT(*) AS n FROM documents WHERE space_id = ? AND parent_id = ?").get(spaceId, parentId)
+        : this.store.db.prepare("SELECT COUNT(*) AS n FROM documents WHERE space_id = ? AND parent_id IS NULL").get(spaceId)
+    ) as { n: number };
+    return `n:${String((Number(row.n) + 1) * 1000).padStart(8, "0")}`;
+  }
+
+  private assertDocumentParent(tenantId: string, spaceId: string, parentId: string): void {
+    const parent = this.store.db.prepare("SELECT space_id, tenant_id FROM documents WHERE id = ?").get(parentId) as
+      | { space_id: string; tenant_id: string }
+      | undefined;
+    if (!parent || parent.tenant_id !== tenantId || parent.space_id !== spaceId) {
+      throw new EnterpriseError("invalid", "parent page is not in this space");
+    }
+  }
+
+  private resolveMentions(tenantId: string, body: string): string[] {
+    const tokens = new Set<string>();
+    for (const match of body.matchAll(/@\{([^}]+)\}/g)) tokens.add(match[1]!.trim().toLowerCase());
+    for (const match of body.matchAll(/@([A-Za-z0-9._-]+)/g)) tokens.add(match[1]!.toLowerCase());
+    if (tokens.size === 0) return [];
+    const principals = this.store.db
+      .prepare("SELECT id, name, email, external_id FROM principals WHERE tenant_id = ? AND active = 1")
+      .all(tenantId) as Array<{ id: string; name: string; email: string | null; external_id: string | null }>;
+    const ids: string[] = [];
+    for (const token of tokens) {
+      const row = principals.find((principal) => {
+        const first = principal.name.split(/\s+/)[0]?.toLowerCase();
+        return (
+          principal.id.toLowerCase() === token ||
+          (principal.external_id ?? "").toLowerCase() === token ||
+          (principal.email ?? "").toLowerCase() === token ||
+          principal.name.toLowerCase() === token ||
+          first === token
+        );
+      });
+      if (row) ids.push(row.id);
+    }
+    return [...new Set(ids)];
+  }
+
   private audit(actor: ActorContext, action: string, kind: string, id: string, detail: Record<string, unknown>): void {
     const prev = this.store.db
       .prepare("SELECT hash FROM audit_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1")
@@ -1987,6 +2539,8 @@ export class EnterpriseWorkspace {
     classification: Classification;
     update_log_json: string;
     space_id: string;
+    owner_id: string;
+    parent_id: string | null;
   } {
     const row = this.store.db.prepare("SELECT * FROM documents WHERE id = ? AND tenant_id = ?").get(id, tenantId) as
       | {
@@ -1999,6 +2553,8 @@ export class EnterpriseWorkspace {
           classification: Classification;
           update_log_json: string;
           space_id: string;
+          owner_id: string;
+          parent_id: string | null;
         }
       | undefined;
     if (!row) throw new EnterpriseError("not_found", "document not found");
@@ -2115,6 +2671,15 @@ export class EnterpriseWorkspace {
       .prepare("SELECT role FROM grants WHERE tenant_id = ? AND principal_id = ? AND resource_kind = ? AND resource_id = ?")
       .get(actor.tenantId, actor.principalId, kind, id) as { role: GrantRole } | undefined;
     if (direct) return direct.role;
+    if (kind === "asset") {
+      const linked = this.store.db
+        .prepare("SELECT document_id FROM document_assets WHERE asset_id = ?")
+        .all(id) as Array<{ document_id: string }>;
+      for (const row of linked) {
+        const inherited = this.effectiveGrant(actor, "document", row.document_id);
+        if (inherited) return inherited;
+      }
+    }
     if (kind === "document") {
       const doc = this.store.db.prepare("SELECT space_id FROM documents WHERE id = ?").get(id) as { space_id: string } | undefined;
       if (doc) return this.effectiveGrant(actor, "space", doc.space_id);

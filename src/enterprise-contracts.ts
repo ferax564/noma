@@ -1,4 +1,4 @@
-export const ENTERPRISE_SCHEMA_VERSION = 2;
+export const ENTERPRISE_SCHEMA_VERSION = 4;
 
 export type PrincipalKind = "user" | "agent" | "group" | "service";
 export type ResourceKind =
@@ -22,6 +22,7 @@ export type RelationType =
   | "depends_on"
   | "supersedes"
   | "illustrates";
+export type ExternalLinkProvider = "github" | "issue" | "document" | "url";
 
 export type ChangesetStatus =
   | "draft"

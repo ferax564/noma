@@ -28869,7 +28869,11 @@ ${err.toString()}`);
   var selectedDocumentId = params2.get("documentId") ?? "";
   var selectedArtifactId = "";
   var selectedIssueId = "";
+  var selectedProjectId = "";
+  var selectedSpaceId = "";
   var collab;
+  var jqlFilterIds;
+  var draggingIssueId = "";
   var $2 = (id2) => {
     const node = document.getElementById(id2);
     if (!node) throw new Error(`missing #${id2}`);
@@ -28895,11 +28899,140 @@ ${err.toString()}`);
     const response = await fetch(path, { ...init, headers });
     const text2 = await response.text();
     const body = text2 ? JSON.parse(text2) : {};
-    if (!response.ok) throw new Error(body.message ?? body.error ?? response.statusText);
+    if (!response.ok) {
+      const err = body;
+      const error = new Error(err.message ?? err.error ?? response.statusText);
+      error.field = err.field;
+      error.reported = err.reported;
+      throw error;
+    }
     return body;
   }
   function showGate(visible) {
     gate.hidden = !visible;
+  }
+  function escapeHtml(value) {
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function currentProject() {
+    return payload?.projects.find((project) => project.id === selectedProjectId) ?? payload?.projects[0];
+  }
+  function currentSpaceId() {
+    return selectedSpaceId || payload?.spaces[0]?.id || "";
+  }
+  function assetUrl(id2) {
+    return `/v1/assets/${encodeURIComponent(id2)}?token=${encodeURIComponent(token)}`;
+  }
+  function rewriteAssetHtml(html) {
+    return html.replace(/\/v1\/assets\/([^"'?\s]+)/g, (_match, id2) => assetUrl(id2));
+  }
+  var SPACE_COLORS = ["#1d7afc", "#e56910", "#6b5eae", "#1f845a", "#c9372c", "#8270db"];
+  function initials(name) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const letters = `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? parts[0]?.[1] ?? ""}`;
+    return (letters || "?").toUpperCase();
+  }
+  function avatarMarkup(name, size2 = "sm") {
+    return `<span class="ew-avatar${size2 === "lg" ? " lg" : ""}" aria-hidden="true">${escapeHtml(initials(name))}</span>`;
+  }
+  function spaceColor(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i += 1) hash = hash * 31 + name.charCodeAt(i) >>> 0;
+    return SPACE_COLORS[hash % SPACE_COLORS.length] ?? "#1d7afc";
+  }
+  function pageIcon() {
+    return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5z"/></svg>`;
+  }
+  function boardIcon() {
+    return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16v4H4zm0 6h7v10H4zm9 0h7v10h-7z"/></svg>`;
+  }
+  function projectIcon() {
+    return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h16v12H4zm2 2v8h12V8z"/></svg>`;
+  }
+  function formatWhen(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString(void 0, { month: "short", day: "numeric", year: "numeric" });
+  }
+  function documentAncestors(id2) {
+    const chain = [];
+    let current = payload?.documents.find((doc4) => doc4.id === id2);
+    const seen = /* @__PURE__ */ new Set();
+    while (current && !seen.has(current.id)) {
+      chain.unshift(current);
+      seen.add(current.id);
+      current = current.parentId ? payload?.documents.find((doc4) => doc4.id === current?.parentId) : void 0;
+    }
+    return chain;
+  }
+  function setSessionAvatar(name) {
+    $2("session-avatar").textContent = initials(name);
+    $2("comment-avatar").textContent = initials(name);
+  }
+  function renderCrumbs(doc4) {
+    const crumbs = $2("doc-crumbs");
+    if (!doc4) {
+      crumbs.replaceChildren();
+      return;
+    }
+    const space = payload?.spaces.find((item) => item.id === doc4.spaceId);
+    const chain = documentAncestors(doc4.id);
+    crumbs.innerHTML = [
+      `<span>${escapeHtml(space?.name ?? "Space")}</span>`,
+      ...chain.map(
+        (item, index) => index === chain.length - 1 ? `<span>${escapeHtml(item.title)}</span>` : `<button type="button" data-kind="document" data-id="${item.id}">${escapeHtml(item.title)}</button>`
+      )
+    ].join("");
+  }
+  function renderByline(doc4) {
+    const actorName = payload?.actor.name ?? "Unknown";
+    const when = formatWhen(doc4?.updatedAt);
+    $2("doc-byline").innerHTML = `${avatarMarkup(actorName)}<span><strong>${escapeHtml(actorName)}</strong>${when ? ` \xB7 ${escapeHtml(when)}` : ""}</span>`;
+  }
+  async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result ?? "");
+        resolve(result.slice(result.indexOf(",") + 1));
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+  function linkHref(link) {
+    if (link.url) return link.url;
+    if (link.targetKind === "issue" && link.targetId) return `?mode=work&issue=${encodeURIComponent(link.targetId)}`;
+    if (link.targetKind === "document" && link.targetId) return `?mode=docs&documentId=${encodeURIComponent(link.targetId)}`;
+    return "#";
+  }
+  function linksMarkup(links) {
+    if (!links.length) return `<div class="ew-note">No links yet</div>`;
+    return links.map((link) => {
+      const href = linkHref(link);
+      const external = Boolean(link.url);
+      return `<a class="ew-link" href="${escapeHtml(href)}" ${external ? `target="_blank" rel="noreferrer"` : ""} data-kind="${escapeHtml(link.targetKind ?? link.provider)}" data-id="${escapeHtml(link.targetId ?? "")}">${escapeHtml(link.provider)} \xB7 ${escapeHtml(link.label ?? link.url ?? link.id)}</a>`;
+    }).join("");
+  }
+  function documentDepth(id2, seen = /* @__PURE__ */ new Set()) {
+    const doc4 = payload?.documents.find((item) => item.id === id2);
+    if (!doc4?.parentId || seen.has(id2)) return 0;
+    seen.add(id2);
+    return 1 + documentDepth(doc4.parentId, seen);
+  }
+  function orderedDocuments() {
+    const docs = payload?.documents ?? [];
+    const byParent = /* @__PURE__ */ new Map();
+    for (const doc4 of docs) {
+      const key = doc4.parentId ?? "";
+      const list = byParent.get(key) ?? [];
+      list.push(doc4);
+      byParent.set(key, list);
+    }
+    for (const list of byParent.values()) list.sort((a, b) => a.rank.localeCompare(b.rank) || a.title.localeCompare(b.title));
+    const walk = (parentId) => (byParent.get(parentId) ?? []).flatMap((doc4) => [doc4, ...walk(doc4.id)]);
+    return walk("");
   }
   function setMode(next) {
     mode = next;
@@ -28911,43 +29044,87 @@ ${err.toString()}`);
       canvas.hidden = !active;
       canvas.classList.toggle("is-active", active);
     }
-    $2("rail-kicker").textContent = next === "docs" ? "Pages" : next === "visuals" ? "Canvases" : "Projects";
+    $2("rail-kicker").textContent = next === "docs" ? "Content" : next === "visuals" ? "Whiteboards" : next === "work" ? "Projects" : "Admin";
+    const section = document.getElementById("rail-section");
+    if (section) section.textContent = next === "docs" ? "Pages" : next === "visuals" ? "Boards" : next === "work" ? "Projects" : "Spaces";
+    if (next !== "visuals") $2("visual-outline").replaceChildren();
     renderRail();
     if (next === "docs") openDocument(selectedDocumentId || payload?.documents[0]?.id);
     if (next === "visuals") void openArtifact(selectedArtifactId || payload?.artifacts[0]?.id);
     if (next === "work") renderBoard();
+    if (next === "admin") renderAdmin();
   }
   function renderRail() {
     if (!payload) return;
-    const spaceName = payload.spaces[0]?.name ?? "Workspace";
+    if (!selectedSpaceId) selectedSpaceId = payload.spaces[0]?.id ?? "";
+    const spaceName = payload.spaces.find((space) => space.id === currentSpaceId())?.name ?? payload.spaces[0]?.name ?? "Workspace";
     $2("rail-title").textContent = spaceName;
+    const icon = $2("rail-space-icon");
+    icon.textContent = initials(spaceName).slice(0, 1);
+    icon.style.background = spaceColor(spaceName);
+    const actions = $2("rail-actions");
+    const spaceOptions = payload.spaces.map((space) => `<option value="${space.id}" ${space.id === currentSpaceId() ? "selected" : ""}>${escapeHtml(space.name)}</option>`).join("");
     if (mode === "docs") {
-      railList.innerHTML = payload.documents.map(
-        (doc4) => `<button class="ew-rail-item" type="button" data-kind="document" data-id="${doc4.id}" aria-current="${doc4.id === selectedDocumentId}">
-          <strong>${escapeHtml(doc4.title)}</strong><small>${escapeHtml(doc4.lifecycle)} \xB7 ${escapeHtml(doc4.classification)}</small>
+      actions.innerHTML = `
+      <label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>
+      <button type="button" id="create-page">Create page</button>
+      <details class="ew-rail-more">
+        <summary>Space tools</summary>
+        <label for="new-page-title">Page title<input id="new-page-title" placeholder="Title" /></label>
+        <label for="new-space-name">New space<input id="new-space-name" placeholder="Name" /></label>
+        <button type="button" id="create-space">Create space</button>
+        <button type="button" id="import-page">Import</button>
+      </details>`;
+      railList.innerHTML = orderedDocuments().filter((doc4) => !currentSpaceId() || doc4.spaceId === currentSpaceId()).map((doc4) => {
+        const depth = Math.min(documentDepth(doc4.id), 2);
+        return `<button class="ew-rail-item" type="button" data-kind="document" data-id="${doc4.id}" data-depth="${depth}" aria-current="${doc4.id === selectedDocumentId}">
+          ${pageIcon()}<strong>${escapeHtml(doc4.title)}</strong><small>${escapeHtml(doc4.lifecycle)} \xB7 ${escapeHtml(doc4.classification)}</small>
+        </button>`;
+      }).join("");
+    } else if (mode === "visuals") {
+      actions.innerHTML = `<label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>`;
+      railList.innerHTML = payload.artifacts.filter((art) => !currentSpaceId() || art.spaceId === currentSpaceId()).map(
+        (art) => `<button class="ew-rail-item" type="button" data-kind="artifact" data-id="${art.id}" aria-current="${art.id === selectedArtifactId}">
+          ${boardIcon()}<strong>${escapeHtml(art.title)}</strong><small>rev ${art.draftRevision}</small>
         </button>`
       ).join("");
-    } else if (mode === "visuals") {
-      railList.innerHTML = payload.artifacts.map(
-        (art) => `<button class="ew-rail-item" type="button" data-kind="artifact" data-id="${art.id}" aria-current="${art.id === selectedArtifactId}">
-          <strong>${escapeHtml(art.title)}</strong><small>rev ${art.draftRevision}</small>
+    } else if (mode === "work") {
+      actions.innerHTML = `
+      <label for="new-issue-rail-summary">Issue summary<input id="new-issue-rail-summary" placeholder="Summary" /></label>
+      <button type="button" id="create-issue">Create issue</button>`;
+      railList.innerHTML = payload.projects.map(
+        (project) => `<button class="ew-rail-item" type="button" data-kind="project" data-id="${project.id}" aria-current="${project.id === currentProject()?.id}">
+          ${projectIcon()}<strong>${escapeHtml(project.name)}</strong><small>${escapeHtml(project.key)}</small>
         </button>`
       ).join("");
     } else {
-      railList.innerHTML = payload.projects.map(
-        (project) => `<button class="ew-rail-item" type="button" data-kind="project" data-id="${project.id}" aria-current="true">
-          <strong>${escapeHtml(project.name)}</strong><small>${escapeHtml(project.key)}</small>
+      actions.replaceChildren();
+      railList.innerHTML = payload.spaces.map(
+        (space) => `<button class="ew-rail-item" type="button" data-kind="space" data-id="${space.id}" aria-current="${space.id === currentSpaceId()}">
+          <span class="ew-space-icon" style="background:${spaceColor(space.name)}">${escapeHtml(initials(space.name).slice(0, 1))}</span>
+          <strong>${escapeHtml(space.name)}</strong><small>${escapeHtml(space.classification)}</small>
         </button>`
       ).join("");
     }
-  }
-  function escapeHtml(value) {
-    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function nomaToEditorHtml(title, source) {
     const stripped = source.replace(/^---[\s\S]*?---\n/, "").trim();
     const blocks = stripped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
     const body = blocks.map((block) => {
+      const figure = block.match(/^::figure\{([^}]*)\}/m);
+      if (figure) {
+        const src = /src="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "";
+        const alt = /alt="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "image";
+        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
+        return `<p>Image: ${escapeHtml(alt)}</p><p><img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}"></p>`;
+      }
+      const video = block.match(/^::video\{([^}]*)\}/m);
+      if (video) {
+        const src = /src="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "";
+        const name = /title="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "video";
+        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
+        return `<p>Video: ${escapeHtml(name)}</p><p><video src="${escapeHtml(url)}" controls></video></p>`;
+      }
       const text2 = escapeHtml(block.replace(/^#{1,6}\s+/, "").replace(/^::\w+.*$/gm, "").trim());
       if (!text2) return "";
       if (/^#\s+/.test(block)) return `<h1>${escapeHtml(block.replace(/^#\s+/, ""))}</h1>`;
@@ -28961,9 +29138,12 @@ ${err.toString()}`);
     selectedDocumentId = id2;
     const doc4 = payload.documents.find((item) => item.id === id2);
     $2("doc-title").textContent = doc4?.title ?? "Untitled";
-    $2("doc-kicker").textContent = doc4?.lifecycle ?? "Draft";
-    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(doc4?.title ?? "")}</strong><span>Hash ${escapeHtml((doc4?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml(doc4?.classification ?? "")}</span></div>`;
-    $2("inspector-title").textContent = "Document";
+    const kicker = $2("doc-kicker");
+    kicker.textContent = doc4?.lifecycle ?? "Draft";
+    kicker.classList.toggle("published", (doc4?.lifecycle ?? "").toLowerCase() === "published");
+    renderCrumbs(doc4);
+    renderByline(doc4);
+    $2("inspector-title").textContent = "Page";
     renderRail();
     collab?.destroy();
     editorMount.replaceChildren();
@@ -28977,6 +29157,64 @@ ${err.toString()}`);
         if (text2 === "ready") void seedEmptyEditor(id2, doc4?.title ?? "Untitled");
       }
     });
+    void renderDocumentInspector(id2);
+  }
+  async function renderDocumentInspector(id2) {
+    const doc4 = payload?.documents.find((item) => item.id === id2);
+    const [comments, revisions, assets, grants, links] = await Promise.all([
+      api(`/v1/documents/${encodeURIComponent(id2)}/comments`),
+      api(`/v1/documents/${encodeURIComponent(id2)}/revisions`),
+      api(`/v1/documents/${encodeURIComponent(id2)}/assets`),
+      api(`/v1/documents/${encodeURIComponent(id2)}/permissions`),
+      api(
+        `/v1/documents/${encodeURIComponent(id2)}/links`
+      )
+    ]);
+    $2("doc-comments").innerHTML = comments.comments.map(
+      (comment) => `<article class="ew-comment">
+          ${avatarMarkup(comment.authorName, "lg")}
+          <div>
+            <div class="ew-comment-meta"><strong>${escapeHtml(comment.authorName)}</strong><span>${escapeHtml(formatWhen(comment.createdAt))}</span></div>
+            <p>${escapeHtml(comment.body)}</p>
+          </div>
+        </article>`
+    ).join("") || `<div class="ew-note">No comments yet</div>`;
+    $2("doc-media").innerHTML = assets.assets.map((asset) => {
+      const src = assetUrl(asset.assetId);
+      if (asset.mime.startsWith("video/")) {
+        return `<video src="${escapeHtml(src)}" controls title="${escapeHtml(asset.filename)}"></video>`;
+      }
+      if (asset.mime.startsWith("image/")) {
+        return `<img src="${escapeHtml(src)}" alt="${escapeHtml(asset.filename)}" />`;
+      }
+      return `<span>${escapeHtml(asset.filename)}</span>`;
+    }).join("") || `<div class="ew-note">No images or videos on this page</div>`;
+    const parents = (payload?.documents ?? []).filter((item) => item.id !== id2);
+    const people = (payload?.principals ?? []).map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("");
+    const issues = (payload?.issues ?? []).map((issue) => `<option value="${issue.id}">${escapeHtml(issue.key)} ${escapeHtml(issue.summary)}</option>`).join("");
+    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(doc4?.title ?? "")}</strong><span>Hash ${escapeHtml((doc4?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml(doc4?.classification ?? "")}</span></div>
+    <label for="rename-page">Title<input id="rename-page" value="${escapeHtml(doc4?.title ?? "")}" /></label>
+    <label for="move-page">Parent
+      <select id="move-page">
+        <option value="">Space root</option>
+        ${parents.map((item) => `<option value="${item.id}" ${item.id === doc4?.parentId ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
+      </select>
+    </label>
+    <div class="ew-actions">
+      <button type="button" id="save-page-meta">Save location</button>
+      <label for="attach-file">Attach<input id="attach-file" type="file" /></label>
+    </div>
+    <div class="ew-meta"><strong>Permissions</strong>${grants.grants.map((grant) => `<span>${escapeHtml(grant.name)} \xB7 ${escapeHtml(grant.role)}</span>`).join("") || "<span>Inherited from workspace</span>"}</div>
+    <label for="grant-principal">Person<select id="grant-principal">${people}</select></label>
+    <label for="grant-role">Role<select id="grant-role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="owner">owner</option></select></label>
+    <button type="button" id="grant-document">Grant access</button>
+    <div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
+    <label for="github-url">GitHub URL<input id="github-url" placeholder="https://github.com/org/repo" /></label>
+    <button type="button" id="add-github-link">Link GitHub</button>
+    <label for="issue-link">Work issue<select id="issue-link">${issues}</select></label>
+    <button type="button" id="add-issue-link">Link issue</button>
+    <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} \xB7 ${escapeHtml(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
+    <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
   }
   async function seedEmptyEditor(id2, title) {
     if ((collab?.getText() ?? "").trim()) return;
@@ -28990,7 +29228,13 @@ ${err.toString()}`);
     selectedArtifactId = id2;
     const data = await api(`/v1/artifacts/${encodeURIComponent(id2)}`);
     $2("visual-title").textContent = data.document.title;
-    $2("visual-stage").innerHTML = data.html;
+    $2("visual-stage").innerHTML = rewriteAssetHtml(data.html);
+    const from3 = $2("arrow-from");
+    const to = $2("arrow-to");
+    const options = data.outline.filter((entry) => entry.type !== "arrow").map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.label)}</option>`).join("");
+    from3.innerHTML = options;
+    to.innerHTML = options;
+    if (data.outline[1]) to.value = data.outline[1].id;
     const page = $2("visual-stage").querySelector(".pd-page");
     if (page instanceof HTMLElement) {
       const width = Math.max(page.offsetWidth, 960);
@@ -29004,48 +29248,161 @@ ${err.toString()}`);
     $2("inspector-title").textContent = "Canvas";
     renderRail();
   }
+  function renderSprintBar() {
+    if (!payload) return;
+    const project = currentProject();
+    const boards = payload.boards.filter((board2) => !project || board2.projectId === project.id);
+    const board = boards[0];
+    const sprints = payload.sprints.filter((sprint) => !board || sprint.boardId === board.id);
+    const active = sprints.find((sprint) => sprint.state === "active");
+    $2("sprint-bar").innerHTML = `
+    <span>${escapeHtml(active ? `${active.name} \xB7 ${active.state}` : "No active sprint")}</span>
+    ${board && !active ? `<button type="button" id="create-sprint" data-board="${board.id}">Plan sprint</button>` : ""}
+    ${active ? `<button type="button" id="close-sprint" data-sprint="${active.id}">Close sprint</button>` : ""}
+    ${board && sprints.some((sprint) => sprint.state === "planned") ? `<button type="button" id="start-sprint" data-sprint="${sprints.find((sprint) => sprint.state === "planned")?.id ?? ""}">Start sprint</button>` : ""}
+  `;
+  }
   function renderBoard() {
     if (!payload) return;
-    const project = payload.projects[0];
+    const project = currentProject();
+    selectedProjectId = project?.id ?? "";
     $2("work-title").textContent = project ? `${project.key} \xB7 ${project.name}` : "Work";
+    renderSprintBar();
     const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
+    const visible = payload.issues.filter((issue) => (!project || issue.projectId === project.id) && (!jqlFilterIds || jqlFilterIds.includes(issue.id)));
     $2("work-board").innerHTML = columns.map((status) => {
-      const cards = payload.issues.filter((issue) => issue.statusId === status.id && (!project || issue.projectId === project.id));
+      const cards = visible.filter((issue) => issue.statusId === status.id);
       return `<section class="ew-column" data-status="${escapeHtml(status.id)}">
-        <h3>${escapeHtml(status.name)} \xB7 ${cards.length}</h3>
+        <h3>${escapeHtml(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
         ${cards.map(
-        (issue) => `<button class="ew-card" type="button" data-issue="${issue.id}">
+        (issue) => {
+          const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
+          return `<button class="ew-card" type="button" draggable="true" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
               <span class="ew-key">${escapeHtml(issue.key)}</span>
               <strong>${escapeHtml(issue.summary)}</strong>
-              <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
-            </button>`
+              <span class="ew-card-foot">
+                <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
+                ${assignee ? avatarMarkup(assignee.name) : ""}
+              </span>
+            </button>`;
+        }
       ).join("")}
       </section>`;
     }).join("");
     $2("inspector-title").textContent = "Board";
-    inspector.innerHTML = `<div class="ew-meta"><strong>${payload.issues.length} issues</strong><span>${payload.notifications.length} notifications</span></div>`;
+    inspector.innerHTML = `<div class="ew-meta"><strong>${visible.length} issues</strong><span>${payload.notifications.length} notifications</span></div>
+    <label for="new-issue-summary">Create issue
+      <input id="new-issue-summary" placeholder="Summary" />
+    </label>
+    <label for="new-issue-type">Type
+      <select id="new-issue-type">${payload.issueTypes.filter((type) => type.projectId === project?.id).map((type) => `<option value="${escapeHtml(type.key)}">${escapeHtml(type.name)}</option>`).join("")}</select>
+    </label>
+    <div class="ew-actions"><button type="button" id="submit-issue">Create</button></div>`;
     renderRail();
   }
-  function inspectIssue(id2) {
+  async function inspectIssue(id2) {
     if (!payload) return;
     selectedIssueId = id2;
     const issue = payload.issues.find((item) => item.id === id2);
     if (!issue) return;
+    const detail = await api(`/v1/issues/${encodeURIComponent(id2)}`);
     const project = payload.projects.find((item) => item.id === issue.projectId);
     const current = project?.statuses.find((status) => status.id === issue.statusId);
     const next = project?.statuses.find((status) => {
       const order = ["backlog", "todo", "in_progress", "in_review", "done"];
       return order.indexOf(status.id) === order.indexOf(issue.statusId) + 1;
     });
+    const people = payload.principals.map((person) => `<option value="${person.id}" ${person.id === detail.assignee_id ? "selected" : ""}>${escapeHtml(person.name)}</option>`).join("");
+    const sprints = payload.sprints.map((sprint) => `<option value="${sprint.id}" ${sprint.id === detail.sprint_id ? "selected" : ""}>${escapeHtml(sprint.name)}</option>`).join("");
     inspector.innerHTML = `<div class="ew-meta">
       <span class="ew-key">${escapeHtml(issue.key)}</span>
-      <strong>${escapeHtml(issue.summary)}</strong>
-      <span>${escapeHtml(current?.name ?? issue.statusId)} \xB7 ${escapeHtml(issue.typeKey)}</span>
+      <strong>${escapeHtml(detail.summary)}</strong>
+      <span>${escapeHtml(current?.name ?? issue.statusId)} \xB7 ${escapeHtml(detail.typeKey)}</span>
     </div>
-    <div class="ew-actions">${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml(next.id)}">Move to ${escapeHtml(next.name)}</button>` : ""}</div>`;
+    <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
+    <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
+    <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
+    <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
+    <div class="ew-actions">
+      <button type="button" id="save-issue">Save</button>
+      ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml(next.id)}">Move to ${escapeHtml(next.name)}</button>` : ""}
+      ${detail.transitions.map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml(item.to)}" data-fields="${escapeHtml(item.requiredFields.join(","))}">${escapeHtml(item.to)}</button>`).join("")}
+    </div>
+    <div class="ew-meta"><strong>Comments</strong>${detail.comments.map((comment) => `<span>${escapeHtml(comment.authorName)}: ${escapeHtml(comment.body)}</span>`).join("") || "<span>None</span>"}</div>
+    <label for="issue-comment">Comment<textarea id="issue-comment" rows="2"></textarea></label>
+    <button type="button" id="issue-comment-submit">Comment</button>
+    <div class="ew-meta"><strong>Worklog</strong>${detail.worklogs.map((log) => `<span>${escapeHtml(log.authorName)} \xB7 ${Math.round(log.durationSeconds / 60)}m ${escapeHtml(log.note ?? "")}</span>`).join("") || "<span>None</span>"}</div>
+    <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
+    <label for="worklog-note">Note<input id="worklog-note" /></label>
+    <button type="button" id="worklog-submit">Log work</button>`;
+    const links = await api(
+      `/v1/issues/${encodeURIComponent(id2)}/links`
+    );
+    const docs = (payload.documents ?? []).map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("");
+    inspector.insertAdjacentHTML(
+      "beforeend",
+      `<div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
+    <label for="issue-github-url">GitHub URL<input id="issue-github-url" placeholder="https://github.com/org/repo/issues/1" /></label>
+    <button type="button" id="add-issue-github">Link GitHub</button>
+    <label for="issue-doc-link">Page<select id="issue-doc-link">${docs}</select></label>
+    <button type="button" id="add-issue-doc-link">Link page</button>`
+    );
+  }
+  function renderAdmin() {
+    if (!payload) return;
+    $2("inspector-title").textContent = "Admin";
+    inspector.innerHTML = `<div class="ew-meta"><strong>${payload.principals.length} people</strong><span>${payload.grants.length} grants</span></div>`;
+    $2("admin-panel").innerHTML = `
+    <section>
+      <h2>Create space</h2>
+      <div class="ew-form-row">
+        <input id="admin-space-name" placeholder="Space name" />
+        <button type="button" id="admin-space-submit">Create space</button>
+      </div>
+    </section>
+    <section>
+      <h2>Create project</h2>
+      <div class="ew-form-row">
+        <input id="admin-project-key" placeholder="KEY" />
+        <input id="admin-project-name" placeholder="Name" />
+        <button type="button" id="admin-project-submit">Create project</button>
+      </div>
+    </section>
+    <section>
+      <h2>Grant</h2>
+      <div class="ew-form-row">
+        <select id="admin-grant-principal">${payload.principals.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")}</select>
+        <select id="admin-grant-kind"><option value="space">space</option><option value="project">project</option><option value="document">document</option></select>
+        <input id="admin-grant-resource" placeholder="Resource id" />
+        <select id="admin-grant-role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="owner">owner</option></select>
+        <button type="button" id="admin-grant-submit">Grant</button>
+      </div>
+    </section>
+    <section>
+      <h2>Grants</h2>
+      ${payload.grants.map((grant) => `<div class="ew-note">${escapeHtml(grant.role)} on ${escapeHtml(grant.resourceKind)} ${escapeHtml(grant.resourceId)}</div>`).join("") || `<div class="ew-note">None listed</div>`}
+    </section>`;
+  }
+  function renderNotifications() {
+    const items = payload?.notifications ?? [];
+    $2("notify-list").innerHTML = items.map(
+      (item) => `<button class="ew-hit" type="button" data-notification="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.resource_kind ?? "")}" data-id="${escapeHtml(item.resource_id ?? "")}">
+          <strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.body)}</small>
+        </button>`
+    ).join("") || `<div class="ew-note">Inbox empty</div>`;
+    const badge = $2("notify-badge");
+    const unread = items.filter((item) => !item.read_at).length;
+    badge.hidden = unread === 0;
+    badge.textContent = unread > 9 ? "9+" : String(unread);
+    $2("notify-toggle").setAttribute("aria-label", unread ? `Notifications, ${unread} unread` : "Notifications");
+  }
+  async function refreshWorkspace() {
+    payload = await api("/v1/workspace");
+    renderNotifications();
   }
   async function loadWorkspace() {
-    payload = await api("/v1/workspace");
+    await refreshWorkspace();
+    setSessionAvatar(payload.actor.name);
     setStatus(`${payload.actor.name} \xB7 ${payload.actor.kind}`, "ok");
     showGate(false);
     setMode(mode);
@@ -29059,6 +29416,18 @@ ${err.toString()}`);
     localStorage.setItem(STORAGE_KEY, token);
     await loadWorkspace();
   }
+  async function createPage() {
+    const titleInput = document.getElementById("new-page-title");
+    const title = titleInput?.value.trim() || "Untitled";
+    if (!payload || !currentSpaceId()) return;
+    const created = await api("/v1/documents", {
+      method: "POST",
+      body: JSON.stringify({ spaceId: currentSpaceId(), title, parentId: selectedDocumentId || void 0 })
+    });
+    await refreshWorkspace();
+    setMode("docs");
+    openDocument(created.id);
+  }
   document.querySelectorAll(".ew-modes button").forEach((button) => {
     button.addEventListener("click", () => setMode(button.dataset.mode ?? "docs"));
   });
@@ -29067,22 +29436,383 @@ ${err.toString()}`);
     if (!button) return;
     if (button.dataset.kind === "document") openDocument(button.dataset.id);
     if (button.dataset.kind === "artifact") void openArtifact(button.dataset.id);
+    if (button.dataset.kind === "project") {
+      selectedProjectId = button.dataset.id ?? "";
+      renderBoard();
+    }
+    if (button.dataset.kind === "space") {
+      selectedSpaceId = button.dataset.id ?? "";
+      renderRail();
+    }
+  });
+  $2("rail-actions").addEventListener("click", async (event) => {
+    const target = event.target;
+    if (target.id === "create-space") {
+      const name = $2("new-space-name").value.trim();
+      if (!name) return;
+      const created = await api("/v1/spaces", { method: "POST", body: JSON.stringify({ name, homePage: true }) });
+      selectedSpaceId = created.id;
+      await refreshWorkspace();
+      setMode("docs");
+      const home = payload?.documents.find((doc4) => doc4.spaceId === created.id);
+      if (home) openDocument(home.id);
+    }
+    if (target.id === "create-page") {
+      await createPage();
+    }
+    if (target.id === "import-page") $2("import-modal").hidden = false;
+    if (target.id === "create-issue") {
+      const summary = $2("new-issue-rail-summary").value.trim();
+      if (!summary || !currentProject()) return;
+      await api(`/v1/projects/${encodeURIComponent(currentProject().id)}/issues`, {
+        method: "POST",
+        body: JSON.stringify({ summary, typeKey: "task" })
+      });
+      await refreshWorkspace();
+      renderBoard();
+    }
+  });
+  $2("rail-actions").addEventListener("change", (event) => {
+    const target = event.target;
+    if (target.id === "space-switch") {
+      selectedSpaceId = target.value;
+      renderRail();
+      if (mode === "docs") {
+        const first2 = payload?.documents.find((doc4) => doc4.spaceId === selectedSpaceId);
+        if (first2) openDocument(first2.id);
+      }
+      if (mode === "visuals") {
+        const first2 = payload?.artifacts.find((art) => art.spaceId === selectedSpaceId);
+        void openArtifact(first2?.id);
+      }
+    }
   });
   $2("work-board").addEventListener("click", (event) => {
     const card = event.target.closest("button[data-issue]");
-    if (card?.dataset.issue) inspectIssue(card.dataset.issue);
+    if (card?.dataset.issue) void inspectIssue(card.dataset.issue);
+  });
+  $2("work-board").addEventListener("dragstart", (event) => {
+    const card = event.target.closest("button[data-issue]");
+    draggingIssueId = card?.dataset.issue ?? "";
+  });
+  $2("work-board").addEventListener("dragover", (event) => event.preventDefault());
+  $2("work-board").addEventListener("drop", async (event) => {
+    event.preventDefault();
+    const column = event.target.closest(".ew-column");
+    const project = currentProject();
+    if (!column || !draggingIssueId || !project || !payload) return;
+    const ordered = [...payload.issues.filter((issue) => issue.projectId === project.id)].map((issue) => issue.id);
+    const from3 = ordered.indexOf(draggingIssueId);
+    const targetCard = event.target.closest("button[data-issue]");
+    const toId = targetCard?.dataset.issue;
+    if (from3 >= 0 && toId) {
+      ordered.splice(from3, 1);
+      const to = ordered.indexOf(toId);
+      ordered.splice(to < 0 ? ordered.length : to, 0, draggingIssueId);
+      await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
+      await refreshWorkspace();
+      renderBoard();
+    }
   });
   inspector.addEventListener("click", async (event) => {
-    const button = event.target.closest("#advance-issue");
-    if (!button || !selectedIssueId) return;
-    const to = button.dataset.to ?? "";
-    await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/transition`, {
+    const link = event.target.closest("a.ew-link");
+    if (link?.dataset.kind === "issue" && link.dataset.id) {
+      event.preventDefault();
+      setMode("work");
+      void inspectIssue(link.dataset.id);
+      return;
+    }
+    if (link?.dataset.kind === "document" && link.dataset.id) {
+      event.preventDefault();
+      setMode("docs");
+      openDocument(link.dataset.id);
+      return;
+    }
+    const button = event.target.closest("button");
+    if (!button) return;
+    try {
+      if (button.id === "advance-issue" || button.classList.contains("ew-transition")) {
+        if (!selectedIssueId) return;
+        const to = button.dataset.to ?? "";
+        const fields = (button.dataset.fields ?? "").split(",").filter(Boolean);
+        const payloadFields = to === "done" || fields.includes("resolution") ? { resolution: "completed" } : {};
+        if (fields.includes("decisionId")) payloadFields.decisionId = "ui";
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/transition`, { method: "POST", body: JSON.stringify({ to, fields: payloadFields }) });
+        await refreshWorkspace();
+        renderBoard();
+        await inspectIssue(selectedIssueId);
+      }
+      if (button.id === "save-issue" && selectedIssueId) {
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            summary: $2("issue-summary").value,
+            description: $2("issue-description").value,
+            assigneeId: $2("issue-assignee").value || null
+          })
+        });
+        const sprintId = $2("issue-sprint").value || null;
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/sprint`, { method: "POST", body: JSON.stringify({ sprintId }) });
+        await refreshWorkspace();
+        await inspectIssue(selectedIssueId);
+      }
+      if (button.id === "issue-comment-submit" && selectedIssueId) {
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/comments`, {
+          method: "POST",
+          body: JSON.stringify({ body: $2("issue-comment").value })
+        });
+        await inspectIssue(selectedIssueId);
+      }
+      if (button.id === "worklog-submit" && selectedIssueId) {
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/worklog`, {
+          method: "POST",
+          body: JSON.stringify({
+            durationSeconds: Number($2("worklog-minutes").value) * 60,
+            note: $2("worklog-note").value
+          })
+        });
+        await inspectIssue(selectedIssueId);
+      }
+      if (button.id === "submit-issue" && currentProject()) {
+        await api(`/v1/projects/${encodeURIComponent(currentProject().id)}/issues`, {
+          method: "POST",
+          body: JSON.stringify({
+            summary: $2("new-issue-summary").value,
+            typeKey: $2("new-issue-type").value
+          })
+        });
+        await refreshWorkspace();
+        renderBoard();
+      }
+      if (button.id === "grant-document" && selectedDocumentId) {
+        await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/permissions`, {
+          method: "POST",
+          body: JSON.stringify({
+            principalId: $2("grant-principal").value,
+            role: $2("grant-role").value
+          })
+        });
+        await renderDocumentInspector(selectedDocumentId);
+      }
+      if (button.id === "add-github-link" && selectedDocumentId) {
+        await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/links`, {
+          method: "POST",
+          body: JSON.stringify({ provider: "github", url: $2("github-url").value.trim() })
+        });
+        await renderDocumentInspector(selectedDocumentId);
+      }
+      if (button.id === "add-issue-link" && selectedDocumentId) {
+        await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/links`, {
+          method: "POST",
+          body: JSON.stringify({ provider: "issue", issueId: $2("issue-link").value })
+        });
+        await renderDocumentInspector(selectedDocumentId);
+      }
+      if (button.id === "add-issue-github" && selectedIssueId) {
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/links`, {
+          method: "POST",
+          body: JSON.stringify({ provider: "github", url: $2("issue-github-url").value.trim() })
+        });
+        await inspectIssue(selectedIssueId);
+      }
+      if (button.id === "add-issue-doc-link" && selectedIssueId) {
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/links`, {
+          method: "POST",
+          body: JSON.stringify({ provider: "document", documentId: $2("issue-doc-link").value })
+        });
+        await inspectIssue(selectedIssueId);
+      }
+      if (button.id === "save-page-meta" && selectedDocumentId) {
+        await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            title: $2("rename-page").value,
+            parentId: $2("move-page").value || null
+          })
+        });
+        await refreshWorkspace();
+        openDocument(selectedDocumentId);
+      }
+      if (button.dataset.restore && selectedDocumentId) {
+        await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/revisions/${button.dataset.restore}/restore`, { method: "POST" });
+        await refreshWorkspace();
+        openDocument(selectedDocumentId);
+      }
+      if (button.id === "admin-space-submit") {
+        await api("/v1/spaces", { method: "POST", body: JSON.stringify({ name: $2("admin-space-name").value }) });
+        await refreshWorkspace();
+        renderAdmin();
+        renderRail();
+      }
+      if (button.id === "admin-project-submit") {
+        await api("/v1/projects", {
+          method: "POST",
+          body: JSON.stringify({
+            key: $2("admin-project-key").value,
+            name: $2("admin-project-name").value,
+            spaceId: currentSpaceId()
+          })
+        });
+        await refreshWorkspace();
+        renderAdmin();
+        renderRail();
+      }
+      if (button.id === "admin-grant-submit") {
+        await api("/v1/grants", {
+          method: "POST",
+          body: JSON.stringify({
+            principalId: $2("admin-grant-principal").value,
+            resourceKind: $2("admin-grant-kind").value,
+            resourceId: $2("admin-grant-resource").value,
+            role: $2("admin-grant-role").value
+          })
+        });
+        await refreshWorkspace();
+        renderAdmin();
+        renderRail();
+      }
+    } catch (error) {
+      inspector.insertAdjacentHTML("beforeend", `<p class="ew-error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`);
+    }
+  });
+  inspector.addEventListener("change", async (event) => {
+    const input = event.target;
+    if (input.id !== "attach-file" || !input.files?.[0] || !selectedDocumentId) return;
+    const file = input.files[0];
+    await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/assets`, {
       method: "POST",
-      body: JSON.stringify({ to, fields: to === "done" ? { resolution: "completed" } : {} })
+      body: JSON.stringify({ filename: file.name, mime: file.type || "application/octet-stream", contentBase64: await fileToBase64(file) })
     });
-    payload = await api("/v1/workspace");
+    await renderDocumentInspector(selectedDocumentId);
+  });
+  $2("sprint-bar").addEventListener("click", async (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    if (button.id === "create-sprint" && button.dataset.board) {
+      const name = window.prompt("Sprint name", "Sprint");
+      if (!name) return;
+      await api(`/v1/boards/${encodeURIComponent(button.dataset.board)}/sprints`, { method: "POST", body: JSON.stringify({ name }) });
+    }
+    if (button.id === "start-sprint" && button.dataset.sprint) {
+      await api(`/v1/sprints/${encodeURIComponent(button.dataset.sprint)}/start`, { method: "POST" });
+    }
+    if (button.id === "close-sprint" && button.dataset.sprint) {
+      await api(`/v1/sprints/${encodeURIComponent(button.dataset.sprint)}/close`, { method: "POST", body: JSON.stringify({ carry: true }) });
+    }
+    await refreshWorkspace();
     renderBoard();
-    inspectIssue(selectedIssueId);
+  });
+  $2("jql-input").addEventListener("change", async (event) => {
+    const jql = event.target.value.trim();
+    $2("jql-error").textContent = "";
+    const project = currentProject();
+    if (!project) return;
+    if (!jql) {
+      jqlFilterIds = void 0;
+      renderBoard();
+      return;
+    }
+    try {
+      const result = await api(`/v1/projects/${encodeURIComponent(project.id)}/issues?jql=${encodeURIComponent(jql)}`);
+      jqlFilterIds = result.issues.map((issue) => issue.id);
+      renderBoard();
+    } catch (error) {
+      const err = error;
+      $2("jql-error").textContent = err.reported && err.field ? `Unsupported JQL field: ${err.field}` : err.message;
+      jqlFilterIds = [];
+      renderBoard();
+    }
+  });
+  $2("doc-publish").addEventListener("click", async () => {
+    if (!selectedDocumentId) return;
+    await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/publish`, { method: "POST" });
+    await refreshWorkspace();
+    openDocument(selectedDocumentId);
+  });
+  async function embedPageMedia(kind, file) {
+    if (!selectedDocumentId) return;
+    await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/media`, {
+      method: "POST",
+      body: JSON.stringify({
+        kind,
+        filename: file.name,
+        mime: file.type || (kind === "video" ? "video/mp4" : "image/png"),
+        contentBase64: await fileToBase64(file)
+      })
+    });
+    const editor = collab?.editor();
+    editor?.chain().focus().insertContent(`<p>${kind === "video" ? "Video" : "Image"}: ${escapeHtml(file.name)}</p>`).run();
+    await refreshWorkspace();
+    await renderDocumentInspector(selectedDocumentId);
+  }
+  $2("insert-image").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (file) await embedPageMedia("image", file);
+    event.target.value = "";
+  });
+  $2("insert-video").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (file) await embedPageMedia("video", file);
+    event.target.value = "";
+  });
+  async function addCanvasElement(input) {
+    if (!selectedArtifactId) return;
+    await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+    await refreshWorkspace();
+    await openArtifact(selectedArtifactId);
+  }
+  $2("create-board").addEventListener("click", async () => {
+    const title = $2("new-board-title").value.trim() || "Untitled presentation";
+    if (!currentSpaceId()) return;
+    const created = await api("/v1/artifacts", { method: "POST", body: JSON.stringify({ spaceId: currentSpaceId(), title }) });
+    await refreshWorkspace();
+    setMode("visuals");
+    await openArtifact(created.id);
+    await addCanvasElement({ type: "text", text: title, altText: title, geometry: { x: 48, y: 36, width: 640, height: 64 } });
+  });
+  $2("add-frame").addEventListener("click", async () => {
+    await addCanvasElement({ type: "shape", text: "Frame", altText: "Frame" });
+  });
+  $2("add-arrow").addEventListener("click", async () => {
+    await addCanvasElement({
+      type: "arrow",
+      fromId: $2("arrow-from").value,
+      toId: $2("arrow-to").value,
+      altText: "Arrow"
+    });
+  });
+  $2("canvas-image").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const uploaded = await api("/v1/assets", {
+      method: "POST",
+      body: JSON.stringify({ filename: file.name, mime: file.type || "image/png", contentBase64: await fileToBase64(file) })
+    });
+    await addCanvasElement({ type: "image", imageAssetId: uploaded.id, altText: file.name });
+    event.target.value = "";
+  });
+  $2("canvas-video").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const uploaded = await api("/v1/assets", {
+      method: "POST",
+      body: JSON.stringify({ filename: file.name, mime: file.type || "video/mp4", contentBase64: await fileToBase64(file) })
+    });
+    await addCanvasElement({ type: "video", videoAssetId: uploaded.id, altText: file.name });
+    event.target.value = "";
+  });
+  $2("doc-comment-submit").addEventListener("click", async () => {
+    if (!selectedDocumentId) return;
+    await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: $2("doc-comment-input").value })
+    });
+    $2("doc-comment-input").value = "";
+    await refreshWorkspace();
+    await renderDocumentInspector(selectedDocumentId);
   });
   $2("visual-outline").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-frame]");
@@ -29114,12 +29844,71 @@ ${err.toString()}`);
       setMode("docs");
       openDocument(hit.dataset.id);
     }
+    if (hit.dataset.kind === "issue") {
+      setMode("work");
+      void inspectIssue(hit.dataset.id ?? "");
+    }
+  });
+  $2("header-create").addEventListener("click", () => {
+    void createPage();
+  });
+  $2("doc-crumbs").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-kind='document']");
+    if (button?.dataset.id) openDocument(button.dataset.id);
+  });
+  $2("notify-toggle").addEventListener("click", () => {
+    const drawer = $2("notify-drawer");
+    drawer.hidden = !drawer.hidden;
+    $2("notify-toggle").setAttribute("aria-expanded", String(!drawer.hidden));
+    renderNotifications();
+  });
+  $2("notify-close").addEventListener("click", () => {
+    $2("notify-drawer").hidden = true;
+    $2("notify-toggle").setAttribute("aria-expanded", "false");
+  });
+  $2("notify-list").addEventListener("click", async (event) => {
+    const hit = event.target.closest("button.ew-hit");
+    if (!hit) return;
+    if (hit.dataset.notification) {
+      await api(`/v1/notifications/${encodeURIComponent(hit.dataset.notification)}/read`, { method: "POST" });
+    }
+    if (hit.dataset.kind === "document") {
+      setMode("docs");
+      openDocument(hit.dataset.id);
+    }
+    if (hit.dataset.kind === "issue") {
+      setMode("work");
+      void inspectIssue(hit.dataset.id ?? "");
+    }
+    await refreshWorkspace();
+    renderNotifications();
+  });
+  $2("import-cancel").addEventListener("click", () => {
+    $2("import-modal").hidden = true;
+  });
+  $2("import-submit").addEventListener("click", async () => {
+    $2("import-error").textContent = "";
+    try {
+      const result = await api("/v1/spaces/" + encodeURIComponent(currentSpaceId()) + "/import/confluence", {
+        method: "POST",
+        body: JSON.stringify({ title: $2("import-title").value || "Imported page", xml: $2("import-xml").value })
+      });
+      await refreshWorkspace();
+      $2("import-modal").hidden = true;
+      setMode("docs");
+      openDocument(result.documentId);
+      inspector.insertAdjacentHTML(
+        "beforeend",
+        result.lossReport.length ? `<div class="ew-tree-loss">${result.lossReport.map((item) => `<div>Unsupported macro: ${escapeHtml(item.name)}</div>`).join("")}</div>` : `<div class="ew-note">Imported with no macro loss</div>`
+      );
+    } catch (error) {
+      $2("import-error").textContent = error instanceof Error ? error.message : String(error);
+    }
   });
   $2("theme-toggle").addEventListener("click", () => {
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
     document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
     $2("theme-toggle").setAttribute("aria-pressed", String(!dark));
-    $2("theme-toggle").textContent = dark ? "Dark" : "Light";
   });
   document.querySelectorAll("#doc-toolbar [data-cmd]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -29154,12 +29943,6 @@ ${err.toString()}`);
       setMode,
       text: () => collab?.getText() ?? ""
     }
-  });
-  window.addEventListener("pointermove", (event) => {
-    const x = `${Math.round(event.clientX / Math.max(window.innerWidth, 1) * 100)}%`;
-    const y = `${Math.round(event.clientY / Math.max(window.innerHeight, 1) * 100)}%`;
-    document.documentElement.style.setProperty("--mx", x);
-    document.documentElement.style.setProperty("--my", y);
   });
   if (token) {
     void loadWorkspace().catch(() => {

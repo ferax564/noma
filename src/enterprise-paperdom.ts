@@ -21,7 +21,7 @@ export interface PaperChartData {
 
 export interface PaperElement {
   id: string;
-  type: "shape" | "text" | "image" | "chart" | "table" | "group";
+  type: "shape" | "text" | "image" | "chart" | "table" | "group" | "arrow" | "video";
   geometry: PaperGeometry;
   zIndex: number;
   text?: string;
@@ -29,6 +29,10 @@ export interface PaperElement {
   readingOrder?: number;
   chart?: PaperChartData;
   imageAssetId?: string;
+  videoAssetId?: string;
+  href?: string;
+  fromId?: string;
+  toId?: string;
   table?: { headers: string[]; rows: string[][]; columnIds?: string[]; rowIds?: string[]; cellIds?: string[][] };
   children?: string[];
 }
@@ -219,9 +223,25 @@ export function paperCanvasMarkup(doc: PaperDocument): string {
       const h = Math.max(24, finitePx(el.geometry.height, 48));
       const rotation = finitePx(el.geometry.rotation);
       const label = el.text ?? el.altText ?? el.type;
-      const inner = el.chart ? chartBars(el.chart) : el.table
-        ? `<table class="pd-table">${el.table.headers.length ? `<thead><tr>${el.table.headers.map((cell) => `<th>${escapeMarkup(cell)}</th>`).join("")}</tr></thead>` : ""}<tbody>${el.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeMarkup(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
-        : `<span class="pd-el-text">${escapeMarkup(label)}</span>`;
+      let inner = `<span class="pd-el-text">${escapeMarkup(label)}</span>`;
+      if (el.chart) inner = chartBars(el.chart);
+      else if (el.table) {
+        inner = `<table class="pd-table">${el.table.headers.length ? `<thead><tr>${el.table.headers.map((cell) => `<th>${escapeMarkup(cell)}</th>`).join("")}</tr></thead>` : ""}<tbody>${el.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeMarkup(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+      } else if (el.type === "image" && el.imageAssetId) {
+        inner = `<img class="pd-media" src="/v1/assets/${escapeMarkup(el.imageAssetId)}" alt="${escapeMarkup(el.altText ?? label)}" />`;
+      } else if (el.type === "video" && (el.videoAssetId || el.href)) {
+        const src = el.videoAssetId ? `/v1/assets/${escapeMarkup(el.videoAssetId)}` : escapeMarkup(el.href ?? "");
+        inner = `<video class="pd-media" controls src="${src}" title="${escapeMarkup(el.altText ?? label)}"></video>`;
+      } else if (el.type === "arrow") {
+        const from = el.fromId ? doc.elements.find((item) => item.id === el.fromId) : undefined;
+        const to = el.toId ? doc.elements.find((item) => item.id === el.toId) : undefined;
+        const x1 = from ? finitePx(from.geometry.x) + finitePx(from.geometry.width) / 2 - x : 8;
+        const y1 = from ? finitePx(from.geometry.y) + finitePx(from.geometry.height) / 2 - y : h / 2;
+        const x2 = to ? finitePx(to.geometry.x) + finitePx(to.geometry.width) / 2 - x : w - 8;
+        const y2 = to ? finitePx(to.geometry.y) + finitePx(to.geometry.height) / 2 - y : h / 2;
+        const markerId = `ah-${escapeMarkup(el.id)}`;
+        inner = `<svg class="pd-arrow" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><marker id="${markerId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#0C66E4"/></marker></defs><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0C66E4" stroke-width="2.5" marker-end="url(#${markerId})"/></svg>`;
+      }
       return `<div class="pd-el pd-el-${escapeMarkup(el.type)}" data-id="${escapeMarkup(el.id)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg)">${inner}</div>`;
     })
     .join("");
@@ -229,19 +249,21 @@ export function paperCanvasMarkup(doc: PaperDocument): string {
 }
 
 export function paperCanvasStyles(): string {
-  return `.pd-page{position:relative;background:
-    linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,.06)),
-    rgba(255,252,248,.42);border:1px solid rgba(255,255,255,.46);border-radius:28px;box-shadow:0 30px 80px -40px rgba(8,10,16,.55),0 1px 0 rgba(255,255,255,.7) inset;backdrop-filter:blur(28px) saturate(170%);overflow:hidden}
-.pd-el{position:absolute;box-sizing:border-box;padding:14px 16px;border-radius:18px;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.42);box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 16px 36px -28px rgba(16,12,8,.55);backdrop-filter:blur(18px);overflow:hidden}
-.pd-el-text{font:650 15px/1.35 Inter,system-ui,sans-serif;color:#1a1814;white-space:pre-wrap}
-.pd-el-shape{background:rgba(255,248,242,.34);border-color:rgba(196,90,46,.22)}
-.pd-el-chart{background:rgba(10,14,20,.62);color:#edf3f7;border-color:rgba(255,255,255,.12)}
-.pd-el-chart .pd-el-text{color:#edf3f7}
+  return `.pd-page{position:relative;background:transparent;border:none;box-shadow:none;overflow:visible}
+.pd-el{position:absolute;box-sizing:border-box;padding:12px 14px;border-radius:8px;background:#fff;border:1px solid #091e4224;box-shadow:0 1px 1px #091e4224,0 0 1px #091e4224;overflow:hidden}
+.pd-el-text{font:500 14px/20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif;color:#172b4d;white-space:pre-wrap}
+.pd-el-shape{background:#e9f2ff;border-color:#0c66e44d}
+.pd-el-chart{background:#1d2125;color:#b6c2cf;border-color:transparent}
+.pd-el-chart .pd-el-text{color:#b6c2cf}
 .pd-chart{display:flex;align-items:flex-end;gap:8px;height:100%;padding-top:8px}
 .pd-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;min-width:0;height:100%}
-.pd-bar{width:100%;border-radius:9px 9px 4px 4px;background:linear-gradient(180deg,#ffb089,#c45a2e)}
-.pd-bar-label{font:650 10px/1 Inter,system-ui,sans-serif;color:rgba(237,243,247,.72);text-transform:uppercase;letter-spacing:.04em}
-.pd-table{width:100%;border-collapse:collapse;font:13px/1.4 Inter,system-ui,sans-serif}
-.pd-table th,.pd-table td{border-bottom:1px solid rgba(40,32,24,.08);padding:4px 6px;text-align:left}
-.pd-el-title,.pd-el-text:first-child{display:block}`;
+.pd-bar{width:100%;border-radius:3px 3px 0 0;background:#0c66e4}
+.pd-bar-label{font:700 10px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#8c9bab;letter-spacing:0}
+.pd-table{width:100%;border-collapse:collapse;font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.pd-table th,.pd-table td{border-bottom:1px solid #091e4224;padding:4px 6px;text-align:left;color:#172b4d}
+.pd-el-title,.pd-el-text:first-child{display:block}
+.pd-el-arrow{background:transparent;border:none;box-shadow:none;padding:0;overflow:visible;pointer-events:none}
+.pd-arrow{width:100%;height:100%;overflow:visible}
+.pd-media{width:100%;height:100%;object-fit:cover;border-radius:3px;background:#f7f8f9}
+.pd-el-image,.pd-el-video{padding:8px}`;
 }

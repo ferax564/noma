@@ -2187,6 +2187,24 @@ Visuals / Work UI: topbar and mode switch, Tiptap paper editor over `/yjs`,
 PaperDOM canvas frames instead of a paragraph dump, and a live issue board.
 `listenEnterpriseHttp` serves the shell at `/` and `/v1/workspace`.
 
+### §24.44 — Enterprise product surface (2026-09-14)
+
+Productizes the Confluence/Jira substitution slice on the §24.43 shell:
+
+- Docs: space page tree, create/rename/move, comments and mentions, attachments, revision restore, import UI with macro loss report.
+- Work: issue create and detail, required-field transitions, sprints, JQL with unsupported-field reporting, worklog, rank.
+- One product: notification inbox, Admin (spaces/projects/grants), Cloud documented as preview-only, PostgreSQL selectable as a running store.
+
+### §24.45 — Enterprise authoring loop (2026-09-14)
+
+Closes the remaining product-surface gaps on the §24.44 shell:
+
+- Create workspaces (with a Home page) and pages from labeled forms, not `window.prompt`.
+- Grant viewer/editor/owner on a page or workspace; page grants inherit from the space.
+- Embed images and videos on pages (`::figure` / `::video`) and on PaperDOM presentation boards.
+- Draw arrows between canvas frames; boards are the presentation surface.
+- Link pages and issues to GitHub (`https://github.com/...`) and to native work issues (the Jira equivalent).
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can

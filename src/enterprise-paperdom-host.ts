@@ -110,7 +110,7 @@ export function paperDomHtmlExport(document: PaperDOMDocument): string {
       return `<section class="pd-page" data-page="${escapeAttr(page.id)}" style="width:${width}px;min-height:${height}px;background:${background}">${items}</section>`;
     })
     .join("");
-  return `<!doctype html><html><head><meta charset="utf-8"/><title>${title}</title><style>body{margin:24px;background:#11161c;font-family:Inter,system-ui,sans-serif}${paperCanvasStyles()}</style></head><body>${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>${title}</title><style>body{margin:24px;background:#f7f8f9;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif}${paperCanvasStyles()}</style></head><body>${body}</body></html>`;
 }
 
 export function paperDomFidelityReport(document: PaperDOMDocument, target: "pptx" | "svg" | "html"): {
