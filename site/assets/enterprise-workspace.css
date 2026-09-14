@@ -542,6 +542,13 @@ input {
 }
 
 .ew-inspector-body, .ew-outline, .ew-search-results { display: grid; gap: 8px; margin-top: 12px; }
+.ew-inspector-body input,
+.ew-inspector-body select,
+.ew-inspector-body textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
 .ew-meta, .ew-outline button, .ew-hit {
   display: grid;
   gap: 2px;
