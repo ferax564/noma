@@ -28926,6 +28926,70 @@ ${err.toString()}`);
   function rewriteAssetHtml(html) {
     return html.replace(/\/v1\/assets\/([^"'?\s]+)/g, (_match, id2) => assetUrl(id2));
   }
+  var SPACE_COLORS = ["#1d7afc", "#e56910", "#6b5eae", "#1f845a", "#c9372c", "#8270db"];
+  function initials(name) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const letters = `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? parts[0]?.[1] ?? ""}`;
+    return (letters || "?").toUpperCase();
+  }
+  function avatarMarkup(name, size2 = "sm") {
+    return `<span class="ew-avatar${size2 === "lg" ? " lg" : ""}" aria-hidden="true">${escapeHtml(initials(name))}</span>`;
+  }
+  function spaceColor(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i += 1) hash = hash * 31 + name.charCodeAt(i) >>> 0;
+    return SPACE_COLORS[hash % SPACE_COLORS.length] ?? "#1d7afc";
+  }
+  function pageIcon() {
+    return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5z"/></svg>`;
+  }
+  function boardIcon() {
+    return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16v4H4zm0 6h7v10H4zm9 0h7v10h-7z"/></svg>`;
+  }
+  function projectIcon() {
+    return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h16v12H4zm2 2v8h12V8z"/></svg>`;
+  }
+  function formatWhen(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString(void 0, { month: "short", day: "numeric", year: "numeric" });
+  }
+  function documentAncestors(id2) {
+    const chain = [];
+    let current = payload?.documents.find((doc4) => doc4.id === id2);
+    const seen = /* @__PURE__ */ new Set();
+    while (current && !seen.has(current.id)) {
+      chain.unshift(current);
+      seen.add(current.id);
+      current = current.parentId ? payload?.documents.find((doc4) => doc4.id === current?.parentId) : void 0;
+    }
+    return chain;
+  }
+  function setSessionAvatar(name) {
+    $2("session-avatar").textContent = initials(name);
+    $2("comment-avatar").textContent = initials(name);
+  }
+  function renderCrumbs(doc4) {
+    const crumbs = $2("doc-crumbs");
+    if (!doc4) {
+      crumbs.replaceChildren();
+      return;
+    }
+    const space = payload?.spaces.find((item) => item.id === doc4.spaceId);
+    const chain = documentAncestors(doc4.id);
+    crumbs.innerHTML = [
+      `<span>${escapeHtml(space?.name ?? "Space")}</span>`,
+      ...chain.map(
+        (item, index) => index === chain.length - 1 ? `<span>${escapeHtml(item.title)}</span>` : `<button type="button" data-kind="document" data-id="${item.id}">${escapeHtml(item.title)}</button>`
+      )
+    ].join("");
+  }
+  function renderByline(doc4) {
+    const actorName = payload?.actor.name ?? "Unknown";
+    const when = formatWhen(doc4?.updatedAt);
+    $2("doc-byline").innerHTML = `${avatarMarkup(actorName)}<span><strong>${escapeHtml(actorName)}</strong>${when ? ` \xB7 ${escapeHtml(when)}` : ""}</span>`;
+  }
   async function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -28980,7 +29044,9 @@ ${err.toString()}`);
       canvas.hidden = !active;
       canvas.classList.toggle("is-active", active);
     }
-    $2("rail-kicker").textContent = next === "docs" ? "Pages" : next === "visuals" ? "Canvases" : next === "work" ? "Projects" : "Admin";
+    $2("rail-kicker").textContent = next === "docs" ? "Content" : next === "visuals" ? "Whiteboards" : next === "work" ? "Projects" : "Admin";
+    const section = document.getElementById("rail-section");
+    if (section) section.textContent = next === "docs" ? "Pages" : next === "visuals" ? "Boards" : next === "work" ? "Projects" : "Spaces";
     renderRail();
     if (next === "docs") openDocument(selectedDocumentId || payload?.documents[0]?.id);
     if (next === "visuals") void openArtifact(selectedArtifactId || payload?.artifacts[0]?.id);
@@ -28992,42 +29058,46 @@ ${err.toString()}`);
     if (!selectedSpaceId) selectedSpaceId = payload.spaces[0]?.id ?? "";
     const spaceName = payload.spaces.find((space) => space.id === currentSpaceId())?.name ?? payload.spaces[0]?.name ?? "Workspace";
     $2("rail-title").textContent = spaceName;
+    const icon = $2("rail-space-icon");
+    icon.textContent = initials(spaceName).slice(0, 1);
+    icon.style.background = spaceColor(spaceName);
     const actions = $2("rail-actions");
     const spaceOptions = payload.spaces.map((space) => `<option value="${space.id}" ${space.id === currentSpaceId() ? "selected" : ""}>${escapeHtml(space.name)}</option>`).join("");
     if (mode === "docs") {
       actions.innerHTML = `
-      <label for="space-switch">Workspace<select id="space-switch">${spaceOptions}</select></label>
-      <label for="new-space-name">New workspace<input id="new-space-name" placeholder="Name" /></label>
-      <button type="button" id="create-space">Create workspace</button>
+      <label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>
+      <label for="new-space-name">New space<input id="new-space-name" placeholder="Name" /></label>
+      <button type="button" id="create-space">Create space</button>
       <label for="new-page-title">Page title<input id="new-page-title" placeholder="Title" /></label>
-      <button type="button" id="create-page">New page</button>
+      <button type="button" id="create-page">Create page</button>
       <button type="button" id="import-page">Import</button>`;
       railList.innerHTML = orderedDocuments().filter((doc4) => !currentSpaceId() || doc4.spaceId === currentSpaceId()).map((doc4) => {
         const depth = Math.min(documentDepth(doc4.id), 2);
         return `<button class="ew-rail-item" type="button" data-kind="document" data-id="${doc4.id}" data-depth="${depth}" aria-current="${doc4.id === selectedDocumentId}">
-          <strong>${escapeHtml(doc4.title)}</strong><small>${escapeHtml(doc4.lifecycle)} \xB7 ${escapeHtml(doc4.classification)}</small>
+          ${pageIcon()}<strong>${escapeHtml(doc4.title)}</strong><small>${escapeHtml(doc4.lifecycle)} \xB7 ${escapeHtml(doc4.classification)}</small>
         </button>`;
       }).join("");
     } else if (mode === "visuals") {
-      actions.innerHTML = `<label for="space-switch">Workspace<select id="space-switch">${spaceOptions}</select></label>`;
+      actions.innerHTML = `<label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>`;
       railList.innerHTML = payload.artifacts.filter((art) => !currentSpaceId() || art.spaceId === currentSpaceId()).map(
         (art) => `<button class="ew-rail-item" type="button" data-kind="artifact" data-id="${art.id}" aria-current="${art.id === selectedArtifactId}">
-          <strong>${escapeHtml(art.title)}</strong><small>rev ${art.draftRevision}</small>
+          ${boardIcon()}<strong>${escapeHtml(art.title)}</strong><small>rev ${art.draftRevision}</small>
         </button>`
       ).join("");
     } else if (mode === "work") {
       actions.innerHTML = `
       <label for="new-issue-rail-summary">Issue summary<input id="new-issue-rail-summary" placeholder="Summary" /></label>
-      <button type="button" id="create-issue">New issue</button>`;
+      <button type="button" id="create-issue">Create issue</button>`;
       railList.innerHTML = payload.projects.map(
         (project) => `<button class="ew-rail-item" type="button" data-kind="project" data-id="${project.id}" aria-current="${project.id === currentProject()?.id}">
-          <strong>${escapeHtml(project.name)}</strong><small>${escapeHtml(project.key)}</small>
+          ${projectIcon()}<strong>${escapeHtml(project.name)}</strong><small>${escapeHtml(project.key)}</small>
         </button>`
       ).join("");
     } else {
       actions.replaceChildren();
       railList.innerHTML = payload.spaces.map(
         (space) => `<button class="ew-rail-item" type="button" data-kind="space" data-id="${space.id}" aria-current="${space.id === currentSpaceId()}">
+          <span class="ew-space-icon" style="background:${spaceColor(space.name)}">${escapeHtml(initials(space.name).slice(0, 1))}</span>
           <strong>${escapeHtml(space.name)}</strong><small>${escapeHtml(space.classification)}</small>
         </button>`
       ).join("");
@@ -29064,8 +29134,12 @@ ${err.toString()}`);
     selectedDocumentId = id2;
     const doc4 = payload.documents.find((item) => item.id === id2);
     $2("doc-title").textContent = doc4?.title ?? "Untitled";
-    $2("doc-kicker").textContent = doc4?.lifecycle ?? "Draft";
-    $2("inspector-title").textContent = "Document";
+    const kicker = $2("doc-kicker");
+    kicker.textContent = doc4?.lifecycle ?? "Draft";
+    kicker.classList.toggle("published", (doc4?.lifecycle ?? "").toLowerCase() === "published");
+    renderCrumbs(doc4);
+    renderByline(doc4);
+    $2("inspector-title").textContent = "Page";
     renderRail();
     collab?.destroy();
     editorMount.replaceChildren();
@@ -29092,7 +29166,15 @@ ${err.toString()}`);
         `/v1/documents/${encodeURIComponent(id2)}/links`
       )
     ]);
-    $2("doc-comments").innerHTML = comments.comments.map((comment) => `<div class="ew-note"><strong>${escapeHtml(comment.authorName)}</strong><span>${escapeHtml(comment.body)}</span></div>`).join("") || `<div class="ew-note">No comments yet</div>`;
+    $2("doc-comments").innerHTML = comments.comments.map(
+      (comment) => `<article class="ew-comment">
+          ${avatarMarkup(comment.authorName, "lg")}
+          <div>
+            <div class="ew-comment-meta"><strong>${escapeHtml(comment.authorName)}</strong><span>${escapeHtml(formatWhen(comment.createdAt))}</span></div>
+            <p>${escapeHtml(comment.body)}</p>
+          </div>
+        </article>`
+    ).join("") || `<div class="ew-note">No comments yet</div>`;
     $2("doc-media").innerHTML = assets.assets.map((asset) => {
       const src = assetUrl(asset.assetId);
       if (asset.mime.startsWith("video/")) {
@@ -29187,13 +29269,19 @@ ${err.toString()}`);
     $2("work-board").innerHTML = columns.map((status) => {
       const cards = visible.filter((issue) => issue.statusId === status.id);
       return `<section class="ew-column" data-status="${escapeHtml(status.id)}">
-        <h3>${escapeHtml(status.name)} \xB7 ${cards.length}</h3>
+        <h3>${escapeHtml(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
         ${cards.map(
-        (issue) => `<button class="ew-card" type="button" draggable="true" data-issue="${issue.id}">
+        (issue) => {
+          const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
+          return `<button class="ew-card" type="button" draggable="true" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
               <span class="ew-key">${escapeHtml(issue.key)}</span>
               <strong>${escapeHtml(issue.summary)}</strong>
-              <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
-            </button>`
+              <span class="ew-card-foot">
+                <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
+                ${assignee ? avatarMarkup(assignee.name) : ""}
+              </span>
+            </button>`;
+        }
       ).join("")}
       </section>`;
     }).join("");
@@ -29298,7 +29386,11 @@ ${err.toString()}`);
           <strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.body)}</small>
         </button>`
     ).join("") || `<div class="ew-note">Inbox empty</div>`;
-    $2("notify-toggle").textContent = items.length ? `Inbox (${items.length})` : "Inbox";
+    const badge = $2("notify-badge");
+    const unread = items.filter((item) => !item.read_at).length;
+    badge.hidden = unread === 0;
+    badge.textContent = unread > 9 ? "9+" : String(unread);
+    $2("notify-toggle").setAttribute("aria-label", unread ? `Notifications, ${unread} unread` : "Notifications");
   }
   async function refreshWorkspace() {
     payload = await api("/v1/workspace");
@@ -29306,6 +29398,7 @@ ${err.toString()}`);
   }
   async function loadWorkspace() {
     await refreshWorkspace();
+    setSessionAvatar(payload.actor.name);
     setStatus(`${payload.actor.name} \xB7 ${payload.actor.kind}`, "ok");
     showGate(false);
     setMode(mode);
@@ -29318,6 +29411,18 @@ ${err.toString()}`);
     token = session.token;
     localStorage.setItem(STORAGE_KEY, token);
     await loadWorkspace();
+  }
+  async function createPage() {
+    const titleInput = document.getElementById("new-page-title");
+    const title = titleInput?.value.trim() || "Untitled";
+    if (!payload || !currentSpaceId()) return;
+    const created = await api("/v1/documents", {
+      method: "POST",
+      body: JSON.stringify({ spaceId: currentSpaceId(), title, parentId: selectedDocumentId || void 0 })
+    });
+    await refreshWorkspace();
+    setMode("docs");
+    openDocument(created.id);
   }
   document.querySelectorAll(".ew-modes button").forEach((button) => {
     button.addEventListener("click", () => setMode(button.dataset.mode ?? "docs"));
@@ -29349,15 +29454,7 @@ ${err.toString()}`);
       if (home) openDocument(home.id);
     }
     if (target.id === "create-page") {
-      const title = $2("new-page-title").value.trim() || "New page";
-      if (!payload || !currentSpaceId()) return;
-      const created = await api("/v1/documents", {
-        method: "POST",
-        body: JSON.stringify({ spaceId: currentSpaceId(), title, parentId: selectedDocumentId || void 0 })
-      });
-      await refreshWorkspace();
-      setMode("docs");
-      openDocument(created.id);
+      await createPage();
     }
     if (target.id === "import-page") $2("import-modal").hidden = false;
     if (target.id === "create-issue") {
@@ -29748,6 +29845,13 @@ ${err.toString()}`);
       void inspectIssue(hit.dataset.id ?? "");
     }
   });
+  $2("header-create").addEventListener("click", () => {
+    void createPage();
+  });
+  $2("doc-crumbs").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-kind='document']");
+    if (button?.dataset.id) openDocument(button.dataset.id);
+  });
   $2("notify-toggle").addEventListener("click", () => {
     const drawer = $2("notify-drawer");
     drawer.hidden = !drawer.hidden;
@@ -29801,7 +29905,6 @@ ${err.toString()}`);
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
     document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
     $2("theme-toggle").setAttribute("aria-pressed", String(!dark));
-    $2("theme-toggle").textContent = dark ? "Dark" : "Light";
   });
   document.querySelectorAll("#doc-toolbar [data-cmd]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -29836,12 +29939,6 @@ ${err.toString()}`);
       setMode,
       text: () => collab?.getText() ?? ""
     }
-  });
-  window.addEventListener("pointermove", (event) => {
-    const x = `${Math.round(event.clientX / Math.max(window.innerWidth, 1) * 100)}%`;
-    const y = `${Math.round(event.clientY / Math.max(window.innerHeight, 1) * 100)}%`;
-    document.documentElement.style.setProperty("--mx", x);
-    document.documentElement.style.setProperty("--my", y);
   });
   if (token) {
     void loadWorkspace().catch(() => {
