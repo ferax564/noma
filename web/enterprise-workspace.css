@@ -331,16 +331,13 @@ input:focus, select:focus, textarea:focus {
 }
 
 .ew-status {
-  border: 0;
-  padding: 0 4px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ds-text-subtlest);
-  max-width: 22vw;
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  text-overflow: ellipsis;
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
-  background: transparent;
+  border: 0;
 }
 .ew-status[data-state="ok"] { color: var(--ds-ok); }
 .ew-status[data-state="error"] { color: var(--ds-error); }
@@ -452,7 +449,7 @@ input:focus, select:focus, textarea:focus {
   top: 0;
   z-index: 2;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 2px;
   margin: 0;
@@ -461,6 +458,7 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--ds-border);
   background: var(--ds-surface);
   border-radius: 0;
+  overflow-x: auto;
 }
 .ew-toolbar button {
   min-width: 32px;
@@ -473,15 +471,26 @@ input:focus, select:focus, textarea:focus {
 }
 .ew-toolbar button:hover { background: var(--ds-background-neutral-subtle-hovered); }
 .ew-toolbar label {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   font-weight: 500;
   color: var(--ds-text-subtle);
-  padding: 0 6px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: var(--ds-radius);
+  cursor: pointer;
 }
-.ew-toolbar input[type="file"] { max-width: 140px; height: 28px; min-height: 28px; font-size: 12px; }
+.ew-toolbar label:hover { background: var(--ds-background-neutral-subtle-hovered); }
+.ew-toolbar input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
 .ew-visual-toolbar {
   width: 100%;
   margin: 0;
@@ -631,7 +640,7 @@ input:focus, select:focus, textarea:focus {
 
 .ew-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   align-items: start;
   padding: 8px 16px 24px;
@@ -954,3 +963,13 @@ input:focus, select:focus, textarea:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.ew-rail-more { display: grid; gap: 8px; }
+.ew-rail-more summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-text-subtlest);
+  list-style: none;
+}
+.ew-rail-more summary::-webkit-details-marker { display: none; }
+.ew-visual-toolbar { flex-wrap: wrap; overflow: visible; }

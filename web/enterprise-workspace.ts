@@ -304,6 +304,7 @@ function setMode(next: Mode): void {
   $("rail-kicker").textContent = next === "docs" ? "Content" : next === "visuals" ? "Whiteboards" : next === "work" ? "Projects" : "Admin";
   const section = document.getElementById("rail-section");
   if (section) section.textContent = next === "docs" ? "Pages" : next === "visuals" ? "Boards" : next === "work" ? "Projects" : "Spaces";
+  if (next !== "visuals") $("visual-outline").replaceChildren();
   renderRail();
   if (next === "docs") openDocument(selectedDocumentId || payload?.documents[0]?.id);
   if (next === "visuals") void openArtifact(selectedArtifactId || payload?.artifacts[0]?.id);
@@ -326,11 +327,14 @@ function renderRail(): void {
   if (mode === "docs") {
     actions.innerHTML = `
       <label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>
-      <label for="new-space-name">New space<input id="new-space-name" placeholder="Name" /></label>
-      <button type="button" id="create-space">Create space</button>
-      <label for="new-page-title">Page title<input id="new-page-title" placeholder="Title" /></label>
       <button type="button" id="create-page">Create page</button>
-      <button type="button" id="import-page">Import</button>`;
+      <details class="ew-rail-more">
+        <summary>Space tools</summary>
+        <label for="new-page-title">Page title<input id="new-page-title" placeholder="Title" /></label>
+        <label for="new-space-name">New space<input id="new-space-name" placeholder="Name" /></label>
+        <button type="button" id="create-space">Create space</button>
+        <button type="button" id="import-page">Import</button>
+      </details>`;
     railList.innerHTML = orderedDocuments()
       .filter((doc) => !currentSpaceId() || doc.spaceId === currentSpaceId())
       .map((doc) => {
