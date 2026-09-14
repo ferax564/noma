@@ -33,6 +33,7 @@ const REPLACE_TABLE_PK: Record<string, string[]> = {
   document_revisions: ["document_id", "revision"],
   document_comments: ["id"],
   document_assets: ["id"],
+  external_links: ["id"],
   artifacts: ["id"],
   artifact_revisions: ["artifact_id", "revision"],
   assets: ["id"],

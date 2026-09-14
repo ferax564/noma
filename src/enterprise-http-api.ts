@@ -56,7 +56,9 @@ export async function dispatchEnterpriseApi(
   }
   if (method === "POST" && path === "/v1/spaces") {
     const body = await readJson(req);
-    const id = ws.createSpace(actor, String(body.name ?? "Space"), (body.classification as "internal") ?? "internal");
+    const id = ws.createSpace(actor, String(body.name ?? "Space"), (body.classification as "internal") ?? "internal", {
+      homePage: body.homePage !== false,
+    });
     send(res, 200, { id });
     return true;
   }
@@ -103,8 +105,49 @@ export async function dispatchEnterpriseApi(
     return true;
   }
 
-  const artifactMatch = path.match(/^\/v1\/artifacts\/([^/]+)$/);
-  if (artifactMatch && method === "GET") {
+  if (method === "POST" && path === "/v1/assets") {
+    const body = await readJson(req);
+    const bytes = Buffer.from(String(body.contentBase64 ?? ""), "base64");
+    const id = ws.uploadAsset(actor, {
+      bytes,
+      mime: String(body.mime ?? "application/octet-stream"),
+      provenance: { filename: String(body.filename ?? "asset") },
+    });
+    send(res, 200, { id });
+    return true;
+  }
+
+  if (method === "POST" && path === "/v1/artifacts") {
+    const body = await readJson(req);
+    const id = ws.createArtifact(actor, { spaceId: String(body.spaceId ?? ""), title: String(body.title ?? "Untitled board") });
+    send(res, 200, { id });
+    return true;
+  }
+
+  const spacePerm = path.match(/^\/v1\/spaces\/([^/]+)\/permissions$/);
+  if (spacePerm && method === "GET") {
+    send(res, 200, { grants: ws.listResourceGrants(actor, "space", decodeURIComponent(spacePerm[1]!)) });
+    return true;
+  }
+  if (spacePerm && method === "POST") {
+    const body = await readJson(req);
+    send(
+      res,
+      200,
+      {
+        id: ws.grant(actor, {
+          principalId: String(body.principalId ?? ""),
+          resourceKind: "space",
+          resourceId: decodeURIComponent(spacePerm[1]!),
+          role: body.role as "viewer",
+        }),
+      },
+    );
+    return true;
+  }
+
+  const artifactMatch = path.match(/^\/v1\/artifacts\/([^/]+)(?:\/(elements))?$/);
+  if (artifactMatch && method === "GET" && !artifactMatch[2]) {
     const artifactId = decodeURIComponent(artifactMatch[1]!);
     const read = ws.readArtifact(actor, artifactId, "draft");
     send(res, 200, {
@@ -113,15 +156,34 @@ export async function dispatchEnterpriseApi(
     });
     return true;
   }
-
-  const assetMatch = path.match(/^\/v1\/assets\/([^/]+)$/);
-  if (assetMatch && method === "GET") {
-    const bytes = ws.readAsset(actor, decodeURIComponent(assetMatch[1]!));
-    sendBytes(res, "application/octet-stream", bytes);
+  if (artifactMatch && artifactMatch[2] === "elements" && method === "POST") {
+    const body = await readJson(req);
+    send(
+      res,
+      200,
+      ws.insertArtifactElement(actor, decodeURIComponent(artifactMatch[1]!), {
+        type: (body.type as "shape") ?? "shape",
+        text: body.text ? String(body.text) : undefined,
+        altText: body.altText ? String(body.altText) : undefined,
+        imageAssetId: body.imageAssetId ? String(body.imageAssetId) : undefined,
+        videoAssetId: body.videoAssetId ? String(body.videoAssetId) : undefined,
+        href: body.href ? String(body.href) : undefined,
+        fromId: body.fromId ? String(body.fromId) : undefined,
+        toId: body.toId ? String(body.toId) : undefined,
+        geometry: body.geometry as { x?: number; y?: number; width?: number; height?: number } | undefined,
+      }),
+    );
     return true;
   }
 
-  const docMatch = path.match(/^\/v1\/documents\/([^/]+)(?:\/(crdt|updates|publish|comments|assets|revisions))?(?:\/([^/]+))?(?:\/(restore))?$/);
+  const assetMatch = path.match(/^\/v1\/assets\/([^/]+)$/);
+  if (assetMatch && method === "GET") {
+    const asset = ws.inspectAsset(actor, decodeURIComponent(assetMatch[1]!));
+    sendBytes(res, asset.mime, asset.bytes);
+    return true;
+  }
+
+  const docMatch = path.match(/^\/v1\/documents\/([^/]+)(?:\/(crdt|updates|publish|comments|assets|revisions|permissions|links|media))?(?:\/([^/]+))?(?:\/(restore))?$/);
   if (docMatch) {
     const documentId = decodeURIComponent(docMatch[1]!);
     const action = docMatch[2];
@@ -188,6 +250,65 @@ export async function dispatchEnterpriseApi(
     }
     if (action === "revisions" && extra && docMatch[4] === "restore" && method === "POST") {
       send(res, 200, ws.restoreDocumentRevision(actor, documentId, Number(extra)));
+      return true;
+    }
+    if (action === "permissions" && method === "GET") {
+      send(res, 200, { grants: ws.listResourceGrants(actor, "document", documentId) });
+      return true;
+    }
+    if (action === "permissions" && method === "POST") {
+      const body = await readJson(req);
+      send(
+        res,
+        200,
+        {
+          id: ws.grant(actor, {
+            principalId: String(body.principalId ?? ""),
+            resourceKind: "document",
+            resourceId: documentId,
+            role: body.role as "viewer",
+          }),
+        },
+      );
+      return true;
+    }
+    if (action === "links" && method === "GET") {
+      send(res, 200, { links: ws.listExternalLinks(actor, "document", documentId) });
+      return true;
+    }
+    if (action === "links" && method === "POST") {
+      const body = await readJson(req);
+      send(
+        res,
+        200,
+        {
+          id: ws.addExternalLink(actor, {
+            fromKind: "document",
+            fromId: documentId,
+            provider: (body.provider as "github") ?? "url",
+            url: body.url ? String(body.url) : undefined,
+            issueId: body.issueId ? String(body.issueId) : undefined,
+            documentId: body.documentId ? String(body.documentId) : undefined,
+            label: body.label ? String(body.label) : undefined,
+          }),
+        },
+      );
+      return true;
+    }
+    if (action === "media" && method === "POST") {
+      const body = await readJson(req);
+      const bytes = Buffer.from(String(body.contentBase64 ?? ""), "base64");
+      const filename = String(body.filename ?? "media");
+      const kind = body.kind === "video" ? "video" : "image";
+      const attached = ws.attachDocumentAsset(actor, documentId, {
+        bytes,
+        mime: String(body.mime ?? (kind === "video" ? "video/mp4" : "image/png")),
+        filename,
+      });
+      send(res, 200, {
+        ...attached,
+        ...ws.embedDocumentMedia(actor, documentId, { kind, assetId: attached.assetId, filename }),
+      });
       return true;
     }
   }
@@ -260,7 +381,7 @@ export async function dispatchEnterpriseApi(
     return true;
   }
 
-  const issueMatch = path.match(/^\/v1\/issues\/([^/]+)(?:\/(transition|comments|worklog|sprint))?$/);
+  const issueMatch = path.match(/^\/v1\/issues\/([^/]+)(?:\/(transition|comments|worklog|sprint|links))?$/);
   if (issueMatch) {
     const issueId = decodeURIComponent(issueMatch[1]!);
     const action = issueMatch[2];
@@ -313,6 +434,29 @@ export async function dispatchEnterpriseApi(
       const body = await readJson(req);
       ws.setIssueSprint(actor, issueId, body.sprintId === null || body.sprintId === undefined ? null : String(body.sprintId));
       send(res, 200, { ok: true });
+      return true;
+    }
+    if (action === "links" && method === "GET") {
+      send(res, 200, { links: ws.listExternalLinks(actor, "issue", issueId) });
+      return true;
+    }
+    if (action === "links" && method === "POST") {
+      const body = await readJson(req);
+      send(
+        res,
+        200,
+        {
+          id: ws.addExternalLink(actor, {
+            fromKind: "issue",
+            fromId: issueId,
+            provider: (body.provider as "github") ?? "url",
+            url: body.url ? String(body.url) : undefined,
+            issueId: body.issueId ? String(body.issueId) : undefined,
+            documentId: body.documentId ? String(body.documentId) : undefined,
+            label: body.label ? String(body.label) : undefined,
+          }),
+        },
+      );
       return true;
     }
   }

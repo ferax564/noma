@@ -21,7 +21,7 @@ export interface PaperChartData {
 
 export interface PaperElement {
   id: string;
-  type: "shape" | "text" | "image" | "chart" | "table" | "group";
+  type: "shape" | "text" | "image" | "chart" | "table" | "group" | "arrow" | "video";
   geometry: PaperGeometry;
   zIndex: number;
   text?: string;
@@ -29,6 +29,10 @@ export interface PaperElement {
   readingOrder?: number;
   chart?: PaperChartData;
   imageAssetId?: string;
+  videoAssetId?: string;
+  href?: string;
+  fromId?: string;
+  toId?: string;
   table?: { headers: string[]; rows: string[][]; columnIds?: string[]; rowIds?: string[]; cellIds?: string[][] };
   children?: string[];
 }
@@ -219,9 +223,25 @@ export function paperCanvasMarkup(doc: PaperDocument): string {
       const h = Math.max(24, finitePx(el.geometry.height, 48));
       const rotation = finitePx(el.geometry.rotation);
       const label = el.text ?? el.altText ?? el.type;
-      const inner = el.chart ? chartBars(el.chart) : el.table
-        ? `<table class="pd-table">${el.table.headers.length ? `<thead><tr>${el.table.headers.map((cell) => `<th>${escapeMarkup(cell)}</th>`).join("")}</tr></thead>` : ""}<tbody>${el.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeMarkup(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
-        : `<span class="pd-el-text">${escapeMarkup(label)}</span>`;
+      let inner = `<span class="pd-el-text">${escapeMarkup(label)}</span>`;
+      if (el.chart) inner = chartBars(el.chart);
+      else if (el.table) {
+        inner = `<table class="pd-table">${el.table.headers.length ? `<thead><tr>${el.table.headers.map((cell) => `<th>${escapeMarkup(cell)}</th>`).join("")}</tr></thead>` : ""}<tbody>${el.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeMarkup(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+      } else if (el.type === "image" && el.imageAssetId) {
+        inner = `<img class="pd-media" src="/v1/assets/${escapeMarkup(el.imageAssetId)}" alt="${escapeMarkup(el.altText ?? label)}" />`;
+      } else if (el.type === "video" && (el.videoAssetId || el.href)) {
+        const src = el.videoAssetId ? `/v1/assets/${escapeMarkup(el.videoAssetId)}` : escapeMarkup(el.href ?? "");
+        inner = `<video class="pd-media" controls src="${src}" title="${escapeMarkup(el.altText ?? label)}"></video>`;
+      } else if (el.type === "arrow") {
+        const from = el.fromId ? doc.elements.find((item) => item.id === el.fromId) : undefined;
+        const to = el.toId ? doc.elements.find((item) => item.id === el.toId) : undefined;
+        const x1 = from ? finitePx(from.geometry.x) + finitePx(from.geometry.width) / 2 - x : 8;
+        const y1 = from ? finitePx(from.geometry.y) + finitePx(from.geometry.height) / 2 - y : h / 2;
+        const x2 = to ? finitePx(to.geometry.x) + finitePx(to.geometry.width) / 2 - x : w - 8;
+        const y2 = to ? finitePx(to.geometry.y) + finitePx(to.geometry.height) / 2 - y : h / 2;
+        const markerId = `ah-${escapeMarkup(el.id)}`;
+        inner = `<svg class="pd-arrow" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><marker id="${markerId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#c45a2e"/></marker></defs><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#c45a2e" stroke-width="3" marker-end="url(#${markerId})"/></svg>`;
+      }
       return `<div class="pd-el pd-el-${escapeMarkup(el.type)}" data-id="${escapeMarkup(el.id)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg)">${inner}</div>`;
     })
     .join("");
@@ -243,5 +263,9 @@ export function paperCanvasStyles(): string {
 .pd-bar-label{font:650 10px/1 Inter,system-ui,sans-serif;color:rgba(237,243,247,.72);text-transform:uppercase;letter-spacing:.04em}
 .pd-table{width:100%;border-collapse:collapse;font:13px/1.4 Inter,system-ui,sans-serif}
 .pd-table th,.pd-table td{border-bottom:1px solid rgba(40,32,24,.08);padding:4px 6px;text-align:left}
-.pd-el-title,.pd-el-text:first-child{display:block}`;
+.pd-el-title,.pd-el-text:first-child{display:block}
+.pd-el-arrow{background:transparent;border:none;box-shadow:none;padding:0;overflow:visible;pointer-events:none}
+.pd-arrow{width:100%;height:100%;overflow:visible}
+.pd-media{width:100%;height:100%;object-fit:cover;border-radius:12px;background:#111}
+.pd-el-image,.pd-el-video{padding:8px}`;
 }

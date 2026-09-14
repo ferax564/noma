@@ -105,12 +105,15 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <button type="button" data-cmd="bullet" aria-label="Bullet list">List</button>
               <button type="button" data-cmd="ordered" aria-label="Ordered list">1.</button>
               <span id="collab-status" class="ew-chip">idle</span>
+              <label for="insert-image">Insert image<input id="insert-image" type="file" accept="image/*" /></label>
+              <label for="insert-video">Insert video<input id="insert-video" type="file" accept="video/*" /></label>
               <button id="doc-publish" type="button">Publish</button>
             </div>
             <article class="ew-paper">
               <p class="ew-kicker" id="doc-kicker">Draft</p>
               <h1 id="doc-title">Untitled</h1>
               <div id="editor" class="ew-editor"></div>
+              <div id="doc-media" class="ew-media-strip" aria-label="Page media"></div>
             </article>
             <section id="doc-discussion" class="ew-discussion" aria-label="Page comments">
               <h2>Comments</h2>
@@ -123,8 +126,22 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
           </section>
           <section id="canvas-visuals" class="ew-canvas" data-mode="visuals" hidden>
             <div class="ew-visual-chrome">
-              <p class="ew-kicker">Canvas</p>
+              <p class="ew-kicker">Presentation</p>
               <h1 id="visual-title">Untitled board</h1>
+              <div id="visual-toolbar" class="ew-toolbar ew-visual-toolbar" role="toolbar" aria-label="Canvas tools">
+                <label for="new-board-title">Board title<input id="new-board-title" placeholder="Q3 review" /></label>
+                <button type="button" id="create-board">New presentation</button>
+                <button type="button" id="add-frame">Add frame</button>
+                <label for="arrow-from">From
+                  <select id="arrow-from"></select>
+                </label>
+                <label for="arrow-to">To
+                  <select id="arrow-to"></select>
+                </label>
+                <button type="button" id="add-arrow">Add arrow</button>
+                <label for="canvas-image">Canvas image<input id="canvas-image" type="file" accept="image/*" /></label>
+                <label for="canvas-video">Canvas video<input id="canvas-video" type="file" accept="video/*" /></label>
+              </div>
             </div>
             <div id="visual-stage" class="ew-visual-stage"></div>
           </section>
@@ -240,6 +257,12 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
     source: `# Risks and open questions\n\nChild page in the Product tree.\n`,
   });
   ws.addDocumentComment(actor, documentId, "@alice please review the north-star claim.");
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const image = ws.attachDocumentAsset(actor, documentId, { bytes: png, mime: "image/png", filename: "pixel.png" });
+  ws.embedDocumentMedia(actor, documentId, { kind: "image", assetId: image.assetId, filename: "pixel.png" });
   const artifactId = ws.createArtifact(actor, { spaceId, title: "Atlas architecture" });
   const commands: VisualCommand[] = [
     {
@@ -315,6 +338,29 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
         },
       },
     },
+    {
+      op: "insert_element",
+      element: {
+        id: "flow-docs-work",
+        type: "arrow",
+        geometry: { x: 0, y: 0, width: 900, height: 360 },
+        zIndex: 8,
+        altText: "Docs to Work",
+        fromId: "card-docs",
+        toId: "card-work",
+      },
+    },
+    {
+      op: "insert_element",
+      element: {
+        id: "hero-image",
+        type: "image",
+        geometry: { x: 870, y: 36, width: 72, height: 72 },
+        zIndex: 3,
+        altText: "pixel.png",
+        imageAssetId: image.assetId,
+      },
+    },
   ];
   ws.applyArtifactCommands(actor, artifactId, commands, 0);
   const projectId = ws.createProject(actor, { key: "ATLAS", name: "Atlas", spaceId });
@@ -351,6 +397,31 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
   ws.setIssueSprint(actor, canvas.id, sprintId);
   ws.addIssueComment(actor, collab.id, "Hosted collab is on the sprint.");
   ws.logWork(actor, { issueId: collab.id, durationSeconds: 3600, note: "Wired persist-before-ack" });
+  ws.addExternalLink(actor, {
+    fromKind: "document",
+    fromId: documentId,
+    provider: "github",
+    url: "https://github.com/ferax564/noma",
+    label: "ferax564/noma",
+  });
+  ws.addExternalLink(actor, {
+    fromKind: "document",
+    fromId: documentId,
+    provider: "issue",
+    issueId: collab.id,
+  });
+  ws.addExternalLink(actor, {
+    fromKind: "issue",
+    fromId: collab.id,
+    provider: "github",
+    url: "https://github.com/ferax564/noma/issues/38",
+  });
+  ws.addExternalLink(actor, {
+    fromKind: "issue",
+    fromId: collab.id,
+    provider: "document",
+    documentId,
+  });
   return {
     spaceId,
     documentId,

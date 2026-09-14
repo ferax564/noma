@@ -124,6 +124,19 @@ CREATE TABLE IF NOT EXISTS document_assets (
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS external_links (
+  id ${pk},
+  tenant_id TEXT NOT NULL,
+  from_kind TEXT NOT NULL,
+  from_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  url TEXT,
+  label TEXT NOT NULL,
+  target_kind TEXT,
+  target_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS artifacts (
   id ${pk},
   tenant_id TEXT NOT NULL,
@@ -511,6 +524,19 @@ function migrateEnterpriseSchema(db: SqlDatabase): void {
     document_id TEXT NOT NULL,
     asset_id TEXT NOT NULL,
     filename TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS external_links (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    from_kind TEXT NOT NULL,
+    from_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    url TEXT,
+    label TEXT NOT NULL,
+    target_kind TEXT,
+    target_id TEXT,
     created_by TEXT NOT NULL,
     created_at TEXT NOT NULL
   )`);

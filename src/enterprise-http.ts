@@ -42,10 +42,11 @@ function sendHtml(res: ServerResponse, html: string): void {
   res.end(html);
 }
 
-function actorFrom(ws: EnterpriseWorkspace, req: IncomingMessage): ActorContext {
+function actorFrom(ws: EnterpriseWorkspace, req: IncomingMessage, url?: URL): ActorContext {
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) throw new EnterpriseError("unauthorized", "missing bearer token");
-  return ws.authenticate(header.slice("Bearer ".length));
+  const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : url?.searchParams.get("token") ?? "";
+  if (!token) throw new EnterpriseError("unauthorized", "missing bearer token");
+  return ws.authenticate(token);
 }
 
 function safeAssetPath(publicDir: string, pathname: string): string | undefined {
@@ -122,7 +123,7 @@ export function createEnterpriseHttpServer(options: EnterpriseHttpOptions) {
           send(res, 200, session);
           return;
         }
-        const actor = actorFrom(ws, req);
+        const actor = actorFrom(ws, req, url);
         if (await dispatchEnterpriseApi(ws, actor, req, res, url)) return;
         send(res, 404, { error: "not_found" });
       } catch (error) {

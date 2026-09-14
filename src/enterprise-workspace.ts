@@ -19,6 +19,7 @@ import {
   type Classification,
   type ConnectorMode,
   type CutoverStage,
+  type ExternalLinkProvider,
   type FieldType,
   type GrantRole,
   type ImportDisposition,
@@ -55,6 +56,7 @@ import {
   paperHash,
   semanticOutline,
   type PaperDocument,
+  type PaperElement,
   type VisualCommand,
 } from "./enterprise-paperdom.js";
 import { EnterpriseStore } from "./enterprise-store.js";
@@ -300,12 +302,19 @@ export class EnterpriseWorkspace {
     this.audit(actor, "revoke_grant", grant.resource_kind, grant.resource_id, { grantId });
   }
 
-  createSpace(actor: ActorContext, name: string, classification: Classification = "internal"): string {
+  createSpace(actor: ActorContext, name: string, classification: Classification = "internal", options: { homePage?: boolean } = {}): string {
     const id = this.id();
     this.store.db
       .prepare("INSERT INTO spaces(id, tenant_id, name, classification, created_at) VALUES (?, ?, ?, ?, ?)")
       .run(id, actor.tenantId, name, classification, this.now());
     this.bootstrapGrant(actor.tenantId, actor.principalId, "space", id, "owner");
+    if (options.homePage) {
+      this.createDocument(actor, {
+        spaceId: id,
+        title: "Home",
+        source: `# ${name}\n\nThis workspace is ready for pages, media, comments, and links to work and GitHub.\n`,
+      });
+    }
     return id;
   }
 
@@ -595,13 +604,178 @@ export class EnterpriseWorkspace {
     return { assetId, linkId };
   }
 
-  listDocumentAssets(actor: ActorContext, documentId: string): Array<{ id: string; assetId: string; filename: string; createdAt: string }> {
+  listDocumentAssets(actor: ActorContext, documentId: string): Array<{ id: string; assetId: string; filename: string; createdAt: string; mime: string }> {
     this.requireRole(actor, "document", documentId, "viewer");
     return this.store.db
       .prepare(
-        "SELECT id, asset_id AS assetId, filename, created_at AS createdAt FROM document_assets WHERE document_id = ? ORDER BY created_at",
+        `SELECT da.id, da.asset_id AS assetId, da.filename, da.created_at AS createdAt, a.mime
+         FROM document_assets da JOIN assets a ON a.id = da.asset_id
+         WHERE da.document_id = ? ORDER BY da.created_at`,
       )
-      .all(documentId) as Array<{ id: string; assetId: string; filename: string; createdAt: string }>;
+      .all(documentId) as Array<{ id: string; assetId: string; filename: string; createdAt: string; mime: string }>;
+  }
+
+  embedDocumentMedia(
+    actor: ActorContext,
+    documentId: string,
+    input: { kind: "image" | "video"; assetId: string; filename: string },
+  ): { hash: string } {
+    this.requireRole(actor, "document", documentId, "editor");
+    const doc = this.documentRow(documentId, actor.tenantId);
+    const filename = input.filename.replace(/["\n\r]/g, "");
+    const src = `/v1/assets/${input.assetId}`;
+    const snippet =
+      input.kind === "video"
+        ? `\n::video{src="${src}" title="${filename}"}\n::\n`
+        : `\n::figure{src="${src}" alt="${filename}"}\n::\n`;
+    const source = `${doc.draft_source.trimEnd()}\n${snippet}`;
+    const hash = sha256Hex(source);
+    this.store.db
+      .prepare("UPDATE documents SET draft_source = ?, draft_hash = ?, draft_revision = draft_revision + 1, updated_at = ? WHERE id = ?")
+      .run(source, hash, this.now(), documentId);
+    this.audit(actor, "document.media", "document", documentId, { kind: input.kind, assetId: input.assetId });
+    return { hash };
+  }
+
+  listResourceGrants(actor: ActorContext, kind: ResourceKind, id: string): Array<{ id: string; principalId: string; role: GrantRole; name: string }> {
+    this.requireRole(actor, kind, id, "viewer");
+    return this.store.db
+      .prepare(
+        `SELECT g.id, g.principal_id AS principalId, g.role, p.name FROM grants g JOIN principals p ON p.id = g.principal_id
+         WHERE g.tenant_id = ? AND g.resource_kind = ? AND g.resource_id = ? ORDER BY g.created_at`,
+      )
+      .all(actor.tenantId, kind, id) as Array<{ id: string; principalId: string; role: GrantRole; name: string }>;
+  }
+
+  addExternalLink(
+    actor: ActorContext,
+    input: {
+      fromKind: ResourceKind;
+      fromId: string;
+      provider: ExternalLinkProvider;
+      url?: string;
+      issueId?: string;
+      documentId?: string;
+      label?: string;
+    },
+  ): string {
+    this.requireRole(actor, input.fromKind, input.fromId, "editor");
+    let url = input.url ?? null;
+    let targetKind: ResourceKind | null = null;
+    let targetId: string | null = null;
+    let label = input.label ?? "";
+    if (input.provider === "github") {
+      if (!url) throw new EnterpriseError("invalid", "GitHub link requires a url");
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      if (parsed.protocol !== "https:" || (host !== "github.com" && host !== "www.github.com")) {
+        throw new EnterpriseError("invalid", "GitHub links must be https://github.com/...");
+      }
+      label = label || parsed.pathname.replace(/^\//, "");
+    } else if (input.provider === "issue") {
+      if (!input.issueId) throw new EnterpriseError("invalid", "issue link requires issueId");
+      const issue = this.issueRow(input.issueId, actor.tenantId);
+      this.requireRole(actor, "project", issue.project_id, "viewer");
+      targetKind = "issue";
+      targetId = input.issueId;
+      const row = this.store.db.prepare("SELECT key, summary FROM issues WHERE id = ?").get(input.issueId) as { key: string; summary: string };
+      label = label || `${row.key} ${row.summary}`;
+      this.putReference(actor, {
+        from: { kind: input.fromKind, id: input.fromId },
+        to: { kind: "issue", id: input.issueId },
+        relation: "illustrates",
+      });
+    } else if (input.provider === "document") {
+      if (!input.documentId) throw new EnterpriseError("invalid", "document link requires documentId");
+      this.requireRole(actor, "document", input.documentId, "viewer");
+      targetKind = "document";
+      targetId = input.documentId;
+      label = label || this.documentRow(input.documentId, actor.tenantId).title;
+    } else {
+      if (!url) throw new EnterpriseError("invalid", "url link requires a url");
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new EnterpriseError("invalid", "link scheme is not allowed");
+      label = label || parsed.hostname;
+    }
+    const id = this.id();
+    this.store.db
+      .prepare(
+        `INSERT INTO external_links(id, tenant_id, from_kind, from_id, provider, url, label, target_kind, target_id, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, actor.tenantId, input.fromKind, input.fromId, input.provider, url, label, targetKind, targetId, actor.principalId, this.now());
+    return id;
+  }
+
+  listExternalLinks(actor: ActorContext, fromKind: ResourceKind, fromId: string): Array<Record<string, unknown>> {
+    this.requireRole(actor, fromKind, fromId, "viewer");
+    return this.store.db
+      .prepare(
+        "SELECT id, provider, url, label, target_kind AS targetKind, target_id AS targetId, created_at AS createdAt FROM external_links WHERE tenant_id = ? AND from_kind = ? AND from_id = ? ORDER BY created_at",
+      )
+      .all(actor.tenantId, fromKind, fromId) as Array<Record<string, unknown>>;
+  }
+
+  inspectAsset(actor: ActorContext, assetId: string): { bytes: Buffer; mime: string } {
+    this.requireRole(actor, "asset", assetId, "viewer");
+    const row = this.store.db.prepare("SELECT bytes, mime, scan_state FROM assets WHERE id = ? AND tenant_id = ?").get(assetId, actor.tenantId) as
+      | { bytes: Buffer; mime: string; scan_state: string }
+      | undefined;
+    if (!row) throw new EnterpriseError("not_found", "asset not found");
+    if (row.scan_state !== "clean") throw new EnterpriseError("forbidden", "asset is quarantined");
+    return { bytes: row.bytes, mime: row.mime };
+  }
+
+  insertArtifactElement(
+    actor: ActorContext,
+    artifactId: string,
+    input: {
+      type: PaperElement["type"];
+      text?: string;
+      altText?: string;
+      imageAssetId?: string;
+      videoAssetId?: string;
+      href?: string;
+      fromId?: string;
+      toId?: string;
+      geometry?: { x?: number; y?: number; width?: number; height?: number };
+    },
+  ): { id: string; revision: number } {
+    const read = this.readArtifact(actor, artifactId, "draft");
+    const id = this.id();
+    let geometry = {
+      x: input.geometry?.x ?? 48,
+      y: input.geometry?.y ?? 48 + read.document.elements.length * 24,
+      width: input.geometry?.width ?? (input.type === "arrow" ? 800 : 280),
+      height: input.geometry?.height ?? (input.type === "arrow" ? 220 : 140),
+    };
+    if (input.type === "arrow" && input.fromId && input.toId) {
+      const from = read.document.elements.find((item) => item.id === input.fromId);
+      const to = read.document.elements.find((item) => item.id === input.toId);
+      if (from && to) {
+        geometry = {
+          x: 0,
+          y: 0,
+          width: Math.max(960, from.geometry.x + from.geometry.width, to.geometry.x + to.geometry.width) + 24,
+          height: Math.max(540, from.geometry.y + from.geometry.height, to.geometry.y + to.geometry.height) + 24,
+        };
+      }
+    }
+    const element: PaperElement = {
+      id,
+      type: input.type,
+      geometry,
+      zIndex: input.type === "arrow" ? 8 : 5,
+      text: input.text,
+      altText: input.altText ?? input.text ?? input.type,
+      imageAssetId: input.imageAssetId,
+      videoAssetId: input.videoAssetId,
+      href: input.href,
+      fromId: input.fromId,
+      toId: input.toId,
+    };
+    const applied = this.applyArtifactCommands(actor, artifactId, [{ op: "insert_element", element }], read.document.revision);
+    return { id, revision: applied.revision };
   }
 
   markNotificationRead(actor: ActorContext, notificationId: string): void {
@@ -2497,6 +2671,15 @@ export class EnterpriseWorkspace {
       .prepare("SELECT role FROM grants WHERE tenant_id = ? AND principal_id = ? AND resource_kind = ? AND resource_id = ?")
       .get(actor.tenantId, actor.principalId, kind, id) as { role: GrantRole } | undefined;
     if (direct) return direct.role;
+    if (kind === "asset") {
+      const linked = this.store.db
+        .prepare("SELECT document_id FROM document_assets WHERE asset_id = ?")
+        .all(id) as Array<{ document_id: string }>;
+      for (const row of linked) {
+        const inherited = this.effectiveGrant(actor, "document", row.document_id);
+        if (inherited) return inherited;
+      }
+    }
     if (kind === "document") {
       const doc = this.store.db.prepare("SELECT space_id FROM documents WHERE id = ?").get(id) as { space_id: string } | undefined;
       if (doc) return this.effectiveGrant(actor, "space", doc.space_id);

@@ -92,6 +92,7 @@ let selectedDocumentId = params.get("documentId") ?? "";
 let selectedArtifactId = "";
 let selectedIssueId = "";
 let selectedProjectId = "";
+let selectedSpaceId = "";
 let collab: HostedCollab | undefined;
 let jqlFilterIds: string[] | undefined;
 let draggingIssueId = "";
@@ -148,7 +149,47 @@ function currentProject(): ShellProject | undefined {
 }
 
 function currentSpaceId(): string {
-  return payload?.spaces[0]?.id ?? "";
+  return selectedSpaceId || payload?.spaces[0]?.id ?? "";
+}
+
+function assetUrl(id: string): string {
+  return `/v1/assets/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`;
+}
+
+function rewriteAssetHtml(html: string): string {
+  return html.replace(/\/v1\/assets\/([^"'?\s]+)/g, (_match, id: string) => assetUrl(id));
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function linkHref(link: { provider: string; url?: string | null; targetKind?: string | null; targetId?: string | null }): string {
+  if (link.url) return link.url;
+  if (link.targetKind === "issue" && link.targetId) return `?mode=work&issue=${encodeURIComponent(link.targetId)}`;
+  if (link.targetKind === "document" && link.targetId) return `?mode=docs&documentId=${encodeURIComponent(link.targetId)}`;
+  return "#";
+}
+
+function linksMarkup(
+  links: Array<{ id: string; provider: string; url?: string | null; label?: string; targetKind?: string | null; targetId?: string | null }>,
+): string {
+  if (!links.length) return `<div class="ew-note">No links yet</div>`;
+  return links
+    .map((link) => {
+      const href = linkHref(link);
+      const external = Boolean(link.url);
+      return `<a class="ew-link" href="${escapeHtml(href)}" ${external ? `target="_blank" rel="noreferrer"` : ""} data-kind="${escapeHtml(link.targetKind ?? link.provider)}" data-id="${escapeHtml(link.targetId ?? "")}">${escapeHtml(link.provider)} · ${escapeHtml(link.label ?? link.url ?? link.id)}</a>`;
+    })
+    .join("");
 }
 
 function documentDepth(id: string, seen = new Set<string>()): number {
@@ -192,12 +233,23 @@ function setMode(next: Mode): void {
 
 function renderRail(): void {
   if (!payload) return;
-  const spaceName = payload.spaces[0]?.name ?? "Workspace";
+  if (!selectedSpaceId) selectedSpaceId = payload.spaces[0]?.id ?? "";
+  const spaceName = payload.spaces.find((space) => space.id === currentSpaceId())?.name ?? payload.spaces[0]?.name ?? "Workspace";
   $("rail-title").textContent = spaceName;
   const actions = $("rail-actions");
+  const spaceOptions = payload.spaces
+    .map((space) => `<option value="${space.id}" ${space.id === currentSpaceId() ? "selected" : ""}>${escapeHtml(space.name)}</option>`)
+    .join("");
   if (mode === "docs") {
-    actions.innerHTML = `<button type="button" id="create-page">New page</button><button type="button" id="import-page">Import</button>`;
+    actions.innerHTML = `
+      <label for="space-switch">Workspace<select id="space-switch">${spaceOptions}</select></label>
+      <label for="new-space-name">New workspace<input id="new-space-name" placeholder="Name" /></label>
+      <button type="button" id="create-space">Create workspace</button>
+      <label for="new-page-title">Page title<input id="new-page-title" placeholder="Title" /></label>
+      <button type="button" id="create-page">New page</button>
+      <button type="button" id="import-page">Import</button>`;
     railList.innerHTML = orderedDocuments()
+      .filter((doc) => !currentSpaceId() || doc.spaceId === currentSpaceId())
       .map((doc) => {
         const depth = Math.min(documentDepth(doc.id), 2);
         return `<button class="ew-rail-item" type="button" data-kind="document" data-id="${doc.id}" data-depth="${depth}" aria-current="${doc.id === selectedDocumentId}">
@@ -206,8 +258,9 @@ function renderRail(): void {
       })
       .join("");
   } else if (mode === "visuals") {
-    actions.replaceChildren();
+    actions.innerHTML = `<label for="space-switch">Workspace<select id="space-switch">${spaceOptions}</select></label>`;
     railList.innerHTML = payload.artifacts
+      .filter((art) => !currentSpaceId() || art.spaceId === currentSpaceId())
       .map(
         (art) => `<button class="ew-rail-item" type="button" data-kind="artifact" data-id="${art.id}" aria-current="${art.id === selectedArtifactId}">
           <strong>${escapeHtml(art.title)}</strong><small>rev ${art.draftRevision}</small>
@@ -215,7 +268,9 @@ function renderRail(): void {
       )
       .join("");
   } else if (mode === "work") {
-    actions.innerHTML = `<button type="button" id="create-issue">New issue</button>`;
+    actions.innerHTML = `
+      <label for="new-issue-rail-summary">Issue summary<input id="new-issue-rail-summary" placeholder="Summary" /></label>
+      <button type="button" id="create-issue">New issue</button>`;
     railList.innerHTML = payload.projects
       .map(
         (project) => `<button class="ew-rail-item" type="button" data-kind="project" data-id="${project.id}" aria-current="${project.id === currentProject()?.id}">
@@ -227,7 +282,7 @@ function renderRail(): void {
     actions.replaceChildren();
     railList.innerHTML = payload.spaces
       .map(
-        (space) => `<button class="ew-rail-item" type="button" data-kind="space" data-id="${space.id}">
+        (space) => `<button class="ew-rail-item" type="button" data-kind="space" data-id="${space.id}" aria-current="${space.id === currentSpaceId()}">
           <strong>${escapeHtml(space.name)}</strong><small>${escapeHtml(space.classification)}</small>
         </button>`,
       )
@@ -240,6 +295,20 @@ function nomaToEditorHtml(title: string, source: string): string {
   const blocks = stripped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
   const body = blocks
     .map((block) => {
+      const figure = block.match(/^::figure\{([^}]*)\}/m);
+      if (figure) {
+        const src = /src="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "";
+        const alt = /alt="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "image";
+        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
+        return `<p>Image: ${escapeHtml(alt)}</p><p><img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}"></p>`;
+      }
+      const video = block.match(/^::video\{([^}]*)\}/m);
+      if (video) {
+        const src = /src="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "";
+        const name = /title="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "video";
+        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
+        return `<p>Video: ${escapeHtml(name)}</p><p><video src="${escapeHtml(url)}" controls></video></p>`;
+      }
       const text = escapeHtml(block.replace(/^#{1,6}\s+/, "").replace(/^::\w+.*$/gm, "").trim());
       if (!text) return "";
       if (/^#\s+/.test(block)) return `<h1>${escapeHtml(block.replace(/^#\s+/, ""))}</h1>`;
@@ -276,16 +345,39 @@ function openDocument(id: string | undefined): void {
 
 async function renderDocumentInspector(id: string): Promise<void> {
   const doc = payload?.documents.find((item) => item.id === id);
-  const [comments, revisions, assets] = await Promise.all([
+  const [comments, revisions, assets, grants, links] = await Promise.all([
     api<{ comments: Array<{ id: string; body: string; authorName: string; createdAt: string }> }>(`/v1/documents/${encodeURIComponent(id)}/comments`),
     api<{ revisions: Array<{ revision: number; title: string; createdAt: string }> }>(`/v1/documents/${encodeURIComponent(id)}/revisions`),
-    api<{ assets: Array<{ id: string; filename: string }> }>(`/v1/documents/${encodeURIComponent(id)}/assets`),
+    api<{ assets: Array<{ id: string; assetId: string; filename: string; mime: string }> }>(`/v1/documents/${encodeURIComponent(id)}/assets`),
+    api<{ grants: Array<{ id: string; principalId: string; role: string; name: string }> }>(`/v1/documents/${encodeURIComponent(id)}/permissions`),
+    api<{ links: Array<{ id: string; provider: string; url?: string | null; label?: string; targetKind?: string | null; targetId?: string | null }> }>(
+      `/v1/documents/${encodeURIComponent(id)}/links`,
+    ),
   ]);
   $("doc-comments").innerHTML =
     comments.comments
       .map((comment) => `<div class="ew-note"><strong>${escapeHtml(comment.authorName)}</strong><span>${escapeHtml(comment.body)}</span></div>`)
       .join("") || `<div class="ew-note">No comments yet</div>`;
+  $("doc-media").innerHTML =
+    assets.assets
+      .map((asset) => {
+        const src = assetUrl(asset.assetId);
+        if (asset.mime.startsWith("video/")) {
+          return `<video src="${escapeHtml(src)}" controls title="${escapeHtml(asset.filename)}"></video>`;
+        }
+        if (asset.mime.startsWith("image/")) {
+          return `<img src="${escapeHtml(src)}" alt="${escapeHtml(asset.filename)}" />`;
+        }
+        return `<span>${escapeHtml(asset.filename)}</span>`;
+      })
+      .join("") || `<div class="ew-note">No images or videos on this page</div>`;
   const parents = (payload?.documents ?? []).filter((item) => item.id !== id);
+  const people = (payload?.principals ?? [])
+    .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
+    .join("");
+  const issues = (payload?.issues ?? [])
+    .map((issue) => `<option value="${issue.id}">${escapeHtml(issue.key)} ${escapeHtml(issue.summary)}</option>`)
+    .join("");
   inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(doc?.title ?? "")}</strong><span>Hash ${escapeHtml((doc?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml(doc?.classification ?? "")}</span></div>
     <label for="rename-page">Title<input id="rename-page" value="${escapeHtml(doc?.title ?? "")}" /></label>
     <label for="move-page">Parent
@@ -298,6 +390,15 @@ async function renderDocumentInspector(id: string): Promise<void> {
       <button type="button" id="save-page-meta">Save location</button>
       <label for="attach-file">Attach<input id="attach-file" type="file" /></label>
     </div>
+    <div class="ew-meta"><strong>Permissions</strong>${grants.grants.map((grant) => `<span>${escapeHtml(grant.name)} · ${escapeHtml(grant.role)}</span>`).join("") || "<span>Inherited from workspace</span>"}</div>
+    <label for="grant-principal">Person<select id="grant-principal">${people}</select></label>
+    <label for="grant-role">Role<select id="grant-role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="owner">owner</option></select></label>
+    <button type="button" id="grant-document">Grant access</button>
+    <div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
+    <label for="github-url">GitHub URL<input id="github-url" placeholder="https://github.com/org/repo" /></label>
+    <button type="button" id="add-github-link">Link GitHub</button>
+    <label for="issue-link">Work issue<select id="issue-link">${issues}</select></label>
+    <button type="button" id="add-issue-link">Link issue</button>
     <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} · ${escapeHtml(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
     <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
 }
@@ -315,7 +416,16 @@ async function openArtifact(id: string | undefined): Promise<void> {
   selectedArtifactId = id;
   const data = await api<ArtifactPayload>(`/v1/artifacts/${encodeURIComponent(id)}`);
   $("visual-title").textContent = data.document.title;
-  $("visual-stage").innerHTML = data.html;
+  $("visual-stage").innerHTML = rewriteAssetHtml(data.html);
+  const from = $<HTMLSelectElement>("arrow-from");
+  const to = $<HTMLSelectElement>("arrow-to");
+  const options = data.outline
+    .filter((entry) => entry.type !== "arrow")
+    .map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.label)}</option>`)
+    .join("");
+  from.innerHTML = options;
+  to.innerHTML = options;
+  if (data.outline[1]) to.value = data.outline[1].id;
   const page = $("visual-stage").querySelector(".pd-page");
   if (page instanceof HTMLElement) {
     const width = Math.max(page.offsetWidth, 960);
@@ -431,6 +541,18 @@ async function inspectIssue(id: string): Promise<void> {
     <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
     <label for="worklog-note">Note<input id="worklog-note" /></label>
     <button type="button" id="worklog-submit">Log work</button>`;
+  const links = await api<{ links: Array<{ id: string; provider: string; url?: string | null; label?: string; targetKind?: string | null; targetId?: string | null }> }>(
+    `/v1/issues/${encodeURIComponent(id)}/links`,
+  );
+  const docs = (payload.documents ?? []).map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("");
+  inspector.insertAdjacentHTML(
+    "beforeend",
+    `<div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
+    <label for="issue-github-url">GitHub URL<input id="issue-github-url" placeholder="https://github.com/org/repo/issues/1" /></label>
+    <button type="button" id="add-issue-github">Link GitHub</button>
+    <label for="issue-doc-link">Page<select id="issue-doc-link">${docs}</select></label>
+    <button type="button" id="add-issue-doc-link">Link page</button>`,
+  );
 }
 
 function renderAdmin(): void {
@@ -517,13 +639,27 @@ railList.addEventListener("click", (event) => {
     selectedProjectId = button.dataset.id ?? "";
     renderBoard();
   }
+  if (button.dataset.kind === "space") {
+    selectedSpaceId = button.dataset.id ?? "";
+    renderRail();
+  }
 });
 
 $("rail-actions").addEventListener("click", async (event) => {
   const target = event.target as HTMLElement;
+  if (target.id === "create-space") {
+    const name = $<HTMLInputElement>("new-space-name").value.trim();
+    if (!name) return;
+    const created = await api<{ id: string }>("/v1/spaces", { method: "POST", body: JSON.stringify({ name, homePage: true }) });
+    selectedSpaceId = created.id;
+    await refreshWorkspace();
+    setMode("docs");
+    const home = payload?.documents.find((doc) => doc.spaceId === created.id);
+    if (home) openDocument(home.id);
+  }
   if (target.id === "create-page") {
-    const title = window.prompt("Page title", "New page");
-    if (!title || !payload) return;
+    const title = $<HTMLInputElement>("new-page-title").value.trim() || "New page";
+    if (!payload || !currentSpaceId()) return;
     const created = await api<{ id: string }>("/v1/documents", {
       method: "POST",
       body: JSON.stringify({ spaceId: currentSpaceId(), title, parentId: selectedDocumentId || undefined }),
@@ -534,7 +670,7 @@ $("rail-actions").addEventListener("click", async (event) => {
   }
   if (target.id === "import-page") $("import-modal").hidden = false;
   if (target.id === "create-issue") {
-    const summary = window.prompt("Issue summary");
+    const summary = $<HTMLInputElement>("new-issue-rail-summary").value.trim();
     if (!summary || !currentProject()) return;
     await api(`/v1/projects/${encodeURIComponent(currentProject()!.id)}/issues`, {
       method: "POST",
@@ -542,6 +678,21 @@ $("rail-actions").addEventListener("click", async (event) => {
     });
     await refreshWorkspace();
     renderBoard();
+  }
+});
+$("rail-actions").addEventListener("change", (event) => {
+  const target = event.target as HTMLElement;
+  if (target.id === "space-switch") {
+    selectedSpaceId = (target as HTMLSelectElement).value;
+    renderRail();
+    if (mode === "docs") {
+      const first = payload?.documents.find((doc) => doc.spaceId === selectedSpaceId);
+      if (first) openDocument(first.id);
+    }
+    if (mode === "visuals") {
+      const first = payload?.artifacts.find((art) => art.spaceId === selectedSpaceId);
+      void openArtifact(first?.id);
+    }
   }
 });
 
@@ -575,6 +726,19 @@ $("work-board").addEventListener("drop", async (event) => {
 });
 
 inspector.addEventListener("click", async (event) => {
+  const link = (event.target as HTMLElement).closest<HTMLAnchorElement>("a.ew-link");
+  if (link?.dataset.kind === "issue" && link.dataset.id) {
+    event.preventDefault();
+    setMode("work");
+    void inspectIssue(link.dataset.id);
+    return;
+  }
+  if (link?.dataset.kind === "document" && link.dataset.id) {
+    event.preventDefault();
+    setMode("docs");
+    openDocument(link.dataset.id);
+    return;
+  }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
   if (!button) return;
   try {
@@ -631,6 +795,44 @@ inspector.addEventListener("click", async (event) => {
       await refreshWorkspace();
       renderBoard();
     }
+    if (button.id === "grant-document" && selectedDocumentId) {
+      await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/permissions`, {
+        method: "POST",
+        body: JSON.stringify({
+          principalId: $<HTMLSelectElement>("grant-principal").value,
+          role: $<HTMLSelectElement>("grant-role").value,
+        }),
+      });
+      await renderDocumentInspector(selectedDocumentId);
+    }
+    if (button.id === "add-github-link" && selectedDocumentId) {
+      await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/links`, {
+        method: "POST",
+        body: JSON.stringify({ provider: "github", url: $<HTMLInputElement>("github-url").value.trim() }),
+      });
+      await renderDocumentInspector(selectedDocumentId);
+    }
+    if (button.id === "add-issue-link" && selectedDocumentId) {
+      await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/links`, {
+        method: "POST",
+        body: JSON.stringify({ provider: "issue", issueId: $<HTMLSelectElement>("issue-link").value }),
+      });
+      await renderDocumentInspector(selectedDocumentId);
+    }
+    if (button.id === "add-issue-github" && selectedIssueId) {
+      await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/links`, {
+        method: "POST",
+        body: JSON.stringify({ provider: "github", url: $<HTMLInputElement>("issue-github-url").value.trim() }),
+      });
+      await inspectIssue(selectedIssueId);
+    }
+    if (button.id === "add-issue-doc-link" && selectedIssueId) {
+      await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/links`, {
+        method: "POST",
+        body: JSON.stringify({ provider: "document", documentId: $<HTMLSelectElement>("issue-doc-link").value }),
+      });
+      await inspectIssue(selectedIssueId);
+    }
     if (button.id === "save-page-meta" && selectedDocumentId) {
       await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}`, {
         method: "PATCH",
@@ -686,18 +888,9 @@ inspector.addEventListener("change", async (event) => {
   const input = event.target as HTMLInputElement;
   if (input.id !== "attach-file" || !input.files?.[0] || !selectedDocumentId) return;
   const file = input.files[0];
-  const contentBase64 = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      resolve(result.slice(result.indexOf(",") + 1));
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
   await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/assets`, {
     method: "POST",
-    body: JSON.stringify({ filename: file.name, mime: file.type || "application/octet-stream", contentBase64 }),
+    body: JSON.stringify({ filename: file.name, mime: file.type || "application/octet-stream", contentBase64: await fileToBase64(file) }),
   });
   await renderDocumentInspector(selectedDocumentId);
 });
@@ -747,6 +940,85 @@ $("doc-publish").addEventListener("click", async () => {
   await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/publish`, { method: "POST" });
   await refreshWorkspace();
   openDocument(selectedDocumentId);
+});
+
+async function embedPageMedia(kind: "image" | "video", file: File): Promise<void> {
+  if (!selectedDocumentId) return;
+  await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/media`, {
+    method: "POST",
+    body: JSON.stringify({
+      kind,
+      filename: file.name,
+      mime: file.type || (kind === "video" ? "video/mp4" : "image/png"),
+      contentBase64: await fileToBase64(file),
+    }),
+  });
+  const editor = collab?.editor();
+  editor?.chain().focus().insertContent(`<p>${kind === "video" ? "Video" : "Image"}: ${escapeHtml(file.name)}</p>`).run();
+  await refreshWorkspace();
+  await renderDocumentInspector(selectedDocumentId);
+}
+
+$("insert-image").addEventListener("change", async (event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (file) await embedPageMedia("image", file);
+  (event.target as HTMLInputElement).value = "";
+});
+$("insert-video").addEventListener("change", async (event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (file) await embedPageMedia("video", file);
+  (event.target as HTMLInputElement).value = "";
+});
+
+async function addCanvasElement(input: Record<string, unknown>): Promise<void> {
+  if (!selectedArtifactId) return;
+  await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  await refreshWorkspace();
+  await openArtifact(selectedArtifactId);
+}
+
+$("create-board").addEventListener("click", async () => {
+  const title = $<HTMLInputElement>("new-board-title").value.trim() || "Untitled presentation";
+  if (!currentSpaceId()) return;
+  const created = await api<{ id: string }>("/v1/artifacts", { method: "POST", body: JSON.stringify({ spaceId: currentSpaceId(), title }) });
+  await refreshWorkspace();
+  setMode("visuals");
+  await openArtifact(created.id);
+  await addCanvasElement({ type: "text", text: title, altText: title, geometry: { x: 48, y: 36, width: 640, height: 64 } });
+});
+$("add-frame").addEventListener("click", async () => {
+  await addCanvasElement({ type: "shape", text: "Frame", altText: "Frame" });
+});
+$("add-arrow").addEventListener("click", async () => {
+  await addCanvasElement({
+    type: "arrow",
+    fromId: $<HTMLSelectElement>("arrow-from").value,
+    toId: $<HTMLSelectElement>("arrow-to").value,
+    altText: "Arrow",
+  });
+});
+$("canvas-image").addEventListener("change", async (event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const uploaded = await api<{ id: string }>("/v1/assets", {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, mime: file.type || "image/png", contentBase64: await fileToBase64(file) }),
+  });
+  await addCanvasElement({ type: "image", imageAssetId: uploaded.id, altText: file.name });
+  (event.target as HTMLInputElement).value = "";
+});
+$("canvas-video").addEventListener("change", async (event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const uploaded = await api<{ id: string }>("/v1/assets", {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, mime: file.type || "video/mp4", contentBase64: await fileToBase64(file) }),
+  });
+  await addCanvasElement({ type: "video", videoAssetId: uploaded.id, altText: file.name });
+  (event.target as HTMLInputElement).value = "";
 });
 
 $("doc-comment-submit").addEventListener("click", async () => {

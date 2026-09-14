@@ -400,6 +400,47 @@ input {
   border-radius: 18px;
 }
 .ew-toolbar button { min-width: 36px; border-radius: 11px; }
+.ew-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+.ew-toolbar input[type="file"] { max-width: 140px; }
+.ew-visual-toolbar {
+  width: 100%;
+  margin: 8px 0 12px;
+}
+.ew-visual-toolbar input, .ew-visual-toolbar select { min-width: 120px; }
+.ew-media-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.ew-media-strip img, .ew-media-strip video {
+  max-height: 140px;
+  max-width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background: #111;
+}
+.ew-link {
+  display: block;
+  color: var(--accent-2);
+  text-decoration: none;
+  font-weight: 650;
+}
+.ew-rail-actions label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--muted);
+  flex: 1 1 120px;
+}
 .ew-chip {
   margin-left: auto;
   align-self: center;

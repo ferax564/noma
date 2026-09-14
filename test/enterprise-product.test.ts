@@ -9,7 +9,10 @@ import { resetIdentitySequence } from "../src/stable-identity.js";
 
 function harness() {
   resetIdentitySequence(0);
-  const oidc = createTestOidc({ alice: { sub: "alice", email: "alice@example.com", name: "Alice Chen" } });
+  const oidc = createTestOidc({
+    alice: { sub: "alice", email: "alice@example.com", name: "Alice Chen" },
+    bob: { sub: "bob", email: "bob@example.com", name: "Bob Lee" },
+  });
   const ws = new EnterpriseWorkspace({ oidc });
   const tenantId = ws.provisionTenant("Atlas").tenantId;
   ws.scimUpsert(tenantId, { externalId: "alice", userName: "Alice Chen", active: true });
@@ -40,6 +43,69 @@ test("page tree, comments, mentions, revisions, and attachments are kernel-backe
   assert.ok(attached.assetId);
   const shell = ws.workspaceShell(session.actor);
   assert.equal(shell.documents.find((doc) => doc.id === child)?.parentId, parent);
+  ws.close();
+});
+
+test("workspaces, permissions, media, arrows, and GitHub/issue links", () => {
+  const { ws, session } = harness();
+  ws.scimUpsert(session.actor.tenantId, { externalId: "bob", userName: "Bob Lee", active: true });
+  const bob = ws.loginOidc(session.actor.tenantId, "bob");
+  const spaceId = ws.createSpace(session.actor, "Studio", "internal", { homePage: true });
+  const home = ws.workspaceShell(session.actor).documents.find((doc) => doc.spaceId === spaceId);
+  assert.equal(home?.title, "Home");
+  const page = home!.id;
+  ws.grant(session.actor, {
+    principalId: bob.actor.principalId,
+    resourceKind: "space",
+    resourceId: spaceId,
+    role: "viewer",
+  });
+  assert.ok(ws.listResourceGrants(session.actor, "space", spaceId).some((grant) => grant.principalId === bob.actor.principalId));
+  assert.equal(ws.readDocument(bob.actor, page).title, "Home");
+  assert.throws(
+    () =>
+      ws.addExternalLink(session.actor, {
+        fromKind: "document",
+        fromId: page,
+        provider: "github",
+        url: "https://example.com/not-github",
+      }),
+    (error: unknown) => error instanceof Error && /github.com/.test(error.message),
+  );
+  assert.ok(
+    ws.addExternalLink(session.actor, {
+      fromKind: "document",
+      fromId: page,
+      provider: "github",
+      url: "https://github.com/ferax564/noma",
+    }),
+  );
+  const projectId = ws.createProject(session.actor, { key: "STUDIO", name: "Studio", spaceId });
+  const issue = ws.createIssue(session.actor, { projectId, typeKey: "task", summary: "Ship media" });
+  ws.addExternalLink(session.actor, { fromKind: "document", fromId: page, provider: "issue", issueId: issue.id });
+  assert.ok(ws.listExternalLinks(session.actor, "document", page).some((link) => link.provider === "issue"));
+  assert.ok(ws.dependents(session.actor, page).some((row) => row.to_id === issue.id));
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const attached = ws.attachDocumentAsset(session.actor, page, { bytes: png, mime: "image/png", filename: "pixel.png" });
+  ws.embedDocumentMedia(session.actor, page, { kind: "image", assetId: attached.assetId, filename: "pixel.png" });
+  assert.match(ws.readDocument(session.actor, page).source, /::figure/);
+  assert.equal(ws.inspectAsset(session.actor, attached.assetId).mime, "image/png");
+  assert.equal(ws.inspectAsset(bob.actor, attached.assetId).mime, "image/png");
+  const artifactId = ws.createArtifact(session.actor, { spaceId, title: "Review deck" });
+  const from = ws.insertArtifactElement(session.actor, artifactId, { type: "shape", text: "Docs", altText: "Docs" });
+  const to = ws.insertArtifactElement(session.actor, artifactId, { type: "shape", text: "Work", altText: "Work" });
+  ws.insertArtifactElement(session.actor, artifactId, { type: "arrow", fromId: from.id, toId: to.id, altText: "flow" });
+  ws.insertArtifactElement(session.actor, artifactId, {
+    type: "video",
+    href: "https://example.com/demo.mp4",
+    altText: "demo",
+  });
+  const board = ws.readArtifact(session.actor, artifactId, "draft");
+  assert.ok(board.document.elements.some((el) => el.type === "arrow" && el.fromId === from.id));
+  assert.ok(board.document.elements.some((el) => el.type === "video"));
   ws.close();
 });
 
@@ -133,6 +199,76 @@ test("HTTP productizes docs, work, admin, import loss report, and notifications"
     const notes = await fetch(`${origin}/v1/notifications`, { headers: auth }).then((res) => res.json()) as { notifications: Array<{ id: string }> };
     assert.ok(notes.notifications.length >= 1);
     await fetch(`${origin}/v1/notifications/${notes.notifications[0]!.id}/read`, { method: "POST", headers: auth });
+    const space = await fetch(`${origin}/v1/spaces`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ name: "HTTP workspace" }),
+    }).then((res) => res.json()) as { id: string };
+    const home = await fetch(`${origin}/v1/workspace`, { headers: auth }).then((res) => res.json()) as {
+      documents: Array<{ id: string; spaceId: string; title: string }>;
+    };
+    assert.ok(home.documents.some((doc) => doc.spaceId === space.id && doc.title === "Home"));
+    const github = await fetch(`${origin}/v1/documents/${fixture.documentId}/links`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ provider: "github", url: "https://github.com/ferax564/noma/pull/38" }),
+    }).then((res) => res.json()) as { id: string };
+    assert.ok(github.id);
+    const badGithub = await fetch(`${origin}/v1/documents/${fixture.documentId}/links`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ provider: "github", url: "https://example.com/not-github" }),
+    });
+    assert.equal(badGithub.status, 400);
+    const issueLink = await fetch(`${origin}/v1/issues/${issue.id}/links`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ provider: "document", documentId: fixture.documentId }),
+    }).then((res) => res.json()) as { id: string };
+    assert.ok(issueLink.id);
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const media = await fetch(`${origin}/v1/documents/${created.id}/media`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ kind: "image", filename: "pixel.png", mime: "image/png", contentBase64: png.toString("base64") }),
+    }).then((res) => res.json()) as { assetId: string };
+    const asset = await fetch(`${origin}/v1/assets/${media.assetId}?token=${encodeURIComponent(session.token)}`);
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get("content-type"), "image/png");
+    const board = await fetch(`${origin}/v1/artifacts`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ spaceId: fixture.spaceId, title: "HTTP deck" }),
+    }).then((res) => res.json()) as { id: string };
+    await fetch(`${origin}/v1/artifacts/${board.id}/elements`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ type: "shape", text: "A", altText: "A" }),
+    });
+    await fetch(`${origin}/v1/artifacts/${board.id}/elements`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ type: "shape", text: "B", altText: "B" }),
+    });
+    const readBoard = await fetch(`${origin}/v1/artifacts/${board.id}`, { headers: auth }).then((res) => res.json()) as {
+      document: { elements: Array<{ id: string; type: string }> };
+    };
+    const arrow = await fetch(`${origin}/v1/artifacts/${board.id}/elements`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
+        type: "arrow",
+        fromId: readBoard.document.elements[0]?.id,
+        toId: readBoard.document.elements[1]?.id,
+        altText: "A to B",
+      }),
+    }).then((res) => res.json()) as { id: string };
+    assert.ok(arrow.id);
+    const marked = await fetch(`${origin}/v1/artifacts/${board.id}`, { headers: auth }).then((res) => res.json()) as { html: string };
+    assert.match(marked.html, /pd-el-arrow/);
   } finally {
     await server.close();
     ws.close();
