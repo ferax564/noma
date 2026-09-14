@@ -1,0 +1,23 @@
+---
+title: Thermal vacuum campaign
+identityFormat: 1
+---
+
+# Thermal vacuum campaign
+
+{#conclusion}
+The chamber run meets the requirement at the pinned dataset revision.
+
+::requirement{id="req-thermal-vac" owner="qa"}
+The unit must remain within 2.0 °C of the target across the soak window.
+::
+
+{#results cols="col-metric,col-value" rows="row-temp,row-drift"}
+| {#h-metric} Metric | {#h-value} Result |
+| --- | --- |
+| {#cell-temp} Soak temperature | {#cell-temp-val} 21.4 °C |
+| {#cell-drift} Drift | {#cell-drift-val} 1.8 °C |
+
+::artifact{id="chart-thermal" artifact="artifact-thermal" pin="published"}
+Pinned thermal chart for the approved report.
+::

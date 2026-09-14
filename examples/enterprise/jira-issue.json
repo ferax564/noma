@@ -1,0 +1,18 @@
+{
+  "key": "ENG-42",
+  "fields": {
+    "summary": "Investigate soak drift",
+    "created": "2026-01-02T10:00:00.000Z",
+    "issuetype": { "name": "Task" },
+    "status": { "name": "In Progress" },
+    "labels": ["thermal"],
+    "customfield_10010": "severity-high",
+    "comment": { "comments": [{ "body": "Imported comment" }] },
+    "worklog": {
+      "worklogs": [
+        { "author": { "displayName": "Ada" }, "timeSpentSeconds": 1800, "started": "2026-01-02T11:00:00.000Z" }
+      ]
+    },
+    "issuelinks": [{ "type": { "name": "blocks" }, "outwardIssue": { "key": "ENG-1" } }]
+  }
+}

@@ -11,6 +11,10 @@ const builds = [
     entryPoint: "web/cloud-app.ts",
     outfile: resolve("site/assets/cloud-app.js"),
   },
+  {
+    entryPoint: "web/enterprise-collab.ts",
+    outfile: resolve("site/assets/enterprise-collab.js"),
+  },
 ] as const;
 
 for (const item of builds) {

@@ -4,6 +4,7 @@ import { walk } from "./ast.js";
 import { computedDomainVars, controlDefaultNumber, formulaText, numericAttr as computedNumericAttr } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
 import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } from "./inline.js";
+import { collectTableIdentityStrings } from "./stable-identity.js";
 
 export interface ValidateOptions {
   /**
@@ -278,6 +279,21 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
         });
       } else {
         ids.set(node.id, node);
+      }
+    }
+    if (node.type === "table") {
+      for (const tableId of collectTableIdentityStrings(node)) {
+        if (ids.has(tableId)) {
+          diagnostics.push({
+            severity: "error",
+            code: "duplicate-id",
+            message: `Duplicate block ID "${tableId}".`,
+            pos: node.pos,
+            nodeId: tableId,
+          });
+        } else {
+          ids.set(tableId, node);
+        }
       }
     }
     if (node.aliases) {

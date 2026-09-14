@@ -1,0 +1,99 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Noma enterprise AWS/EU reference: KMS, encrypted RDS, private S3, Secrets Manager",
+  "Parameters": {
+    "Region": {
+      "Type": "String",
+      "Default": "eu-central-1",
+      "AllowedValues": [
+        "eu-central-1",
+        "eu-west-1",
+        "eu-south-1"
+      ]
+    }
+  },
+  "Resources": {
+    "EnterpriseKey": {
+      "Type": "AWS::KMS::Key",
+      "Properties": {
+        "Description": "Noma enterprise CMK",
+        "EnableKeyRotation": true,
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:root"
+                }
+              },
+              "Action": "kms:*",
+              "Resource": "*"
+            }
+          ]
+        }
+      }
+    },
+    "EnterpriseKeyAlias": {
+      "Type": "AWS::KMS::Alias",
+      "Properties": {
+        "AliasName": "alias/noma-enterprise-eu",
+        "TargetKeyId": {
+          "Ref": "EnterpriseKey"
+        }
+      }
+    },
+    "AssetsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "aws:kms",
+                "KMSMasterKeyID": {
+                  "Ref": "EnterpriseKey"
+                }
+              }
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        }
+      }
+    },
+    "Database": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "Engine": "postgres",
+        "StorageEncrypted": true,
+        "KmsKeyId": {
+          "Ref": "EnterpriseKey"
+        },
+        "MultiAZ": true,
+        "PubliclyAccessible": false
+      }
+    },
+    "AppSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Name": "noma/enterprise/app",
+        "KmsKeyId": {
+          "Ref": "EnterpriseKey"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "Region": {
+      "Value": {
+        "Ref": "Region"
+      }
+    }
+  }
+}

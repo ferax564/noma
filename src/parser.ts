@@ -17,6 +17,7 @@ import type {
   TableNode,
   ThematicBreakNode,
 } from "./ast.js";
+import { parseInlineStableId, parseListItemIdentity, STABLE_ID_LINE_RE } from "./stable-identity.js";
 
 export interface ParseOptions {
   /** Optional source filename, kept on the document meta for diagnostics. */
@@ -125,6 +126,40 @@ function extractFrontmatter(lines: string[]): {
   return { meta: {}, raw: "", startLine: 0, endLine: 0 };
 }
 
+function splitIdList(raw: string | undefined): string[] | undefined {
+  if (!raw) return undefined;
+  const list = raw.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean);
+  return list.length > 0 ? list : undefined;
+}
+
+function applyPendingId<T extends Node>(
+  node: T,
+  pending: { id?: string; cols?: string[]; rows?: string[] },
+): T {
+  const pendingId = pending.id;
+  const cols = pending.cols;
+  const rows = pending.rows;
+  pending.id = undefined;
+  pending.cols = undefined;
+  pending.rows = undefined;
+  if (pendingId) {
+    if (!node.id) node.id = pendingId;
+    else if (node.id !== pendingId) {
+      const aliases = new Set(node.aliases ?? []);
+      aliases.add(pendingId);
+      node.aliases = [...aliases];
+    }
+    if (node.type === "directive" && node.attrs.id === undefined) {
+      node.attrs = { ...node.attrs, id: pendingId };
+    }
+  }
+  if (node.type === "table") {
+    if (cols) node.columnIds = cols;
+    if (rows) node.rowIds = rows;
+  }
+  return node;
+}
+
 function parseBlocks(
   lines: string[],
   from: number,
@@ -133,11 +168,25 @@ function parseBlocks(
 ): Node[] {
   const out: Node[] = [];
   let i = from;
+  const pending: { id?: string; cols?: string[]; rows?: string[] } = {};
 
   while (i < to) {
     const line = lines[i] ?? "";
 
     if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    const stableId = matchOnce(STABLE_ID_LINE_RE, line);
+    if (stableId) {
+      pending.id = stableId[1];
+      const extra = stableId[2]?.trim();
+      if (extra) {
+        const attrs = parseAttrs(`{${extra}}`);
+        pending.cols = splitIdList(typeof attrs.cols === "string" ? attrs.cols : undefined);
+        pending.rows = splitIdList(typeof attrs.rows === "string" ? attrs.rows : undefined);
+      }
       i++;
       continue;
     }
@@ -152,7 +201,7 @@ function parseBlocks(
       }
       if (colons > parentColons || parentColons === 0) {
         const result = parseDirective(lines, i, to, colons);
-        out.push(result.node);
+        out.push(applyPendingId(result.node, pending));
         i = result.next;
         continue;
       }
@@ -194,7 +243,7 @@ function parseBlocks(
           .filter(Boolean);
         if (list.length > 0) section.aliases = list;
       }
-      out.push(section);
+      out.push(applyPendingId(section, pending));
       i++;
       continue;
     }
@@ -207,13 +256,18 @@ function parseBlocks(
       while (end < to && !FENCE_RE.test(lines[end] ?? "")) end++;
       const content = lines.slice(start, end).join("\n");
       const closed = end < to;
-      out.push({
-        type: "code",
-        lang,
-        content,
-        pos: { line: i + 1, column: 1 },
-        endLine: closed ? end + 1 : end,
-      } satisfies CodeNode);
+      out.push(
+        applyPendingId(
+          {
+            type: "code",
+            lang,
+            content,
+            pos: { line: i + 1, column: 1 },
+            endLine: closed ? end + 1 : end,
+          } satisfies CodeNode,
+          pending,
+        ),
+      );
       i = closed ? end + 1 : end;
       continue;
     }
@@ -226,18 +280,23 @@ function parseBlocks(
       const result = parseTable(lines, i, to);
       if (result) {
         result.node.endLine = result.next;
-        out.push(result.node);
+        out.push(applyPendingId(result.node, pending));
         i = result.next;
         continue;
       }
     }
 
     if (THEMATIC_BREAK_RE.test(line)) {
-      out.push({
-        type: "thematic_break",
-        pos: { line: i + 1, column: 1 },
-        endLine: i + 1,
-      } satisfies ThematicBreakNode);
+      out.push(
+        applyPendingId(
+          {
+            type: "thematic_break",
+            pos: { line: i + 1, column: 1 },
+            endLine: i + 1,
+          } satisfies ThematicBreakNode,
+          pending,
+        ),
+      );
       i++;
       continue;
     }
@@ -251,12 +310,17 @@ function parseBlocks(
         buf.push(m[1] ?? "");
         i++;
       }
-      out.push({
-        type: "quote",
-        content: buf.join("\n"),
-        pos: { line: startLine + 1, column: 1 },
-        endLine: i,
-      } satisfies QuoteNode);
+      out.push(
+        applyPendingId(
+          {
+            type: "quote",
+            content: buf.join("\n"),
+            pos: { line: startLine + 1, column: 1 },
+            endLine: i,
+          } satisfies QuoteNode,
+          pending,
+        ),
+      );
       continue;
     }
 
@@ -268,21 +332,28 @@ function parseBlocks(
       while (i < to) {
         const m = matchOnce(re, lines[i] ?? "");
         if (!m) break;
+        const parsedItem = parseListItemIdentity(m[2] ?? "");
         items.push({
           type: "list_item",
-          content: m[2] ?? "",
+          content: parsedItem.content,
+          ...(parsedItem.id ? { id: parsedItem.id } : {}),
           pos: { line: i + 1, column: 1 },
           endLine: i + 1,
         });
         i++;
       }
-      out.push({
-        type: "list",
-        ordered,
-        items,
-        pos: { line: startLine + 1, column: 1 },
-        endLine: i,
-      } satisfies ListNode);
+      out.push(
+        applyPendingId(
+          {
+            type: "list",
+            ordered,
+            items,
+            pos: { line: startLine + 1, column: 1 },
+            endLine: i,
+          } satisfies ListNode,
+          pending,
+        ),
+      );
       continue;
     }
 
@@ -297,6 +368,7 @@ function parseBlocks(
         FENCE_RE.test(cur) ||
         DIRECTIVE_OPEN_RE.test(cur) ||
         DIRECTIVE_CLOSE_RE.test(cur) ||
+        STABLE_ID_LINE_RE.test(cur) ||
         THEMATIC_BREAK_RE.test(cur) ||
         QUOTE_RE.test(cur) ||
         LIST_RE.test(cur) ||
@@ -308,7 +380,7 @@ function parseBlocks(
       buf.push(cur);
       i++;
     }
-    if (buf.length > 0) out.push(paragraph(buf.join("\n"), startLine, i));
+    if (buf.length > 0) out.push(applyPendingId(paragraph(buf.join("\n"), startLine, i), pending));
   }
 
   return out;
@@ -368,9 +440,13 @@ function parseTable(
 ): { node: TableNode; next: number } | null {
   const headerLine = lines[i] ?? "";
   const sepLine = lines[i + 1] ?? "";
-  const header = splitRow(headerLine);
+  const rawHeader = splitRow(headerLine);
   const sepCells = splitRow(sepLine);
-  if (sepCells.length !== header.length) return null;
+  if (sepCells.length !== rawHeader.length) return null;
+
+  const parsedHeader = rawHeader.map(parseInlineStableId);
+  const header = parsedHeader.map((cell) => cell.content);
+  const headerIds = parsedHeader.map((cell) => cell.id ?? "");
 
   const align: TableAlign[] = sepCells.map((c) => {
     const left = c.startsWith(":");
@@ -382,25 +458,29 @@ function parseTable(
   });
 
   const rows: string[][] = [];
+  const cellIds: string[][] = [];
   let j = i + 2;
   while (j < to && TABLE_ROW_RE.test(lines[j] ?? "")) {
     const cells = splitRow(lines[j] ?? "");
     while (cells.length < header.length) cells.push("");
     if (cells.length > header.length) cells.length = header.length;
-    rows.push(cells);
+    const parsed = cells.map(parseInlineStableId);
+    rows.push(parsed.map((cell) => cell.content));
+    cellIds.push(parsed.map((cell) => cell.id ?? ""));
     j++;
   }
 
-  return {
-    node: {
-      type: "table",
-      header,
-      align,
-      rows,
-      pos: { line: i + 1, column: 1 },
-    },
-    next: j,
+  const node: TableNode = {
+    type: "table",
+    header,
+    align,
+    rows,
+    pos: { line: i + 1, column: 1 },
   };
+  if (headerIds.some(Boolean)) node.headerIds = headerIds;
+  if (cellIds.some((row) => row.some(Boolean))) node.cellIds = cellIds;
+
+  return { node, next: j };
 }
 
 function parseAttrs(raw: string): Attrs {

@@ -127,6 +127,19 @@ For tables where pipe-syntax becomes ugly — single-character markers (`✓`, `
 
 For source hygiene, run `noma fmt <file>` (`--inplace` to rewrite). It rebuilds GitHub-style pipe tables to a single column width and leaves everything else byte-identical, including tables inside fenced code blocks.
 
+### Persistent block and table identity (experimental)
+
+Agents and the enterprise workspace address edits by stable IDs, not by current text, title, or index. A whole-line marker immediately before a block assigns that block's ID. Optional `cols` and `rows` attributes on a table marker round-trip column and row identities. Cell prefixes `{#cell-id}` assign header/body cell identities. Legacy documents without markers still parse; identities are assigned once at persist time and then written back.
+
+```
+{#results cols="col-metric,col-value" rows="row-temp"}
+| {#h-metric} Metric | {#h-value} Result |
+| --- | --- |
+| {#c-temp} Soak temperature | {#c-temp-val} 21.4 °C |
+```
+
+Inserting a row allocates new row/cell IDs and must not retarget existing cell IDs. Duplicating a document remaps every copied ID. The validator's `duplicate-id` rule includes table identities. HTML emits `id` / `data-noma-cell-id` / `data-noma-row-id` / `data-noma-column-id` attributes so visual tools can address the same cells.
+
 ## Attribute grammar
 
 Attribute lists appear after a directive name in curly braces:

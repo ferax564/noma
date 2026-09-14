@@ -15,6 +15,7 @@ import type {
   TableNode,
   ThematicBreakNode,
 } from "./ast.js";
+import { formatInlineStableId } from "./stable-identity.js";
 
 export interface NomaRenderOptions {
   /** Drop internal meta keys (filename, pos) from frontmatter. Default: true. */
@@ -132,34 +133,52 @@ function headingAttrs(node: SectionNode, ctx: RenderCtx): string {
 }
 
 function renderParagraph(node: ParagraphNode): string {
-  return node.content;
+  return withBlockId(node.id, node.content);
 }
 
 function renderCode(node: CodeNode): string {
-  return "```" + (node.lang ?? "") + "\n" + node.content + "\n```";
+  return withBlockId(node.id, "```" + (node.lang ?? "") + "\n" + node.content + "\n```");
 }
 
 function renderList(node: ListNode): string {
-  if (node.ordered) {
-    return node.items.map((it, i) => `${i + 1}. ${it.content}`).join("\n");
-  }
-  return node.items.map((it) => `- ${it.content}`).join("\n");
+  const body = node.ordered
+    ? node.items.map((it, i) => `${i + 1}. ${formatInlineStableId(it.id, it.content)}`).join("\n")
+    : node.items.map((it) => `- ${formatInlineStableId(it.id, it.content)}`).join("\n");
+  return withBlockId(node.id, body);
 }
 
 function renderQuote(node: QuoteNode): string {
-  return node.content
+  const body = node.content
     .split("\n")
     .map((l) => (l ? `> ${l}` : ">"))
     .join("\n");
+  return withBlockId(node.id, body);
 }
 
 function renderThematicBreak(_node: ThematicBreakNode): string {
   return "---";
 }
 
+function withBlockId(id: string | undefined, body: string): string {
+  return id ? `{#${id}}\n${body}` : body;
+}
+
+function tableIdentityLine(node: TableNode): string | undefined {
+  if (!node.id && !node.columnIds?.some(Boolean) && !node.rowIds?.some(Boolean)) return undefined;
+  const parts: string[] = [];
+  if (node.columnIds?.some(Boolean)) parts.push(`cols="${(node.columnIds ?? []).join(",")}"`);
+  if (node.rowIds?.some(Boolean)) parts.push(`rows="${(node.rowIds ?? []).join(",")}"`);
+  const id = node.id ?? "table";
+  return parts.length > 0 ? `{#${id} ${parts.join(" ")}}` : `{#${id}}`;
+}
+
 function renderTable(node: TableNode): string {
-  const widths = node.header.map((h, i) =>
-    Math.max(h.length, ...node.rows.map((r) => (r[i] ?? "").length), 3),
+  const headerCells = node.header.map((h, i) => formatInlineStableId(node.headerIds?.[i], h));
+  const bodyRows = node.rows.map((row, r) =>
+    row.map((cell, c) => formatInlineStableId(node.cellIds?.[r]?.[c], cell)),
+  );
+  const widths = headerCells.map((h, i) =>
+    Math.max(h.length, ...bodyRows.map((row) => (row[i] ?? "").length), 3),
   );
   const fmtRow = (cells: string[]) =>
     "| " +
@@ -177,7 +196,9 @@ function renderTable(node: TableNode): string {
       })
       .join(" | ") +
     " |";
-  return [fmtRow(node.header), sep, ...node.rows.map(fmtRow)].join("\n");
+  const table = [fmtRow(headerCells), sep, ...bodyRows.map(fmtRow)].join("\n");
+  const marker = tableIdentityLine(node);
+  return marker ? `${marker}\n${table}` : table;
 }
 
 function renderDirective(node: DirectiveNode, colons: number, ctx: RenderCtx): string {

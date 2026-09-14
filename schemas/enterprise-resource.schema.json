@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "enterprise-resource.schema.json",
+  "title": "Noma enterprise resource",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "tenantId", "kind", "schemaVersion", "lifecycle", "revision", "ownerId", "classification"],
+  "properties": {
+    "id": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["tenant", "space", "project", "document", "artifact", "asset", "issue", "changeset", "dataset"]
+    },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "lifecycle": { "type": "string", "enum": ["draft", "published", "archived", "trashed", "quarantined"] },
+    "revision": { "type": "integer", "minimum": 0 },
+    "ownerId": { "type": "string" },
+    "classification": { "type": "string", "enum": ["public", "internal", "confidential", "restricted"] },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" }
+  }
+}

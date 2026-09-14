@@ -1,0 +1,36 @@
+{
+  "name": "@ferax564/noma-paperdom-io",
+  "version": "0.17.0",
+  "description": "PaperDOM HTML export and fidelity reports",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "ferax564",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ferax564/noma.git",
+    "directory": "packages/paperdom-io"
+  },
+  "homepage": "https://ferax564.github.io/noma/",
+  "bugs": {
+    "url": "https://github.com/ferax564/noma/issues"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@ferax564/noma-cli": "0.17.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

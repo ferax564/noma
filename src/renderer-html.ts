@@ -831,22 +831,39 @@ function renderNode(node: Node, ctx: RenderCtx): string {
         .map((cell, idx) => {
           const align = node.align[idx];
           const styleAttr = align ? ` style="text-align: ${align}"` : "";
-          return `<th${styleAttr}>${inlineToHtml(cell)}</th>`;
+          const cellId = node.headerIds?.[idx];
+          const colId = node.columnIds?.[idx];
+          const idAttr = cellId ? ` id="${escapeAttr(cellId)}"` : "";
+          const data = [
+            cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
+            colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : "",
+          ].join("");
+          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</th>`;
         })
         .join("");
       const body = node.rows
-        .map((row) => {
+        .map((row, rowIndex) => {
+          const rowId = node.rowIds?.[rowIndex];
+          const trAttr = rowId ? ` data-noma-row-id="${escapeAttr(rowId)}"` : "";
           const cells = row
             .map((cell, idx) => {
               const align = node.align[idx];
               const styleAttr = align ? ` style="text-align: ${align}"` : "";
-              return `<td${styleAttr}>${inlineToHtml(cell)}</td>`;
+              const cellId = node.cellIds?.[rowIndex]?.[idx];
+              const colId = node.columnIds?.[idx];
+              const idAttr = cellId ? ` id="${escapeAttr(cellId)}"` : "";
+              const data = [
+                cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
+                colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : "",
+              ].join("");
+              return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</td>`;
             })
             .join("");
-          return `<tr>${cells}</tr>`;
+          return `<tr${trAttr}>${cells}</tr>`;
         })
         .join("\n");
-      return `<table class="noma-table">\n<thead><tr>${head}</tr></thead>\n<tbody>\n${body}\n</tbody>\n</table>`;
+      const tableId = node.id ? ` id="${escapeAttr(node.id)}"` : "";
+      return `<table class="noma-table"${tableId}>\n<thead><tr>${head}</tr></thead>\n<tbody>\n${body}\n</tbody>\n</table>`;
     }
     case "directive":
       return renderDirective(node, ctx);
