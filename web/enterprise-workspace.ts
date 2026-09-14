@@ -853,6 +853,7 @@ inspector.addEventListener("click", async (event) => {
       await api("/v1/spaces", { method: "POST", body: JSON.stringify({ name: $<HTMLInputElement>("admin-space-name").value }) });
       await refreshWorkspace();
       renderAdmin();
+      renderRail();
     }
     if (button.id === "admin-project-submit") {
       await api("/v1/projects", {
@@ -865,6 +866,7 @@ inspector.addEventListener("click", async (event) => {
       });
       await refreshWorkspace();
       renderAdmin();
+      renderRail();
     }
     if (button.id === "admin-grant-submit") {
       await api("/v1/grants", {
@@ -878,6 +880,7 @@ inspector.addEventListener("click", async (event) => {
       });
       await refreshWorkspace();
       renderAdmin();
+      renderRail();
     }
   } catch (error: unknown) {
     inspector.insertAdjacentHTML("beforeend", `<p class="ew-error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`);

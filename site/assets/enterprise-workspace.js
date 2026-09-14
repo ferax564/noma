@@ -29541,6 +29541,7 @@ ${err.toString()}`);
         await api("/v1/spaces", { method: "POST", body: JSON.stringify({ name: $2("admin-space-name").value }) });
         await refreshWorkspace();
         renderAdmin();
+        renderRail();
       }
       if (button.id === "admin-project-submit") {
         await api("/v1/projects", {
@@ -29553,6 +29554,7 @@ ${err.toString()}`);
         });
         await refreshWorkspace();
         renderAdmin();
+        renderRail();
       }
       if (button.id === "admin-grant-submit") {
         await api("/v1/grants", {
@@ -29566,6 +29568,7 @@ ${err.toString()}`);
         });
         await refreshWorkspace();
         renderAdmin();
+        renderRail();
       }
     } catch (error) {
       inspector.insertAdjacentHTML("beforeend", `<p class="ew-error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`);
