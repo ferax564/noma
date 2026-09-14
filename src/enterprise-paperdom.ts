@@ -179,3 +179,69 @@ export function exportFidelityReport(doc: PaperDocument, target: "pptx" | "svg" 
     completeOfficeFidelity: false,
   };
 }
+
+function safeCssColor(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) return value;
+  if (/^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(value)) return value;
+  return fallback;
+}
+
+function finitePx(value: unknown, fallback = 0): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function escapeMarkup(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function chartBars(chart: PaperChartData): string {
+  const max = Math.max(1, ...chart.values);
+  return `<div class="pd-chart" role="img" aria-label="${escapeMarkup(chart.datasetId)}">${chart.values
+    .map((value, index) => {
+      const label = chart.labels[index] ?? String(index + 1);
+      const height = Math.max(8, Math.round((value / max) * 100));
+      return `<div class="pd-bar-col"><span class="pd-bar" style="height:${height}%"></span><span class="pd-bar-label">${escapeMarkup(label)}</span></div>`;
+    })
+    .join("")}</div>`;
+}
+
+export function paperCanvasMarkup(doc: PaperDocument): string {
+  const width = Math.max(960, ...doc.elements.map((el) => finitePx(el.geometry.x) + finitePx(el.geometry.width)));
+  const height = Math.max(540, ...doc.elements.map((el) => finitePx(el.geometry.y) + finitePx(el.geometry.height)));
+  const items = [...doc.elements]
+    .sort((a, b) => a.zIndex - b.zIndex)
+    .map((el) => {
+      const x = finitePx(el.geometry.x);
+      const y = finitePx(el.geometry.y);
+      const w = Math.max(24, finitePx(el.geometry.width, 120));
+      const h = Math.max(24, finitePx(el.geometry.height, 48));
+      const rotation = finitePx(el.geometry.rotation);
+      const label = el.text ?? el.altText ?? el.type;
+      const inner = el.chart ? chartBars(el.chart) : el.table
+        ? `<table class="pd-table">${el.table.headers.length ? `<thead><tr>${el.table.headers.map((cell) => `<th>${escapeMarkup(cell)}</th>`).join("")}</tr></thead>` : ""}<tbody>${el.table.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeMarkup(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+        : `<span class="pd-el-text">${escapeMarkup(label)}</span>`;
+      return `<div class="pd-el pd-el-${escapeMarkup(el.type)}" data-id="${escapeMarkup(el.id)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg)">${inner}</div>`;
+    })
+    .join("");
+  return `<div class="pd-page" data-paper-id="${escapeMarkup(doc.id)}" style="width:${width}px;min-height:${height}px">${items}</div>`;
+}
+
+export function paperCanvasStyles(): string {
+  return `.pd-page{position:relative;background:
+    linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,.06)),
+    rgba(255,252,248,.42);border:1px solid rgba(255,255,255,.46);border-radius:28px;box-shadow:0 30px 80px -40px rgba(8,10,16,.55),0 1px 0 rgba(255,255,255,.7) inset;backdrop-filter:blur(28px) saturate(170%);overflow:hidden}
+.pd-el{position:absolute;box-sizing:border-box;padding:14px 16px;border-radius:18px;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.42);box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 16px 36px -28px rgba(16,12,8,.55);backdrop-filter:blur(18px);overflow:hidden}
+.pd-el-text{font:650 15px/1.35 Inter,system-ui,sans-serif;color:#1a1814;white-space:pre-wrap}
+.pd-el-shape{background:rgba(255,248,242,.34);border-color:rgba(196,90,46,.22)}
+.pd-el-chart{background:rgba(10,14,20,.62);color:#edf3f7;border-color:rgba(255,255,255,.12)}
+.pd-el-chart .pd-el-text{color:#edf3f7}
+.pd-chart{display:flex;align-items:flex-end;gap:8px;height:100%;padding-top:8px}
+.pd-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;min-width:0;height:100%}
+.pd-bar{width:100%;border-radius:9px 9px 4px 4px;background:linear-gradient(180deg,#ffb089,#c45a2e)}
+.pd-bar-label{font:650 10px/1 Inter,system-ui,sans-serif;color:rgba(237,243,247,.72);text-transform:uppercase;letter-spacing:.04em}
+.pd-table{width:100%;border-collapse:collapse;font:13px/1.4 Inter,system-ui,sans-serif}
+.pd-table th,.pd-table td{border-bottom:1px solid rgba(40,32,24,.08);padding:4px 6px;text-align:left}
+.pd-el-title,.pd-el-text:first-child{display:block}`;
+}

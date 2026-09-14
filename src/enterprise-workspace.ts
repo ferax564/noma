@@ -483,6 +483,137 @@ export class EnterpriseWorkspace {
     };
   }
 
+  workspaceShell(actor: ActorContext): {
+    actor: ActorContext & { name: string };
+    spaces: Array<{ id: string; name: string; classification: Classification }>;
+    documents: Array<{
+      id: string;
+      spaceId: string;
+      title: string;
+      lifecycle: string;
+      classification: Classification;
+      updatedAt: string;
+      hash: string;
+    }>;
+    artifacts: Array<{
+      id: string;
+      spaceId: string;
+      title: string;
+      draftRevision: number;
+      publishedRevision: number | null;
+    }>;
+    projects: Array<{
+      id: string;
+      key: string;
+      name: string;
+      statuses: Array<{ id: string; name: string; category: StatusCategory }>;
+    }>;
+    issues: Array<{
+      id: string;
+      projectId: string;
+      key: string;
+      summary: string;
+      description: string | null;
+      statusId: string;
+      typeKey: string;
+      estimate: number | null;
+      assigneeId: string | null;
+    }>;
+    notifications: Array<Record<string, unknown>>;
+  } {
+    this.assertSession(actor);
+    const principal = this.principal(actor.principalId);
+    const spaces = (
+      this.store.db
+        .prepare("SELECT id, name, classification FROM spaces WHERE tenant_id = ? ORDER BY name")
+        .all(actor.tenantId) as Array<{ id: string; name: string; classification: Classification }>
+    ).filter((row) => this.hasRole(actor, "space", row.id, "viewer"));
+    const documents = (
+      this.store.db
+        .prepare(
+          "SELECT id, space_id AS spaceId, title, lifecycle, classification, updated_at AS updatedAt, draft_hash AS hash FROM documents WHERE tenant_id = ? ORDER BY updated_at DESC",
+        )
+        .all(actor.tenantId) as Array<{
+        id: string;
+        spaceId: string;
+        title: string;
+        lifecycle: string;
+        classification: Classification;
+        updatedAt: string;
+        hash: string;
+      }>
+    ).filter((row) => this.hasRole(actor, "document", row.id, "viewer"));
+    const artifacts = (
+      this.store.db
+        .prepare(
+          "SELECT id, space_id AS spaceId, title, draft_revision AS draftRevision, published_revision AS publishedRevision FROM artifacts WHERE tenant_id = ? ORDER BY updated_at DESC",
+        )
+        .all(actor.tenantId) as Array<{
+        id: string;
+        spaceId: string;
+        title: string;
+        draftRevision: number;
+        publishedRevision: number | null;
+      }>
+    ).filter((row) => this.hasRole(actor, "artifact", row.id, "viewer"));
+    const projects = (
+      this.store.db
+        .prepare("SELECT id, key, name FROM projects WHERE tenant_id = ? ORDER BY key")
+        .all(actor.tenantId) as Array<{ id: string; key: string; name: string }>
+    )
+      .filter((row) => this.hasRole(actor, "project", row.id, "viewer"))
+      .map((row) => ({ ...row, statuses: this.activeWorkflow(row.id).statuses }));
+    const issues = (
+      this.store.db
+        .prepare(
+          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId
+           FROM issues i JOIN issue_types t ON t.id = i.type_id
+           WHERE i.tenant_id = ? ORDER BY i.rank`,
+        )
+        .all(actor.tenantId) as Array<{
+        id: string;
+        projectId: string;
+        key: string;
+        summary: string;
+        description: string | null;
+        statusId: string;
+        typeKey: string;
+        estimate: number | null;
+        assigneeId: string | null;
+        reporterId: string | null;
+        securityLevelId: string | null;
+      }>
+    )
+      .filter((row) =>
+        this.canSeeIssue(actor, {
+          project_id: row.projectId,
+          security_level_id: row.securityLevelId,
+          reporter_id: row.reporterId,
+          assignee_id: row.assigneeId,
+        }),
+      )
+      .map((row) => ({
+        id: row.id,
+        projectId: row.projectId,
+        key: row.key,
+        summary: row.summary,
+        description: row.description,
+        statusId: row.statusId,
+        typeKey: row.typeKey,
+        estimate: row.estimate,
+        assigneeId: row.assigneeId,
+      }));
+    return {
+      actor: { ...actor, name: principal.name },
+      spaces,
+      documents,
+      artifacts,
+      projects,
+      issues,
+      notifications: this.notifications(actor),
+    };
+  }
+
   sourceReplace(actor: ActorContext, input: { documentId: string; source: string; expectedHash: string }): string {
     const doc = this.documentRow(input.documentId, actor.tenantId);
     this.requireRole(actor, "document", input.documentId, "editor");

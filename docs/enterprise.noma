@@ -6,12 +6,12 @@ status: experimental
 # Noma Enterprise workspace
 
 ::summary
-Noma's enterprise workspace is a modular monolith for **Docs**, **Visuals**, and **Work**, with shared identity, authorization, assets, versioning, relationships, search, notifications, changesets, and audit. This page records the in-repo kernel, hosted collaboration, PaperDOM packages, live Atlassian HTTP adapters, the AWS/EU reference stack, the independent security-review pack, and the paid-pilot usability harness.
+Noma's enterprise workspace is a modular monolith for **Docs**, **Visuals**, and **Work**, with shared identity, authorization, assets, versioning, relationships, search, notifications, changesets, and audit. This page records the in-repo kernel, the product shell (paper editor, canvas, and board), hosted collaboration, PaperDOM packages, live Atlassian HTTP adapters, the AWS/EU reference stack, the independent security-review pack, and the paid-pilot usability harness.
 ::
 
 ## Implemented in this tree
 
-The `EnterpriseWorkspace` kernel (`src/enterprise.ts` and `src/enterprise-*.ts`) is the executable enterprise slice. Hosted Tiptap/Yjs, the pinned PaperDOM extract, live Atlassian HTTP, the AWS/EU CloudFormation reference, the security-review pack, and the paid-pilot usability protocol all have passing tests in this tree.
+The `EnterpriseWorkspace` kernel (`src/enterprise.ts` and `src/enterprise-*.ts`) is the executable enterprise slice. The hosted Docs/Visuals/Work UI, hosted Tiptap/Yjs, the pinned PaperDOM extract, live Atlassian HTTP, the AWS/EU CloudFormation reference, the security-review pack, and the paid-pilot usability protocol all have passing tests in this tree.
 
 | Area | What is implemented | Evidence |
 | --- | --- | --- |
@@ -28,6 +28,7 @@ The `EnterpriseWorkspace` kernel (`src/enterprise.ts` and `src/enterprise-*.ts`)
 | Paid pilots | Three paid partners with champion and budget owner; timed usability go/no-go (≥30% median faster, ≥50% completion) | `test/enterprise-pilot.test.ts` |
 | Operations | SQLite enterprise store, PostgreSQL DDL generator, digest-checked backup/restore, legal hold, tamper-evident audit chain, health/readiness, SBOM, redacted support bundles | backup, hold, and ops tests |
 | HTTP / worker | `apps/server`, `apps/worker`, `apps/workspace` entry points over the same kernel, including `/yjs` | `test/enterprise-http.test.ts` |
+| Product UI | Docs / Visuals / Work shell with paper editor, canvas frames, and a live board, served at `/` | `test/enterprise-workspace-ui.test.ts` |
 | Packages | Extraction boundaries under `packages/{document-core,document-ui,platform,work,knowledge,connectors,contracts,paperdom-core,paperdom-react,paperdom-io}` re-export the CLI kernel (no dual-write copies) | package `src/index.ts` files |
 | E2E | Section 17 demonstration: two humans, one agent, connector, pin, stale apply, revocation, restore | `test/enterprise-e2e.test.ts` |
 

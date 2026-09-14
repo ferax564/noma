@@ -2,21 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Noma workspace — Docs, Visuals, Work</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem; color: #111; }
-      main { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
-      section { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; }
-    </style>
+    <title>Noma — Docs, Visuals, Work</title>
+    <link rel="stylesheet" href="/assets/enterprise-workspace.css" />
   </head>
   <body>
-    <h1>Noma enterprise workspace</h1>
-    <p>One login, one search, and one project context for documents, PaperDOM visuals, and native work.</p>
-    <main>
-      <section><h2>Docs</h2><p>Visual authoring with persistent block and table identity. Source mode is revision-checked.</p></section>
-      <section><h2>Visuals</h2><p>Embedded PaperDOM artifacts with server-derived actors and pinned published revisions.</p></section>
-      <section><h2>Work</h2><p>Issues, boards, sprints, reports, and security levels sharing identity and changesets.</p></section>
-    </main>
+    <p style="font-family: Inter, system-ui, sans-serif; padding: 2rem;">
+      The enterprise workspace UI is served by <code>apps/server</code> from
+      <code>enterpriseWorkspaceHtml()</code>. Start the server after
+      <code>npm run build:web-ui</code>.
+    </p>
   </body>
 </html>

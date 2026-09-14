@@ -11,10 +11,14 @@ export type {
 } from "./enterprise-contracts.js";
 export { enterpriseSchema, EnterpriseStore } from "./enterprise-store.js";
 export { EnterpriseWorkspace, createTestOidc } from "./enterprise-workspace.js";
+export { enterpriseWorkspaceHtml, seedEnterpriseProductFixture } from "./enterprise-shell.js";
+export type { EnterpriseProductFixture, EnterpriseShellHtmlOptions } from "./enterprise-shell.js";
 export {
   applyVisualCommands,
   createPaperDocument,
   exportFidelityReport,
+  paperCanvasMarkup,
+  paperCanvasStyles,
   paperHash,
   semanticOutline,
 } from "./enterprise-paperdom.js";

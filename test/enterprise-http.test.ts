@@ -45,6 +45,14 @@ test("HTTP and worker entry points serve search, CRDT reconnect, health, and out
       headers: { authorization: `Bearer ${session.token}` },
     }).then((res) => res.json()) as { hits: unknown[] };
     assert.ok(Array.isArray(search.hits));
+    const workspace = await fetch(`http://127.0.0.1:${server.port}/v1/workspace`, {
+      headers: { authorization: `Bearer ${session.token}` },
+    }).then((res) => res.json()) as { documents: Array<{ id: string }>; actor: { name: string } };
+    assert.equal(workspace.actor.name, "Alice");
+    assert.equal(workspace.documents[0]?.id, documentId);
+    const home = await fetch(`http://127.0.0.1:${server.port}/`);
+    assert.equal(home.status, 200);
+    assert.match(await home.text(), /Docs, Visuals, Work/);
   } finally {
     await server.close();
     ws.close();

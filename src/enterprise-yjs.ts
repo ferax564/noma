@@ -92,17 +92,38 @@ export function enterpriseCollabHtml(script: string): string {
   <head>
     <meta charset="utf-8" />
     <title>Noma hosted collab</title>
+    <link rel="preconnect" href="https://rsms.me/" />
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
     <style>
-      html, body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
-      #status { padding: 0.5rem 1rem; background: #111; color: #fff; }
-      #editor { min-height: 12rem; }
-      .ProseMirror { min-height: 12rem; padding: 1rem; outline: none; }
+      :root { --ink:#14110e; --muted:#5c564e; --paper:rgba(255,253,249,.72); --rule:rgba(255,255,255,.45); --accent:#c45a2e; --sans:Inter,system-ui,sans-serif; --serif:"Iowan Old Style",Charter,Georgia,serif; }
+      html, body { margin:0; min-height:100%; background:
+        radial-gradient(900px 480px at 10% -10%, rgba(196,90,46,.35), transparent 55%),
+        radial-gradient(800px 500px at 100% 0%, rgba(58,110,168,.28), transparent 50%),
+        #d9cfc2; color:var(--ink); font-family:var(--sans); }
+      .collab-shell { min-height:100vh; display:grid; grid-template-rows:auto auto 1fr; }
+      .collab-top { display:flex; align-items:center; gap:10px; margin:12px 12px 0; padding:12px 18px; border:1px solid var(--rule); border-radius:22px; background:rgba(255,255,255,.32); backdrop-filter:blur(36px) saturate(180%); box-shadow:0 1px 0 rgba(255,255,255,.7) inset; }
+      .brand { font-weight:720; letter-spacing:-.04em; }
+      #status { margin-left:auto; border:1px solid var(--rule); border-radius:999px; padding:4px 10px; font-size:12px; color:var(--muted); background:rgba(255,255,255,.28); }
+      .toolbar { display:flex; gap:6px; margin:10px 12px 0; padding:8px; border:1px solid var(--rule); border-radius:18px; background:rgba(255,255,255,.28); backdrop-filter:blur(24px); }
+      .toolbar button { min-height:30px; border:1px solid var(--rule); border-radius:11px; background:rgba(255,255,255,.3); padding:0 10px; font:650 12px var(--sans); }
+      #editor { width:min(820px, calc(100% - 48px)); margin:18px auto 48px; min-height:24rem; padding:42px 56px; border-radius:28px; background:var(--paper); border:1px solid var(--rule); box-shadow:0 28px 80px -40px rgba(28,18,10,.45), 0 1px 0 rgba(255,255,255,.75) inset; backdrop-filter:blur(28px); }
+      .ProseMirror { min-height:12rem; outline:none; font-family:var(--serif); font-size:1.12rem; line-height:1.65; }
     </style>
   </head>
   <body>
-    <div id="status">connecting</div>
-    <div id="editor"></div>
-    <script>${script}</script>
+    <div class="collab-shell">
+      <div class="collab-top">
+        <span class="brand">Noma collab</span>
+        <div id="status">connecting</div>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="Formatting">
+        <button type="button" data-cmd="bold" aria-label="Bold"><b>B</b></button>
+        <button type="button" data-cmd="italic" aria-label="Italic"><i>I</i></button>
+        <button type="button" data-cmd="heading" data-level="2" aria-label="Heading">H2</button>
+      </div>
+      <div id="editor"></div>
+    </div>
+    <script>${script.replace(/<\/script/gi, "<\\/script")}</script>
   </body>
 </html>`;
 }
