@@ -38045,6 +38045,7 @@ ${err.toString()}`);
       setMode,
       text: () => collab?.getText() ?? "",
       html: () => collab?.editor()?.getHTML() ?? "",
+      selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
       openPalette,
       applyBoardDrop
     }
