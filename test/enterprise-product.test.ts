@@ -348,6 +348,7 @@ test("quoted comments, flags, comment pins, and canvas delete are kernel-backed"
     ws.addDocumentComment(session.actor, fixture.documentId, "Need a sharper claim", "One login should take a team");
     const comments = ws.listDocumentComments(session.actor, fixture.documentId);
     assert.ok(comments.some((comment) => comment.quote === "One login should take a team"));
+    assert.ok(shell.issues.some((issue) => issue.watching && /PaperDOM/i.test(issue.summary)));
     ws.deleteArtifactElement(session.actor, fixture.artifactId, "note-comment");
     const board = ws.readArtifact(session.actor, fixture.artifactId, "draft");
     assert.equal(board.document.elements.some((element) => element.id === "note-comment"), false);

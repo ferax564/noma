@@ -57,6 +57,7 @@ interface ShellIssue {
   labels?: string[];
   reporterId?: string | null;
   flagged?: boolean;
+  watching?: boolean;
 }
 
 interface WorkspacePayload {
@@ -107,7 +108,8 @@ let jqlFilterIds: string[] | undefined;
 let searchPopupStop: (() => void) | undefined;
 let boardDndStop: (() => void) | undefined;
 let canvasStop: (() => void) | undefined;
-let boardFilter: "all" | "mine" | "unassigned" | "overdue" | "flagged" = "all";
+let boardFilter: "all" | "mine" | "unassigned" | "overdue" | "flagged" | "watching" = "all";
+let epicFilter = "";
 let boardSearch = "";
 let typeFilter = "";
 let swimlanes = false;
@@ -343,7 +345,15 @@ function runPageFind(query: string): number {
   if (bar) bar.hidden = false;
   const input = document.getElementById("page-find-input");
   if (input instanceof HTMLInputElement && input.value !== query) input.value = query;
-  findMatches = collectFindMatches(query.trim());
+  const needle = query.trim();
+  if (needle.length < 2) {
+    findMatches = [];
+    findIndex = 0;
+    const count = document.getElementById("page-find-count");
+    if (count) count.textContent = "0 of 0";
+    return 0;
+  }
+  findMatches = collectFindMatches(needle);
   findIndex = 0;
   return jumpFind(0);
 }
@@ -638,7 +648,7 @@ async function renderDocumentInspector(id: string): Promise<void> {
           ${avatarMarkup(comment.authorName, "lg")}
           <div>
             <div class="ew-comment-meta"><strong>${escapeHtml(comment.authorName)}</strong><span>${escapeHtml(formatWhen(comment.createdAt))}</span></div>
-            ${comment.quote ? `<blockquote class="ew-comment-quote">${escapeHtml(comment.quote)}</blockquote>` : ""}
+            ${comment.quote ? `<button type="button" class="ew-comment-quote" data-quote="${escapeHtml(comment.quote)}">${escapeHtml(comment.quote)}</button>` : ""}
             <p>${escapeHtml(comment.body)}</p>
           </div>
         </article>`,
@@ -819,6 +829,7 @@ function renderBoard(): void {
   $("filter-unassigned")?.setAttribute("aria-pressed", String(boardFilter === "unassigned"));
   $("filter-overdue")?.setAttribute("aria-pressed", String(boardFilter === "overdue"));
   $("filter-flagged")?.setAttribute("aria-pressed", String(boardFilter === "flagged"));
+  $("filter-watching")?.setAttribute("aria-pressed", String(boardFilter === "watching"));
   $("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
   $("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
   $("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
@@ -831,6 +842,24 @@ function renderBoard(): void {
     ),
   ].join("");
   const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
+  const epicSelect = document.getElementById("filter-epic");
+  if (epicSelect instanceof HTMLSelectElement) {
+    const epics = payload.issues.filter((issue) => issue.typeKey === "epic" && (!project || issue.projectId === project.id));
+    epicSelect.innerHTML =
+      `<option value="">All epics</option>` +
+      epics.map((epic) => `<option value="${epic.id}" ${epic.id === epicFilter ? "selected" : ""}>${escapeHtml(epic.key)} ${escapeHtml(epic.summary)}</option>`).join("");
+  }
+  const inEpic = (issue: ShellIssue, epicId: string): boolean => {
+    if (issue.id === epicId) return true;
+    const seen = new Set<string>();
+    let current: ShellIssue | undefined = issue;
+    while (current?.parentId && !seen.has(current.id)) {
+      seen.add(current.id);
+      if (current.parentId === epicId) return true;
+      current = payload.issues.find((item) => item.id === current?.parentId);
+    }
+    return false;
+  };
   const visible = payload.issues.filter((issue) => {
     if (project && issue.projectId !== project.id) return false;
     if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
@@ -838,6 +867,8 @@ function renderBoard(): void {
     if (boardFilter === "unassigned" && issue.assigneeId) return false;
     if (boardFilter === "overdue" && !isOverdue(issue)) return false;
     if (boardFilter === "flagged" && !issue.flagged) return false;
+    if (boardFilter === "watching" && !issue.watching) return false;
+    if (epicFilter && !inEpic(issue, epicFilter)) return false;
     if (typeFilter && issue.typeKey !== typeFilter) return false;
     if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
     return true;
@@ -856,6 +887,7 @@ function renderBoard(): void {
         ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
         <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
         ${issue.flagged ? `<span class="ew-flag">Flagged</span>` : ""}
+        ${issue.watching ? `<span class="ew-watch">Watching</span>` : ""}
         ${due ? `<span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml(due)}</span>` : ""}
         ${labels}
         ${assignee ? avatarMarkup(assignee.name) : ""}
@@ -1014,6 +1046,8 @@ async function inspectIssue(id: string): Promise<void> {
     labels_json?: string;
     estimate?: number | null;
     flagged?: number | boolean;
+    watching?: boolean;
+    watchers?: Array<{ id: string; name: string }>;
     events?: Array<{ action: string; actorName: string; createdAt: string }>;
   }>(`/v1/issues/${encodeURIComponent(id)}`);
   const project = payload.projects.find((item) => item.id === issue.projectId);
@@ -1039,6 +1073,10 @@ async function inspectIssue(id: string): Promise<void> {
       </div>
       <p id="issue-reporter" class="ew-note">Reported by ${escapeHtml(reporter?.name ?? "Unknown")}</p>
       <label class="ew-check" for="issue-flag"><input id="issue-flag" type="checkbox" ${issue.flagged || Boolean(detail.flagged) ? "checked" : ""} /> Flagged</label>
+      <div id="issue-watchers" class="ew-watchers">
+        <button type="button" id="issue-watch">${detail.watching || issue.watching ? "Watching" : "Watch"}</button>
+        <span>${((detail.watchers as Array<{ name: string }> | undefined) ?? []).map((watcher) => avatarMarkup(watcher.name)).join("") || "No watchers"}</span>
+      </div>
       <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
       <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
       <div class="ew-issue-grid">
@@ -1319,6 +1357,14 @@ inspector.addEventListener("click", async (event) => {
       renderBoard();
       await inspectIssue(selectedIssueId);
     }
+    if (button.id === "issue-watch" && selectedIssueId) {
+      const watching = button.textContent?.trim() === "Watching";
+      await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/watch`, { method: watching ? "DELETE" : "POST" });
+      await refreshWorkspace();
+      renderBoard();
+      await inspectIssue(selectedIssueId);
+      return;
+    }
     if (button.classList.contains("ew-child") && button.dataset.issue) {
       await inspectIssue(button.dataset.issue);
       return;
@@ -1584,6 +1630,18 @@ $("insert-video").addEventListener("change", async (event) => {
   (event.target as HTMLInputElement).value = "";
 });
 
+async function restackCanvas(direction: "front" | "back"): Promise<void> {
+  if (!selectedArtifactId || !selectedCanvasId) return;
+  const data = await api<ArtifactPayload>(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}`);
+  const values = data.document.elements.map((element) => element.zIndex);
+  const next = direction === "front" ? Math.max(0, ...values) + 1 : Math.min(0, ...values) - 1;
+  await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(selectedCanvasId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ zIndex: next }),
+  });
+  await openArtifact(selectedArtifactId);
+}
+
 async function deleteCanvasSelection(): Promise<void> {
   if (!selectedArtifactId || !selectedCanvasId) return;
   const id = selectedCanvasId;
@@ -1668,6 +1726,14 @@ $("visual-toolbar").addEventListener("click", (event) => {
     void deleteCanvasSelection();
     return;
   }
+  if (button.id === "canvas-front") {
+    void restackCanvas("front");
+    return;
+  }
+  if (button.id === "canvas-back") {
+    void restackCanvas("back");
+    return;
+  }
   if (button.dataset.tool) {
     $("visual-stage").dataset.tool = button.dataset.tool;
     syncVisualTools();
@@ -1747,6 +1813,11 @@ $("page-find-input").addEventListener("keydown", (event) => {
     event.preventDefault();
     closePageFind();
   }
+});
+$("doc-comments").addEventListener("click", (event) => {
+  const quote = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-quote]");
+  if (!quote?.dataset.quote) return;
+  runPageFind(quote.dataset.quote);
 });
 
 $("visual-outline").addEventListener("click", (event) => {
@@ -2068,13 +2139,17 @@ $("board-filters").addEventListener("click", (event) => {
   }
   if (!button.dataset.filter) return;
   const next = button.dataset.filter;
-  boardFilter = next === "mine" || next === "unassigned" || next === "overdue" || next === "flagged" ? next : "all";
+  boardFilter = next === "mine" || next === "unassigned" || next === "overdue" || next === "flagged" || next === "watching" ? next : "all";
   renderBoard();
 });
 $("type-filters").addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-type]");
   if (button?.dataset.type === undefined) return;
   typeFilter = button.dataset.type;
+  renderBoard();
+});
+$("filter-epic").addEventListener("change", (event) => {
+  epicFilter = (event.target as HTMLSelectElement).value;
   renderBoard();
 });
 $("board-search").addEventListener("input", (event) => {

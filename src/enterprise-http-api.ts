@@ -156,6 +156,7 @@ export async function dispatchEnterpriseApi(
         geometry: body.geometry as { x?: number; y?: number; width?: number; height?: number } | undefined,
         text: body.text ? String(body.text) : undefined,
         altText: body.altText ? String(body.altText) : undefined,
+        zIndex: typeof body.zIndex === "number" ? body.zIndex : undefined,
       }),
     );
     return true;
@@ -400,7 +401,7 @@ export async function dispatchEnterpriseApi(
     return true;
   }
 
-  const issueMatch = path.match(/^\/v1\/issues\/([^/]+)(?:\/(transition|comments|worklog|sprint|links))?$/);
+  const issueMatch = path.match(/^\/v1\/issues\/([^/]+)(?:\/(transition|comments|worklog|sprint|links|watch))?$/);
   if (issueMatch) {
     const issueId = decodeURIComponent(issueMatch[1]!);
     const action = issueMatch[2];
@@ -485,6 +486,14 @@ export async function dispatchEnterpriseApi(
           }),
         },
       );
+      return true;
+    }
+    if (action === "watch" && method === "POST") {
+      send(res, 200, ws.watchIssue(actor, issueId));
+      return true;
+    }
+    if (action === "watch" && method === "DELETE") {
+      send(res, 200, ws.unwatchIssue(actor, issueId));
       return true;
     }
   }

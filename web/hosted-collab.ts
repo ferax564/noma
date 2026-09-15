@@ -210,10 +210,11 @@ function bindFormatBubble(editor: Editor, onComment?: (quote: string) => void): 
     ["align-left", "Align left", "AlignLeft"],
     ["align-center", "Align center", "AlignCenter"],
     ["align-right", "Align right", "AlignRight"],
-    ["comment", "Comment on selection", "MessageSquare"],
   ]
     .map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon as IconName)}</button>`)
-    .join("");
+    .join("") +
+    `<span class="ew-bubble-sep" aria-hidden="true"></span>
+     <button type="button" data-bubble="comment" class="ew-bubble-comment" aria-label="Comment on selection">${iconSvg("MessageSquare")} Comment</button>`;
   document.body.appendChild(bar);
 
   const hide = (): void => {

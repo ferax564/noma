@@ -37010,9 +37010,9 @@ ${err.toString()}`);
       ["highlight", "Highlight", "Highlighter"],
       ["align-left", "Align left", "AlignLeft"],
       ["align-center", "Align center", "AlignCenter"],
-      ["align-right", "Align right", "AlignRight"],
-      ["comment", "Comment on selection", "MessageSquare"]
-    ].map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon)}</button>`).join("");
+      ["align-right", "Align right", "AlignRight"]
+    ].map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon)}</button>`).join("") + `<span class="ew-bubble-sep" aria-hidden="true"></span>
+     <button type="button" data-bubble="comment" class="ew-bubble-comment" aria-label="Comment on selection">${iconSvg("MessageSquare")} Comment</button>`;
     document.body.appendChild(bar);
     const hide2 = () => {
       bar.hidden = true;
@@ -37325,6 +37325,7 @@ ${err.toString()}`);
   var boardDndStop;
   var canvasStop;
   var boardFilter = "all";
+  var epicFilter = "";
   var boardSearch = "";
   var typeFilter = "";
   var swimlanes = false;
@@ -37527,7 +37528,15 @@ ${err.toString()}`);
     if (bar) bar.hidden = false;
     const input = document.getElementById("page-find-input");
     if (input instanceof HTMLInputElement && input.value !== query) input.value = query;
-    findMatches = collectFindMatches(query.trim());
+    const needle = query.trim();
+    if (needle.length < 2) {
+      findMatches = [];
+      findIndex = 0;
+      const count = document.getElementById("page-find-count");
+      if (count) count.textContent = "0 of 0";
+      return 0;
+    }
+    findMatches = collectFindMatches(needle);
     findIndex = 0;
     return jumpFind(0);
   }
@@ -37777,7 +37786,7 @@ ${err.toString()}`);
           ${avatarMarkup(comment.authorName, "lg")}
           <div>
             <div class="ew-comment-meta"><strong>${escapeHtml3(comment.authorName)}</strong><span>${escapeHtml3(formatWhen(comment.createdAt))}</span></div>
-            ${comment.quote ? `<blockquote class="ew-comment-quote">${escapeHtml3(comment.quote)}</blockquote>` : ""}
+            ${comment.quote ? `<button type="button" class="ew-comment-quote" data-quote="${escapeHtml3(comment.quote)}">${escapeHtml3(comment.quote)}</button>` : ""}
             <p>${escapeHtml3(comment.body)}</p>
           </div>
         </article>`
@@ -37941,6 +37950,7 @@ ${err.toString()}`);
     $2("filter-unassigned")?.setAttribute("aria-pressed", String(boardFilter === "unassigned"));
     $2("filter-overdue")?.setAttribute("aria-pressed", String(boardFilter === "overdue"));
     $2("filter-flagged")?.setAttribute("aria-pressed", String(boardFilter === "flagged"));
+    $2("filter-watching")?.setAttribute("aria-pressed", String(boardFilter === "watching"));
     $2("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
     $2("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
     $2("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
@@ -37952,6 +37962,22 @@ ${err.toString()}`);
       )
     ].join("");
     const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
+    const epicSelect = document.getElementById("filter-epic");
+    if (epicSelect instanceof HTMLSelectElement) {
+      const epics = payload.issues.filter((issue) => issue.typeKey === "epic" && (!project || issue.projectId === project.id));
+      epicSelect.innerHTML = `<option value="">All epics</option>` + epics.map((epic) => `<option value="${epic.id}" ${epic.id === epicFilter ? "selected" : ""}>${escapeHtml3(epic.key)} ${escapeHtml3(epic.summary)}</option>`).join("");
+    }
+    const inEpic = (issue, epicId) => {
+      if (issue.id === epicId) return true;
+      const seen = /* @__PURE__ */ new Set();
+      let current = issue;
+      while (current?.parentId && !seen.has(current.id)) {
+        seen.add(current.id);
+        if (current.parentId === epicId) return true;
+        current = payload.issues.find((item) => item.id === current?.parentId);
+      }
+      return false;
+    };
     const visible = payload.issues.filter((issue) => {
       if (project && issue.projectId !== project.id) return false;
       if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
@@ -37959,6 +37985,8 @@ ${err.toString()}`);
       if (boardFilter === "unassigned" && issue.assigneeId) return false;
       if (boardFilter === "overdue" && !isOverdue(issue)) return false;
       if (boardFilter === "flagged" && !issue.flagged) return false;
+      if (boardFilter === "watching" && !issue.watching) return false;
+      if (epicFilter && !inEpic(issue, epicFilter)) return false;
       if (typeFilter && issue.typeKey !== typeFilter) return false;
       if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
       return true;
@@ -37977,6 +38005,7 @@ ${err.toString()}`);
         ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
         <span class="ew-priority" data-priority="${escapeHtml3(issue.priority)}">${escapeHtml3(issue.priority)}</span>
         ${issue.flagged ? `<span class="ew-flag">Flagged</span>` : ""}
+        ${issue.watching ? `<span class="ew-watch">Watching</span>` : ""}
         ${due ? `<span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml3(due)}</span>` : ""}
         ${labels}
         ${assignee ? avatarMarkup(assignee.name) : ""}
@@ -38128,6 +38157,10 @@ ${err.toString()}`);
       </div>
       <p id="issue-reporter" class="ew-note">Reported by ${escapeHtml3(reporter?.name ?? "Unknown")}</p>
       <label class="ew-check" for="issue-flag"><input id="issue-flag" type="checkbox" ${issue.flagged || Boolean(detail.flagged) ? "checked" : ""} /> Flagged</label>
+      <div id="issue-watchers" class="ew-watchers">
+        <button type="button" id="issue-watch">${detail.watching || issue.watching ? "Watching" : "Watch"}</button>
+        <span>${(detail.watchers ?? []).map((watcher) => avatarMarkup(watcher.name)).join("") || "No watchers"}</span>
+      </div>
       <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml3(detail.summary)}" /></label>
       <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml3(detail.description ?? "")}</textarea></label>
       <div class="ew-issue-grid">
@@ -38380,6 +38413,14 @@ ${err.toString()}`);
         await refreshWorkspace();
         renderBoard();
         await inspectIssue(selectedIssueId);
+      }
+      if (button.id === "issue-watch" && selectedIssueId) {
+        const watching = button.textContent?.trim() === "Watching";
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/watch`, { method: watching ? "DELETE" : "POST" });
+        await refreshWorkspace();
+        renderBoard();
+        await inspectIssue(selectedIssueId);
+        return;
       }
       if (button.classList.contains("ew-child") && button.dataset.issue) {
         await inspectIssue(button.dataset.issue);
@@ -38636,6 +38677,17 @@ ${err.toString()}`);
     if (file) await embedPageMedia("video", file);
     event.target.value = "";
   });
+  async function restackCanvas(direction) {
+    if (!selectedArtifactId || !selectedCanvasId) return;
+    const data = await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}`);
+    const values = data.document.elements.map((element2) => element2.zIndex);
+    const next = direction === "front" ? Math.max(0, ...values) + 1 : Math.min(0, ...values) - 1;
+    await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(selectedCanvasId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ zIndex: next })
+    });
+    await openArtifact(selectedArtifactId);
+  }
   async function deleteCanvasSelection() {
     if (!selectedArtifactId || !selectedCanvasId) return;
     const id2 = selectedCanvasId;
@@ -38715,6 +38767,14 @@ ${err.toString()}`);
       void deleteCanvasSelection();
       return;
     }
+    if (button.id === "canvas-front") {
+      void restackCanvas("front");
+      return;
+    }
+    if (button.id === "canvas-back") {
+      void restackCanvas("back");
+      return;
+    }
     if (button.dataset.tool) {
       $2("visual-stage").dataset.tool = button.dataset.tool;
       syncVisualTools();
@@ -38792,6 +38852,11 @@ ${err.toString()}`);
       event.preventDefault();
       closePageFind();
     }
+  });
+  $2("doc-comments").addEventListener("click", (event) => {
+    const quote = event.target.closest("button[data-quote]");
+    if (!quote?.dataset.quote) return;
+    runPageFind(quote.dataset.quote);
   });
   $2("visual-outline").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-frame]");
@@ -39080,13 +39145,17 @@ ${err.toString()}`);
     }
     if (!button.dataset.filter) return;
     const next = button.dataset.filter;
-    boardFilter = next === "mine" || next === "unassigned" || next === "overdue" || next === "flagged" ? next : "all";
+    boardFilter = next === "mine" || next === "unassigned" || next === "overdue" || next === "flagged" || next === "watching" ? next : "all";
     renderBoard();
   });
   $2("type-filters").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-type]");
     if (button?.dataset.type === void 0) return;
     typeFilter = button.dataset.type;
+    renderBoard();
+  });
+  $2("filter-epic").addEventListener("change", (event) => {
+    epicFilter = event.target.value;
     renderBoard();
   });
   $2("board-search").addEventListener("input", (event) => {

@@ -237,6 +237,13 @@ CREATE TABLE IF NOT EXISTS issue_comments (
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS issue_watchers (
+  issue_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (issue_id, principal_id)
+);
 CREATE TABLE IF NOT EXISTS custom_fields (
   id ${pk},
   tenant_id TEXT NOT NULL,
@@ -547,6 +554,13 @@ function migrateEnterpriseSchema(db: SqlDatabase): void {
   if (!comments.has("quote")) db.exec("ALTER TABLE document_comments ADD COLUMN quote TEXT");
   const issues = columnNames(db, "issues");
   if (!issues.has("flagged")) db.exec("ALTER TABLE issues ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0");
+  db.exec(`CREATE TABLE IF NOT EXISTS issue_watchers (
+    issue_id TEXT NOT NULL,
+    principal_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (issue_id, principal_id)
+  )`);
   db.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)").run(String(ENTERPRISE_SCHEMA_VERSION));
 }
 

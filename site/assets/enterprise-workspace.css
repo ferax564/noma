@@ -1280,6 +1280,44 @@ input:focus, select:focus, textarea:focus {
 .ew-visual-stage.is-sticky { cursor: crosshair; }
 .ew-visual-stage.is-connecting { cursor: copy; }
 .ew-visual-stage.is-commenting { cursor: cell; }
+.ew-bubble-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 4px;
+  background: #454f59;
+}
+.ew-bubble-comment {
+  width: auto !important;
+  padding: 0 8px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #0c66e4 !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ew-watch {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: #e9f2ff;
+  color: #0c66e4;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ew-watchers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+button.ew-comment-quote {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
 .ew-find {
   display: flex;
   align-items: center;

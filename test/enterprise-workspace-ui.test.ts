@@ -152,6 +152,8 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#sticky-pink");
   await page.waitForSelector("#canvas-undo");
   await page.waitForSelector("#canvas-delete");
+  await page.waitForSelector("#canvas-front");
+  await page.waitForSelector("#canvas-back");
   await page.waitForSelector(".pd-el-sticky");
   await page.waitForSelector(".pd-el-comment");
   await page.waitForSelector(".pd-resize");
@@ -184,6 +186,8 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#filter-unassigned");
   await page.waitForSelector("#filter-overdue");
   await page.waitForSelector("#filter-flagged");
+  await page.waitForSelector("#filter-watching");
+  await page.waitForSelector("#filter-epic");
   await page.locator("#filter-overdue").click();
   assert.match(await text(page, "#work-board"), /Ship the product shell/);
   await page.locator("#filter-flagged").click();
@@ -220,6 +224,7 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#issue-flag");
   await page.waitForSelector("#issue-children");
   await page.waitForSelector("#issue-relates");
+  await page.waitForSelector("#issue-watch");
   assert.match(await text(page, "#issue-reporter"), /Alice|Reported by/);
   await page.locator("#swimlane-epic").click();
   await page.waitForSelector(".ew-swimlane");

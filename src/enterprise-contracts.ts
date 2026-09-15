@@ -1,4 +1,4 @@
-export const ENTERPRISE_SCHEMA_VERSION = 5;
+export const ENTERPRISE_SCHEMA_VERSION = 6;
 
 export type PrincipalKind = "user" | "agent" | "group" | "service";
 export type ResourceKind =

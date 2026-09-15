@@ -196,6 +196,8 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="tool-comment" data-tool="comment" aria-pressed="false"><span data-lucide="message-square"></span> Comment</button>
                 <button type="button" id="canvas-undo" aria-label="Undo canvas move"><span data-lucide="undo-2"></span> Undo</button>
                 <button type="button" id="canvas-delete" aria-label="Delete selected frame"><span data-lucide="trash-2"></span> Delete</button>
+                <button type="button" id="canvas-front" aria-label="Bring selected frame to front">Front</button>
+                <button type="button" id="canvas-back" aria-label="Send selected frame to back">Back</button>
                 <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
                 <span id="zoom-label">100%</span>
@@ -235,6 +237,11 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="filter-unassigned" data-filter="unassigned" aria-pressed="false">Unassigned</button>
                 <button type="button" id="filter-overdue" data-filter="overdue" aria-pressed="false">Overdue</button>
                 <button type="button" id="filter-flagged" data-filter="flagged" aria-pressed="false"><span data-lucide="flag"></span> Flagged</button>
+                <button type="button" id="filter-watching" data-filter="watching" aria-pressed="false">Watching</button>
+                <label class="ew-sr" for="filter-epic">Epic</label>
+                <select id="filter-epic" aria-label="Filter by epic">
+                  <option value="">All epics</option>
+                </select>
                 <button type="button" id="swimlane-epic" aria-pressed="false">Group by epic</button>
                 <button type="button" id="view-board" aria-pressed="true">Board</button>
                 <button type="button" id="view-list" aria-pressed="false">List</button>
@@ -530,6 +537,7 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
   ws.updateIssue(actor, epic.id, { dueAt: "2026-01-15", labels: ["shell"] });
   ws.updateIssue(actor, leak.id, { flagged: true });
   ws.createIssue(actor, { projectId, typeKey: "subtask", summary: "Delete frames from the canvas", parentId: canvas.id });
+  ws.watchIssue(actor, canvas.id);
   ws.addExternalLink(actor, { fromKind: "issue", fromId: collab.id, provider: "issue", issueId: canvas.id, label: "blocks" });
   ws.addIssueComment(actor, collab.id, "Hosted collab is on the sprint.");
   ws.logWork(actor, { issueId: collab.id, durationSeconds: 3600, note: "Wired persist-before-ack" });

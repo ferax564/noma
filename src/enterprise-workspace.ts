@@ -783,7 +783,7 @@ export class EnterpriseWorkspace {
     actor: ActorContext,
     artifactId: string,
     elementId: string,
-    patch: { geometry?: Partial<PaperGeometry>; text?: string; altText?: string },
+    patch: { geometry?: Partial<PaperGeometry>; text?: string; altText?: string; zIndex?: number },
   ): { revision: number; hash: string } {
     const read = this.readArtifact(actor, artifactId, "draft");
     const current = read.document.elements.find((element) => element.id === elementId);
@@ -798,6 +798,7 @@ export class EnterpriseWorkspace {
           patch: {
             text: patch.text,
             altText: patch.altText,
+            zIndex: patch.zIndex,
             geometry: patch.geometry ? { ...current.geometry, ...patch.geometry } : undefined,
           },
         },
@@ -888,6 +889,7 @@ export class EnterpriseWorkspace {
       dueAt: string | null;
       labels: string[];
       flagged: boolean;
+      watching: boolean;
     }>;
     principals: Array<{ id: string; name: string; kind: PrincipalKind; email: string | null }>;
     boards: Array<{ id: string; projectId: string; name: string; kind: string }>;
@@ -940,6 +942,13 @@ export class EnterpriseWorkspace {
     )
       .filter((row) => this.hasRole(actor, "project", row.id, "viewer"))
       .map((row) => ({ ...row, statuses: this.activeWorkflow(row.id).statuses }));
+    const watchingIds = new Set(
+      (
+        this.store.db
+          .prepare("SELECT issue_id AS issueId FROM issue_watchers WHERE tenant_id = ? AND principal_id = ?")
+          .all(actor.tenantId, actor.principalId) as Array<{ issueId: string }>
+      ).map((row) => row.issueId),
+    );
     const issues = (
       this.store.db
         .prepare(
@@ -993,6 +1002,7 @@ export class EnterpriseWorkspace {
         priority: row.priority,
         dueAt: row.dueAt,
         flagged: row.flagged === 1,
+        watching: watchingIds.has(row.id),
         labels: (() => {
           try {
             const parsed = JSON.parse(row.labelsJson || "[]") as unknown;
@@ -1454,6 +1464,13 @@ export class EnterpriseWorkspace {
     for (const mention of mentions) {
       this.notify(actor.tenantId, mention, "Mentioned on an issue", body.slice(0, 180), "issue", issueId);
     }
+    const watchers = this.store.db
+      .prepare("SELECT principal_id AS principalId FROM issue_watchers WHERE issue_id = ?")
+      .all(issueId) as Array<{ principalId: string }>;
+    for (const watcher of watchers) {
+      if (watcher.principalId === actor.principalId || mentions.includes(watcher.principalId)) continue;
+      this.notify(actor.tenantId, watcher.principalId, "Watched issue updated", body.slice(0, 180), "issue", issueId);
+    }
     this.issueEvent(issueId, actor.principalId, "commented", { id });
     return id;
   }
@@ -1479,6 +1496,7 @@ export class EnterpriseWorkspace {
       name: string;
       hierarchy: string;
     };
+    const watchers = this.listIssueWatchers(actor, issueId);
     return {
       ...issue,
       typeKey: type.key,
@@ -1488,7 +1506,38 @@ export class EnterpriseWorkspace {
       worklogs: this.listWorklogs(actor, issueId),
       transitions: this.listIssueTransitions(actor, issueId),
       events: this.listIssueEvents(actor, issueId),
+      watchers,
+      watching: watchers.some((watcher) => watcher.id === actor.principalId),
     };
+  }
+
+  listIssueWatchers(actor: ActorContext, issueId: string): Array<{ id: string; name: string }> {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    return this.store.db
+      .prepare(
+        `SELECT p.id, p.name FROM issue_watchers w JOIN principals p ON p.id = w.principal_id
+         WHERE w.issue_id = ? ORDER BY p.name`,
+      )
+      .all(issueId) as Array<{ id: string; name: string }>;
+  }
+
+  watchIssue(actor: ActorContext, issueId: string): { watching: true } {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    this.store.db
+      .prepare("INSERT OR IGNORE INTO issue_watchers(issue_id, principal_id, tenant_id, created_at) VALUES (?, ?, ?, ?)")
+      .run(issueId, actor.principalId, actor.tenantId, this.now());
+    this.issueEvent(issueId, actor.principalId, "watched", {});
+    return { watching: true };
+  }
+
+  unwatchIssue(actor: ActorContext, issueId: string): { watching: false } {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    this.store.db.prepare("DELETE FROM issue_watchers WHERE issue_id = ? AND principal_id = ?").run(issueId, actor.principalId);
+    this.issueEvent(issueId, actor.principalId, "unwatched", {});
+    return { watching: false };
   }
 
   listIssueEvents(actor: ActorContext, issueId: string): Array<{ action: string; detail: unknown; createdAt: string; actorName: string }> {
