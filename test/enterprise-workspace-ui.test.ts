@@ -145,8 +145,10 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#board-search");
   await page.waitForSelector("#type-filters");
   await page.waitForSelector("#swimlane-epic");
+  await page.waitForSelector("#view-list");
   assert.match(await text(page, "#work-board"), /ATLAS-/);
   assert.match(await text(page, "#work-board"), /2026-09-22/);
+  assert.match(await text(page, "#work-board"), /urgent|canvas/);
   await page.waitForSelector("#board-filters");
   const movedByPointer = await page.evaluate(async () => {
     const card = document.querySelector<HTMLElement>('.ew-card[data-type="story"]');
@@ -173,9 +175,13 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
     return current.length > 0 && current !== previous;
   }, undefined, before);
   await page.waitForSelector("#issue-due");
+  await page.waitForSelector("#issue-labels");
   await page.locator("#swimlane-epic").click();
   await page.waitForSelector(".ew-swimlane");
   assert.match(await text(page, "#work-board"), /Ship the product shell/);
+  await page.locator("#view-list").click();
+  await page.waitForSelector(".ew-issue-table");
+  assert.match(await text(page, "#work-board"), /ATLAS-3/);
   await page.waitForSelector("#advance-issue");
   assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 

@@ -54,6 +54,7 @@ interface ShellIssue {
   sprintId: string | null;
   priority: string;
   dueAt?: string | null;
+  labels?: string[];
 }
 
 interface WorkspacePayload {
@@ -108,6 +109,7 @@ let boardFilter: "all" | "mine" = "all";
 let boardSearch = "";
 let typeFilter = "";
 let swimlanes = false;
+let boardView: "board" | "list" = "board";
 let paletteIndex = 0;
 let mentionStop: (() => void) | undefined;
 
@@ -678,6 +680,8 @@ function renderBoard(): void {
   $("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
   $("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
   $("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
+  $("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
+  $("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
   const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
   $("type-filters").innerHTML = [
     `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
@@ -699,6 +703,7 @@ function renderBoard(): void {
     const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
     const parent = payload?.issues.find((item) => item.id === issue.parentId);
     const due = (issue.dueAt ?? "").slice(0, 10);
+    const labels = (issue.labels ?? []).map((label) => `<span class="ew-label">${escapeHtml(label)}</span>`).join("");
     return `<button class="ew-card${issue.id === selectedIssueId ? " is-open" : ""}" type="button" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
       <span class="ew-key">${escapeHtml(issue.key)}</span>
       <strong>${escapeHtml(issue.summary)}</strong>
@@ -708,6 +713,7 @@ function renderBoard(): void {
         ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
         <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
         ${due ? `<span class="ew-due">${escapeHtml(due)}</span>` : ""}
+        ${labels}
         ${assignee ? avatarMarkup(assignee.name) : ""}
       </span>
     </button>`;
@@ -728,8 +734,29 @@ function renderBoard(): void {
       })
       .join("");
   const board = $("work-board");
-  board.classList.toggle("has-swimlanes", swimlanes);
-  if (swimlanes) {
+  board.classList.toggle("has-swimlanes", swimlanes && boardView === "board");
+  board.classList.toggle("is-list", boardView === "list");
+  if (boardView === "list") {
+    const statusName = (id: string) => columns.find((status) => status.id === id)?.name ?? id;
+    board.innerHTML = `<div class="ew-issue-table" role="table" aria-label="Issue list">
+      <div class="ew-row ew-row-head" role="row">
+        <span>Key</span><span>Summary</span><span>Status</span><span>Priority</span><span>Due</span><span>Estimate</span>
+      </div>
+      ${visible
+        .map((issue) => {
+          const due = (issue.dueAt ?? "").slice(0, 10);
+          return `<button type="button" class="ew-row${issue.id === selectedIssueId ? " is-open" : ""}" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}" role="row">
+            <span class="ew-key">${escapeHtml(issue.key)}</span>
+            <strong>${escapeHtml(issue.summary)}</strong>
+            <span>${escapeHtml(statusName(issue.statusId))}</span>
+            <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
+            <span class="ew-due">${escapeHtml(due)}</span>
+            <span class="ew-points">${issue.estimate ?? ""}</span>
+          </button>`;
+        })
+        .join("")}
+    </div>`;
+  } else if (swimlanes) {
     const epicLane = (issue: ShellIssue): { id: string; title: string } => {
       if (issue.typeKey === "epic") return { id: issue.id, title: `${issue.key} ${issue.summary}` };
       const seen = new Set<string>();
@@ -839,6 +866,8 @@ async function inspectIssue(id: string): Promise<void> {
     status_id: string;
     priority?: string;
     due_at?: string | null;
+    labels_json?: string;
+    estimate?: number | null;
     events?: Array<{ action: string; actorName: string; createdAt: string }>;
   }>(`/v1/issues/${encodeURIComponent(id)}`);
   const project = payload.projects.find((item) => item.id === issue.projectId);
@@ -863,6 +892,15 @@ async function inspectIssue(id: string): Promise<void> {
         <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
         <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
         <label for="issue-due">Due date<input id="issue-due" type="date" value="${escapeHtml((detail.due_at ?? issue.dueAt ?? "").slice(0, 10))}" /></label>
+        <label for="issue-estimate">Estimate<input id="issue-estimate" type="number" min="0" step="1" value="${escapeHtml(String(detail.estimate ?? issue.estimate ?? ""))}" /></label>
+        <label for="issue-labels">Labels<input id="issue-labels" value="${escapeHtml((() => {
+          try {
+            const parsed = typeof detail.labels_json === "string" ? (JSON.parse(detail.labels_json) as unknown) : issue.labels;
+            return Array.isArray(parsed) ? parsed.join(", ") : (issue.labels ?? []).join(", ");
+          } catch {
+            return (issue.labels ?? []).join(", ");
+          }
+        })())}" placeholder="canvas, urgent" /></label>
       </div>
       <div class="ew-actions">
         <button type="button" id="save-issue">Save</button>
@@ -1066,7 +1104,7 @@ $("rail-actions").addEventListener("change", (event) => {
 });
 
 $("work-board").addEventListener("click", (event) => {
-  const card = (event.target as HTMLElement).closest<HTMLElement>("[data-issue].ew-card");
+  const card = (event.target as HTMLElement).closest<HTMLElement>("[data-issue]");
   if (card?.dataset.issue && !$("work-board").classList.contains("is-sorting")) void inspectIssue(card.dataset.issue);
 });
 
@@ -1118,6 +1156,11 @@ inspector.addEventListener("click", async (event) => {
           assigneeId: $<HTMLSelectElement>("issue-assignee").value || null,
           priority: $<HTMLSelectElement>("issue-priority").value,
           dueAt: $<HTMLInputElement>("issue-due").value || null,
+          estimate: $<HTMLInputElement>("issue-estimate").value === "" ? null : Number($<HTMLInputElement>("issue-estimate").value),
+          labels: $<HTMLInputElement>("issue-labels")
+            .value.split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
         }),
       });
       const sprintId = $<HTMLSelectElement>("issue-sprint").value || null;
@@ -1692,6 +1735,16 @@ $("board-filters").addEventListener("click", (event) => {
     renderBoard();
     return;
   }
+  if (button.id === "view-list") {
+    boardView = "list";
+    renderBoard();
+    return;
+  }
+  if (button.id === "view-board") {
+    boardView = "board";
+    renderBoard();
+    return;
+  }
   if (!button.dataset.filter) return;
   boardFilter = button.dataset.filter === "mine" ? "mine" : "all";
   renderBoard();
@@ -1709,7 +1762,7 @@ $("board-search").addEventListener("input", (event) => {
 
 $("work-board").addEventListener("keydown", (event) => {
   const target = event.target as HTMLElement;
-  if ((event.key === "Enter" || event.key === " ") && target.closest(".ew-card") && !target.classList.contains("ew-column-add")) {
+  if ((event.key === "Enter" || event.key === " ") && (target.closest(".ew-card") || target.closest(".ew-row")) && !target.classList.contains("ew-column-add")) {
     const card = target.closest<HTMLElement>("[data-issue].ew-card");
     if (card?.dataset.issue) {
       event.preventDefault();

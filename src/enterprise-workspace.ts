@@ -879,6 +879,7 @@ export class EnterpriseWorkspace {
       sprintId: string | null;
       priority: string;
       dueAt: string | null;
+      labels: string[];
     }>;
     principals: Array<{ id: string; name: string; kind: PrincipalKind; email: string | null }>;
     boards: Array<{ id: string; projectId: string; name: string; kind: string }>;
@@ -934,7 +935,7 @@ export class EnterpriseWorkspace {
     const issues = (
       this.store.db
         .prepare(
-          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId, i.priority, i.due_at AS dueAt
+          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId, i.priority, i.due_at AS dueAt, i.labels_json AS labelsJson
            FROM issues i JOIN issue_types t ON t.id = i.type_id
            WHERE i.tenant_id = ? ORDER BY i.rank`,
         )
@@ -955,6 +956,7 @@ export class EnterpriseWorkspace {
         sprintId: string | null;
         priority: string;
         dueAt: string | null;
+        labelsJson: string;
       }>
     )
       .filter((row) =>
@@ -980,6 +982,14 @@ export class EnterpriseWorkspace {
         sprintId: row.sprintId,
         priority: row.priority,
         dueAt: row.dueAt,
+        labels: (() => {
+          try {
+            const parsed = JSON.parse(row.labelsJson || "[]") as unknown;
+            return Array.isArray(parsed) ? parsed.map(String) : [];
+          } catch {
+            return [];
+          }
+        })(),
       }));
     const principals = this.store.db
       .prepare("SELECT id, name, kind, email FROM principals WHERE tenant_id = ? AND active = 1 ORDER BY name")
@@ -1381,7 +1391,7 @@ export class EnterpriseWorkspace {
   updateIssue(
     actor: ActorContext,
     issueId: string,
-    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[]; priority?: string; dueAt?: string | null },
+    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[]; priority?: string; dueAt?: string | null; estimate?: number | null },
   ): void {
     const issue = this.issueRow(issueId, actor.tenantId);
     this.requireRole(actor, "project", issue.project_id, "editor");
@@ -1398,7 +1408,7 @@ export class EnterpriseWorkspace {
       .prepare(
         `UPDATE issues SET summary = COALESCE(?, summary), description = COALESCE(?, description), assignee_id = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
          parent_id = CASE WHEN ? = 1 THEN ? ELSE parent_id END, labels_json = COALESCE(?, labels_json), priority = COALESCE(?, priority),
-         due_at = CASE WHEN ? = 1 THEN ? ELSE due_at END, updated_at = ? WHERE id = ?`,
+         due_at = CASE WHEN ? = 1 THEN ? ELSE due_at END, estimate = CASE WHEN ? = 1 THEN ? ELSE estimate END, updated_at = ? WHERE id = ?`,
       )
       .run(
         patch.summary ?? null,
@@ -1411,6 +1421,8 @@ export class EnterpriseWorkspace {
         patch.priority ?? null,
         patch.dueAt === undefined ? 0 : 1,
         patch.dueAt ?? null,
+        patch.estimate === undefined ? 0 : 1,
+        patch.estimate ?? null,
         this.now(),
         issueId,
       );

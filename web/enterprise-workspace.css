@@ -1279,6 +1279,42 @@ input:focus, select:focus, textarea:focus {
 .ew-visual-stage.is-panning { cursor: grab; }
 .ew-visual-stage.is-sticky { cursor: crosshair; }
 .ew-visual-stage.is-connecting { cursor: copy; }
+.ew-label {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: #e9f2ff;
+  color: #0c66e4;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ew-board.is-list {
+  display: block;
+  padding: 8px 16px 24px;
+}
+.ew-issue-table { display: grid; gap: 2px; }
+.ew-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1.6fr) 110px 80px 96px 64px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius);
+  background: transparent;
+}
+.ew-row-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ds-text-subtlest);
+  text-transform: uppercase;
+}
+.ew-row:hover, .ew-row.is-open { background: var(--ds-surface); border-color: var(--ds-border); }
+.ew-row strong { font-weight: 500; font-size: 13px; }
 .ew-body.is-issue { grid-template-columns: 240px minmax(0, 1fr) min(480px, 38vw); }
 .ew-board.has-swimlanes {
   display: flex;

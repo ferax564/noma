@@ -413,6 +413,12 @@ export async function dispatchEnterpriseApi(
         parentId: body.parentId === undefined ? undefined : body.parentId === null ? null : String(body.parentId),
         priority: typeof body.priority === "string" ? body.priority : undefined,
         dueAt: body.dueAt === undefined ? undefined : body.dueAt === null || body.dueAt === "" ? null : String(body.dueAt),
+        labels: Array.isArray(body.labels)
+          ? body.labels.map(String)
+          : typeof body.labels === "string"
+            ? body.labels.split(",").map((item: string) => item.trim()).filter(Boolean)
+            : undefined,
+        estimate: body.estimate === undefined ? undefined : body.estimate === null || body.estimate === "" ? null : Number(body.estimate),
       });
       send(res, 200, { ok: true });
       return true;

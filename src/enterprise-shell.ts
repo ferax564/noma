@@ -210,6 +210,8 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All issues</button>
                 <button type="button" id="filter-mine" data-filter="mine" aria-pressed="false">Assigned to me</button>
                 <button type="button" id="swimlane-epic" aria-pressed="false">Group by epic</button>
+                <button type="button" id="view-board" aria-pressed="true">Board</button>
+                <button type="button" id="view-list" aria-pressed="false">List</button>
               </div>
               <div id="type-filters" class="ew-filters" role="group" aria-label="Issue types"></div>
               <p id="jql-error" class="ew-error" role="alert"></p>
@@ -465,8 +467,8 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
   ws.startSprint(actor, sprintId);
   ws.setIssueSprint(actor, collab.id, sprintId);
   ws.setIssueSprint(actor, canvas.id, sprintId);
-  ws.updateIssue(actor, canvas.id, { dueAt: "2026-09-22", priority: "high" });
-  ws.updateIssue(actor, epic.id, { dueAt: "2026-09-30" });
+  ws.updateIssue(actor, canvas.id, { dueAt: "2026-09-22", priority: "high", labels: ["canvas", "urgent"], estimate: 5 });
+  ws.updateIssue(actor, epic.id, { dueAt: "2026-09-30", labels: ["shell"] });
   ws.addIssueComment(actor, collab.id, "Hosted collab is on the sprint.");
   ws.logWork(actor, { issueId: collab.id, durationSeconds: 3600, note: "Wired persist-before-ack" });
   ws.addExternalLink(actor, {
