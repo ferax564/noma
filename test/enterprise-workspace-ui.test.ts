@@ -131,6 +131,15 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
     timeout: 20_000,
   });
   await page.waitForSelector("#doc-cover:not([hidden]) img");
+  await page.waitForSelector("#page-find-open");
+  const found = await page.evaluate(() =>
+    (window as unknown as { nomaWorkspace: { findInPage: (query: string) => number } }).nomaWorkspace.findInPage("surface"),
+  );
+  assert.ok(found > 0);
+  await page.waitForSelector("#page-find:not([hidden])");
+  assert.match(await text(page, "#page-find-count"), /1 of /);
+  await page.locator("#page-find-close").click();
+  await page.waitForSelector("#page-find[hidden]");
   assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 
   await page.locator("#mode-visuals").click();
@@ -139,12 +148,16 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector(".pd-el-arrow");
   await page.waitForSelector("#tool-sticky");
   await page.waitForSelector("#tool-connect");
+  await page.waitForSelector("#tool-comment");
   await page.waitForSelector("#sticky-pink");
   await page.waitForSelector("#canvas-undo");
+  await page.waitForSelector("#canvas-delete");
   await page.waitForSelector(".pd-el-sticky");
+  await page.waitForSelector(".pd-el-comment");
   await page.waitForSelector(".pd-resize");
   assert.match(await text(page, "#visual-title"), /Atlas architecture/);
   assert.match(await text(page, "#visual-stage"), /Atlas architecture/);
+  assert.match(await text(page, "#visual-stage"), /Call this out in review/);
   assert.match(await text(page, "#visual-outline"), /Atlas architecture/);
   const movedFrame = await page.evaluate(() => {
     const card = document.querySelector<HTMLElement>(".pd-el:not(.pd-el-arrow)");
@@ -170,8 +183,11 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#board-filters");
   await page.waitForSelector("#filter-unassigned");
   await page.waitForSelector("#filter-overdue");
+  await page.waitForSelector("#filter-flagged");
   await page.locator("#filter-overdue").click();
   assert.match(await text(page, "#work-board"), /Ship the product shell/);
+  await page.locator("#filter-flagged").click();
+  assert.match(await text(page, "#work-board"), /Search must not leak/);
   await page.locator("#filter-all").click();
   const movedByPointer = await page.evaluate(async () => {
     const card = document.querySelector<HTMLElement>('.ew-card[data-type="story"]');
@@ -201,6 +217,9 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#issue-labels");
   await page.waitForSelector("#issue-parent");
   await page.waitForSelector("#issue-reporter");
+  await page.waitForSelector("#issue-flag");
+  await page.waitForSelector("#issue-children");
+  await page.waitForSelector("#issue-relates");
   assert.match(await text(page, "#issue-reporter"), /Alice|Reported by/);
   await page.locator("#swimlane-epic").click();
   await page.waitForSelector(".ew-swimlane");

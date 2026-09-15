@@ -23,6 +23,7 @@ export {
   paperCanvasStyles,
   paperHash,
   paperStickyColor,
+  paperCommentPin,
   semanticOutline,
 } from "./enterprise-paperdom.js";
 export type { PaperDocument, PaperElement, VisualCommand } from "./enterprise-paperdom.js";

@@ -160,6 +160,10 @@ export async function dispatchEnterpriseApi(
     );
     return true;
   }
+  if (artifactElement && method === "DELETE") {
+    send(res, 200, ws.deleteArtifactElement(actor, decodeURIComponent(artifactElement[1]!), decodeURIComponent(artifactElement[2]!)));
+    return true;
+  }
 
   const artifactMatch = path.match(/^\/v1\/artifacts\/([^/]+)(?:\/(elements))?$/);
   if (artifactMatch && method === "GET" && !artifactMatch[2]) {
@@ -238,7 +242,7 @@ export async function dispatchEnterpriseApi(
     }
     if (action === "comments" && method === "POST") {
       const body = await readJson(req);
-      send(res, 200, ws.addDocumentComment(actor, documentId, String(body.body ?? "")));
+      send(res, 200, ws.addDocumentComment(actor, documentId, String(body.body ?? ""), body.quote ? String(body.quote) : undefined));
       return true;
     }
     if (action === "assets" && method === "GET") {
@@ -419,6 +423,7 @@ export async function dispatchEnterpriseApi(
             ? body.labels.split(",").map((item: string) => item.trim()).filter(Boolean)
             : undefined,
         estimate: body.estimate === undefined ? undefined : body.estimate === null || body.estimate === "" ? null : Number(body.estimate),
+        flagged: typeof body.flagged === "boolean" ? body.flagged : undefined,
       });
       send(res, 200, { ok: true });
       return true;

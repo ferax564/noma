@@ -200,6 +200,10 @@ function escapeMarkup(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+export function paperCommentPin(altText: string | undefined): boolean {
+  return Boolean(altText && (altText === "Comment" || altText.startsWith("Comment:")));
+}
+
 export function paperStickyColor(altText: string | undefined): "yellow" | "pink" | "green" | "blue" | undefined {
   if (!altText) return undefined;
   if (altText === "Sticky") return "yellow";
@@ -252,8 +256,9 @@ export function paperCanvasMarkup(doc: PaperDocument): string {
         inner = `<svg class="pd-arrow" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><marker id="${markerId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#0C66E4"/></marker></defs><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0C66E4" stroke-width="2.5" marker-end="url(#${markerId})"/></svg>`;
       }
       const color = paperStickyColor(el.altText);
-      const sticky = color ? ` pd-el-sticky pd-el-sticky-${color}` : "";
-      const stickyAttr = color ? ` data-sticky="${color}"` : "";
+      const pin = paperCommentPin(el.altText);
+      const sticky = color ? ` pd-el-sticky pd-el-sticky-${color}` : pin ? " pd-el-comment" : "";
+      const stickyAttr = color ? ` data-sticky="${color}"` : pin ? ` data-comment="true"` : "";
       const fromTo = el.type === "arrow" ? ` data-from="${escapeMarkup(el.fromId ?? "")}" data-to="${escapeMarkup(el.toId ?? "")}"` : "";
       const handle = el.type === "arrow" ? "" : `<span class="pd-resize" aria-hidden="true"></span>`;
       return `<div class="pd-el pd-el-${escapeMarkup(el.type)}${sticky}" data-id="${escapeMarkup(el.id)}" data-x="${x}" data-y="${y}"${fromTo}${stickyAttr} style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg)">${inner}${handle}</div>`;
@@ -277,7 +282,9 @@ export function paperCanvasStyles(): string {
 .pd-el-sticky-blue::after{border-color:#579dff #fff}
 .pd-resize{position:absolute;right:3px;bottom:3px;width:10px;height:10px;border-radius:2px;background:#0C66E4;cursor:nwse-resize}
 .pd-el.is-dragging{opacity:.92;box-shadow:0 12px 24px -12px #091e428a;z-index:20}
-.pd-el.is-connect{outline:2px solid #0C66E4;outline-offset:2px}
+.pd-el-comment{background:#fff7d6;border-color:#f5cd47;border-radius:18px 18px 18px 4px;box-shadow:0 10px 18px -12px #091e428a;padding:12px 12px 10px 28px}
+.pd-el-comment::before{content:"";position:absolute;left:10px;top:12px;width:10px;height:10px;border-radius:50%;background:#e56910;box-shadow:0 0 0 3px #ffd2a6}
+.pd-el-comment .pd-el-text{font-size:12px;font-weight:600}
 .pd-el-chart{background:#1d2125;color:#b6c2cf;border-color:transparent}
 .pd-el-chart .pd-el-text{color:#b6c2cf}
 .pd-chart{display:flex;align-items:flex-end;gap:8px;height:100%;padding-top:8px}

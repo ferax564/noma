@@ -118,6 +118,9 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <button type="button" data-cmd="italic" aria-label="Italic"><span data-lucide="italic"></span></button>
               <button type="button" data-cmd="strike" aria-label="Strikethrough"><span data-lucide="strikethrough"></span></button>
               <button type="button" data-cmd="underline" aria-label="Underline"><span data-lucide="underline"></span></button>
+              <button type="button" data-cmd="align-left" aria-label="Align left"><span data-lucide="align-left"></span></button>
+              <button type="button" data-cmd="align-center" aria-label="Align center"><span data-lucide="align-center"></span></button>
+              <button type="button" data-cmd="align-right" aria-label="Align right"><span data-lucide="align-right"></span></button>
               <span class="ew-toolbar-sep" aria-hidden="true"></span>
               <button type="button" data-cmd="heading" data-level="1" aria-label="Heading 1"><span data-lucide="heading-1"></span></button>
               <button type="button" data-cmd="heading" data-level="2" aria-label="Heading 2"><span data-lucide="heading-2"></span></button>
@@ -134,6 +137,15 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <label class="ew-file" for="insert-image"><span data-lucide="image"></span> Image<input id="insert-image" type="file" accept="image/*" /></label>
               <label class="ew-file" for="insert-video"><span data-lucide="video"></span> Video<input id="insert-video" type="file" accept="video/*" /></label>
               <button id="doc-publish" type="button">Publish</button>
+              <button type="button" id="page-find-open" aria-label="Find in page"><span data-lucide="search"></span> Find</button>
+            </div>
+            <div id="page-find" class="ew-find" hidden>
+              <label class="ew-sr" for="page-find-input">Find in page</label>
+              <input id="page-find-input" type="search" placeholder="Find in page" autocomplete="off" />
+              <span id="page-find-count" class="ew-find-count">0 of 0</span>
+              <button type="button" id="page-find-prev" aria-label="Previous match">Prev</button>
+              <button type="button" id="page-find-next" aria-label="Next match">Next</button>
+              <button type="button" id="page-find-close" aria-label="Close find">Close</button>
             </div>
             <article class="ew-paper">
               <div id="doc-cover" class="ew-cover" hidden></div>
@@ -157,6 +169,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <div class="ew-comment ew-comment-compose">
                 <span id="comment-avatar" class="ew-avatar lg" aria-hidden="true">?</span>
                 <div>
+                  <p id="doc-comment-quote" class="ew-comment-quote" hidden></p>
                   <label for="doc-comment-input">Comment
                     <textarea id="doc-comment-input" rows="2" placeholder="Write a comment. Mention with @alice"></textarea>
                   </label>
@@ -180,7 +193,9 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                   <button type="button" id="sticky-blue" class="ew-swatch" data-sticky-color="blue" aria-label="Blue sticky" aria-pressed="false"></button>
                 </span>
                 <button type="button" id="tool-connect" data-tool="connect" aria-pressed="false">Connect</button>
-                <button type="button" id="canvas-undo" aria-label="Undo canvas move">Undo</button>
+                <button type="button" id="tool-comment" data-tool="comment" aria-pressed="false"><span data-lucide="message-square"></span> Comment</button>
+                <button type="button" id="canvas-undo" aria-label="Undo canvas move"><span data-lucide="undo-2"></span> Undo</button>
+                <button type="button" id="canvas-delete" aria-label="Delete selected frame"><span data-lucide="trash-2"></span> Delete</button>
                 <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
                 <span id="zoom-label">100%</span>
@@ -219,6 +234,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="filter-mine" data-filter="mine" aria-pressed="false">Assigned to me</button>
                 <button type="button" id="filter-unassigned" data-filter="unassigned" aria-pressed="false">Unassigned</button>
                 <button type="button" id="filter-overdue" data-filter="overdue" aria-pressed="false">Overdue</button>
+                <button type="button" id="filter-flagged" data-filter="flagged" aria-pressed="false"><span data-lucide="flag"></span> Flagged</button>
                 <button type="button" id="swimlane-epic" aria-pressed="false">Group by epic</button>
                 <button type="button" id="view-board" aria-pressed="true">Board</button>
                 <button type="button" id="view-list" aria-pressed="false">List</button>
@@ -465,6 +481,17 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
         altText: "Sticky:pink",
       },
     },
+    {
+      op: "insert_element",
+      element: {
+        id: "note-comment",
+        type: "shape",
+        geometry: { x: 596, y: 40, width: 160, height: 72 },
+        zIndex: 6,
+        text: "Call this out in review",
+        altText: "Comment",
+      },
+    },
   ];
   ws.applyArtifactCommands(actor, artifactId, commands, 0);
   const projectId = ws.createProject(actor, { key: "ATLAS", name: "Atlas", spaceId });
@@ -501,6 +528,9 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
   ws.setIssueSprint(actor, canvas.id, sprintId);
   ws.updateIssue(actor, canvas.id, { dueAt: "2026-09-22", priority: "high", labels: ["canvas", "urgent"], estimate: 5, assigneeId: actor.principalId });
   ws.updateIssue(actor, epic.id, { dueAt: "2026-01-15", labels: ["shell"] });
+  ws.updateIssue(actor, leak.id, { flagged: true });
+  ws.createIssue(actor, { projectId, typeKey: "subtask", summary: "Delete frames from the canvas", parentId: canvas.id });
+  ws.addExternalLink(actor, { fromKind: "issue", fromId: collab.id, provider: "issue", issueId: canvas.id, label: "blocks" });
   ws.addIssueComment(actor, collab.id, "Hosted collab is on the sprint.");
   ws.logWork(actor, { issueId: collab.id, durationSeconds: 3600, note: "Wired persist-before-ack" });
   ws.addExternalLink(actor, {

@@ -12,6 +12,7 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
+import TextAlign from "@tiptap/extension-text-align";
 import Typography from "@tiptap/extension-typography";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
@@ -195,7 +196,7 @@ function bindSlashMenu(editor: Editor): () => void {
   };
 }
 
-function bindFormatBubble(editor: Editor): () => void {
+function bindFormatBubble(editor: Editor, onComment?: (quote: string) => void): () => void {
   const bar = document.createElement("div");
   bar.className = "ew-bubble";
   bar.hidden = true;
@@ -206,6 +207,10 @@ function bindFormatBubble(editor: Editor): () => void {
     ["italic", "Italic", "Italic"],
     ["underline", "Underline", "Underline"],
     ["highlight", "Highlight", "Highlighter"],
+    ["align-left", "Align left", "AlignLeft"],
+    ["align-center", "Align center", "AlignCenter"],
+    ["align-right", "Align right", "AlignRight"],
+    ["comment", "Comment on selection", "MessageSquare"],
   ]
     .map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon as IconName)}</button>`)
     .join("");
@@ -247,6 +252,16 @@ function bindFormatBubble(editor: Editor): () => void {
     if (cmd === "italic") editor.chain().focus().toggleItalic().run();
     if (cmd === "underline") editor.chain().focus().toggleUnderline().run();
     if (cmd === "highlight") editor.chain().focus().toggleHighlight().run();
+    if (cmd === "align-left") editor.chain().focus().setTextAlign("left").run();
+    if (cmd === "align-center") editor.chain().focus().setTextAlign("center").run();
+    if (cmd === "align-right") editor.chain().focus().setTextAlign("right").run();
+    if (cmd === "comment") {
+      const { from, to } = editor.state.selection;
+      const quote = editor.state.doc.textBetween(from, to, " ").trim();
+      hide();
+      onComment?.(quote);
+      return;
+    }
     place();
   });
 
@@ -277,6 +292,7 @@ export function mountHostedCollab(options: {
   onPresence?: (users: PresenceUser[]) => void;
   onUpdate?: () => void;
   onCount?: (counts: { words: number; characters: number }) => void;
+  onComment?: (quote: string) => void;
 }): HostedCollab {
   const ydoc = new Y.Doc();
   const awareness = new Awareness(ydoc);
@@ -339,6 +355,7 @@ export function mountHostedCollab(options: {
         TableHeader,
         TableCell,
         NomaPanel,
+        TextAlign.configure({ types: ["heading", "paragraph"] }),
         Mention.configure({
           HTMLAttributes: { class: "ew-mention-chip" },
           suggestion: mentionSuggestion(options.people ?? []),
@@ -354,7 +371,7 @@ export function mountHostedCollab(options: {
       ],
     });
     stopSlash = bindSlashMenu(editor);
-    stopBubble = bindFormatBubble(editor);
+    stopBubble = bindFormatBubble(editor, options.onComment);
     editor.on("update", () => {
       options.onUpdate?.();
       options.onCount?.(editorCounts(editor));

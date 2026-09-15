@@ -31994,6 +31994,70 @@ ${err.toString()}`);
     }
   });
 
+  // node_modules/@tiptap/extension-text-align/dist/index.js
+  var TextAlign = Extension.create({
+    name: "textAlign",
+    addOptions() {
+      return {
+        types: [],
+        alignments: ["left", "center", "right", "justify"],
+        defaultAlignment: null
+      };
+    },
+    addGlobalAttributes() {
+      return [
+        {
+          types: this.options.types,
+          attributes: {
+            textAlign: {
+              default: this.options.defaultAlignment,
+              parseHTML: (element2) => {
+                const alignment = element2.style.textAlign;
+                return this.options.alignments.includes(alignment) ? alignment : this.options.defaultAlignment;
+              },
+              renderHTML: (attributes) => {
+                if (!attributes.textAlign) {
+                  return {};
+                }
+                return { style: `text-align: ${attributes.textAlign}` };
+              }
+            }
+          }
+        }
+      ];
+    },
+    addCommands() {
+      return {
+        setTextAlign: (alignment) => ({ commands: commands2 }) => {
+          if (!this.options.alignments.includes(alignment)) {
+            return false;
+          }
+          return this.options.types.map((type) => commands2.updateAttributes(type, { textAlign: alignment })).every((response) => response);
+        },
+        unsetTextAlign: () => ({ commands: commands2 }) => {
+          return this.options.types.map((type) => commands2.resetAttributes(type, "textAlign")).every((response) => response);
+        },
+        toggleTextAlign: (alignment) => ({ editor, commands: commands2 }) => {
+          if (!this.options.alignments.includes(alignment)) {
+            return false;
+          }
+          if (editor.isActive({ textAlign: alignment })) {
+            return commands2.unsetTextAlign();
+          }
+          return commands2.setTextAlign(alignment);
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-l": () => this.editor.commands.setTextAlign("left"),
+        "Mod-Shift-e": () => this.editor.commands.setTextAlign("center"),
+        "Mod-Shift-r": () => this.editor.commands.setTextAlign("right"),
+        "Mod-Shift-j": () => this.editor.commands.setTextAlign("justify")
+      };
+    }
+  });
+
   // node_modules/@tiptap/extension-typography/dist/index.js
   var emDash = (override) => textInputRule({
     find: /--$/,
@@ -35946,6 +36010,16 @@ ${err.toString()}`);
     ["path", { d: "M16 17H8" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/flag.mjs
+  var Flag = [
+    [
+      "path",
+      {
+        d: "M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"
+      }
+    ]
+  ];
+
   // node_modules/lucide/dist/esm/icons/funnel.mjs
   var Funnel = [
     [
@@ -36074,6 +36148,16 @@ ${err.toString()}`);
     ["path", { d: "M9 21H3v-6" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/message-square.mjs
+  var MessageSquare = [
+    [
+      "path",
+      {
+        d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"
+      }
+    ]
+  ];
+
   // node_modules/lucide/dist/esm/icons/moon.mjs
   var Moon = [
     [
@@ -36185,6 +36269,36 @@ ${err.toString()}`);
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
     ["path", { d: "M3 9h18" }],
     ["path", { d: "M3 15h18" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/text-align-center.mjs
+  var TextAlignCenter = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M17 12H7" }],
+    ["path", { d: "M19 19H5" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/text-align-end.mjs
+  var TextAlignEnd = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M21 12H9" }],
+    ["path", { d: "M21 19H7" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/text-align-start.mjs
+  var TextAlignStart = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M15 12H3" }],
+    ["path", { d: "M17 19H3" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/trash.mjs
+  var Trash = [
+    ["path", { d: "M10 11v6" }],
+    ["path", { d: "M14 11v6" }],
+    ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" }],
+    ["path", { d: "M3 6h18" }],
+    ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" }]
   ];
 
   // node_modules/lucide/dist/esm/icons/triangle-alert.mjs
@@ -36305,6 +36419,9 @@ ${err.toString()}`);
   // web/ui-kit.ts
   var ICONS = {
     AlertTriangle: TriangleAlert,
+    AlignCenter: TextAlignCenter,
+    AlignLeft: TextAlignStart,
+    AlignRight: TextAlignEnd,
     Bell,
     Bold: Bold2,
     Bug,
@@ -36314,6 +36431,7 @@ ${err.toString()}`);
     Command,
     FileText,
     Filter: Funnel,
+    Flag,
     Hand,
     Heading1,
     Heading2,
@@ -36328,6 +36446,7 @@ ${err.toString()}`);
     ListChecks,
     ListOrdered,
     Maximize2,
+    MessageSquare,
     Moon,
     MousePointer2,
     Plus,
@@ -36340,6 +36459,7 @@ ${err.toString()}`);
     Strikethrough,
     Sun,
     Table: Table2,
+    Trash2: Trash,
     Underline: Underline2,
     Undo2,
     User,
@@ -36511,6 +36631,11 @@ ${err.toString()}`);
         handlers2.onPlaceSticky?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
         return;
       }
+      if (tool === "comment") {
+        const box = page.getBoundingClientRect();
+        handlers2.onPlaceComment?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
+        return;
+      }
       if (tool === "connect") {
         const card2 = target.closest(".pd-el");
         if (!card2 || card2.classList.contains("pd-el-arrow") || !card2.dataset.id) return;
@@ -36545,7 +36670,10 @@ ${err.toString()}`);
       }
       const resizing = target.closest(".pd-resize");
       const card = target.closest(".pd-el");
-      if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) return;
+      if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) {
+        if (!target.closest(".pd-el")) handlers2.onSelect?.("");
+        return;
+      }
       const id2 = card.dataset.id ?? "";
       if (!id2) return;
       const startX = event.clientX;
@@ -36574,7 +36702,10 @@ ${err.toString()}`);
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         card.classList.remove("is-dragging");
-        if (!dragging) return;
+        if (!dragging) {
+          handlers2.onSelect?.(id2);
+          return;
+        }
         handlers2.onMove({
           id: id2,
           x: Number.parseFloat(card.style.left) || originLeft,
@@ -36866,7 +36997,7 @@ ${err.toString()}`);
       menu.remove();
     };
   }
-  function bindFormatBubble(editor) {
+  function bindFormatBubble(editor, onComment) {
     const bar = document.createElement("div");
     bar.className = "ew-bubble";
     bar.hidden = true;
@@ -36876,7 +37007,11 @@ ${err.toString()}`);
       ["bold", "Bold", "Bold"],
       ["italic", "Italic", "Italic"],
       ["underline", "Underline", "Underline"],
-      ["highlight", "Highlight", "Highlighter"]
+      ["highlight", "Highlight", "Highlighter"],
+      ["align-left", "Align left", "AlignLeft"],
+      ["align-center", "Align center", "AlignCenter"],
+      ["align-right", "Align right", "AlignRight"],
+      ["comment", "Comment on selection", "MessageSquare"]
     ].map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon)}</button>`).join("");
     document.body.appendChild(bar);
     const hide2 = () => {
@@ -36913,6 +37048,16 @@ ${err.toString()}`);
       if (cmd === "italic") editor.chain().focus().toggleItalic().run();
       if (cmd === "underline") editor.chain().focus().toggleUnderline().run();
       if (cmd === "highlight") editor.chain().focus().toggleHighlight().run();
+      if (cmd === "align-left") editor.chain().focus().setTextAlign("left").run();
+      if (cmd === "align-center") editor.chain().focus().setTextAlign("center").run();
+      if (cmd === "align-right") editor.chain().focus().setTextAlign("right").run();
+      if (cmd === "comment") {
+        const { from: from3, to } = editor.state.selection;
+        const quote = editor.state.doc.textBetween(from3, to, " ").trim();
+        hide2();
+        onComment?.(quote);
+        return;
+      }
       place();
     });
     editor.on("selectionUpdate", place);
@@ -36984,6 +37129,7 @@ ${err.toString()}`);
           TableHeader,
           TableCell,
           NomaPanel,
+          TextAlign.configure({ types: ["heading", "paragraph"] }),
           Mention.configure({
             HTMLAttributes: { class: "ew-mention-chip" },
             suggestion: mentionSuggestion(options.people ?? [])
@@ -36999,7 +37145,7 @@ ${err.toString()}`);
         ]
       });
       stopSlash = bindSlashMenu(editor);
-      stopBubble = bindFormatBubble(editor);
+      stopBubble = bindFormatBubble(editor, options.onComment);
       editor.on("update", () => {
         options.onUpdate?.();
         options.onCount?.(editorCounts(editor));
@@ -37186,7 +37332,10 @@ ${err.toString()}`);
   var paletteIndex = 0;
   var mentionStop;
   var canvasHistory = [];
+  var selectedCanvasId = "";
   var stickyColor = "yellow";
+  var findMatches = [];
+  var findIndex = 0;
   var $2 = (id2) => {
     const node = document.getElementById(id2);
     if (!node) throw new Error(`missing #${id2}`);
@@ -37319,6 +37468,76 @@ ${err.toString()}`);
   }
   function stickyAlt(color) {
     return color === "yellow" ? "Sticky" : `Sticky:${color}`;
+  }
+  function beginSelectionComment(quote) {
+    const box = $2("doc-comment-input");
+    const chip = document.getElementById("doc-comment-quote");
+    if (quote) {
+      box.dataset.quote = quote;
+      box.placeholder = `Comment on \u201C${quote.slice(0, 72)}\u201D`;
+      if (chip) {
+        chip.hidden = false;
+        chip.textContent = quote;
+      }
+    }
+    box.focus();
+    $2("doc-discussion").scrollIntoView({ block: "nearest" });
+  }
+  function closePageFind() {
+    const bar = document.getElementById("page-find");
+    if (bar) bar.hidden = true;
+    findMatches = [];
+    findIndex = 0;
+  }
+  function collectFindMatches(query) {
+    const editor = collab?.editor();
+    if (!editor || !query) return [];
+    const needle = query.toLowerCase();
+    const matches2 = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      const hay = node.text.toLowerCase();
+      let index = 0;
+      while (index < hay.length) {
+        const found2 = hay.indexOf(needle, index);
+        if (found2 < 0) break;
+        matches2.push({ from: pos + found2, to: pos + found2 + needle.length });
+        index = found2 + Math.max(1, needle.length);
+      }
+    });
+    return matches2;
+  }
+  function jumpFind(delta = 0) {
+    const editor = collab?.editor();
+    const count = document.getElementById("page-find-count");
+    if (!editor || !findMatches.length) {
+      if (count) count.textContent = "0 of 0";
+      return 0;
+    }
+    findIndex = (findIndex + delta + findMatches.length) % findMatches.length;
+    const match2 = findMatches[findIndex];
+    if (match2) {
+      editor.chain().focus().setTextSelection({ from: match2.from, to: match2.to }).scrollIntoView().run();
+    }
+    if (count) count.textContent = `${findIndex + 1} of ${findMatches.length}`;
+    return findMatches.length;
+  }
+  function runPageFind(query) {
+    const bar = document.getElementById("page-find");
+    if (bar) bar.hidden = false;
+    const input = document.getElementById("page-find-input");
+    if (input instanceof HTMLInputElement && input.value !== query) input.value = query;
+    findMatches = collectFindMatches(query.trim());
+    findIndex = 0;
+    return jumpFind(0);
+  }
+  function openPageFind() {
+    const bar = $2("page-find");
+    bar.hidden = false;
+    const input = $2("page-find-input");
+    input.focus();
+    input.select();
+    if (input.value.trim()) runPageFind(input.value);
   }
   function renderPresence(users) {
     const node = document.getElementById("doc-presence");
@@ -37478,6 +37697,7 @@ ${err.toString()}`);
   function openDocument(id2) {
     if (!id2 || !payload) return;
     selectedDocumentId = id2;
+    closePageFind();
     const doc4 = payload.documents.find((item) => item.id === id2);
     $2("doc-title").textContent = doc4?.title ?? "Untitled";
     const kicker = $2("doc-kicker");
@@ -37501,6 +37721,7 @@ ${err.toString()}`);
         renderWordCount();
       },
       onCount: renderWordCount,
+      onComment: beginSelectionComment,
       onStatus: (text2) => {
         $2("collab-status").textContent = text2;
         setStatus(`${payload?.actor.name ?? "Session"} \xB7 ${text2}`, text2.startsWith("ack") || text2 === "ready" ? "ok" : "connecting");
@@ -37556,6 +37777,7 @@ ${err.toString()}`);
           ${avatarMarkup(comment.authorName, "lg")}
           <div>
             <div class="ew-comment-meta"><strong>${escapeHtml3(comment.authorName)}</strong><span>${escapeHtml3(formatWhen(comment.createdAt))}</span></div>
+            ${comment.quote ? `<blockquote class="ew-comment-quote">${escapeHtml3(comment.quote)}</blockquote>` : ""}
             <p>${escapeHtml3(comment.body)}</p>
           </div>
         </article>`
@@ -37654,9 +37876,10 @@ ${err.toString()}`);
       onEdit: (elementId, text2) => {
         const card = $2("visual-stage").querySelector(`.pd-el[data-id="${CSS.escape(elementId)}"]`);
         const color = card?.dataset.sticky;
+        const pin = card?.dataset.comment;
         void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(elementId)}`, {
           method: "PATCH",
-          body: JSON.stringify({ text: text2, altText: color ? stickyAlt(color) : text2 })
+          body: JSON.stringify({ text: text2, altText: color ? stickyAlt(color) : pin ? "Comment" : text2 })
         });
       },
       onPlaceSticky: (x, y) => {
@@ -37669,10 +37892,26 @@ ${err.toString()}`);
           geometry: { x, y, width: 200, height: 160 }
         });
       },
+      onPlaceComment: (x, y) => {
+        $2("visual-stage").dataset.tool = "select";
+        syncVisualTools();
+        void addCanvasElement({
+          type: "shape",
+          text: "Comment",
+          altText: "Comment",
+          geometry: { x, y, width: 160, height: 72 }
+        });
+      },
       onConnect: (fromId, toId) => {
         $2("visual-stage").dataset.tool = "select";
         syncVisualTools();
         void addCanvasElement({ type: "arrow", fromId, toId, altText: "Arrow" });
+      },
+      onSelect: (elementId) => {
+        selectedCanvasId = elementId;
+        for (const node of $2("visual-stage").querySelectorAll(".pd-el")) {
+          node.classList.toggle("is-selected", node.getAttribute("data-id") === elementId);
+        }
       }
     });
     syncCanvasArrows($2("visual-stage"));
@@ -37701,6 +37940,7 @@ ${err.toString()}`);
     $2("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
     $2("filter-unassigned")?.setAttribute("aria-pressed", String(boardFilter === "unassigned"));
     $2("filter-overdue")?.setAttribute("aria-pressed", String(boardFilter === "overdue"));
+    $2("filter-flagged")?.setAttribute("aria-pressed", String(boardFilter === "flagged"));
     $2("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
     $2("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
     $2("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
@@ -37718,6 +37958,7 @@ ${err.toString()}`);
       if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
       if (boardFilter === "unassigned" && issue.assigneeId) return false;
       if (boardFilter === "overdue" && !isOverdue(issue)) return false;
+      if (boardFilter === "flagged" && !issue.flagged) return false;
       if (typeFilter && issue.typeKey !== typeFilter) return false;
       if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
       return true;
@@ -37735,6 +37976,7 @@ ${err.toString()}`);
         ${parent ? `<span class="ew-epic">${escapeHtml3(parent.key)}</span>` : ""}
         ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
         <span class="ew-priority" data-priority="${escapeHtml3(issue.priority)}">${escapeHtml3(issue.priority)}</span>
+        ${issue.flagged ? `<span class="ew-flag">Flagged</span>` : ""}
         ${due ? `<span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml3(due)}</span>` : ""}
         ${labels}
         ${assignee ? avatarMarkup(assignee.name) : ""}
@@ -37885,6 +38127,7 @@ ${err.toString()}`);
         <button type="button" id="close-issue">Close</button>
       </div>
       <p id="issue-reporter" class="ew-note">Reported by ${escapeHtml3(reporter?.name ?? "Unknown")}</p>
+      <label class="ew-check" for="issue-flag"><input id="issue-flag" type="checkbox" ${issue.flagged || Boolean(detail.flagged) ? "checked" : ""} /> Flagged</label>
       <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml3(detail.summary)}" /></label>
       <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml3(detail.description ?? "")}</textarea></label>
       <div class="ew-issue-grid">
@@ -37902,6 +38145,14 @@ ${err.toString()}`);
         return (issue.labels ?? []).join(", ");
       }
     })())}" placeholder="canvas, urgent" /></label>
+      </div>
+      <div id="issue-children" class="ew-activity">
+        <strong>Child work</strong>
+        ${payload.issues.filter((item) => item.parentId === issue.id).map(
+      (item) => `<button type="button" class="ew-child" data-issue="${item.id}">${escapeHtml3(item.key)} ${escapeHtml3(item.summary)}</button>`
+    ).join("") || `<div class="ew-note">No child issues</div>`}
+        <label for="issue-child-summary">Add child<input id="issue-child-summary" placeholder="Subtask summary" /></label>
+        <button type="button" id="issue-child-submit">Add child</button>
       </div>
       <div class="ew-actions">
         <button type="button" id="save-issue">Save</button>
@@ -37935,6 +38186,8 @@ ${err.toString()}`);
     inspector.insertAdjacentHTML(
       "beforeend",
       `<div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
+    <label for="issue-relates">Related issue<select id="issue-relates">${payload.issues.filter((item) => item.id !== issue.id).map((item) => `<option value="${item.id}">${escapeHtml3(item.key)} ${escapeHtml3(item.summary)}</option>`).join("")}</select></label>
+    <button type="button" id="add-issue-relates">Link issue</button>
     <label for="issue-github-url">GitHub URL<input id="issue-github-url" placeholder="https://github.com/org/repo/issues/1" /></label>
     <button type="button" id="add-issue-github">Link GitHub</button>
     <label for="issue-doc-link">Page<select id="issue-doc-link">${docs}</select></label>
@@ -38128,6 +38381,32 @@ ${err.toString()}`);
         renderBoard();
         await inspectIssue(selectedIssueId);
       }
+      if (button.classList.contains("ew-child") && button.dataset.issue) {
+        await inspectIssue(button.dataset.issue);
+        return;
+      }
+      if (button.id === "issue-child-submit" && selectedIssueId && currentProject()) {
+        const summary = $2("issue-child-summary").value.trim();
+        if (!summary) return;
+        await api(`/v1/projects/${encodeURIComponent(currentProject().id)}/issues`, {
+          method: "POST",
+          body: JSON.stringify({ summary, typeKey: "subtask", parentId: selectedIssueId })
+        });
+        await refreshWorkspace();
+        renderBoard();
+        await inspectIssue(selectedIssueId);
+        return;
+      }
+      if (button.id === "add-issue-relates" && selectedIssueId) {
+        const related = $2("issue-relates").value;
+        if (!related) return;
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/links`, {
+          method: "POST",
+          body: JSON.stringify({ provider: "issue", issueId: related, label: "relates" })
+        });
+        await inspectIssue(selectedIssueId);
+        return;
+      }
       if (button.id === "save-issue" && selectedIssueId) {
         await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
           method: "PATCH",
@@ -38139,6 +38418,7 @@ ${err.toString()}`);
             priority: $2("issue-priority").value,
             dueAt: $2("issue-due").value || null,
             estimate: $2("issue-estimate").value === "" ? null : Number($2("issue-estimate").value),
+            flagged: $2("issue-flag").checked,
             labels: $2("issue-labels").value.split(",").map((item) => item.trim()).filter(Boolean)
           })
         });
@@ -38268,6 +38548,16 @@ ${err.toString()}`);
   });
   inspector.addEventListener("change", async (event) => {
     const input = event.target;
+    if (input.id === "issue-flag" && selectedIssueId) {
+      await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ flagged: input.checked })
+      });
+      await refreshWorkspace();
+      renderBoard();
+      await inspectIssue(selectedIssueId);
+      return;
+    }
     if (input.id !== "attach-file" || !input.files?.[0] || !selectedDocumentId) return;
     const file = input.files[0];
     await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/assets`, {
@@ -38346,6 +38636,15 @@ ${err.toString()}`);
     if (file) await embedPageMedia("video", file);
     event.target.value = "";
   });
+  async function deleteCanvasSelection() {
+    if (!selectedArtifactId || !selectedCanvasId) return;
+    const id2 = selectedCanvasId;
+    selectedCanvasId = "";
+    await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(id2)}`, { method: "DELETE" });
+    canvasHistory = canvasHistory.filter((item) => item.id !== id2);
+    await refreshWorkspace();
+    await openArtifact(selectedArtifactId);
+  }
   async function undoCanvas() {
     const last2 = canvasHistory.pop();
     const undoBtn = document.getElementById("canvas-undo");
@@ -38396,6 +38695,7 @@ ${err.toString()}`);
     $2("visual-stage").classList.toggle("is-panning", tool === "pan");
     $2("visual-stage").classList.toggle("is-sticky", tool === "sticky");
     $2("visual-stage").classList.toggle("is-connecting", tool === "connect");
+    $2("visual-stage").classList.toggle("is-commenting", tool === "comment");
   }
   $2("visual-toolbar").addEventListener("click", (event) => {
     const button = event.target.closest("button");
@@ -38409,6 +38709,10 @@ ${err.toString()}`);
     }
     if (button.id === "canvas-undo") {
       void undoCanvas();
+      return;
+    }
+    if (button.id === "canvas-delete") {
+      void deleteCanvasSelection();
       return;
     }
     if (button.dataset.tool) {
@@ -38453,13 +38757,41 @@ ${err.toString()}`);
   });
   $2("doc-comment-submit").addEventListener("click", async () => {
     if (!selectedDocumentId) return;
+    const box = $2("doc-comment-input");
+    const body = box.value.trim();
+    if (!body) return;
+    const quote = box.dataset.quote?.trim() || "";
     await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/comments`, {
       method: "POST",
-      body: JSON.stringify({ body: $2("doc-comment-input").value })
+      body: JSON.stringify({ body, quote: quote || void 0 })
     });
-    $2("doc-comment-input").value = "";
+    box.value = "";
+    delete box.dataset.quote;
+    box.placeholder = "Write a comment. Mention with @alice";
+    const chip = document.getElementById("doc-comment-quote");
+    if (chip) {
+      chip.hidden = true;
+      chip.textContent = "";
+    }
     await refreshWorkspace();
     await renderDocumentInspector(selectedDocumentId);
+  });
+  $2("page-find-open").addEventListener("click", () => openPageFind());
+  $2("page-find-close").addEventListener("click", () => closePageFind());
+  $2("page-find-next").addEventListener("click", () => jumpFind(1));
+  $2("page-find-prev").addEventListener("click", () => jumpFind(-1));
+  $2("page-find-input").addEventListener("input", (event) => {
+    runPageFind(event.target.value);
+  });
+  $2("page-find-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      jumpFind(event.shiftKey ? -1 : 1);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePageFind();
+    }
   });
   $2("visual-outline").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-frame]");
@@ -38597,6 +38929,9 @@ ${err.toString()}`);
       if (cmd === "task") chain.toggleTaskList().run();
       if (cmd === "table") chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
       if (cmd === "panel") chain.setNomaPanel(button.dataset.kind === "warning" ? "warning" : "info").run();
+      if (cmd === "align-left") chain.setTextAlign("left").run();
+      if (cmd === "align-center") chain.setTextAlign("center").run();
+      if (cmd === "align-right") chain.setTextAlign("right").run();
     });
   });
   function paletteItems(query) {
@@ -38605,7 +38940,8 @@ ${err.toString()}`);
       { kind: "command", id: "mode:docs", title: "Open Docs", subtitle: "Pages" },
       { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
       { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
-      { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" }
+      { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
+      { kind: "command", id: "find", title: "Find in page", subtitle: "Docs" }
     ];
     for (const doc4 of payload?.documents ?? []) items.push({ kind: "document", id: doc4.id, title: doc4.title, subtitle: "Page" });
     for (const issue of payload?.issues ?? []) {
@@ -38643,6 +38979,10 @@ ${err.toString()}`);
     if (id2 === "mode:visuals") setMode("visuals");
     if (id2 === "mode:work") setMode("work");
     if (id2 === "create-page") void createPage();
+    if (id2 === "find") {
+      setMode("docs");
+      openPageFind();
+    }
     if (kind === "document") {
       setMode("docs");
       openDocument(id2);
@@ -38664,9 +39004,10 @@ ${err.toString()}`);
     if (event.target === $2("command-palette")) closePalette();
   });
   document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    const typing = Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && mode === "visuals") {
-      const target = event.target;
-      if (!target.closest("input, textarea, select, [contenteditable='true']")) {
+      if (!typing) {
         event.preventDefault();
         void undoCanvas();
         return;
@@ -38678,28 +39019,45 @@ ${err.toString()}`);
       else closePalette();
       return;
     }
-    if ($2("command-palette").hidden) return;
-    const items = paletteItems($2("command-input").value);
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closePalette();
-    }
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      paletteIndex = Math.min(items.length - 1, paletteIndex + 1);
-      renderPalette();
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      paletteIndex = Math.max(0, paletteIndex - 1);
-      renderPalette();
-    }
-    if (event.key === "Enter") {
-      const item = items[paletteIndex];
-      if (item) {
+    if (!$2("command-palette").hidden) {
+      const items = paletteItems($2("command-input").value);
+      if (event.key === "Escape") {
         event.preventDefault();
-        runPalette(item.kind, item.id);
+        closePalette();
       }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        paletteIndex = Math.min(items.length - 1, paletteIndex + 1);
+        renderPalette();
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        paletteIndex = Math.max(0, paletteIndex - 1);
+        renderPalette();
+      }
+      if (event.key === "Enter") {
+        const item = items[paletteIndex];
+        if (item) {
+          event.preventDefault();
+          runPalette(item.kind, item.id);
+        }
+      }
+      return;
+    }
+    if (mode === "docs" && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      openPageFind();
+      return;
+    }
+    const findBar = document.getElementById("page-find");
+    if (findBar && !findBar.hidden && event.key === "Escape") {
+      event.preventDefault();
+      closePageFind();
+      return;
+    }
+    if (mode === "visuals" && (event.key === "Delete" || event.key === "Backspace") && !typing) {
+      event.preventDefault();
+      void deleteCanvasSelection();
     }
   });
   $2("board-filters").addEventListener("click", (event) => {
@@ -38722,7 +39080,7 @@ ${err.toString()}`);
     }
     if (!button.dataset.filter) return;
     const next = button.dataset.filter;
-    boardFilter = next === "mine" || next === "unassigned" || next === "overdue" ? next : "all";
+    boardFilter = next === "mine" || next === "unassigned" || next === "overdue" || next === "flagged" ? next : "all";
     renderBoard();
   });
   $2("type-filters").addEventListener("click", (event) => {
@@ -38780,8 +39138,10 @@ ${err.toString()}`);
       text: () => collab?.getText() ?? "",
       html: () => collab?.editor()?.getHTML() ?? "",
       selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
+      findInPage: (query) => runPageFind(query),
       counts: () => collab?.counts() ?? { words: 0, characters: 0 },
       undoCanvas,
+      deleteCanvas: deleteCanvasSelection,
       openPalette,
       applyBoardDrop
     }
@@ -38828,6 +39188,7 @@ lucide/dist/esm/icons/circle-check.mjs:
 lucide/dist/esm/icons/code.mjs:
 lucide/dist/esm/icons/command.mjs:
 lucide/dist/esm/icons/file-text.mjs:
+lucide/dist/esm/icons/flag.mjs:
 lucide/dist/esm/icons/funnel.mjs:
 lucide/dist/esm/icons/hand.mjs:
 lucide/dist/esm/icons/heading-1.mjs:
@@ -38843,6 +39204,7 @@ lucide/dist/esm/icons/list-checks.mjs:
 lucide/dist/esm/icons/list-ordered.mjs:
 lucide/dist/esm/icons/list.mjs:
 lucide/dist/esm/icons/maximize-2.mjs:
+lucide/dist/esm/icons/message-square.mjs:
 lucide/dist/esm/icons/moon.mjs:
 lucide/dist/esm/icons/mouse-pointer-2.mjs:
 lucide/dist/esm/icons/plus.mjs:
@@ -38855,6 +39217,10 @@ lucide/dist/esm/icons/sticky-note.mjs:
 lucide/dist/esm/icons/strikethrough.mjs:
 lucide/dist/esm/icons/sun.mjs:
 lucide/dist/esm/icons/table.mjs:
+lucide/dist/esm/icons/text-align-center.mjs:
+lucide/dist/esm/icons/text-align-end.mjs:
+lucide/dist/esm/icons/text-align-start.mjs:
+lucide/dist/esm/icons/trash.mjs:
 lucide/dist/esm/icons/triangle-alert.mjs:
 lucide/dist/esm/icons/underline.mjs:
 lucide/dist/esm/icons/undo-2.mjs:

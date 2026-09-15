@@ -56,6 +56,7 @@ interface ShellIssue {
   dueAt?: string | null;
   labels?: string[];
   reporterId?: string | null;
+  flagged?: boolean;
 }
 
 interface WorkspacePayload {
@@ -106,7 +107,7 @@ let jqlFilterIds: string[] | undefined;
 let searchPopupStop: (() => void) | undefined;
 let boardDndStop: (() => void) | undefined;
 let canvasStop: (() => void) | undefined;
-let boardFilter: "all" | "mine" | "unassigned" | "overdue" = "all";
+let boardFilter: "all" | "mine" | "unassigned" | "overdue" | "flagged" = "all";
 let boardSearch = "";
 let typeFilter = "";
 let swimlanes = false;
@@ -114,7 +115,10 @@ let boardView: "board" | "list" = "board";
 let paletteIndex = 0;
 let mentionStop: (() => void) | undefined;
 let canvasHistory: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+let selectedCanvasId = "";
 let stickyColor: "yellow" | "pink" | "green" | "blue" = "yellow";
+let findMatches: Array<{ from: number; to: number }> = [];
+let findIndex = 0;
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -275,6 +279,82 @@ function isOverdue(issue: ShellIssue): boolean {
 
 function stickyAlt(color: string): string {
   return color === "yellow" ? "Sticky" : `Sticky:${color}`;
+}
+
+function beginSelectionComment(quote: string): void {
+  const box = $<HTMLTextAreaElement>("doc-comment-input");
+  const chip = document.getElementById("doc-comment-quote");
+  if (quote) {
+    box.dataset.quote = quote;
+    box.placeholder = `Comment on “${quote.slice(0, 72)}”`;
+    if (chip) {
+      chip.hidden = false;
+      chip.textContent = quote;
+    }
+  }
+  box.focus();
+  $("doc-discussion").scrollIntoView({ block: "nearest" });
+}
+
+function closePageFind(): void {
+  const bar = document.getElementById("page-find");
+  if (bar) bar.hidden = true;
+  findMatches = [];
+  findIndex = 0;
+}
+
+function collectFindMatches(query: string): Array<{ from: number; to: number }> {
+  const editor = collab?.editor();
+  if (!editor || !query) return [];
+  const needle = query.toLowerCase();
+  const matches: Array<{ from: number; to: number }> = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    const hay = node.text.toLowerCase();
+    let index = 0;
+    while (index < hay.length) {
+      const found = hay.indexOf(needle, index);
+      if (found < 0) break;
+      matches.push({ from: pos + found, to: pos + found + needle.length });
+      index = found + Math.max(1, needle.length);
+    }
+  });
+  return matches;
+}
+
+function jumpFind(delta = 0): number {
+  const editor = collab?.editor();
+  const count = document.getElementById("page-find-count");
+  if (!editor || !findMatches.length) {
+    if (count) count.textContent = "0 of 0";
+    return 0;
+  }
+  findIndex = (findIndex + delta + findMatches.length) % findMatches.length;
+  const match = findMatches[findIndex];
+  if (match) {
+    editor.chain().focus().setTextSelection({ from: match.from, to: match.to }).scrollIntoView().run();
+  }
+  if (count) count.textContent = `${findIndex + 1} of ${findMatches.length}`;
+  return findMatches.length;
+}
+
+function runPageFind(query: string): number {
+  const bar = document.getElementById("page-find");
+  if (bar) bar.hidden = false;
+  const input = document.getElementById("page-find-input");
+  if (input instanceof HTMLInputElement && input.value !== query) input.value = query;
+  findMatches = collectFindMatches(query.trim());
+  findIndex = 0;
+  return jumpFind(0);
+}
+
+function openPageFind(): void {
+  const bar = $("page-find");
+  bar.hidden = false;
+  const input = $<HTMLInputElement>("page-find-input");
+  input.focus();
+  input.select();
+  if (input.value.trim()) runPageFind(input.value);
 }
 
 function renderPresence(users: Array<{ id: string; name: string; color: string }>): void {
@@ -465,6 +545,7 @@ function bindWorkspaceMentions(): void {
 function openDocument(id: string | undefined): void {
   if (!id || !payload) return;
   selectedDocumentId = id;
+  closePageFind();
   const doc = payload.documents.find((item) => item.id === id);
   $("doc-title").textContent = doc?.title ?? "Untitled";
   const kicker = $("doc-kicker");
@@ -490,6 +571,7 @@ function openDocument(id: string | undefined): void {
       renderWordCount();
     },
     onCount: renderWordCount,
+    onComment: beginSelectionComment,
     onStatus: (text) => {
       $("collab-status").textContent = text;
       setStatus(`${payload?.actor.name ?? "Session"} · ${text}`, text.startsWith("ack") || text === "ready" ? "ok" : "connecting");
@@ -541,7 +623,7 @@ function setPageCover(assets: Array<{ assetId: string; filename: string; mime: s
 async function renderDocumentInspector(id: string): Promise<void> {
   const doc = payload?.documents.find((item) => item.id === id);
   const [comments, revisions, assets, grants, links] = await Promise.all([
-    api<{ comments: Array<{ id: string; body: string; authorName: string; createdAt: string }> }>(`/v1/documents/${encodeURIComponent(id)}/comments`),
+    api<{ comments: Array<{ id: string; body: string; quote?: string | null; authorName: string; createdAt: string }> }>(`/v1/documents/${encodeURIComponent(id)}/comments`),
     api<{ revisions: Array<{ revision: number; title: string; createdAt: string }> }>(`/v1/documents/${encodeURIComponent(id)}/revisions`),
     api<{ assets: Array<{ id: string; assetId: string; filename: string; mime: string }> }>(`/v1/documents/${encodeURIComponent(id)}/assets`),
     api<{ grants: Array<{ id: string; principalId: string; role: string; name: string }> }>(`/v1/documents/${encodeURIComponent(id)}/permissions`),
@@ -556,6 +638,7 @@ async function renderDocumentInspector(id: string): Promise<void> {
           ${avatarMarkup(comment.authorName, "lg")}
           <div>
             <div class="ew-comment-meta"><strong>${escapeHtml(comment.authorName)}</strong><span>${escapeHtml(formatWhen(comment.createdAt))}</span></div>
+            ${comment.quote ? `<blockquote class="ew-comment-quote">${escapeHtml(comment.quote)}</blockquote>` : ""}
             <p>${escapeHtml(comment.body)}</p>
           </div>
         </article>`,
@@ -669,9 +752,10 @@ async function openArtifact(id: string | undefined): Promise<void> {
     onEdit: (elementId, text) => {
       const card = $("visual-stage").querySelector<HTMLElement>(`.pd-el[data-id="${CSS.escape(elementId)}"]`);
       const color = card?.dataset.sticky;
+      const pin = card?.dataset.comment;
       void api(`/v1/artifacts/${encodeURIComponent(id)}/elements/${encodeURIComponent(elementId)}`, {
         method: "PATCH",
-        body: JSON.stringify({ text, altText: color ? stickyAlt(color) : text }),
+        body: JSON.stringify({ text, altText: color ? stickyAlt(color) : pin ? "Comment" : text }),
       });
     },
     onPlaceSticky: (x, y) => {
@@ -684,10 +768,26 @@ async function openArtifact(id: string | undefined): Promise<void> {
         geometry: { x, y, width: 200, height: 160 },
       });
     },
+    onPlaceComment: (x, y) => {
+      $("visual-stage").dataset.tool = "select";
+      syncVisualTools();
+      void addCanvasElement({
+        type: "shape",
+        text: "Comment",
+        altText: "Comment",
+        geometry: { x, y, width: 160, height: 72 },
+      });
+    },
     onConnect: (fromId, toId) => {
       $("visual-stage").dataset.tool = "select";
       syncVisualTools();
       void addCanvasElement({ type: "arrow", fromId, toId, altText: "Arrow" });
+    },
+    onSelect: (elementId) => {
+      selectedCanvasId = elementId;
+      for (const node of $("visual-stage").querySelectorAll(".pd-el")) {
+        node.classList.toggle("is-selected", node.getAttribute("data-id") === elementId);
+      }
     },
   });
   syncCanvasArrows($("visual-stage"));
@@ -718,6 +818,7 @@ function renderBoard(): void {
   $("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
   $("filter-unassigned")?.setAttribute("aria-pressed", String(boardFilter === "unassigned"));
   $("filter-overdue")?.setAttribute("aria-pressed", String(boardFilter === "overdue"));
+  $("filter-flagged")?.setAttribute("aria-pressed", String(boardFilter === "flagged"));
   $("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
   $("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
   $("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
@@ -736,6 +837,7 @@ function renderBoard(): void {
     if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
     if (boardFilter === "unassigned" && issue.assigneeId) return false;
     if (boardFilter === "overdue" && !isOverdue(issue)) return false;
+    if (boardFilter === "flagged" && !issue.flagged) return false;
     if (typeFilter && issue.typeKey !== typeFilter) return false;
     if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
     return true;
@@ -753,6 +855,7 @@ function renderBoard(): void {
         ${parent ? `<span class="ew-epic">${escapeHtml(parent.key)}</span>` : ""}
         ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
         <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
+        ${issue.flagged ? `<span class="ew-flag">Flagged</span>` : ""}
         ${due ? `<span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml(due)}</span>` : ""}
         ${labels}
         ${assignee ? avatarMarkup(assignee.name) : ""}
@@ -910,6 +1013,7 @@ async function inspectIssue(id: string): Promise<void> {
     due_at?: string | null;
     labels_json?: string;
     estimate?: number | null;
+    flagged?: number | boolean;
     events?: Array<{ action: string; actorName: string; createdAt: string }>;
   }>(`/v1/issues/${encodeURIComponent(id)}`);
   const project = payload.projects.find((item) => item.id === issue.projectId);
@@ -934,6 +1038,7 @@ async function inspectIssue(id: string): Promise<void> {
         <button type="button" id="close-issue">Close</button>
       </div>
       <p id="issue-reporter" class="ew-note">Reported by ${escapeHtml(reporter?.name ?? "Unknown")}</p>
+      <label class="ew-check" for="issue-flag"><input id="issue-flag" type="checkbox" ${issue.flagged || Boolean(detail.flagged) ? "checked" : ""} /> Flagged</label>
       <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
       <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
       <div class="ew-issue-grid">
@@ -951,6 +1056,18 @@ async function inspectIssue(id: string): Promise<void> {
             return (issue.labels ?? []).join(", ");
           }
         })())}" placeholder="canvas, urgent" /></label>
+      </div>
+      <div id="issue-children" class="ew-activity">
+        <strong>Child work</strong>
+        ${payload.issues
+          .filter((item) => item.parentId === issue.id)
+          .map(
+            (item) =>
+              `<button type="button" class="ew-child" data-issue="${item.id}">${escapeHtml(item.key)} ${escapeHtml(item.summary)}</button>`,
+          )
+          .join("") || `<div class="ew-note">No child issues</div>`}
+        <label for="issue-child-summary">Add child<input id="issue-child-summary" placeholder="Subtask summary" /></label>
+        <button type="button" id="issue-child-submit">Add child</button>
       </div>
       <div class="ew-actions">
         <button type="button" id="save-issue">Save</button>
@@ -990,6 +1107,11 @@ async function inspectIssue(id: string): Promise<void> {
   inspector.insertAdjacentHTML(
     "beforeend",
     `<div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
+    <label for="issue-relates">Related issue<select id="issue-relates">${payload.issues
+      .filter((item) => item.id !== issue.id)
+      .map((item) => `<option value="${item.id}">${escapeHtml(item.key)} ${escapeHtml(item.summary)}</option>`)
+      .join("")}</select></label>
+    <button type="button" id="add-issue-relates">Link issue</button>
     <label for="issue-github-url">GitHub URL<input id="issue-github-url" placeholder="https://github.com/org/repo/issues/1" /></label>
     <button type="button" id="add-issue-github">Link GitHub</button>
     <label for="issue-doc-link">Page<select id="issue-doc-link">${docs}</select></label>
@@ -1197,6 +1319,32 @@ inspector.addEventListener("click", async (event) => {
       renderBoard();
       await inspectIssue(selectedIssueId);
     }
+    if (button.classList.contains("ew-child") && button.dataset.issue) {
+      await inspectIssue(button.dataset.issue);
+      return;
+    }
+    if (button.id === "issue-child-submit" && selectedIssueId && currentProject()) {
+      const summary = $<HTMLInputElement>("issue-child-summary").value.trim();
+      if (!summary) return;
+      await api(`/v1/projects/${encodeURIComponent(currentProject()!.id)}/issues`, {
+        method: "POST",
+        body: JSON.stringify({ summary, typeKey: "subtask", parentId: selectedIssueId }),
+      });
+      await refreshWorkspace();
+      renderBoard();
+      await inspectIssue(selectedIssueId);
+      return;
+    }
+    if (button.id === "add-issue-relates" && selectedIssueId) {
+      const related = $<HTMLSelectElement>("issue-relates").value;
+      if (!related) return;
+      await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/links`, {
+        method: "POST",
+        body: JSON.stringify({ provider: "issue", issueId: related, label: "relates" }),
+      });
+      await inspectIssue(selectedIssueId);
+      return;
+    }
     if (button.id === "save-issue" && selectedIssueId) {
       await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
         method: "PATCH",
@@ -1208,6 +1356,7 @@ inspector.addEventListener("click", async (event) => {
           priority: $<HTMLSelectElement>("issue-priority").value,
           dueAt: $<HTMLInputElement>("issue-due").value || null,
           estimate: $<HTMLInputElement>("issue-estimate").value === "" ? null : Number($<HTMLInputElement>("issue-estimate").value),
+          flagged: $<HTMLInputElement>("issue-flag").checked,
           labels: $<HTMLInputElement>("issue-labels")
             .value.split(",")
             .map((item) => item.trim())
@@ -1341,6 +1490,16 @@ inspector.addEventListener("click", async (event) => {
 
 inspector.addEventListener("change", async (event) => {
   const input = event.target as HTMLInputElement;
+  if (input.id === "issue-flag" && selectedIssueId) {
+    await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ flagged: input.checked }),
+    });
+    await refreshWorkspace();
+    renderBoard();
+    await inspectIssue(selectedIssueId);
+    return;
+  }
   if (input.id !== "attach-file" || !input.files?.[0] || !selectedDocumentId) return;
   const file = input.files[0];
   await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/assets`, {
@@ -1425,6 +1584,16 @@ $("insert-video").addEventListener("change", async (event) => {
   (event.target as HTMLInputElement).value = "";
 });
 
+async function deleteCanvasSelection(): Promise<void> {
+  if (!selectedArtifactId || !selectedCanvasId) return;
+  const id = selectedCanvasId;
+  selectedCanvasId = "";
+  await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(id)}`, { method: "DELETE" });
+  canvasHistory = canvasHistory.filter((item) => item.id !== id);
+  await refreshWorkspace();
+  await openArtifact(selectedArtifactId);
+}
+
 async function undoCanvas(): Promise<void> {
   const last = canvasHistory.pop();
   const undoBtn = document.getElementById("canvas-undo");
@@ -1478,6 +1647,7 @@ function syncVisualTools(): void {
   $("visual-stage").classList.toggle("is-panning", tool === "pan");
   $("visual-stage").classList.toggle("is-sticky", tool === "sticky");
   $("visual-stage").classList.toggle("is-connecting", tool === "connect");
+  $("visual-stage").classList.toggle("is-commenting", tool === "comment");
 }
 
 $("visual-toolbar").addEventListener("click", (event) => {
@@ -1492,6 +1662,10 @@ $("visual-toolbar").addEventListener("click", (event) => {
   }
   if (button.id === "canvas-undo") {
     void undoCanvas();
+    return;
+  }
+  if (button.id === "canvas-delete") {
+    void deleteCanvasSelection();
     return;
   }
   if (button.dataset.tool) {
@@ -1537,13 +1711,42 @@ $("canvas-video").addEventListener("change", async (event) => {
 
 $("doc-comment-submit").addEventListener("click", async () => {
   if (!selectedDocumentId) return;
+  const box = $<HTMLTextAreaElement>("doc-comment-input");
+  const body = box.value.trim();
+  if (!body) return;
+  const quote = box.dataset.quote?.trim() || "";
   await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/comments`, {
     method: "POST",
-    body: JSON.stringify({ body: $<HTMLTextAreaElement>("doc-comment-input").value }),
+    body: JSON.stringify({ body, quote: quote || undefined }),
   });
-  $<HTMLTextAreaElement>("doc-comment-input").value = "";
+  box.value = "";
+  delete box.dataset.quote;
+  box.placeholder = "Write a comment. Mention with @alice";
+  const chip = document.getElementById("doc-comment-quote");
+  if (chip) {
+    chip.hidden = true;
+    chip.textContent = "";
+  }
   await refreshWorkspace();
   await renderDocumentInspector(selectedDocumentId);
+});
+
+$("page-find-open").addEventListener("click", () => openPageFind());
+$("page-find-close").addEventListener("click", () => closePageFind());
+$("page-find-next").addEventListener("click", () => jumpFind(1));
+$("page-find-prev").addEventListener("click", () => jumpFind(-1));
+$("page-find-input").addEventListener("input", (event) => {
+  runPageFind((event.target as HTMLInputElement).value);
+});
+$("page-find-input").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    jumpFind(event.shiftKey ? -1 : 1);
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closePageFind();
+  }
 });
 
 $("visual-outline").addEventListener("click", (event) => {
@@ -1694,6 +1897,9 @@ document.querySelectorAll<HTMLButtonElement>("#doc-toolbar [data-cmd]").forEach(
     if (cmd === "task") chain.toggleTaskList().run();
     if (cmd === "table") chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
     if (cmd === "panel") chain.setNomaPanel(button.dataset.kind === "warning" ? "warning" : "info").run();
+    if (cmd === "align-left") chain.setTextAlign("left").run();
+    if (cmd === "align-center") chain.setTextAlign("center").run();
+    if (cmd === "align-right") chain.setTextAlign("right").run();
   });
 });
 
@@ -1711,6 +1917,7 @@ function paletteItems(query: string): PaletteItem[] {
     { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
     { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
     { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
+    { kind: "command", id: "find", title: "Find in page", subtitle: "Docs" },
   ];
   for (const doc of payload?.documents ?? []) items.push({ kind: "document", id: doc.id, title: doc.title, subtitle: "Page" });
   for (const issue of payload?.issues ?? []) {
@@ -1757,6 +1964,10 @@ function runPalette(kind: string, id: string): void {
   if (id === "mode:visuals") setMode("visuals");
   if (id === "mode:work") setMode("work");
   if (id === "create-page") void createPage();
+  if (id === "find") {
+    setMode("docs");
+    openPageFind();
+  }
   if (kind === "document") {
     setMode("docs");
     openDocument(id);
@@ -1780,9 +1991,10 @@ $("command-palette").addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  const target = event.target as HTMLElement;
+  const typing = Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && mode === "visuals") {
-    const target = event.target as HTMLElement;
-    if (!target.closest("input, textarea, select, [contenteditable='true']")) {
+    if (!typing) {
       event.preventDefault();
       void undoCanvas();
       return;
@@ -1794,28 +2006,45 @@ document.addEventListener("keydown", (event) => {
     else closePalette();
     return;
   }
-  if ($("command-palette").hidden) return;
-  const items = paletteItems($<HTMLInputElement>("command-input").value);
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closePalette();
-  }
-  if (event.key === "ArrowDown") {
-    event.preventDefault();
-    paletteIndex = Math.min(items.length - 1, paletteIndex + 1);
-    renderPalette();
-  }
-  if (event.key === "ArrowUp") {
-    event.preventDefault();
-    paletteIndex = Math.max(0, paletteIndex - 1);
-    renderPalette();
-  }
-  if (event.key === "Enter") {
-    const item = items[paletteIndex];
-    if (item) {
+  if (!$("command-palette").hidden) {
+    const items = paletteItems($<HTMLInputElement>("command-input").value);
+    if (event.key === "Escape") {
       event.preventDefault();
-      runPalette(item.kind, item.id);
+      closePalette();
     }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      paletteIndex = Math.min(items.length - 1, paletteIndex + 1);
+      renderPalette();
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      paletteIndex = Math.max(0, paletteIndex - 1);
+      renderPalette();
+    }
+    if (event.key === "Enter") {
+      const item = items[paletteIndex];
+      if (item) {
+        event.preventDefault();
+        runPalette(item.kind, item.id);
+      }
+    }
+    return;
+  }
+  if (mode === "docs" && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    openPageFind();
+    return;
+  }
+  const findBar = document.getElementById("page-find");
+  if (findBar && !findBar.hidden && event.key === "Escape") {
+    event.preventDefault();
+    closePageFind();
+    return;
+  }
+  if (mode === "visuals" && (event.key === "Delete" || event.key === "Backspace") && !typing) {
+    event.preventDefault();
+    void deleteCanvasSelection();
   }
 });
 
@@ -1839,7 +2068,7 @@ $("board-filters").addEventListener("click", (event) => {
   }
   if (!button.dataset.filter) return;
   const next = button.dataset.filter;
-  boardFilter = next === "mine" || next === "unassigned" || next === "overdue" ? next : "all";
+  boardFilter = next === "mine" || next === "unassigned" || next === "overdue" || next === "flagged" ? next : "all";
   renderBoard();
 });
 $("type-filters").addEventListener("click", (event) => {
@@ -1901,8 +2130,10 @@ Object.assign(window, {
     text: () => collab?.getText() ?? "",
     html: () => collab?.editor()?.getHTML() ?? "",
     selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
+    findInPage: (query: string) => runPageFind(query),
     counts: () => collab?.counts() ?? { words: 0, characters: 0 },
     undoCanvas,
+    deleteCanvas: deleteCanvasSelection,
     openPalette,
     applyBoardDrop,
   },

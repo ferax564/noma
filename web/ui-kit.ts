@@ -1,6 +1,9 @@
 import { autoUpdate, computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import {
   AlertTriangle,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Bell,
   Bold,
   Bug,
@@ -10,6 +13,7 @@ import {
   Command,
   FileText,
   Filter,
+  Flag,
   Hand,
   Heading1,
   Heading2,
@@ -24,6 +28,7 @@ import {
   ListChecks,
   ListOrdered,
   Maximize2,
+  MessageSquare,
   Moon,
   MousePointer2,
   Plus,
@@ -36,6 +41,7 @@ import {
   Strikethrough,
   Sun,
   Table,
+  Trash2,
   Underline,
   Undo2,
   User,
@@ -50,6 +56,9 @@ import { statusPath } from "./status-path";
 
 const ICONS = {
   AlertTriangle,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Bell,
   Bold,
   Bug,
@@ -59,6 +68,7 @@ const ICONS = {
   Command,
   FileText,
   Filter,
+  Flag,
   Hand,
   Heading1,
   Heading2,
@@ -73,6 +83,7 @@ const ICONS = {
   ListChecks,
   ListOrdered,
   Maximize2,
+  MessageSquare,
   Moon,
   MousePointer2,
   Plus,
@@ -85,6 +96,7 @@ const ICONS = {
   Strikethrough,
   Sun,
   Table,
+  Trash2,
   Underline,
   Undo2,
   User,
@@ -247,7 +259,9 @@ export interface VisualStageHandlers {
   onMove: (move: VisualMove) => void;
   onEdit?: (id: string, text: string) => void;
   onPlaceSticky?: (x: number, y: number) => void;
+  onPlaceComment?: (x: number, y: number) => void;
   onConnect?: (fromId: string, toId: string) => void;
+  onSelect?: (id: string) => void;
 }
 
 function pageScale(page: HTMLElement): number {
@@ -300,6 +314,12 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
       return;
     }
 
+    if (tool === "comment") {
+      const box = page.getBoundingClientRect();
+      handlers.onPlaceComment?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
+      return;
+    }
+
     if (tool === "connect") {
       const card = target.closest<HTMLElement>(".pd-el");
       if (!card || card.classList.contains("pd-el-arrow") || !card.dataset.id) return;
@@ -336,7 +356,10 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
 
     const resizing = target.closest(".pd-resize");
     const card = target.closest<HTMLElement>(".pd-el");
-    if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) return;
+    if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) {
+      if (!target.closest(".pd-el")) handlers.onSelect?.("");
+      return;
+    }
     const id = card.dataset.id ?? "";
     if (!id) return;
     const startX = event.clientX;
@@ -366,7 +389,10 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       card.classList.remove("is-dragging");
-      if (!dragging) return;
+      if (!dragging) {
+        handlers.onSelect?.(id);
+        return;
+      }
       handlers.onMove({
         id,
         x: Number.parseFloat(card.style.left) || originLeft,

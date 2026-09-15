@@ -31994,6 +31994,70 @@ ${err.toString()}`);
     }
   });
 
+  // node_modules/@tiptap/extension-text-align/dist/index.js
+  var TextAlign = Extension.create({
+    name: "textAlign",
+    addOptions() {
+      return {
+        types: [],
+        alignments: ["left", "center", "right", "justify"],
+        defaultAlignment: null
+      };
+    },
+    addGlobalAttributes() {
+      return [
+        {
+          types: this.options.types,
+          attributes: {
+            textAlign: {
+              default: this.options.defaultAlignment,
+              parseHTML: (element2) => {
+                const alignment = element2.style.textAlign;
+                return this.options.alignments.includes(alignment) ? alignment : this.options.defaultAlignment;
+              },
+              renderHTML: (attributes) => {
+                if (!attributes.textAlign) {
+                  return {};
+                }
+                return { style: `text-align: ${attributes.textAlign}` };
+              }
+            }
+          }
+        }
+      ];
+    },
+    addCommands() {
+      return {
+        setTextAlign: (alignment) => ({ commands: commands2 }) => {
+          if (!this.options.alignments.includes(alignment)) {
+            return false;
+          }
+          return this.options.types.map((type) => commands2.updateAttributes(type, { textAlign: alignment })).every((response) => response);
+        },
+        unsetTextAlign: () => ({ commands: commands2 }) => {
+          return this.options.types.map((type) => commands2.resetAttributes(type, "textAlign")).every((response) => response);
+        },
+        toggleTextAlign: (alignment) => ({ editor, commands: commands2 }) => {
+          if (!this.options.alignments.includes(alignment)) {
+            return false;
+          }
+          if (editor.isActive({ textAlign: alignment })) {
+            return commands2.unsetTextAlign();
+          }
+          return commands2.setTextAlign(alignment);
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-l": () => this.editor.commands.setTextAlign("left"),
+        "Mod-Shift-e": () => this.editor.commands.setTextAlign("center"),
+        "Mod-Shift-r": () => this.editor.commands.setTextAlign("right"),
+        "Mod-Shift-j": () => this.editor.commands.setTextAlign("justify")
+      };
+    }
+  });
+
   // node_modules/@tiptap/extension-typography/dist/index.js
   var emDash = (override) => textInputRule({
     find: /--$/,
@@ -35627,6 +35691,16 @@ ${err.toString()}`);
     ["path", { d: "M16 17H8" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/flag.mjs
+  var Flag = [
+    [
+      "path",
+      {
+        d: "M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"
+      }
+    ]
+  ];
+
   // node_modules/lucide/dist/esm/icons/funnel.mjs
   var Funnel = [
     [
@@ -35755,6 +35829,16 @@ ${err.toString()}`);
     ["path", { d: "M9 21H3v-6" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/message-square.mjs
+  var MessageSquare = [
+    [
+      "path",
+      {
+        d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"
+      }
+    ]
+  ];
+
   // node_modules/lucide/dist/esm/icons/moon.mjs
   var Moon = [
     [
@@ -35868,6 +35952,36 @@ ${err.toString()}`);
     ["path", { d: "M3 15h18" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/text-align-center.mjs
+  var TextAlignCenter = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M17 12H7" }],
+    ["path", { d: "M19 19H5" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/text-align-end.mjs
+  var TextAlignEnd = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M21 12H9" }],
+    ["path", { d: "M21 19H7" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/text-align-start.mjs
+  var TextAlignStart = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M15 12H3" }],
+    ["path", { d: "M17 19H3" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/trash.mjs
+  var Trash = [
+    ["path", { d: "M10 11v6" }],
+    ["path", { d: "M14 11v6" }],
+    ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" }],
+    ["path", { d: "M3 6h18" }],
+    ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/triangle-alert.mjs
   var TriangleAlert = [
     ["path", { d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" }],
@@ -35917,6 +36031,9 @@ ${err.toString()}`);
   // web/ui-kit.ts
   var ICONS = {
     AlertTriangle: TriangleAlert,
+    AlignCenter: TextAlignCenter,
+    AlignLeft: TextAlignStart,
+    AlignRight: TextAlignEnd,
     Bell,
     Bold: Bold2,
     Bug,
@@ -35926,6 +36043,7 @@ ${err.toString()}`);
     Command,
     FileText,
     Filter: Funnel,
+    Flag,
     Hand,
     Heading1,
     Heading2,
@@ -35940,6 +36058,7 @@ ${err.toString()}`);
     ListChecks,
     ListOrdered,
     Maximize2,
+    MessageSquare,
     Moon,
     MousePointer2,
     Plus,
@@ -35952,6 +36071,7 @@ ${err.toString()}`);
     Strikethrough,
     Sun,
     Table: Table2,
+    Trash2: Trash,
     Underline: Underline2,
     Undo2,
     User,
@@ -36107,7 +36227,7 @@ ${err.toString()}`);
       menu.remove();
     };
   }
-  function bindFormatBubble(editor) {
+  function bindFormatBubble(editor, onComment) {
     const bar = document.createElement("div");
     bar.className = "ew-bubble";
     bar.hidden = true;
@@ -36117,7 +36237,11 @@ ${err.toString()}`);
       ["bold", "Bold", "Bold"],
       ["italic", "Italic", "Italic"],
       ["underline", "Underline", "Underline"],
-      ["highlight", "Highlight", "Highlighter"]
+      ["highlight", "Highlight", "Highlighter"],
+      ["align-left", "Align left", "AlignLeft"],
+      ["align-center", "Align center", "AlignCenter"],
+      ["align-right", "Align right", "AlignRight"],
+      ["comment", "Comment on selection", "MessageSquare"]
     ].map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon)}</button>`).join("");
     document.body.appendChild(bar);
     const hide2 = () => {
@@ -36154,6 +36278,16 @@ ${err.toString()}`);
       if (cmd === "italic") editor.chain().focus().toggleItalic().run();
       if (cmd === "underline") editor.chain().focus().toggleUnderline().run();
       if (cmd === "highlight") editor.chain().focus().toggleHighlight().run();
+      if (cmd === "align-left") editor.chain().focus().setTextAlign("left").run();
+      if (cmd === "align-center") editor.chain().focus().setTextAlign("center").run();
+      if (cmd === "align-right") editor.chain().focus().setTextAlign("right").run();
+      if (cmd === "comment") {
+        const { from: from3, to } = editor.state.selection;
+        const quote = editor.state.doc.textBetween(from3, to, " ").trim();
+        hide2();
+        onComment?.(quote);
+        return;
+      }
       place();
     });
     editor.on("selectionUpdate", place);
@@ -36225,6 +36359,7 @@ ${err.toString()}`);
           TableHeader,
           TableCell,
           NomaPanel,
+          TextAlign.configure({ types: ["heading", "paragraph"] }),
           Mention.configure({
             HTMLAttributes: { class: "ew-mention-chip" },
             suggestion: mentionSuggestion(options.people ?? [])
@@ -36240,7 +36375,7 @@ ${err.toString()}`);
         ]
       });
       stopSlash = bindSlashMenu(editor);
-      stopBubble = bindFormatBubble(editor);
+      stopBubble = bindFormatBubble(editor, options.onComment);
       editor.on("update", () => {
         options.onUpdate?.();
         options.onCount?.(editorCounts(editor));
@@ -36352,6 +36487,7 @@ lucide/dist/esm/icons/circle-check.mjs:
 lucide/dist/esm/icons/code.mjs:
 lucide/dist/esm/icons/command.mjs:
 lucide/dist/esm/icons/file-text.mjs:
+lucide/dist/esm/icons/flag.mjs:
 lucide/dist/esm/icons/funnel.mjs:
 lucide/dist/esm/icons/hand.mjs:
 lucide/dist/esm/icons/heading-1.mjs:
@@ -36367,6 +36503,7 @@ lucide/dist/esm/icons/list-checks.mjs:
 lucide/dist/esm/icons/list-ordered.mjs:
 lucide/dist/esm/icons/list.mjs:
 lucide/dist/esm/icons/maximize-2.mjs:
+lucide/dist/esm/icons/message-square.mjs:
 lucide/dist/esm/icons/moon.mjs:
 lucide/dist/esm/icons/mouse-pointer-2.mjs:
 lucide/dist/esm/icons/plus.mjs:
@@ -36379,6 +36516,10 @@ lucide/dist/esm/icons/sticky-note.mjs:
 lucide/dist/esm/icons/strikethrough.mjs:
 lucide/dist/esm/icons/sun.mjs:
 lucide/dist/esm/icons/table.mjs:
+lucide/dist/esm/icons/text-align-center.mjs:
+lucide/dist/esm/icons/text-align-end.mjs:
+lucide/dist/esm/icons/text-align-start.mjs:
+lucide/dist/esm/icons/trash.mjs:
 lucide/dist/esm/icons/triangle-alert.mjs:
 lucide/dist/esm/icons/underline.mjs:
 lucide/dist/esm/icons/undo-2.mjs:

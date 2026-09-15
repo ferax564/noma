@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { listenEnterpriseHttp } from "../src/enterprise-http.js";
 import { seedEnterpriseProductFixture } from "../src/enterprise-shell.js";
-import { paperCanvasMarkup, paperStickyColor } from "../src/enterprise-paperdom.js";
+import { paperCanvasMarkup, paperCommentPin, paperStickyColor } from "../src/enterprise-paperdom.js";
 import { translateSqliteToPostgres } from "../src/enterprise-sql.js";
 import { postgresRuntimeAvailable } from "../src/enterprise-pg-sync.js";
 import { createTestOidc, EnterpriseWorkspace } from "../src/enterprise-workspace.js";
@@ -315,6 +315,45 @@ test("sticky notes keep color in PaperDOM markup", () => {
   });
   assert.match(html, /pd-el-sticky-blue/);
   assert.match(html, /data-sticky="blue"/);
+});
+
+test("quoted comments, flags, comment pins, and canvas delete are kernel-backed", () => {
+  assert.equal(paperCommentPin("Comment"), true);
+  assert.equal(paperCommentPin("Sticky:pink"), false);
+  const pin = paperCanvasMarkup({
+    id: "board",
+    title: "Notes",
+    schemaVersion: 1,
+    revision: 1,
+    elements: [
+      {
+        id: "pin",
+        type: "shape",
+        geometry: { x: 16, y: 16, width: 140, height: 64 },
+        zIndex: 1,
+        text: "Call this out in review",
+        altText: "Comment",
+      },
+    ],
+  });
+  assert.match(pin, /pd-el-comment/);
+  assert.match(pin, /data-comment="true"/);
+
+  const { ws, session } = harness();
+  try {
+    const fixture = seedEnterpriseProductFixture(ws, session.actor);
+    const shell = ws.workspaceShell(session.actor);
+    assert.ok(shell.issues.some((issue) => issue.flagged && /leak/i.test(issue.summary)));
+    assert.ok(shell.issues.some((issue) => issue.typeKey === "subtask" && issue.parentId));
+    ws.addDocumentComment(session.actor, fixture.documentId, "Need a sharper claim", "One login should take a team");
+    const comments = ws.listDocumentComments(session.actor, fixture.documentId);
+    assert.ok(comments.some((comment) => comment.quote === "One login should take a team"));
+    ws.deleteArtifactElement(session.actor, fixture.artifactId, "note-comment");
+    const board = ws.readArtifact(session.actor, fixture.artifactId, "draft");
+    assert.equal(board.document.elements.some((element) => element.id === "note-comment"), false);
+  } finally {
+    ws.close();
+  }
 });
 
 test("postgres can be a running store when a runtime is available", async (t) => {
