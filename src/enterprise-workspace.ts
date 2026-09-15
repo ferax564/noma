@@ -661,7 +661,7 @@ export class EnterpriseWorkspace {
     },
   ): string {
     this.requireRole(actor, input.fromKind, input.fromId, "editor");
-    let url = input.url ?? null;
+    const url = input.url ?? null;
     let targetKind: ResourceKind | null = null;
     let targetId: string | null = null;
     let label = input.label ?? "";
