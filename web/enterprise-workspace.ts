@@ -617,21 +617,28 @@ async function applyBoardDrop(drop: BoardDrop): Promise<void> {
   if (!project || !payload) return;
   const issue = payload.issues.find((item) => item.id === drop.issueId);
   if (!issue) return;
-  if (drop.statusId && drop.statusId !== issue.statusId) {
-    await transitionIssueTo(drop.issueId, issue.statusId, drop.statusId);
-  }
-  const ordered = [...payload.issues.filter((item) => item.projectId === project.id)].map((item) => item.id);
-  const from = ordered.indexOf(drop.issueId);
-  if (from >= 0) ordered.splice(from, 1);
-  if (drop.beforeId) {
-    const to = ordered.indexOf(drop.beforeId);
-    ordered.splice(to < 0 ? ordered.length : to, 0, drop.issueId);
-  } else {
-    ordered.push(drop.issueId);
-  }
-  await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
-  await refreshWorkspace();
+  const previous = issue.statusId;
+  const nextStatus = drop.statusId || previous;
+  issue.statusId = nextStatus;
   renderBoard();
+  try {
+    if (nextStatus !== previous) await transitionIssueTo(drop.issueId, previous, nextStatus);
+    const ordered = [...payload.issues.filter((item) => item.projectId === project.id)].map((item) => item.id);
+    const from = ordered.indexOf(drop.issueId);
+    if (from >= 0) ordered.splice(from, 1);
+    if (drop.beforeId) {
+      const to = ordered.indexOf(drop.beforeId);
+      ordered.splice(to < 0 ? ordered.length : to, 0, drop.issueId);
+    } else {
+      ordered.push(drop.issueId);
+    }
+    await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
+  } catch {
+    issue.statusId = previous;
+  } finally {
+    await refreshWorkspace();
+    renderBoard();
+  }
 }
 
 async function inspectIssue(id: string): Promise<void> {
@@ -847,8 +854,8 @@ $("rail-actions").addEventListener("change", (event) => {
 });
 
 $("work-board").addEventListener("click", (event) => {
-  const card = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-issue]");
-  if (card?.dataset.issue) void inspectIssue(card.dataset.issue);
+  const card = (event.target as HTMLElement).closest<HTMLElement>("[data-issue].ew-card");
+  if (card?.dataset.issue && !$("work-board").classList.contains("is-sorting")) void inspectIssue(card.dataset.issue);
 });
 
 inspector.addEventListener("click", async (event) => {
@@ -1431,10 +1438,18 @@ $("board-filters").addEventListener("click", (event) => {
 });
 
 $("work-board").addEventListener("keydown", (event) => {
-  const input = event.target as HTMLInputElement;
-  if (event.key !== "Enter" || !input.classList.contains("ew-column-add")) return;
-  const summary = input.value.trim();
-  const status = input.dataset.status ?? "backlog";
+  const target = event.target as HTMLElement;
+  if ((event.key === "Enter" || event.key === " ") && target.closest(".ew-card") && !target.classList.contains("ew-column-add")) {
+    const card = target.closest<HTMLElement>("[data-issue].ew-card");
+    if (card?.dataset.issue) {
+      event.preventDefault();
+      void inspectIssue(card.dataset.issue);
+    }
+    return;
+  }
+  if (event.key !== "Enter" || !target.classList.contains("ew-column-add")) return;
+  const summary = (target as HTMLInputElement).value.trim();
+  const status = target.dataset.status ?? "backlog";
   const project = currentProject();
   if (!summary || !project) return;
   void (async () => {

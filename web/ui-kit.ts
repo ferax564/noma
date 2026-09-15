@@ -131,19 +131,27 @@ export function bindIssueBoard(board: HTMLElement, onDrop: (drop: BoardDrop) => 
         chosenClass: "is-chosen",
         dragClass: "is-dragging",
         draggable: ".ew-card",
-        delay: 40,
-        delayOnTouchOnly: true,
+        filter: ".ew-column-add",
+        fallbackTolerance: 3,
         onStart: () => board.classList.add("is-sorting"),
         onEnd: (event) => {
           board.classList.remove("is-sorting");
           const card = event.item;
           const issueId = card.dataset.issue ?? "";
           const target = event.to.closest<HTMLElement>(".ew-column");
-          const next = card.nextElementSibling;
+          const sibling = card.nextElementSibling;
+          const beforeId = sibling instanceof HTMLElement && sibling.classList.contains("ew-card") ? (sibling.dataset.issue ?? "") : "";
+          card.classList.remove("is-dragging", "is-ghost", "is-chosen");
+          queueMicrotask(() => {
+            for (const leftover of document.querySelectorAll(".sortable-fallback, .sortable-drag")) {
+              if (leftover !== card) leftover.remove();
+            }
+          });
           if (!issueId || !target) return;
+          if (event.from === event.to && event.oldIndex === event.newIndex) return;
           onDrop({
             issueId,
-            beforeId: next instanceof HTMLElement ? (next.dataset.issue ?? "") : "",
+            beforeId,
             statusId: target.dataset.status ?? column?.dataset.status ?? "",
           });
         },

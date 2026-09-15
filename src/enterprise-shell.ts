@@ -185,7 +185,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <h1 id="work-title">Work</h1>
               <div id="sprint-bar" class="ew-sprint"></div>
               <label class="ew-jql" for="jql-input">JQL
-                <input id="jql-input" type="search" placeholder="status = in_progress AND assignee = currentUser()" autocomplete="off" />
+                <input id="jql-input" type="search" placeholder="Filter with JQL" autocomplete="off" />
               </label>
               <div id="board-filters" class="ew-filters" role="group" aria-label="Board filters">
                 <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All issues</button>

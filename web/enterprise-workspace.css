@@ -672,6 +672,7 @@ input:focus, select:focus, textarea:focus {
   background: var(--ds-surface);
   border: 1px solid var(--ds-border);
   box-shadow: var(--ds-shadow);
+  cursor: grab;
 }
 .ew-card:hover { background: var(--ds-surface); transform: none; }
 .ew-card strong { font-size: 14px; font-weight: 500; letter-spacing: 0; color: var(--ds-text); }

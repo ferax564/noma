@@ -34829,19 +34829,27 @@ ${err.toString()}`);
           chosenClass: "is-chosen",
           dragClass: "is-dragging",
           draggable: ".ew-card",
-          delay: 40,
-          delayOnTouchOnly: true,
+          filter: ".ew-column-add",
+          fallbackTolerance: 3,
           onStart: () => board.classList.add("is-sorting"),
           onEnd: (event) => {
             board.classList.remove("is-sorting");
             const card = event.item;
             const issueId = card.dataset.issue ?? "";
             const target = event.to.closest(".ew-column");
-            const next = card.nextElementSibling;
+            const sibling = card.nextElementSibling;
+            const beforeId = sibling instanceof HTMLElement && sibling.classList.contains("ew-card") ? sibling.dataset.issue ?? "" : "";
+            card.classList.remove("is-dragging", "is-ghost", "is-chosen");
+            queueMicrotask(() => {
+              for (const leftover of document.querySelectorAll(".sortable-fallback, .sortable-drag")) {
+                if (leftover !== card) leftover.remove();
+              }
+            });
             if (!issueId || !target) return;
+            if (event.from === event.to && event.oldIndex === event.newIndex) return;
             onDrop({
               issueId,
-              beforeId: next instanceof HTMLElement ? next.dataset.issue ?? "" : "",
+              beforeId,
               statusId: target.dataset.status ?? column?.dataset.status ?? ""
             });
           }
@@ -35624,21 +35632,28 @@ ${err.toString()}`);
     if (!project || !payload) return;
     const issue = payload.issues.find((item) => item.id === drop3.issueId);
     if (!issue) return;
-    if (drop3.statusId && drop3.statusId !== issue.statusId) {
-      await transitionIssueTo(drop3.issueId, issue.statusId, drop3.statusId);
-    }
-    const ordered = [...payload.issues.filter((item) => item.projectId === project.id)].map((item) => item.id);
-    const from3 = ordered.indexOf(drop3.issueId);
-    if (from3 >= 0) ordered.splice(from3, 1);
-    if (drop3.beforeId) {
-      const to = ordered.indexOf(drop3.beforeId);
-      ordered.splice(to < 0 ? ordered.length : to, 0, drop3.issueId);
-    } else {
-      ordered.push(drop3.issueId);
-    }
-    await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
-    await refreshWorkspace();
+    const previous = issue.statusId;
+    const nextStatus = drop3.statusId || previous;
+    issue.statusId = nextStatus;
     renderBoard();
+    try {
+      if (nextStatus !== previous) await transitionIssueTo(drop3.issueId, previous, nextStatus);
+      const ordered = [...payload.issues.filter((item) => item.projectId === project.id)].map((item) => item.id);
+      const from3 = ordered.indexOf(drop3.issueId);
+      if (from3 >= 0) ordered.splice(from3, 1);
+      if (drop3.beforeId) {
+        const to = ordered.indexOf(drop3.beforeId);
+        ordered.splice(to < 0 ? ordered.length : to, 0, drop3.issueId);
+      } else {
+        ordered.push(drop3.issueId);
+      }
+      await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
+    } catch {
+      issue.statusId = previous;
+    } finally {
+      await refreshWorkspace();
+      renderBoard();
+    }
   }
   async function inspectIssue(id2) {
     if (!payload) return;
@@ -35828,8 +35843,8 @@ ${err.toString()}`);
     }
   });
   $2("work-board").addEventListener("click", (event) => {
-    const card = event.target.closest("button[data-issue]");
-    if (card?.dataset.issue) void inspectIssue(card.dataset.issue);
+    const card = event.target.closest("[data-issue].ew-card");
+    if (card?.dataset.issue && !$2("work-board").classList.contains("is-sorting")) void inspectIssue(card.dataset.issue);
   });
   inspector.addEventListener("click", async (event) => {
     const link = event.target.closest("a.ew-link");
@@ -36368,10 +36383,18 @@ ${err.toString()}`);
     renderBoard();
   });
   $2("work-board").addEventListener("keydown", (event) => {
-    const input = event.target;
-    if (event.key !== "Enter" || !input.classList.contains("ew-column-add")) return;
-    const summary = input.value.trim();
-    const status = input.dataset.status ?? "backlog";
+    const target = event.target;
+    if ((event.key === "Enter" || event.key === " ") && target.closest(".ew-card") && !target.classList.contains("ew-column-add")) {
+      const card = target.closest("[data-issue].ew-card");
+      if (card?.dataset.issue) {
+        event.preventDefault();
+        void inspectIssue(card.dataset.issue);
+      }
+      return;
+    }
+    if (event.key !== "Enter" || !target.classList.contains("ew-column-add")) return;
+    const summary = target.value.trim();
+    const status = target.dataset.status ?? "backlog";
     const project = currentProject();
     if (!summary || !project) return;
     void (async () => {
