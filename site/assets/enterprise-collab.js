@@ -26806,6 +26806,61 @@ ${err.toString()}`);
     }
   });
 
+  // node_modules/@tiptap/extension-placeholder/dist/index.js
+  var Placeholder = Extension.create({
+    name: "placeholder",
+    addOptions() {
+      return {
+        emptyEditorClass: "is-editor-empty",
+        emptyNodeClass: "is-empty",
+        placeholder: "Write something \u2026",
+        showOnlyWhenEditable: true,
+        showOnlyCurrent: true,
+        includeChildren: false
+      };
+    },
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          key: new PluginKey("placeholder"),
+          props: {
+            decorations: ({ doc: doc4, selection }) => {
+              const active = this.editor.isEditable || !this.options.showOnlyWhenEditable;
+              const { anchor } = selection;
+              const decorations = [];
+              if (!active) {
+                return null;
+              }
+              const isEmptyDoc = this.editor.isEmpty;
+              doc4.descendants((node, pos) => {
+                const hasAnchor = anchor >= pos && anchor <= pos + node.nodeSize;
+                const isEmpty2 = !node.isLeaf && isNodeEmpty(node);
+                if ((hasAnchor || !this.options.showOnlyCurrent) && isEmpty2) {
+                  const classes = [this.options.emptyNodeClass];
+                  if (isEmptyDoc) {
+                    classes.push(this.options.emptyEditorClass);
+                  }
+                  const decoration = Decoration.node(pos, pos + node.nodeSize, {
+                    class: classes.join(" "),
+                    "data-placeholder": typeof this.options.placeholder === "function" ? this.options.placeholder({
+                      editor: this.editor,
+                      node,
+                      pos,
+                      hasAnchor
+                    }) : this.options.placeholder
+                  });
+                  decorations.push(decoration);
+                }
+                return this.options.includeChildren;
+              });
+              return DecorationSet.create(doc4, decorations);
+            }
+          }
+        })
+      ];
+    }
+  });
+
   // node_modules/@tiptap/extension-blockquote/dist/index.js
   var inputRegex = /^\s*>\s$/;
   var Blockquote = Node2.create({
@@ -28813,6 +28868,7 @@ ${err.toString()}`);
         element: options.element,
         extensions: [
           StarterKit.configure({ history: false }),
+          Placeholder.configure({ placeholder: "Start writing\u2026" }),
           Collaboration.configure({ document: ydoc, field: "default" })
         ]
       });

@@ -1,4 +1,5 @@
 import Collaboration from "@tiptap/extension-collaboration";
+import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
 import { Editor } from "@tiptap/core";
 import * as Y from "yjs";
@@ -53,6 +54,7 @@ export function mountHostedCollab(options: {
       element: options.element,
       extensions: [
         StarterKit.configure({ history: false }),
+        Placeholder.configure({ placeholder: "Start writing…" }),
         Collaboration.configure({ document: ydoc, field: "default" }),
       ],
     });
