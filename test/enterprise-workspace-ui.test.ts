@@ -92,9 +92,11 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   assert.match(await page.$eval(".ew-slash", (element) => element.textContent ?? ""), /Info panel|Table|Action items/);
   await page.keyboard.press("Escape");
   await page.waitForSelector(".ew-slash[hidden]");
-  await page.keyboard.down("Control");
-  await page.keyboard.press("KeyA");
-  await page.keyboard.up("Control");
+  await page.click("#editor .ProseMirror");
+  const selected = await page.evaluate(() =>
+    Boolean((window as unknown as { nomaWorkspace?: { selectAll?: () => boolean } }).nomaWorkspace?.selectAll?.()),
+  );
+  assert.equal(selected, true);
   await page.waitForSelector(".ew-bubble:not([hidden])");
   await page.keyboard.press("Escape");
   await page.keyboard.down("Control");
