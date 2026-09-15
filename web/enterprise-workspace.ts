@@ -1,5 +1,8 @@
 import { mountHostedCollab, type HostedCollab } from "./hosted-collab";
-import { bindIssueBoard, hydrateIcons, iconSvg, positionPopup, type BoardDrop } from "./ui-kit";
+import { nomaToEditorHtml } from "./noma-html";
+import "@tiptap/extension-table";
+import "@tiptap/extension-task-list";
+import { bindIssueBoard, bindMentionBox, bindVisualStage, enhanceSelects, hydrateIcons, iconSvg, positionPopup, setCanvasZoom, syncCanvasArrows, statusPath, type BoardDrop } from "./ui-kit";
 
 type Mode = "docs" | "visuals" | "work" | "admin";
 
@@ -49,6 +52,12 @@ interface ShellIssue {
   parentId: string | null;
   rank: string;
   sprintId: string | null;
+  priority: string;
+  dueAt?: string | null;
+  labels?: string[];
+  reporterId?: string | null;
+  flagged?: boolean;
+  watching?: boolean;
 }
 
 interface WorkspacePayload {
@@ -64,6 +73,12 @@ interface WorkspacePayload {
   sprints: Array<{ id: string; boardId: string; name: string; goal: string | null; state: string }>;
   grants: Array<{ id: string; principalId: string; resourceKind: string; resourceId: string; role: string }>;
   issueTypes: Array<{ projectId: string; key: string; name: string; hierarchy: string }>;
+}
+
+interface ProjectReports {
+  throughput: Array<{ day: string; completed: number }>;
+  cycleTime: Array<{ issueId: string; hours: number; key: string; summary: string }>;
+  cumulativeFlow: Array<{ at: string; todo: number; in_progress: number; done: number }>;
 }
 
 interface ArtifactPayload {
@@ -98,6 +113,23 @@ let collab: HostedCollab | undefined;
 let jqlFilterIds: string[] | undefined;
 let searchPopupStop: (() => void) | undefined;
 let boardDndStop: (() => void) | undefined;
+let canvasStop: (() => void) | undefined;
+let boardFilter: "all" | "mine" | "unassigned" | "overdue" | "flagged" | "watching" = "all";
+let epicFilter = "";
+let boardSearch = "";
+let typeFilter = "";
+let swimlanes = false;
+let boardView: "board" | "list" | "reports" | "backlog" = "board";
+let paletteIndex = 0;
+let mentionStop: (() => void) | undefined;
+let canvasHistory: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+let selectedCanvasId = "";
+let stickyColor: "yellow" | "pink" | "green" | "blue" = "yellow";
+let findMatches: Array<{ from: number; to: number }> = [];
+let findIndex = 0;
+let reportsToken = 0;
+let exportTarget: "svg" | "png" | "pptx" = "svg";
+let presenting = false;
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -148,6 +180,14 @@ function escapeHtml(value: string): string {
 
 function currentProject(): ShellProject | undefined {
   return payload?.projects.find((project) => project.id === selectedProjectId) ?? payload?.projects[0];
+}
+
+function activeSprint(): { id: string; boardId: string; name: string; goal: string | null; state: string } | undefined {
+  if (!payload) return undefined;
+  const project = currentProject();
+  const boards = payload.boards.filter((board) => !project || board.projectId === project.id);
+  const board = boards[0];
+  return payload.sprints.find((sprint) => sprint.state === "active" && (!board || sprint.boardId === board.id));
 }
 
 function currentSpaceId(): string {
@@ -234,6 +274,359 @@ function renderCrumbs(doc: ShellDocument | undefined): void {
   ].join("");
 }
 
+function presenceColor(id: string): string {
+  const palette = ["#0C66E4", "#1F845A", "#B38600", "#C9372C", "#6E5DC6", "#E56910"];
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) hash = (hash * 33 + id.charCodeAt(index)) >>> 0;
+  return palette[hash % palette.length] ?? "#0C66E4";
+}
+
+function renderWordCount(counts?: { words: number; characters: number }): void {
+  const node = document.getElementById("doc-count");
+  if (!node) return;
+  const next = counts ?? collab?.counts() ?? { words: 0, characters: 0 };
+  node.textContent = `${next.words} words · ${next.characters} characters`;
+}
+
+function isOverdue(issue: ShellIssue): boolean {
+  const due = (issue.dueAt ?? "").slice(0, 10);
+  if (!due || issue.statusId === "done" || issue.statusId === "cancelled") return false;
+  const today = new Date();
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return due < iso;
+}
+
+function formatHours(hours: number): string {
+  if (!Number.isFinite(hours) || hours < 1 / 60) return "< 1m";
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+  if (hours < 24) return `${hours.toFixed(1)}h`;
+  return `${(hours / 24).toFixed(1)}d`;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const left = sorted[mid - 1] ?? sorted[mid] ?? 0;
+  const right = sorted[mid] ?? left;
+  return sorted.length % 2 === 0 ? (left + right) / 2 : right;
+}
+
+function sampleSeries<T>(points: T[], max = 36): T[] {
+  if (points.length <= max) return points;
+  const step = (points.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, index) => points[Math.round(index * step)]!).filter(Boolean);
+}
+
+function barChartSvg(points: Array<{ label: string; value: number }>, ariaLabel: string): string {
+  const width = 640;
+  const height = 220;
+  const pad = { l: 40, r: 12, t: 16, b: 40 };
+  const innerW = width - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+  const max = Math.max(1, ...points.map((point) => point.value));
+  const ticks = [0, 0.5, 1].map((frac) => {
+    const value = Math.round(max * frac);
+    const y = pad.t + innerH - (value / max) * innerH;
+    return `<line class="ew-chart-axis" x1="${pad.l}" x2="${width - pad.r}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" />
+      <text class="ew-chart-label" x="${pad.l - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${value}</text>`;
+  });
+  const bars =
+    points.length === 0
+      ? `<text class="ew-chart-label" x="${width / 2}" y="${pad.t + innerH / 2}" text-anchor="middle">No completions yet</text>`
+      : points
+          .map((point, index) => {
+            const slots = Math.max(points.length, 6);
+            const slot = innerW / slots;
+            const barW = Math.min(48, slot * 0.62);
+            const x = pad.l + index * slot + (slot - barW) / 2;
+            const h = Math.max(2, (point.value / max) * innerH);
+            const y = pad.t + innerH - h;
+            const caption = point.label.length > 10 ? point.label.slice(5) : point.label;
+            return `<rect class="ew-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3">
+              <title>${escapeHtml(point.label)}: ${point.value} completed</title>
+            </rect>
+            <text class="ew-chart-label" x="${(x + barW / 2).toFixed(1)}" y="${height - 14}" text-anchor="middle">${escapeHtml(caption)}</text>`;
+          })
+          .join("");
+  return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">${ticks.join("")}${bars}</svg>`;
+}
+
+function stackedAreaSvg(
+  points: Array<{ at: string; todo: number; in_progress: number; done: number }>,
+  ariaLabel: string,
+): string {
+  const sampled = sampleSeries(points, 40);
+  const width = 640;
+  const height = 240;
+  const pad = { l: 40, r: 12, t: 16, b: 36 };
+  const innerW = width - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+  if (sampled.length === 0) {
+    return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+      <text class="ew-chart-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No workflow events yet</text>
+    </svg>`;
+  }
+  const max = Math.max(1, ...sampled.map((point) => point.todo + point.in_progress + point.done));
+  const last = sampled.length - 1;
+  const xAt = (index: number) => pad.l + (last === 0 ? innerW / 2 : (index / last) * innerW);
+  const yAt = (value: number) => pad.t + innerH - (value / max) * innerH;
+  const area = (values: number[], className: string) => {
+    const top = values.map((value, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(value).toFixed(1)}`).join(" ");
+    return `<path class="${className}" d="${top} L${xAt(last).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z" />`;
+  };
+  const totals = sampled.map((point) => point.todo + point.in_progress + point.done);
+  const progress = sampled.map((point) => point.done + point.in_progress);
+  const done = sampled.map((point) => point.done);
+  const firstLabel = sampled[0]?.at.slice(0, 10) ?? "";
+  const lastLabel = sampled[last]?.at.slice(0, 10) ?? "";
+  return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+    ${area(totals, "ew-area-todo")}
+    ${area(progress, "ew-area-progress")}
+    ${area(done, "ew-area-done")}
+    <text class="ew-chart-label" x="${pad.l}" y="${height - 12}">${escapeHtml(firstLabel)}</text>
+    <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml(lastLabel)}</text>
+  </svg>`;
+}
+
+function lineChartSvg(points: Array<{ label: string; value: number }>, ariaLabel: string): string {
+  const width = 640;
+  const height = 220;
+  const pad = { l: 40, r: 12, t: 16, b: 36 };
+  const innerW = width - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+  const sampled = sampleSeries(points, 48);
+  if (sampled.length === 0) {
+    return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+      <text class="ew-chart-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No sprint remaining yet</text>
+    </svg>`;
+  }
+  const max = Math.max(1, ...sampled.map((point) => point.value));
+  const last = sampled.length - 1;
+  const xAt = (index: number) => pad.l + (last === 0 ? innerW / 2 : (index / last) * innerW);
+  const yAt = (value: number) => pad.t + innerH - (value / max) * innerH;
+  const line = sampled.map((point, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(point.value).toFixed(1)}`).join(" ");
+  const area = `${line} L${xAt(last).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z`;
+  return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+    <path class="ew-area-progress" d="${area}" />
+    <path class="ew-line" d="${line}" fill="none" />
+    <text class="ew-chart-label" x="${pad.l}" y="${height - 12}">${escapeHtml(sampled[0]?.label ?? "")}</text>
+    <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml(sampled[last]?.label ?? "")}</text>
+  </svg>`;
+}
+
+function reportKpis(reports: ProjectReports): { completed: number; medianCycle: string; inProgress: number } {
+  const completed = reports.throughput.reduce((sum, point) => sum + point.completed, 0);
+  const last = reports.cumulativeFlow[reports.cumulativeFlow.length - 1];
+  return {
+    completed,
+    medianCycle: reports.cycleTime.length ? formatHours(median(reports.cycleTime.map((row) => row.hours))) : "—",
+    inProgress: last?.in_progress ?? 0,
+  };
+}
+
+function renderReportsMarkup(
+  reports: ProjectReports,
+  burndown: { name: string; points: Array<{ at: string; remaining: number }> } | undefined,
+): string {
+  const kpis = reportKpis(reports);
+  const cycleRows =
+    reports.cycleTime.length === 0
+      ? `<p class="ew-meta">No completed issues yet.</p>`
+      : reports.cycleTime
+          .slice()
+          .sort((a, b) => b.hours - a.hours)
+          .map(
+            (row) =>
+              `<button type="button" class="ew-cycle-row" data-issue="${escapeHtml(row.issueId)}">
+                <span class="ew-key">${escapeHtml(row.key)}</span>
+                <strong>${escapeHtml(row.summary)}</strong>
+                <span class="ew-cycle-hours">${escapeHtml(formatHours(row.hours))}</span>
+              </button>`,
+          )
+          .join("");
+  const burn =
+    burndown && burndown.points.length
+      ? `<article id="report-burndown" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Burndown</h2>
+      <p class="ew-report-lead">${escapeHtml(burndown.name)} remaining estimate.</p>
+      ${lineChartSvg(
+        burndown.points.map((point) => ({ label: point.at.slice(0, 10), value: point.remaining })),
+        `${burndown.name} sprint burndown`,
+      )}
+    </article>`
+      : `<article id="report-burndown" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Burndown</h2>
+      <p class="ew-report-lead">Start a sprint to plot remaining estimate.</p>
+    </article>`;
+  return `<div id="work-reports" class="ew-reports">
+    <div id="report-kpis" class="ew-report-kpis">
+      <div class="ew-kpi"><strong>${kpis.completed}</strong><span>Completed</span></div>
+      <div class="ew-kpi"><strong>${escapeHtml(kpis.medianCycle)}</strong><span>Median cycle</span></div>
+      <div class="ew-kpi"><strong>${kpis.inProgress}</strong><span>In progress</span></div>
+    </div>
+    ${burn}
+    <article id="report-throughput" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Throughput</h2>
+      <p class="ew-report-lead">Issues moved to Done each day.</p>
+      ${barChartSvg(
+        reports.throughput.map((point) => ({ label: point.day, value: point.completed })),
+        "Throughput completed per day",
+      )}
+    </article>
+    <article id="report-cycle" class="ew-report">
+      <h2>${iconSvg("ChartColumnStacked")} Cycle time</h2>
+      <p class="ew-report-lead">Created to Done for each completed issue.</p>
+      <div class="ew-cycle-list">${cycleRows}</div>
+    </article>
+    <article id="report-cfd" class="ew-report">
+      <h2>${iconSvg("ChartColumnStacked")} Cumulative flow</h2>
+      <p class="ew-report-lead">To do, in progress, and done over the project timeline.</p>
+      ${stackedAreaSvg(reports.cumulativeFlow, "Cumulative flow of to do, in progress, and done issues")}
+      <ul class="ew-legend" aria-hidden="true">
+        <li><span class="ew-swatch-todo"></span> To do</li>
+        <li><span class="ew-swatch-progress"></span> In progress</li>
+        <li><span class="ew-swatch-done"></span> Done</li>
+      </ul>
+    </article>
+  </div>`;
+}
+
+async function loadProjectReports(): Promise<void> {
+  const project = currentProject();
+  if (!project || boardView !== "reports") return;
+  const token = ++reportsToken;
+  const board = $("work-board");
+  board.innerHTML = `<p class="ew-meta">Loading reports…</p>`;
+  try {
+    const reports = await api<ProjectReports>(`/v1/projects/${encodeURIComponent(project.id)}/reports`);
+    if (token !== reportsToken || boardView !== "reports") return;
+    const sprint = activeSprint();
+    const burndown = sprint
+      ? {
+          name: sprint.name,
+          points: (await api<{ points: Array<{ at: string; remaining: number }> }>(`/v1/sprints/${encodeURIComponent(sprint.id)}/burndown`)).points,
+        }
+      : undefined;
+    if (token !== reportsToken || boardView !== "reports") return;
+    board.innerHTML = renderReportsMarkup(reports, burndown);
+    hydrateIcons(board);
+    document.querySelector(".ew-body")?.classList.remove("is-issue");
+    $("inspector-title").textContent = "Reports";
+    const kpis = reportKpis(reports);
+    inspector.innerHTML = `<div class="ew-meta">
+        <strong>${escapeHtml(project.key)} reports</strong>
+        <span>${kpis.completed} completed</span>
+        <span>Median cycle ${escapeHtml(kpis.medianCycle)}</span>
+        <span>${kpis.inProgress} in progress</span>
+      </div>
+      <p class="ew-report-lead">Throughput, cycle time, and cumulative flow come from issue events. Filters on the board do not change these charts.</p>`;
+  } catch (error) {
+    if (token !== reportsToken || boardView !== "reports") return;
+    board.innerHTML = `<p class="ew-error" role="alert">${escapeHtml(error instanceof Error ? error.message : "Could not load reports")}</p>`;
+  }
+}
+
+function stickyAlt(color: string): string {
+  return color === "yellow" ? "Sticky" : `Sticky:${color}`;
+}
+
+function beginSelectionComment(quote: string): void {
+  const box = $<HTMLTextAreaElement>("doc-comment-input");
+  const chip = document.getElementById("doc-comment-quote");
+  if (quote) {
+    box.dataset.quote = quote;
+    box.placeholder = `Comment on “${quote.slice(0, 72)}”`;
+    if (chip) {
+      chip.hidden = false;
+      chip.textContent = quote;
+    }
+  }
+  box.focus();
+  $("doc-discussion").scrollIntoView({ block: "nearest" });
+}
+
+function closePageFind(): void {
+  const bar = document.getElementById("page-find");
+  if (bar) bar.hidden = true;
+  findMatches = [];
+  findIndex = 0;
+}
+
+function collectFindMatches(query: string): Array<{ from: number; to: number }> {
+  const editor = collab?.editor();
+  if (!editor || !query) return [];
+  const needle = query.toLowerCase();
+  const matches: Array<{ from: number; to: number }> = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    const hay = node.text.toLowerCase();
+    let index = 0;
+    while (index < hay.length) {
+      const found = hay.indexOf(needle, index);
+      if (found < 0) break;
+      matches.push({ from: pos + found, to: pos + found + needle.length });
+      index = found + Math.max(1, needle.length);
+    }
+  });
+  return matches;
+}
+
+function jumpFind(delta = 0): number {
+  const editor = collab?.editor();
+  const count = document.getElementById("page-find-count");
+  if (!editor || !findMatches.length) {
+    if (count) count.textContent = "0 of 0";
+    return 0;
+  }
+  findIndex = (findIndex + delta + findMatches.length) % findMatches.length;
+  const match = findMatches[findIndex];
+  if (match) {
+    editor.chain().focus().setTextSelection({ from: match.from, to: match.to }).scrollIntoView().run();
+  }
+  if (count) count.textContent = `${findIndex + 1} of ${findMatches.length}`;
+  return findMatches.length;
+}
+
+function runPageFind(query: string): number {
+  const bar = document.getElementById("page-find");
+  if (bar) bar.hidden = false;
+  const input = document.getElementById("page-find-input");
+  if (input instanceof HTMLInputElement && input.value !== query) input.value = query;
+  const needle = query.trim();
+  if (needle.length < 2) {
+    findMatches = [];
+    findIndex = 0;
+    const count = document.getElementById("page-find-count");
+    if (count) count.textContent = "0 of 0";
+    return 0;
+  }
+  findMatches = collectFindMatches(needle);
+  findIndex = 0;
+  return jumpFind(0);
+}
+
+function openPageFind(): void {
+  const bar = $("page-find");
+  bar.hidden = false;
+  const input = $<HTMLInputElement>("page-find-input");
+  input.focus();
+  input.select();
+  if (input.value.trim()) runPageFind(input.value);
+}
+
+function renderPresence(users: Array<{ id: string; name: string; color: string }>): void {
+  const node = document.getElementById("doc-presence");
+  if (!node) return;
+  const unique = [...new Map(users.map((user) => [user.id, user])).values()];
+  node.innerHTML = unique
+    .map(
+      (user) =>
+        `<span class="ew-avatar" title="${escapeHtml(user.name)}" style="background:${escapeHtml(user.color)}">${escapeHtml(initials(user.name))}</span>`,
+    )
+    .join("");
+}
+
 function renderByline(doc: ShellDocument | undefined): void {
   const actorName = payload?.actor.name ?? "Unknown";
   const when = formatWhen(doc?.updatedAt);
@@ -293,7 +686,18 @@ function orderedDocuments(): ShellDocument[] {
   return walk("");
 }
 
+function setPresenting(on: boolean): void {
+  presenting = on;
+  const shell = document.getElementById("workspace-shell");
+  shell?.classList.toggle("is-presenting", on);
+  const exit = document.getElementById("present-exit");
+  if (exit) exit.hidden = !on;
+  $("page-present")?.setAttribute("aria-pressed", String(on && mode === "docs"));
+  $("canvas-present")?.setAttribute("aria-pressed", String(on && mode === "visuals"));
+}
+
 function setMode(next: Mode): void {
+  if (presenting) setPresenting(false);
   mode = next;
   for (const button of document.querySelectorAll<HTMLButtonElement>(".ew-modes button")) {
     button.setAttribute("aria-selected", String(button.dataset.mode === next));
@@ -306,6 +710,7 @@ function setMode(next: Mode): void {
   $("rail-kicker").textContent = next === "docs" ? "Content" : next === "visuals" ? "Whiteboards" : next === "work" ? "Projects" : "Admin";
   const section = document.getElementById("rail-section");
   if (section) section.textContent = next === "docs" ? "Pages" : next === "visuals" ? "Boards" : next === "work" ? "Projects" : "Spaces";
+  if (next !== "work") document.querySelector(".ew-body")?.classList.remove("is-issue");
   if (next !== "visuals") $("visual-outline").replaceChildren();
   renderRail();
   if (next === "docs") openDocument(selectedDocumentId || payload?.documents[0]?.id);
@@ -380,41 +785,36 @@ function renderRail(): void {
   }
   hydrateIcons(actions);
   hydrateIcons(railList);
+  enhanceSelects(actions);
 }
 
-function nomaToEditorHtml(title: string, source: string): string {
-  const stripped = source.replace(/^---[\s\S]*?---\n/, "").trim();
-  const blocks = stripped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
-  const body = blocks
-    .map((block) => {
-      const figure = block.match(/^::figure\{([^}]*)\}/m);
-      if (figure) {
-        const src = /src="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "";
-        const alt = /alt="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "image";
-        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
-        return `<p>Image: ${escapeHtml(alt)}</p><p><img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}"></p>`;
-      }
-      const video = block.match(/^::video\{([^}]*)\}/m);
-      if (video) {
-        const src = /src="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "";
-        const name = /title="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "video";
-        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
-        return `<p>Video: ${escapeHtml(name)}</p><p><video src="${escapeHtml(url)}" controls></video></p>`;
-      }
-      const text = escapeHtml(block.replace(/^#{1,6}\s+/, "").replace(/^::\w+.*$/gm, "").trim());
-      if (!text) return "";
-      if (/^#\s+/.test(block)) return `<h1>${escapeHtml(block.replace(/^#\s+/, ""))}</h1>`;
-      if (/^##\s+/.test(block)) return `<h2>${escapeHtml(block.replace(/^##\s+/, ""))}</h2>`;
-      return `<p>${text}</p>`;
-    })
-    .filter(Boolean)
-    .join("");
-  return body || `<h1>${escapeHtml(title)}</h1><p></p>`;
+function uniqueHits<T extends { resourceKind: string; resourceId: string }>(hits: T[]): T[] {
+  const seen = new Set<string>();
+  return hits.filter((hit) => {
+    const key = `${hit.resourceKind}:${hit.resourceId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function bindWorkspaceMentions(): void {
+  mentionStop?.();
+  const people = (payload?.principals ?? []).map((person) => ({ id: person.id, name: person.name }));
+  const stops: Array<() => void> = [];
+  for (const id of ["doc-comment-input", "issue-comment"]) {
+    const box = document.getElementById(id);
+    if (box instanceof HTMLTextAreaElement) stops.push(bindMentionBox(box, people));
+  }
+  mentionStop = () => {
+    for (const stop of stops) stop();
+  };
 }
 
 function openDocument(id: string | undefined): void {
   if (!id || !payload) return;
   selectedDocumentId = id;
+  closePageFind();
   const doc = payload.documents.find((item) => item.id === id);
   $("doc-title").textContent = doc?.title ?? "Untitled";
   const kicker = $("doc-kicker");
@@ -430,6 +830,17 @@ function openDocument(id: string | undefined): void {
     element: editorMount,
     token,
     documentId: id,
+    user: payload?.actor
+      ? { id: payload.actor.principalId, name: payload.actor.name, color: presenceColor(payload.actor.principalId) }
+      : undefined,
+    people: (payload?.principals ?? []).map((person) => ({ id: person.id, name: person.name })),
+    onPresence: renderPresence,
+    onUpdate: () => {
+      renderPageToc();
+      renderWordCount();
+    },
+    onCount: renderWordCount,
+    onComment: beginSelectionComment,
     onStatus: (text) => {
       $("collab-status").textContent = text;
       setStatus(`${payload?.actor.name ?? "Session"} · ${text}`, text.startsWith("ack") || text === "ready" ? "ok" : "connecting");
@@ -439,10 +850,49 @@ function openDocument(id: string | undefined): void {
   void renderDocumentInspector(id);
 }
 
+function pageHeadings(): Array<{ text: string; level: number }> {
+  const headings: Array<{ text: string; level: number }> = [];
+  const editor = collab?.editor();
+  editor?.state.doc.descendants((node) => {
+    if (node.type.name === "heading") {
+      const text = node.textContent.trim();
+      if (text) headings.push({ text, level: Number(node.attrs.level ?? 1) });
+    }
+  });
+  return headings.slice(0, 24);
+}
+
+function renderPageToc(): void {
+  const toc = document.getElementById("page-toc");
+  if (!toc) return;
+  const headings = pageHeadings();
+  toc.innerHTML = headings.length
+    ? headings
+        .map(
+          (heading) =>
+            `<button type="button" class="ew-toc-item" data-toc="${escapeHtml(heading.text)}" data-level="${heading.level}">${escapeHtml(heading.text)}</button>`,
+        )
+        .join("")
+    : `<div class="ew-note">Headings on this page appear here</div>`;
+}
+
+function setPageCover(assets: Array<{ assetId: string; filename: string; mime: string }>): void {
+  const cover = document.getElementById("doc-cover");
+  if (!cover) return;
+  const image = assets.find((asset) => asset.mime.startsWith("image/"));
+  if (!image) {
+    cover.hidden = true;
+    cover.replaceChildren();
+    return;
+  }
+  cover.hidden = false;
+  cover.innerHTML = `<img src="${escapeHtml(assetUrl(image.assetId))}" alt="${escapeHtml(image.filename)}" />`;
+}
+
 async function renderDocumentInspector(id: string): Promise<void> {
   const doc = payload?.documents.find((item) => item.id === id);
   const [comments, revisions, assets, grants, links] = await Promise.all([
-    api<{ comments: Array<{ id: string; body: string; authorName: string; createdAt: string }> }>(`/v1/documents/${encodeURIComponent(id)}/comments`),
+    api<{ comments: Array<{ id: string; body: string; quote?: string | null; authorName: string; createdAt: string }> }>(`/v1/documents/${encodeURIComponent(id)}/comments`),
     api<{ revisions: Array<{ revision: number; title: string; createdAt: string }> }>(`/v1/documents/${encodeURIComponent(id)}/revisions`),
     api<{ assets: Array<{ id: string; assetId: string; filename: string; mime: string }> }>(`/v1/documents/${encodeURIComponent(id)}/assets`),
     api<{ grants: Array<{ id: string; principalId: string; role: string; name: string }> }>(`/v1/documents/${encodeURIComponent(id)}/permissions`),
@@ -457,6 +907,7 @@ async function renderDocumentInspector(id: string): Promise<void> {
           ${avatarMarkup(comment.authorName, "lg")}
           <div>
             <div class="ew-comment-meta"><strong>${escapeHtml(comment.authorName)}</strong><span>${escapeHtml(formatWhen(comment.createdAt))}</span></div>
+            ${comment.quote ? `<button type="button" class="ew-comment-quote" data-quote="${escapeHtml(comment.quote)}">${escapeHtml(comment.quote)}</button>` : ""}
             <p>${escapeHtml(comment.body)}</p>
           </div>
         </article>`,
@@ -482,7 +933,9 @@ async function renderDocumentInspector(id: string): Promise<void> {
   const issues = (payload?.issues ?? [])
     .map((issue) => `<option value="${issue.id}">${escapeHtml(issue.key)} ${escapeHtml(issue.summary)}</option>`)
     .join("");
+  setPageCover(assets.assets);
   inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(doc?.title ?? "")}</strong><span>Hash ${escapeHtml((doc?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml(doc?.classification ?? "")}</span></div>
+    <div class="ew-meta"><strong>On this page</strong><div id="page-toc" class="ew-toc"></div></div>
     <label for="rename-page">Title<input id="rename-page" value="${escapeHtml(doc?.title ?? "")}" /></label>
     <label for="move-page">Parent
       <select id="move-page">
@@ -492,7 +945,7 @@ async function renderDocumentInspector(id: string): Promise<void> {
     </label>
     <div class="ew-actions">
       <button type="button" id="save-page-meta">Save location</button>
-      <label for="attach-file">Attach<input id="attach-file" type="file" /></label>
+      <label class="ew-file" for="attach-file">Attach file<input id="attach-file" type="file" /></label>
     </div>
     <div class="ew-meta"><strong>Permissions</strong>${grants.grants.map((grant) => `<span>${escapeHtml(grant.name)} · ${escapeHtml(grant.role)}</span>`).join("") || "<span>Inherited from workspace</span>"}</div>
     <label for="grant-principal">Person<select id="grant-principal">${people}</select></label>
@@ -505,6 +958,8 @@ async function renderDocumentInspector(id: string): Promise<void> {
     <button type="button" id="add-issue-link">Link issue</button>
     <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} · ${escapeHtml(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
     <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
+  enhanceSelects(inspector);
+  renderPageToc();
 }
 
 async function seedEmptyEditor(id: string, title: string): Promise<void> {
@@ -512,11 +967,14 @@ async function seedEmptyEditor(id: string, title: string): Promise<void> {
   const document = await api<{ title: string; source: string }>(`/v1/documents/${encodeURIComponent(id)}`);
   const editor = collab?.editor();
   if (!editor || (editor.getText() ?? "").trim()) return;
-  editor.commands.setContent(nomaToEditorHtml(document.title || title, document.source));
+  editor.commands.setContent(nomaToEditorHtml(document.title || title, document.source, token));
+  renderPageToc();
+  renderWordCount();
 }
 
 async function openArtifact(id: string | undefined): Promise<void> {
   if (!id) return;
+  if (selectedArtifactId !== id) canvasHistory = [];
   selectedArtifactId = id;
   const data = await api<ArtifactPayload>(`/v1/artifacts/${encodeURIComponent(id)}`);
   $("visual-title").textContent = data.document.title;
@@ -533,10 +991,10 @@ async function openArtifact(id: string | undefined): Promise<void> {
   const page = $("visual-stage").querySelector(".pd-page");
   if (page instanceof HTMLElement) {
     const width = Math.max(page.offsetWidth, 960);
-    const scale = Math.min(1, ($("visual-stage").clientWidth - 32) / width);
-    page.style.transform = `scale(${scale})`;
-    page.style.transformOrigin = "top left";
-    page.style.marginBottom = `${Math.max(0, page.offsetHeight * (scale - 1))}px`;
+    const fit = Math.min(1, ($("visual-stage").clientWidth - 32) / width);
+    const zoom = Number($("visual-stage").dataset.zoom || String(fit));
+    setCanvasZoom($("visual-stage"), zoom);
+    page.style.marginBottom = `${Math.max(0, page.offsetHeight * (zoom - 1))}px`;
   }
   $("visual-outline").innerHTML = data.outline
     .map((entry) => `<button type="button" data-frame="${escapeHtml(entry.id)}"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.type)}</small></button>`)
@@ -544,6 +1002,64 @@ async function openArtifact(id: string | undefined): Promise<void> {
   inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(data.document.title)}</strong><span>Revision ${data.document.revision}</span><span>${data.outline.length} frames</span></div>`;
   $("inspector-title").textContent = "Canvas";
   renderRail();
+  enhanceSelects($("canvas-visuals"));
+  canvasStop?.();
+  const undoBtn = document.getElementById("canvas-undo");
+  if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = canvasHistory.length === 0;
+  canvasStop = bindVisualStage($("visual-stage"), {
+    onMove: (move) => {
+      if (move.previous) {
+        canvasHistory.push({ id: move.id, ...move.previous });
+        if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = false;
+      }
+      void api(`/v1/artifacts/${encodeURIComponent(id)}/elements/${encodeURIComponent(move.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ geometry: { x: move.x, y: move.y, width: move.width, height: move.height } }),
+      });
+      syncCanvasArrows($("visual-stage"));
+    },
+    onEdit: (elementId, text) => {
+      const card = $("visual-stage").querySelector<HTMLElement>(`.pd-el[data-id="${CSS.escape(elementId)}"]`);
+      const color = card?.dataset.sticky;
+      const pin = card?.dataset.comment;
+      void api(`/v1/artifacts/${encodeURIComponent(id)}/elements/${encodeURIComponent(elementId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ text, altText: color ? stickyAlt(color) : pin ? "Comment" : text }),
+      });
+    },
+    onPlaceSticky: (x, y) => {
+      $("visual-stage").dataset.tool = "select";
+      syncVisualTools();
+      void addCanvasElement({
+        type: "shape",
+        text: "New note",
+        altText: stickyAlt(stickyColor),
+        geometry: { x, y, width: 200, height: 160 },
+      });
+    },
+    onPlaceComment: (x, y) => {
+      $("visual-stage").dataset.tool = "select";
+      syncVisualTools();
+      void addCanvasElement({
+        type: "shape",
+        text: "Comment",
+        altText: "Comment",
+        geometry: { x, y, width: 160, height: 72 },
+      });
+    },
+    onConnect: (fromId, toId) => {
+      $("visual-stage").dataset.tool = "select";
+      syncVisualTools();
+      void addCanvasElement({ type: "arrow", fromId, toId, altText: "Arrow" });
+    },
+    onSelect: (elementId) => {
+      selectedCanvasId = elementId;
+      for (const node of $("visual-stage").querySelectorAll(".pd-el")) {
+        node.classList.toggle("is-selected", node.getAttribute("data-id") === elementId);
+      }
+    },
+  });
+  syncCanvasArrows($("visual-stage"));
 }
 
 function renderSprintBar(): void {
@@ -567,33 +1083,196 @@ function renderBoard(): void {
   selectedProjectId = project?.id ?? "";
   $("work-title").textContent = project ? `${project.key} · ${project.name}` : "Work";
   renderSprintBar();
+  $("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
+  $("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
+  $("filter-unassigned")?.setAttribute("aria-pressed", String(boardFilter === "unassigned"));
+  $("filter-overdue")?.setAttribute("aria-pressed", String(boardFilter === "overdue"));
+  $("filter-flagged")?.setAttribute("aria-pressed", String(boardFilter === "flagged"));
+  $("filter-watching")?.setAttribute("aria-pressed", String(boardFilter === "watching"));
+  $("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
+  $("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
+  $("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
+  $("view-reports")?.setAttribute("aria-pressed", String(boardView === "reports"));
+  $("view-backlog")?.setAttribute("aria-pressed", String(boardView === "backlog"));
+  const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
+  $("type-filters").innerHTML = [
+    `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
+    ...projectTypes.map(
+      (type) =>
+        `<button type="button" data-type="${escapeHtml(type.key)}" aria-pressed="${String(typeFilter === type.key)}">${escapeHtml(type.name)}</button>`,
+    ),
+  ].join("");
   const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
-  const visible = payload.issues.filter((issue) => (!project || issue.projectId === project.id) && (!jqlFilterIds || jqlFilterIds.includes(issue.id)));
-  $("work-board").innerHTML = columns
-    .map((status) => {
-      const cards = visible.filter((issue) => issue.statusId === status.id);
-      return `<section class="ew-column" data-status="${escapeHtml(status.id)}">
+  const epicSelect = document.getElementById("filter-epic");
+  if (epicSelect instanceof HTMLSelectElement) {
+    const epics = payload.issues.filter((issue) => issue.typeKey === "epic" && (!project || issue.projectId === project.id));
+    epicSelect.innerHTML =
+      `<option value="">All epics</option>` +
+      epics.map((epic) => `<option value="${epic.id}" ${epic.id === epicFilter ? "selected" : ""}>${escapeHtml(epic.key)} ${escapeHtml(epic.summary)}</option>`).join("");
+  }
+  const inEpic = (issue: ShellIssue, epicId: string): boolean => {
+    if (issue.id === epicId) return true;
+    const seen = new Set<string>();
+    let current: ShellIssue | undefined = issue;
+    while (current?.parentId && !seen.has(current.id)) {
+      seen.add(current.id);
+      if (current.parentId === epicId) return true;
+      current = payload.issues.find((item) => item.id === current?.parentId);
+    }
+    return false;
+  };
+  const visible = payload.issues.filter((issue) => {
+    if (project && issue.projectId !== project.id) return false;
+    if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
+    if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
+    if (boardFilter === "unassigned" && issue.assigneeId) return false;
+    if (boardFilter === "overdue" && !isOverdue(issue)) return false;
+    if (boardFilter === "flagged" && !issue.flagged) return false;
+    if (boardFilter === "watching" && !issue.watching) return false;
+    if (epicFilter && !inEpic(issue, epicFilter)) return false;
+    if (typeFilter && issue.typeKey !== typeFilter) return false;
+    if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
+    return true;
+  });
+  const issueCard = (issue: ShellIssue): string => {
+    const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
+    const parent = payload?.issues.find((item) => item.id === issue.parentId);
+    const due = (issue.dueAt ?? "").slice(0, 10);
+    const labels = (issue.labels ?? []).map((label) => `<span class="ew-label">${escapeHtml(label)}</span>`).join("");
+    return `<button class="ew-card${issue.id === selectedIssueId ? " is-open" : ""}" type="button" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
+      <span class="ew-key">${escapeHtml(issue.key)}</span>
+      <strong>${escapeHtml(issue.summary)}</strong>
+      <span class="ew-card-foot">
+        <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
+        ${parent ? `<span class="ew-epic">${escapeHtml(parent.key)}</span>` : ""}
+        ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
+        <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
+        ${issue.flagged ? `<span class="ew-flag">Flagged</span>` : ""}
+        ${issue.watching ? `<span class="ew-watch">Watching</span>` : ""}
+        ${due ? `<span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml(due)}</span>` : ""}
+        ${labels}
+        ${assignee ? avatarMarkup(assignee.name) : ""}
+      </span>
+    </button>`;
+  };
+  const columnsMarkup = (laneIssues: ShellIssue[], laneId: string): string =>
+    columns
+      .map((status) => {
+        const cards = laneIssues.filter((issue) => issue.statusId === status.id);
+        const createId = laneId === "board" ? `create-${status.id}` : `create-${laneId}-${status.id}`;
+        return `<section class="ew-column" data-status="${escapeHtml(status.id)}">
         <h3>${escapeHtml(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
-        ${cards
-          .map(
-            (issue) => {
-              const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
-              return `<button class="ew-card" type="button" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
-              <span class="ew-key">${escapeHtml(issue.key)}</span>
-              <strong>${escapeHtml(issue.summary)}</strong>
-              <span class="ew-card-foot">
-                <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
-                ${assignee ? avatarMarkup(assignee.name) : ""}
-              </span>
-            </button>`;
-            },
-          )
-          .join("")}
+        <div class="ew-column-list">
+        ${cards.map((issue) => issueCard(issue)).join("")}
+        </div>
+        <label class="ew-sr" for="${escapeHtml(createId)}">Create in ${escapeHtml(status.name)}</label>
+        <input id="${escapeHtml(createId)}" class="ew-column-add" data-status="${escapeHtml(status.id)}" placeholder="Create" />
       </section>`;
-    })
-    .join("");
-  $("inspector-title").textContent = "Board";
-  inspector.innerHTML = `<div class="ew-meta"><strong>${visible.length} issues</strong><span>${payload.notifications.length} notifications</span></div>
+      })
+      .join("");
+  const board = $("work-board");
+  board.classList.toggle("has-swimlanes", swimlanes && boardView === "board");
+  board.classList.toggle("is-list", boardView === "list");
+  board.classList.toggle("is-reports", boardView === "reports");
+  board.classList.toggle("is-backlog", boardView === "backlog");
+  if (boardView === "reports") {
+    boardDndStop?.();
+    boardDndStop = undefined;
+    void loadProjectReports();
+    renderRail();
+    return;
+  }
+  if (boardView === "backlog") {
+    boardDndStop?.();
+    boardDndStop = undefined;
+    const sprint = activeSprint();
+    const inSprint = visible.filter((issue) => sprint && issue.sprintId === sprint.id);
+    const queued = visible.filter((issue) => !sprint || issue.sprintId !== sprint.id);
+    const points = inSprint.reduce((sum, issue) => sum + (issue.estimate ?? 0), 0);
+    const row = (issue: ShellIssue, action: "add" | "remove"): string =>
+      `<div class="ew-backlog-row${issue.id === selectedIssueId ? " is-open" : ""}">
+        ${issueCard(issue)}
+        ${
+          sprint
+            ? `<button type="button" class="ew-sprint-action" data-sprint-action="${action}" data-issue="${escapeHtml(issue.id)}" data-sprint="${escapeHtml(sprint.id)}">${action === "add" ? "Add to sprint" : "Remove"}</button>`
+            : ""
+        }
+      </div>`;
+    board.innerHTML = `<div id="work-backlog" class="ew-backlog">
+      <section id="sprint-plan" class="ew-backlog-pane">
+        <h2>${escapeHtml(sprint ? sprint.name : "No active sprint")} <span id="sprint-points">${points} pts · ${inSprint.length}</span></h2>
+        ${inSprint.map((issue) => row(issue, "remove")).join("") || `<p class="ew-meta">Pull issues from the backlog into this sprint.</p>`}
+      </section>
+      <section id="backlog-list" class="ew-backlog-pane">
+        <h2>Backlog <span>${queued.length}</span></h2>
+        ${queued.map((issue) => row(issue, "add")).join("") || `<p class="ew-meta">Backlog is empty.</p>`}
+      </section>
+    </div>`;
+    if (!selectedIssueId) {
+      document.querySelector(".ew-body")?.classList.remove("is-issue");
+      $("inspector-title").textContent = "Backlog";
+      inspector.innerHTML = `<div class="ew-meta"><strong>${queued.length} in backlog</strong><span>${inSprint.length} in sprint</span><span>${points} points committed</span></div>
+        <p class="ew-report-lead">${sprint ? "Add work to the active sprint, then run the board." : "Plan a sprint from the sprint bar to start committing work."}</p>`;
+    }
+    renderRail();
+    return;
+  }
+  if (boardView === "list") {
+    const statusName = (id: string) => columns.find((status) => status.id === id)?.name ?? id;
+    board.innerHTML = `<div class="ew-issue-table" role="table" aria-label="Issue list">
+      <div class="ew-row ew-row-head" role="row">
+        <span>Key</span><span>Summary</span><span>Status</span><span>Priority</span><span>Due</span><span>Estimate</span>
+      </div>
+      ${visible
+        .map((issue) => {
+          const due = (issue.dueAt ?? "").slice(0, 10);
+          return `<button type="button" class="ew-row${issue.id === selectedIssueId ? " is-open" : ""}" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}" role="row">
+            <span class="ew-key">${escapeHtml(issue.key)}</span>
+            <strong>${escapeHtml(issue.summary)}</strong>
+            <span>${escapeHtml(statusName(issue.statusId))}</span>
+            <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
+            <span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml(due)}</span>
+            <span class="ew-points">${issue.estimate ?? ""}</span>
+          </button>`;
+        })
+        .join("")}
+    </div>`;
+  } else if (swimlanes) {
+    const epicLane = (issue: ShellIssue): { id: string; title: string } => {
+      if (issue.typeKey === "epic") return { id: issue.id, title: `${issue.key} ${issue.summary}` };
+      const seen = new Set<string>();
+      let current: ShellIssue | undefined = issue;
+      while (current?.parentId && !seen.has(current.id)) {
+        seen.add(current.id);
+        const parent = payload?.issues.find((item) => item.id === current?.parentId);
+        if (!parent) break;
+        if (parent.typeKey === "epic") return { id: parent.id, title: `${parent.key} ${parent.summary}` };
+        current = parent;
+      }
+      return { id: "none", title: "No epic" };
+    };
+    const groups = new Map<string, { title: string; issues: ShellIssue[] }>();
+    for (const issue of visible) {
+      const lane = epicLane(issue);
+      const existing = groups.get(lane.id);
+      if (existing) existing.issues.push(issue);
+      else groups.set(lane.id, { title: lane.title, issues: [issue] });
+    }
+    board.innerHTML = [...groups.entries()]
+      .map(
+        ([laneId, group]) => `<section class="ew-swimlane" data-epic="${escapeHtml(laneId)}">
+          <h3>${escapeHtml(group.title)} <span>${group.issues.length}</span></h3>
+          <div class="ew-swimlane-cols">${columnsMarkup(group.issues, laneId)}</div>
+        </section>`,
+      )
+      .join("");
+  } else {
+    board.innerHTML = columnsMarkup(visible, "board");
+  }
+  if (!selectedIssueId) {
+    document.querySelector(".ew-body")?.classList.remove("is-issue");
+    $("inspector-title").textContent = "Board";
+    inspector.innerHTML = `<div class="ew-meta"><strong>${visible.length} issues</strong><span>${payload.notifications.length} notifications</span></div>
     <label for="new-issue-summary">Create issue
       <input id="new-issue-summary" placeholder="Summary" />
     </label>
@@ -601,6 +1280,8 @@ function renderBoard(): void {
       <select id="new-issue-type">${(payload.issueTypes.filter((type) => type.projectId === project?.id)).map((type) => `<option value="${escapeHtml(type.key)}">${escapeHtml(type.name)}</option>`).join("")}</select>
     </label>
     <div class="ew-actions"><button type="button" id="submit-issue">${iconSvg("Plus")} Create</button></div>`;
+    enhanceSelects(inspector);
+  }
   renderRail();
   boardDndStop?.();
   boardDndStop = bindIssueBoard($("work-board"), (drop) => {
@@ -608,22 +1289,43 @@ function renderBoard(): void {
   });
 }
 
+async function transitionIssueTo(issueId: string, from: string, to: string): Promise<void> {
+  for (const status of statusPath(from, to)) {
+    await api(`/v1/issues/${encodeURIComponent(issueId)}/transition`, {
+      method: "POST",
+      body: JSON.stringify({ to: status, fields: status === "done" ? { resolution: "completed" } : {} }),
+    });
+  }
+}
+
 async function applyBoardDrop(drop: BoardDrop): Promise<void> {
   const project = currentProject();
   if (!project || !payload) return;
-  const ordered = [...payload.issues.filter((issue) => issue.projectId === project.id)].map((issue) => issue.id);
-  const from = ordered.indexOf(drop.issueId);
-  if (from < 0) return;
-  ordered.splice(from, 1);
-  if (drop.beforeId) {
-    const to = ordered.indexOf(drop.beforeId);
-    ordered.splice(to < 0 ? ordered.length : to, 0, drop.issueId);
-  } else {
-    ordered.push(drop.issueId);
-  }
-  await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
-  await refreshWorkspace();
+  const issue = payload.issues.find((item) => item.id === drop.issueId);
+  if (!issue) return;
+  const previous = issue.statusId;
+  const nextStatus = drop.statusId || previous;
+  issue.statusId = nextStatus;
   renderBoard();
+  try {
+    if (nextStatus !== previous) await transitionIssueTo(drop.issueId, previous, nextStatus);
+    const ordered = [...payload.issues.filter((item) => item.projectId === project.id)].map((item) => item.id);
+    const from = ordered.indexOf(drop.issueId);
+    if (from >= 0) ordered.splice(from, 1);
+    if (drop.beforeId) {
+      const to = ordered.indexOf(drop.beforeId);
+      ordered.splice(to < 0 ? ordered.length : to, 0, drop.issueId);
+    } else {
+      ordered.push(drop.issueId);
+    }
+    await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
+  } catch {
+    issue.statusId = previous;
+  } finally {
+    await refreshWorkspace();
+    renderBoard();
+    if (selectedIssueId) await inspectIssue(selectedIssueId);
+  }
 }
 
 async function inspectIssue(id: string): Promise<void> {
@@ -643,6 +1345,15 @@ async function inspectIssue(id: string): Promise<void> {
     typeKey: string;
     key?: string;
     status_id: string;
+    reporter_id?: string | null;
+    priority?: string;
+    due_at?: string | null;
+    labels_json?: string;
+    estimate?: number | null;
+    flagged?: number | boolean;
+    watching?: boolean;
+    watchers?: Array<{ id: string; name: string }>;
+    events?: Array<{ action: string; actorName: string; createdAt: string }>;
   }>(`/v1/issues/${encodeURIComponent(id)}`);
   const project = payload.projects.find((item) => item.id === issue.projectId);
   const current = project?.statuses.find((status) => status.id === issue.statusId);
@@ -652,27 +1363,86 @@ async function inspectIssue(id: string): Promise<void> {
   });
   const people = payload.principals.map((person) => `<option value="${person.id}" ${person.id === detail.assignee_id ? "selected" : ""}>${escapeHtml(person.name)}</option>`).join("");
   const sprints = payload.sprints.map((sprint) => `<option value="${sprint.id}" ${sprint.id === detail.sprint_id ? "selected" : ""}>${escapeHtml(sprint.name)}</option>`).join("");
-  inspector.innerHTML = `<div class="ew-meta">
-      <span class="ew-key">${escapeHtml(issue.key)}</span>
-      <strong>${escapeHtml(detail.summary)}</strong>
-      <span>${escapeHtml(current?.name ?? issue.statusId)} · ${escapeHtml(detail.typeKey)}</span>
-    </div>
-    <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
-    <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
-    <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
-    <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
-    <div class="ew-actions">
-      <button type="button" id="save-issue">Save</button>
-      ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml(next.id)}">Move to ${escapeHtml(next.name)}</button>` : ""}
-      ${detail.transitions.map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml(item.to)}" data-fields="${escapeHtml(item.requiredFields.join(","))}">${escapeHtml(item.to)}</button>`).join("")}
-    </div>
-    <div class="ew-meta"><strong>Comments</strong>${detail.comments.map((comment) => `<span>${escapeHtml(comment.authorName)}: ${escapeHtml(comment.body)}</span>`).join("") || "<span>None</span>"}</div>
-    <label for="issue-comment">Comment<textarea id="issue-comment" rows="2"></textarea></label>
-    <button type="button" id="issue-comment-submit">Comment</button>
-    <div class="ew-meta"><strong>Worklog</strong>${detail.worklogs.map((log) => `<span>${escapeHtml(log.authorName)} · ${Math.round(log.durationSeconds / 60)}m ${escapeHtml(log.note ?? "")}</span>`).join("") || "<span>None</span>"}</div>
-    <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
-    <label for="worklog-note">Note<input id="worklog-note" /></label>
-    <button type="button" id="worklog-submit">Log work</button>`;
+  const reporter = payload.principals.find((person) => person.id === (detail.reporter_id ?? issue.reporterId));
+  const parentId = detail.parent_id ?? issue.parentId;
+  const parents = payload.issues
+    .filter((item) => item.projectId === issue.projectId && item.id !== issue.id)
+    .map((item) => `<option value="${item.id}" ${item.id === parentId ? "selected" : ""}>${escapeHtml(item.key)} ${escapeHtml(item.summary)}</option>`)
+    .join("");
+  inspector.innerHTML = `<div class="ew-issue">
+      <div class="ew-issue-kicker ew-meta">
+        <span class="ew-key">${escapeHtml(issue.key)}</span>
+        <span class="ew-pill">${escapeHtml(detail.typeKey)}</span>
+        <span class="ew-lozenge">${escapeHtml(current?.name ?? issue.statusId)}</span>
+        <button type="button" id="close-issue">Close</button>
+      </div>
+      <p id="issue-reporter" class="ew-note">Reported by ${escapeHtml(reporter?.name ?? "Unknown")}</p>
+      <label class="ew-check" for="issue-flag"><input id="issue-flag" type="checkbox" ${issue.flagged || Boolean(detail.flagged) ? "checked" : ""} /> Flagged</label>
+      <div id="issue-watchers" class="ew-watchers">
+        <button type="button" id="issue-watch">${detail.watching || issue.watching ? "Watching" : "Watch"}</button>
+        <span>${((detail.watchers as Array<{ name: string }> | undefined) ?? []).map((watcher) => avatarMarkup(watcher.name)).join("") || "No watchers"}</span>
+      </div>
+      <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
+      <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
+      <div class="ew-issue-grid">
+        <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
+        <label for="issue-parent">Parent<select id="issue-parent"><option value="">No parent</option>${parents}</select></label>
+        <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
+        <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
+        <label for="issue-due">Due date<input id="issue-due" type="date" value="${escapeHtml((detail.due_at ?? issue.dueAt ?? "").slice(0, 10))}" /></label>
+        <label for="issue-estimate">Estimate<input id="issue-estimate" type="number" min="0" step="1" value="${escapeHtml(String(detail.estimate ?? issue.estimate ?? ""))}" /></label>
+        <label for="issue-labels">Labels<input id="issue-labels" value="${escapeHtml((() => {
+          try {
+            const parsed = typeof detail.labels_json === "string" ? (JSON.parse(detail.labels_json) as unknown) : issue.labels;
+            return Array.isArray(parsed) ? parsed.join(", ") : (issue.labels ?? []).join(", ");
+          } catch {
+            return (issue.labels ?? []).join(", ");
+          }
+        })())}" placeholder="canvas, urgent" /></label>
+      </div>
+      <div id="issue-children" class="ew-activity">
+        <strong>Child work</strong>
+        ${payload.issues
+          .filter((item) => item.parentId === issue.id)
+          .map(
+            (item) =>
+              `<button type="button" class="ew-child" data-issue="${item.id}">${escapeHtml(item.key)} ${escapeHtml(item.summary)}</button>`,
+          )
+          .join("") || `<div class="ew-note">No child issues</div>`}
+        <label for="issue-child-summary">Add child<input id="issue-child-summary" placeholder="Subtask summary" /></label>
+        <button type="button" id="issue-child-submit">Add child</button>
+      </div>
+      <div class="ew-actions">
+        <button type="button" id="save-issue">Save</button>
+        ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml(next.id)}">Move to ${escapeHtml(next.name)}</button>` : ""}
+        ${detail.transitions
+          .filter((item) => item.to !== next?.id)
+          .map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml(item.to)}" data-fields="${escapeHtml(item.requiredFields.join(","))}">${escapeHtml(item.to.replaceAll("_", " "))}</button>`)
+          .join("")}
+      </div>
+      <div class="ew-activity">
+        <strong>Comments</strong>
+        ${detail.comments.map((comment) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml(comment.authorName)}</strong></div><p>${escapeHtml(comment.body)}</p></div></article>`).join("") || `<div class="ew-note">No comments</div>`}
+        <label for="issue-comment">Comment<textarea id="issue-comment" rows="2" placeholder="Write a comment. Mention with @name"></textarea></label>
+        <button type="button" id="issue-comment-submit">Comment</button>
+      </div>
+      <div class="ew-activity">
+        <strong>Worklog</strong>
+        ${detail.worklogs.map((log) => `<span>${escapeHtml(log.authorName)} · ${Math.round(log.durationSeconds / 60)}m ${escapeHtml(log.note ?? "")}</span>`).join("") || `<div class="ew-note">No time logged</div>`}
+        <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
+        <label for="worklog-note">Note<input id="worklog-note" /></label>
+        <button type="button" id="worklog-submit">Log work</button>
+      </div>
+      <div class="ew-activity">
+        <strong>Activity</strong>
+        ${(detail.events ?? [])
+          .map(
+            (event) =>
+              `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml(event.actorName)}</strong><span>${escapeHtml(event.action.replaceAll("_", " "))}</span></div></div></article>`,
+          )
+          .join("") || `<div class="ew-note">No activity yet</div>`}
+      </div>
+    </div>`;
   const links = await api<{ links: Array<{ id: string; provider: string; url?: string | null; label?: string; targetKind?: string | null; targetId?: string | null }> }>(
     `/v1/issues/${encodeURIComponent(id)}/links`,
   );
@@ -680,11 +1450,20 @@ async function inspectIssue(id: string): Promise<void> {
   inspector.insertAdjacentHTML(
     "beforeend",
     `<div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
+    <label for="issue-relates">Related issue<select id="issue-relates">${payload.issues
+      .filter((item) => item.id !== issue.id)
+      .map((item) => `<option value="${item.id}">${escapeHtml(item.key)} ${escapeHtml(item.summary)}</option>`)
+      .join("")}</select></label>
+    <button type="button" id="add-issue-relates">Link issue</button>
     <label for="issue-github-url">GitHub URL<input id="issue-github-url" placeholder="https://github.com/org/repo/issues/1" /></label>
     <button type="button" id="add-issue-github">Link GitHub</button>
     <label for="issue-doc-link">Page<select id="issue-doc-link">${docs}</select></label>
     <button type="button" id="add-issue-doc-link">Link page</button>`,
   );
+  $("inspector-title").textContent = issue.key;
+  document.querySelector(".ew-body")?.classList.add("is-issue");
+  enhanceSelects(inspector);
+  bindWorkspaceMentions();
 }
 
 function renderAdmin(): void {
@@ -721,6 +1500,7 @@ function renderAdmin(): void {
       <h2>Grants</h2>
       ${payload.grants.map((grant) => `<div class="ew-note">${escapeHtml(grant.role)} on ${escapeHtml(grant.resourceKind)} ${escapeHtml(grant.resourceId)}</div>`).join("") || `<div class="ew-note">None listed</div>`}
     </section>`;
+  enhanceSelects($("admin-panel"));
 }
 
 function renderNotifications(): void {
@@ -839,8 +1619,24 @@ $("rail-actions").addEventListener("change", (event) => {
 });
 
 $("work-board").addEventListener("click", (event) => {
-  const card = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-issue]");
-  if (card?.dataset.issue) void inspectIssue(card.dataset.issue);
+  const action = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-sprint-action]");
+  if (action?.dataset.issue) {
+    event.preventDefault();
+    event.stopPropagation();
+    const sprintId = action.dataset.sprintAction === "add" ? action.dataset.sprint ?? null : null;
+    void (async () => {
+      await api(`/v1/issues/${encodeURIComponent(action.dataset.issue!)}/sprint`, {
+        method: "POST",
+        body: JSON.stringify({ sprintId }),
+      });
+      await refreshWorkspace();
+      renderBoard();
+      if (selectedIssueId) await inspectIssue(selectedIssueId);
+    })();
+    return;
+  }
+  const card = (event.target as HTMLElement).closest<HTMLElement>("[data-issue]");
+  if (card?.dataset.issue && !$("work-board").classList.contains("is-sorting")) void inspectIssue(card.dataset.issue);
 });
 
 inspector.addEventListener("click", async (event) => {
@@ -860,6 +1656,29 @@ inspector.addEventListener("click", async (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
   if (!button) return;
   try {
+    if (button.id === "close-issue") {
+      selectedIssueId = "";
+      document.querySelector(".ew-body")?.classList.remove("is-issue");
+      renderBoard();
+      return;
+    }
+    if (button.id === "export-svg") {
+      await showCanvasExport("svg");
+      return;
+    }
+    if (button.id === "export-png") {
+      await showCanvasExport("png");
+      return;
+    }
+    if (button.id === "export-pptx") {
+      await showCanvasExport("pptx");
+      return;
+    }
+    if (button.dataset.toc) {
+      const heading = [...editorMount.querySelectorAll("h1, h2, h3")].find((node) => node.textContent?.trim() === button.dataset.toc);
+      heading?.scrollIntoView({ block: "center" });
+      return;
+    }
     if (button.id === "advance-issue" || button.classList.contains("ew-transition")) {
       if (!selectedIssueId) return;
       const to = button.dataset.to ?? "";
@@ -871,6 +1690,40 @@ inspector.addEventListener("click", async (event) => {
       renderBoard();
       await inspectIssue(selectedIssueId);
     }
+    if (button.id === "issue-watch" && selectedIssueId) {
+      const watching = button.textContent?.trim() === "Watching";
+      await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/watch`, { method: watching ? "DELETE" : "POST" });
+      await refreshWorkspace();
+      renderBoard();
+      await inspectIssue(selectedIssueId);
+      return;
+    }
+    if (button.classList.contains("ew-child") && button.dataset.issue) {
+      await inspectIssue(button.dataset.issue);
+      return;
+    }
+    if (button.id === "issue-child-submit" && selectedIssueId && currentProject()) {
+      const summary = $<HTMLInputElement>("issue-child-summary").value.trim();
+      if (!summary) return;
+      await api(`/v1/projects/${encodeURIComponent(currentProject()!.id)}/issues`, {
+        method: "POST",
+        body: JSON.stringify({ summary, typeKey: "subtask", parentId: selectedIssueId }),
+      });
+      await refreshWorkspace();
+      renderBoard();
+      await inspectIssue(selectedIssueId);
+      return;
+    }
+    if (button.id === "add-issue-relates" && selectedIssueId) {
+      const related = $<HTMLSelectElement>("issue-relates").value;
+      if (!related) return;
+      await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/links`, {
+        method: "POST",
+        body: JSON.stringify({ provider: "issue", issueId: related, label: "relates" }),
+      });
+      await inspectIssue(selectedIssueId);
+      return;
+    }
     if (button.id === "save-issue" && selectedIssueId) {
       await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
         method: "PATCH",
@@ -878,6 +1731,15 @@ inspector.addEventListener("click", async (event) => {
           summary: $<HTMLInputElement>("issue-summary").value,
           description: $<HTMLTextAreaElement>("issue-description").value,
           assigneeId: $<HTMLSelectElement>("issue-assignee").value || null,
+          parentId: $<HTMLSelectElement>("issue-parent").value || null,
+          priority: $<HTMLSelectElement>("issue-priority").value,
+          dueAt: $<HTMLInputElement>("issue-due").value || null,
+          estimate: $<HTMLInputElement>("issue-estimate").value === "" ? null : Number($<HTMLInputElement>("issue-estimate").value),
+          flagged: $<HTMLInputElement>("issue-flag").checked,
+          labels: $<HTMLInputElement>("issue-labels")
+            .value.split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
         }),
       });
       const sprintId = $<HTMLSelectElement>("issue-sprint").value || null;
@@ -1007,6 +1869,16 @@ inspector.addEventListener("click", async (event) => {
 
 inspector.addEventListener("change", async (event) => {
   const input = event.target as HTMLInputElement;
+  if (input.id === "issue-flag" && selectedIssueId) {
+    await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ flagged: input.checked }),
+    });
+    await refreshWorkspace();
+    renderBoard();
+    await inspectIssue(selectedIssueId);
+    return;
+  }
   if (input.id !== "attach-file" || !input.files?.[0] || !selectedDocumentId) return;
   const file = input.files[0];
   await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/assets`, {
@@ -1091,6 +1963,71 @@ $("insert-video").addEventListener("change", async (event) => {
   (event.target as HTMLInputElement).value = "";
 });
 
+async function showCanvasExport(target: "svg" | "png" | "pptx" = exportTarget): Promise<void> {
+  if (!selectedArtifactId) return;
+  exportTarget = target;
+  const report = await api<{
+    supported: string[];
+    unsupported: string[];
+    completeOfficeFidelity: boolean;
+  }>(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/export?target=${encodeURIComponent(target)}`);
+  $("inspector-title").textContent = "Export";
+  inspector.innerHTML = `<div id="canvas-export-report" class="ew-export">
+    <p class="ew-kicker">${escapeHtml(target.toUpperCase())} fidelity</p>
+    <strong>Supported frames</strong>
+    <ul class="ew-export-list">${report.supported.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>None</li>"}</ul>
+    <strong>Gaps</strong>
+    <ul class="ew-export-list">${report.unsupported.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>No extra gaps for this target</li>"}</ul>
+    <p class="ew-export-note">${report.completeOfficeFidelity ? "Complete Office fidelity" : "Office theme mapping is not complete. SVG and PNG keep PaperDOM geometry."}</p>
+    <div class="ew-actions">
+      <button type="button" id="export-svg" aria-pressed="${String(target === "svg")}">SVG</button>
+      <button type="button" id="export-png" aria-pressed="${String(target === "png")}">PNG</button>
+      <button type="button" id="export-pptx" aria-pressed="${String(target === "pptx")}">PPTX</button>
+    </div>
+  </div>`;
+}
+
+async function restackCanvas(direction: "front" | "back"): Promise<void> {
+  if (!selectedArtifactId || !selectedCanvasId) return;
+  const data = await api<ArtifactPayload>(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}`);
+  const values = data.document.elements.map((element) => element.zIndex);
+  const next = direction === "front" ? Math.max(0, ...values) + 1 : Math.min(0, ...values) - 1;
+  await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(selectedCanvasId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ zIndex: next }),
+  });
+  await openArtifact(selectedArtifactId);
+}
+
+async function deleteCanvasSelection(): Promise<void> {
+  if (!selectedArtifactId || !selectedCanvasId) return;
+  const id = selectedCanvasId;
+  selectedCanvasId = "";
+  await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(id)}`, { method: "DELETE" });
+  canvasHistory = canvasHistory.filter((item) => item.id !== id);
+  await refreshWorkspace();
+  await openArtifact(selectedArtifactId);
+}
+
+async function undoCanvas(): Promise<void> {
+  const last = canvasHistory.pop();
+  const undoBtn = document.getElementById("canvas-undo");
+  if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = canvasHistory.length === 0;
+  if (!last || !selectedArtifactId) return;
+  const card = $("visual-stage").querySelector<HTMLElement>(`.pd-el[data-id="${CSS.escape(last.id)}"]`);
+  if (card) {
+    card.style.left = `${last.x}px`;
+    card.style.top = `${last.y}px`;
+    card.style.width = `${last.width}px`;
+    card.style.height = `${last.height}px`;
+    syncCanvasArrows($("visual-stage"));
+  }
+  await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(last.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ geometry: { x: last.x, y: last.y, width: last.width, height: last.height } }),
+  });
+}
+
 async function addCanvasElement(input: Record<string, unknown>): Promise<void> {
   if (!selectedArtifactId) return;
   await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements`, {
@@ -1112,6 +2049,67 @@ $("create-board").addEventListener("click", async () => {
 });
 $("add-frame").addEventListener("click", async () => {
   await addCanvasElement({ type: "shape", text: "Frame", altText: "Frame" });
+});
+
+function syncVisualTools(): void {
+  const tool = $("visual-stage").dataset.tool ?? "select";
+  for (const button of document.querySelectorAll<HTMLButtonElement>("#visual-toolbar [data-tool]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>("#sticky-colors [data-sticky-color]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.stickyColor === stickyColor));
+  }
+  $("visual-stage").classList.toggle("is-panning", tool === "pan");
+  $("visual-stage").classList.toggle("is-sticky", tool === "sticky");
+  $("visual-stage").classList.toggle("is-connecting", tool === "connect");
+  $("visual-stage").classList.toggle("is-commenting", tool === "comment");
+}
+
+$("visual-toolbar").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+  if (!button) return;
+  const color = button.dataset.stickyColor;
+  if (color === "yellow" || color === "pink" || color === "green" || color === "blue") {
+    stickyColor = color;
+    $("visual-stage").dataset.tool = "sticky";
+    syncVisualTools();
+    return;
+  }
+  if (button.id === "canvas-undo") {
+    void undoCanvas();
+    return;
+  }
+  if (button.id === "canvas-delete") {
+    void deleteCanvasSelection();
+    return;
+  }
+  if (button.id === "canvas-front") {
+    void restackCanvas("front");
+    return;
+  }
+  if (button.id === "canvas-back") {
+    void restackCanvas("back");
+    return;
+  }
+  if (button.id === "canvas-export") {
+    void showCanvasExport(exportTarget);
+    return;
+  }
+  if (button.id === "canvas-present") {
+    setPresenting(!presenting);
+    return;
+  }
+  if (button.dataset.tool) {
+    $("visual-stage").dataset.tool = button.dataset.tool;
+    syncVisualTools();
+  }
+  const current = Number($("visual-stage").dataset.zoom ?? "1");
+  if (button.id === "zoom-in") setCanvasZoom($("visual-stage"), current + 0.1);
+  if (button.id === "zoom-out") setCanvasZoom($("visual-stage"), current - 0.1);
+  if (button.id === "zoom-fit") {
+    const page = $("visual-stage").querySelector<HTMLElement>(".pd-page");
+    if (page) setCanvasZoom($("visual-stage"), Math.min(1, ($("visual-stage").clientWidth - 32) / Math.max(page.offsetWidth, 960)));
+  }
 });
 $("add-arrow").addEventListener("click", async () => {
   await addCanvasElement({
@@ -1144,13 +2142,49 @@ $("canvas-video").addEventListener("change", async (event) => {
 
 $("doc-comment-submit").addEventListener("click", async () => {
   if (!selectedDocumentId) return;
+  const box = $<HTMLTextAreaElement>("doc-comment-input");
+  const body = box.value.trim();
+  if (!body) return;
+  const quote = box.dataset.quote?.trim() || "";
   await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/comments`, {
     method: "POST",
-    body: JSON.stringify({ body: $<HTMLTextAreaElement>("doc-comment-input").value }),
+    body: JSON.stringify({ body, quote: quote || undefined }),
   });
-  $<HTMLTextAreaElement>("doc-comment-input").value = "";
+  box.value = "";
+  delete box.dataset.quote;
+  box.placeholder = "Write a comment. Mention with @alice";
+  const chip = document.getElementById("doc-comment-quote");
+  if (chip) {
+    chip.hidden = true;
+    chip.textContent = "";
+  }
   await refreshWorkspace();
   await renderDocumentInspector(selectedDocumentId);
+});
+
+$("page-find-open").addEventListener("click", () => openPageFind());
+$("page-present").addEventListener("click", () => setPresenting(!presenting));
+$("present-exit").addEventListener("click", () => setPresenting(false));
+$("page-find-close").addEventListener("click", () => closePageFind());
+$("page-find-next").addEventListener("click", () => jumpFind(1));
+$("page-find-prev").addEventListener("click", () => jumpFind(-1));
+$("page-find-input").addEventListener("input", (event) => {
+  runPageFind((event.target as HTMLInputElement).value);
+});
+$("page-find-input").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    jumpFind(event.shiftKey ? -1 : 1);
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closePageFind();
+  }
+});
+$("doc-comments").addEventListener("click", (event) => {
+  const quote = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-quote]");
+  if (!quote?.dataset.quote) return;
+  runPageFind(quote.dataset.quote);
 });
 
 $("visual-outline").addEventListener("click", (event) => {
@@ -1181,7 +2215,8 @@ $("workspace-search").addEventListener("input", async (event) => {
     `/v1/search?q=${encodeURIComponent(query)}`,
   );
   searchResults.hidden = false;
-  searchResults.innerHTML = result.hits
+  const hits = uniqueHits(result.hits);
+  searchResults.innerHTML = hits
     .map(
       (hit) => `<button class="ew-hit" type="button" data-kind="${escapeHtml(hit.resourceKind)}" data-id="${escapeHtml(hit.resourceId)}">
         <strong>${escapeHtml(hit.title)}</strong><small>${escapeHtml(hit.excerpt)}</small>
@@ -1291,10 +2326,260 @@ document.querySelectorAll<HTMLButtonElement>("#doc-toolbar [data-cmd]").forEach(
     if (cmd === "bold") chain.toggleBold().run();
     if (cmd === "italic") chain.toggleItalic().run();
     if (cmd === "strike") chain.toggleStrike().run();
+    if (cmd === "underline") chain.toggleUnderline().run();
     if (cmd === "heading") chain.toggleHeading({ level: button.dataset.level === "1" ? 1 : 2 }).run();
     if (cmd === "bullet") chain.toggleBulletList().run();
     if (cmd === "ordered") chain.toggleOrderedList().run();
+    if (cmd === "quote") chain.toggleBlockquote().run();
+    if (cmd === "code") chain.toggleCodeBlock().run();
+    if (cmd === "task") chain.toggleTaskList().run();
+    if (cmd === "table") chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+    if (cmd === "panel") chain.setNomaPanel(button.dataset.kind === "warning" ? "warning" : "info").run();
+    if (cmd === "align-left") chain.setTextAlign("left").run();
+    if (cmd === "align-center") chain.setTextAlign("center").run();
+    if (cmd === "align-right") chain.setTextAlign("right").run();
   });
+});
+
+interface PaletteItem {
+  kind: "command" | "document" | "issue" | "person";
+  id: string;
+  title: string;
+  subtitle: string;
+}
+
+function paletteItems(query: string): PaletteItem[] {
+  const needle = query.trim().toLowerCase();
+  const items: PaletteItem[] = [
+    { kind: "command", id: "mode:docs", title: "Open Docs", subtitle: "Pages" },
+    { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
+    { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
+    { kind: "command", id: "mode:reports", title: "Open reports", subtitle: "Work" },
+    { kind: "command", id: "mode:backlog", title: "Open backlog", subtitle: "Work" },
+    { kind: "command", id: "present", title: "Present", subtitle: "Docs and Visuals" },
+    { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
+    { kind: "command", id: "find", title: "Find in page", subtitle: "Docs" },
+  ];
+  for (const doc of payload?.documents ?? []) items.push({ kind: "document", id: doc.id, title: doc.title, subtitle: "Page" });
+  for (const issue of payload?.issues ?? []) {
+    items.push({ kind: "issue", id: issue.id, title: `${issue.key} ${issue.summary}`, subtitle: issue.typeKey });
+  }
+  for (const person of payload?.principals ?? []) {
+    items.push({ kind: "person", id: person.id, title: person.name, subtitle: person.email ?? "Person" });
+  }
+  const filtered = needle
+    ? items.filter((item) => item.title.toLowerCase().includes(needle) || item.subtitle.toLowerCase().includes(needle))
+    : items;
+  return filtered.slice(0, 12);
+}
+
+function renderPalette(): void {
+  const items = paletteItems($<HTMLInputElement>("command-input").value);
+  paletteIndex = Math.min(paletteIndex, Math.max(0, items.length - 1));
+  $("command-list").innerHTML = items
+    .map(
+      (item, index) =>
+        `<button type="button" class="ew-palette-item${index === paletteIndex ? " is-active" : ""}" role="option" data-kind="${item.kind}" data-id="${escapeHtml(item.id)}">
+          <strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.subtitle)}</small>
+        </button>`,
+    )
+    .join("") || `<div class="ew-meta">No matches</div>`;
+}
+
+function openPalette(): void {
+  $("command-palette").hidden = false;
+  $<HTMLInputElement>("command-input").value = "";
+  paletteIndex = 0;
+  renderPalette();
+  hydrateIcons($("command-palette"));
+  $<HTMLInputElement>("command-input").focus();
+}
+
+function closePalette(): void {
+  $("command-palette").hidden = true;
+}
+
+function runPalette(kind: string, id: string): void {
+  closePalette();
+  if (id === "mode:docs") setMode("docs");
+  if (id === "mode:visuals") setMode("visuals");
+  if (id === "mode:work") setMode("work");
+  if (id === "mode:reports") {
+    setMode("work");
+    boardView = "reports";
+    renderBoard();
+  }
+  if (id === "mode:backlog") {
+    setMode("work");
+    boardView = "backlog";
+    renderBoard();
+  }
+  if (id === "present") setPresenting(true);
+  if (id === "create-page") void createPage();
+  if (id === "find") {
+    setMode("docs");
+    openPageFind();
+  }
+  if (kind === "document") {
+    setMode("docs");
+    openDocument(id);
+  }
+  if (kind === "issue") {
+    setMode("work");
+    void inspectIssue(id);
+  }
+}
+
+$("command-input").addEventListener("input", () => {
+  paletteIndex = 0;
+  renderPalette();
+});
+$("command-list").addEventListener("click", (event) => {
+  const item = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-kind][data-id]");
+  if (item?.dataset.kind && item.dataset.id) runPalette(item.dataset.kind, item.dataset.id);
+});
+$("command-palette").addEventListener("click", (event) => {
+  if (event.target === $("command-palette")) closePalette();
+});
+
+document.addEventListener("keydown", (event) => {
+  const target = event.target as HTMLElement;
+  const typing = Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && mode === "visuals") {
+    if (!typing) {
+      event.preventDefault();
+      void undoCanvas();
+      return;
+    }
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if ($("command-palette").hidden) openPalette();
+    else closePalette();
+    return;
+  }
+  if (!$("command-palette").hidden) {
+    const items = paletteItems($<HTMLInputElement>("command-input").value);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePalette();
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      paletteIndex = Math.min(items.length - 1, paletteIndex + 1);
+      renderPalette();
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      paletteIndex = Math.max(0, paletteIndex - 1);
+      renderPalette();
+    }
+    if (event.key === "Enter") {
+      const item = items[paletteIndex];
+      if (item) {
+        event.preventDefault();
+        runPalette(item.kind, item.id);
+      }
+    }
+    return;
+  }
+  if (mode === "docs" && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    openPageFind();
+    return;
+  }
+  if (presenting && event.key === "Escape") {
+    event.preventDefault();
+    setPresenting(false);
+    return;
+  }
+  const findBar = document.getElementById("page-find");
+  if (findBar && !findBar.hidden && event.key === "Escape") {
+    event.preventDefault();
+    closePageFind();
+    return;
+  }
+  if (mode === "visuals" && (event.key === "Delete" || event.key === "Backspace") && !typing) {
+    event.preventDefault();
+    void deleteCanvasSelection();
+  }
+});
+
+$("board-filters").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+  if (!button) return;
+  if (button.id === "swimlane-epic") {
+    swimlanes = !swimlanes;
+    renderBoard();
+    return;
+  }
+  if (button.id === "view-list") {
+    boardView = "list";
+    renderBoard();
+    if (selectedIssueId) void inspectIssue(selectedIssueId);
+    return;
+  }
+  if (button.id === "view-board") {
+    boardView = "board";
+    renderBoard();
+    if (selectedIssueId) void inspectIssue(selectedIssueId);
+    return;
+  }
+  if (button.id === "view-reports") {
+    boardView = "reports";
+    renderBoard();
+    return;
+  }
+  if (button.id === "view-backlog") {
+    boardView = "backlog";
+    renderBoard();
+    if (selectedIssueId) void inspectIssue(selectedIssueId);
+    return;
+  }
+  if (!button.dataset.filter) return;
+  const next = button.dataset.filter;
+  boardFilter = next === "mine" || next === "unassigned" || next === "overdue" || next === "flagged" || next === "watching" ? next : "all";
+  renderBoard();
+});
+$("type-filters").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-type]");
+  if (button?.dataset.type === undefined) return;
+  typeFilter = button.dataset.type;
+  renderBoard();
+});
+$("filter-epic").addEventListener("change", (event) => {
+  epicFilter = (event.target as HTMLSelectElement).value;
+  renderBoard();
+});
+$("board-search").addEventListener("input", (event) => {
+  boardSearch = (event.target as HTMLInputElement).value.trim().toLowerCase();
+  renderBoard();
+});
+
+$("work-board").addEventListener("keydown", (event) => {
+  const target = event.target as HTMLElement;
+  if ((event.key === "Enter" || event.key === " ") && (target.closest(".ew-card") || target.closest(".ew-row")) && !target.classList.contains("ew-column-add")) {
+    const card = target.closest<HTMLElement>("[data-issue].ew-card");
+    if (card?.dataset.issue) {
+      event.preventDefault();
+      void inspectIssue(card.dataset.issue);
+    }
+    return;
+  }
+  if (event.key !== "Enter" || !target.classList.contains("ew-column-add")) return;
+  const summary = (target as HTMLInputElement).value.trim();
+  const status = target.dataset.status ?? "backlog";
+  const project = currentProject();
+  if (!summary || !project) return;
+  void (async () => {
+    const created = await api<{ id: string }>(`/v1/projects/${encodeURIComponent(project.id)}/issues`, {
+      method: "POST",
+      body: JSON.stringify({ summary, typeKey: "task" }),
+    });
+    await transitionIssueTo(created.id, "backlog", status);
+    await refreshWorkspace();
+    renderBoard();
+  })();
 });
 
 $("login-submit").addEventListener("click", () => {
@@ -1317,10 +2602,21 @@ Object.assign(window, {
     mode: () => mode,
     setMode,
     text: () => collab?.getText() ?? "",
+    html: () => collab?.editor()?.getHTML() ?? "",
+    selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
+    findInPage: (query: string) => runPageFind(query),
+    counts: () => collab?.counts() ?? { words: 0, characters: 0 },
+    boardView: () => boardView,
+    presenting: () => presenting,
+    undoCanvas,
+    deleteCanvas: deleteCanvasSelection,
+    openPalette,
+    applyBoardDrop,
   },
 });
 
 hydrateIcons();
+bindWorkspaceMentions();
 
 if (token) {
   void loadWorkspace().catch(() => {

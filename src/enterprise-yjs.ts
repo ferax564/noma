@@ -8,9 +8,16 @@ import type { EnterpriseWorkspace } from "./enterprise-workspace.js";
 
 export const YJS_FRAGMENT = "default";
 
+interface PresenceUser {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface Room {
   doc: Y.Doc;
   clients: Set<WebSocket>;
+  presence: Map<WebSocket, PresenceUser>;
 }
 
 function toBase64(bytes: Uint8Array): string {
@@ -155,14 +162,43 @@ export function attachEnterpriseYjs(http: Server, workspace: EnterpriseWorkspace
     }
     let room = rooms.get(documentId);
     if (!room) {
-      room = { doc: loadYjsDocument(workspace, documentId), clients: new Set() };
+      room = { doc: loadYjsDocument(workspace, documentId), clients: new Set(), presence: new Map() };
       rooms.set(documentId, room);
     }
     room.clients.add(ws);
-    ws.send(JSON.stringify({ type: "init", update: toBase64(encodeYjsState(room.doc)) }));
+    const broadcastPresence = (): void => {
+      const users = [...room!.presence.values()];
+      const encoded = JSON.stringify({ type: "presence", users });
+      for (const peer of room!.clients) {
+        if (peer.readyState === peer.OPEN) peer.send(encoded);
+      }
+    };
+    ws.send(
+      JSON.stringify({
+        type: "init",
+        update: toBase64(encodeYjsState(room.doc)),
+        users: [...room.presence.values()],
+      }),
+    );
     ws.on("message", (raw) => {
       try {
-        const message = JSON.parse(String(raw)) as { type?: string; update?: string };
+        const message = JSON.parse(String(raw)) as { type?: string; update?: string; user?: PresenceUser };
+        if (message.type === "presence" && message.user?.id && message.user.name) {
+          room!.presence.set(ws, {
+            id: String(message.user.id),
+            name: String(message.user.name).slice(0, 80),
+            color: typeof message.user.color === "string" && message.user.color.startsWith("#") ? message.user.color.slice(0, 9) : "#0C66E4",
+          });
+          broadcastPresence();
+          return;
+        }
+        if (message.type === "awareness" && typeof message.update === "string") {
+          const encoded = JSON.stringify({ type: "awareness", update: message.update });
+          for (const peer of room!.clients) {
+            if (peer !== ws && peer.readyState === peer.OPEN) peer.send(encoded);
+          }
+          return;
+        }
         if (message.type !== "update" || typeof message.update !== "string") return;
         const update = fromBase64(message.update);
         persistYjsUpdate(workspace, actor, documentId, update);
@@ -178,6 +214,14 @@ export function attachEnterpriseYjs(http: Server, workspace: EnterpriseWorkspace
     });
     ws.on("close", () => {
       room?.clients.delete(ws);
+      room?.presence.delete(ws);
+      if (room && room.clients.size) {
+        const users = [...room.presence.values()];
+        const encoded = JSON.stringify({ type: "presence", users });
+        for (const peer of room.clients) {
+          if (peer.readyState === peer.OPEN) peer.send(encoded);
+        }
+      }
     });
   });
   return wss;

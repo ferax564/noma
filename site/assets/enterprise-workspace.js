@@ -1,116 +1,5 @@
 "use strict";
 (() => {
-  var __create = Object.create;
-  var __defProp = Object.defineProperty;
-  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-  var __getOwnPropNames = Object.getOwnPropertyNames;
-  var __getProtoOf = Object.getPrototypeOf;
-  var __hasOwnProp = Object.prototype.hasOwnProperty;
-  var __commonJS = (cb, mod) => function __require() {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-  };
-  var __copyProps = (to, from3, except, desc) => {
-    if (from3 && typeof from3 === "object" || typeof from3 === "function") {
-      for (let key of __getOwnPropNames(from3))
-        if (!__hasOwnProp.call(to, key) && key !== except)
-          __defProp(to, key, { get: () => from3[key], enumerable: !(desc = __getOwnPropDesc(from3, key)) || desc.enumerable });
-    }
-    return to;
-  };
-  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-    // If the importer is in node compatibility mode or this is not an ESM
-    // file that has been converted to a CommonJS file using a Babel-
-    // compatible transform (i.e. "__esModule" has not been set), then set
-    // "default" to the CommonJS "module.exports" for node compatibility.
-    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-    mod
-  ));
-
-  // node_modules/bind-event-listener/dist/bind.js
-  var require_bind = __commonJS({
-    "node_modules/bind-event-listener/dist/bind.js"(exports) {
-      "use strict";
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.bind = void 0;
-      function bind4(target, _a) {
-        var type = _a.type, listener = _a.listener, options = _a.options;
-        target.addEventListener(type, listener, options);
-        return function unbind() {
-          target.removeEventListener(type, listener, options);
-        };
-      }
-      exports.bind = bind4;
-    }
-  });
-
-  // node_modules/bind-event-listener/dist/bind-all.js
-  var require_bind_all = __commonJS({
-    "node_modules/bind-event-listener/dist/bind-all.js"(exports) {
-      "use strict";
-      var __assign = exports && exports.__assign || function() {
-        __assign = Object.assign || function(t) {
-          for (var s, i = 1, n = arguments.length; i < n; i++) {
-            s = arguments[i];
-            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
-              t[p] = s[p];
-          }
-          return t;
-        };
-        return __assign.apply(this, arguments);
-      };
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.bindAll = void 0;
-      var bind_1 = require_bind();
-      function toOptions(value) {
-        if (typeof value === "undefined") {
-          return void 0;
-        }
-        if (typeof value === "boolean") {
-          return {
-            capture: value
-          };
-        }
-        return value;
-      }
-      function getBinding(original, sharedOptions) {
-        if (sharedOptions == null) {
-          return original;
-        }
-        var binding = __assign(__assign({}, original), { options: __assign(__assign({}, toOptions(sharedOptions)), toOptions(original.options)) });
-        return binding;
-      }
-      function bindAll4(target, bindings, sharedOptions) {
-        var unbinds = bindings.map(function(original) {
-          var binding = getBinding(original, sharedOptions);
-          return (0, bind_1.bind)(target, binding);
-        });
-        return function unbindAll() {
-          unbinds.forEach(function(unbind) {
-            return unbind();
-          });
-        };
-      }
-      exports.bindAll = bindAll4;
-    }
-  });
-
-  // node_modules/bind-event-listener/dist/index.js
-  var require_dist = __commonJS({
-    "node_modules/bind-event-listener/dist/index.js"(exports) {
-      "use strict";
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.bindAll = exports.bind = void 0;
-      var bind_1 = require_bind();
-      Object.defineProperty(exports, "bind", { enumerable: true, get: function() {
-        return bind_1.bind;
-      } });
-      var bind_all_1 = require_bind_all();
-      Object.defineProperty(exports, "bindAll", { enumerable: true, get: function() {
-        return bind_all_1.bindAll;
-      } });
-    }
-  });
-
   // node_modules/orderedmap/dist/index.js
   function OrderedMap(content) {
     this.content = content;
@@ -319,8 +208,8 @@
       for (let i = 0, pos = 0; pos < to; i++) {
         let child = this.content[i], end = pos + child.nodeSize;
         if (end > from3 && f(child, nodeStart + pos, parent || null, i) !== false && child.content.size) {
-          let start2 = pos + 1;
-          child.nodesBetween(Math.max(0, from3 - start2), Math.min(child.content.size, to - start2), f, nodeStart + start2);
+          let start = pos + 1;
+          child.nodesBetween(Math.max(0, from3 - start), Math.min(child.content.size, to - start), f, nodeStart + start);
         }
         pos = end;
       }
@@ -872,8 +761,8 @@
       let parent = $from.parent, content = parent.content;
       return close(parent, content.cut(0, $from.parentOffset).append(slice2.content).append(content.cut($to.parentOffset)));
     } else {
-      let { start: start2, end } = prepareSliceForReplace(slice2, $from);
-      return close(node, replaceThreeWay($from, start2, end, $to, depth));
+      let { start, end } = prepareSliceForReplace(slice2, $from);
+      return close(node, replaceThreeWay($from, start, end, $to, depth));
     }
   }
   function checkJoin(main, sub) {
@@ -1192,18 +1081,18 @@
       if (!(pos >= 0 && pos <= doc4.content.size))
         throw new RangeError("Position " + pos + " out of range");
       let path = [];
-      let start2 = 0, parentOffset = pos;
+      let start = 0, parentOffset = pos;
       for (let node = doc4; ; ) {
         let { index, offset: offset3 } = node.content.findIndex(parentOffset);
         let rem = parentOffset - offset3;
-        path.push(node, index, start2 + offset3);
+        path.push(node, index, start + offset3);
         if (!rem)
           break;
         node = node.child(index);
         if (node.isText)
           break;
         parentOffset = rem - 1;
-        start2 += offset3 + 1;
+        start += offset3 + 1;
       }
       return new _ResolvedPos(pos, path, parentOffset);
     }
@@ -1436,8 +1325,8 @@
         return Slice.empty;
       let $from = this.resolve(from3), $to = this.resolve(to);
       let depth = includeParents ? 0 : $from.sharedDepth(to);
-      let start2 = $from.start(depth), node = $from.node(depth);
-      let content = node.content.cut($from.pos - start2, $to.pos - start2);
+      let start = $from.start(depth), node = $from.node(depth);
+      let content = node.content.cut($from.pos - start, $to.pos - start);
       return new Slice(content, $from.depth - depth, $to.depth - depth);
     }
     /**
@@ -1591,12 +1480,12 @@
     can optionally pass `start` and `end` indices into the
     replacement fragment.
     */
-    canReplace(from3, to, replacement = Fragment.empty, start2 = 0, end = replacement.childCount) {
-      let one = this.contentMatchAt(from3).matchFragment(replacement, start2, end);
+    canReplace(from3, to, replacement = Fragment.empty, start = 0, end = replacement.childCount) {
+      let one = this.contentMatchAt(from3).matchFragment(replacement, start, end);
       let two = one && one.matchFragment(this.content, to);
       if (!two || !two.validEnd)
         return false;
-      for (let i = start2; i < end; i++)
+      for (let i = start; i < end; i++)
         if (!this.type.allowsMarks(replacement.child(i).marks))
           return false;
       return true;
@@ -1608,8 +1497,8 @@
     canReplaceWith(from3, to, type, marks) {
       if (marks && !this.type.allowsMarks(marks))
         return false;
-      let start2 = this.contentMatchAt(from3).matchType(type);
-      let end = start2 && start2.matchFragment(this.content, to);
+      let start = this.contentMatchAt(from3).matchType(type);
+      let end = start && start.matchFragment(this.content, to);
       return end ? end.validEnd : false;
     }
     /**
@@ -1768,9 +1657,9 @@
     Try to match a fragment. Returns the resulting match when
     successful.
     */
-    matchFragment(frag, start2 = 0, end = frag.childCount) {
+    matchFragment(frag, start = 0, end = frag.childCount) {
       let cur = this;
-      for (let i = start2; cur && i < end; i++)
+      for (let i = start; cur && i < end; i++)
         cur = cur.matchType(frag.child(i).type);
       return cur;
     }
@@ -2134,14 +2023,14 @@
     }
   }
   function defaultAttrs(attrs) {
-    let defaults = /* @__PURE__ */ Object.create(null);
+    let defaults2 = /* @__PURE__ */ Object.create(null);
     for (let attrName in attrs) {
       let attr = attrs[attrName];
       if (!attr.hasDefault)
         return null;
-      defaults[attrName] = attr.default;
+      defaults2[attrName] = attr.default;
     }
-    return defaults;
+    return defaults2;
   }
   function computeAttrs(attrs, value) {
     let built = /* @__PURE__ */ Object.create(null);
@@ -2408,8 +2297,8 @@
       this.spec = spec;
       this.attrs = initAttrs(name, spec.attrs);
       this.excluded = null;
-      let defaults = defaultAttrs(this.attrs);
-      this.instance = defaults ? new Mark(this, defaults) : null;
+      let defaults2 = defaultAttrs(this.attrs);
+      this.instance = defaults2 ? new Mark(this, defaults2) : null;
     }
     /**
     Create a mark of this type. `attrs` may be `null` or an object
@@ -2765,9 +2654,9 @@
         if (fill) {
           this.match = this.type.contentMatch.matchFragment(fill);
         } else {
-          let start2 = this.type.contentMatch, wrap2;
-          if (wrap2 = start2.findWrapping(node.type)) {
-            this.match = start2;
+          let start = this.type.contentMatch, wrap2;
+          if (wrap2 = start.findWrapping(node.type)) {
+            this.match = start;
             return wrap2;
           } else {
             return null;
@@ -3412,9 +3301,9 @@
     }
     let contentDOM;
     let dom = xmlNS ? doc4.createElementNS(xmlNS, tagName) : doc4.createElement(tagName);
-    let attrs = structure[1], start2 = 1;
+    let attrs = structure[1], start = 1;
     if (attrs && typeof attrs == "object" && attrs.nodeType == null && !Array.isArray(attrs)) {
-      start2 = 2;
+      start = 2;
       for (let name in attrs)
         if (attrs[name] != null) {
           let space2 = name.indexOf(" ");
@@ -3426,10 +3315,10 @@
             dom.setAttribute(name, attrs[name]);
         }
     }
-    for (let i = start2; i < structure.length; i++) {
+    for (let i = start; i < structure.length; i++) {
       let child = structure[i];
       if (child === 0) {
-        if (i < structure.length - 1 || i > start2)
+        if (i < structure.length - 1 || i > start)
           throw new RangeError("Content hole must be the only child of its parent node");
         return { dom, contentDOM: dom };
       } else if (typeof child == "string") {
@@ -3535,18 +3424,18 @@
     _map(pos, assoc, simple) {
       let diff = 0, oldIndex = this.inverted ? 2 : 1, newIndex = this.inverted ? 1 : 2;
       for (let i = 0; i < this.ranges.length; i += 3) {
-        let start2 = this.ranges[i] - (this.inverted ? diff : 0);
-        if (start2 > pos)
+        let start = this.ranges[i] - (this.inverted ? diff : 0);
+        if (start > pos)
           break;
-        let oldSize = this.ranges[i + oldIndex], newSize = this.ranges[i + newIndex], end = start2 + oldSize;
+        let oldSize = this.ranges[i + oldIndex], newSize = this.ranges[i + newIndex], end = start + oldSize;
         if (pos <= end) {
-          let side = !oldSize ? assoc : pos == start2 ? -1 : pos == end ? 1 : assoc;
-          let result = start2 + diff + (side < 0 ? 0 : newSize);
+          let side = !oldSize ? assoc : pos == start ? -1 : pos == end ? 1 : assoc;
+          let result = start + diff + (side < 0 ? 0 : newSize);
           if (simple)
             return result;
-          let recover = pos == (assoc < 0 ? start2 : end) ? null : makeRecover(i / 3, pos - start2);
-          let del2 = pos == start2 ? DEL_AFTER : pos == end ? DEL_BEFORE : DEL_ACROSS;
-          if (assoc < 0 ? pos != start2 : pos != end)
+          let recover = pos == (assoc < 0 ? start : end) ? null : makeRecover(i / 3, pos - start);
+          let del2 = pos == start ? DEL_AFTER : pos == end ? DEL_BEFORE : DEL_ACROSS;
+          if (assoc < 0 ? pos != start : pos != end)
             del2 |= DEL_SIDE;
           return new MapResult(result, del2, recover);
         }
@@ -3561,10 +3450,10 @@
       let diff = 0, index = recoverIndex(recover);
       let oldIndex = this.inverted ? 2 : 1, newIndex = this.inverted ? 1 : 2;
       for (let i = 0; i < this.ranges.length; i += 3) {
-        let start2 = this.ranges[i] - (this.inverted ? diff : 0);
-        if (start2 > pos)
+        let start = this.ranges[i] - (this.inverted ? diff : 0);
+        if (start > pos)
           break;
-        let oldSize = this.ranges[i + oldIndex], end = start2 + oldSize;
+        let oldSize = this.ranges[i + oldIndex], end = start + oldSize;
         if (pos <= end && i == index * 3)
           return true;
         diff += this.ranges[i + newIndex] - oldSize;
@@ -3578,7 +3467,7 @@
     forEach(f) {
       let oldIndex = this.inverted ? 2 : 1, newIndex = this.inverted ? 1 : 2;
       for (let i = 0, diff = 0; i < this.ranges.length; i += 3) {
-        let start2 = this.ranges[i], oldStart = start2 - (this.inverted ? diff : 0), newStart = start2 + (this.inverted ? 0 : diff);
+        let start = this.ranges[i], oldStart = start - (this.inverted ? diff : 0), newStart = start + (this.inverted ? 0 : diff);
         let oldSize = this.ranges[i + oldIndex], newSize = this.ranges[i + newIndex];
         f(oldStart, oldStart + oldSize, newStart, newStart + newSize);
         diff += newSize - oldSize;
@@ -4166,36 +4055,36 @@
     }
     return false;
   }
-  function addMark(tr, from3, to, mark) {
+  function addMark(tr2, from3, to, mark) {
     let removed = [], added = [];
     let removing, adding;
-    tr.doc.nodesBetween(from3, to, (node, pos, parent) => {
+    tr2.doc.nodesBetween(from3, to, (node, pos, parent) => {
       if (!node.isInline)
         return;
       let marks = node.marks;
       if (!mark.isInSet(marks) && parent.type.allowsMarkType(mark.type)) {
-        let start2 = Math.max(pos, from3), end = Math.min(pos + node.nodeSize, to);
+        let start = Math.max(pos, from3), end = Math.min(pos + node.nodeSize, to);
         let newSet = mark.addToSet(marks);
         for (let i = 0; i < marks.length; i++) {
           if (!marks[i].isInSet(newSet)) {
-            if (removing && removing.to == start2 && removing.mark.eq(marks[i]))
+            if (removing && removing.to == start && removing.mark.eq(marks[i]))
               removing.to = end;
             else
-              removed.push(removing = new RemoveMarkStep(start2, end, marks[i]));
+              removed.push(removing = new RemoveMarkStep(start, end, marks[i]));
           }
         }
-        if (adding && adding.to == start2)
+        if (adding && adding.to == start)
           adding.to = end;
         else
-          added.push(adding = new AddMarkStep(start2, end, mark));
+          added.push(adding = new AddMarkStep(start, end, mark));
       }
     });
-    removed.forEach((s) => tr.step(s));
-    added.forEach((s) => tr.step(s));
+    removed.forEach((s) => tr2.step(s));
+    added.forEach((s) => tr2.step(s));
   }
-  function removeMark(tr, from3, to, mark) {
+  function removeMark(tr2, from3, to, mark) {
     let matched = [], step = 0;
-    tr.doc.nodesBetween(from3, to, (node, pos) => {
+    tr2.doc.nodesBetween(from3, to, (node, pos) => {
       if (!node.isInline)
         return;
       step++;
@@ -4230,10 +4119,10 @@
         }
       }
     });
-    matched.forEach((m) => tr.step(new RemoveMarkStep(m.from, m.to, m.style)));
+    matched.forEach((m) => tr2.step(new RemoveMarkStep(m.from, m.to, m.style)));
   }
-  function clearIncompatible(tr, pos, parentType, match2 = parentType.contentMatch, clearNewlines = true) {
-    let node = tr.doc.nodeAt(pos);
+  function clearIncompatible(tr2, pos, parentType, match2 = parentType.contentMatch, clearNewlines = true) {
+    let node = tr2.doc.nodeAt(pos);
     let replSteps = [], cur = pos + 1;
     for (let i = 0; i < node.childCount; i++) {
       let child = node.child(i), end = cur + child.nodeSize;
@@ -4244,7 +4133,7 @@
         match2 = allowed;
         for (let j = 0; j < child.marks.length; j++)
           if (!parentType.allowsMarkType(child.marks[j].type))
-            tr.step(new RemoveMarkStep(cur, end, child.marks[j]));
+            tr2.step(new RemoveMarkStep(cur, end, child.marks[j]));
         if (clearNewlines && child.isText && parentType.whitespace != "pre") {
           let m, newline = /\r?\n|\r/g, slice2;
           while (m = newline.exec(child.text)) {
@@ -4258,13 +4147,13 @@
     }
     if (!match2.validEnd) {
       let fill = match2.fillBefore(Fragment.empty, true);
-      tr.replace(cur, cur, new Slice(fill, 0, 0));
+      tr2.replace(cur, cur, new Slice(fill, 0, 0));
     }
     for (let i = replSteps.length - 1; i >= 0; i--)
-      tr.step(replSteps[i]);
+      tr2.step(replSteps[i]);
   }
-  function canCut(node, start2, end) {
-    return (start2 == 0 || node.canReplace(start2, node.childCount)) && (end == node.childCount || node.canReplace(0, end));
+  function canCut(node, start, end) {
+    return (start == 0 || node.canReplace(start, node.childCount)) && (end == node.childCount || node.canReplace(0, end));
   }
   function liftTarget(range) {
     let parent = range.parent;
@@ -4283,10 +4172,10 @@
     }
     return null;
   }
-  function lift(tr, range, target) {
+  function lift(tr2, range, target) {
     let { $from, $to, depth } = range;
     let gapStart = $from.before(depth + 1), gapEnd = $to.after(depth + 1);
-    let start2 = gapStart, end = gapEnd;
+    let start = gapStart, end = gapEnd;
     let before = Fragment.empty, openStart = 0;
     for (let d = depth, splitting = false; d > target; d--)
       if (splitting || $from.index(d) > 0) {
@@ -4294,7 +4183,7 @@
         before = Fragment.from($from.node(d).copy(before));
         openStart++;
       } else {
-        start2--;
+        start--;
       }
     let after = Fragment.empty, openEnd = 0;
     for (let d = depth, splitting = false; d > target; d--)
@@ -4305,7 +4194,7 @@
       } else {
         end++;
       }
-    tr.step(new ReplaceAroundStep(start2, end, gapStart, gapEnd, new Slice(before.append(after), openStart, openEnd), before.size - openStart, true));
+    tr2.step(new ReplaceAroundStep(start, end, gapStart, gapEnd, new Slice(before.append(after), openStart, openEnd), before.size - openStart, true));
   }
   function findWrapping(range, nodeType, attrs = null, innerRange = range) {
     let around = findWrappingOutside(range, nodeType);
@@ -4339,7 +4228,7 @@
       return null;
     return inside;
   }
-  function wrap(tr, range, wrappers) {
+  function wrap(tr2, range, wrappers) {
     let content = Fragment.empty;
     for (let i = wrappers.length - 1; i >= 0; i--) {
       if (content.size) {
@@ -4349,16 +4238,16 @@
       }
       content = Fragment.from(wrappers[i].type.create(wrappers[i].attrs, content));
     }
-    let start2 = range.start, end = range.end;
-    tr.step(new ReplaceAroundStep(start2, end, start2, end, new Slice(content, 0, 0), wrappers.length, true));
+    let start = range.start, end = range.end;
+    tr2.step(new ReplaceAroundStep(start, end, start, end, new Slice(content, 0, 0), wrappers.length, true));
   }
-  function setBlockType(tr, from3, to, type, attrs) {
+  function setBlockType(tr2, from3, to, type, attrs) {
     if (!type.isTextblock)
       throw new RangeError("Type given to setBlockType should be a textblock");
-    let mapFrom = tr.steps.length;
-    tr.doc.nodesBetween(from3, to, (node, pos) => {
+    let mapFrom = tr2.steps.length;
+    tr2.doc.nodesBetween(from3, to, (node, pos) => {
       let attrsHere = typeof attrs == "function" ? attrs(node) : attrs;
-      if (node.isTextblock && !node.hasMarkup(type, attrsHere) && canChangeType(tr.doc, tr.mapping.slice(mapFrom).map(pos), type)) {
+      if (node.isTextblock && !node.hasMarkup(type, attrsHere) && canChangeType(tr2.doc, tr2.mapping.slice(mapFrom).map(pos), type)) {
         let convertNewlines = null;
         if (type.schema.linebreakReplacement) {
           let pre = type.whitespace == "pre", supportLinebreak = !!type.contentMatch.matchType(type.schema.linebreakReplacement);
@@ -4368,33 +4257,33 @@
             convertNewlines = true;
         }
         if (convertNewlines === false)
-          replaceLinebreaks(tr, node, pos, mapFrom);
-        clearIncompatible(tr, tr.mapping.slice(mapFrom).map(pos, 1), type, void 0, convertNewlines === null);
-        let mapping = tr.mapping.slice(mapFrom);
+          replaceLinebreaks(tr2, node, pos, mapFrom);
+        clearIncompatible(tr2, tr2.mapping.slice(mapFrom).map(pos, 1), type, void 0, convertNewlines === null);
+        let mapping = tr2.mapping.slice(mapFrom);
         let startM = mapping.map(pos, 1), endM = mapping.map(pos + node.nodeSize, 1);
-        tr.step(new ReplaceAroundStep(startM, endM, startM + 1, endM - 1, new Slice(Fragment.from(type.create(attrsHere, null, node.marks)), 0, 0), 1, true));
+        tr2.step(new ReplaceAroundStep(startM, endM, startM + 1, endM - 1, new Slice(Fragment.from(type.create(attrsHere, null, node.marks)), 0, 0), 1, true));
         if (convertNewlines === true)
-          replaceNewlines(tr, node, pos, mapFrom);
+          replaceNewlines(tr2, node, pos, mapFrom);
         return false;
       }
     });
   }
-  function replaceNewlines(tr, node, pos, mapFrom) {
+  function replaceNewlines(tr2, node, pos, mapFrom) {
     node.forEach((child, offset3) => {
       if (child.isText) {
         let m, newline = /\r?\n|\r/g;
         while (m = newline.exec(child.text)) {
-          let start2 = tr.mapping.slice(mapFrom).map(pos + 1 + offset3 + m.index);
-          tr.replaceWith(start2, start2 + 1, node.type.schema.linebreakReplacement.create());
+          let start = tr2.mapping.slice(mapFrom).map(pos + 1 + offset3 + m.index);
+          tr2.replaceWith(start, start + 1, node.type.schema.linebreakReplacement.create());
         }
       }
     });
   }
-  function replaceLinebreaks(tr, node, pos, mapFrom) {
+  function replaceLinebreaks(tr2, node, pos, mapFrom) {
     node.forEach((child, offset3) => {
       if (child.type == child.type.schema.linebreakReplacement) {
-        let start2 = tr.mapping.slice(mapFrom).map(pos + 1 + offset3);
-        tr.replaceWith(start2, start2 + 1, node.type.schema.text("\n"));
+        let start = tr2.mapping.slice(mapFrom).map(pos + 1 + offset3);
+        tr2.replaceWith(start, start + 1, node.type.schema.text("\n"));
       }
     });
   }
@@ -4402,18 +4291,18 @@
     let $pos = doc4.resolve(pos), index = $pos.index();
     return $pos.parent.canReplaceWith(index, index + 1, type);
   }
-  function setNodeMarkup(tr, pos, type, attrs, marks) {
-    let node = tr.doc.nodeAt(pos);
+  function setNodeMarkup(tr2, pos, type, attrs, marks) {
+    let node = tr2.doc.nodeAt(pos);
     if (!node)
       throw new RangeError("No node at given position");
     if (!type)
       type = node.type;
     let newNode = type.create(attrs, null, marks || node.marks);
     if (node.isLeaf)
-      return tr.replaceWith(pos, pos + node.nodeSize, newNode);
+      return tr2.replaceWith(pos, pos + node.nodeSize, newNode);
     if (!type.validContent(node.content))
       throw new RangeError("Invalid content for node type " + type.name);
-    tr.step(new ReplaceAroundStep(pos, pos + node.nodeSize, pos + 1, pos + node.nodeSize - 1, new Slice(Fragment.from(newNode), 0, 0), 1, true));
+    tr2.step(new ReplaceAroundStep(pos, pos + node.nodeSize, pos + 1, pos + node.nodeSize - 1, new Slice(Fragment.from(newNode), 0, 0), 1, true));
   }
   function canSplit(doc4, pos, depth = 1, typesAfter) {
     let $pos = doc4.resolve(pos), base2 = $pos.depth - depth;
@@ -4436,14 +4325,14 @@
     let baseType = typesAfter && typesAfter[0];
     return $pos.node(base2).canReplaceWith(index, index, baseType ? baseType.type : $pos.node(base2 + 1).type);
   }
-  function split(tr, pos, depth = 1, typesAfter) {
-    let $pos = tr.doc.resolve(pos), before = Fragment.empty, after = Fragment.empty;
+  function split(tr2, pos, depth = 1, typesAfter) {
+    let $pos = tr2.doc.resolve(pos), before = Fragment.empty, after = Fragment.empty;
     for (let d = $pos.depth, e = $pos.depth - depth, i = depth - 1; d > e; d--, i--) {
       before = Fragment.from($pos.node(d).copy(before));
       let typeAfter = typesAfter && typesAfter[i];
       after = Fragment.from(typeAfter ? typeAfter.type.create(typeAfter.attrs, after) : $pos.node(d).copy(after));
     }
-    tr.step(new ReplaceStep(pos, pos, new Slice(before.append(after), depth, depth), true));
+    tr2.step(new ReplaceStep(pos, pos, new Slice(before.append(after), depth, depth), true));
   }
   function canJoin(doc4, pos) {
     let $pos = doc4.resolve(pos), index = $pos.index();
@@ -4490,10 +4379,10 @@
       pos = dir < 0 ? $pos.before(d) : $pos.after(d);
     }
   }
-  function join(tr, pos, depth) {
+  function join(tr2, pos, depth) {
     let convertNewlines = null;
-    let { linebreakReplacement } = tr.doc.type.schema;
-    let $before = tr.doc.resolve(pos - depth), beforeType = $before.node().type;
+    let { linebreakReplacement } = tr2.doc.type.schema;
+    let $before = tr2.doc.resolve(pos - depth), beforeType = $before.node().type;
     if (linebreakReplacement && beforeType.inlineContent) {
       let pre = beforeType.whitespace == "pre";
       let supportLinebreak = !!beforeType.contentMatch.matchType(linebreakReplacement);
@@ -4502,20 +4391,20 @@
       else if (!pre && supportLinebreak)
         convertNewlines = true;
     }
-    let mapFrom = tr.steps.length;
+    let mapFrom = tr2.steps.length;
     if (convertNewlines === false) {
-      let $after = tr.doc.resolve(pos + depth);
-      replaceLinebreaks(tr, $after.node(), $after.before(), mapFrom);
+      let $after = tr2.doc.resolve(pos + depth);
+      replaceLinebreaks(tr2, $after.node(), $after.before(), mapFrom);
     }
     if (beforeType.inlineContent)
-      clearIncompatible(tr, pos + depth - 1, beforeType, $before.node().contentMatchAt($before.index()), convertNewlines == null);
-    let mapping = tr.mapping.slice(mapFrom), start2 = mapping.map(pos - depth);
-    tr.step(new ReplaceStep(start2, mapping.map(pos + depth, -1), Slice.empty, true));
+      clearIncompatible(tr2, pos + depth - 1, beforeType, $before.node().contentMatchAt($before.index()), convertNewlines == null);
+    let mapping = tr2.mapping.slice(mapFrom), start = mapping.map(pos - depth);
+    tr2.step(new ReplaceStep(start, mapping.map(pos + depth, -1), Slice.empty, true));
     if (convertNewlines === true) {
-      let $full = tr.doc.resolve(start2);
-      replaceNewlines(tr, $full.node(), $full.before(), tr.steps.length);
+      let $full = tr2.doc.resolve(start);
+      replaceNewlines(tr2, $full.node(), $full.before(), tr2.steps.length);
     }
-    return tr;
+    return tr2;
   }
   function insertPoint(doc4, pos, nodeType) {
     let $pos = doc4.resolve(pos);
@@ -4808,8 +4697,8 @@
     let fit = match2.fillBefore(node.content, true, index);
     return fit && !invalidMarks(type, node.content, index) ? fit : null;
   }
-  function invalidMarks(type, fragment, start2) {
-    for (let i = start2; i < fragment.childCount; i++)
+  function invalidMarks(type, fragment, start) {
+    for (let i = start; i < fragment.childCount; i++)
       if (!type.allowsMarks(fragment.child(i).marks))
         return true;
     return false;
@@ -4825,12 +4714,12 @@
       frag = ch.content;
     }
   }
-  function replaceRange(tr, from3, to, slice2) {
+  function replaceRange(tr2, from3, to, slice2) {
     if (!slice2.size)
-      return tr.deleteRange(from3, to);
-    let $from = tr.doc.resolve(from3), $to = tr.doc.resolve(to);
+      return tr2.deleteRange(from3, to);
+    let $from = tr2.doc.resolve(from3), $to = tr2.doc.resolve(to);
     if (fitsTrivially($from, $to, slice2))
-      return tr.step(new ReplaceStep(from3, to, slice2));
+      return tr2.step(new ReplaceStep(from3, to, slice2));
     let targetDepths = coveredDepths($from, $to);
     if (targetDepths[targetDepths.length - 1] == 0)
       targetDepths.pop();
@@ -4874,13 +4763,13 @@
         }
         let parent = $from.node(targetDepth - 1), index = $from.index(targetDepth - 1);
         if (parent.canReplaceWith(index, index, insert.type, insert.marks))
-          return tr.replace($from.before(targetDepth), expand ? $to.after(targetDepth) : to, new Slice(closeFragment(slice2.content, 0, slice2.openStart, openDepth), openDepth, slice2.openEnd));
+          return tr2.replace($from.before(targetDepth), expand ? $to.after(targetDepth) : to, new Slice(closeFragment(slice2.content, 0, slice2.openStart, openDepth), openDepth, slice2.openEnd));
       }
     }
-    let startSteps = tr.steps.length;
+    let startSteps = tr2.steps.length;
     for (let i = targetDepths.length - 1; i >= 0; i--) {
-      tr.replace(from3, to, slice2);
-      if (tr.steps.length > startSteps)
+      tr2.replace(from3, to, slice2);
+      if (tr2.steps.length > startSteps)
         break;
       let depth = targetDepths[i];
       if (depth < 0)
@@ -4896,21 +4785,21 @@
     }
     if (depth > newOpen) {
       let match2 = parent.contentMatchAt(0);
-      let start2 = match2.fillBefore(fragment).append(fragment);
-      fragment = start2.append(match2.matchFragment(start2).fillBefore(Fragment.empty, true));
+      let start = match2.fillBefore(fragment).append(fragment);
+      fragment = start.append(match2.matchFragment(start).fillBefore(Fragment.empty, true));
     }
     return fragment;
   }
-  function replaceRangeWith(tr, from3, to, node) {
-    if (!node.isInline && from3 == to && tr.doc.resolve(from3).parent.content.size) {
-      let point = insertPoint(tr.doc, from3, node.type);
+  function replaceRangeWith(tr2, from3, to, node) {
+    if (!node.isInline && from3 == to && tr2.doc.resolve(from3).parent.content.size) {
+      let point = insertPoint(tr2.doc, from3, node.type);
       if (point != null)
         from3 = to = point;
     }
-    tr.replaceRange(from3, to, new Slice(Fragment.from(node), 0, 0));
+    tr2.replaceRange(from3, to, new Slice(Fragment.from(node), 0, 0));
   }
-  function deleteRange(tr, from3, to) {
-    let $from = tr.doc.resolve(from3), $to = tr.doc.resolve(to);
+  function deleteRange(tr2, from3, to) {
+    let $from = tr2.doc.resolve(from3), $to = tr2.doc.resolve(to);
     if ($from.parent.isTextblock && $to.parent.isTextblock && $from.start() != $to.start() && $from.parentOffset == 0 && $to.parentOffset == 0) {
       let shared = $from.sharedDepth(to), isolated = false;
       for (let d = $from.depth; d > shared; d--)
@@ -4924,31 +4813,31 @@
           from3 = $from.before(d);
         for (let d = $to.depth; d > 0 && to == $to.start(d); d--)
           to = $to.before(d);
-        $from = tr.doc.resolve(from3);
-        $to = tr.doc.resolve(to);
+        $from = tr2.doc.resolve(from3);
+        $to = tr2.doc.resolve(to);
       }
     }
     let covered = coveredDepths($from, $to);
     for (let i = 0; i < covered.length; i++) {
       let depth = covered[i], last2 = i == covered.length - 1;
       if (last2 && depth == 0 || $from.node(depth).type.contentMatch.validEnd)
-        return tr.delete($from.start(depth), $to.end(depth));
+        return tr2.delete($from.start(depth), $to.end(depth));
       if (depth > 0 && (last2 || $from.node(depth - 1).canReplace($from.index(depth - 1), $to.indexAfter(depth - 1))))
-        return tr.delete($from.before(depth), $to.after(depth));
+        return tr2.delete($from.before(depth), $to.after(depth));
     }
     for (let d = 1; d <= $from.depth && d <= $to.depth; d++) {
       if (from3 - $from.start(d) == $from.depth - d && to > $from.end(d) && $to.end(d) - to != $to.depth - d && $from.start(d - 1) == $to.start(d - 1) && $from.node(d - 1).canReplace($from.index(d - 1), $to.index(d - 1)))
-        return tr.delete($from.before(d), to);
+        return tr2.delete($from.before(d), to);
     }
-    tr.delete(from3, to);
+    tr2.delete(from3, to);
   }
   function coveredDepths($from, $to) {
     let result = [], minDepth = Math.min($from.depth, $to.depth);
     for (let d = minDepth; d >= 0; d--) {
-      let start2 = $from.start(d);
-      if (start2 < $from.pos - ($from.depth - d) || $to.end(d) > $to.pos + ($to.depth - d) || $from.node(d).type.spec.isolating || $to.node(d).type.spec.isolating)
+      let start = $from.start(d);
+      if (start < $from.pos - ($from.depth - d) || $to.end(d) > $to.pos + ($to.depth - d) || $from.node(d).type.spec.isolating || $to.node(d).type.spec.isolating)
         break;
-      if (start2 == $to.start(d) || d == $from.depth && d == $to.depth && $from.parent.inlineContent && $to.parent.inlineContent && d && $to.start(d - 1) == start2 - 1)
+      if (start == $to.start(d) || d == $from.depth && d == $to.depth && $from.parent.inlineContent && $to.parent.inlineContent && d && $to.start(d - 1) == start - 1)
         result.push(d);
     }
     return result;
@@ -5384,34 +5273,34 @@
     Replace the selection with a slice or, if no slice is given,
     delete the selection. Will append to the given transaction.
     */
-    replace(tr, content = Slice.empty) {
+    replace(tr2, content = Slice.empty) {
       let lastNode = content.content.lastChild, lastParent = null;
       for (let i = 0; i < content.openEnd; i++) {
         lastParent = lastNode;
         lastNode = lastNode.lastChild;
       }
-      let mapFrom = tr.steps.length, ranges = this.ranges;
+      let mapFrom = tr2.steps.length, ranges = this.ranges;
       for (let i = 0; i < ranges.length; i++) {
-        let { $from, $to } = ranges[i], mapping = tr.mapping.slice(mapFrom);
-        tr.replaceRange(mapping.map($from.pos), mapping.map($to.pos), i ? Slice.empty : content);
+        let { $from, $to } = ranges[i], mapping = tr2.mapping.slice(mapFrom);
+        tr2.replaceRange(mapping.map($from.pos), mapping.map($to.pos), i ? Slice.empty : content);
         if (i == 0)
-          selectionToInsertionEnd(tr, mapFrom, (lastNode ? lastNode.isInline : lastParent && lastParent.isTextblock) ? -1 : 1);
+          selectionToInsertionEnd(tr2, mapFrom, (lastNode ? lastNode.isInline : lastParent && lastParent.isTextblock) ? -1 : 1);
       }
     }
     /**
     Replace the selection with the given node, appending the changes
     to the given transaction.
     */
-    replaceWith(tr, node) {
-      let mapFrom = tr.steps.length, ranges = this.ranges;
+    replaceWith(tr2, node) {
+      let mapFrom = tr2.steps.length, ranges = this.ranges;
       for (let i = 0; i < ranges.length; i++) {
-        let { $from, $to } = ranges[i], mapping = tr.mapping.slice(mapFrom);
+        let { $from, $to } = ranges[i], mapping = tr2.mapping.slice(mapFrom);
         let from3 = mapping.map($from.pos), to = mapping.map($to.pos);
         if (i) {
-          tr.deleteRange(from3, to);
+          tr2.deleteRange(from3, to);
         } else {
-          tr.replaceRangeWith(from3, to, node);
-          selectionToInsertionEnd(tr, mapFrom, node.isInline ? -1 : 1);
+          tr2.replaceRangeWith(from3, to, node);
+          selectionToInsertionEnd(tr2, mapFrom, node.isInline ? -1 : 1);
         }
       }
     }
@@ -5535,12 +5424,12 @@
       let $anchor = doc4.resolve(mapping.map(this.anchor));
       return new _TextSelection($anchor.parent.inlineContent ? $anchor : $head, $head);
     }
-    replace(tr, content = Slice.empty) {
-      super.replace(tr, content);
+    replace(tr2, content = Slice.empty) {
+      super.replace(tr2, content);
       if (content == Slice.empty) {
         let marks = this.$from.marksAcross(this.$to);
         if (marks)
-          tr.ensureMarks(marks);
+          tr2.ensureMarks(marks);
       }
     }
     eq(other) {
@@ -5687,14 +5576,14 @@
     constructor(doc4) {
       super(doc4.resolve(0), doc4.resolve(doc4.content.size));
     }
-    replace(tr, content = Slice.empty) {
+    replace(tr2, content = Slice.empty) {
       if (content == Slice.empty) {
-        tr.delete(0, tr.doc.content.size);
-        let sel = Selection.atStart(tr.doc);
-        if (!sel.eq(tr.selection))
-          tr.setSelection(sel);
+        tr2.delete(0, tr2.doc.content.size);
+        let sel = Selection.atStart(tr2.doc);
+        if (!sel.eq(tr2.selection))
+          tr2.setSelection(sel);
       } else {
-        super.replace(tr, content);
+        super.replace(tr2, content);
       }
     }
     toJSON() {
@@ -5741,19 +5630,19 @@
     }
     return null;
   }
-  function selectionToInsertionEnd(tr, startLen, bias) {
-    let last2 = tr.steps.length - 1;
+  function selectionToInsertionEnd(tr2, startLen, bias) {
+    let last2 = tr2.steps.length - 1;
     if (last2 < startLen)
       return;
-    let step = tr.steps[last2];
+    let step = tr2.steps[last2];
     if (!(step instanceof ReplaceStep || step instanceof ReplaceAroundStep))
       return;
-    let map3 = tr.mapping.maps[last2], end;
+    let map3 = tr2.mapping.maps[last2], end;
     map3.forEach((_from, _to, _newFrom, newTo) => {
       if (end == null)
         end = newTo;
     });
-    tr.setSelection(Selection.near(tr.doc.resolve(end), bias));
+    tr2.setSelection(Selection.near(tr2.doc.resolve(end), bias));
   }
   var UPDATED_SEL = 1;
   var UPDATED_MARKS = 2;
@@ -5959,32 +5848,32 @@
       init(config) {
         return config.doc || config.schema.topNodeType.createAndFill();
       },
-      apply(tr) {
-        return tr.doc;
+      apply(tr2) {
+        return tr2.doc;
       }
     }),
     new FieldDesc("selection", {
       init(config, instance) {
         return config.selection || Selection.atStart(instance.doc);
       },
-      apply(tr) {
-        return tr.selection;
+      apply(tr2) {
+        return tr2.selection;
       }
     }),
     new FieldDesc("storedMarks", {
       init(config) {
         return config.storedMarks || null;
       },
-      apply(tr, _marks, _old, state) {
-        return state.selection.$cursor ? tr.storedMarks : null;
+      apply(tr2, _marks, _old, state) {
+        return state.selection.$cursor ? tr2.storedMarks : null;
       }
     }),
     new FieldDesc("scrollToSelection", {
       init() {
         return 0;
       },
-      apply(tr, prev) {
-        return tr.scrolledIntoView ? prev + 1 : prev;
+      apply(tr2, prev) {
+        return tr2.scrolledIntoView ? prev + 1 : prev;
       }
     })
   ];
@@ -6027,17 +5916,17 @@
     /**
     Apply the given transaction to produce a new state.
     */
-    apply(tr) {
-      return this.applyTransaction(tr).state;
+    apply(tr2) {
+      return this.applyTransaction(tr2).state;
     }
     /**
     @internal
     */
-    filterTransaction(tr, ignore = -1) {
+    filterTransaction(tr2, ignore = -1) {
       for (let i = 0; i < this.config.plugins.length; i++)
         if (i != ignore) {
           let plugin = this.config.plugins[i];
-          if (plugin.spec.filterTransaction && !plugin.spec.filterTransaction.call(plugin, tr, this))
+          if (plugin.spec.filterTransaction && !plugin.spec.filterTransaction.call(plugin, tr2, this))
             return false;
         }
       return true;
@@ -6059,16 +5948,16 @@
           let plugin = this.config.plugins[i];
           if (plugin.spec.appendTransaction) {
             let n = seen ? seen[i].n : 0, oldState = seen ? seen[i].state : this;
-            let tr = n < trs.length && plugin.spec.appendTransaction.call(plugin, n ? trs.slice(n) : trs, oldState, newState);
-            if (tr && newState.filterTransaction(tr, i)) {
-              tr.setMeta("appendedTransaction", rootTr);
+            let tr2 = n < trs.length && plugin.spec.appendTransaction.call(plugin, n ? trs.slice(n) : trs, oldState, newState);
+            if (tr2 && newState.filterTransaction(tr2, i)) {
+              tr2.setMeta("appendedTransaction", rootTr);
               if (!seen) {
                 seen = [];
                 for (let j = 0; j < this.config.plugins.length; j++)
                   seen.push(j < i ? { state: newState, n: trs.length } : { state: this, n: 0 });
               }
-              trs.push(tr);
-              newState = newState.applyInner(tr);
+              trs.push(tr2);
+              newState = newState.applyInner(tr2);
               haveNew = true;
             }
             if (seen)
@@ -6082,13 +5971,13 @@
     /**
     @internal
     */
-    applyInner(tr) {
-      if (!tr.before.eq(this.doc))
+    applyInner(tr2) {
+      if (!tr2.before.eq(this.doc))
         throw new RangeError("Applying a mismatched transaction");
       let newInstance = new _EditorState(this.config), fields = this.config.fields;
       for (let i = 0; i < fields.length; i++) {
         let field = fields[i];
-        newInstance[field.name] = field.apply(tr, this[field.name], this, newInstance);
+        newInstance[field.name] = field.apply(tr2, this[field.name], this, newInstance);
       }
       return newInstance;
     }
@@ -7854,12 +7743,12 @@
     }
     // Destroy and remove the children between the given indices in
     // `this.top`.
-    destroyBetween(start2, end) {
-      if (start2 == end)
+    destroyBetween(start, end) {
+      if (start == end)
         return;
-      for (let i = start2; i < end; i++)
+      for (let i = start; i < end; i++)
         this.top.children[i].destroy();
-      this.top.children.splice(start2, end - start2);
+      this.top.children.splice(start, end - start);
       this.changed = true;
     }
     // Destroy all remaining children in `this.top`.
@@ -8213,18 +8102,18 @@
   function replaceNodes(nodes, from3, to, view, replacement) {
     let result = [];
     for (let i = 0, off = 0; i < nodes.length; i++) {
-      let child = nodes[i], start2 = off, end = off += child.size;
-      if (start2 >= to || end <= from3) {
+      let child = nodes[i], start = off, end = off += child.size;
+      if (start >= to || end <= from3) {
         result.push(child);
       } else {
-        if (start2 < from3)
-          result.push(child.slice(0, from3 - start2, view));
+        if (start < from3)
+          result.push(child.slice(0, from3 - start, view));
         if (replacement) {
           result.push(replacement);
           replacement = void 0;
         }
         if (end > to)
-          result.push(child.slice(to - start2, child.size, view));
+          result.push(child.slice(to - start, child.size, view));
       }
     }
     return result;
@@ -8682,12 +8571,12 @@
       return true;
     let nextNode = !$head.textOffset && (dir < 0 ? $head.nodeBefore : $head.nodeAfter);
     if (nextNode && !nextNode.isText) {
-      let tr = view.state.tr;
+      let tr2 = view.state.tr;
       if (dir < 0)
-        tr.delete($head.pos - nextNode.nodeSize, $head.pos);
+        tr2.delete($head.pos - nextNode.nodeSize, $head.pos);
       else
-        tr.delete($head.pos, $head.pos + nextNode.nodeSize);
-      view.dispatch(tr);
+        tr2.delete($head.pos, $head.pos + nextNode.nodeSize);
+      view.dispatch(tr2);
       return true;
     }
     return false;
@@ -9160,10 +9049,10 @@
       view.focus();
     if (view.state.selection.eq(selection))
       return;
-    let tr = view.state.tr.setSelection(selection);
+    let tr2 = view.state.tr.setSelection(selection);
     if (origin == "pointer")
-      tr.setMeta("pointer", true);
-    view.dispatch(tr);
+      tr2.setMeta("pointer", true);
+    view.dispatch(tr2);
   }
   function selectClickedLeaf(view, inside) {
     if (inside == -1)
@@ -9406,8 +9295,8 @@
       let target = pos && selectionForTripleClick(this.view, pos.inside, false);
       if (!target)
         return;
-      let { doc: doc4 } = this.view.state, start2 = this.startSelection;
-      let [anchor, head] = target.from < start2.from ? [start2.to, target.from] : [start2.from, target.to];
+      let { doc: doc4 } = this.view.state, start = this.startSelection;
+      let [anchor, head] = target.from < start.from ? [start.to, target.from] : [start.from, target.to];
       updateSelection(this.view, TextSelection.create(doc4, anchor, head), "pointer");
     }
   };
@@ -9600,8 +9489,8 @@
     if (!slice2)
       return false;
     let singleNode = sliceSingleNode(slice2);
-    let tr = singleNode ? view.state.tr.replaceSelectionWith(singleNode, preferPlain) : view.state.tr.replaceSelection(slice2);
-    view.dispatch(tr.scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"));
+    let tr2 = singleNode ? view.state.tr.replaceSelectionWith(singleNode, preferPlain) : view.state.tr.replaceSelection(slice2);
+    view.dispatch(tr2.scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"));
     return true;
   }
   function getText(clipboardData) {
@@ -9706,33 +9595,33 @@
     let insertPos = slice2 ? dropPoint(view.state.doc, $mouse.pos, slice2) : $mouse.pos;
     if (insertPos == null)
       insertPos = $mouse.pos;
-    let tr = view.state.tr;
+    let tr2 = view.state.tr;
     if (move) {
       let { node } = dragging;
       if (node)
-        node.replace(tr);
+        node.replace(tr2);
       else
-        tr.deleteSelection();
+        tr2.deleteSelection();
     }
-    let pos = tr.mapping.map(insertPos);
+    let pos = tr2.mapping.map(insertPos);
     let isNode3 = slice2.openStart == 0 && slice2.openEnd == 0 && slice2.content.childCount == 1;
-    let beforeInsert = tr.doc;
+    let beforeInsert = tr2.doc;
     if (isNode3)
-      tr.replaceRangeWith(pos, pos, slice2.content.firstChild);
+      tr2.replaceRangeWith(pos, pos, slice2.content.firstChild);
     else
-      tr.replaceRange(pos, pos, slice2);
-    if (tr.doc.eq(beforeInsert))
+      tr2.replaceRange(pos, pos, slice2);
+    if (tr2.doc.eq(beforeInsert))
       return;
-    let $pos = tr.doc.resolve(pos);
+    let $pos = tr2.doc.resolve(pos);
     if (isNode3 && NodeSelection.isSelectable(slice2.content.firstChild) && $pos.nodeAfter && $pos.nodeAfter.sameMarkup(slice2.content.firstChild)) {
-      tr.setSelection(new NodeSelection($pos));
+      tr2.setSelection(new NodeSelection($pos));
     } else {
-      let end = tr.mapping.map(insertPos);
-      tr.mapping.maps[tr.mapping.maps.length - 1].forEach((_from, _to, _newFrom, newTo) => end = newTo);
-      tr.setSelection(selectionBetween(view, $pos, tr.doc.resolve(end)));
+      let end = tr2.mapping.map(insertPos);
+      tr2.mapping.maps[tr2.mapping.maps.length - 1].forEach((_from, _to, _newFrom, newTo) => end = newTo);
+      tr2.setSelection(selectionBetween(view, $pos, tr2.doc.resolve(end)));
     }
     view.focus();
-    view.dispatch(tr.setMeta("uiEvent", "drop"));
+    view.dispatch(tr2.setMeta("uiEvent", "drop"));
   }
   handlers.focus = (view) => {
     view.input.lastFocus = Date.now();
@@ -9955,21 +9844,21 @@
     considered. When `predicate` isn't given, all decorations are
     assumed to match.
     */
-    find(start2, end, predicate) {
+    find(start, end, predicate) {
       let result = [];
-      this.findInner(start2 == null ? 0 : start2, end == null ? 1e9 : end, result, 0, predicate);
+      this.findInner(start == null ? 0 : start, end == null ? 1e9 : end, result, 0, predicate);
       return result;
     }
-    findInner(start2, end, result, offset3, predicate) {
+    findInner(start, end, result, offset3, predicate) {
       for (let i = 0; i < this.local.length; i++) {
         let span = this.local[i];
-        if (span.from <= end && span.to >= start2 && (!predicate || predicate(span.spec)))
+        if (span.from <= end && span.to >= start && (!predicate || predicate(span.spec)))
           result.push(span.copy(span.from + offset3, span.to + offset3));
       }
       for (let i = 0; i < this.children.length; i += 3) {
-        if (this.children[i] < end && this.children[i + 1] > start2) {
+        if (this.children[i] < end && this.children[i + 1] > start) {
           let childOff = this.children[i] + 1;
-          this.children[i + 2].findInner(start2 - childOff, end - childOff, result, offset3 + childOff, predicate);
+          this.children[i + 2].findInner(start - childOff, end - childOff, result, offset3 + childOff, predicate);
         }
       }
     }
@@ -10094,11 +9983,11 @@
             child = this.children[i + 2];
           break;
         }
-      let start2 = offset3 + 1, end = start2 + node.content.size;
+      let start = offset3 + 1, end = start + node.content.size;
       for (let i = 0; i < this.local.length; i++) {
         let dec = this.local[i];
-        if (dec.from < end && dec.to > start2 && dec.type instanceof InlineType) {
-          let from3 = Math.max(start2, dec.from) - start2, to = Math.min(end, dec.to) - start2;
+        if (dec.from < end && dec.to > start && dec.type instanceof InlineType) {
+          let from3 = Math.max(start, dec.from) - start, to = Math.min(end, dec.to) - start;
           if (from3 < to)
             (local || (local = [])).push(dec.copy(from3, to));
         }
@@ -10230,9 +10119,9 @@
           let end = children[i2 + 1];
           if (end < 0 || oldStart > end + baseOffset - moved)
             continue;
-          let start2 = children[i2] + baseOffset - moved;
-          if (oldEnd >= start2) {
-            children[i2 + 1] = oldStart <= start2 ? -2 : -1;
+          let start = children[i2] + baseOffset - moved;
+          if (oldEnd >= start) {
+            children[i2 + 1] = oldStart <= start ? -2 : -1;
           } else if (oldStart >= baseOffset && dSize) {
             children[i2] += dSize;
             children[i2 + 1] += dSize;
@@ -10725,11 +10614,11 @@
     let { focusNode, focusOffset } = view.domSelectionRange();
     for (let node of addedNodes) {
       if (((_a = node.parentNode) === null || _a === void 0 ? void 0 : _a.nodeName) == "TR") {
-        let nextCell = node.nextSibling;
-        while (nextCell && (nextCell.nodeName != "TD" && nextCell.nodeName != "TH"))
-          nextCell = nextCell.nextSibling;
-        if (nextCell) {
-          let parent = nextCell;
+        let nextCell2 = node.nextSibling;
+        while (nextCell2 && (nextCell2.nodeName != "TD" && nextCell2.nodeName != "TH"))
+          nextCell2 = nextCell2.nextSibling;
+        if (nextCell2) {
+          let parent = nextCell2;
           for (; ; ) {
             let first2 = parent.firstChild;
             if (!first2 || first2.nodeType != 1 || first2.contentEditable == "false" || /^(BR|IMG)$/.test(first2.nodeName))
@@ -10748,12 +10637,12 @@
   function parseBetween(view, from_, to_, addedNodes) {
     let { node: parent, fromOffset, toOffset, from: from3, to } = view.docView.parseRange(from_, to_);
     let domSel = view.domSelectionRange();
-    let find2;
+    let find3;
     let anchor = domSel.anchorNode;
     if (anchor && view.dom.contains(anchor.nodeType == 1 ? anchor : anchor.parentNode)) {
-      find2 = [{ node: anchor, offset: domSel.anchorOffset }];
+      find3 = [{ node: anchor, offset: domSel.anchorOffset }];
       if (!selectionCollapsed(domSel))
-        find2.push({ node: domSel.focusNode, offset: domSel.focusOffset });
+        find3.push({ node: domSel.focusNode, offset: domSel.focusOffset });
     }
     if (chrome && view.input.lastKeyCode === 8) {
       for (let off = toOffset; off > fromOffset; off--) {
@@ -10776,12 +10665,12 @@
       from: fromOffset,
       to: toOffset,
       preserveWhitespace: $from.parent.type.whitespace == "pre" ? "full" : true,
-      findPositions: find2,
+      findPositions: find3,
       ruleFromNode: ruleFromNode(addedNodes),
       context: $from
     });
-    if (find2 && find2[0].pos != null) {
-      let anchor2 = find2[0].pos, head = find2[1] && find2[1].pos;
+    if (find3 && find3[0].pos != null) {
+      let anchor2 = find3[0].pos, head = find3[1] && find3[1].pos;
       if (head == null)
         head = anchor2;
       sel = { anchor: anchor2 + from3, head: head + from3 };
@@ -10815,14 +10704,14 @@
       if (newSel && !view.state.selection.eq(newSel)) {
         if (chrome && android && view.input.lastKeyCode === 13 && Date.now() - 100 < view.input.lastKeyCodeTime && view.someProp("handleKeyDown", (f) => f(view, keyEvent(13, "Enter"))))
           return;
-        let tr = view.state.tr.setSelection(newSel);
+        let tr2 = view.state.tr.setSelection(newSel);
         if (origin == "pointer")
-          tr.setMeta("pointer", true);
+          tr2.setMeta("pointer", true);
         else if (origin == "key")
-          tr.scrollIntoView();
+          tr2.scrollIntoView();
         if (compositionID)
-          tr.setMeta("composition", compositionID);
-        view.dispatch(tr);
+          tr2.setMeta("composition", compositionID);
+        view.dispatch(tr2);
       }
       return;
     }
@@ -10856,10 +10745,10 @@
         if (parse.sel) {
           let sel2 = resolveSelection(view, view.state.doc, parse.sel);
           if (sel2 && !sel2.eq(view.state.selection)) {
-            let tr = view.state.tr.setSelection(sel2);
+            let tr2 = view.state.tr.setSelection(sel2);
             if (compositionID)
-              tr.setMeta("composition", compositionID);
-            view.dispatch(tr);
+              tr2.setMeta("composition", compositionID);
+            view.dispatch(tr2);
           }
         }
         return;
@@ -10904,15 +10793,15 @@
     }
     let chFrom = change.start, chTo = change.endA;
     let mkTr = (base2) => {
-      let tr = base2 || view.state.tr.replace(chFrom, chTo, parse.doc.slice(change.start - parse.from, change.endB - parse.from));
+      let tr2 = base2 || view.state.tr.replace(chFrom, chTo, parse.doc.slice(change.start - parse.from, change.endB - parse.from));
       if (parse.sel) {
-        let sel2 = resolveSelection(view, tr.doc, parse.sel);
-        if (sel2 && !(chrome && view.composing && sel2.empty && (change.start != change.endB || view.input.lastChromeDelete < Date.now() - 100) && (sel2.head == chFrom || sel2.head == tr.mapping.map(chTo) - 1) || ie && sel2.empty && sel2.head == chFrom))
-          tr.setSelection(sel2);
+        let sel2 = resolveSelection(view, tr2.doc, parse.sel);
+        if (sel2 && !(chrome && view.composing && sel2.empty && (change.start != change.endB || view.input.lastChromeDelete < Date.now() - 100) && (sel2.head == chFrom || sel2.head == tr2.mapping.map(chTo) - 1) || ie && sel2.empty && sel2.head == chFrom))
+          tr2.setSelection(sel2);
       }
       if (compositionID)
-        tr.setMeta("composition", compositionID);
-      return tr.scrollIntoView();
+        tr2.setMeta("composition", compositionID);
+      return tr2.scrollIntoView();
     };
     let markChange;
     if (inlineChange) {
@@ -10921,21 +10810,21 @@
           view.domObserver.suppressSelectionUpdates();
           setTimeout(() => selectionToDOM(view), 20);
         }
-        let tr = mkTr(view.state.tr.delete(chFrom, chTo));
+        let tr2 = mkTr(view.state.tr.delete(chFrom, chTo));
         let marks = doc4.resolve(change.start).marksAcross(doc4.resolve(change.endA));
         if (marks)
-          tr.ensureMarks(marks);
-        view.dispatch(tr);
+          tr2.ensureMarks(marks);
+        view.dispatch(tr2);
       } else if (
         // Adding or removing a mark
         change.endA == change.endB && (markChange = isMarkChange($from.parent.content.cut($from.parentOffset, $to.parentOffset), $fromA.parent.content.cut($fromA.parentOffset, change.endA - $fromA.start())))
       ) {
-        let tr = mkTr(view.state.tr);
+        let tr2 = mkTr(view.state.tr);
         if (markChange.type == "add")
-          tr.addMark(chFrom, chTo, markChange.mark);
+          tr2.addMark(chFrom, chTo, markChange.mark);
         else
-          tr.removeMark(chFrom, chTo, markChange.mark);
-        view.dispatch(tr);
+          tr2.removeMark(chFrom, chTo, markChange.mark);
+        view.dispatch(tr2);
       } else if ($from.parent.child($from.index()).isText && $from.index() == $to.index() - ($to.textOffset ? 0 : 1)) {
         let text2 = $from.parent.textBetween($from.parentOffset, $to.parentOffset);
         let deflt = () => mkTr(view.state.tr.insertText(text2, chFrom, chTo));
@@ -10977,17 +10866,17 @@
     if (Fragment.from(updated).eq(cur))
       return { mark, type };
   }
-  function looksLikeBackspace(old, start2, end, $newStart, $newEnd) {
+  function looksLikeBackspace(old, start, end, $newStart, $newEnd) {
     if (
       // The content must have shrunk
-      end - start2 <= $newEnd.pos - $newStart.pos || // newEnd must point directly at or after the end of the block that newStart points into
+      end - start <= $newEnd.pos - $newStart.pos || // newEnd must point directly at or after the end of the block that newStart points into
       skipClosingAndOpening($newStart, true, false) < $newEnd.pos
     )
       return false;
-    let $start = old.resolve(start2);
+    let $start = old.resolve(start);
     if (!$newStart.parent.isTextblock) {
       let after = $start.nodeAfter;
-      return after != null && end == start2 + after.nodeSize;
+      return after != null && end == start + after.nodeSize;
     }
     if ($start.parentOffset < $start.parent.content.size || !$start.parent.isTextblock)
       return false;
@@ -11013,26 +10902,26 @@
     return end;
   }
   function findDiff(a, b, pos, preferredPos, preferredSide) {
-    let start2 = a.findDiffStart(b, pos), lenA = pos + a.size, lenB = pos + b.size;
-    if (start2 == null)
+    let start = a.findDiffStart(b, pos), lenA = pos + a.size, lenB = pos + b.size;
+    if (start == null)
       return null;
     let { a: endA, b: endB } = a.findDiffEnd(b, lenA, lenB);
     if (preferredSide == "end") {
-      let adjust = Math.max(0, start2 - Math.min(endA, endB));
-      preferredPos -= endA + adjust - start2;
+      let adjust = Math.max(0, start - Math.min(endA, endB));
+      preferredPos -= endA + adjust - start;
     }
-    if (endA < start2 && lenA < lenB) {
-      let move = preferredPos <= start2 && preferredPos >= endA ? start2 - preferredPos : 0;
-      start2 -= move;
-      endB = start2 + (endB - endA);
-      endA = start2;
-    } else if (endB < start2) {
-      let move = preferredPos <= start2 && preferredPos >= endB ? start2 - preferredPos : 0;
-      start2 -= move;
-      endA = start2 + (endA - endB);
-      endB = start2;
+    if (endA < start && lenA < lenB) {
+      let move = preferredPos <= start && preferredPos >= endA ? start - preferredPos : 0;
+      start -= move;
+      endB = start + (endB - endA);
+      endA = start;
+    } else if (endB < start) {
+      let move = preferredPos <= start && preferredPos >= endB ? start - preferredPos : 0;
+      start -= move;
+      endA = start + (endA - endB);
+      endB = start;
     }
-    return { start: start2, endA, endB };
+    return { start, endA, endB };
   }
   var EditorView = class {
     /**
@@ -11474,12 +11363,12 @@
       return this.root.getSelection();
     }
   };
-  EditorView.prototype.dispatch = function(tr) {
+  EditorView.prototype.dispatch = function(tr2) {
     let dispatchTransaction = this._props.dispatchTransaction;
     if (dispatchTransaction)
-      dispatchTransaction.call(this, tr);
+      dispatchTransaction.call(this, tr2);
     else
-      this.updateState(this.state.apply(tr));
+      this.updateState(this.state.apply(tr2));
   };
   function computeDocDeco(view) {
     let attrs = /* @__PURE__ */ Object.create(null);
@@ -11767,9 +11656,9 @@
         let delStep = replaceStep(state.doc, $cursor.before(depth), $cursor.after(depth), Slice.empty);
         if (delStep && delStep.slice.size < delStep.to - delStep.from) {
           if (dispatch) {
-            let tr = state.tr.step(delStep);
-            tr.setSelection(textblockAt(before, "end") ? Selection.findFrom(tr.doc.resolve(tr.mapping.map($cut.pos, -1)), -1) : NodeSelection.create(tr.doc, $cut.pos - before.nodeSize));
-            dispatch(tr.scrollIntoView());
+            let tr2 = state.tr.step(delStep);
+            tr2.setSelection(textblockAt(before, "end") ? Selection.findFrom(tr2.doc.resolve(tr2.mapping.map($cut.pos, -1)), -1) : NodeSelection.create(tr2.doc, $cut.pos - before.nodeSize));
+            dispatch(tr2.scrollIntoView());
           }
           return true;
         }
@@ -11821,9 +11710,9 @@
     if (!step || step.from != beforePos || step instanceof ReplaceStep && step.slice.size >= afterPos - beforePos)
       return false;
     if (dispatch) {
-      let tr = state.tr.step(step);
-      tr.setSelection(TextSelection.create(tr.doc, beforePos));
-      dispatch(tr.scrollIntoView());
+      let tr2 = state.tr.step(step);
+      tr2.setSelection(TextSelection.create(tr2.doc, beforePos));
+      dispatch(tr2.scrollIntoView());
     }
     return true;
   }
@@ -11882,9 +11771,9 @@
       let delStep = replaceStep(state.doc, $cursor.before(), $cursor.after(), Slice.empty);
       if (delStep && delStep.slice.size < delStep.to - delStep.from) {
         if (dispatch) {
-          let tr = state.tr.step(delStep);
-          tr.setSelection(textblockAt(after, "start") ? Selection.findFrom(tr.doc.resolve(tr.mapping.map($cut.pos)), 1) : NodeSelection.create(tr.doc, tr.mapping.map($cut.pos)));
-          dispatch(tr.scrollIntoView());
+          let tr2 = state.tr.step(delStep);
+          tr2.setSelection(textblockAt(after, "start") ? Selection.findFrom(tr2.doc.resolve(tr2.mapping.map($cut.pos)), 1) : NodeSelection.create(tr2.doc, tr2.mapping.map($cut.pos)));
+          dispatch(tr2.scrollIntoView());
         }
         return true;
       }
@@ -11935,10 +11824,10 @@
         return false;
     }
     if (dispatch) {
-      let tr = state.tr.join(point);
+      let tr2 = state.tr.join(point);
       if (nodeSel)
-        tr.setSelection(NodeSelection.create(tr.doc, point - state.doc.resolve(point).nodeBefore.nodeSize));
-      dispatch(tr.scrollIntoView());
+        tr2.setSelection(NodeSelection.create(tr2.doc, point - state.doc.resolve(point).nodeBefore.nodeSize));
+      dispatch(tr2.scrollIntoView());
     }
     return true;
   };
@@ -11990,9 +11879,9 @@
     if (!type || !above.canReplaceWith(after, after, type))
       return false;
     if (dispatch) {
-      let pos = $head.after(), tr = state.tr.replaceWith(pos, pos, type.createAndFill());
-      tr.setSelection(Selection.near(tr.doc.resolve(pos), 1));
-      dispatch(tr.scrollIntoView());
+      let pos = $head.after(), tr2 = state.tr.replaceWith(pos, pos, type.createAndFill());
+      tr2.setSelection(Selection.near(tr2.doc.resolve(pos), 1));
+      dispatch(tr2.scrollIntoView());
     }
     return true;
   };
@@ -12005,9 +11894,9 @@
       return false;
     if (dispatch) {
       let side = (!$from.parentOffset && $to.index() < $to.parent.childCount ? $from : $to).pos;
-      let tr = state.tr.insert(side, type.createAndFill());
-      tr.setSelection(TextSelection.create(tr.doc, side + 1));
-      dispatch(tr.scrollIntoView());
+      let tr2 = state.tr.insert(side, type.createAndFill());
+      tr2.setSelection(TextSelection.create(tr2.doc, side + 1));
+      dispatch(tr2.scrollIntoView());
     }
     return true;
   };
@@ -12042,10 +11931,10 @@
       }
       if (!state.selection.$from.depth)
         return false;
-      let tr = state.tr;
+      let tr2 = state.tr;
       if (!state.selection.empty && (state.selection instanceof TextSelection || state.selection instanceof AllSelection))
-        tr.deleteSelection();
-      let { $from } = tr.selection, mapFrom = tr.steps.length;
+        tr2.deleteSelection();
+      let { $from } = tr2.selection, mapFrom = tr2.steps.length;
       let types = [];
       let splitDepth, deflt, atEnd = false, atStart = false;
       for (let d = $from.depth; ; d--) {
@@ -12065,22 +11954,22 @@
         }
       }
       let splitPos = $from.pos;
-      let can = canSplit(tr.doc, splitPos, types.length, types);
+      let can = canSplit(tr2.doc, splitPos, types.length, types);
       if (!can) {
         types[0] = deflt ? { type: deflt } : null;
-        can = canSplit(tr.doc, splitPos, types.length, types);
+        can = canSplit(tr2.doc, splitPos, types.length, types);
       }
       if (!can)
         return false;
-      tr.split(splitPos, types.length, types);
+      tr2.split(splitPos, types.length, types);
       if (!atEnd && atStart && $from.node(splitDepth).type != deflt) {
-        let mapping = tr.mapping.slice(mapFrom);
-        let first2 = mapping.map($from.before(splitDepth)), $first = tr.doc.resolve(first2);
+        let mapping = tr2.mapping.slice(mapFrom);
+        let first2 = mapping.map($from.before(splitDepth)), $first = tr2.doc.resolve(first2);
         if (deflt && $from.node(splitDepth - 1).canReplaceWith($first.index(), $first.index() + 1, deflt))
-          tr.setNodeMarkup(mapping.map($from.before(splitDepth)), deflt);
+          tr2.setNodeMarkup(mapping.map($from.before(splitDepth)), deflt);
       }
       if (dispatch)
-        dispatch(tr.scrollIntoView());
+        dispatch(tr2.scrollIntoView());
       return true;
     };
   }
@@ -12127,11 +12016,11 @@
         for (let i = conn.length - 1; i >= 0; i--)
           wrap2 = Fragment.from(conn[i].create(null, wrap2));
         wrap2 = Fragment.from(before.copy(wrap2));
-        let tr = state.tr.step(new ReplaceAroundStep($cut.pos - 1, end, $cut.pos, end, new Slice(wrap2, 1, 0), conn.length, true));
-        let $joinAt = tr.doc.resolve(end + 2 * conn.length);
-        if ($joinAt.nodeAfter && $joinAt.nodeAfter.type == before.type && canJoin(tr.doc, $joinAt.pos))
-          tr.join($joinAt.pos);
-        dispatch(tr.scrollIntoView());
+        let tr2 = state.tr.step(new ReplaceAroundStep($cut.pos - 1, end, $cut.pos, end, new Slice(wrap2, 1, 0), conn.length, true));
+        let $joinAt = tr2.doc.resolve(end + 2 * conn.length);
+        if ($joinAt.nodeAfter && $joinAt.nodeAfter.type == before.type && canJoin(tr2.doc, $joinAt.pos))
+          tr2.join($joinAt.pos);
+        dispatch(tr2.scrollIntoView());
       }
       return true;
     }
@@ -12158,8 +12047,8 @@
           let end = Fragment.empty;
           for (let i = wrap2.length - 1; i >= 0; i--)
             end = Fragment.from(wrap2[i].copy(end));
-          let tr = state.tr.step(new ReplaceAroundStep($cut.pos - wrap2.length, $cut.pos + after.nodeSize, $cut.pos + afterDepth, $cut.pos + after.nodeSize - afterDepth, new Slice(end, wrap2.length, 0), 0, true));
-          dispatch(tr.scrollIntoView());
+          let tr2 = state.tr.step(new ReplaceAroundStep($cut.pos - wrap2.length, $cut.pos + after.nodeSize, $cut.pos + afterDepth, $cut.pos + after.nodeSize - afterDepth, new Slice(end, wrap2.length, 0), 0, true));
+          dispatch(tr2.scrollIntoView());
         }
         return true;
       }
@@ -12216,12 +12105,12 @@
       if (!applicable)
         return false;
       if (dispatch) {
-        let tr = state.tr;
+        let tr2 = state.tr;
         for (let i = 0; i < state.selection.ranges.length; i++) {
           let { $from: { pos: from3 }, $to: { pos: to } } = state.selection.ranges[i];
-          tr.setBlockType(from3, to, nodeType, attrs);
+          tr2.setBlockType(from3, to, nodeType, attrs);
         }
-        dispatch(tr.scrollIntoView());
+        dispatch(tr2.scrollIntoView());
       }
       return true;
     };
@@ -12267,15 +12156,15 @@
       let range = $from.blockRange($to);
       if (!range)
         return false;
-      let tr = dispatch ? state.tr : null;
-      if (!wrapRangeInList(tr, range, listType, attrs))
+      let tr2 = dispatch ? state.tr : null;
+      if (!wrapRangeInList(tr2, range, listType, attrs))
         return false;
       if (dispatch)
-        dispatch(tr.scrollIntoView());
+        dispatch(tr2.scrollIntoView());
       return true;
     };
   }
-  function wrapRangeInList(tr, range, listType, attrs = null) {
+  function wrapRangeInList(tr2, range, listType, attrs = null) {
     let doJoin = false, outerRange = range, doc4 = range.$from.doc;
     if (range.depth >= 2 && range.$from.node(range.depth - 1).type.compatibleContent(listType) && range.startIndex == 0) {
       if (range.$from.index(range.depth - 1) == 0)
@@ -12289,15 +12178,15 @@
     let wrap2 = findWrapping(outerRange, listType, attrs, range);
     if (!wrap2)
       return false;
-    if (tr)
-      doWrapInList(tr, range, wrap2, doJoin, listType);
+    if (tr2)
+      doWrapInList(tr2, range, wrap2, doJoin, listType);
     return true;
   }
-  function doWrapInList(tr, range, wrappers, joinBefore, listType) {
+  function doWrapInList(tr2, range, wrappers, joinBefore, listType) {
     let content = Fragment.empty;
     for (let i = wrappers.length - 1; i >= 0; i--)
       content = Fragment.from(wrappers[i].type.create(wrappers[i].attrs, content));
-    tr.step(new ReplaceAroundStep(range.start - (joinBefore ? 2 : 0), range.end, range.start, range.end, new Slice(content, 0, 0), wrappers.length, true));
+    tr2.step(new ReplaceAroundStep(range.start - (joinBefore ? 2 : 0), range.end, range.start, range.end, new Slice(content, 0, 0), wrappers.length, true));
     let found2 = 0;
     for (let i = 0; i < wrappers.length; i++)
       if (wrappers[i].type == listType)
@@ -12305,13 +12194,13 @@
     let splitDepth = wrappers.length - found2;
     let splitPos = range.start + wrappers.length - (joinBefore ? 2 : 0), parent = range.parent;
     for (let i = range.startIndex, e = range.endIndex, first2 = true; i < e; i++, first2 = false) {
-      if (!first2 && canSplit(tr.doc, splitPos, splitDepth)) {
-        tr.split(splitPos, splitDepth);
+      if (!first2 && canSplit(tr2.doc, splitPos, splitDepth)) {
+        tr2.split(splitPos, splitDepth);
         splitPos += 2 * splitDepth;
       }
       splitPos += parent.child(i).nodeSize;
     }
-    return tr;
+    return tr2;
   }
   function liftListItem(itemType) {
     return function(state, dispatch) {
@@ -12328,37 +12217,37 @@
     };
   }
   function liftToOuterList(state, dispatch, itemType, range) {
-    let tr = state.tr, end = range.end, endOfList = range.$to.end(range.depth);
+    let tr2 = state.tr, end = range.end, endOfList = range.$to.end(range.depth);
     if (end < endOfList) {
-      tr.step(new ReplaceAroundStep(end - 1, endOfList, end, endOfList, new Slice(Fragment.from(itemType.create(null, range.parent.copy())), 1, 0), 1, true));
-      range = new NodeRange(tr.doc.resolve(range.$from.pos), tr.doc.resolve(endOfList), range.depth);
+      tr2.step(new ReplaceAroundStep(end - 1, endOfList, end, endOfList, new Slice(Fragment.from(itemType.create(null, range.parent.copy())), 1, 0), 1, true));
+      range = new NodeRange(tr2.doc.resolve(range.$from.pos), tr2.doc.resolve(endOfList), range.depth);
     }
     const target = liftTarget(range);
     if (target == null)
       return false;
-    tr.lift(range, target);
-    let $after = tr.doc.resolve(tr.mapping.map(end, -1) - 1);
-    if (canJoin(tr.doc, $after.pos) && $after.nodeBefore.type == $after.nodeAfter.type)
-      tr.join($after.pos);
-    dispatch(tr.scrollIntoView());
+    tr2.lift(range, target);
+    let $after = tr2.doc.resolve(tr2.mapping.map(end, -1) - 1);
+    if (canJoin(tr2.doc, $after.pos) && $after.nodeBefore.type == $after.nodeAfter.type)
+      tr2.join($after.pos);
+    dispatch(tr2.scrollIntoView());
     return true;
   }
   function liftOutOfList(state, dispatch, range) {
-    let tr = state.tr, list = range.parent;
+    let tr2 = state.tr, list = range.parent;
     for (let pos = range.end, i = range.endIndex - 1, e = range.startIndex; i > e; i--) {
       pos -= list.child(i).nodeSize;
-      tr.delete(pos - 1, pos + 1);
+      tr2.delete(pos - 1, pos + 1);
     }
-    let $start = tr.doc.resolve(range.start), item = $start.nodeAfter;
-    if (tr.mapping.map(range.end) != range.start + $start.nodeAfter.nodeSize)
+    let $start = tr2.doc.resolve(range.start), item = $start.nodeAfter;
+    if (tr2.mapping.map(range.end) != range.start + $start.nodeAfter.nodeSize)
       return false;
     let atStart = range.startIndex == 0, atEnd = range.endIndex == list.childCount;
     let parent = $start.node(-1), indexBefore = $start.index(-1);
     if (!parent.canReplace(indexBefore + (atStart ? 0 : 1), indexBefore + 1, item.content.append(atEnd ? Fragment.empty : Fragment.from(list))))
       return false;
-    let start2 = $start.pos, end = start2 + item.nodeSize;
-    tr.step(new ReplaceAroundStep(start2 - (atStart ? 1 : 0), end + (atEnd ? 1 : 0), start2 + 1, end - 1, new Slice((atStart ? Fragment.empty : Fragment.from(list.copy(Fragment.empty))).append(atEnd ? Fragment.empty : Fragment.from(list.copy(Fragment.empty))), atStart ? 0 : 1, atEnd ? 0 : 1), atStart ? 0 : 1));
-    dispatch(tr.scrollIntoView());
+    let start = $start.pos, end = start + item.nodeSize;
+    tr2.step(new ReplaceAroundStep(start - (atStart ? 1 : 0), end + (atEnd ? 1 : 0), start + 1, end - 1, new Slice((atStart ? Fragment.empty : Fragment.from(list.copy(Fragment.empty))).append(atEnd ? Fragment.empty : Fragment.from(list.copy(Fragment.empty))), atStart ? 0 : 1, atEnd ? 0 : 1), atStart ? 0 : 1));
+    dispatch(tr2.scrollIntoView());
     return true;
   }
   function sinkListItem(itemType) {
@@ -12430,13 +12319,13 @@
     get commands() {
       const { rawCommands, editor, state } = this;
       const { view } = editor;
-      const { tr } = state;
-      const props = this.buildProps(tr);
+      const { tr: tr2 } = state;
+      const props = this.buildProps(tr2);
       return Object.fromEntries(Object.entries(rawCommands).map(([name, command2]) => {
         const method = (...args2) => {
           const callback = command2(...args2)(props);
-          if (!tr.getMeta("preventDispatch") && !this.hasCustomState) {
-            view.dispatch(tr);
+          if (!tr2.getMeta("preventDispatch") && !this.hasCustomState) {
+            view.dispatch(tr2);
           }
           return callback;
         };
@@ -12454,54 +12343,54 @@
       const { view } = editor;
       const callbacks = [];
       const hasStartTransaction = !!startTr;
-      const tr = startTr || state.tr;
-      const run2 = () => {
-        if (!hasStartTransaction && shouldDispatch && !tr.getMeta("preventDispatch") && !this.hasCustomState) {
-          view.dispatch(tr);
+      const tr2 = startTr || state.tr;
+      const run3 = () => {
+        if (!hasStartTransaction && shouldDispatch && !tr2.getMeta("preventDispatch") && !this.hasCustomState) {
+          view.dispatch(tr2);
         }
         return callbacks.every((callback) => callback === true);
       };
       const chain = {
         ...Object.fromEntries(Object.entries(rawCommands).map(([name, command2]) => {
           const chainedCommand = (...args2) => {
-            const props = this.buildProps(tr, shouldDispatch);
+            const props = this.buildProps(tr2, shouldDispatch);
             const callback = command2(...args2)(props);
             callbacks.push(callback);
             return chain;
           };
           return [name, chainedCommand];
         })),
-        run: run2
+        run: run3
       };
       return chain;
     }
     createCan(startTr) {
       const { rawCommands, state } = this;
       const dispatch = false;
-      const tr = startTr || state.tr;
-      const props = this.buildProps(tr, dispatch);
+      const tr2 = startTr || state.tr;
+      const props = this.buildProps(tr2, dispatch);
       const formattedCommands = Object.fromEntries(Object.entries(rawCommands).map(([name, command2]) => {
         return [name, (...args2) => command2(...args2)({ ...props, dispatch: void 0 })];
       }));
       return {
         ...formattedCommands,
-        chain: () => this.createChain(tr, dispatch)
+        chain: () => this.createChain(tr2, dispatch)
       };
     }
-    buildProps(tr, shouldDispatch = true) {
+    buildProps(tr2, shouldDispatch = true) {
       const { rawCommands, editor, state } = this;
       const { view } = editor;
       const props = {
-        tr,
+        tr: tr2,
         editor,
         view,
         state: createChainableState({
           state,
-          transaction: tr
+          transaction: tr2
         }),
         dispatch: shouldDispatch ? () => void 0 : void 0,
-        chain: () => this.createChain(tr, shouldDispatch),
-        can: () => this.createCan(tr),
+        chain: () => this.createChain(tr2, shouldDispatch),
+        can: () => this.createCan(tr2),
         get commands() {
           return Object.fromEntries(Object.entries(rawCommands).map(([name, command2]) => {
             return [name, (...args2) => command2(...args2)(props)];
@@ -12908,11 +12797,11 @@
       this.handler = config.handler;
     }
   };
-  var inputRuleMatcherHandler = (text2, find2) => {
-    if (isRegExp(find2)) {
-      return find2.exec(text2);
+  var inputRuleMatcherHandler = (text2, find3) => {
+    if (isRegExp(find3)) {
+      return find3.exec(text2);
     }
-    const inputRuleMatch = find2(text2);
+    const inputRuleMatch = find3(text2);
     if (!inputRuleMatch) {
       return null;
     }
@@ -12952,10 +12841,10 @@
       if (!match2) {
         return;
       }
-      const tr = view.state.tr;
+      const tr2 = view.state.tr;
       const state = createChainableState({
         state: view.state,
-        transaction: tr
+        transaction: tr2
       });
       const range = {
         from: from3 - (match2[0].length - text2.length),
@@ -12973,16 +12862,16 @@
         chain,
         can
       });
-      if (handler === null || !tr.steps.length) {
+      if (handler === null || !tr2.steps.length) {
         return;
       }
-      tr.setMeta(plugin, {
-        transform: tr,
+      tr2.setMeta(plugin, {
+        transform: tr2,
         from: from3,
         to,
         text: text2
       });
-      view.dispatch(tr);
+      view.dispatch(tr2);
       matched = true;
     });
     return matched;
@@ -12994,12 +12883,12 @@
         init() {
           return null;
         },
-        apply(tr, prev, state) {
-          const stored = tr.getMeta(plugin);
+        apply(tr2, prev, state) {
+          const stored = tr2.getMeta(plugin);
           if (stored) {
             return stored;
           }
-          const simulatedInputMeta = tr.getMeta("applyInputRules");
+          const simulatedInputMeta = tr2.getMeta("applyInputRules");
           const isSimulatedInput = !!simulatedInputMeta;
           if (isSimulatedInput) {
             setTimeout(() => {
@@ -13021,7 +12910,7 @@
               });
             });
           }
-          return tr.selectionSet || tr.docChanged ? null : prev;
+          return tr2.selectionSet || tr2.docChanged ? null : prev;
         }
       },
       props: {
@@ -13161,7 +13050,7 @@
       return extension;
     }
     static handleExit({ editor, mark }) {
-      const { tr } = editor.state;
+      const { tr: tr2 } = editor.state;
       const currentPos = editor.state.selection.$from;
       const isAtEnd = currentPos.pos === currentPos.end();
       if (isAtEnd) {
@@ -13172,10 +13061,10 @@
         }
         const removeMark2 = currentMarks.find((m) => (m === null || m === void 0 ? void 0 : m.type.name) === mark.name);
         if (removeMark2) {
-          tr.removeStoredMark(removeMark2);
+          tr2.removeStoredMark(removeMark2);
         }
-        tr.insertText(" ", currentPos.pos);
-        editor.view.dispatch(tr);
+        tr2.insertText(" ", currentPos.pos);
+        editor.view.dispatch(tr2);
         return true;
       }
       return false;
@@ -13190,11 +13079,11 @@
       this.handler = config.handler;
     }
   };
-  var pasteRuleMatcherHandler = (text2, find2, event) => {
-    if (isRegExp(find2)) {
-      return [...text2.matchAll(find2)];
+  var pasteRuleMatcherHandler = (text2, find3, event) => {
+    if (isRegExp(find3)) {
+      return [...text2.matchAll(find3)];
     }
-    const matches2 = find2(text2, event);
+    const matches2 = find3(text2, event);
     if (!matches2) {
       return [];
     }
@@ -13231,10 +13120,10 @@
         if (match2.index === void 0) {
           return;
         }
-        const start2 = resolvedFrom + match2.index + 1;
-        const end = start2 + match2[0].length;
+        const start = resolvedFrom + match2.index + 1;
+        const end = start + match2[0].length;
         const range = {
-          from: state.tr.mapping.map(start2),
+          from: state.tr.mapping.map(start),
           to: state.tr.mapping.map(end)
         };
         const handler = rule.handler({
@@ -13275,10 +13164,10 @@
       dropEvent = null;
     }
     const processEvent = ({ state, from: from3, to, rule, pasteEvt }) => {
-      const tr = state.tr;
+      const tr2 = state.tr;
       const chainableState = createChainableState({
         state,
-        transaction: tr
+        transaction: tr2
       });
       const handler = run({
         editor,
@@ -13289,7 +13178,7 @@
         pasteEvent: pasteEvt,
         dropEvent
       });
-      if (!handler || !tr.steps.length) {
+      if (!handler || !tr2.steps.length) {
         return;
       }
       try {
@@ -13298,7 +13187,7 @@
         dropEvent = null;
       }
       pasteEvent = typeof ClipboardEvent !== "undefined" ? new ClipboardEvent("paste") : null;
-      return tr;
+      return tr2;
     };
     const plugins = rules.map((rule) => {
       return new Plugin({
@@ -13778,8 +13667,8 @@
   var clearContent = (emitUpdate = false) => ({ commands: commands2 }) => {
     return commands2.setContent("", emitUpdate);
   };
-  var clearNodes = () => ({ state, tr, dispatch }) => {
-    const { selection } = tr;
+  var clearNodes = () => ({ state, tr: tr2, dispatch }) => {
+    const { selection } = tr2;
     const { ranges } = selection;
     if (!dispatch) {
       return true;
@@ -13789,7 +13678,7 @@
         if (node.type.isText) {
           return;
         }
-        const { doc: doc4, mapping } = tr;
+        const { doc: doc4, mapping } = tr2;
         const $mappedFrom = doc4.resolve(mapping.map(pos));
         const $mappedTo = doc4.resolve(mapping.map(pos + node.nodeSize));
         const nodeRange = $mappedFrom.blockRange($mappedTo);
@@ -13799,10 +13688,10 @@
         const targetLiftDepth = liftTarget(nodeRange);
         if (node.type.isTextblock) {
           const { defaultType } = $mappedFrom.parent.contentMatchAt($mappedFrom.index());
-          tr.setNodeMarkup(nodeRange.start, defaultType);
+          tr2.setNodeMarkup(nodeRange.start, defaultType);
         }
         if (targetLiftDepth || targetLiftDepth === 0) {
-          tr.lift(nodeRange, targetLiftDepth);
+          tr2.lift(nodeRange, targetLiftDepth);
         }
       });
     });
@@ -13814,55 +13703,55 @@
   var createParagraphNear2 = () => ({ state, dispatch }) => {
     return createParagraphNear(state, dispatch);
   };
-  var cut = (originRange, targetPos) => ({ editor, tr }) => {
+  var cut = (originRange, targetPos) => ({ editor, tr: tr2 }) => {
     const { state } = editor;
     const contentSlice = state.doc.slice(originRange.from, originRange.to);
-    tr.deleteRange(originRange.from, originRange.to);
-    const newPos = tr.mapping.map(targetPos);
-    tr.insert(newPos, contentSlice.content);
-    tr.setSelection(new TextSelection(tr.doc.resolve(Math.max(newPos - 1, 0))));
+    tr2.deleteRange(originRange.from, originRange.to);
+    const newPos = tr2.mapping.map(targetPos);
+    tr2.insert(newPos, contentSlice.content);
+    tr2.setSelection(new TextSelection(tr2.doc.resolve(Math.max(newPos - 1, 0))));
     return true;
   };
-  var deleteCurrentNode = () => ({ tr, dispatch }) => {
-    const { selection } = tr;
+  var deleteCurrentNode = () => ({ tr: tr2, dispatch }) => {
+    const { selection } = tr2;
     const currentNode = selection.$anchor.node();
     if (currentNode.content.size > 0) {
       return false;
     }
-    const $pos = tr.selection.$anchor;
+    const $pos = tr2.selection.$anchor;
     for (let depth = $pos.depth; depth > 0; depth -= 1) {
       const node = $pos.node(depth);
       if (node.type === currentNode.type) {
         if (dispatch) {
           const from3 = $pos.before(depth);
           const to = $pos.after(depth);
-          tr.delete(from3, to).scrollIntoView();
+          tr2.delete(from3, to).scrollIntoView();
         }
         return true;
       }
     }
     return false;
   };
-  var deleteNode = (typeOrName) => ({ tr, state, dispatch }) => {
+  var deleteNode = (typeOrName) => ({ tr: tr2, state, dispatch }) => {
     const type = getNodeType(typeOrName, state.schema);
-    const $pos = tr.selection.$anchor;
+    const $pos = tr2.selection.$anchor;
     for (let depth = $pos.depth; depth > 0; depth -= 1) {
       const node = $pos.node(depth);
       if (node.type === type) {
         if (dispatch) {
           const from3 = $pos.before(depth);
           const to = $pos.after(depth);
-          tr.delete(from3, to).scrollIntoView();
+          tr2.delete(from3, to).scrollIntoView();
         }
         return true;
       }
     }
     return false;
   };
-  var deleteRange2 = (range) => ({ tr, dispatch }) => {
+  var deleteRange2 = (range) => ({ tr: tr2, dispatch }) => {
     const { from: from3, to } = range;
     if (dispatch) {
-      tr.delete(from3, to);
+      tr2.delete(from3, to);
     }
     return true;
   };
@@ -13907,22 +13796,22 @@
     if (!$pos || !type) {
       return;
     }
-    let start2 = $pos.parent.childAfter($pos.parentOffset);
-    if (!start2.node || !start2.node.marks.some((mark2) => mark2.type === type)) {
-      start2 = $pos.parent.childBefore($pos.parentOffset);
+    let start = $pos.parent.childAfter($pos.parentOffset);
+    if (!start.node || !start.node.marks.some((mark2) => mark2.type === type)) {
+      start = $pos.parent.childBefore($pos.parentOffset);
     }
-    if (!start2.node || !start2.node.marks.some((mark2) => mark2.type === type)) {
+    if (!start.node || !start.node.marks.some((mark2) => mark2.type === type)) {
       return;
     }
-    attributes = attributes || ((_a = start2.node.marks[0]) === null || _a === void 0 ? void 0 : _a.attrs);
-    const mark = findMarkInSet([...start2.node.marks], type, attributes);
+    attributes = attributes || ((_a = start.node.marks[0]) === null || _a === void 0 ? void 0 : _a.attrs);
+    const mark = findMarkInSet([...start.node.marks], type, attributes);
     if (!mark) {
       return;
     }
-    let startIndex = start2.index;
-    let startPos = $pos.start() + start2.offset;
+    let startIndex = start.index;
+    let startPos = $pos.start() + start.offset;
     let endIndex = startIndex + 1;
-    let endPos = startPos + start2.node.nodeSize;
+    let endPos = startPos + start.node.nodeSize;
     while (startIndex > 0 && isMarkInSet([...$pos.parent.child(startIndex - 1).marks], type, attributes)) {
       startIndex -= 1;
       startPos -= $pos.parent.child(startIndex).nodeSize;
@@ -13945,15 +13834,15 @@
     }
     return nameOrType;
   }
-  var extendMarkRange = (typeOrName, attributes = {}) => ({ tr, state, dispatch }) => {
+  var extendMarkRange = (typeOrName, attributes = {}) => ({ tr: tr2, state, dispatch }) => {
     const type = getMarkType(typeOrName, state.schema);
-    const { doc: doc4, selection } = tr;
+    const { doc: doc4, selection } = tr2;
     const { $from, from: from3, to } = selection;
     if (dispatch) {
       const range = getMarkRange($from, type, attributes);
       if (range && range.from <= from3 && range.to >= to) {
         const newSelection = TextSelection.create(doc4, range.from, range.to);
-        tr.setSelection(newSelection);
+        tr2.setSelection(newSelection);
       }
     }
     return true;
@@ -14005,7 +13894,7 @@
       "iPod"
     ].includes(navigator.platform) || navigator.userAgent.includes("Mac") && "ontouchend" in document;
   }
-  var focus = (position = null, options = {}) => ({ editor, view, tr, dispatch }) => {
+  var focus = (position = null, options = {}) => ({ editor, view, tr: tr2, dispatch }) => {
     options = {
       scrollIntoView: true,
       ...options
@@ -14030,14 +13919,14 @@
       delayedFocus();
       return true;
     }
-    const selection = resolveFocusPosition(tr.doc, position) || editor.state.selection;
+    const selection = resolveFocusPosition(tr2.doc, position) || editor.state.selection;
     const isSameSelection = editor.state.selection.eq(selection);
     if (dispatch) {
       if (!isSameSelection) {
-        tr.setSelection(selection);
+        tr2.setSelection(selection);
       }
-      if (isSameSelection && tr.storedMarks) {
-        tr.setStoredMarks(tr.storedMarks);
+      if (isSameSelection && tr2.storedMarks) {
+        tr2.setStoredMarks(tr2.storedMarks);
       }
       delayedFocus();
     }
@@ -14046,8 +13935,8 @@
   var forEach = (items, fn) => (props) => {
     return items.every((item, index) => fn(item, { ...props, index }));
   };
-  var insertContent = (value, options) => ({ tr, commands: commands2 }) => {
-    return commands2.insertContentAt({ from: tr.selection.from, to: tr.selection.to }, value, options);
+  var insertContent = (value, options) => ({ tr: tr2, commands: commands2 }) => {
+    return commands2.insertContentAt({ from: tr2.selection.from, to: tr2.selection.to }, value, options);
   };
   var removeWhitespaces = (node) => {
     const children = node.childNodes;
@@ -14139,28 +14028,28 @@
     }
     return createNodeFromContent("", schema, options);
   }
-  function selectionToInsertionEnd2(tr, startLen, bias) {
-    const last2 = tr.steps.length - 1;
+  function selectionToInsertionEnd2(tr2, startLen, bias) {
+    const last2 = tr2.steps.length - 1;
     if (last2 < startLen) {
       return;
     }
-    const step = tr.steps[last2];
+    const step = tr2.steps[last2];
     if (!(step instanceof ReplaceStep || step instanceof ReplaceAroundStep)) {
       return;
     }
-    const map3 = tr.mapping.maps[last2];
+    const map3 = tr2.mapping.maps[last2];
     let end = 0;
     map3.forEach((_from, _to, _newFrom, newTo) => {
       if (end === 0) {
         end = newTo;
       }
     });
-    tr.setSelection(Selection.near(tr.doc.resolve(end), bias));
+    tr2.setSelection(Selection.near(tr2.doc.resolve(end), bias));
   }
   var isFragment = (nodeOrFragment) => {
     return !("type" in nodeOrFragment);
   };
-  var insertContentAt = (position, value, options) => ({ tr, dispatch, editor }) => {
+  var insertContentAt = (position, value, options) => ({ tr: tr2, dispatch, editor }) => {
     var _a;
     if (dispatch) {
       options = {
@@ -14215,7 +14104,7 @@
         isOnlyBlockContent = isOnlyBlockContent ? node.isBlock : false;
       });
       if (from3 === to && isOnlyBlockContent) {
-        const { parent } = tr.doc.resolve(from3);
+        const { parent } = tr2.doc.resolve(from3);
         const isEmptyTextBlock = parent.isTextblock && !parent.type.spec.code && !parent.childCount;
         if (isEmptyTextBlock) {
           from3 -= 1;
@@ -14239,19 +14128,19 @@
         } else {
           newContent = value;
         }
-        tr.insertText(newContent, from3, to);
+        tr2.insertText(newContent, from3, to);
       } else {
         newContent = content;
-        tr.replaceWith(from3, to, newContent);
+        tr2.replaceWith(from3, to, newContent);
       }
       if (options.updateSelection) {
-        selectionToInsertionEnd2(tr, tr.steps.length - 1, -1);
+        selectionToInsertionEnd2(tr2, tr2.steps.length - 1, -1);
       }
       if (options.applyInputRules) {
-        tr.setMeta("applyInputRules", { from: from3, text: newContent });
+        tr2.setMeta("applyInputRules", { from: from3, text: newContent });
       }
       if (options.applyPasteRules) {
-        tr.setMeta("applyPasteRules", { from: from3, text: newContent });
+        tr2.setMeta("applyPasteRules", { from: from3, text: newContent });
       }
     }
     return true;
@@ -14268,30 +14157,30 @@
   var joinForward2 = () => ({ state, dispatch }) => {
     return joinForward(state, dispatch);
   };
-  var joinItemBackward = () => ({ state, dispatch, tr }) => {
+  var joinItemBackward = () => ({ state, dispatch, tr: tr2 }) => {
     try {
       const point = joinPoint(state.doc, state.selection.$from.pos, -1);
       if (point === null || point === void 0) {
         return false;
       }
-      tr.join(point, 2);
+      tr2.join(point, 2);
       if (dispatch) {
-        dispatch(tr);
+        dispatch(tr2);
       }
       return true;
     } catch {
       return false;
     }
   };
-  var joinItemForward = () => ({ state, dispatch, tr }) => {
+  var joinItemForward = () => ({ state, dispatch, tr: tr2 }) => {
     try {
       const point = joinPoint(state.doc, state.selection.$from.pos, 1);
       if (point === null || point === void 0) {
         return false;
       }
-      tr.join(point, 2);
+      tr2.join(point, 2);
       if (dispatch) {
-        dispatch(tr);
+        dispatch(tr2);
       }
       return true;
     } catch {
@@ -14351,7 +14240,7 @@
     }
     return result;
   }
-  var keyboardShortcut = (name) => ({ editor, view, tr, dispatch }) => {
+  var keyboardShortcut = (name) => ({ editor, view, tr: tr2, dispatch }) => {
     const keys3 = normalizeKeyName2(name).split(/-(?!$)/);
     const key = keys3.find((item) => !["Alt", "Ctrl", "Meta", "Shift"].includes(item));
     const event = new KeyboardEvent("keydown", {
@@ -14367,9 +14256,9 @@
       view.someProp("handleKeyDown", (f) => f(view, event));
     });
     capturedTransaction === null || capturedTransaction === void 0 ? void 0 : capturedTransaction.steps.forEach((step) => {
-      const newStep = step.map(tr.mapping);
+      const newStep = step.map(tr2.mapping);
       if (newStep && dispatch) {
-        tr.maybeStep(newStep);
+        tr2.maybeStep(newStep);
       }
     });
     return true;
@@ -14439,7 +14328,7 @@
       return newObj;
     }, {});
   }
-  var resetAttributes = (typeOrName, attributes) => ({ tr, state, dispatch }) => {
+  var resetAttributes = (typeOrName, attributes) => ({ tr: tr2, state, dispatch }) => {
     let nodeType = null;
     let markType = null;
     const schemaType = getSchemaTypeNameByName(typeof typeOrName === "string" ? typeOrName : typeOrName.name, state.schema);
@@ -14453,15 +14342,15 @@
       markType = getMarkType(typeOrName, state.schema);
     }
     if (dispatch) {
-      tr.selection.ranges.forEach((range) => {
+      tr2.selection.ranges.forEach((range) => {
         state.doc.nodesBetween(range.$from.pos, range.$to.pos, (node, pos) => {
           if (nodeType && nodeType === node.type) {
-            tr.setNodeMarkup(pos, void 0, deleteProps(node.attrs, attributes));
+            tr2.setNodeMarkup(pos, void 0, deleteProps(node.attrs, attributes));
           }
           if (markType && node.marks.length) {
             node.marks.forEach((mark) => {
               if (markType === mark.type) {
-                tr.addMark(pos, pos + node.nodeSize, markType.create(deleteProps(mark.attrs, attributes)));
+                tr2.addMark(pos, pos + node.nodeSize, markType.create(deleteProps(mark.attrs, attributes)));
               }
             });
           }
@@ -14470,16 +14359,16 @@
     }
     return true;
   };
-  var scrollIntoView = () => ({ tr, dispatch }) => {
+  var scrollIntoView = () => ({ tr: tr2, dispatch }) => {
     if (dispatch) {
-      tr.scrollIntoView();
+      tr2.scrollIntoView();
     }
     return true;
   };
-  var selectAll2 = () => ({ tr, dispatch }) => {
+  var selectAll2 = () => ({ tr: tr2, dispatch }) => {
     if (dispatch) {
-      const selection = new AllSelection(tr.doc);
-      tr.setSelection(selection);
+      const selection = new AllSelection(tr2.doc);
+      tr2.setSelection(selection);
     }
     return true;
   };
@@ -14505,20 +14394,20 @@
       errorOnInvalidContent: options.errorOnInvalidContent
     });
   }
-  var setContent = (content, emitUpdate = false, parseOptions = {}, options = {}) => ({ editor, tr, dispatch, commands: commands2 }) => {
+  var setContent = (content, emitUpdate = false, parseOptions = {}, options = {}) => ({ editor, tr: tr2, dispatch, commands: commands2 }) => {
     var _a, _b;
-    const { doc: doc4 } = tr;
+    const { doc: doc4 } = tr2;
     if (parseOptions.preserveWhitespace !== "full") {
       const document2 = createDocument(content, editor.schema, parseOptions, {
         errorOnInvalidContent: (_a = options.errorOnInvalidContent) !== null && _a !== void 0 ? _a : editor.options.enableContentCheck
       });
       if (dispatch) {
-        tr.replaceWith(0, doc4.content.size, document2).setMeta("preventUpdate", !emitUpdate);
+        tr2.replaceWith(0, doc4.content.size, document2).setMeta("preventUpdate", !emitUpdate);
       }
       return true;
     }
     if (dispatch) {
-      tr.setMeta("preventUpdate", !emitUpdate);
+      tr2.setMeta("preventUpdate", !emitUpdate);
     }
     return commands2.insertContentAt({ from: 0, to: doc4.content.size }, content, {
       parseOptions,
@@ -14545,6 +14434,15 @@
     }
     return { ...mark.attrs };
   }
+  function combineTransactionSteps(oldDoc, transactions) {
+    const transform = new Transform(oldDoc);
+    transactions.forEach((transaction) => {
+      transaction.steps.forEach((step) => {
+        transform.step(step);
+      });
+    });
+    return transform;
+  }
   function defaultBlockAt2(match2) {
     for (let i = 0; i < match2.edgeCount; i += 1) {
       const { type } = match2.edge(i);
@@ -14553,6 +14451,18 @@
       }
     }
     return null;
+  }
+  function findChildrenInRange(node, range, predicate) {
+    const nodesWithPos = [];
+    node.nodesBetween(range.from, range.to, (child, pos) => {
+      if (predicate(child)) {
+        nodesWithPos.push({
+          node: child,
+          pos
+        });
+      }
+    });
+    return nodesWithPos;
   }
   function findParentNodeClosestToPos($pos, predicate) {
     for (let i = $pos.depth; i > 0; i -= 1) {
@@ -14599,6 +14509,57 @@
       return getMarkAttributes(state, typeOrName);
     }
     return {};
+  }
+  function removeDuplicates(array, by = JSON.stringify) {
+    const seen = {};
+    return array.filter((item) => {
+      const key = by(item);
+      return Object.prototype.hasOwnProperty.call(seen, key) ? false : seen[key] = true;
+    });
+  }
+  function simplifyChangedRanges(changes) {
+    const uniqueChanges = removeDuplicates(changes);
+    return uniqueChanges.length === 1 ? uniqueChanges : uniqueChanges.filter((change, index) => {
+      const rest = uniqueChanges.filter((_, i) => i !== index);
+      return !rest.some((otherChange) => {
+        return change.oldRange.from >= otherChange.oldRange.from && change.oldRange.to <= otherChange.oldRange.to && change.newRange.from >= otherChange.newRange.from && change.newRange.to <= otherChange.newRange.to;
+      });
+    });
+  }
+  function getChangedRanges(transform) {
+    const { mapping, steps } = transform;
+    const changes = [];
+    mapping.maps.forEach((stepMap, index) => {
+      const ranges = [];
+      if (!stepMap.ranges.length) {
+        const { from: from3, to } = steps[index];
+        if (from3 === void 0 || to === void 0) {
+          return;
+        }
+        ranges.push({ from: from3, to });
+      } else {
+        stepMap.forEach((from3, to) => {
+          ranges.push({ from: from3, to });
+        });
+      }
+      ranges.forEach(({ from: from3, to }) => {
+        const newStart = mapping.slice(index).map(from3, -1);
+        const newEnd = mapping.slice(index).map(to);
+        const oldStart = mapping.invert().map(newStart, -1);
+        const oldEnd = mapping.invert().map(newEnd);
+        changes.push({
+          oldRange: {
+            from: oldStart,
+            to: oldEnd
+          },
+          newRange: {
+            from: newStart,
+            to: newEnd
+          }
+        });
+      });
+    });
+    return simplifyChangedRanges(changes);
   }
   function getMarksBetween(from3, to, doc4) {
     const marks = [];
@@ -14754,9 +14715,9 @@
   function isNodeSelection(value) {
     return value instanceof NodeSelection;
   }
-  function canSetMark(state, tr, newMarkType) {
+  function canSetMark(state, tr2, newMarkType) {
     var _a;
-    const { selection } = tr;
+    const { selection } = tr2;
     let cursor = null;
     if (isTextSelection(selection)) {
       cursor = selection.$cursor;
@@ -14782,14 +14743,14 @@
       return someNodeSupportsMark;
     });
   }
-  var setMark = (typeOrName, attributes = {}) => ({ tr, state, dispatch }) => {
-    const { selection } = tr;
+  var setMark = (typeOrName, attributes = {}) => ({ tr: tr2, state, dispatch }) => {
+    const { selection } = tr2;
     const { empty: empty2, ranges } = selection;
     const type = getMarkType(typeOrName, state.schema);
     if (dispatch) {
       if (empty2) {
         const oldAttributes = getMarkAttributes(state, type);
-        tr.addStoredMark(type.create({
+        tr2.addStoredMark(type.create({
           ...oldAttributes,
           ...attributes
         }));
@@ -14804,23 +14765,23 @@
             if (someHasMark) {
               node.marks.forEach((mark) => {
                 if (type === mark.type) {
-                  tr.addMark(trimmedFrom, trimmedTo, type.create({
+                  tr2.addMark(trimmedFrom, trimmedTo, type.create({
                     ...mark.attrs,
                     ...attributes
                   }));
                 }
               });
             } else {
-              tr.addMark(trimmedFrom, trimmedTo, type.create(attributes));
+              tr2.addMark(trimmedFrom, trimmedTo, type.create(attributes));
             }
           });
         });
       }
     }
-    return canSetMark(state, tr, type);
+    return canSetMark(state, tr2, type);
   };
-  var setMeta = (key, value) => ({ tr }) => {
-    tr.setMeta(key, value);
+  var setMeta = (key, value) => ({ tr: tr2 }) => {
+    tr2.setMeta(key, value);
     return true;
   };
   var setNode = (typeOrName, attributes = {}) => ({ state, dispatch, chain }) => {
@@ -14843,25 +14804,25 @@
       return setBlockType2(type, { ...attributesToCopy, ...attributes })(updatedState, dispatch);
     }).run();
   };
-  var setNodeSelection = (position) => ({ tr, dispatch }) => {
+  var setNodeSelection = (position) => ({ tr: tr2, dispatch }) => {
     if (dispatch) {
-      const { doc: doc4 } = tr;
+      const { doc: doc4 } = tr2;
       const from3 = minMax(position, 0, doc4.content.size);
       const selection = NodeSelection.create(doc4, from3);
-      tr.setSelection(selection);
+      tr2.setSelection(selection);
     }
     return true;
   };
-  var setTextSelection = (position) => ({ tr, dispatch }) => {
+  var setTextSelection = (position) => ({ tr: tr2, dispatch }) => {
     if (dispatch) {
-      const { doc: doc4 } = tr;
+      const { doc: doc4 } = tr2;
       const { from: from3, to } = typeof position === "number" ? { from: position, to: position } : position;
       const minPos = TextSelection.atStart(doc4).from;
       const maxPos = TextSelection.atEnd(doc4).to;
       const resolvedFrom = minMax(from3, minPos, maxPos);
       const resolvedEnd = minMax(to, minPos, maxPos);
       const selection = TextSelection.create(doc4, resolvedFrom, resolvedEnd);
-      tr.setSelection(selection);
+      tr2.setSelection(selection);
     }
     return true;
   };
@@ -14876,8 +14837,8 @@
       state.tr.ensureMarks(filteredMarks);
     }
   }
-  var splitBlock2 = ({ keepMarks = true } = {}) => ({ tr, state, dispatch, editor }) => {
-    const { selection, doc: doc4 } = tr;
+  var splitBlock2 = ({ keepMarks = true } = {}) => ({ tr: tr2, state, dispatch, editor }) => {
+    const { selection, doc: doc4 } = tr2;
     const { $from, $to } = selection;
     const extensionAttributes = editor.extensionManager.attributes;
     const newAttributes = getSplittedAttributes(extensionAttributes, $from.node().type.name, $from.node().attrs);
@@ -14889,7 +14850,7 @@
         if (keepMarks) {
           ensureMarks(state, editor.extensionManager.splittableMarks);
         }
-        tr.split($from.pos).scrollIntoView();
+        tr2.split($from.pos).scrollIntoView();
       }
       return true;
     }
@@ -14904,8 +14865,8 @@
         attrs: newAttributes
       }
     ] : void 0;
-    let can = canSplit(tr.doc, tr.mapping.map($from.pos), 1, types);
-    if (!types && !can && canSplit(tr.doc, tr.mapping.map($from.pos), 1, deflt ? [{ type: deflt }] : void 0)) {
+    let can = canSplit(tr2.doc, tr2.mapping.map($from.pos), 1, types);
+    if (!types && !can && canSplit(tr2.doc, tr2.mapping.map($from.pos), 1, deflt ? [{ type: deflt }] : void 0)) {
       can = true;
       types = deflt ? [
         {
@@ -14917,25 +14878,25 @@
     if (dispatch) {
       if (can) {
         if (selection instanceof TextSelection) {
-          tr.deleteSelection();
+          tr2.deleteSelection();
         }
-        tr.split(tr.mapping.map($from.pos), 1, types);
+        tr2.split(tr2.mapping.map($from.pos), 1, types);
         if (deflt && !atEnd && !$from.parentOffset && $from.parent.type !== deflt) {
-          const first2 = tr.mapping.map($from.before());
-          const $first = tr.doc.resolve(first2);
+          const first2 = tr2.mapping.map($from.before());
+          const $first = tr2.doc.resolve(first2);
           if ($from.node(-1).canReplaceWith($first.index(), $first.index() + 1, deflt)) {
-            tr.setNodeMarkup(tr.mapping.map($from.before()), deflt);
+            tr2.setNodeMarkup(tr2.mapping.map($from.before()), deflt);
           }
         }
       }
       if (keepMarks) {
         ensureMarks(state, editor.extensionManager.splittableMarks);
       }
-      tr.scrollIntoView();
+      tr2.scrollIntoView();
     }
     return can;
   };
-  var splitListItem = (typeOrName, overrideAttrs = {}) => ({ tr, state, dispatch, editor }) => {
+  var splitListItem = (typeOrName, overrideAttrs = {}) => ({ tr: tr2, state, dispatch, editor }) => {
     var _a;
     const type = getNodeType(typeOrName, state.schema);
     const { $from, $to } = state.selection;
@@ -14965,10 +14926,10 @@
         };
         const nextType2 = ((_a = type.contentMatch.defaultType) === null || _a === void 0 ? void 0 : _a.createAndFill(newNextTypeAttributes2)) || void 0;
         wrap2 = wrap2.append(Fragment.from(type.createAndFill(null, nextType2) || void 0));
-        const start2 = $from.before($from.depth - (depthBefore - 1));
-        tr.replace(start2, $from.after(-depthAfter), new Slice(wrap2, 4 - depthBefore, 0));
+        const start = $from.before($from.depth - (depthBefore - 1));
+        tr2.replace(start, $from.after(-depthAfter), new Slice(wrap2, 4 - depthBefore, 0));
         let sel = -1;
-        tr.doc.nodesBetween(start2, tr.doc.content.size, (n, pos) => {
+        tr2.doc.nodesBetween(start, tr2.doc.content.size, (n, pos) => {
           if (sel > -1) {
             return false;
           }
@@ -14977,9 +14938,9 @@
           }
         });
         if (sel > -1) {
-          tr.setSelection(TextSelection.near(tr.doc.resolve(sel)));
+          tr2.setSelection(TextSelection.near(tr2.doc.resolve(sel)));
         }
-        tr.scrollIntoView();
+        tr2.scrollIntoView();
       }
       return true;
     }
@@ -14992,62 +14953,62 @@
       ...getSplittedAttributes(extensionAttributes, $from.node().type.name, $from.node().attrs),
       ...overrideAttrs
     };
-    tr.delete($from.pos, $to.pos);
+    tr2.delete($from.pos, $to.pos);
     const types = nextType ? [
       { type, attrs: newTypeAttributes },
       { type: nextType, attrs: newNextTypeAttributes }
     ] : [{ type, attrs: newTypeAttributes }];
-    if (!canSplit(tr.doc, $from.pos, 2)) {
+    if (!canSplit(tr2.doc, $from.pos, 2)) {
       return false;
     }
     if (dispatch) {
       const { selection, storedMarks } = state;
       const { splittableMarks } = editor.extensionManager;
       const marks = storedMarks || selection.$to.parentOffset && selection.$from.marks();
-      tr.split($from.pos, 2, types).scrollIntoView();
+      tr2.split($from.pos, 2, types).scrollIntoView();
       if (!marks || !dispatch) {
         return true;
       }
       const filteredMarks = marks.filter((mark) => splittableMarks.includes(mark.type.name));
-      tr.ensureMarks(filteredMarks);
+      tr2.ensureMarks(filteredMarks);
     }
     return true;
   };
-  var joinListBackwards = (tr, listType) => {
-    const list = findParentNode((node) => node.type === listType)(tr.selection);
+  var joinListBackwards = (tr2, listType) => {
+    const list = findParentNode((node) => node.type === listType)(tr2.selection);
     if (!list) {
       return true;
     }
-    const before = tr.doc.resolve(Math.max(0, list.pos - 1)).before(list.depth);
+    const before = tr2.doc.resolve(Math.max(0, list.pos - 1)).before(list.depth);
     if (before === void 0) {
       return true;
     }
-    const nodeBefore = tr.doc.nodeAt(before);
-    const canJoinBackwards = list.node.type === (nodeBefore === null || nodeBefore === void 0 ? void 0 : nodeBefore.type) && canJoin(tr.doc, list.pos);
+    const nodeBefore = tr2.doc.nodeAt(before);
+    const canJoinBackwards = list.node.type === (nodeBefore === null || nodeBefore === void 0 ? void 0 : nodeBefore.type) && canJoin(tr2.doc, list.pos);
     if (!canJoinBackwards) {
       return true;
     }
-    tr.join(list.pos);
+    tr2.join(list.pos);
     return true;
   };
-  var joinListForwards = (tr, listType) => {
-    const list = findParentNode((node) => node.type === listType)(tr.selection);
+  var joinListForwards = (tr2, listType) => {
+    const list = findParentNode((node) => node.type === listType)(tr2.selection);
     if (!list) {
       return true;
     }
-    const after = tr.doc.resolve(list.start).after(list.depth);
+    const after = tr2.doc.resolve(list.start).after(list.depth);
     if (after === void 0) {
       return true;
     }
-    const nodeAfter = tr.doc.nodeAt(after);
-    const canJoinForwards = list.node.type === (nodeAfter === null || nodeAfter === void 0 ? void 0 : nodeAfter.type) && canJoin(tr.doc, after);
+    const nodeAfter = tr2.doc.nodeAt(after);
+    const canJoinForwards = list.node.type === (nodeAfter === null || nodeAfter === void 0 ? void 0 : nodeAfter.type) && canJoin(tr2.doc, after);
     if (!canJoinForwards) {
       return true;
     }
-    tr.join(after);
+    tr2.join(after);
     return true;
   };
-  var toggleList = (listTypeOrName, itemTypeOrName, keepMarks, attributes = {}) => ({ editor, tr, state, dispatch, chain, commands: commands2, can }) => {
+  var toggleList = (listTypeOrName, itemTypeOrName, keepMarks, attributes = {}) => ({ editor, tr: tr2, state, dispatch, chain, commands: commands2, can }) => {
     const { extensions, splittableMarks } = editor.extensionManager;
     const listType = getNodeType(listTypeOrName, state.schema);
     const itemType = getNodeType(itemTypeOrName, state.schema);
@@ -15065,9 +15026,9 @@
       }
       if (isList(parentList.node.type.name, extensions) && listType.validContent(parentList.node.content) && dispatch) {
         return chain().command(() => {
-          tr.setNodeMarkup(parentList.pos, listType);
+          tr2.setNodeMarkup(parentList.pos, listType);
           return true;
-        }).command(() => joinListBackwards(tr, listType)).command(() => joinListForwards(tr, listType)).run();
+        }).command(() => joinListBackwards(tr2, listType)).command(() => joinListForwards(tr2, listType)).run();
       }
     }
     if (!keepMarks || !marks || !dispatch) {
@@ -15077,17 +15038,17 @@
           return true;
         }
         return commands2.clearNodes();
-      }).wrapInList(listType, attributes).command(() => joinListBackwards(tr, listType)).command(() => joinListForwards(tr, listType)).run();
+      }).wrapInList(listType, attributes).command(() => joinListBackwards(tr2, listType)).command(() => joinListForwards(tr2, listType)).run();
     }
     return chain().command(() => {
       const canWrapInList = can().wrapInList(listType, attributes);
       const filteredMarks = marks.filter((mark) => splittableMarks.includes(mark.type.name));
-      tr.ensureMarks(filteredMarks);
+      tr2.ensureMarks(filteredMarks);
       if (canWrapInList) {
         return true;
       }
       return commands2.clearNodes();
-    }).wrapInList(listType, attributes).command(() => joinListBackwards(tr, listType)).command(() => joinListForwards(tr, listType)).run();
+    }).wrapInList(listType, attributes).command(() => joinListBackwards(tr2, listType)).command(() => joinListForwards(tr2, listType)).run();
   };
   var toggleMark = (typeOrName, attributes = {}, options = {}) => ({ state, commands: commands2 }) => {
     const { extendEmptyMarkRange = false } = options;
@@ -15126,16 +15087,16 @@
       let undoable;
       if (plugin.spec.isInputRules && (undoable = plugin.getState(state))) {
         if (dispatch) {
-          const tr = state.tr;
+          const tr2 = state.tr;
           const toUndo = undoable.transform;
           for (let j = toUndo.steps.length - 1; j >= 0; j -= 1) {
-            tr.step(toUndo.steps[j].invert(toUndo.docs[j]));
+            tr2.step(toUndo.steps[j].invert(toUndo.docs[j]));
           }
           if (undoable.text) {
-            const marks = tr.doc.resolve(undoable.from).marks();
-            tr.replaceWith(undoable.from, undoable.to, state.schema.text(undoable.text, marks));
+            const marks = tr2.doc.resolve(undoable.from).marks();
+            tr2.replaceWith(undoable.from, undoable.to, state.schema.text(undoable.text, marks));
           } else {
-            tr.delete(undoable.from, undoable.to);
+            tr2.delete(undoable.from, undoable.to);
           }
         }
         return true;
@@ -15143,23 +15104,23 @@
     }
     return false;
   };
-  var unsetAllMarks = () => ({ tr, dispatch }) => {
-    const { selection } = tr;
+  var unsetAllMarks = () => ({ tr: tr2, dispatch }) => {
+    const { selection } = tr2;
     const { empty: empty2, ranges } = selection;
     if (empty2) {
       return true;
     }
     if (dispatch) {
       ranges.forEach((range) => {
-        tr.removeMark(range.$from.pos, range.$to.pos);
+        tr2.removeMark(range.$from.pos, range.$to.pos);
       });
     }
     return true;
   };
-  var unsetMark = (typeOrName, options = {}) => ({ tr, state, dispatch }) => {
+  var unsetMark = (typeOrName, options = {}) => ({ tr: tr2, state, dispatch }) => {
     var _a;
     const { extendEmptyMarkRange = false } = options;
-    const { selection } = tr;
+    const { selection } = tr2;
     const type = getMarkType(typeOrName, state.schema);
     const { $from, empty: empty2, ranges } = selection;
     if (!dispatch) {
@@ -15173,16 +15134,16 @@
         from3 = range.from;
         to = range.to;
       }
-      tr.removeMark(from3, to, type);
+      tr2.removeMark(from3, to, type);
     } else {
       ranges.forEach((range) => {
-        tr.removeMark(range.$from.pos, range.$to.pos, type);
+        tr2.removeMark(range.$from.pos, range.$to.pos, type);
       });
     }
-    tr.removeStoredMark(type);
+    tr2.removeStoredMark(type);
     return true;
   };
-  var updateAttributes = (typeOrName, attributes = {}) => ({ tr, state, dispatch }) => {
+  var updateAttributes = (typeOrName, attributes = {}) => ({ tr: tr2, state, dispatch }) => {
     let nodeType = null;
     let markType = null;
     const schemaType = getSchemaTypeNameByName(typeof typeOrName === "string" ? typeOrName : typeOrName.name, state.schema);
@@ -15196,14 +15157,14 @@
       markType = getMarkType(typeOrName, state.schema);
     }
     if (dispatch) {
-      tr.selection.ranges.forEach((range) => {
+      tr2.selection.ranges.forEach((range) => {
         const from3 = range.$from.pos;
         const to = range.$to.pos;
         let lastPos;
         let lastNode;
         let trimmedFrom;
         let trimmedTo;
-        if (tr.selection.empty) {
+        if (tr2.selection.empty) {
           state.doc.nodesBetween(from3, to, (node, pos) => {
             if (nodeType && nodeType === node.type) {
               trimmedFrom = Math.max(pos, from3);
@@ -15222,7 +15183,7 @@
             }
             if (pos >= from3 && pos <= to) {
               if (nodeType && nodeType === node.type) {
-                tr.setNodeMarkup(pos, void 0, {
+                tr2.setNodeMarkup(pos, void 0, {
                   ...node.attrs,
                   ...attributes
                 });
@@ -15232,7 +15193,7 @@
                   if (markType === mark.type) {
                     const trimmedFrom2 = Math.max(pos, from3);
                     const trimmedTo2 = Math.min(pos + node.nodeSize, to);
-                    tr.addMark(trimmedFrom2, trimmedTo2, markType.create({
+                    tr2.addMark(trimmedFrom2, trimmedTo2, markType.create({
                       ...mark.attrs,
                       ...attributes
                     }));
@@ -15244,7 +15205,7 @@
         }
         if (lastNode) {
           if (lastPos !== void 0) {
-            tr.setNodeMarkup(lastPos, void 0, {
+            tr2.setNodeMarkup(lastPos, void 0, {
               ...lastNode.attrs,
               ...attributes
             });
@@ -15252,7 +15213,7 @@
           if (markType && lastNode.marks.length) {
             lastNode.marks.forEach((mark) => {
               if (markType === mark.type) {
-                tr.addMark(trimmedFrom, trimmedTo, markType.create({
+                tr2.addMark(trimmedFrom, trimmedTo, markType.create({
                   ...mark.attrs,
                   ...attributes
                 }));
@@ -15408,11 +15369,11 @@
       const handleBackspace = () => this.editor.commands.first(({ commands: commands2 }) => [
         () => commands2.undoInputRule(),
         // maybe convert first text block node to default node
-        () => commands2.command(({ tr }) => {
-          const { selection, doc: doc4 } = tr;
+        () => commands2.command(({ tr: tr2 }) => {
+          const { selection, doc: doc4 } = tr2;
           const { empty: empty2, $anchor } = selection;
           const { pos, parent } = $anchor;
-          const $parentPos = $anchor.parent.isTextblock && pos > 0 ? tr.doc.resolve(pos - 1) : $anchor;
+          const $parentPos = $anchor.parent.isTextblock && pos > 0 ? tr2.doc.resolve(pos - 1) : $anchor;
           const parentIsIsolating = $parentPos.parent.type.spec.isolating;
           const parentPos = $anchor.pos - $anchor.parentOffset;
           const isAtStart = parentIsIsolating && $parentPos.parent.childCount === 1 ? parentPos === $anchor.pos : Selection.atStart(doc4).from === pos;
@@ -15476,7 +15437,7 @@
         new Plugin({
           key: new PluginKey("clearDocument"),
           appendTransaction: (transactions, oldState, newState) => {
-            if (transactions.some((tr2) => tr2.getMeta("composition"))) {
+            if (transactions.some((tr3) => tr3.getMeta("composition"))) {
               return;
             }
             const docChanges = transactions.some((transaction) => transaction.docChanged) && !oldState.doc.eq(newState.doc);
@@ -15491,24 +15452,24 @@
             if (empty2 || !allWasSelected) {
               return;
             }
-            const isEmpty2 = isNodeEmpty(newState.doc);
-            if (!isEmpty2) {
+            const isEmpty3 = isNodeEmpty(newState.doc);
+            if (!isEmpty3) {
               return;
             }
-            const tr = newState.tr;
+            const tr2 = newState.tr;
             const state = createChainableState({
               state: newState,
-              transaction: tr
+              transaction: tr2
             });
             const { commands: commands2 } = new CommandManager({
               editor: this.editor,
               state
             });
             commands2.clearNodes();
-            if (!tr.steps.length) {
+            if (!tr2.steps.length) {
               return;
             }
-            return tr;
+            return tr2;
           }
         })
       ];
@@ -15713,12 +15674,12 @@
       return nodes;
     }
     setAttribute(attributes) {
-      const { tr } = this.editor.state;
-      tr.setNodeMarkup(this.from, void 0, {
+      const { tr: tr2 } = this.editor.state;
+      tr2.setNodeMarkup(this.from, void 0, {
         ...this.node.attrs,
         ...attributes
       });
-      this.editor.view.dispatch(tr);
+      this.editor.view.dispatch(tr2);
     }
   };
   var style = `.ProseMirror {
@@ -16094,9 +16055,9 @@ img.ProseMirror-separator {
       this.isCapturingTransaction = true;
       fn();
       this.isCapturingTransaction = false;
-      const tr = this.capturedTransaction;
+      const tr2 = this.capturedTransaction;
       this.capturedTransaction = null;
-      return tr;
+      return tr2;
     }
     /**
      * The callback over which to send transactions (state updates) produced by the view.
@@ -16256,7 +16217,7 @@ img.ProseMirror-separator {
         if (attributes === false || attributes === null) {
           return null;
         }
-        const { tr } = state;
+        const { tr: tr2 } = state;
         const captureGroup = match2[match2.length - 1];
         const fullMatch = match2[0];
         if (captureGroup) {
@@ -16271,14 +16232,14 @@ img.ProseMirror-separator {
             return null;
           }
           if (textEnd < range.to) {
-            tr.delete(textEnd, range.to);
+            tr2.delete(textEnd, range.to);
           }
           if (textStart > range.from) {
-            tr.delete(range.from + startSpaces, textStart);
+            tr2.delete(range.from + startSpaces, textStart);
           }
           const markEnd = range.from + startSpaces + captureGroup.length;
-          tr.addMark(range.from + startSpaces, markEnd, config.type.create(attributes || {}));
-          tr.removeStoredMark(config.type);
+          tr2.addMark(range.from + startSpaces, markEnd, config.type.create(attributes || {}));
+          tr2.removeStoredMark(config.type);
         }
       }
     });
@@ -16288,26 +16249,26 @@ img.ProseMirror-separator {
       find: config.find,
       handler: ({ state, range, match: match2 }) => {
         const attributes = callOrReturn(config.getAttributes, void 0, match2) || {};
-        const { tr } = state;
-        const start2 = range.from;
+        const { tr: tr2 } = state;
+        const start = range.from;
         let end = range.to;
         const newNode = config.type.create(attributes);
         if (match2[1]) {
           const offset3 = match2[0].lastIndexOf(match2[1]);
-          let matchStart = start2 + offset3;
+          let matchStart = start + offset3;
           if (matchStart > end) {
             matchStart = end;
           } else {
             end = matchStart + match2[1].length;
           }
           const lastChar = match2[0][match2[0].length - 1];
-          tr.insertText(lastChar, start2 + match2[0].length - 1);
-          tr.replaceWith(matchStart, end, newNode);
+          tr2.insertText(lastChar, start + match2[0].length - 1);
+          tr2.replaceWith(matchStart, end, newNode);
         } else if (match2[0]) {
-          const insertionStart = config.type.isInline ? start2 : start2 - 1;
-          tr.insert(insertionStart, config.type.create(attributes)).delete(tr.mapping.map(start2), tr.mapping.map(end));
+          const insertionStart = config.type.isInline ? start : start - 1;
+          tr2.insert(insertionStart, config.type.create(attributes)).delete(tr2.mapping.map(start), tr2.mapping.map(end));
         }
-        tr.scrollIntoView();
+        tr2.scrollIntoView();
       }
     });
   }
@@ -16324,35 +16285,56 @@ img.ProseMirror-separator {
       }
     });
   }
+  function textInputRule(config) {
+    return new InputRule({
+      find: config.find,
+      handler: ({ state, range, match: match2 }) => {
+        let insert = config.replace;
+        let start = range.from;
+        const end = range.to;
+        if (match2[1]) {
+          const offset3 = match2[0].lastIndexOf(match2[1]);
+          insert += match2[0].slice(offset3 + match2[1].length);
+          start += offset3;
+          const cutOff = start - end;
+          if (cutOff > 0) {
+            insert = match2[0].slice(offset3 - cutOff, offset3) + insert;
+            start = end;
+          }
+        }
+        state.tr.insertText(insert, start, end);
+      }
+    });
+  }
   function wrappingInputRule(config) {
     return new InputRule({
       find: config.find,
       handler: ({ state, range, match: match2, chain }) => {
         const attributes = callOrReturn(config.getAttributes, void 0, match2) || {};
-        const tr = state.tr.delete(range.from, range.to);
-        const $start = tr.doc.resolve(range.from);
+        const tr2 = state.tr.delete(range.from, range.to);
+        const $start = tr2.doc.resolve(range.from);
         const blockRange = $start.blockRange();
         const wrapping = blockRange && findWrapping(blockRange, config.type, attributes);
         if (!wrapping) {
           return null;
         }
-        tr.wrap(blockRange, wrapping);
+        tr2.wrap(blockRange, wrapping);
         if (config.keepMarks && config.editor) {
           const { selection, storedMarks } = state;
           const { splittableMarks } = config.editor.extensionManager;
           const marks = storedMarks || selection.$to.parentOffset && selection.$from.marks();
           if (marks) {
             const filteredMarks = marks.filter((mark) => splittableMarks.includes(mark.type.name));
-            tr.ensureMarks(filteredMarks);
+            tr2.ensureMarks(filteredMarks);
           }
         }
         if (config.keepAttributes) {
           const nodeType = config.type.name === "bulletList" || config.type.name === "orderedList" ? "listItem" : "taskList";
           chain().updateAttributes(nodeType, attributes).run();
         }
-        const before = tr.doc.resolve(range.from - 1).nodeBefore;
-        if (before && before.type === config.type && canJoin(tr.doc, range.from - 1) && (!config.joinPredicate || config.joinPredicate(match2, before))) {
-          tr.join(range.from - 1);
+        const before = tr2.doc.resolve(range.from - 1).nodeBefore;
+        if (before && before.type === config.type && canJoin(tr2.doc, range.from - 1) && (!config.joinPredicate || config.joinPredicate(match2, before))) {
+          tr2.join(range.from - 1);
         }
       }
     });
@@ -16426,7 +16408,7 @@ img.ProseMirror-separator {
         if (attributes === false || attributes === null) {
           return null;
         }
-        const { tr } = state;
+        const { tr: tr2 } = state;
         const captureGroup = match2[match2.length - 1];
         const fullMatch = match2[0];
         let markEnd = range.to;
@@ -16442,14 +16424,14 @@ img.ProseMirror-separator {
             return null;
           }
           if (textEnd < range.to) {
-            tr.delete(textEnd, range.to);
+            tr2.delete(textEnd, range.to);
           }
           if (textStart > range.from) {
-            tr.delete(range.from + startSpaces, textStart);
+            tr2.delete(range.from + startSpaces, textStart);
           }
           markEnd = range.from + startSpaces + captureGroup.length;
-          tr.addMark(range.from + startSpaces, markEnd, config.type.create(attributes || {}));
-          tr.removeStoredMark(config.type);
+          tr2.addMark(range.from + startSpaces, markEnd, config.type.create(attributes || {}));
+          tr2.removeStoredMark(config.type);
         }
       }
     });
@@ -16473,6 +16455,9 @@ img.ProseMirror-separator {
       depth -= 1;
     }
     return false;
+  }
+  function escapeForRegEx(string) {
+    return string.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
   }
 
   // node_modules/lib0/map.js
@@ -16605,6 +16590,57 @@ img.ProseMirror-separator {
      * @template {keyof EVENTS & string} NAME
      * @param {NAME} name The event name.
      * @param {Parameters<EVENTS[NAME]>} args The arguments that are applied to the event listener.
+     */
+    emit(name, args2) {
+      return from((this._observers.get(name) || create()).values()).forEach((f) => f(...args2));
+    }
+    destroy() {
+      this._observers = create();
+    }
+  };
+  var Observable = class {
+    constructor() {
+      this._observers = create();
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    on(name, f) {
+      setIfUndefined(this._observers, name, create2).add(f);
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    once(name, f) {
+      const _f = (...args2) => {
+        this.off(name, _f);
+        f(...args2);
+      };
+      this.on(name, _f);
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    off(name, f) {
+      const observers = this._observers.get(name);
+      if (observers !== void 0) {
+        observers.delete(f);
+        if (observers.size === 0) {
+          this._observers.delete(name);
+        }
+      }
+    }
+    /**
+     * Emit a named event. All registered event listeners that listen to the
+     * specified name will receive the event.
+     *
+     * @todo This should catch exceptions
+     *
+     * @param {N} name The event name.
+     * @param {Array<any>} args The arguments that are applied to the event listener.
      */
     emit(name, args2) {
       return from((this._observers.get(name) || create()).values()).forEach((f) => f(...args2));
@@ -19743,6 +19779,7 @@ ${err.toString()}`);
       this.assoc = assoc;
     }
   };
+  var createRelativePositionFromJSON = (json) => new RelativePosition(json.type == null ? null : createID(json.type.client, json.type.clock), json.tname ?? null, json.item == null ? null : createID(json.item.client, json.item.clock), json.assoc == null ? 0 : json.assoc);
   var AbsolutePosition = class {
     /**
      * @param {AbstractType<any>} type
@@ -19849,6 +19886,7 @@ ${err.toString()}`);
     }
     return createAbsolutePosition(type, index, rpos.assoc);
   };
+  var compareRelativePositions = (a, b) => a === b || a !== null && b !== null && a.tname === b.tname && compareIDs(a.item, b.item) && compareIDs(a.type, b.type) && a.assoc === b.assoc;
   var Snapshot = class {
     /**
      * @param {DeleteSet} ds
@@ -20243,9 +20281,9 @@ ${err.toString()}`);
       this.meta = /* @__PURE__ */ new Map();
     }
   };
-  var clearUndoManagerStackItem = (tr, um, stackItem) => {
-    iterateDeletedStructs(tr, stackItem.deletions, (item) => {
-      if (item instanceof Item && um.scope.some((type) => type === tr.doc || isParentOf(
+  var clearUndoManagerStackItem = (tr2, um, stackItem) => {
+    iterateDeletedStructs(tr2, stackItem.deletions, (item) => {
+      if (item instanceof Item && um.scope.some((type) => type === tr2.doc || isParentOf(
         /** @type {AbstractType<any>} */
         type,
         item
@@ -20448,13 +20486,13 @@ ${err.toString()}`);
     }
     clear(clearUndoStack = true, clearRedoStack = true) {
       if (clearUndoStack && this.canUndo() || clearRedoStack && this.canRedo()) {
-        this.doc.transact((tr) => {
+        this.doc.transact((tr2) => {
           if (clearUndoStack) {
-            this.undoStack.forEach((item) => clearUndoManagerStackItem(tr, this, item));
+            this.undoStack.forEach((item) => clearUndoManagerStackItem(tr2, this, item));
             this.undoStack = [];
           }
           if (clearRedoStack) {
-            this.redoStack.forEach((item) => clearUndoManagerStackItem(tr, this, item));
+            this.redoStack.forEach((item) => clearUndoManagerStackItem(tr2, this, item));
             this.redoStack = [];
           }
           this.emit("stack-cleared", [{ undoStackCleared: clearUndoStack, redoStackCleared: clearRedoStack }]);
@@ -21225,28 +21263,28 @@ ${err.toString()}`);
     toJSON() {
     }
   };
-  var typeListSlice = (type, start2, end) => {
+  var typeListSlice = (type, start, end) => {
     type.doc ?? warnPrematureAccess();
-    if (start2 < 0) {
-      start2 = type._length + start2;
+    if (start < 0) {
+      start = type._length + start;
     }
     if (end < 0) {
       end = type._length + end;
     }
-    let len = end - start2;
+    let len = end - start;
     const cs = [];
     let n = type._start;
     while (n !== null && len > 0) {
       if (n.countable && !n.deleted) {
         const c = n.content.getContent();
-        if (c.length <= start2) {
-          start2 -= c.length;
+        if (c.length <= start) {
+          start -= c.length;
         } else {
-          for (let i = start2; i < c.length && len > 0; i++) {
+          for (let i = start; i < c.length && len > 0; i++) {
             cs.push(c[i]);
             len--;
           }
-          start2 = 0;
+          start = 0;
         }
       }
       n = n.right;
@@ -21763,8 +21801,8 @@ ${err.toString()}`);
      * @param {number} [end]
      * @return {Array<T>}
      */
-    slice(start2 = 0, end = this.length) {
-      return typeListSlice(this, start2, end);
+    slice(start = 0, end = this.length) {
+      return typeListSlice(this, start, end);
     }
     /**
      * Transforms this Shared Type to a JSON object.
@@ -22276,8 +22314,8 @@ ${err.toString()}`);
     }
     insertNegatedAttributes(transaction, parent, currPos, negatedAttributes);
   };
-  var cleanupFormattingGap = (transaction, start2, curr, startAttributes, currAttributes) => {
-    let end = start2;
+  var cleanupFormattingGap = (transaction, start, curr, startAttributes, currAttributes) => {
+    let end = start;
     const endFormats = create();
     while (end && (!end.countable || end.deleted)) {
       if (!end.deleted && end.content.constructor === ContentFormat) {
@@ -22291,12 +22329,12 @@ ${err.toString()}`);
     }
     let cleanups = 0;
     let reachedCurr = false;
-    while (start2 !== end) {
-      if (curr === start2) {
+    while (start !== end) {
+      if (curr === start) {
         reachedCurr = true;
       }
-      if (!start2.deleted) {
-        const content = start2.content;
+      if (!start.deleted) {
+        const content = start.content;
         switch (content.constructor) {
           case ContentFormat: {
             const { key, value } = (
@@ -22305,7 +22343,7 @@ ${err.toString()}`);
             );
             const startAttrValue = startAttributes.get(key) ?? null;
             if (endFormats.get(key) !== content || startAttrValue === value) {
-              start2.delete(transaction);
+              start.delete(transaction);
               cleanups++;
               if (!reachedCurr && (currAttributes.get(key) ?? null) === value && startAttrValue !== value) {
                 if (startAttrValue === null) {
@@ -22315,7 +22353,7 @@ ${err.toString()}`);
                 }
               }
             }
-            if (!reachedCurr && !start2.deleted) {
+            if (!reachedCurr && !start.deleted) {
               updateCurrentAttributes(
                 currAttributes,
                 /** @type {ContentFormat} */
@@ -22326,8 +22364,8 @@ ${err.toString()}`);
           }
         }
       }
-      start2 = /** @type {Item} */
-      start2.right;
+      start = /** @type {Item} */
+      start.right;
     }
     return cleanups;
   };
@@ -22357,7 +22395,7 @@ ${err.toString()}`);
       /** @type {Doc} */
       type.doc,
       (transaction) => {
-        let start2 = (
+        let start = (
           /** @type {Item} */
           type._start
         );
@@ -22375,9 +22413,9 @@ ${err.toString()}`);
                 );
                 break;
               default:
-                res += cleanupFormattingGap(transaction, start2, end, startAttributes, currentAttributes);
+                res += cleanupFormattingGap(transaction, start, end, startAttributes, currentAttributes);
                 startAttributes = copy2(currentAttributes);
-                start2 = end;
+                start = end;
                 break;
             }
           }
@@ -22439,7 +22477,7 @@ ${err.toString()}`);
   var deleteText = (transaction, currPos, length2) => {
     const startLength = length2;
     const startAttrs = copy2(currPos.currentAttributes);
-    const start2 = currPos.right;
+    const start = currPos.right;
     while (length2 > 0 && currPos.right !== null) {
       if (currPos.right.deleted === false) {
         switch (currPos.right.content.constructor) {
@@ -22456,8 +22494,8 @@ ${err.toString()}`);
       }
       currPos.forward();
     }
-    if (start2) {
-      cleanupFormattingGap(transaction, start2, currPos.right, startAttrs, currPos.currentAttributes);
+    if (start) {
+      cleanupFormattingGap(transaction, start, currPos.right, startAttrs, currPos.currentAttributes);
     }
     const parent = (
       /** @type {AbstractType<any>} */
@@ -23424,8 +23462,8 @@ ${err.toString()}`);
      * @param {number} [end]
      * @return {Array<YXmlElement|YXmlText>}
      */
-    slice(start2 = 0, end = this.length) {
-      return typeListSlice(this, start2, end);
+    slice(start = 0, end = this.length) {
+      return typeListSlice(this, start, end);
     }
     /**
      * Executes a provided function on once on every child element.
@@ -25366,6 +25404,208 @@ ${err.toString()}`);
   }
   glo[importIdentifier] = true;
 
+  // node_modules/y-protocols/awareness.js
+  var outdatedTimeout = 3e4;
+  var Awareness = class extends Observable {
+    /**
+     * @param {Y.Doc} doc
+     */
+    constructor(doc4) {
+      super();
+      this.doc = doc4;
+      this.clientID = doc4.clientID;
+      this.states = /* @__PURE__ */ new Map();
+      this.meta = /* @__PURE__ */ new Map();
+      this._checkInterval = /** @type {any} */
+      setInterval(() => {
+        const now = getUnixTime();
+        if (this.getLocalState() !== null && outdatedTimeout / 2 <= now - /** @type {{lastUpdated:number}} */
+        this.meta.get(this.clientID).lastUpdated) {
+          this.setLocalState(this.getLocalState());
+        }
+        const remove = [];
+        this.meta.forEach((meta2, clientid) => {
+          if (clientid !== this.clientID && outdatedTimeout <= now - meta2.lastUpdated && this.states.has(clientid)) {
+            remove.push(clientid);
+          }
+        });
+        if (remove.length > 0) {
+          removeAwarenessStates(this, remove, "timeout");
+        }
+      }, floor(outdatedTimeout / 10));
+      doc4.on("destroy", () => {
+        this.destroy();
+      });
+      this.setLocalState({});
+    }
+    destroy() {
+      this.emit("destroy", [this]);
+      this.setLocalState(null);
+      super.destroy();
+      clearInterval(this._checkInterval);
+    }
+    /**
+     * @return {Object<string,any>|null}
+     */
+    getLocalState() {
+      return this.states.get(this.clientID) || null;
+    }
+    /**
+     * @param {Object<string,any>|null} state
+     */
+    setLocalState(state) {
+      const clientID = this.clientID;
+      const currLocalMeta = this.meta.get(clientID);
+      const clock = currLocalMeta === void 0 ? 0 : currLocalMeta.clock + 1;
+      const prevState = this.states.get(clientID);
+      if (state === null) {
+        this.states.delete(clientID);
+      } else {
+        this.states.set(clientID, state);
+      }
+      this.meta.set(clientID, {
+        clock,
+        lastUpdated: getUnixTime()
+      });
+      const added = [];
+      const updated = [];
+      const filteredUpdated = [];
+      const removed = [];
+      if (state === null) {
+        removed.push(clientID);
+      } else if (prevState == null) {
+        if (state != null) {
+          added.push(clientID);
+        }
+      } else {
+        updated.push(clientID);
+        if (!equalityDeep(prevState, state)) {
+          filteredUpdated.push(clientID);
+        }
+      }
+      if (added.length > 0 || filteredUpdated.length > 0 || removed.length > 0) {
+        this.emit("change", [{ added, updated: filteredUpdated, removed }, "local"]);
+      }
+      this.emit("update", [{ added, updated, removed }, "local"]);
+    }
+    /**
+     * @param {string} field
+     * @param {any} value
+     */
+    setLocalStateField(field, value) {
+      const state = this.getLocalState();
+      if (state !== null) {
+        this.setLocalState({
+          ...state,
+          [field]: value
+        });
+      }
+    }
+    /**
+     * @return {Map<number,Object<string,any>>}
+     */
+    getStates() {
+      return this.states;
+    }
+  };
+  var removeAwarenessStates = (awareness, clients, origin) => {
+    const removed = [];
+    for (let i = 0; i < clients.length; i++) {
+      const clientID = clients[i];
+      if (awareness.states.has(clientID)) {
+        awareness.states.delete(clientID);
+        if (clientID === awareness.clientID) {
+          const curMeta = (
+            /** @type {MetaClientState} */
+            awareness.meta.get(clientID)
+          );
+          awareness.meta.set(clientID, {
+            clock: curMeta.clock + 1,
+            lastUpdated: getUnixTime()
+          });
+        }
+        removed.push(clientID);
+      }
+    }
+    if (removed.length > 0) {
+      awareness.emit("change", [{ added: [], updated: [], removed }, origin]);
+      awareness.emit("update", [{ added: [], updated: [], removed }, origin]);
+    }
+  };
+  var encodeAwarenessUpdate = (awareness, clients, states = awareness.states) => {
+    const len = clients.length;
+    const encoder = createEncoder();
+    writeVarUint(encoder, len);
+    for (let i = 0; i < len; i++) {
+      const clientID = clients[i];
+      const state = states.get(clientID) || null;
+      const clock = (
+        /** @type {MetaClientState} */
+        awareness.meta.get(clientID).clock
+      );
+      writeVarUint(encoder, clientID);
+      writeVarUint(encoder, clock);
+      writeVarString(encoder, JSON.stringify(state));
+    }
+    return toUint8Array(encoder);
+  };
+  var applyAwarenessUpdate = (awareness, update, origin) => {
+    const decoder = createDecoder(update);
+    const timestamp = getUnixTime();
+    const added = [];
+    const updated = [];
+    const filteredUpdated = [];
+    const removed = [];
+    const len = readVarUint(decoder);
+    for (let i = 0; i < len; i++) {
+      const clientID = readVarUint(decoder);
+      let clock = readVarUint(decoder);
+      const state = JSON.parse(readVarString(decoder));
+      const clientMeta = awareness.meta.get(clientID);
+      const prevState = awareness.states.get(clientID);
+      const currClock = clientMeta === void 0 ? 0 : clientMeta.clock;
+      if (currClock < clock || currClock === clock && state === null && awareness.states.has(clientID)) {
+        if (state === null) {
+          if (clientID === awareness.clientID && awareness.getLocalState() != null) {
+            clock++;
+          } else {
+            awareness.states.delete(clientID);
+          }
+        } else {
+          awareness.states.set(clientID, state);
+        }
+        awareness.meta.set(clientID, {
+          clock,
+          lastUpdated: timestamp
+        });
+        if (clientMeta === void 0 && state !== null) {
+          added.push(clientID);
+        } else if (clientMeta !== void 0 && state === null) {
+          removed.push(clientID);
+        } else if (state !== null) {
+          if (!equalityDeep(state, prevState)) {
+            filteredUpdated.push(clientID);
+          }
+          updated.push(clientID);
+        }
+      }
+    }
+    if (added.length > 0 || filteredUpdated.length > 0 || removed.length > 0) {
+      awareness.emit("change", [{
+        added,
+        updated: filteredUpdated,
+        removed
+      }, origin]);
+    }
+    if (added.length > 0 || updated.length > 0 || removed.length > 0) {
+      awareness.emit("update", [{
+        added,
+        updated,
+        removed
+      }, origin]);
+    }
+  };
+
   // node_modules/lib0/mutex.js
   var createMutex = () => {
     let token2 = true;
@@ -25513,8 +25753,8 @@ ${err.toString()}`);
       let f = H[5];
       let g = H[6];
       let h = H[7];
-      for (let tt = 0, T1, T2; tt < 64; tt++) {
-        T1 = h + sum1to256(e) + (e & f ^ ~e & g) + K[tt] + W[tt] >>> 0;
+      for (let tt2 = 0, T1, T2; tt2 < 64; tt2++) {
+        T1 = h + sum1to256(e) + (e & f ^ ~e & g) + K[tt2] + W[tt2] >>> 0;
         T2 = sum0to256(a) + (a & b ^ a & c ^ b & c) >>> 0;
         h = g;
         g = f;
@@ -25646,15 +25886,15 @@ ${err.toString()}`);
             permanentUserData
           };
         },
-        apply: (tr, pluginState) => {
-          const change = tr.getMeta(ySyncPluginKey);
+        apply: (tr2, pluginState) => {
+          const change = tr2.getMeta(ySyncPluginKey);
           if (change !== void 0) {
             pluginState = Object.assign({}, pluginState);
             for (const key in change) {
               pluginState[key] = change[key];
             }
           }
-          pluginState.addToHistory = tr.getMeta("addToHistory") !== false;
+          pluginState.addToHistory = tr2.getMeta("addToHistory") !== false;
           pluginState.isChangeOrigin = change !== void 0 && !!change.isChangeOrigin;
           pluginState.isUndoRedoOperation = change !== void 0 && !!change.isChangeOrigin && !!change.isUndoRedoOperation;
           if (binding.prosemirrorView !== null) {
@@ -25717,8 +25957,8 @@ ${err.toString()}`);
                   }
                 }
                 binding.mux(() => {
-                  pluginState.doc.transact((tr) => {
-                    tr.meta.set("addToHistory", pluginState.addToHistory);
+                  pluginState.doc.transact((tr2) => {
+                    tr2.meta.set("addToHistory", pluginState.addToHistory);
                     binding._prosemirrorChanged(view.state.doc);
                   }, ySyncPluginKey);
                 });
@@ -25733,10 +25973,10 @@ ${err.toString()}`);
     });
     return plugin;
   };
-  var restoreRelativeSelection = (tr, relSel, binding) => {
+  var restoreRelativeSelection = (tr2, relSel, binding) => {
     if (relSel !== null && relSel.anchor !== null && relSel.head !== null) {
       if (relSel.type === "all") {
-        tr.setSelection(new AllSelection(tr.doc));
+        tr2.setSelection(new AllSelection(tr2.doc));
       } else if (relSel.type === "node") {
         const anchor = relativePositionToAbsolutePosition(
           binding.doc,
@@ -25744,7 +25984,7 @@ ${err.toString()}`);
           relSel.anchor,
           binding.mapping
         );
-        tr.setSelection(NodeSelection.create(tr.doc, anchor));
+        tr2.setSelection(NodeSelection.create(tr2.doc, anchor));
       } else {
         const anchor = relativePositionToAbsolutePosition(
           binding.doc,
@@ -25759,8 +25999,8 @@ ${err.toString()}`);
           binding.mapping
         );
         if (anchor !== null && head !== null) {
-          const sel = TextSelection.between(tr.doc.resolve(anchor), tr.doc.resolve(head));
-          tr.setSelection(sel);
+          const sel = TextSelection.between(tr2.doc.resolve(anchor), tr2.doc.resolve(head));
+          tr2.setSelection(sel);
         }
       }
     }
@@ -25865,13 +26105,13 @@ ${err.toString()}`);
             this
           )
         ).filter((n) => n !== null);
-        const tr = this._tr.replace(
+        const tr2 = this._tr.replace(
           0,
           this.prosemirrorView.state.doc.content.size,
           new Slice(Fragment.from(fragmentContent), 0, 0)
         );
-        tr.setMeta(ySyncPluginKey, { snapshot: null, prevSnapshot: null });
-        this.prosemirrorView.dispatch(tr);
+        tr2.setMeta(ySyncPluginKey, { snapshot: null, prevSnapshot: null });
+        this.prosemirrorView.dispatch(tr2);
       });
     }
     _forceRerender() {
@@ -25886,18 +26126,18 @@ ${err.toString()}`);
             this
           )
         ).filter((n) => n !== null);
-        const tr = this._tr.replace(
+        const tr2 = this._tr.replace(
           0,
           this.prosemirrorView.state.doc.content.size,
           new Slice(Fragment.from(fragmentContent), 0, 0)
         );
         if (sel) {
-          const clampedAnchor = min(max(sel.anchor, 0), tr.doc.content.size);
-          const clampedHead = min(max(sel.head, 0), tr.doc.content.size);
-          tr.setSelection(TextSelection.create(tr.doc, clampedAnchor, clampedHead));
+          const clampedAnchor = min(max(sel.anchor, 0), tr2.doc.content.size);
+          const clampedHead = min(max(sel.head, 0), tr2.doc.content.size);
+          tr2.setSelection(TextSelection.create(tr2.doc, clampedAnchor, clampedHead));
         }
         this.prosemirrorView.dispatch(
-          tr.setMeta(ySyncPluginKey, { isChangeOrigin: true, binding: this })
+          tr2.setMeta(ySyncPluginKey, { isChangeOrigin: true, binding: this })
         );
       });
     }
@@ -25983,13 +26223,13 @@ ${err.toString()}`);
               return null;
             }
           }).filter((n) => n !== null);
-          const tr = this._tr.replace(
+          const tr2 = this._tr.replace(
             0,
             this.prosemirrorView.state.doc.content.size,
             new Slice(Fragment.from(fragmentContent), 0, 0)
           );
           this.prosemirrorView.dispatch(
-            tr.setMeta(ySyncPluginKey, { isChangeOrigin: true })
+            tr2.setMeta(ySyncPluginKey, { isChangeOrigin: true })
           );
         }, ySyncPluginKey);
       });
@@ -26031,17 +26271,17 @@ ${err.toString()}`);
             this
           )
         ).filter((n) => n !== null);
-        let tr = this._tr.replace(
+        let tr2 = this._tr.replace(
           0,
           this.prosemirrorView.state.doc.content.size,
           new Slice(Fragment.from(fragmentContent), 0, 0)
         );
-        restoreRelativeSelection(tr, this.beforeTransactionSelection, this);
-        tr = tr.setMeta(ySyncPluginKey, { isChangeOrigin: true, isUndoRedoOperation: transaction.origin instanceof UndoManager });
+        restoreRelativeSelection(tr2, this.beforeTransactionSelection, this);
+        tr2 = tr2.setMeta(ySyncPluginKey, { isChangeOrigin: true, isUndoRedoOperation: transaction.origin instanceof UndoManager });
         if (this.beforeTransactionSelection !== null && this._isLocalCursorInView()) {
-          tr.scrollIntoView();
+          tr2.scrollIntoView();
         }
-        this.prosemirrorView.dispatch(tr);
+        this.prosemirrorView.dispatch(tr2);
       });
     }
     /**
@@ -26121,8 +26361,8 @@ ${err.toString()}`);
             { retain: type.length },
             ...nextytext.toDelta()
           ]);
-          nextytext.doc.transact((tr) => {
-            nextytext._item.delete(tr);
+          nextytext.doc.transact((tr2) => {
+            nextytext._item.delete(tr2);
           });
         }
         const ns = createTextNodesFromYText(
@@ -26516,6 +26756,31 @@ ${err.toString()}`);
   var matchNodeName = (yElement, pNode) => !(pNode instanceof Array) && yElement.nodeName === pNode.type.name;
 
   // node_modules/y-prosemirror/src/lib.js
+  var viewsToUpdate = null;
+  var updateMetas = () => {
+    const ups = (
+      /** @type {Map<EditorView, Map<any, any>>} */
+      viewsToUpdate
+    );
+    viewsToUpdate = null;
+    ups.forEach((metas, view) => {
+      const tr2 = view.state.tr;
+      const syncState = ySyncPluginKey.getState(view.state);
+      if (syncState && syncState.binding && !syncState.binding.isDestroyed) {
+        metas.forEach((val, key) => {
+          tr2.setMeta(key, val);
+        });
+        view.dispatch(tr2);
+      }
+    });
+  };
+  var setMeta2 = (view, key, value) => {
+    if (!viewsToUpdate) {
+      viewsToUpdate = /* @__PURE__ */ new Map();
+      timeout(0, updateMetas);
+    }
+    setIfUndefined(viewsToUpdate, view, create).set(key, value);
+  };
   var absolutePositionToRelativePosition = (pos, type, mapping) => {
     if (pos === 0) {
       return createRelativePositionFromTypeIndex(type, 0, type.length === 0 ? -1 : 0);
@@ -26718,6 +26983,179 @@ ${err.toString()}`);
     };
   }
 
+  // node_modules/y-prosemirror/src/plugins/cursor-plugin.js
+  var defaultAwarenessStateFilter = (currentClientId, userClientId, _user) => currentClientId !== userClientId;
+  var defaultCursorBuilder = (user) => {
+    const cursor = document.createElement("span");
+    cursor.classList.add("ProseMirror-yjs-cursor");
+    cursor.setAttribute("style", `border-color: ${user.color}`);
+    const userDiv = document.createElement("div");
+    userDiv.setAttribute("style", `background-color: ${user.color}`);
+    userDiv.insertBefore(document.createTextNode(user.name), null);
+    const nonbreakingSpace1 = document.createTextNode("\u2060");
+    const nonbreakingSpace2 = document.createTextNode("\u2060");
+    cursor.insertBefore(nonbreakingSpace1, null);
+    cursor.insertBefore(userDiv, null);
+    cursor.insertBefore(nonbreakingSpace2, null);
+    return cursor;
+  };
+  var defaultSelectionBuilder = (user) => {
+    return {
+      style: `background-color: ${user.color}70`,
+      class: "ProseMirror-yjs-selection"
+    };
+  };
+  var rxValidColor = /^#[0-9a-fA-F]{6}$/;
+  var createDecorations = (state, awareness, awarenessFilter, createCursor, createSelection) => {
+    const ystate = ySyncPluginKey.getState(state);
+    const y = ystate.doc;
+    const decorations = [];
+    if (ystate.snapshot != null || ystate.prevSnapshot != null || ystate.binding.mapping.size === 0) {
+      return DecorationSet.create(state.doc, []);
+    }
+    awareness.getStates().forEach((aw, clientId) => {
+      if (!awarenessFilter(y.clientID, clientId, aw)) {
+        return;
+      }
+      if (aw.cursor != null) {
+        const user = aw.user || {};
+        if (user.color == null) {
+          user.color = "#ffa500";
+        } else if (!rxValidColor.test(user.color)) {
+          console.warn("A user uses an unsupported color format", user);
+        }
+        if (user.name == null) {
+          user.name = `User: ${clientId}`;
+        }
+        let anchor = relativePositionToAbsolutePosition(
+          y,
+          ystate.type,
+          createRelativePositionFromJSON(aw.cursor.anchor),
+          ystate.binding.mapping
+        );
+        let head = relativePositionToAbsolutePosition(
+          y,
+          ystate.type,
+          createRelativePositionFromJSON(aw.cursor.head),
+          ystate.binding.mapping
+        );
+        if (anchor !== null && head !== null) {
+          const maxsize = max(state.doc.content.size - 1, 0);
+          anchor = min(anchor, maxsize);
+          head = min(head, maxsize);
+          decorations.push(
+            Decoration.widget(head, () => createCursor(user, clientId), {
+              key: clientId + "",
+              side: 10
+            })
+          );
+          const from3 = min(anchor, head);
+          const to = max(anchor, head);
+          decorations.push(
+            Decoration.inline(from3, to, createSelection(user, clientId), {
+              inclusiveEnd: true,
+              inclusiveStart: false
+            })
+          );
+        }
+      }
+    });
+    return DecorationSet.create(state.doc, decorations);
+  };
+  var yCursorPlugin = (awareness, {
+    awarenessStateFilter = defaultAwarenessStateFilter,
+    cursorBuilder = defaultCursorBuilder,
+    selectionBuilder = defaultSelectionBuilder,
+    getSelection: getSelection2 = (state) => state.selection
+  } = {}, cursorStateField = "cursor") => new Plugin({
+    key: yCursorPluginKey,
+    state: {
+      init(_, state) {
+        return createDecorations(
+          state,
+          awareness,
+          awarenessStateFilter,
+          cursorBuilder,
+          selectionBuilder
+        );
+      },
+      apply(tr2, prevState, _oldState, newState) {
+        const ystate = ySyncPluginKey.getState(newState);
+        const yCursorState = tr2.getMeta(yCursorPluginKey);
+        if (ystate && ystate.isChangeOrigin || yCursorState && yCursorState.awarenessUpdated) {
+          return createDecorations(
+            newState,
+            awareness,
+            awarenessStateFilter,
+            cursorBuilder,
+            selectionBuilder
+          );
+        }
+        return prevState.map(tr2.mapping, tr2.doc);
+      }
+    },
+    props: {
+      decorations: (state) => {
+        return yCursorPluginKey.getState(state);
+      }
+    },
+    view: (view) => {
+      const awarenessListener = () => {
+        if (view.docView) {
+          setMeta2(view, yCursorPluginKey, { awarenessUpdated: true });
+        }
+      };
+      const updateCursorInfo = () => {
+        const ystate = ySyncPluginKey.getState(view.state);
+        const current = awareness.getLocalState() || {};
+        if (view.hasFocus()) {
+          const selection = getSelection2(view.state);
+          const anchor = absolutePositionToRelativePosition(
+            selection.anchor,
+            ystate.type,
+            ystate.binding.mapping
+          );
+          const head = absolutePositionToRelativePosition(
+            selection.head,
+            ystate.type,
+            ystate.binding.mapping
+          );
+          if (current.cursor == null || !compareRelativePositions(
+            createRelativePositionFromJSON(current.cursor.anchor),
+            anchor
+          ) || !compareRelativePositions(
+            createRelativePositionFromJSON(current.cursor.head),
+            head
+          )) {
+            awareness.setLocalStateField(cursorStateField, {
+              anchor,
+              head
+            });
+          }
+        } else if (current.cursor != null && relativePositionToAbsolutePosition(
+          ystate.doc,
+          ystate.type,
+          createRelativePositionFromJSON(current.cursor.anchor),
+          ystate.binding.mapping
+        ) !== null) {
+          awareness.setLocalStateField(cursorStateField, null);
+        }
+      };
+      awareness.on("change", awarenessListener);
+      view.dom.addEventListener("focusin", updateCursorInfo);
+      view.dom.addEventListener("focusout", updateCursorInfo);
+      return {
+        update: updateCursorInfo,
+        destroy: () => {
+          view.dom.removeEventListener("focusin", updateCursorInfo);
+          view.dom.removeEventListener("focusout", updateCursorInfo);
+          awareness.off("change", awarenessListener);
+          awareness.setLocalStateField(cursorStateField, null);
+        }
+      };
+    }
+  });
+
   // node_modules/y-prosemirror/src/plugins/undo-plugin.js
   var undo = (state) => yUndoPluginKey.getState(state)?.undoManager?.undo() != null;
   var redo = (state) => yUndoPluginKey.getState(state)?.undoManager?.redo() != null;
@@ -26731,7 +27169,7 @@ ${err.toString()}`);
         const _undoManager = undoManager || new UndoManager(ystate.type, {
           trackedOrigins: new Set([ySyncPluginKey].concat(trackedOrigins)),
           deleteFilter: (item) => defaultDeleteFilter(item, protectedNodes),
-          captureTransaction: (tr) => tr.meta.get("addToHistory") !== false
+          captureTransaction: (tr2) => tr2.meta.get("addToHistory") !== false
         });
         return {
           undoManager: _undoManager,
@@ -26740,7 +27178,7 @@ ${err.toString()}`);
           hasRedoOps: _undoManager.redoStack.length > 0
         };
       },
-      apply: (tr, val, oldState, state) => {
+      apply: (tr2, val, oldState, state) => {
         const binding = ySyncPluginKey.getState(state).binding;
         const undoManager2 = val.undoManager;
         const hasUndoOps = undoManager2.undoStack.length > 0;
@@ -26810,8 +27248,8 @@ ${err.toString()}`);
     },
     addCommands() {
       return {
-        undo: () => ({ tr, state, dispatch }) => {
-          tr.setMeta("preventDispatch", true);
+        undo: () => ({ tr: tr2, state, dispatch }) => {
+          tr2.setMeta("preventDispatch", true);
           const undoManager = yUndoPluginKey.getState(state).undoManager;
           if (undoManager.undoStack.length === 0) {
             return false;
@@ -26821,8 +27259,8 @@ ${err.toString()}`);
           }
           return undo(state);
         },
-        redo: () => ({ tr, state, dispatch }) => {
-          tr.setMeta("preventDispatch", true);
+        redo: () => ({ tr: tr2, state, dispatch }) => {
+          tr2.setMeta("preventDispatch", true);
           const undoManager = yUndoPluginKey.getState(state).undoManager;
           if (undoManager.redoStack.length === 0) {
             return false;
@@ -26917,6 +27355,2250 @@ ${err.toString()}`);
     }
   });
 
+  // node_modules/@tiptap/extension-collaboration-cursor/dist/index.js
+  var awarenessStatesToArray = (states) => {
+    return Array.from(states.entries()).map(([key, value]) => {
+      return {
+        clientId: key,
+        ...value.user
+      };
+    });
+  };
+  var defaultOnUpdate = () => null;
+  var CollaborationCursor = Extension.create({
+    name: "collaborationCursor",
+    priority: 999,
+    addOptions() {
+      return {
+        provider: null,
+        user: {
+          name: null,
+          color: null
+        },
+        render: (user) => {
+          const cursor = document.createElement("span");
+          cursor.classList.add("collaboration-cursor__caret");
+          cursor.setAttribute("style", `border-color: ${user.color}`);
+          const label = document.createElement("div");
+          label.classList.add("collaboration-cursor__label");
+          label.setAttribute("style", `background-color: ${user.color}`);
+          label.insertBefore(document.createTextNode(user.name), null);
+          cursor.insertBefore(label, null);
+          return cursor;
+        },
+        selectionRender: defaultSelectionBuilder,
+        onUpdate: defaultOnUpdate
+      };
+    },
+    onCreate() {
+      if (this.options.onUpdate !== defaultOnUpdate) {
+        console.warn('[tiptap warn]: DEPRECATED: The "onUpdate" option is deprecated. Please use `editor.storage.collaborationCursor.users` instead. Read more: https://tiptap.dev/api/extensions/collaboration-cursor');
+      }
+      if (!this.options.provider) {
+        throw new Error('The "provider" option is required for the CollaborationCursor extension');
+      }
+    },
+    addStorage() {
+      return {
+        users: []
+      };
+    },
+    addCommands() {
+      return {
+        updateUser: (attributes) => () => {
+          this.options.user = attributes;
+          this.options.provider.awareness.setLocalStateField("user", this.options.user);
+          return true;
+        },
+        user: (attributes) => ({ editor }) => {
+          console.warn('[tiptap warn]: DEPRECATED: The "user" command is deprecated. Please use "updateUser" instead. Read more: https://tiptap.dev/api/extensions/collaboration-cursor');
+          return editor.commands.updateUser(attributes);
+        }
+      };
+    },
+    addProseMirrorPlugins() {
+      return [
+        yCursorPlugin(
+          (() => {
+            this.options.provider.awareness.setLocalStateField("user", this.options.user);
+            this.storage.users = awarenessStatesToArray(this.options.provider.awareness.states);
+            this.options.provider.awareness.on("update", () => {
+              this.storage.users = awarenessStatesToArray(this.options.provider.awareness.states);
+            });
+            return this.options.provider.awareness;
+          })(),
+          // @ts-ignore
+          {
+            cursorBuilder: this.options.render,
+            selectionBuilder: this.options.selectionRender
+          }
+        )
+      ];
+    }
+  });
+
+  // node_modules/@tiptap/extension-character-count/dist/index.js
+  var CharacterCount = Extension.create({
+    name: "characterCount",
+    addOptions() {
+      return {
+        limit: null,
+        mode: "textSize",
+        textCounter: (text2) => text2.length,
+        wordCounter: (text2) => text2.split(" ").filter((word2) => word2 !== "").length
+      };
+    },
+    addStorage() {
+      return {
+        characters: () => 0,
+        words: () => 0
+      };
+    },
+    onBeforeCreate() {
+      this.storage.characters = (options) => {
+        const node = (options === null || options === void 0 ? void 0 : options.node) || this.editor.state.doc;
+        const mode2 = (options === null || options === void 0 ? void 0 : options.mode) || this.options.mode;
+        if (mode2 === "textSize") {
+          const text2 = node.textBetween(0, node.content.size, void 0, " ");
+          return this.options.textCounter(text2);
+        }
+        return node.nodeSize;
+      };
+      this.storage.words = (options) => {
+        const node = (options === null || options === void 0 ? void 0 : options.node) || this.editor.state.doc;
+        const text2 = node.textBetween(0, node.content.size, " ", " ");
+        return this.options.wordCounter(text2);
+      };
+    },
+    addProseMirrorPlugins() {
+      let initialEvaluationDone = false;
+      return [
+        new Plugin({
+          key: new PluginKey("characterCount"),
+          appendTransaction: (transactions, oldState, newState) => {
+            if (initialEvaluationDone) {
+              return;
+            }
+            const limit = this.options.limit;
+            if (limit === null || limit === void 0 || limit === 0) {
+              initialEvaluationDone = true;
+              return;
+            }
+            const initialContentSize = this.storage.characters({ node: newState.doc });
+            if (initialContentSize > limit) {
+              const over = initialContentSize - limit;
+              const from3 = 0;
+              const to = over;
+              console.warn(`[CharacterCount] Initial content exceeded limit of ${limit} characters. Content was automatically trimmed.`);
+              const tr2 = newState.tr.deleteRange(from3, to);
+              initialEvaluationDone = true;
+              return tr2;
+            }
+            initialEvaluationDone = true;
+          },
+          filterTransaction: (transaction, state) => {
+            const limit = this.options.limit;
+            if (!transaction.docChanged || limit === 0 || limit === null || limit === void 0) {
+              return true;
+            }
+            const oldSize = this.storage.characters({ node: state.doc });
+            const newSize = this.storage.characters({ node: transaction.doc });
+            if (newSize <= limit) {
+              return true;
+            }
+            if (oldSize > limit && newSize > limit && newSize <= oldSize) {
+              return true;
+            }
+            if (oldSize > limit && newSize > limit && newSize > oldSize) {
+              return false;
+            }
+            const isPaste = transaction.getMeta("paste");
+            if (!isPaste) {
+              return false;
+            }
+            const pos = transaction.selection.$head.pos;
+            const over = newSize - limit;
+            const from3 = pos - over;
+            const to = pos;
+            transaction.deleteRange(from3, to);
+            const updatedSize = this.storage.characters({ node: transaction.doc });
+            if (updatedSize > limit) {
+              return false;
+            }
+            return true;
+          }
+        })
+      ];
+    }
+  });
+
+  // node_modules/@tiptap/extension-highlight/dist/index.js
+  var inputRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==(?!\s+==))$/;
+  var pasteRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==(?!\s+==))/g;
+  var Highlight = Mark2.create({
+    name: "highlight",
+    addOptions() {
+      return {
+        multicolor: false,
+        HTMLAttributes: {}
+      };
+    },
+    addAttributes() {
+      if (!this.options.multicolor) {
+        return {};
+      }
+      return {
+        color: {
+          default: null,
+          parseHTML: (element2) => element2.getAttribute("data-color") || element2.style.backgroundColor,
+          renderHTML: (attributes) => {
+            if (!attributes.color) {
+              return {};
+            }
+            return {
+              "data-color": attributes.color,
+              style: `background-color: ${attributes.color}; color: inherit`
+            };
+          }
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: "mark"
+        }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["mark", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    },
+    addCommands() {
+      return {
+        setHighlight: (attributes) => ({ commands: commands2 }) => {
+          return commands2.setMark(this.name, attributes);
+        },
+        toggleHighlight: (attributes) => ({ commands: commands2 }) => {
+          return commands2.toggleMark(this.name, attributes);
+        },
+        unsetHighlight: () => ({ commands: commands2 }) => {
+          return commands2.unsetMark(this.name);
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-h": () => this.editor.commands.toggleHighlight()
+      };
+    },
+    addInputRules() {
+      return [
+        markInputRule({
+          find: inputRegex,
+          type: this.type
+        })
+      ];
+    },
+    addPasteRules() {
+      return [
+        markPasteRule({
+          find: pasteRegex,
+          type: this.type
+        })
+      ];
+    }
+  });
+
+  // node_modules/@tiptap/extension-image/dist/index.js
+  var inputRegex2 = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/;
+  var Image = Node3.create({
+    name: "image",
+    addOptions() {
+      return {
+        inline: false,
+        allowBase64: false,
+        HTMLAttributes: {}
+      };
+    },
+    inline() {
+      return this.options.inline;
+    },
+    group() {
+      return this.options.inline ? "inline" : "block";
+    },
+    draggable: true,
+    addAttributes() {
+      return {
+        src: {
+          default: null
+        },
+        alt: {
+          default: null
+        },
+        title: {
+          default: null
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: this.options.allowBase64 ? "img[src]" : 'img[src]:not([src^="data:"])'
+        }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["img", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)];
+    },
+    addCommands() {
+      return {
+        setImage: (options) => ({ commands: commands2 }) => {
+          return commands2.insertContent({
+            type: this.name,
+            attrs: options
+          });
+        }
+      };
+    },
+    addInputRules() {
+      return [
+        nodeInputRule({
+          find: inputRegex2,
+          type: this.type,
+          getAttributes: (match2) => {
+            const [, , alt, src, title] = match2;
+            return { src, alt, title };
+          }
+        })
+      ];
+    }
+  });
+
+  // node_modules/linkifyjs/dist/linkify.mjs
+  var encodedTlds = "aaa1rp3bb0ott3vie4c1le2ogado5udhabi7c0ademy5centure6ountant0s9o1tor4d0s1ult4e0g1ro2tna4f0l1rica5g0akhan5ency5i0g1rbus3force5tel5kdn3l0ibaba4pay4lfinanz6state5y2sace3tom5m0azon4ericanexpress7family11x2fam3ica3sterdam8nalytics7droid5quan4z2o0l2partments8p0le4q0uarelle8r0ab1mco4chi3my2pa2t0e3s0da2ia2sociates9t0hleta5torney7u0ction5di0ble3o3spost5thor3o0s4w0s2x0a2z0ure5ba0by2idu3namex4d1k2r0celona5laycard4s5efoot5gains6seball5ketball8uhaus5yern5b0c1t1va3cg1n2d1e0ats2uty4er2rlin4st0buy5t2f1g1h0arti5i0ble3d1ke2ng0o3o1z2j1lack0friday9ockbuster8g1omberg7ue3m0s1w2n0pparibas9o0ats3ehringer8fa2m1nd2o0k0ing5sch2tik2on4t1utique6x2r0adesco6idgestone9oadway5ker3ther5ussels7s1t1uild0ers6siness6y1zz3v1w1y1z0h3ca0b1fe2l0l1vinklein9m0era3p2non3petown5ital0one8r0avan4ds2e0er0s4s2sa1e1h1ino4t0ering5holic7ba1n1re3c1d1enter4o1rn3f0a1d2g1h0anel2nel4rity4se2t2eap3intai5ristmas6ome4urch5i0priani6rcle4sco3tadel4i0c2y3k1l0aims4eaning6ick2nic1que6othing5ud3ub0med6m1n1o0ach3des3ffee4llege4ogne5m0mbank4unity6pany2re3uter5sec4ndos3struction8ulting7tact3ractors9oking4l1p2rsica5untry4pon0s4rses6pa2r0edit0card4union9icket5own3s1uise0s6u0isinella9v1w1x1y0mru3ou3z2dad1nce3ta1e1ing3sun4y2clk3ds2e0al0er2s3gree4livery5l1oitte5ta3mocrat6ntal2ist5si0gn4v2hl2iamonds6et2gital5rect0ory7scount3ver5h2y2j1k1m1np2o0cs1tor4g1mains5t1wnload7rive4tv2ubai3pont4rban5vag2r2z2earth3t2c0o2deka3u0cation8e1g1mail3erck5nergy4gineer0ing9terprises10pson4quipment8r0icsson6ni3s0q1tate5t1u0rovision8s2vents5xchange6pert3osed4ress5traspace10fage2il1rwinds6th3mily4n0s2rm0ers5shion4t3edex3edback6rrari3ero6i0delity5o2lm2nal1nce1ial7re0stone6mdale6sh0ing5t0ness6j1k1lickr3ghts4r2orist4wers5y2m1o0o0d1tball6rd1ex2sale4um3undation8x2r0ee1senius7l1ogans4ntier7tr2ujitsu5n0d2rniture7tbol5yi3ga0l0lery3o1up4me0s3p1rden4y2b0iz3d0n2e0a1nt0ing5orge5f1g0ee3h1i0ft0s3ves2ing5l0ass3e1obal2o4m0ail3bh2o1x2n1odaddy5ld0point6f2odyear5g0le4p1t1v2p1q1r0ainger5phics5tis4een3ipe3ocery4up4s1t1u0cci3ge2ide2tars5ru3w1y2hair2mburg5ngout5us3bo2dfc0bank7ealth0care8lp1sinki6re1mes5iphop4samitsu7tachi5v2k0t2m1n1ockey4ldings5iday5medepot5goods5s0ense7nda3rse3spital5t0ing5t0els3mail5use3w2r1sbc3t1u0ghes5yatt3undai7ibm2cbc2e1u2d1e0ee3fm2kano4l1m0amat4db2mo0bilien9n0c1dustries8finiti5o2g1k1stitute6urance4e4t0ernational10uit4vestments10o1piranga7q1r0ish4s0maili5t0anbul7t0au2v3jaguar4va3cb2e0ep2tzt3welry6io2ll2m0p2nj2o0bs1urg4t1y2p0morgan6rs3uegos4niper7kaufen5ddi3e0rryhotels6properties14fh2g1h1i0a1ds2m1ndle4tchen5wi3m1n1oeln3matsu5sher5p0mg2n2r0d1ed3uokgroup8w1y0oto4z2la0caixa5mborghini8er3nd0rover6xess5salle5t0ino3robe5w0yer5b1c1ds2ease3clerc5frak4gal2o2xus4gbt3i0dl2fe0insurance9style7ghting6ke2lly3mited4o2ncoln4k2ve1ing5k1lc1p2oan0s3cker3us3l1ndon4tte1o3ve3pl0financial11r1s1t0d0a3u0ndbeck6xe1ury5v1y2ma0drid4if1son4keup4n0agement7go3p1rket0ing3s4riott5shalls7ttel5ba2c0kinsey7d1e0d0ia3et2lbourne7me1orial6n0u2rck0msd7g1h1iami3crosoft7l1ni1t2t0subishi9k1l0b1s2m0a2n1o0bi0le4da2e1i1m1nash3ey2ster5rmon3tgage6scow4to0rcycles9v0ie4p1q1r1s0d2t0n1r2u0seum3ic4v1w1x1y1z2na0b1goya4me2vy3ba2c1e0c1t0bank4flix4work5ustar5w0s2xt0direct7us4f0l2g0o2hk2i0co2ke1on3nja3ssan1y5l1o0kia3rton4w0ruz3tv4p1r0a1w2tt2u1yc2z2obi1server7ffice5kinawa6layan0group9lo3m0ega4ne1g1l0ine5oo2pen3racle3nge4g0anic5igins6saka4tsuka4t2vh3pa0ge2nasonic7ris2s1tners4s1y3y2ccw3e0t2f0izer5g1h0armacy6d1ilips5one2to0graphy6s4ysio5ics1tet2ures6d1n0g1k2oneer5zza4k1l0ace2y0station9umbing5s3m1n0c2ohl2ker3litie5rn2st3r0axi3ess3ime3o0d0uctions8f1gressive8mo2perties3y5tection8u0dential9s1t1ub2w0c2y2qa1pon3uebec3st5racing4dio4e0ad1lestate6tor2y4cipes5d0umbrella9hab3ise0n3t2liance6n0t0als5pair3ort3ublican8st0aurant8view0s5xroth6ich0ardli6oh3l1o1p2o0cks3deo3gers4om3s0vp3u0gby3hr2n2w0e2yukyu6sa0arland6fe0ty4kura4le1on3msclub4ung5ndvik0coromant12ofi4p1rl2s1ve2xo3b0i1s2c0b1haeffler7midt4olarships8ol3ule3warz5ience5ot3d1e0arch3t2cure1ity6ek2lect4ner3rvices6ven3w1x0y3fr2g1h0angrila6rp3ell3ia1ksha5oes2p0ping5uji3w3i0lk2na1gles5te3j1k0i0n2y0pe4l0ing4m0art3ile4n0cf3o0ccer3ial4ftbank4ware6hu2lar2utions7ng1y2y2pa0ce3ort2t3r0l2s1t0ada2ples4r1tebank4farm7c0group6ockholm6rage3e3ream4udio2y3yle4u0cks3pplies3y2ort5rf1gery5zuki5v1watch4iss4x1y0dney4stems6z2tab1ipei4lk2obao4rget4tamotors6r2too4x0i3c0i2d0k2eam2ch0nology8l1masek5nnis4va3f1g1h0d1eater2re6iaa2ckets5enda4ps2res2ol4j0maxx4x2k0maxx5l1m0all4n1o0day3kyo3ols3p1ray3shiba5tal3urs3wn2yota3s3r0ade1ing4ining5vel0ers0insurance16ust3v2t1ube2i1nes3shu4v0s2w1z2ua1bank3s2g1k1nicom3versity8o2ol2ps2s1y1z2va0cations7na1guard7c1e0gas3ntures6risign5m\xF6gensberater2ung14sicherung10t2g1i0ajes4deo3g1king4llas4n1p1rgin4sa1ion4va1o3laanderen9n1odka3lvo3te1ing3o2yage5u2wales2mart4ter4ng0gou5tch0es6eather0channel12bcam3er2site5d0ding5ibo2r3f1hoswho6ien2ki2lliamhill9n0dows4e1ners6me2oodside6rk0s2ld3w2s1tc1f3xbox3erox4ihuan4n2xx2yz3yachts4hoo3maxun5ndex5e1odobashi7ga2kohama6u0tube6t1un3za0ppos4ra3ero3ip2m1one3uerich6w2";
+  var encodedUtlds = "\u03B5\u03BB1\u03C52\u0431\u04331\u0435\u043B3\u0434\u0435\u0442\u04384\u0435\u044E2\u043A\u0430\u0442\u043E\u043B\u0438\u043A6\u043E\u043C3\u043C\u043A\u04342\u043E\u043D1\u0441\u043A\u0432\u04306\u043E\u043D\u043B\u0430\u0439\u043D5\u0440\u04333\u0440\u0443\u04412\u04442\u0441\u0430\u0439\u04423\u0440\u04313\u0443\u043A\u04403\u049B\u0430\u04373\u0570\u0561\u05753\u05D9\u05E9\u05E8\u05D0\u05DC5\u05E7\u05D5\u05DD3\u0627\u0628\u0648\u0638\u0628\u064A5\u0631\u0627\u0645\u0643\u06485\u0644\u0627\u0631\u062F\u06464\u0628\u062D\u0631\u064A\u06465\u062C\u0632\u0627\u0626\u06315\u0633\u0639\u0648\u062F\u064A\u06296\u0639\u0644\u064A\u0627\u06465\u0645\u063A\u0631\u06285\u0645\u0627\u0631\u0627\u062A5\u06CC\u0631\u0627\u06465\u0628\u0627\u0631\u062A2\u0632\u0627\u06314\u064A\u062A\u06433\u06BE\u0627\u0631\u062A5\u062A\u0648\u0646\u06334\u0633\u0648\u062F\u0627\u06463\u0631\u064A\u06295\u0634\u0628\u0643\u06294\u0639\u0631\u0627\u06422\u06282\u0645\u0627\u06464\u0641\u0644\u0633\u0637\u064A\u06466\u0642\u0637\u06313\u0643\u0627\u062B\u0648\u0644\u064A\u06436\u0648\u06453\u0645\u0635\u06312\u0644\u064A\u0633\u064A\u06275\u0648\u0631\u064A\u062A\u0627\u0646\u064A\u06277\u0642\u06394\u0647\u0645\u0631\u0627\u06475\u067E\u0627\u06A9\u0633\u062A\u0627\u06467\u0680\u0627\u0631\u062A4\u0915\u0949\u092E3\u0928\u0947\u091F3\u092D\u093E\u0930\u09240\u092E\u094D3\u094B\u09245\u0938\u0902\u0917\u0920\u09285\u09AC\u09BE\u0982\u09B2\u09BE5\u09AD\u09BE\u09B0\u09A42\u09F0\u09A44\u0A2D\u0A3E\u0A30\u0A244\u0AAD\u0ABE\u0AB0\u0AA44\u0B2D\u0B3E\u0B30\u0B244\u0B87\u0BA8\u0BCD\u0BA4\u0BBF\u0BAF\u0BBE6\u0BB2\u0B99\u0BCD\u0B95\u0BC86\u0B9A\u0BBF\u0B99\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0BC2\u0BB0\u0BCD11\u0C2D\u0C3E\u0C30\u0C24\u0C4D5\u0CAD\u0CBE\u0CB0\u0CA44\u0D2D\u0D3E\u0D30\u0D24\u0D025\u0DBD\u0D82\u0D9A\u0DCF4\u0E04\u0E2D\u0E213\u0E44\u0E17\u0E223\u0EA5\u0EB2\u0EA73\u10D2\u10D42\u307F\u3093\u306A3\u30A2\u30DE\u30BE\u30F34\u30AF\u30E9\u30A6\u30C94\u30B0\u30FC\u30B0\u30EB4\u30B3\u30E02\u30B9\u30C8\u30A23\u30BB\u30FC\u30EB3\u30D5\u30A1\u30C3\u30B7\u30E7\u30F36\u30DD\u30A4\u30F3\u30C84\u4E16\u754C2\u4E2D\u4FE11\u56FD1\u570B1\u6587\u7F513\u4E9A\u9A6C\u900A3\u4F01\u4E1A2\u4F5B\u5C712\u4FE1\u606F2\u5065\u5EB72\u516B\u53662\u516C\u53F81\u76CA2\u53F0\u6E7E1\u70632\u5546\u57CE1\u5E971\u68072\u5609\u91CC0\u5927\u9152\u5E975\u5728\u7EBF2\u5927\u62FF2\u5929\u4E3B\u65593\u5A31\u4E502\u5BB6\u96FB2\u5E7F\u4E1C2\u5FAE\u535A2\u6148\u55842\u6211\u7231\u4F603\u624B\u673A2\u62DB\u80582\u653F\u52A11\u5E9C2\u65B0\u52A0\u57612\u95FB2\u65F6\u5C1A2\u66F8\u7C4D2\u673A\u67842\u6DE1\u9A6C\u95213\u6E38\u620F2\u6FB3\u95802\u70B9\u770B2\u79FB\u52A82\u7EC4\u7EC7\u673A\u67844\u7F51\u57401\u5E971\u7AD91\u7EDC2\u8054\u901A2\u8C37\u6B4C2\u8D2D\u72692\u901A\u8CA92\u96C6\u56E22\u96FB\u8A0A\u76C8\u79D14\u98DE\u5229\u6D663\u98DF\u54C12\u9910\u53852\u9999\u683C\u91CC\u62C93\u6E2F2\uB2F7\uB1371\uCEF42\uC0BC\uC1312\uD55C\uAD6D2";
+  var numeric = "numeric";
+  var ascii = "ascii";
+  var alpha = "alpha";
+  var asciinumeric = "asciinumeric";
+  var alphanumeric = "alphanumeric";
+  var domain = "domain";
+  var emoji = "emoji";
+  var scheme = "scheme";
+  var slashscheme = "slashscheme";
+  var whitespace = "whitespace";
+  function registerGroup(name, groups) {
+    if (!(name in groups)) {
+      groups[name] = [];
+    }
+    return groups[name];
+  }
+  function addToGroups(t, flags, groups) {
+    if (flags[numeric]) {
+      flags[asciinumeric] = true;
+      flags[alphanumeric] = true;
+    }
+    if (flags[ascii]) {
+      flags[asciinumeric] = true;
+      flags[alpha] = true;
+    }
+    if (flags[asciinumeric]) {
+      flags[alphanumeric] = true;
+    }
+    if (flags[alpha]) {
+      flags[alphanumeric] = true;
+    }
+    if (flags[alphanumeric]) {
+      flags[domain] = true;
+    }
+    if (flags[emoji]) {
+      flags[domain] = true;
+    }
+    for (const k in flags) {
+      const group = registerGroup(k, groups);
+      if (group.indexOf(t) < 0) {
+        group.push(t);
+      }
+    }
+  }
+  function flagsForToken(t, groups) {
+    const result = {};
+    for (const c in groups) {
+      if (groups[c].indexOf(t) >= 0) {
+        result[c] = true;
+      }
+    }
+    return result;
+  }
+  function State(token2 = null) {
+    this.j = {};
+    this.jr = [];
+    this.jd = null;
+    this.t = token2;
+  }
+  State.groups = {};
+  State.prototype = {
+    accepts() {
+      return !!this.t;
+    },
+    /**
+     * Follow an existing transition from the given input to the next state.
+     * Does not mutate.
+     * @param {string} input character or token type to transition on
+     * @returns {?State<T>} the next state, if any
+     */
+    go(input) {
+      const state = this;
+      const nextState = state.j[input];
+      if (nextState) {
+        return nextState;
+      }
+      for (let i = 0; i < state.jr.length; i++) {
+        const regex = state.jr[i][0];
+        const nextState2 = state.jr[i][1];
+        if (nextState2 && regex.test(input)) {
+          return nextState2;
+        }
+      }
+      return state.jd;
+    },
+    /**
+     * Whether the state has a transition for the given input. Set the second
+     * argument to true to only look for an exact match (and not a default or
+     * regular-expression-based transition)
+     * @param {string} input
+     * @param {boolean} exactOnly
+     */
+    has(input, exactOnly = false) {
+      return exactOnly ? input in this.j : !!this.go(input);
+    },
+    /**
+     * Short for "transition all"; create a transition from the array of items
+     * in the given list to the same final resulting state.
+     * @param {string | string[]} inputs Group of inputs to transition on
+     * @param {Transition<T> | State<T>} [next] Transition options
+     * @param {Flags} [flags] Collections flags to add token to
+     * @param {Collections<T>} [groups] Master list of token groups
+     */
+    ta(inputs, next, flags, groups) {
+      for (let i = 0; i < inputs.length; i++) {
+        this.tt(inputs[i], next, flags, groups);
+      }
+    },
+    /**
+     * Short for "take regexp transition"; defines a transition for this state
+     * when it encounters a token which matches the given regular expression
+     * @param {RegExp} regexp Regular expression transition (populate first)
+     * @param {T | State<T>} [next] Transition options
+     * @param {Flags} [flags] Collections flags to add token to
+     * @param {Collections<T>} [groups] Master list of token groups
+     * @returns {State<T>} taken after the given input
+     */
+    tr(regexp, next, flags, groups) {
+      groups = groups || State.groups;
+      let nextState;
+      if (next && next.j) {
+        nextState = next;
+      } else {
+        nextState = new State(next);
+        if (flags && groups) {
+          addToGroups(next, flags, groups);
+        }
+      }
+      this.jr.push([regexp, nextState]);
+      return nextState;
+    },
+    /**
+     * Short for "take transitions", will take as many sequential transitions as
+     * the length of the given input and returns the
+     * resulting final state.
+     * @param {string | string[]} input
+     * @param {T | State<T>} [next] Transition options
+     * @param {Flags} [flags] Collections flags to add token to
+     * @param {Collections<T>} [groups] Master list of token groups
+     * @returns {State<T>} taken after the given input
+     */
+    ts(input, next, flags, groups) {
+      let state = this;
+      const len = input.length;
+      if (!len) {
+        return state;
+      }
+      for (let i = 0; i < len - 1; i++) {
+        state = state.tt(input[i]);
+      }
+      return state.tt(input[len - 1], next, flags, groups);
+    },
+    /**
+     * Short for "take transition", this is a method for building/working with
+     * state machines.
+     *
+     * If a state already exists for the given input, returns it.
+     *
+     * If a token is specified, that state will emit that token when reached by
+     * the linkify engine.
+     *
+     * If no state exists, it will be initialized with some default transitions
+     * that resemble existing default transitions.
+     *
+     * If a state is given for the second argument, that state will be
+     * transitioned to on the given input regardless of what that input
+     * previously did.
+     *
+     * Specify a token group flags to define groups that this token belongs to.
+     * The token will be added to corresponding entires in the given groups
+     * object.
+     *
+     * @param {string} input character, token type to transition on
+     * @param {T | State<T>} [next] Transition options
+     * @param {Flags} [flags] Collections flags to add token to
+     * @param {Collections<T>} [groups] Master list of groups
+     * @returns {State<T>} taken after the given input
+     */
+    tt(input, next, flags, groups) {
+      groups = groups || State.groups;
+      const state = this;
+      if (next && next.j) {
+        state.j[input] = next;
+        return next;
+      }
+      const t = next;
+      let nextState, templateState = state.go(input);
+      if (templateState) {
+        nextState = new State();
+        Object.assign(nextState.j, templateState.j);
+        nextState.jr.push.apply(nextState.jr, templateState.jr);
+        nextState.jd = templateState.jd;
+        nextState.t = templateState.t;
+      } else {
+        nextState = new State();
+      }
+      if (t) {
+        if (groups) {
+          if (nextState.t && typeof nextState.t === "string") {
+            const allFlags = Object.assign(flagsForToken(nextState.t, groups), flags);
+            addToGroups(t, allFlags, groups);
+          } else if (flags) {
+            addToGroups(t, flags, groups);
+          }
+        }
+        nextState.t = t;
+      }
+      state.j[input] = nextState;
+      return nextState;
+    }
+  };
+  var ta = (state, input, next, flags, groups) => state.ta(input, next, flags, groups);
+  var tr = (state, regexp, next, flags, groups) => state.tr(regexp, next, flags, groups);
+  var ts = (state, input, next, flags, groups) => state.ts(input, next, flags, groups);
+  var tt = (state, input, next, flags, groups) => state.tt(input, next, flags, groups);
+  var WORD = "WORD";
+  var UWORD = "UWORD";
+  var ASCIINUMERICAL = "ASCIINUMERICAL";
+  var ALPHANUMERICAL = "ALPHANUMERICAL";
+  var LOCALHOST = "LOCALHOST";
+  var TLD = "TLD";
+  var UTLD = "UTLD";
+  var SCHEME = "SCHEME";
+  var SLASH_SCHEME = "SLASH_SCHEME";
+  var NUM = "NUM";
+  var WS = "WS";
+  var NL = "NL";
+  var OPENBRACE = "OPENBRACE";
+  var CLOSEBRACE = "CLOSEBRACE";
+  var OPENBRACKET = "OPENBRACKET";
+  var CLOSEBRACKET = "CLOSEBRACKET";
+  var OPENPAREN = "OPENPAREN";
+  var CLOSEPAREN = "CLOSEPAREN";
+  var OPENANGLEBRACKET = "OPENANGLEBRACKET";
+  var CLOSEANGLEBRACKET = "CLOSEANGLEBRACKET";
+  var FULLWIDTHLEFTPAREN = "FULLWIDTHLEFTPAREN";
+  var FULLWIDTHRIGHTPAREN = "FULLWIDTHRIGHTPAREN";
+  var LEFTCORNERBRACKET = "LEFTCORNERBRACKET";
+  var RIGHTCORNERBRACKET = "RIGHTCORNERBRACKET";
+  var LEFTWHITECORNERBRACKET = "LEFTWHITECORNERBRACKET";
+  var RIGHTWHITECORNERBRACKET = "RIGHTWHITECORNERBRACKET";
+  var FULLWIDTHLESSTHAN = "FULLWIDTHLESSTHAN";
+  var FULLWIDTHGREATERTHAN = "FULLWIDTHGREATERTHAN";
+  var AMPERSAND = "AMPERSAND";
+  var APOSTROPHE = "APOSTROPHE";
+  var ASTERISK = "ASTERISK";
+  var AT = "AT";
+  var BACKSLASH = "BACKSLASH";
+  var BACKTICK = "BACKTICK";
+  var CARET = "CARET";
+  var COLON = "COLON";
+  var COMMA = "COMMA";
+  var DOLLAR = "DOLLAR";
+  var DOT = "DOT";
+  var EQUALS = "EQUALS";
+  var EXCLAMATION = "EXCLAMATION";
+  var HYPHEN = "HYPHEN";
+  var PERCENT = "PERCENT";
+  var PIPE = "PIPE";
+  var PLUS = "PLUS";
+  var POUND = "POUND";
+  var QUERY = "QUERY";
+  var QUOTE = "QUOTE";
+  var FULLWIDTHMIDDLEDOT = "FULLWIDTHMIDDLEDOT";
+  var SEMI = "SEMI";
+  var SLASH = "SLASH";
+  var TILDE = "TILDE";
+  var UNDERSCORE = "UNDERSCORE";
+  var EMOJI$1 = "EMOJI";
+  var SYM = "SYM";
+  var tk = /* @__PURE__ */ Object.freeze({
+    __proto__: null,
+    ALPHANUMERICAL,
+    AMPERSAND,
+    APOSTROPHE,
+    ASCIINUMERICAL,
+    ASTERISK,
+    AT,
+    BACKSLASH,
+    BACKTICK,
+    CARET,
+    CLOSEANGLEBRACKET,
+    CLOSEBRACE,
+    CLOSEBRACKET,
+    CLOSEPAREN,
+    COLON,
+    COMMA,
+    DOLLAR,
+    DOT,
+    EMOJI: EMOJI$1,
+    EQUALS,
+    EXCLAMATION,
+    FULLWIDTHGREATERTHAN,
+    FULLWIDTHLEFTPAREN,
+    FULLWIDTHLESSTHAN,
+    FULLWIDTHMIDDLEDOT,
+    FULLWIDTHRIGHTPAREN,
+    HYPHEN,
+    LEFTCORNERBRACKET,
+    LEFTWHITECORNERBRACKET,
+    LOCALHOST,
+    NL,
+    NUM,
+    OPENANGLEBRACKET,
+    OPENBRACE,
+    OPENBRACKET,
+    OPENPAREN,
+    PERCENT,
+    PIPE,
+    PLUS,
+    POUND,
+    QUERY,
+    QUOTE,
+    RIGHTCORNERBRACKET,
+    RIGHTWHITECORNERBRACKET,
+    SCHEME,
+    SEMI,
+    SLASH,
+    SLASH_SCHEME,
+    SYM,
+    TILDE,
+    TLD,
+    UNDERSCORE,
+    UTLD,
+    UWORD,
+    WORD,
+    WS
+  });
+  var ASCII_LETTER = /[a-z]/;
+  var LETTER = /\p{L}/u;
+  var EMOJI = /\p{Emoji}/u;
+  var DIGIT = /\d/;
+  var SPACE = /\s/;
+  var CR = "\r";
+  var LF = "\n";
+  var EMOJI_VARIATION = "\uFE0F";
+  var EMOJI_JOINER = "\u200D";
+  var OBJECT_REPLACEMENT = "\uFFFC";
+  var tlds = null;
+  var utlds = null;
+  function init$2(customSchemes = []) {
+    const groups = {};
+    State.groups = groups;
+    const Start = new State();
+    if (tlds == null) {
+      tlds = decodeTlds(encodedTlds);
+    }
+    if (utlds == null) {
+      utlds = decodeTlds(encodedUtlds);
+    }
+    tt(Start, "'", APOSTROPHE);
+    tt(Start, "{", OPENBRACE);
+    tt(Start, "}", CLOSEBRACE);
+    tt(Start, "[", OPENBRACKET);
+    tt(Start, "]", CLOSEBRACKET);
+    tt(Start, "(", OPENPAREN);
+    tt(Start, ")", CLOSEPAREN);
+    tt(Start, "<", OPENANGLEBRACKET);
+    tt(Start, ">", CLOSEANGLEBRACKET);
+    tt(Start, "\uFF08", FULLWIDTHLEFTPAREN);
+    tt(Start, "\uFF09", FULLWIDTHRIGHTPAREN);
+    tt(Start, "\u300C", LEFTCORNERBRACKET);
+    tt(Start, "\u300D", RIGHTCORNERBRACKET);
+    tt(Start, "\u300E", LEFTWHITECORNERBRACKET);
+    tt(Start, "\u300F", RIGHTWHITECORNERBRACKET);
+    tt(Start, "\uFF1C", FULLWIDTHLESSTHAN);
+    tt(Start, "\uFF1E", FULLWIDTHGREATERTHAN);
+    tt(Start, "&", AMPERSAND);
+    tt(Start, "*", ASTERISK);
+    tt(Start, "@", AT);
+    tt(Start, "`", BACKTICK);
+    tt(Start, "^", CARET);
+    tt(Start, ":", COLON);
+    tt(Start, ",", COMMA);
+    tt(Start, "$", DOLLAR);
+    tt(Start, ".", DOT);
+    tt(Start, "=", EQUALS);
+    tt(Start, "!", EXCLAMATION);
+    tt(Start, "-", HYPHEN);
+    tt(Start, "%", PERCENT);
+    tt(Start, "|", PIPE);
+    tt(Start, "+", PLUS);
+    tt(Start, "#", POUND);
+    tt(Start, "?", QUERY);
+    tt(Start, '"', QUOTE);
+    tt(Start, "/", SLASH);
+    tt(Start, ";", SEMI);
+    tt(Start, "~", TILDE);
+    tt(Start, "_", UNDERSCORE);
+    tt(Start, "\\", BACKSLASH);
+    tt(Start, "\u30FB", FULLWIDTHMIDDLEDOT);
+    const Num = tr(Start, DIGIT, NUM, {
+      [numeric]: true
+    });
+    tr(Num, DIGIT, Num);
+    const Asciinumeric = tr(Num, ASCII_LETTER, ASCIINUMERICAL, {
+      [asciinumeric]: true
+    });
+    const Alphanumeric = tr(Num, LETTER, ALPHANUMERICAL, {
+      [alphanumeric]: true
+    });
+    const Word = tr(Start, ASCII_LETTER, WORD, {
+      [ascii]: true
+    });
+    tr(Word, DIGIT, Asciinumeric);
+    tr(Word, ASCII_LETTER, Word);
+    tr(Asciinumeric, DIGIT, Asciinumeric);
+    tr(Asciinumeric, ASCII_LETTER, Asciinumeric);
+    const UWord = tr(Start, LETTER, UWORD, {
+      [alpha]: true
+    });
+    tr(UWord, ASCII_LETTER);
+    tr(UWord, DIGIT, Alphanumeric);
+    tr(UWord, LETTER, UWord);
+    tr(Alphanumeric, DIGIT, Alphanumeric);
+    tr(Alphanumeric, ASCII_LETTER);
+    tr(Alphanumeric, LETTER, Alphanumeric);
+    const Nl2 = tt(Start, LF, NL, {
+      [whitespace]: true
+    });
+    const Cr = tt(Start, CR, WS, {
+      [whitespace]: true
+    });
+    const Ws = tr(Start, SPACE, WS, {
+      [whitespace]: true
+    });
+    tt(Start, OBJECT_REPLACEMENT, Ws);
+    tt(Cr, LF, Nl2);
+    tt(Cr, OBJECT_REPLACEMENT, Ws);
+    tr(Cr, SPACE, Ws);
+    tt(Ws, CR);
+    tt(Ws, LF);
+    tr(Ws, SPACE, Ws);
+    tt(Ws, OBJECT_REPLACEMENT, Ws);
+    const Emoji = tr(Start, EMOJI, EMOJI$1, {
+      [emoji]: true
+    });
+    tt(Emoji, "#");
+    tr(Emoji, EMOJI, Emoji);
+    tt(Emoji, EMOJI_VARIATION, Emoji);
+    const EmojiJoiner = tt(Emoji, EMOJI_JOINER);
+    tt(EmojiJoiner, "#");
+    tr(EmojiJoiner, EMOJI, Emoji);
+    const wordjr = [[ASCII_LETTER, Word], [DIGIT, Asciinumeric]];
+    const uwordjr = [[ASCII_LETTER, null], [LETTER, UWord], [DIGIT, Alphanumeric]];
+    for (let i = 0; i < tlds.length; i++) {
+      fastts(Start, tlds[i], TLD, WORD, wordjr);
+    }
+    for (let i = 0; i < utlds.length; i++) {
+      fastts(Start, utlds[i], UTLD, UWORD, uwordjr);
+    }
+    addToGroups(TLD, {
+      tld: true,
+      ascii: true
+    }, groups);
+    addToGroups(UTLD, {
+      utld: true,
+      alpha: true
+    }, groups);
+    fastts(Start, "file", SCHEME, WORD, wordjr);
+    fastts(Start, "mailto", SCHEME, WORD, wordjr);
+    fastts(Start, "http", SLASH_SCHEME, WORD, wordjr);
+    fastts(Start, "https", SLASH_SCHEME, WORD, wordjr);
+    fastts(Start, "ftp", SLASH_SCHEME, WORD, wordjr);
+    fastts(Start, "ftps", SLASH_SCHEME, WORD, wordjr);
+    addToGroups(SCHEME, {
+      scheme: true,
+      ascii: true
+    }, groups);
+    addToGroups(SLASH_SCHEME, {
+      slashscheme: true,
+      ascii: true
+    }, groups);
+    customSchemes = customSchemes.sort((a, b) => a[0] > b[0] ? 1 : -1);
+    for (let i = 0; i < customSchemes.length; i++) {
+      const sch = customSchemes[i][0];
+      const optionalSlashSlash = customSchemes[i][1];
+      const flags = optionalSlashSlash ? {
+        [scheme]: true
+      } : {
+        [slashscheme]: true
+      };
+      if (sch.indexOf("-") >= 0) {
+        flags[domain] = true;
+      } else if (!ASCII_LETTER.test(sch)) {
+        flags[numeric] = true;
+      } else if (DIGIT.test(sch)) {
+        flags[asciinumeric] = true;
+      } else {
+        flags[ascii] = true;
+      }
+      ts(Start, sch, sch, flags);
+    }
+    ts(Start, "localhost", LOCALHOST, {
+      ascii: true
+    });
+    Start.jd = new State(SYM);
+    return {
+      start: Start,
+      tokens: Object.assign({
+        groups
+      }, tk)
+    };
+  }
+  function run$12(start, str) {
+    const iterable = stringToArray(str.replace(/[A-Z]/g, (c) => c.toLowerCase()));
+    const charCount = iterable.length;
+    const tokens = [];
+    let cursor = 0;
+    let charCursor = 0;
+    while (charCursor < charCount) {
+      let state = start;
+      let nextState = null;
+      let tokenLength = 0;
+      let latestAccepting = null;
+      let sinceAccepts = -1;
+      let charsSinceAccepts = -1;
+      while (charCursor < charCount && (nextState = state.go(iterable[charCursor]))) {
+        state = nextState;
+        if (state.accepts()) {
+          sinceAccepts = 0;
+          charsSinceAccepts = 0;
+          latestAccepting = state;
+        } else if (sinceAccepts >= 0) {
+          sinceAccepts += iterable[charCursor].length;
+          charsSinceAccepts++;
+        }
+        tokenLength += iterable[charCursor].length;
+        cursor += iterable[charCursor].length;
+        charCursor++;
+      }
+      cursor -= sinceAccepts;
+      charCursor -= charsSinceAccepts;
+      tokenLength -= sinceAccepts;
+      tokens.push({
+        t: latestAccepting.t,
+        // token type/name
+        v: str.slice(cursor - tokenLength, cursor),
+        // string value
+        s: cursor - tokenLength,
+        // start index
+        e: cursor
+        // end index (excluding)
+      });
+    }
+    return tokens;
+  }
+  function stringToArray(str) {
+    const result = [];
+    const len = str.length;
+    let index = 0;
+    while (index < len) {
+      let first2 = str.charCodeAt(index);
+      let second;
+      let char = first2 < 55296 || first2 > 56319 || index + 1 === len || (second = str.charCodeAt(index + 1)) < 56320 || second > 57343 ? str[index] : str.slice(index, index + 2);
+      result.push(char);
+      index += char.length;
+    }
+    return result;
+  }
+  function fastts(state, input, t, defaultt, jr) {
+    let next;
+    const len = input.length;
+    for (let i = 0; i < len - 1; i++) {
+      const char = input[i];
+      if (state.j[char]) {
+        next = state.j[char];
+      } else {
+        next = new State(defaultt);
+        next.jr = jr.slice();
+        state.j[char] = next;
+      }
+      state = next;
+    }
+    next = new State(t);
+    next.jr = jr.slice();
+    state.j[input[len - 1]] = next;
+    return next;
+  }
+  function decodeTlds(encoded) {
+    const words = [];
+    const stack = [];
+    let i = 0;
+    let digits = "0123456789";
+    while (i < encoded.length) {
+      let popDigitCount = 0;
+      while (digits.indexOf(encoded[i + popDigitCount]) >= 0) {
+        popDigitCount++;
+      }
+      if (popDigitCount > 0) {
+        words.push(stack.join(""));
+        for (let popCount = parseInt(encoded.substring(i, i + popDigitCount), 10); popCount > 0; popCount--) {
+          stack.pop();
+        }
+        i += popDigitCount;
+      } else {
+        stack.push(encoded[i]);
+        i++;
+      }
+    }
+    return words;
+  }
+  var defaults = {
+    defaultProtocol: "http",
+    events: null,
+    format: noop,
+    formatHref: noop,
+    nl2br: false,
+    tagName: "a",
+    target: null,
+    rel: null,
+    validate: true,
+    truncate: Infinity,
+    className: null,
+    attributes: null,
+    ignoreTags: [],
+    render: null
+  };
+  function Options(opts, defaultRender = null) {
+    let o = Object.assign({}, defaults);
+    if (opts) {
+      o = Object.assign(o, opts instanceof Options ? opts.o : opts);
+    }
+    const ignoredTags = o.ignoreTags;
+    const uppercaseIgnoredTags = [];
+    for (let i = 0; i < ignoredTags.length; i++) {
+      uppercaseIgnoredTags.push(ignoredTags[i].toUpperCase());
+    }
+    this.o = o;
+    if (defaultRender) {
+      this.defaultRender = defaultRender;
+    }
+    this.ignoreTags = uppercaseIgnoredTags;
+  }
+  Options.prototype = {
+    o: defaults,
+    /**
+     * @type string[]
+     */
+    ignoreTags: [],
+    /**
+     * @param {IntermediateRepresentation} ir
+     * @returns {any}
+     */
+    defaultRender(ir) {
+      return ir;
+    },
+    /**
+     * Returns true or false based on whether a token should be displayed as a
+     * link based on the user options.
+     * @param {MultiToken} token
+     * @returns {boolean}
+     */
+    check(token2) {
+      return this.get("validate", token2.toString(), token2);
+    },
+    // Private methods
+    /**
+     * Resolve an option's value based on the value of the option and the given
+     * params. If operator and token are specified and the target option is
+     * callable, automatically calls the function with the given argument.
+     * @template {keyof Opts} K
+     * @param {K} key Name of option to use
+     * @param {string} [operator] will be passed to the target option if it's a
+     * function. If not specified, RAW function value gets returned
+     * @param {MultiToken} [token] The token from linkify.tokenize
+     * @returns {Opts[K] | any}
+     */
+    get(key, operator, token2) {
+      const isCallable = operator != null;
+      let option = this.o[key];
+      if (!option) {
+        return option;
+      }
+      if (typeof option === "object") {
+        option = token2.t in option ? option[token2.t] : defaults[key];
+        if (typeof option === "function" && isCallable) {
+          option = option(operator, token2);
+        }
+      } else if (typeof option === "function" && isCallable) {
+        option = option(operator, token2.t, token2);
+      }
+      return option;
+    },
+    /**
+     * @template {keyof Opts} L
+     * @param {L} key Name of options object to use
+     * @param {string} [operator]
+     * @param {MultiToken} [token]
+     * @returns {Opts[L] | any}
+     */
+    getObj(key, operator, token2) {
+      let obj = this.o[key];
+      if (typeof obj === "function" && operator != null) {
+        obj = obj(operator, token2.t, token2);
+      }
+      return obj;
+    },
+    /**
+     * Convert the given token to a rendered element that may be added to the
+     * calling-interface's DOM
+     * @param {MultiToken} token Token to render to an HTML element
+     * @returns {any} Render result; e.g., HTML string, DOM element, React
+     *   Component, etc.
+     */
+    render(token2) {
+      const ir = token2.render(this);
+      const renderFn = this.get("render", null, token2) || this.defaultRender;
+      return renderFn(ir, token2.t, token2);
+    }
+  };
+  function noop(val) {
+    return val;
+  }
+  function MultiToken(value, tokens) {
+    this.t = "token";
+    this.v = value;
+    this.tk = tokens;
+  }
+  MultiToken.prototype = {
+    isLink: false,
+    /**
+     * Return the string this token represents.
+     * @return {string}
+     */
+    toString() {
+      return this.v;
+    },
+    /**
+     * What should the value for this token be in the `href` HTML attribute?
+     * Returns the `.toString` value by default.
+     * @param {string} [scheme]
+     * @return {string}
+     */
+    toHref(scheme2) {
+      return this.toString();
+    },
+    /**
+     * @param {Options} options Formatting options
+     * @returns {string}
+     */
+    toFormattedString(options) {
+      const val = this.toString();
+      const truncate = options.get("truncate", val, this);
+      const formatted = options.get("format", val, this);
+      return truncate && formatted.length > truncate ? formatted.substring(0, truncate) + "\u2026" : formatted;
+    },
+    /**
+     *
+     * @param {Options} options
+     * @returns {string}
+     */
+    toFormattedHref(options) {
+      return options.get("formatHref", this.toHref(options.get("defaultProtocol")), this);
+    },
+    /**
+     * The start index of this token in the original input string
+     * @returns {number}
+     */
+    startIndex() {
+      return this.tk[0].s;
+    },
+    /**
+     * The end index of this token in the original input string (up to this
+     * index but not including it)
+     * @returns {number}
+     */
+    endIndex() {
+      return this.tk[this.tk.length - 1].e;
+    },
+    /**
+    	Returns an object  of relevant values for this token, which includes keys
+    	* type - Kind of token ('url', 'email', etc.)
+    	* value - Original text
+    	* href - The value that should be added to the anchor tag's href
+    		attribute
+    		@method toObject
+    	@param {string} [protocol] `'http'` by default
+    */
+    toObject(protocol = defaults.defaultProtocol) {
+      return {
+        type: this.t,
+        value: this.toString(),
+        isLink: this.isLink,
+        href: this.toHref(protocol),
+        start: this.startIndex(),
+        end: this.endIndex()
+      };
+    },
+    /**
+     *
+     * @param {Options} options Formatting option
+     */
+    toFormattedObject(options) {
+      return {
+        type: this.t,
+        value: this.toFormattedString(options),
+        isLink: this.isLink,
+        href: this.toFormattedHref(options),
+        start: this.startIndex(),
+        end: this.endIndex()
+      };
+    },
+    /**
+     * Whether this token should be rendered as a link according to the given options
+     * @param {Options} options
+     * @returns {boolean}
+     */
+    validate(options) {
+      return options.get("validate", this.toString(), this);
+    },
+    /**
+     * Return an object that represents how this link should be rendered.
+     * @param {Options} options Formattinng options
+     */
+    render(options) {
+      const token2 = this;
+      const href = this.toHref(options.get("defaultProtocol"));
+      const formattedHref = options.get("formatHref", href, this);
+      const tagName = options.get("tagName", href, token2);
+      const content = this.toFormattedString(options);
+      const attributes = {};
+      const className = options.get("className", href, token2);
+      const target = options.get("target", href, token2);
+      const rel = options.get("rel", href, token2);
+      const attrs = options.getObj("attributes", href, token2);
+      const eventListeners = options.getObj("events", href, token2);
+      attributes.href = formattedHref;
+      if (className) {
+        attributes.class = className;
+      }
+      if (target) {
+        attributes.target = target;
+      }
+      if (rel) {
+        attributes.rel = rel;
+      }
+      if (attrs) {
+        Object.assign(attributes, attrs);
+      }
+      return {
+        tagName,
+        attributes,
+        content,
+        eventListeners
+      };
+    }
+  };
+  function createTokenClass(type, props) {
+    class Token extends MultiToken {
+      constructor(value, tokens) {
+        super(value, tokens);
+        this.t = type;
+      }
+    }
+    for (const p in props) {
+      Token.prototype[p] = props[p];
+    }
+    Token.t = type;
+    return Token;
+  }
+  var Email = createTokenClass("email", {
+    isLink: true,
+    toHref() {
+      return "mailto:" + this.toString();
+    }
+  });
+  var Text = createTokenClass("text");
+  var Nl = createTokenClass("nl");
+  var Url = createTokenClass("url", {
+    isLink: true,
+    /**
+    	Lowercases relevant parts of the domain and adds the protocol if
+    	required. Note that this will not escape unsafe HTML characters in the
+    	URL.
+    		@param {string} [scheme] default scheme (e.g., 'https')
+    	@return {string} the full href
+    */
+    toHref(scheme2 = defaults.defaultProtocol) {
+      return this.hasProtocol() ? this.v : `${scheme2}://${this.v}`;
+    },
+    /**
+     * Check whether this URL token has a protocol
+     * @return {boolean}
+     */
+    hasProtocol() {
+      const tokens = this.tk;
+      return tokens.length >= 2 && tokens[0].t !== LOCALHOST && tokens[1].t === COLON;
+    }
+  });
+  var makeState = (arg) => new State(arg);
+  function init$1({
+    groups
+  }) {
+    const qsAccepting = groups.domain.concat([AMPERSAND, ASTERISK, AT, BACKSLASH, BACKTICK, CARET, DOLLAR, EQUALS, HYPHEN, NUM, PERCENT, PIPE, PLUS, POUND, SLASH, SYM, TILDE, UNDERSCORE]);
+    const qsNonAccepting = [APOSTROPHE, COLON, COMMA, DOT, EXCLAMATION, PERCENT, QUERY, QUOTE, SEMI, OPENANGLEBRACKET, CLOSEANGLEBRACKET, OPENBRACE, CLOSEBRACE, CLOSEBRACKET, OPENBRACKET, OPENPAREN, CLOSEPAREN, FULLWIDTHLEFTPAREN, FULLWIDTHRIGHTPAREN, LEFTCORNERBRACKET, RIGHTCORNERBRACKET, LEFTWHITECORNERBRACKET, RIGHTWHITECORNERBRACKET, FULLWIDTHLESSTHAN, FULLWIDTHGREATERTHAN];
+    const localpartAccepting = [AMPERSAND, APOSTROPHE, ASTERISK, BACKSLASH, BACKTICK, CARET, DOLLAR, EQUALS, HYPHEN, OPENBRACE, CLOSEBRACE, PERCENT, PIPE, PLUS, POUND, QUERY, SLASH, SYM, TILDE, UNDERSCORE];
+    const Start = makeState();
+    const Localpart = tt(Start, TILDE);
+    ta(Localpart, localpartAccepting, Localpart);
+    ta(Localpart, groups.domain, Localpart);
+    const Domain = makeState(), Scheme = makeState(), SlashScheme = makeState();
+    ta(Start, groups.domain, Domain);
+    ta(Start, groups.scheme, Scheme);
+    ta(Start, groups.slashscheme, SlashScheme);
+    ta(Domain, localpartAccepting, Localpart);
+    ta(Domain, groups.domain, Domain);
+    const LocalpartAt = tt(Domain, AT);
+    tt(Localpart, AT, LocalpartAt);
+    tt(Scheme, AT, LocalpartAt);
+    tt(SlashScheme, AT, LocalpartAt);
+    const LocalpartDot = tt(Localpart, DOT);
+    ta(LocalpartDot, localpartAccepting, Localpart);
+    ta(LocalpartDot, groups.domain, Localpart);
+    const EmailDomain = makeState();
+    ta(LocalpartAt, groups.domain, EmailDomain);
+    ta(EmailDomain, groups.domain, EmailDomain);
+    const EmailDomainDot = tt(EmailDomain, DOT);
+    ta(EmailDomainDot, groups.domain, EmailDomain);
+    const Email$1 = makeState(Email);
+    ta(EmailDomainDot, groups.tld, Email$1);
+    ta(EmailDomainDot, groups.utld, Email$1);
+    tt(LocalpartAt, LOCALHOST, Email$1);
+    const EmailDomainHyphen = tt(EmailDomain, HYPHEN);
+    tt(EmailDomainHyphen, HYPHEN, EmailDomainHyphen);
+    ta(EmailDomainHyphen, groups.domain, EmailDomain);
+    ta(Email$1, groups.domain, EmailDomain);
+    tt(Email$1, DOT, EmailDomainDot);
+    tt(Email$1, HYPHEN, EmailDomainHyphen);
+    const DomainHyphen = tt(Domain, HYPHEN);
+    const DomainDot = tt(Domain, DOT);
+    tt(DomainHyphen, HYPHEN, DomainHyphen);
+    ta(DomainHyphen, groups.domain, Domain);
+    ta(DomainDot, localpartAccepting, Localpart);
+    ta(DomainDot, groups.domain, Domain);
+    const DomainDotTld = makeState(Url);
+    ta(DomainDot, groups.tld, DomainDotTld);
+    ta(DomainDot, groups.utld, DomainDotTld);
+    ta(DomainDotTld, groups.domain, Domain);
+    ta(DomainDotTld, localpartAccepting, Localpart);
+    tt(DomainDotTld, DOT, DomainDot);
+    tt(DomainDotTld, HYPHEN, DomainHyphen);
+    tt(DomainDotTld, AT, LocalpartAt);
+    const DomainDotTldColon = tt(DomainDotTld, COLON);
+    const DomainDotTldColonPort = makeState(Url);
+    ta(DomainDotTldColon, groups.numeric, DomainDotTldColonPort);
+    const Url$1 = makeState(Url);
+    const UrlNonaccept = makeState();
+    ta(Url$1, qsAccepting, Url$1);
+    ta(Url$1, qsNonAccepting, UrlNonaccept);
+    ta(UrlNonaccept, qsAccepting, Url$1);
+    ta(UrlNonaccept, qsNonAccepting, UrlNonaccept);
+    tt(DomainDotTld, SLASH, Url$1);
+    tt(DomainDotTldColonPort, SLASH, Url$1);
+    const SchemeColon = tt(Scheme, COLON);
+    const SlashSchemeColon = tt(SlashScheme, COLON);
+    const SlashSchemeColonSlash = tt(SlashSchemeColon, SLASH);
+    const UriPrefix = tt(SlashSchemeColonSlash, SLASH);
+    ta(Scheme, groups.domain, Domain);
+    tt(Scheme, DOT, DomainDot);
+    tt(Scheme, HYPHEN, DomainHyphen);
+    ta(SlashScheme, groups.domain, Domain);
+    tt(SlashScheme, DOT, DomainDot);
+    tt(SlashScheme, HYPHEN, DomainHyphen);
+    ta(SchemeColon, groups.domain, Url$1);
+    tt(SchemeColon, SLASH, Url$1);
+    tt(SchemeColon, QUERY, Url$1);
+    ta(UriPrefix, groups.domain, Url$1);
+    ta(UriPrefix, qsAccepting, Url$1);
+    tt(UriPrefix, SLASH, Url$1);
+    const bracketPairs = [
+      [OPENBRACE, CLOSEBRACE],
+      // {}
+      [OPENBRACKET, CLOSEBRACKET],
+      // []
+      [OPENPAREN, CLOSEPAREN],
+      // ()
+      [OPENANGLEBRACKET, CLOSEANGLEBRACKET],
+      // <>
+      [FULLWIDTHLEFTPAREN, FULLWIDTHRIGHTPAREN],
+      // （）
+      [LEFTCORNERBRACKET, RIGHTCORNERBRACKET],
+      // 「」
+      [LEFTWHITECORNERBRACKET, RIGHTWHITECORNERBRACKET],
+      // 『』
+      [FULLWIDTHLESSTHAN, FULLWIDTHGREATERTHAN]
+      // ＜＞
+    ];
+    for (let i = 0; i < bracketPairs.length; i++) {
+      const [OPEN, CLOSE] = bracketPairs[i];
+      const UrlOpen = tt(Url$1, OPEN);
+      tt(UrlNonaccept, OPEN, UrlOpen);
+      const UrlOpenQ = makeState(Url);
+      ta(UrlOpen, qsAccepting, UrlOpenQ);
+      const UrlOpenSyms = makeState();
+      ta(UrlOpen, qsNonAccepting, UrlOpenSyms);
+      tt(UrlOpen, CLOSE, Url$1);
+      ta(UrlOpenQ, qsAccepting, UrlOpenQ);
+      ta(UrlOpenQ, qsNonAccepting, UrlOpenSyms);
+      ta(UrlOpenSyms, qsAccepting, UrlOpenQ);
+      ta(UrlOpenSyms, qsNonAccepting, UrlOpenSyms);
+      tt(UrlOpenQ, CLOSE, Url$1);
+      tt(UrlOpenSyms, CLOSE, Url$1);
+    }
+    tt(Start, LOCALHOST, DomainDotTld);
+    tt(Start, NL, Nl);
+    return {
+      start: Start,
+      tokens: tk
+    };
+  }
+  function run2(start, input, tokens) {
+    let len = tokens.length;
+    let cursor = 0;
+    let multis = [];
+    let textTokens = [];
+    while (cursor < len) {
+      let state = start;
+      let secondState = null;
+      let nextState = null;
+      let multiLength = 0;
+      let latestAccepting = null;
+      let sinceAccepts = -1;
+      while (cursor < len && !(secondState = state.go(tokens[cursor].t))) {
+        textTokens.push(tokens[cursor++]);
+      }
+      while (cursor < len && (nextState = secondState || state.go(tokens[cursor].t))) {
+        secondState = null;
+        state = nextState;
+        if (state.accepts()) {
+          sinceAccepts = 0;
+          latestAccepting = state;
+        } else if (sinceAccepts >= 0) {
+          sinceAccepts++;
+        }
+        cursor++;
+        multiLength++;
+      }
+      if (sinceAccepts < 0) {
+        cursor -= multiLength;
+        if (cursor < len) {
+          textTokens.push(tokens[cursor]);
+          cursor++;
+        }
+      } else {
+        if (textTokens.length > 0) {
+          multis.push(initMultiToken(Text, input, textTokens));
+          textTokens = [];
+        }
+        cursor -= sinceAccepts;
+        multiLength -= sinceAccepts;
+        const Multi = latestAccepting.t;
+        const subtokens = tokens.slice(cursor - multiLength, cursor);
+        multis.push(initMultiToken(Multi, input, subtokens));
+      }
+    }
+    if (textTokens.length > 0) {
+      multis.push(initMultiToken(Text, input, textTokens));
+    }
+    return multis;
+  }
+  function initMultiToken(Multi, input, tokens) {
+    const startIdx = tokens[0].s;
+    const endIdx = tokens[tokens.length - 1].e;
+    const value = input.slice(startIdx, endIdx);
+    return new Multi(value, tokens);
+  }
+  var warn2 = typeof console !== "undefined" && console && console.warn || (() => {
+  });
+  var warnAdvice = "until manual call of linkify.init(). Register all schemes and plugins before invoking linkify the first time.";
+  var INIT = {
+    scanner: null,
+    parser: null,
+    tokenQueue: [],
+    pluginQueue: [],
+    customSchemes: [],
+    initialized: false
+  };
+  function reset() {
+    State.groups = {};
+    INIT.scanner = null;
+    INIT.parser = null;
+    INIT.tokenQueue = [];
+    INIT.pluginQueue = [];
+    INIT.customSchemes = [];
+    INIT.initialized = false;
+    return INIT;
+  }
+  function registerCustomProtocol(scheme2, optionalSlashSlash = false) {
+    if (INIT.initialized) {
+      warn2(`linkifyjs: already initialized - will not register custom scheme "${scheme2}" ${warnAdvice}`);
+    }
+    if (!/^[0-9a-z]+(-[0-9a-z]+)*$/.test(scheme2)) {
+      throw new Error(`linkifyjs: incorrect scheme format.
+1. Must only contain digits, lowercase ASCII letters or "-"
+2. Cannot start or end with "-"
+3. "-" cannot repeat`);
+    }
+    INIT.customSchemes.push([scheme2, optionalSlashSlash]);
+  }
+  function init() {
+    INIT.scanner = init$2(INIT.customSchemes);
+    for (let i = 0; i < INIT.tokenQueue.length; i++) {
+      INIT.tokenQueue[i][1]({
+        scanner: INIT.scanner
+      });
+    }
+    INIT.parser = init$1(INIT.scanner.tokens);
+    for (let i = 0; i < INIT.pluginQueue.length; i++) {
+      INIT.pluginQueue[i][1]({
+        scanner: INIT.scanner,
+        parser: INIT.parser
+      });
+    }
+    INIT.initialized = true;
+    return INIT;
+  }
+  function tokenize(str) {
+    if (!INIT.initialized) {
+      init();
+    }
+    return run2(INIT.parser.start, str, run$12(INIT.scanner.start, str));
+  }
+  tokenize.scan = run$12;
+  function find2(str, type = null, opts = null) {
+    if (type && typeof type === "object") {
+      if (opts) {
+        throw Error(`linkifyjs: Invalid link type ${type}; must be a string`);
+      }
+      opts = type;
+      type = null;
+    }
+    const options = new Options(opts);
+    const tokens = tokenize(str);
+    const filtered = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const token2 = tokens[i];
+      if (token2.isLink && (!type || token2.t === type) && options.check(token2)) {
+        filtered.push(token2.toFormattedObject(options));
+      }
+    }
+    return filtered;
+  }
+
+  // node_modules/@tiptap/extension-link/dist/index.js
+  var UNICODE_WHITESPACE_PATTERN = "[\0- \xA0\u1680\u180E\u2000-\u2029\u205F\u3000]";
+  var UNICODE_WHITESPACE_REGEX = new RegExp(UNICODE_WHITESPACE_PATTERN);
+  var UNICODE_WHITESPACE_REGEX_END = new RegExp(`${UNICODE_WHITESPACE_PATTERN}$`);
+  var UNICODE_WHITESPACE_REGEX_GLOBAL = new RegExp(UNICODE_WHITESPACE_PATTERN, "g");
+  function isValidLinkStructure(tokens) {
+    if (tokens.length === 1) {
+      return tokens[0].isLink;
+    }
+    if (tokens.length === 3 && tokens[1].isLink) {
+      return ["()", "[]"].includes(tokens[0].value + tokens[2].value);
+    }
+    return false;
+  }
+  function autolink(options) {
+    return new Plugin({
+      key: new PluginKey("autolink"),
+      appendTransaction: (transactions, oldState, newState) => {
+        const docChanges = transactions.some((transaction) => transaction.docChanged) && !oldState.doc.eq(newState.doc);
+        const preventAutolink = transactions.some((transaction) => transaction.getMeta("preventAutolink"));
+        if (!docChanges || preventAutolink) {
+          return;
+        }
+        const { tr: tr2 } = newState;
+        const transform = combineTransactionSteps(oldState.doc, [...transactions]);
+        const changes = getChangedRanges(transform);
+        changes.forEach(({ newRange }) => {
+          const nodesInChangedRanges = findChildrenInRange(newState.doc, newRange, (node) => node.isTextblock);
+          let textBlock;
+          let textBeforeWhitespace;
+          if (nodesInChangedRanges.length > 1) {
+            textBlock = nodesInChangedRanges[0];
+            textBeforeWhitespace = newState.doc.textBetween(textBlock.pos, textBlock.pos + textBlock.node.nodeSize, void 0, " ");
+          } else if (nodesInChangedRanges.length) {
+            const endText = newState.doc.textBetween(newRange.from, newRange.to, " ", " ");
+            if (!UNICODE_WHITESPACE_REGEX_END.test(endText)) {
+              return;
+            }
+            textBlock = nodesInChangedRanges[0];
+            textBeforeWhitespace = newState.doc.textBetween(textBlock.pos, newRange.to, void 0, " ");
+          }
+          if (textBlock && textBeforeWhitespace) {
+            const wordsBeforeWhitespace = textBeforeWhitespace.split(UNICODE_WHITESPACE_REGEX).filter(Boolean);
+            if (wordsBeforeWhitespace.length <= 0) {
+              return false;
+            }
+            const lastWordBeforeSpace = wordsBeforeWhitespace[wordsBeforeWhitespace.length - 1];
+            const lastWordAndBlockOffset = textBlock.pos + textBeforeWhitespace.lastIndexOf(lastWordBeforeSpace);
+            if (!lastWordBeforeSpace) {
+              return false;
+            }
+            const linksBeforeSpace = tokenize(lastWordBeforeSpace).map((t) => t.toObject(options.defaultProtocol));
+            if (!isValidLinkStructure(linksBeforeSpace)) {
+              return false;
+            }
+            linksBeforeSpace.filter((link) => link.isLink).map((link) => ({
+              ...link,
+              from: lastWordAndBlockOffset + link.start + 1,
+              to: lastWordAndBlockOffset + link.end + 1
+            })).filter((link) => {
+              if (!newState.schema.marks.code) {
+                return true;
+              }
+              return !newState.doc.rangeHasMark(link.from, link.to, newState.schema.marks.code);
+            }).filter((link) => options.validate(link.value)).filter((link) => options.shouldAutoLink(link.value)).forEach((link) => {
+              if (getMarksBetween(link.from, link.to, newState.doc).some((item) => item.mark.type === options.type)) {
+                return;
+              }
+              tr2.addMark(link.from, link.to, options.type.create({
+                href: link.href
+              }));
+            });
+          }
+        });
+        if (!tr2.steps.length) {
+          return;
+        }
+        return tr2;
+      }
+    });
+  }
+  function clickHandler(options) {
+    return new Plugin({
+      key: new PluginKey("handleClickLink"),
+      props: {
+        handleClick: (view, pos, event) => {
+          var _a, _b;
+          if (event.button !== 0) {
+            return false;
+          }
+          if (!view.editable) {
+            return false;
+          }
+          let a = event.target;
+          const els = [];
+          while (a.nodeName !== "DIV") {
+            els.push(a);
+            a = a.parentNode;
+          }
+          if (!els.find((value) => value.nodeName === "A")) {
+            return false;
+          }
+          const attrs = getAttributes(view.state, options.type.name);
+          const link = event.target;
+          const href = (_a = link === null || link === void 0 ? void 0 : link.href) !== null && _a !== void 0 ? _a : attrs.href;
+          const target = (_b = link === null || link === void 0 ? void 0 : link.target) !== null && _b !== void 0 ? _b : attrs.target;
+          if (link && href) {
+            window.open(href, target);
+            return true;
+          }
+          return false;
+        }
+      }
+    });
+  }
+  function pasteHandler(options) {
+    return new Plugin({
+      key: new PluginKey("handlePasteLink"),
+      props: {
+        handlePaste: (view, event, slice2) => {
+          const { state } = view;
+          const { selection } = state;
+          const { empty: empty2 } = selection;
+          if (empty2) {
+            return false;
+          }
+          let textContent = "";
+          slice2.content.forEach((node) => {
+            textContent += node.textContent;
+          });
+          const link = find2(textContent, { defaultProtocol: options.defaultProtocol }).find((item) => item.isLink && item.value === textContent);
+          if (!textContent || !link) {
+            return false;
+          }
+          return options.editor.commands.setMark(options.type, {
+            href: link.href
+          });
+        }
+      }
+    });
+  }
+  function isAllowedUri(uri, protocols) {
+    const allowedProtocols = [
+      "http",
+      "https",
+      "ftp",
+      "ftps",
+      "mailto",
+      "tel",
+      "callto",
+      "sms",
+      "cid",
+      "xmpp"
+    ];
+    if (protocols) {
+      protocols.forEach((protocol) => {
+        const nextProtocol = typeof protocol === "string" ? protocol : protocol.scheme;
+        if (nextProtocol) {
+          allowedProtocols.push(nextProtocol);
+        }
+      });
+    }
+    return !uri || uri.replace(UNICODE_WHITESPACE_REGEX_GLOBAL, "").match(new RegExp(
+      // eslint-disable-next-line no-useless-escape
+      `^(?:(?:${allowedProtocols.join("|")}):|[^a-z]|[a-z0-9+.-]+(?:[^a-z+.-:]|$))`,
+      "i"
+    ));
+  }
+  var Link = Mark2.create({
+    name: "link",
+    priority: 1e3,
+    keepOnSplit: false,
+    exitable: true,
+    onCreate() {
+      if (this.options.validate && !this.options.shouldAutoLink) {
+        this.options.shouldAutoLink = this.options.validate;
+        console.warn("The `validate` option is deprecated. Rename to the `shouldAutoLink` option instead.");
+      }
+      this.options.protocols.forEach((protocol) => {
+        if (typeof protocol === "string") {
+          registerCustomProtocol(protocol);
+          return;
+        }
+        registerCustomProtocol(protocol.scheme, protocol.optionalSlashes);
+      });
+    },
+    onDestroy() {
+      reset();
+    },
+    inclusive() {
+      return this.options.autolink;
+    },
+    addOptions() {
+      return {
+        openOnClick: true,
+        linkOnPaste: true,
+        autolink: true,
+        protocols: [],
+        defaultProtocol: "http",
+        HTMLAttributes: {
+          target: "_blank",
+          rel: "noopener noreferrer nofollow",
+          class: null
+        },
+        isAllowedUri: (url, ctx) => !!isAllowedUri(url, ctx.protocols),
+        validate: (url) => !!url,
+        shouldAutoLink: (url) => !!url
+      };
+    },
+    addAttributes() {
+      return {
+        href: {
+          default: null,
+          parseHTML(element2) {
+            return element2.getAttribute("href");
+          }
+        },
+        target: {
+          default: this.options.HTMLAttributes.target
+        },
+        rel: {
+          default: this.options.HTMLAttributes.rel
+        },
+        class: {
+          default: this.options.HTMLAttributes.class
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: "a[href]",
+          getAttrs: (dom) => {
+            const href = dom.getAttribute("href");
+            if (!href || !this.options.isAllowedUri(href, {
+              defaultValidate: (url) => !!isAllowedUri(url, this.options.protocols),
+              protocols: this.options.protocols,
+              defaultProtocol: this.options.defaultProtocol
+            })) {
+              return false;
+            }
+            return null;
+          }
+        }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      if (!this.options.isAllowedUri(HTMLAttributes.href, {
+        defaultValidate: (href) => !!isAllowedUri(href, this.options.protocols),
+        protocols: this.options.protocols,
+        defaultProtocol: this.options.defaultProtocol
+      })) {
+        return [
+          "a",
+          mergeAttributes(this.options.HTMLAttributes, { ...HTMLAttributes, href: "" }),
+          0
+        ];
+      }
+      return ["a", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    },
+    addCommands() {
+      return {
+        setLink: (attributes) => ({ chain }) => {
+          const { href } = attributes;
+          if (!this.options.isAllowedUri(href, {
+            defaultValidate: (url) => !!isAllowedUri(url, this.options.protocols),
+            protocols: this.options.protocols,
+            defaultProtocol: this.options.defaultProtocol
+          })) {
+            return false;
+          }
+          return chain().setMark(this.name, attributes).setMeta("preventAutolink", true).run();
+        },
+        toggleLink: (attributes) => ({ chain }) => {
+          const { href } = attributes;
+          if (!this.options.isAllowedUri(href, {
+            defaultValidate: (url) => !!isAllowedUri(url, this.options.protocols),
+            protocols: this.options.protocols,
+            defaultProtocol: this.options.defaultProtocol
+          })) {
+            return false;
+          }
+          return chain().toggleMark(this.name, attributes, { extendEmptyMarkRange: true }).setMeta("preventAutolink", true).run();
+        },
+        unsetLink: () => ({ chain }) => {
+          return chain().unsetMark(this.name, { extendEmptyMarkRange: true }).setMeta("preventAutolink", true).run();
+        }
+      };
+    },
+    addPasteRules() {
+      return [
+        markPasteRule({
+          find: (text2) => {
+            const foundLinks = [];
+            if (text2) {
+              const { protocols, defaultProtocol } = this.options;
+              const links = find2(text2).filter((item) => item.isLink && this.options.isAllowedUri(item.value, {
+                defaultValidate: (href) => !!isAllowedUri(href, protocols),
+                protocols,
+                defaultProtocol
+              }));
+              if (links.length) {
+                links.forEach((link) => foundLinks.push({
+                  text: link.value,
+                  data: {
+                    href: link.href
+                  },
+                  index: link.start
+                }));
+              }
+            }
+            return foundLinks;
+          },
+          type: this.type,
+          getAttributes: (match2) => {
+            var _a;
+            return {
+              href: (_a = match2.data) === null || _a === void 0 ? void 0 : _a.href
+            };
+          }
+        })
+      ];
+    },
+    addProseMirrorPlugins() {
+      const plugins = [];
+      const { protocols, defaultProtocol } = this.options;
+      if (this.options.autolink) {
+        plugins.push(autolink({
+          type: this.type,
+          defaultProtocol: this.options.defaultProtocol,
+          validate: (url) => this.options.isAllowedUri(url, {
+            defaultValidate: (href) => !!isAllowedUri(href, protocols),
+            protocols,
+            defaultProtocol
+          }),
+          shouldAutoLink: this.options.shouldAutoLink
+        }));
+      }
+      if (this.options.openOnClick === true) {
+        plugins.push(clickHandler({
+          type: this.type
+        }));
+      }
+      if (this.options.linkOnPaste) {
+        plugins.push(pasteHandler({
+          editor: this.editor,
+          defaultProtocol: this.options.defaultProtocol,
+          type: this.type
+        }));
+      }
+      return plugins;
+    }
+  });
+
+  // node_modules/@tiptap/suggestion/dist/index.js
+  function findSuggestionMatch(config) {
+    var _a;
+    const { char, allowSpaces: allowSpacesOption, allowToIncludeChar, allowedPrefixes, startOfLine, $position } = config;
+    const allowSpaces = allowSpacesOption && !allowToIncludeChar;
+    const escapedChar = escapeForRegEx(char);
+    const suffix = new RegExp(`\\s${escapedChar}$`);
+    const prefix = startOfLine ? "^" : "";
+    const finalEscapedChar = allowToIncludeChar ? "" : escapedChar;
+    const regexp = allowSpaces ? new RegExp(`${prefix}${escapedChar}.*?(?=\\s${finalEscapedChar}|$)`, "gm") : new RegExp(`${prefix}(?:^)?${escapedChar}[^\\s${finalEscapedChar}]*`, "gm");
+    const text2 = ((_a = $position.nodeBefore) === null || _a === void 0 ? void 0 : _a.isText) && $position.nodeBefore.text;
+    if (!text2) {
+      return null;
+    }
+    const textFrom = $position.pos - text2.length;
+    const match2 = Array.from(text2.matchAll(regexp)).pop();
+    if (!match2 || match2.input === void 0 || match2.index === void 0) {
+      return null;
+    }
+    const matchPrefix = match2.input.slice(Math.max(0, match2.index - 1), match2.index);
+    const matchPrefixIsAllowed = new RegExp(`^[${allowedPrefixes === null || allowedPrefixes === void 0 ? void 0 : allowedPrefixes.join("")}\0]?$`).test(matchPrefix);
+    if (allowedPrefixes !== null && !matchPrefixIsAllowed) {
+      return null;
+    }
+    const from3 = textFrom + match2.index;
+    let to = from3 + match2[0].length;
+    if (allowSpaces && suffix.test(text2.slice(to - 1, to + 1))) {
+      match2[0] += " ";
+      to += 1;
+    }
+    if (from3 < $position.pos && to >= $position.pos) {
+      return {
+        range: {
+          from: from3,
+          to
+        },
+        query: match2[0].slice(char.length),
+        text: match2[0]
+      };
+    }
+    return null;
+  }
+  var SuggestionPluginKey = new PluginKey("suggestion");
+  function Suggestion({ pluginKey = SuggestionPluginKey, editor, char = "@", allowSpaces = false, allowToIncludeChar = false, allowedPrefixes = [" "], startOfLine = false, decorationTag = "span", decorationClass = "suggestion", decorationContent = "", decorationEmptyClass = "is-empty", command: command2 = () => null, items = () => [], render = () => ({}), allow = () => true, findSuggestionMatch: findSuggestionMatch$1 = findSuggestionMatch }) {
+    let props;
+    const renderer = render === null || render === void 0 ? void 0 : render();
+    const plugin = new Plugin({
+      key: pluginKey,
+      view() {
+        return {
+          update: async (view, prevState) => {
+            var _a, _b, _c, _d, _e, _f, _g;
+            const prev = (_a = this.key) === null || _a === void 0 ? void 0 : _a.getState(prevState);
+            const next = (_b = this.key) === null || _b === void 0 ? void 0 : _b.getState(view.state);
+            const moved = prev.active && next.active && prev.range.from !== next.range.from;
+            const started = !prev.active && next.active;
+            const stopped = prev.active && !next.active;
+            const changed = !started && !stopped && prev.query !== next.query;
+            const handleStart = started || moved && changed;
+            const handleChange = changed || moved;
+            const handleExit = stopped || moved && changed;
+            if (!handleStart && !handleChange && !handleExit) {
+              return;
+            }
+            const state = handleExit && !handleStart ? prev : next;
+            const decorationNode = view.dom.querySelector(`[data-decoration-id="${state.decorationId}"]`);
+            props = {
+              editor,
+              range: state.range,
+              query: state.query,
+              text: state.text,
+              items: [],
+              command: (commandProps) => {
+                return command2({
+                  editor,
+                  range: state.range,
+                  props: commandProps
+                });
+              },
+              decorationNode,
+              // virtual node for popper.js or tippy.js
+              // this can be used for building popups without a DOM node
+              clientRect: decorationNode ? () => {
+                var _a2;
+                const { decorationId } = (_a2 = this.key) === null || _a2 === void 0 ? void 0 : _a2.getState(editor.state);
+                const currentDecorationNode = view.dom.querySelector(`[data-decoration-id="${decorationId}"]`);
+                return (currentDecorationNode === null || currentDecorationNode === void 0 ? void 0 : currentDecorationNode.getBoundingClientRect()) || null;
+              } : null
+            };
+            if (handleStart) {
+              (_c = renderer === null || renderer === void 0 ? void 0 : renderer.onBeforeStart) === null || _c === void 0 ? void 0 : _c.call(renderer, props);
+            }
+            if (handleChange) {
+              (_d = renderer === null || renderer === void 0 ? void 0 : renderer.onBeforeUpdate) === null || _d === void 0 ? void 0 : _d.call(renderer, props);
+            }
+            if (handleChange || handleStart) {
+              props.items = await items({
+                editor,
+                query: state.query
+              });
+            }
+            if (handleExit) {
+              (_e = renderer === null || renderer === void 0 ? void 0 : renderer.onExit) === null || _e === void 0 ? void 0 : _e.call(renderer, props);
+            }
+            if (handleChange) {
+              (_f = renderer === null || renderer === void 0 ? void 0 : renderer.onUpdate) === null || _f === void 0 ? void 0 : _f.call(renderer, props);
+            }
+            if (handleStart) {
+              (_g = renderer === null || renderer === void 0 ? void 0 : renderer.onStart) === null || _g === void 0 ? void 0 : _g.call(renderer, props);
+            }
+          },
+          destroy: () => {
+            var _a;
+            if (!props) {
+              return;
+            }
+            (_a = renderer === null || renderer === void 0 ? void 0 : renderer.onExit) === null || _a === void 0 ? void 0 : _a.call(renderer, props);
+          }
+        };
+      },
+      state: {
+        // Initialize the plugin's internal state.
+        init() {
+          const state = {
+            active: false,
+            range: {
+              from: 0,
+              to: 0
+            },
+            query: null,
+            text: null,
+            composing: false
+          };
+          return state;
+        },
+        // Apply changes to the plugin state from a view transaction.
+        apply(transaction, prev, _oldState, state) {
+          const { isEditable } = editor;
+          const { composing } = editor.view;
+          const { selection } = transaction;
+          const { empty: empty2, from: from3 } = selection;
+          const next = { ...prev };
+          next.composing = composing;
+          if (isEditable && (empty2 || editor.view.composing)) {
+            if ((from3 < prev.range.from || from3 > prev.range.to) && !composing && !prev.composing) {
+              next.active = false;
+            }
+            const match2 = findSuggestionMatch$1({
+              char,
+              allowSpaces,
+              allowToIncludeChar,
+              allowedPrefixes,
+              startOfLine,
+              $position: selection.$from
+            });
+            const decorationId = `id_${Math.floor(Math.random() * 4294967295)}`;
+            if (match2 && allow({
+              editor,
+              state,
+              range: match2.range,
+              isActive: prev.active
+            })) {
+              next.active = true;
+              next.decorationId = prev.decorationId ? prev.decorationId : decorationId;
+              next.range = match2.range;
+              next.query = match2.query;
+              next.text = match2.text;
+            } else {
+              next.active = false;
+            }
+          } else {
+            next.active = false;
+          }
+          if (!next.active) {
+            next.decorationId = null;
+            next.range = { from: 0, to: 0 };
+            next.query = null;
+            next.text = null;
+          }
+          return next;
+        }
+      },
+      props: {
+        // Call the keydown hook if suggestion is active.
+        handleKeyDown(view, event) {
+          var _a;
+          const { active, range } = plugin.getState(view.state);
+          if (!active) {
+            return false;
+          }
+          return ((_a = renderer === null || renderer === void 0 ? void 0 : renderer.onKeyDown) === null || _a === void 0 ? void 0 : _a.call(renderer, { view, event, range })) || false;
+        },
+        // Setup decorator on the currently active suggestion.
+        decorations(state) {
+          const { active, range, decorationId, query } = plugin.getState(state);
+          if (!active) {
+            return null;
+          }
+          const isEmpty3 = !(query === null || query === void 0 ? void 0 : query.length);
+          const classNames = [decorationClass];
+          if (isEmpty3) {
+            classNames.push(decorationEmptyClass);
+          }
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(range.from, range.to, {
+              nodeName: decorationTag,
+              class: classNames.join(" "),
+              "data-decoration-id": decorationId,
+              "data-decoration-content": decorationContent
+            })
+          ]);
+        }
+      }
+    });
+    return plugin;
+  }
+
+  // node_modules/@tiptap/extension-mention/dist/index.js
+  function getSuggestionOptions({ editor: tiptapEditor, overrideSuggestionOptions, extensionName, char = "@" }) {
+    const pluginKey = new PluginKey();
+    return {
+      editor: tiptapEditor,
+      char,
+      pluginKey,
+      command: ({ editor, range, props }) => {
+        var _a, _b, _c;
+        const nodeAfter = editor.view.state.selection.$to.nodeAfter;
+        const overrideSpace = (_a = nodeAfter === null || nodeAfter === void 0 ? void 0 : nodeAfter.text) === null || _a === void 0 ? void 0 : _a.startsWith(" ");
+        if (overrideSpace) {
+          range.to += 1;
+        }
+        editor.chain().focus().insertContentAt(range, [
+          {
+            type: extensionName,
+            attrs: { ...props, mentionSuggestionChar: char }
+          },
+          {
+            type: "text",
+            text: " "
+          }
+        ]).run();
+        (_c = (_b = editor.view.dom.ownerDocument.defaultView) === null || _b === void 0 ? void 0 : _b.getSelection()) === null || _c === void 0 ? void 0 : _c.collapseToEnd();
+      },
+      allow: ({ state, range }) => {
+        const $from = state.doc.resolve(range.from);
+        const type = state.schema.nodes[extensionName];
+        const allow = !!$from.parent.type.contentMatch.matchType(type);
+        return allow;
+      },
+      ...overrideSuggestionOptions
+    };
+  }
+  function getSuggestions(options) {
+    return (options.options.suggestions.length ? options.options.suggestions : [options.options.suggestion]).map((suggestion) => getSuggestionOptions({
+      // @ts-ignore `editor` can be `undefined` when converting the document to HTML with the HTML utility
+      editor: options.editor,
+      overrideSuggestionOptions: suggestion,
+      extensionName: options.name,
+      char: suggestion.char
+    }));
+  }
+  function getSuggestionFromChar(options, char) {
+    const suggestions = getSuggestions(options);
+    const suggestion = suggestions.find((s) => s.char === char);
+    if (suggestion) {
+      return suggestion;
+    }
+    if (suggestions.length) {
+      return suggestions[0];
+    }
+    return null;
+  }
+  var Mention = Node3.create({
+    name: "mention",
+    priority: 101,
+    addOptions() {
+      return {
+        HTMLAttributes: {},
+        renderText({ node, suggestion }) {
+          var _a, _b;
+          return `${(_a = suggestion === null || suggestion === void 0 ? void 0 : suggestion.char) !== null && _a !== void 0 ? _a : "@"}${(_b = node.attrs.label) !== null && _b !== void 0 ? _b : node.attrs.id}`;
+        },
+        deleteTriggerWithBackspace: false,
+        renderHTML({ options, node, suggestion }) {
+          var _a, _b;
+          return [
+            "span",
+            mergeAttributes(this.HTMLAttributes, options.HTMLAttributes),
+            `${(_a = suggestion === null || suggestion === void 0 ? void 0 : suggestion.char) !== null && _a !== void 0 ? _a : "@"}${(_b = node.attrs.label) !== null && _b !== void 0 ? _b : node.attrs.id}`
+          ];
+        },
+        suggestions: [],
+        suggestion: {}
+      };
+    },
+    group: "inline",
+    inline: true,
+    selectable: false,
+    atom: true,
+    addAttributes() {
+      return {
+        id: {
+          default: null,
+          parseHTML: (element2) => element2.getAttribute("data-id"),
+          renderHTML: (attributes) => {
+            if (!attributes.id) {
+              return {};
+            }
+            return {
+              "data-id": attributes.id
+            };
+          }
+        },
+        label: {
+          default: null,
+          parseHTML: (element2) => element2.getAttribute("data-label"),
+          renderHTML: (attributes) => {
+            if (!attributes.label) {
+              return {};
+            }
+            return {
+              "data-label": attributes.label
+            };
+          }
+        },
+        // When there are multiple types of mentions, this attribute helps distinguish them
+        mentionSuggestionChar: {
+          default: "@",
+          parseHTML: (element2) => element2.getAttribute("data-mention-suggestion-char"),
+          renderHTML: (attributes) => {
+            return {
+              "data-mention-suggestion-char": attributes.mentionSuggestionChar
+            };
+          }
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: `span[data-type="${this.name}"]`
+        }
+      ];
+    },
+    renderHTML({ node, HTMLAttributes }) {
+      const suggestion = getSuggestionFromChar(this, node.attrs.mentionSuggestionChar);
+      if (this.options.renderLabel !== void 0) {
+        console.warn("renderLabel is deprecated use renderText and renderHTML instead");
+        return [
+          "span",
+          mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes),
+          this.options.renderLabel({
+            options: this.options,
+            node,
+            suggestion
+          })
+        ];
+      }
+      const mergedOptions = { ...this.options };
+      mergedOptions.HTMLAttributes = mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes);
+      const html = this.options.renderHTML({
+        options: mergedOptions,
+        node,
+        suggestion
+      });
+      if (typeof html === "string") {
+        return [
+          "span",
+          mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes),
+          html
+        ];
+      }
+      return html;
+    },
+    renderText({ node }) {
+      const args2 = {
+        options: this.options,
+        node,
+        suggestion: getSuggestionFromChar(this, node.attrs.mentionSuggestionChar)
+      };
+      if (this.options.renderLabel !== void 0) {
+        console.warn("renderLabel is deprecated use renderText and renderHTML instead");
+        return this.options.renderLabel(args2);
+      }
+      return this.options.renderText(args2);
+    },
+    addKeyboardShortcuts() {
+      return {
+        Backspace: () => this.editor.commands.command(({ tr: tr2, state }) => {
+          let isMention = false;
+          const { selection } = state;
+          const { empty: empty2, anchor } = selection;
+          if (!empty2) {
+            return false;
+          }
+          state.doc.nodesBetween(anchor - 1, anchor, (node, pos) => {
+            if (node.type.name === this.name) {
+              isMention = true;
+              tr2.insertText(this.options.deleteTriggerWithBackspace ? "" : this.options.suggestion.char || "", pos, pos + node.nodeSize);
+              return false;
+            }
+          });
+          let mentionNode = new Node2();
+          let mentionPos = 0;
+          state.doc.nodesBetween(anchor - 1, anchor, (node, pos) => {
+            if (node.type.name === this.name) {
+              isMention = true;
+              mentionNode = node;
+              mentionPos = pos;
+              return false;
+            }
+          });
+          if (isMention) {
+            tr2.insertText(this.options.deleteTriggerWithBackspace ? "" : mentionNode.attrs.mentionSuggestionChar, mentionPos, mentionPos + mentionNode.nodeSize);
+          }
+          return isMention;
+        })
+      };
+    },
+    addProseMirrorPlugins() {
+      return getSuggestions(this).map(Suggestion);
+    }
+  });
+
   // node_modules/@tiptap/extension-placeholder/dist/index.js
   var Placeholder = Extension.create({
     name: "placeholder",
@@ -26945,8 +29627,8 @@ ${err.toString()}`);
               const isEmptyDoc = this.editor.isEmpty;
               doc4.descendants((node, pos) => {
                 const hasAnchor = anchor >= pos && anchor <= pos + node.nodeSize;
-                const isEmpty2 = !node.isLeaf && isNodeEmpty(node);
-                if ((hasAnchor || !this.options.showOnlyCurrent) && isEmpty2) {
+                const isEmpty3 = !node.isLeaf && isNodeEmpty(node);
+                if ((hasAnchor || !this.options.showOnlyCurrent) && isEmpty3) {
                   const classes = [this.options.emptyNodeClass];
                   if (isEmptyDoc) {
                     classes.push(this.options.emptyEditorClass);
@@ -26972,8 +29654,2645 @@ ${err.toString()}`);
     }
   });
 
+  // node_modules/prosemirror-tables/dist/index.js
+  var readFromCache;
+  var addToCache;
+  if (typeof WeakMap != "undefined") {
+    let cache = /* @__PURE__ */ new WeakMap();
+    readFromCache = (key) => cache.get(key);
+    addToCache = (key, value) => {
+      cache.set(key, value);
+      return value;
+    };
+  } else {
+    const cache = [];
+    const cacheSize = 10;
+    let cachePos = 0;
+    readFromCache = (key) => {
+      for (let i = 0; i < cache.length; i += 2) if (cache[i] == key) return cache[i + 1];
+    };
+    addToCache = (key, value) => {
+      if (cachePos == cacheSize) cachePos = 0;
+      cache[cachePos++] = key;
+      return cache[cachePos++] = value;
+    };
+  }
+  var TableMap = class {
+    constructor(width, height, map3, problems) {
+      this.width = width;
+      this.height = height;
+      this.map = map3;
+      this.problems = problems;
+    }
+    findCell(pos) {
+      for (let i = 0; i < this.map.length; i++) {
+        const curPos = this.map[i];
+        if (curPos != pos) continue;
+        const left = i % this.width;
+        const top = i / this.width | 0;
+        let right = left + 1;
+        let bottom = top + 1;
+        for (let j = 1; right < this.width && this.map[i + j] == curPos; j++) right++;
+        for (let j = 1; bottom < this.height && this.map[i + this.width * j] == curPos; j++) bottom++;
+        return {
+          left,
+          top,
+          right,
+          bottom
+        };
+      }
+      throw new RangeError(`No cell with offset ${pos} found`);
+    }
+    colCount(pos) {
+      for (let i = 0; i < this.map.length; i++) if (this.map[i] == pos) return i % this.width;
+      throw new RangeError(`No cell with offset ${pos} found`);
+    }
+    nextCell(pos, axis, dir) {
+      const { left, right, top, bottom } = this.findCell(pos);
+      if (axis == "horiz") {
+        if (dir < 0 ? left == 0 : right == this.width) return null;
+        return this.map[top * this.width + (dir < 0 ? left - 1 : right)];
+      } else {
+        if (dir < 0 ? top == 0 : bottom == this.height) return null;
+        return this.map[left + this.width * (dir < 0 ? top - 1 : bottom)];
+      }
+    }
+    rectBetween(a, b) {
+      const { left: leftA, right: rightA, top: topA, bottom: bottomA } = this.findCell(a);
+      const { left: leftB, right: rightB, top: topB, bottom: bottomB } = this.findCell(b);
+      return {
+        left: Math.min(leftA, leftB),
+        top: Math.min(topA, topB),
+        right: Math.max(rightA, rightB),
+        bottom: Math.max(bottomA, bottomB)
+      };
+    }
+    cellsInRect(rect) {
+      const result = [];
+      const seen = {};
+      for (let row = rect.top; row < rect.bottom; row++) for (let col = rect.left; col < rect.right; col++) {
+        const index = row * this.width + col;
+        const pos = this.map[index];
+        if (seen[pos]) continue;
+        seen[pos] = true;
+        if (col == rect.left && col && this.map[index - 1] == pos || row == rect.top && row && this.map[index - this.width] == pos) continue;
+        result.push(pos);
+      }
+      return result;
+    }
+    positionAt(row, col, table) {
+      for (let i = 0, rowStart = 0; ; i++) {
+        const rowEnd = rowStart + table.child(i).nodeSize;
+        if (i == row) {
+          let index = col + row * this.width;
+          const rowEndIndex = (row + 1) * this.width;
+          while (index < rowEndIndex && this.map[index] < rowStart) index++;
+          return index == rowEndIndex ? rowEnd - 1 : this.map[index];
+        }
+        rowStart = rowEnd;
+      }
+    }
+    static get(table) {
+      return readFromCache(table) || addToCache(table, computeMap(table));
+    }
+  };
+  function computeMap(table) {
+    if (table.type.spec.tableRole != "table") throw new RangeError("Not a table node: " + table.type.name);
+    const width = findWidth(table), height = table.childCount;
+    const map3 = [];
+    let mapPos = 0;
+    let problems = null;
+    const colWidths = [];
+    for (let i = 0, e = width * height; i < e; i++) map3[i] = 0;
+    for (let row = 0, pos = 0; row < height; row++) {
+      const rowNode = table.child(row);
+      pos++;
+      for (let i = 0; ; i++) {
+        while (mapPos < map3.length && map3[mapPos] != 0) mapPos++;
+        if (i == rowNode.childCount) break;
+        const cellNode = rowNode.child(i);
+        const { colspan, rowspan, colwidth } = cellNode.attrs;
+        for (let h = 0; h < rowspan; h++) {
+          if (h + row >= height) {
+            (problems || (problems = [])).push({
+              type: "overlong_rowspan",
+              pos,
+              n: rowspan - h
+            });
+            break;
+          }
+          const start = mapPos + h * width;
+          for (let w = 0; w < colspan; w++) {
+            if (map3[start + w] == 0) map3[start + w] = pos;
+            else (problems || (problems = [])).push({
+              type: "collision",
+              row,
+              pos,
+              n: colspan - w
+            });
+            const colW = colwidth && colwidth[w];
+            if (colW) {
+              const widthIndex = (start + w) % width * 2, prev = colWidths[widthIndex];
+              if (prev == null || prev != colW && colWidths[widthIndex + 1] == 1) {
+                colWidths[widthIndex] = colW;
+                colWidths[widthIndex + 1] = 1;
+              } else if (prev == colW) colWidths[widthIndex + 1]++;
+            }
+          }
+        }
+        mapPos += colspan;
+        pos += cellNode.nodeSize;
+      }
+      const expectedPos = (row + 1) * width;
+      let missing = 0;
+      while (mapPos < expectedPos) if (map3[mapPos++] == 0) missing++;
+      if (missing) (problems || (problems = [])).push({
+        type: "missing",
+        row,
+        n: missing
+      });
+      pos++;
+    }
+    if (width === 0 || height === 0) (problems || (problems = [])).push({ type: "zero_sized" });
+    const tableMap = new TableMap(width, height, map3, problems);
+    let badWidths = false;
+    for (let i = 0; !badWidths && i < colWidths.length; i += 2) if (colWidths[i] != null && colWidths[i + 1] < height) badWidths = true;
+    if (badWidths) findBadColWidths(tableMap, colWidths, table);
+    return tableMap;
+  }
+  function findWidth(table) {
+    let width = -1;
+    let hasRowSpan = false;
+    for (let row = 0; row < table.childCount; row++) {
+      const rowNode = table.child(row);
+      let rowWidth = 0;
+      if (hasRowSpan) for (let j = 0; j < row; j++) {
+        const prevRow = table.child(j);
+        for (let i = 0; i < prevRow.childCount; i++) {
+          const cell = prevRow.child(i);
+          if (j + cell.attrs.rowspan > row) rowWidth += cell.attrs.colspan;
+        }
+      }
+      for (let i = 0; i < rowNode.childCount; i++) {
+        const cell = rowNode.child(i);
+        rowWidth += cell.attrs.colspan;
+        if (cell.attrs.rowspan > 1) hasRowSpan = true;
+      }
+      if (width == -1) width = rowWidth;
+      else if (width != rowWidth) width = Math.max(width, rowWidth);
+    }
+    return width;
+  }
+  function findBadColWidths(map3, colWidths, table) {
+    if (!map3.problems) map3.problems = [];
+    const seen = {};
+    for (let i = 0; i < map3.map.length; i++) {
+      const pos = map3.map[i];
+      if (seen[pos]) continue;
+      seen[pos] = true;
+      const node = table.nodeAt(pos);
+      if (!node) throw new RangeError(`No cell with offset ${pos} found`);
+      let updated = null;
+      const attrs = node.attrs;
+      for (let j = 0; j < attrs.colspan; j++) {
+        const colWidth = colWidths[(i + j) % map3.width * 2];
+        if (colWidth != null && (!attrs.colwidth || attrs.colwidth[j] != colWidth)) (updated || (updated = freshColWidth(attrs)))[j] = colWidth;
+      }
+      if (updated) map3.problems.unshift({
+        type: "colwidth mismatch",
+        pos,
+        colwidth: updated
+      });
+    }
+  }
+  function freshColWidth(attrs) {
+    if (attrs.colwidth) return attrs.colwidth.slice();
+    const result = [];
+    for (let i = 0; i < attrs.colspan; i++) result.push(0);
+    return result;
+  }
+  function tableNodeTypes(schema) {
+    let result = schema.cached.tableNodeTypes;
+    if (!result) {
+      result = schema.cached.tableNodeTypes = {};
+      for (const name in schema.nodes) {
+        const type = schema.nodes[name], role = type.spec.tableRole;
+        if (role) result[role] = type;
+      }
+    }
+    return result;
+  }
+  var tableEditingKey = new PluginKey("selectingCells");
+  function cellAround($pos) {
+    for (let d = $pos.depth - 1; d > 0; d--) if ($pos.node(d).type.spec.tableRole == "row") return $pos.node(0).resolve($pos.before(d + 1));
+    return null;
+  }
+  function cellWrapping($pos) {
+    for (let d = $pos.depth; d > 0; d--) {
+      const role = $pos.node(d).type.spec.tableRole;
+      if (role === "cell" || role === "header_cell") return $pos.node(d);
+    }
+    return null;
+  }
+  function isInTable(state) {
+    const $head = state.selection.$head;
+    for (let d = $head.depth; d > 0; d--) if ($head.node(d).type.spec.tableRole == "row") return true;
+    return false;
+  }
+  function selectionCell(state) {
+    const sel = state.selection;
+    if ("$anchorCell" in sel && sel.$anchorCell) return sel.$anchorCell.pos > sel.$headCell.pos ? sel.$anchorCell : sel.$headCell;
+    else if ("node" in sel && sel.node && sel.node.type.spec.tableRole == "cell") return sel.$anchor;
+    const $cell = cellAround(sel.$head) || cellNear(sel.$head);
+    if ($cell) return $cell;
+    throw new RangeError(`No cell found around position ${sel.head}`);
+  }
+  function cellNear($pos) {
+    for (let after = $pos.nodeAfter, pos = $pos.pos; after; after = after.firstChild, pos++) {
+      const role = after.type.spec.tableRole;
+      if (role == "cell" || role == "header_cell") return $pos.doc.resolve(pos);
+    }
+    for (let before = $pos.nodeBefore, pos = $pos.pos; before; before = before.lastChild, pos--) {
+      const role = before.type.spec.tableRole;
+      if (role == "cell" || role == "header_cell") return $pos.doc.resolve(pos - before.nodeSize);
+    }
+  }
+  function pointsAtCell($pos) {
+    return $pos.parent.type.spec.tableRole == "row" && !!$pos.nodeAfter;
+  }
+  function moveCellForward($pos) {
+    return $pos.node(0).resolve($pos.pos + $pos.nodeAfter.nodeSize);
+  }
+  function inSameTable($cellA, $cellB) {
+    return $cellA.depth == $cellB.depth && $cellA.pos >= $cellB.start(-1) && $cellA.pos <= $cellB.end(-1);
+  }
+  function nextCell($pos, axis, dir) {
+    const table = $pos.node(-1);
+    const map3 = TableMap.get(table);
+    const tableStart = $pos.start(-1);
+    const moved = map3.nextCell($pos.pos - tableStart, axis, dir);
+    return moved == null ? null : $pos.node(0).resolve(tableStart + moved);
+  }
+  function removeColSpan(attrs, pos, n = 1) {
+    const result = {
+      ...attrs,
+      colspan: attrs.colspan - n
+    };
+    if (result.colwidth) {
+      result.colwidth = result.colwidth.slice();
+      result.colwidth.splice(pos, n);
+      if (!result.colwidth.some((w) => w > 0)) result.colwidth = null;
+    }
+    return result;
+  }
+  function addColSpan(attrs, pos, n = 1) {
+    const result = {
+      ...attrs,
+      colspan: attrs.colspan + n
+    };
+    if (result.colwidth) {
+      result.colwidth = result.colwidth.slice();
+      for (let i = 0; i < n; i++) result.colwidth.splice(pos, 0, 0);
+    }
+    return result;
+  }
+  function columnIsHeader(map3, table, col) {
+    const headerCell = tableNodeTypes(table.type.schema).header_cell;
+    for (let row = 0; row < map3.height; row++) if (table.nodeAt(map3.map[col + row * map3.width]).type != headerCell) return false;
+    return true;
+  }
+  var CellSelection = class CellSelection2 extends Selection {
+    constructor($anchorCell, $headCell = $anchorCell) {
+      const table = $anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = $anchorCell.start(-1);
+      const rect = map3.rectBetween($anchorCell.pos - tableStart, $headCell.pos - tableStart);
+      const doc4 = $anchorCell.node(0);
+      const cells = map3.cellsInRect(rect).filter((p) => p != $headCell.pos - tableStart);
+      cells.unshift($headCell.pos - tableStart);
+      const ranges = cells.map((pos) => {
+        const cell = table.nodeAt(pos);
+        if (!cell) throw new RangeError(`No cell with offset ${pos} found`);
+        const from3 = tableStart + pos + 1;
+        return new SelectionRange(doc4.resolve(from3), doc4.resolve(from3 + cell.content.size));
+      });
+      super(ranges[0].$from, ranges[0].$to, ranges);
+      this.$anchorCell = $anchorCell;
+      this.$headCell = $headCell;
+    }
+    map(doc4, mapping) {
+      const $anchorCell = doc4.resolve(mapping.map(this.$anchorCell.pos));
+      const $headCell = doc4.resolve(mapping.map(this.$headCell.pos));
+      if (pointsAtCell($anchorCell) && pointsAtCell($headCell) && inSameTable($anchorCell, $headCell)) {
+        const tableChanged = this.$anchorCell.node(-1) != $anchorCell.node(-1);
+        if (tableChanged && this.isRowSelection()) return CellSelection2.rowSelection($anchorCell, $headCell);
+        else if (tableChanged && this.isColSelection()) return CellSelection2.colSelection($anchorCell, $headCell);
+        else return new CellSelection2($anchorCell, $headCell);
+      }
+      return TextSelection.between($anchorCell, $headCell);
+    }
+    content() {
+      const table = this.$anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = this.$anchorCell.start(-1);
+      const rect = map3.rectBetween(this.$anchorCell.pos - tableStart, this.$headCell.pos - tableStart);
+      const seen = {};
+      const rows = [];
+      for (let row = rect.top; row < rect.bottom; row++) {
+        const rowContent = [];
+        for (let index = row * map3.width + rect.left, col = rect.left; col < rect.right; col++, index++) {
+          const pos = map3.map[index];
+          if (seen[pos]) continue;
+          seen[pos] = true;
+          const cellRect = map3.findCell(pos);
+          let cell = table.nodeAt(pos);
+          if (!cell) throw new RangeError(`No cell with offset ${pos} found`);
+          const extraLeft = rect.left - cellRect.left;
+          const extraRight = cellRect.right - rect.right;
+          if (extraLeft > 0 || extraRight > 0) {
+            let attrs = cell.attrs;
+            if (extraLeft > 0) attrs = removeColSpan(attrs, 0, extraLeft);
+            if (extraRight > 0) attrs = removeColSpan(attrs, attrs.colspan - extraRight, extraRight);
+            if (cellRect.left < rect.left) {
+              cell = cell.type.createAndFill(attrs);
+              if (!cell) throw new RangeError(`Could not create cell with attrs ${JSON.stringify(attrs)}`);
+            } else cell = cell.type.create(attrs, cell.content);
+          }
+          if (cellRect.top < rect.top || cellRect.bottom > rect.bottom) {
+            const attrs = {
+              ...cell.attrs,
+              rowspan: Math.min(cellRect.bottom, rect.bottom) - Math.max(cellRect.top, rect.top)
+            };
+            if (cellRect.top < rect.top) cell = cell.type.createAndFill(attrs);
+            else cell = cell.type.create(attrs, cell.content);
+          }
+          rowContent.push(cell);
+        }
+        rows.push(table.child(row).copy(Fragment.from(rowContent)));
+      }
+      const fragment = this.isColSelection() && this.isRowSelection() ? table : rows;
+      return new Slice(Fragment.from(fragment), 1, 1);
+    }
+    replace(tr2, content = Slice.empty) {
+      const mapFrom = tr2.steps.length, ranges = this.ranges;
+      for (let i = 0; i < ranges.length; i++) {
+        const { $from, $to } = ranges[i], mapping = tr2.mapping.slice(mapFrom);
+        tr2.replace(mapping.map($from.pos), mapping.map($to.pos), i ? Slice.empty : content);
+      }
+      const sel = Selection.findFrom(tr2.doc.resolve(tr2.mapping.slice(mapFrom).map(this.to)), -1);
+      if (sel) tr2.setSelection(sel);
+    }
+    replaceWith(tr2, node) {
+      this.replace(tr2, new Slice(Fragment.from(node), 0, 0));
+    }
+    forEachCell(f) {
+      const table = this.$anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = this.$anchorCell.start(-1);
+      const cells = map3.cellsInRect(map3.rectBetween(this.$anchorCell.pos - tableStart, this.$headCell.pos - tableStart));
+      for (let i = 0; i < cells.length; i++) f(table.nodeAt(cells[i]), tableStart + cells[i]);
+    }
+    isColSelection() {
+      const anchorTop = this.$anchorCell.index(-1);
+      const headTop = this.$headCell.index(-1);
+      if (Math.min(anchorTop, headTop) > 0) return false;
+      const anchorBottom = anchorTop + this.$anchorCell.nodeAfter.attrs.rowspan;
+      const headBottom = headTop + this.$headCell.nodeAfter.attrs.rowspan;
+      return Math.max(anchorBottom, headBottom) == this.$headCell.node(-1).childCount;
+    }
+    static colSelection($anchorCell, $headCell = $anchorCell) {
+      const table = $anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = $anchorCell.start(-1);
+      const anchorRect = map3.findCell($anchorCell.pos - tableStart);
+      const headRect = map3.findCell($headCell.pos - tableStart);
+      const doc4 = $anchorCell.node(0);
+      if (anchorRect.top <= headRect.top) {
+        if (anchorRect.top > 0) $anchorCell = doc4.resolve(tableStart + map3.map[anchorRect.left]);
+        if (headRect.bottom < map3.height) $headCell = doc4.resolve(tableStart + map3.map[map3.width * (map3.height - 1) + headRect.right - 1]);
+      } else {
+        if (headRect.top > 0) $headCell = doc4.resolve(tableStart + map3.map[headRect.left]);
+        if (anchorRect.bottom < map3.height) $anchorCell = doc4.resolve(tableStart + map3.map[map3.width * (map3.height - 1) + anchorRect.right - 1]);
+      }
+      return new CellSelection2($anchorCell, $headCell);
+    }
+    isRowSelection() {
+      const table = this.$anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = this.$anchorCell.start(-1);
+      const anchorLeft = map3.colCount(this.$anchorCell.pos - tableStart);
+      const headLeft = map3.colCount(this.$headCell.pos - tableStart);
+      if (Math.min(anchorLeft, headLeft) > 0) return false;
+      const anchorRight = anchorLeft + this.$anchorCell.nodeAfter.attrs.colspan;
+      const headRight = headLeft + this.$headCell.nodeAfter.attrs.colspan;
+      return Math.max(anchorRight, headRight) == map3.width;
+    }
+    eq(other) {
+      return other instanceof CellSelection2 && other.$anchorCell.pos == this.$anchorCell.pos && other.$headCell.pos == this.$headCell.pos;
+    }
+    static rowSelection($anchorCell, $headCell = $anchorCell) {
+      const table = $anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = $anchorCell.start(-1);
+      const anchorRect = map3.findCell($anchorCell.pos - tableStart);
+      const headRect = map3.findCell($headCell.pos - tableStart);
+      const doc4 = $anchorCell.node(0);
+      if (anchorRect.left <= headRect.left) {
+        if (anchorRect.left > 0) $anchorCell = doc4.resolve(tableStart + map3.map[anchorRect.top * map3.width]);
+        if (headRect.right < map3.width) $headCell = doc4.resolve(tableStart + map3.map[map3.width * (headRect.top + 1) - 1]);
+      } else {
+        if (headRect.left > 0) $headCell = doc4.resolve(tableStart + map3.map[headRect.top * map3.width]);
+        if (anchorRect.right < map3.width) $anchorCell = doc4.resolve(tableStart + map3.map[map3.width * (anchorRect.top + 1) - 1]);
+      }
+      return new CellSelection2($anchorCell, $headCell);
+    }
+    toJSON() {
+      return {
+        type: "cell",
+        anchor: this.$anchorCell.pos,
+        head: this.$headCell.pos
+      };
+    }
+    static fromJSON(doc4, json) {
+      return new CellSelection2(doc4.resolve(json.anchor), doc4.resolve(json.head));
+    }
+    static create(doc4, anchorCell, headCell = anchorCell) {
+      return new CellSelection2(doc4.resolve(anchorCell), doc4.resolve(headCell));
+    }
+    getBookmark() {
+      return new CellBookmark(this.$anchorCell.pos, this.$headCell.pos);
+    }
+  };
+  CellSelection.prototype.visible = false;
+  Selection.jsonID("cell", CellSelection);
+  var CellBookmark = class CellBookmark2 {
+    constructor(anchor, head) {
+      this.anchor = anchor;
+      this.head = head;
+    }
+    map(mapping) {
+      return new CellBookmark2(mapping.map(this.anchor), mapping.map(this.head));
+    }
+    resolve(doc4) {
+      const $anchorCell = doc4.resolve(this.anchor), $headCell = doc4.resolve(this.head);
+      if ($anchorCell.parent.type.spec.tableRole == "row" && $headCell.parent.type.spec.tableRole == "row" && $anchorCell.index() < $anchorCell.parent.childCount && $headCell.index() < $headCell.parent.childCount && inSameTable($anchorCell, $headCell)) return new CellSelection($anchorCell, $headCell);
+      else return Selection.near($headCell, 1);
+    }
+  };
+  function drawCellSelection(state) {
+    if (!(state.selection instanceof CellSelection)) return null;
+    const cells = [];
+    state.selection.forEachCell((node, pos) => {
+      cells.push(Decoration.node(pos, pos + node.nodeSize, { class: "selectedCell" }));
+    });
+    return DecorationSet.create(state.doc, cells);
+  }
+  function isCellBoundarySelection({ $from, $to }) {
+    if ($from.pos == $to.pos || $from.pos < $to.pos - 6) return false;
+    let afterFrom = $from.pos;
+    let beforeTo = $to.pos;
+    let depth = $from.depth;
+    for (; depth >= 0; depth--, afterFrom++) if ($from.after(depth + 1) < $from.end(depth)) break;
+    for (let d = $to.depth; d >= 0; d--, beforeTo--) if ($to.before(d + 1) > $to.start(d)) break;
+    return afterFrom == beforeTo && /row|table/.test($from.node(depth).type.spec.tableRole);
+  }
+  function isTextSelectionAcrossCells({ $from, $to }) {
+    let fromCellBoundaryNode;
+    let toCellBoundaryNode;
+    for (let i = $from.depth; i > 0; i--) {
+      const node = $from.node(i);
+      if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
+        fromCellBoundaryNode = node;
+        break;
+      }
+    }
+    for (let i = $to.depth; i > 0; i--) {
+      const node = $to.node(i);
+      if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
+        toCellBoundaryNode = node;
+        break;
+      }
+    }
+    return fromCellBoundaryNode !== toCellBoundaryNode && $to.parentOffset === 0;
+  }
+  function normalizeSelection(state, tr2, allowTableNodeSelection) {
+    const sel = (tr2 || state).selection;
+    const doc4 = (tr2 || state).doc;
+    let normalize2;
+    let role;
+    if (sel instanceof NodeSelection && (role = sel.node.type.spec.tableRole)) {
+      if (role == "cell" || role == "header_cell") normalize2 = CellSelection.create(doc4, sel.from);
+      else if (role == "row") {
+        const $cell = doc4.resolve(sel.from + 1);
+        normalize2 = CellSelection.rowSelection($cell, $cell);
+      } else if (!allowTableNodeSelection) {
+        const map3 = TableMap.get(sel.node);
+        const start = sel.from + 1;
+        const lastCell = start + map3.map[map3.width * map3.height - 1];
+        normalize2 = CellSelection.create(doc4, start + 1, lastCell);
+      }
+    } else if (sel instanceof TextSelection && isCellBoundarySelection(sel)) normalize2 = TextSelection.create(doc4, sel.from);
+    else if (sel instanceof TextSelection && isTextSelectionAcrossCells(sel)) normalize2 = TextSelection.create(doc4, sel.$from.start(), sel.$from.end());
+    if (normalize2) (tr2 || (tr2 = state.tr)).setSelection(normalize2);
+    return tr2;
+  }
+  var fixTablesKey = new PluginKey("fix-tables");
+  function changedDescendants(old, cur, offset3, f) {
+    const oldSize = old.childCount, curSize = cur.childCount;
+    outer: for (let i = 0, j = 0; i < curSize; i++) {
+      const child = cur.child(i);
+      for (let scan = j, e = Math.min(oldSize, i + 3); scan < e; scan++) if (old.child(scan) == child) {
+        j = scan + 1;
+        offset3 += child.nodeSize;
+        continue outer;
+      }
+      f(child, offset3);
+      if (j < oldSize && old.child(j).sameMarkup(child)) changedDescendants(old.child(j), child, offset3 + 1, f);
+      else child.nodesBetween(0, child.content.size, f, offset3 + 1);
+      offset3 += child.nodeSize;
+    }
+  }
+  function fixTables(state, oldState) {
+    let tr2;
+    const check = (node, pos) => {
+      if (node.type.spec.tableRole == "table") tr2 = fixTable(state, node, pos, tr2);
+    };
+    if (!oldState) state.doc.descendants(check);
+    else if (oldState.doc != state.doc) changedDescendants(oldState.doc, state.doc, 0, check);
+    return tr2;
+  }
+  function fixTable(state, table, tablePos, tr2) {
+    const map3 = TableMap.get(table);
+    if (!map3.problems) return tr2;
+    if (!tr2) tr2 = state.tr;
+    const mustAdd = [];
+    for (let i = 0; i < map3.height; i++) mustAdd.push(0);
+    for (let i = 0; i < map3.problems.length; i++) {
+      const prob = map3.problems[i];
+      if (prob.type == "collision") {
+        const cell = table.nodeAt(prob.pos);
+        if (!cell) continue;
+        const attrs = cell.attrs;
+        for (let j = 0; j < attrs.rowspan; j++) mustAdd[prob.row + j] += prob.n;
+        tr2.setNodeMarkup(tr2.mapping.map(tablePos + 1 + prob.pos), null, removeColSpan(attrs, attrs.colspan - prob.n, prob.n));
+      } else if (prob.type == "missing") mustAdd[prob.row] += prob.n;
+      else if (prob.type == "overlong_rowspan") {
+        const cell = table.nodeAt(prob.pos);
+        if (!cell) continue;
+        tr2.setNodeMarkup(tr2.mapping.map(tablePos + 1 + prob.pos), null, {
+          ...cell.attrs,
+          rowspan: cell.attrs.rowspan - prob.n
+        });
+      } else if (prob.type == "colwidth mismatch") {
+        const cell = table.nodeAt(prob.pos);
+        if (!cell) continue;
+        tr2.setNodeMarkup(tr2.mapping.map(tablePos + 1 + prob.pos), null, {
+          ...cell.attrs,
+          colwidth: prob.colwidth
+        });
+      } else if (prob.type == "zero_sized") {
+        const pos = tr2.mapping.map(tablePos);
+        tr2.delete(pos, pos + table.nodeSize);
+      }
+    }
+    let first2, last2;
+    for (let i = 0; i < mustAdd.length; i++) if (mustAdd[i]) {
+      if (first2 == null) first2 = i;
+      last2 = i;
+    }
+    for (let i = 0, pos = tablePos + 1; i < map3.height; i++) {
+      const row = table.child(i);
+      const end = pos + row.nodeSize;
+      const add = mustAdd[i];
+      if (add > 0) {
+        let role = "cell";
+        if (row.firstChild) role = row.firstChild.type.spec.tableRole;
+        const nodes = [];
+        for (let j = 0; j < add; j++) {
+          const node = tableNodeTypes(state.schema)[role].createAndFill();
+          if (node) nodes.push(node);
+        }
+        const side = (i == 0 || first2 == i - 1) && last2 == i ? pos + 1 : end - 1;
+        tr2.insert(tr2.mapping.map(side), nodes);
+      }
+      pos = end;
+    }
+    return tr2.setMeta(fixTablesKey, { fixTables: true });
+  }
+  function selectedRect(state) {
+    const sel = state.selection;
+    const $pos = selectionCell(state);
+    const table = $pos.node(-1);
+    const tableStart = $pos.start(-1);
+    const map3 = TableMap.get(table);
+    return {
+      ...sel instanceof CellSelection ? map3.rectBetween(sel.$anchorCell.pos - tableStart, sel.$headCell.pos - tableStart) : map3.findCell($pos.pos - tableStart),
+      tableStart,
+      map: map3,
+      table
+    };
+  }
+  function addColumn(tr2, { map: map3, tableStart, table }, col) {
+    let refColumn = col > 0 ? -1 : 0;
+    if (columnIsHeader(map3, table, col + refColumn)) refColumn = col == 0 || col == map3.width ? null : 0;
+    for (let row = 0; row < map3.height; row++) {
+      const index = row * map3.width + col;
+      if (col > 0 && col < map3.width && map3.map[index - 1] == map3.map[index]) {
+        const pos = map3.map[index];
+        const cell = table.nodeAt(pos);
+        tr2.setNodeMarkup(tr2.mapping.map(tableStart + pos), null, addColSpan(cell.attrs, col - map3.colCount(pos)));
+        row += cell.attrs.rowspan - 1;
+      } else {
+        const type = refColumn == null ? tableNodeTypes(table.type.schema).cell : table.nodeAt(map3.map[index + refColumn]).type;
+        const pos = map3.positionAt(row, col, table);
+        tr2.insert(tr2.mapping.map(tableStart + pos), type.createAndFill());
+      }
+    }
+    return tr2;
+  }
+  function addColumnBefore(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      dispatch(addColumn(state.tr, rect, rect.left));
+    }
+    return true;
+  }
+  function addColumnAfter(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      dispatch(addColumn(state.tr, rect, rect.right));
+    }
+    return true;
+  }
+  function removeColumn(tr2, { map: map3, table, tableStart }, col) {
+    const mapStart = tr2.mapping.maps.length;
+    for (let row = 0; row < map3.height; ) {
+      const index = row * map3.width + col;
+      const pos = map3.map[index];
+      const cell = table.nodeAt(pos);
+      const attrs = cell.attrs;
+      if (col > 0 && map3.map[index - 1] == pos || col < map3.width - 1 && map3.map[index + 1] == pos) tr2.setNodeMarkup(tr2.mapping.slice(mapStart).map(tableStart + pos), null, removeColSpan(attrs, col - map3.colCount(pos)));
+      else {
+        const start = tr2.mapping.slice(mapStart).map(tableStart + pos);
+        tr2.delete(start, start + cell.nodeSize);
+      }
+      row += attrs.rowspan;
+    }
+  }
+  function deleteColumn(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      const tr2 = state.tr;
+      if (rect.left == 0 && rect.right == rect.map.width) return false;
+      for (let i = rect.right - 1; ; i--) {
+        removeColumn(tr2, rect, i);
+        if (i == rect.left) break;
+        const table = rect.tableStart ? tr2.doc.nodeAt(rect.tableStart - 1) : tr2.doc;
+        if (!table) throw new RangeError("No table found");
+        rect.table = table;
+        rect.map = TableMap.get(table);
+      }
+      dispatch(tr2);
+    }
+    return true;
+  }
+  function rowIsHeader(map3, table, row) {
+    var _table$nodeAt;
+    const headerCell = tableNodeTypes(table.type.schema).header_cell;
+    for (let col = 0; col < map3.width; col++) if (((_table$nodeAt = table.nodeAt(map3.map[col + row * map3.width])) === null || _table$nodeAt === void 0 ? void 0 : _table$nodeAt.type) != headerCell) return false;
+    return true;
+  }
+  function addRow(tr2, { map: map3, tableStart, table }, row) {
+    let rowPos = tableStart;
+    for (let i = 0; i < row; i++) rowPos += table.child(i).nodeSize;
+    const cells = [];
+    let refRow = row > 0 ? -1 : 0;
+    if (rowIsHeader(map3, table, row + refRow)) refRow = row == 0 || row == map3.height ? null : 0;
+    for (let col = 0, index = map3.width * row; col < map3.width; col++, index++) if (row > 0 && row < map3.height && map3.map[index] == map3.map[index - map3.width]) {
+      const pos = map3.map[index];
+      const attrs = table.nodeAt(pos).attrs;
+      tr2.setNodeMarkup(tableStart + pos, null, {
+        ...attrs,
+        rowspan: attrs.rowspan + 1
+      });
+      col += attrs.colspan - 1;
+    } else {
+      var _table$nodeAt2;
+      const type = refRow == null ? tableNodeTypes(table.type.schema).cell : (_table$nodeAt2 = table.nodeAt(map3.map[index + refRow * map3.width])) === null || _table$nodeAt2 === void 0 ? void 0 : _table$nodeAt2.type;
+      const node = type === null || type === void 0 ? void 0 : type.createAndFill();
+      if (node) cells.push(node);
+    }
+    tr2.insert(rowPos, tableNodeTypes(table.type.schema).row.create(null, cells));
+    return tr2;
+  }
+  function addRowBefore(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      dispatch(addRow(state.tr, rect, rect.top));
+    }
+    return true;
+  }
+  function addRowAfter(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      dispatch(addRow(state.tr, rect, rect.bottom));
+    }
+    return true;
+  }
+  function removeRow(tr2, { map: map3, table, tableStart }, row) {
+    let rowPos = 0;
+    for (let i = 0; i < row; i++) rowPos += table.child(i).nodeSize;
+    const nextRow = rowPos + table.child(row).nodeSize;
+    const mapFrom = tr2.mapping.maps.length;
+    tr2.delete(rowPos + tableStart, nextRow + tableStart);
+    const seen = /* @__PURE__ */ new Set();
+    for (let col = 0, index = row * map3.width; col < map3.width; col++, index++) {
+      const pos = map3.map[index];
+      if (seen.has(pos)) continue;
+      seen.add(pos);
+      if (row > 0 && pos == map3.map[index - map3.width]) {
+        const attrs = table.nodeAt(pos).attrs;
+        tr2.setNodeMarkup(tr2.mapping.slice(mapFrom).map(pos + tableStart), null, {
+          ...attrs,
+          rowspan: attrs.rowspan - 1
+        });
+        col += attrs.colspan - 1;
+      } else if (row < map3.height && pos == map3.map[index + map3.width]) {
+        const cell = table.nodeAt(pos);
+        const attrs = cell.attrs;
+        const copy3 = cell.type.create({
+          ...attrs,
+          rowspan: cell.attrs.rowspan - 1
+        }, cell.content);
+        const newPos = map3.positionAt(row + 1, col, table);
+        tr2.insert(tr2.mapping.slice(mapFrom).map(tableStart + newPos), copy3);
+        col += attrs.colspan - 1;
+      }
+    }
+  }
+  function deleteRow(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state), tr2 = state.tr;
+      if (rect.top == 0 && rect.bottom == rect.map.height) return false;
+      for (let i = rect.bottom - 1; ; i--) {
+        removeRow(tr2, rect, i);
+        if (i == rect.top) break;
+        const table = rect.tableStart ? tr2.doc.nodeAt(rect.tableStart - 1) : tr2.doc;
+        if (!table) throw new RangeError("No table found");
+        rect.table = table;
+        rect.map = TableMap.get(rect.table);
+      }
+      dispatch(tr2);
+    }
+    return true;
+  }
+  function isEmpty2(cell) {
+    const c = cell.content;
+    return c.childCount == 1 && c.child(0).isTextblock && c.child(0).childCount == 0;
+  }
+  function cellsOverlapRectangle({ width, height, map: map3 }, rect) {
+    let indexTop = rect.top * width + rect.left, indexLeft = indexTop;
+    let indexBottom = (rect.bottom - 1) * width + rect.left, indexRight = indexTop + (rect.right - rect.left - 1);
+    for (let i = rect.top; i < rect.bottom; i++) {
+      if (rect.left > 0 && map3[indexLeft] == map3[indexLeft - 1] || rect.right < width && map3[indexRight] == map3[indexRight + 1]) return true;
+      indexLeft += width;
+      indexRight += width;
+    }
+    for (let i = rect.left; i < rect.right; i++) {
+      if (rect.top > 0 && map3[indexTop] == map3[indexTop - width] || rect.bottom < height && map3[indexBottom] == map3[indexBottom + width]) return true;
+      indexTop++;
+      indexBottom++;
+    }
+    return false;
+  }
+  function mergeCells(state, dispatch) {
+    const sel = state.selection;
+    if (!(sel instanceof CellSelection) || sel.$anchorCell.pos == sel.$headCell.pos) return false;
+    const rect = selectedRect(state), { map: map3 } = rect;
+    if (cellsOverlapRectangle(map3, rect)) return false;
+    if (dispatch) {
+      const tr2 = state.tr;
+      const seen = {};
+      let content = Fragment.empty;
+      let mergedPos;
+      let mergedCell;
+      for (let row = rect.top; row < rect.bottom; row++) for (let col = rect.left; col < rect.right; col++) {
+        const cellPos = map3.map[row * map3.width + col];
+        const cell = rect.table.nodeAt(cellPos);
+        if (seen[cellPos] || !cell) continue;
+        seen[cellPos] = true;
+        if (mergedPos == null) {
+          mergedPos = cellPos;
+          mergedCell = cell;
+        } else {
+          if (!isEmpty2(cell)) content = content.append(cell.content);
+          const mapped = tr2.mapping.map(cellPos + rect.tableStart);
+          tr2.delete(mapped, mapped + cell.nodeSize);
+        }
+      }
+      if (mergedPos == null || mergedCell == null) return true;
+      tr2.setNodeMarkup(mergedPos + rect.tableStart, null, {
+        ...addColSpan(mergedCell.attrs, mergedCell.attrs.colspan, rect.right - rect.left - mergedCell.attrs.colspan),
+        rowspan: rect.bottom - rect.top
+      });
+      if (content.size > 0) {
+        const end = mergedPos + 1 + mergedCell.content.size;
+        const start = isEmpty2(mergedCell) ? mergedPos + 1 : end;
+        tr2.replaceWith(start + rect.tableStart, end + rect.tableStart, content);
+      }
+      tr2.setSelection(new CellSelection(tr2.doc.resolve(mergedPos + rect.tableStart)));
+      dispatch(tr2);
+    }
+    return true;
+  }
+  function splitCell(state, dispatch) {
+    const nodeTypes = tableNodeTypes(state.schema);
+    return splitCellWithType(({ node }) => {
+      return nodeTypes[node.type.spec.tableRole];
+    })(state, dispatch);
+  }
+  function splitCellWithType(getCellType) {
+    return (state, dispatch) => {
+      const sel = state.selection;
+      let cellNode;
+      let cellPos;
+      if (!(sel instanceof CellSelection)) {
+        var _cellAround;
+        cellNode = cellWrapping(sel.$from);
+        if (!cellNode) return false;
+        cellPos = (_cellAround = cellAround(sel.$from)) === null || _cellAround === void 0 ? void 0 : _cellAround.pos;
+      } else {
+        if (sel.$anchorCell.pos != sel.$headCell.pos) return false;
+        cellNode = sel.$anchorCell.nodeAfter;
+        cellPos = sel.$anchorCell.pos;
+      }
+      if (cellNode == null || cellPos == null) return false;
+      if (cellNode.attrs.colspan == 1 && cellNode.attrs.rowspan == 1) return false;
+      if (dispatch) {
+        let baseAttrs = cellNode.attrs;
+        const attrs = [];
+        const colwidth = baseAttrs.colwidth;
+        if (baseAttrs.rowspan > 1) baseAttrs = {
+          ...baseAttrs,
+          rowspan: 1
+        };
+        if (baseAttrs.colspan > 1) baseAttrs = {
+          ...baseAttrs,
+          colspan: 1
+        };
+        const rect = selectedRect(state), tr2 = state.tr;
+        for (let i = 0; i < rect.right - rect.left; i++) attrs.push(colwidth ? {
+          ...baseAttrs,
+          colwidth: colwidth && colwidth[i] ? [colwidth[i]] : null
+        } : baseAttrs);
+        let lastCell;
+        for (let row = rect.top; row < rect.bottom; row++) {
+          let pos = rect.map.positionAt(row, rect.left, rect.table);
+          if (row == rect.top) pos += cellNode.nodeSize;
+          for (let col = rect.left, i = 0; col < rect.right; col++, i++) {
+            if (col == rect.left && row == rect.top) continue;
+            tr2.insert(lastCell = tr2.mapping.map(pos + rect.tableStart, 1), getCellType({
+              node: cellNode,
+              row,
+              col
+            }).createAndFill(attrs[i]));
+          }
+        }
+        tr2.setNodeMarkup(cellPos, getCellType({
+          node: cellNode,
+          row: rect.top,
+          col: rect.left
+        }), attrs[0]);
+        if (sel instanceof CellSelection) tr2.setSelection(new CellSelection(tr2.doc.resolve(sel.$anchorCell.pos), lastCell ? tr2.doc.resolve(lastCell) : void 0));
+        dispatch(tr2);
+      }
+      return true;
+    };
+  }
+  function setCellAttr(name, value) {
+    return function(state, dispatch) {
+      if (!isInTable(state)) return false;
+      const $cell = selectionCell(state);
+      if ($cell.nodeAfter.attrs[name] === value) return false;
+      if (dispatch) {
+        const tr2 = state.tr;
+        if (state.selection instanceof CellSelection) state.selection.forEachCell((node, pos) => {
+          if (node.attrs[name] !== value) tr2.setNodeMarkup(pos, null, {
+            ...node.attrs,
+            [name]: value
+          });
+        });
+        else tr2.setNodeMarkup($cell.pos, null, {
+          ...$cell.nodeAfter.attrs,
+          [name]: value
+        });
+        dispatch(tr2);
+      }
+      return true;
+    };
+  }
+  function deprecated_toggleHeader(type) {
+    return function(state, dispatch) {
+      if (!isInTable(state)) return false;
+      if (dispatch) {
+        const types = tableNodeTypes(state.schema);
+        const rect = selectedRect(state), tr2 = state.tr;
+        const cells = rect.map.cellsInRect(type == "column" ? {
+          left: rect.left,
+          top: 0,
+          right: rect.right,
+          bottom: rect.map.height
+        } : type == "row" ? {
+          left: 0,
+          top: rect.top,
+          right: rect.map.width,
+          bottom: rect.bottom
+        } : rect);
+        const nodes = cells.map((pos) => rect.table.nodeAt(pos));
+        for (let i = 0; i < cells.length; i++) if (nodes[i].type == types.header_cell) tr2.setNodeMarkup(rect.tableStart + cells[i], types.cell, nodes[i].attrs);
+        if (tr2.steps.length === 0) for (let i = 0; i < cells.length; i++) tr2.setNodeMarkup(rect.tableStart + cells[i], types.header_cell, nodes[i].attrs);
+        dispatch(tr2);
+      }
+      return true;
+    };
+  }
+  function isHeaderEnabledByType(type, rect, types) {
+    const cellPositions = rect.map.cellsInRect({
+      left: 0,
+      top: 0,
+      right: type == "row" ? rect.map.width : 1,
+      bottom: type == "column" ? rect.map.height : 1
+    });
+    for (let i = 0; i < cellPositions.length; i++) {
+      const cell = rect.table.nodeAt(cellPositions[i]);
+      if (cell && cell.type !== types.header_cell) return false;
+    }
+    return true;
+  }
+  function toggleHeader(type, options) {
+    options = options || { useDeprecatedLogic: false };
+    if (options.useDeprecatedLogic) return deprecated_toggleHeader(type);
+    return function(state, dispatch) {
+      if (!isInTable(state)) return false;
+      if (dispatch) {
+        const types = tableNodeTypes(state.schema);
+        const rect = selectedRect(state), tr2 = state.tr;
+        const isHeaderRowEnabled = isHeaderEnabledByType("row", rect, types);
+        const isHeaderColumnEnabled = isHeaderEnabledByType("column", rect, types);
+        const selectionStartsAt = (type === "column" ? isHeaderRowEnabled : type === "row" ? isHeaderColumnEnabled : false) ? 1 : 0;
+        const cellsRect = type == "column" ? {
+          left: 0,
+          top: selectionStartsAt,
+          right: 1,
+          bottom: rect.map.height
+        } : type == "row" ? {
+          left: selectionStartsAt,
+          top: 0,
+          right: rect.map.width,
+          bottom: 1
+        } : rect;
+        const newType = type == "column" ? isHeaderColumnEnabled ? types.cell : types.header_cell : type == "row" ? isHeaderRowEnabled ? types.cell : types.header_cell : types.cell;
+        rect.map.cellsInRect(cellsRect).forEach((relativeCellPos) => {
+          const cellPos = relativeCellPos + rect.tableStart;
+          const cell = tr2.doc.nodeAt(cellPos);
+          if (cell) tr2.setNodeMarkup(cellPos, newType, cell.attrs);
+        });
+        dispatch(tr2);
+      }
+      return true;
+    };
+  }
+  var toggleHeaderRow = toggleHeader("row", { useDeprecatedLogic: true });
+  var toggleHeaderColumn = toggleHeader("column", { useDeprecatedLogic: true });
+  var toggleHeaderCell = toggleHeader("cell", { useDeprecatedLogic: true });
+  function findNextCell($cell, dir) {
+    if (dir < 0) {
+      const before = $cell.nodeBefore;
+      if (before) return $cell.pos - before.nodeSize;
+      for (let row = $cell.index(-1) - 1, rowEnd = $cell.before(); row >= 0; row--) {
+        const rowNode = $cell.node(-1).child(row);
+        const lastChild = rowNode.lastChild;
+        if (lastChild) return rowEnd - 1 - lastChild.nodeSize;
+        rowEnd -= rowNode.nodeSize;
+      }
+    } else {
+      if ($cell.index() < $cell.parent.childCount - 1) return $cell.pos + $cell.nodeAfter.nodeSize;
+      const table = $cell.node(-1);
+      for (let row = $cell.indexAfter(-1), rowStart = $cell.after(); row < table.childCount; row++) {
+        const rowNode = table.child(row);
+        if (rowNode.childCount) return rowStart + 1;
+        rowStart += rowNode.nodeSize;
+      }
+    }
+    return null;
+  }
+  function goToNextCell(direction) {
+    return function(state, dispatch) {
+      if (!isInTable(state)) return false;
+      const cell = findNextCell(selectionCell(state), direction);
+      if (cell == null) return false;
+      if (dispatch) {
+        const $cell = state.doc.resolve(cell);
+        dispatch(state.tr.setSelection(TextSelection.between($cell, moveCellForward($cell))).scrollIntoView());
+      }
+      return true;
+    };
+  }
+  function deleteTable(state, dispatch) {
+    const $pos = state.selection.$anchor;
+    for (let d = $pos.depth; d > 0; d--) if ($pos.node(d).type.spec.tableRole == "table") {
+      if (dispatch) dispatch(state.tr.delete($pos.before(d), $pos.after(d)).scrollIntoView());
+      return true;
+    }
+    return false;
+  }
+  function deleteCellSelection(state, dispatch) {
+    const sel = state.selection;
+    if (!(sel instanceof CellSelection)) return false;
+    if (dispatch) {
+      const tr2 = state.tr;
+      const baseContent = tableNodeTypes(state.schema).cell.createAndFill().content;
+      sel.forEachCell((cell, pos) => {
+        if (!cell.content.eq(baseContent)) tr2.replace(tr2.mapping.map(pos + 1), tr2.mapping.map(pos + cell.nodeSize - 1), new Slice(baseContent, 0, 0));
+      });
+      if (tr2.docChanged) dispatch(tr2);
+    }
+    return true;
+  }
+  function pastedCells(slice2) {
+    if (slice2.size === 0) return null;
+    let { content, openStart, openEnd } = slice2;
+    while (content.childCount == 1 && (openStart > 0 && openEnd > 0 || content.child(0).type.spec.tableRole == "table")) {
+      openStart--;
+      openEnd--;
+      content = content.child(0).content;
+    }
+    const first2 = content.child(0);
+    const role = first2.type.spec.tableRole;
+    const schema = first2.type.schema, rows = [];
+    if (role == "row") for (let i = 0; i < content.childCount; i++) {
+      let cells = content.child(i).content;
+      const left = i ? 0 : Math.max(0, openStart - 1);
+      const right = i < content.childCount - 1 ? 0 : Math.max(0, openEnd - 1);
+      if (left || right) cells = fitSlice(tableNodeTypes(schema).row, new Slice(cells, left, right)).content;
+      rows.push(cells);
+    }
+    else if (role == "cell" || role == "header_cell") rows.push(openStart || openEnd ? fitSlice(tableNodeTypes(schema).row, new Slice(content, openStart, openEnd)).content : content);
+    else return null;
+    return ensureRectangular(schema, rows);
+  }
+  function ensureRectangular(schema, rows) {
+    const widths = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      for (let j = row.childCount - 1; j >= 0; j--) {
+        const { rowspan, colspan } = row.child(j).attrs;
+        for (let r = i; r < i + rowspan; r++) widths[r] = (widths[r] || 0) + colspan;
+      }
+    }
+    let width = 0;
+    for (let r = 0; r < widths.length; r++) width = Math.max(width, widths[r]);
+    for (let r = 0; r < widths.length; r++) {
+      if (r >= rows.length) rows.push(Fragment.empty);
+      if (widths[r] < width) {
+        const empty2 = tableNodeTypes(schema).cell.createAndFill();
+        const cells = [];
+        for (let i = widths[r]; i < width; i++) cells.push(empty2);
+        rows[r] = rows[r].append(Fragment.from(cells));
+      }
+    }
+    return {
+      height: rows.length,
+      width,
+      rows
+    };
+  }
+  function fitSlice(nodeType, slice2) {
+    const node = nodeType.createAndFill();
+    return new Transform(node).replace(0, node.content.size, slice2).doc;
+  }
+  function clipCells({ width, height, rows }, newWidth, newHeight) {
+    if (width != newWidth) {
+      const added = [];
+      const newRows = [];
+      for (let row = 0; row < rows.length; row++) {
+        const frag = rows[row], cells = [];
+        for (let col = added[row] || 0, i = 0; col < newWidth; i++) {
+          let cell = frag.child(i % frag.childCount);
+          if (col + cell.attrs.colspan > newWidth) cell = cell.type.createChecked(removeColSpan(cell.attrs, cell.attrs.colspan, col + cell.attrs.colspan - newWidth), cell.content);
+          cells.push(cell);
+          col += cell.attrs.colspan;
+          for (let j = 1; j < cell.attrs.rowspan; j++) added[row + j] = (added[row + j] || 0) + cell.attrs.colspan;
+        }
+        newRows.push(Fragment.from(cells));
+      }
+      rows = newRows;
+      width = newWidth;
+    }
+    if (height != newHeight) {
+      const newRows = [];
+      for (let row = 0, i = 0; row < newHeight; row++, i++) {
+        const cells = [], source = rows[i % height];
+        for (let j = 0; j < source.childCount; j++) {
+          let cell = source.child(j);
+          if (row + cell.attrs.rowspan > newHeight) cell = cell.type.create({
+            ...cell.attrs,
+            rowspan: Math.max(1, newHeight - cell.attrs.rowspan)
+          }, cell.content);
+          cells.push(cell);
+        }
+        newRows.push(Fragment.from(cells));
+      }
+      rows = newRows;
+      height = newHeight;
+    }
+    return {
+      width,
+      height,
+      rows
+    };
+  }
+  function growTable(tr2, map3, table, start, width, height, mapFrom) {
+    const schema = tr2.doc.type.schema;
+    const types = tableNodeTypes(schema);
+    let empty2;
+    let emptyHead;
+    if (width > map3.width) for (let row = 0, rowEnd = 0; row < map3.height; row++) {
+      const rowNode = table.child(row);
+      rowEnd += rowNode.nodeSize;
+      const cells = [];
+      let add;
+      if (rowNode.lastChild == null || rowNode.lastChild.type == types.cell) add = empty2 || (empty2 = types.cell.createAndFill());
+      else add = emptyHead || (emptyHead = types.header_cell.createAndFill());
+      for (let i = map3.width; i < width; i++) cells.push(add);
+      tr2.insert(tr2.mapping.slice(mapFrom).map(rowEnd - 1 + start), cells);
+    }
+    if (height > map3.height) {
+      const cells = [];
+      for (let i = 0, start$1 = (map3.height - 1) * map3.width; i < Math.max(map3.width, width); i++) {
+        const header = i >= map3.width ? false : table.nodeAt(map3.map[start$1 + i]).type == types.header_cell;
+        cells.push(header ? emptyHead || (emptyHead = types.header_cell.createAndFill()) : empty2 || (empty2 = types.cell.createAndFill()));
+      }
+      const emptyRow = types.row.create(null, Fragment.from(cells)), rows = [];
+      for (let i = map3.height; i < height; i++) rows.push(emptyRow);
+      tr2.insert(tr2.mapping.slice(mapFrom).map(start + table.nodeSize - 2), rows);
+    }
+    return !!(empty2 || emptyHead);
+  }
+  function isolateHorizontal(tr2, map3, table, start, left, right, top, mapFrom) {
+    if (top == 0 || top == map3.height) return false;
+    let found2 = false;
+    for (let col = left; col < right; col++) {
+      const index = top * map3.width + col, pos = map3.map[index];
+      if (map3.map[index - map3.width] == pos) {
+        found2 = true;
+        const cell = table.nodeAt(pos);
+        const { top: cellTop, left: cellLeft } = map3.findCell(pos);
+        tr2.setNodeMarkup(tr2.mapping.slice(mapFrom).map(pos + start), null, {
+          ...cell.attrs,
+          rowspan: top - cellTop
+        });
+        tr2.insert(tr2.mapping.slice(mapFrom).map(map3.positionAt(top, cellLeft, table)), cell.type.createAndFill({
+          ...cell.attrs,
+          rowspan: cellTop + cell.attrs.rowspan - top
+        }));
+        col += cell.attrs.colspan - 1;
+      }
+    }
+    return found2;
+  }
+  function isolateVertical(tr2, map3, table, start, top, bottom, left, mapFrom) {
+    if (left == 0 || left == map3.width) return false;
+    let found2 = false;
+    for (let row = top; row < bottom; row++) {
+      const index = row * map3.width + left, pos = map3.map[index];
+      if (map3.map[index - 1] == pos) {
+        found2 = true;
+        const cell = table.nodeAt(pos);
+        const cellLeft = map3.colCount(pos);
+        const updatePos = tr2.mapping.slice(mapFrom).map(pos + start);
+        tr2.setNodeMarkup(updatePos, null, removeColSpan(cell.attrs, left - cellLeft, cell.attrs.colspan - (left - cellLeft)));
+        tr2.insert(updatePos + cell.nodeSize, cell.type.createAndFill(removeColSpan(cell.attrs, 0, left - cellLeft)));
+        row += cell.attrs.rowspan - 1;
+      }
+    }
+    return found2;
+  }
+  function insertCells(state, dispatch, tableStart, rect, cells) {
+    let table = tableStart ? state.doc.nodeAt(tableStart - 1) : state.doc;
+    if (!table) throw new Error("No table found");
+    let map3 = TableMap.get(table);
+    const { top, left } = rect;
+    const right = left + cells.width, bottom = top + cells.height;
+    const tr2 = state.tr;
+    let mapFrom = 0;
+    function recomp() {
+      table = tableStart ? tr2.doc.nodeAt(tableStart - 1) : tr2.doc;
+      if (!table) throw new Error("No table found");
+      map3 = TableMap.get(table);
+      mapFrom = tr2.mapping.maps.length;
+    }
+    if (growTable(tr2, map3, table, tableStart, right, bottom, mapFrom)) recomp();
+    if (isolateHorizontal(tr2, map3, table, tableStart, left, right, top, mapFrom)) recomp();
+    if (isolateHorizontal(tr2, map3, table, tableStart, left, right, bottom, mapFrom)) recomp();
+    if (isolateVertical(tr2, map3, table, tableStart, top, bottom, left, mapFrom)) recomp();
+    if (isolateVertical(tr2, map3, table, tableStart, top, bottom, right, mapFrom)) recomp();
+    for (let row = top; row < bottom; row++) {
+      const from3 = map3.positionAt(row, left, table), to = map3.positionAt(row, right, table);
+      tr2.replace(tr2.mapping.slice(mapFrom).map(from3 + tableStart), tr2.mapping.slice(mapFrom).map(to + tableStart), new Slice(cells.rows[row - top], 0, 0));
+    }
+    recomp();
+    tr2.setSelection(new CellSelection(tr2.doc.resolve(tableStart + map3.positionAt(top, left, table)), tr2.doc.resolve(tableStart + map3.positionAt(bottom - 1, right - 1, table))));
+    dispatch(tr2);
+  }
+  var handleKeyDown = keydownHandler({
+    ArrowLeft: arrow("horiz", -1),
+    ArrowRight: arrow("horiz", 1),
+    ArrowUp: arrow("vert", -1),
+    ArrowDown: arrow("vert", 1),
+    "Shift-ArrowLeft": shiftArrow("horiz", -1),
+    "Shift-ArrowRight": shiftArrow("horiz", 1),
+    "Shift-ArrowUp": shiftArrow("vert", -1),
+    "Shift-ArrowDown": shiftArrow("vert", 1),
+    Backspace: deleteCellSelection,
+    "Mod-Backspace": deleteCellSelection,
+    Delete: deleteCellSelection,
+    "Mod-Delete": deleteCellSelection
+  });
+  function maybeSetSelection(state, dispatch, selection) {
+    if (selection.eq(state.selection)) return false;
+    if (dispatch) dispatch(state.tr.setSelection(selection).scrollIntoView());
+    return true;
+  }
+  function arrow(axis, dir) {
+    return (state, dispatch, view) => {
+      if (!view) return false;
+      const sel = state.selection;
+      if (sel instanceof CellSelection) return maybeSetSelection(state, dispatch, Selection.near(sel.$headCell, dir));
+      if (axis != "horiz" && !sel.empty) return false;
+      const end = atEndOfCell(view, axis, dir);
+      if (end == null) return false;
+      if (axis == "horiz") return maybeSetSelection(state, dispatch, Selection.near(state.doc.resolve(sel.head + dir), dir));
+      else {
+        const $cell = state.doc.resolve(end);
+        const $next = nextCell($cell, axis, dir);
+        let newSel;
+        if ($next) newSel = Selection.near($next, 1);
+        else if (dir < 0) newSel = Selection.near(state.doc.resolve($cell.before(-1)), -1);
+        else newSel = Selection.near(state.doc.resolve($cell.after(-1)), 1);
+        return maybeSetSelection(state, dispatch, newSel);
+      }
+    };
+  }
+  function shiftArrow(axis, dir) {
+    return (state, dispatch, view) => {
+      if (!view) return false;
+      const sel = state.selection;
+      let cellSel;
+      if (sel instanceof CellSelection) cellSel = sel;
+      else {
+        const end = atEndOfCell(view, axis, dir);
+        if (end == null) return false;
+        cellSel = new CellSelection(state.doc.resolve(end));
+      }
+      const $head = nextCell(cellSel.$headCell, axis, dir);
+      if (!$head) return false;
+      return maybeSetSelection(state, dispatch, new CellSelection(cellSel.$anchorCell, $head));
+    };
+  }
+  function handleTripleClick2(view, pos) {
+    const doc4 = view.state.doc, $cell = cellAround(doc4.resolve(pos));
+    if (!$cell) return false;
+    view.dispatch(view.state.tr.setSelection(new CellSelection($cell)));
+    return true;
+  }
+  function handlePaste(view, _, slice2) {
+    if (!isInTable(view.state)) return false;
+    let cells = pastedCells(slice2);
+    const sel = view.state.selection;
+    if (sel instanceof CellSelection) {
+      if (!cells) cells = {
+        width: 1,
+        height: 1,
+        rows: [Fragment.from(fitSlice(tableNodeTypes(view.state.schema).cell, slice2))]
+      };
+      const table = sel.$anchorCell.node(-1);
+      const start = sel.$anchorCell.start(-1);
+      const rect = TableMap.get(table).rectBetween(sel.$anchorCell.pos - start, sel.$headCell.pos - start);
+      cells = clipCells(cells, rect.right - rect.left, rect.bottom - rect.top);
+      insertCells(view.state, view.dispatch, start, rect, cells);
+      return true;
+    } else if (cells) {
+      const $cell = selectionCell(view.state);
+      const start = $cell.start(-1);
+      insertCells(view.state, view.dispatch, start, TableMap.get($cell.node(-1)).findCell($cell.pos - start), cells);
+      return true;
+    } else return false;
+  }
+  function handleMouseDown$1(view, startEvent) {
+    var _cellUnderMouse;
+    if (startEvent.button != 0) return;
+    if (startEvent.ctrlKey || startEvent.metaKey) return;
+    const startDOMCell = domInCell(view, startEvent.target);
+    let $anchor;
+    if (startEvent.shiftKey && view.state.selection instanceof CellSelection) {
+      setCellSelection(view.state.selection.$anchorCell, startEvent);
+      startEvent.preventDefault();
+    } else if (startEvent.shiftKey && startDOMCell && ($anchor = cellAround(view.state.selection.$anchor)) != null && ((_cellUnderMouse = cellUnderMouse(view, startEvent)) === null || _cellUnderMouse === void 0 ? void 0 : _cellUnderMouse.pos) != $anchor.pos) {
+      setCellSelection($anchor, startEvent);
+      startEvent.preventDefault();
+    } else if (!startDOMCell) return;
+    function setCellSelection($anchor$1, event) {
+      let $head = cellUnderMouse(view, event);
+      const starting = tableEditingKey.getState(view.state) == null;
+      if (!$head || !inSameTable($anchor$1, $head)) if (starting) $head = $anchor$1;
+      else return;
+      const selection = new CellSelection($anchor$1, $head);
+      if (starting || !view.state.selection.eq(selection)) {
+        const tr2 = view.state.tr.setSelection(selection);
+        if (starting) tr2.setMeta(tableEditingKey, $anchor$1.pos);
+        view.dispatch(tr2);
+      }
+    }
+    function stop() {
+      view.root.removeEventListener("mouseup", stop);
+      view.root.removeEventListener("dragstart", stop);
+      view.root.removeEventListener("mousemove", move);
+      if (tableEditingKey.getState(view.state) != null) view.dispatch(view.state.tr.setMeta(tableEditingKey, -1));
+    }
+    function move(_event) {
+      const event = _event;
+      const anchor = tableEditingKey.getState(view.state);
+      let $anchor$1;
+      if (anchor != null) $anchor$1 = view.state.doc.resolve(anchor);
+      else if (domInCell(view, event.target) != startDOMCell) {
+        $anchor$1 = cellUnderMouse(view, startEvent);
+        if (!$anchor$1) return stop();
+      }
+      if ($anchor$1) setCellSelection($anchor$1, event);
+    }
+    view.root.addEventListener("mouseup", stop);
+    view.root.addEventListener("dragstart", stop);
+    view.root.addEventListener("mousemove", move);
+  }
+  function atEndOfCell(view, axis, dir) {
+    if (!(view.state.selection instanceof TextSelection)) return null;
+    const { $head } = view.state.selection;
+    for (let d = $head.depth - 1; d >= 0; d--) {
+      const parent = $head.node(d);
+      if ((dir < 0 ? $head.index(d) : $head.indexAfter(d)) != (dir < 0 ? 0 : parent.childCount)) return null;
+      if (parent.type.spec.tableRole == "cell" || parent.type.spec.tableRole == "header_cell") {
+        const cellPos = $head.before(d);
+        const dirStr = axis == "vert" ? dir > 0 ? "down" : "up" : dir > 0 ? "right" : "left";
+        return view.endOfTextblock(dirStr) ? cellPos : null;
+      }
+    }
+    return null;
+  }
+  function domInCell(view, dom) {
+    for (; dom && dom != view.dom; dom = dom.parentNode) if (dom.nodeName == "TD" || dom.nodeName == "TH") return dom;
+    return null;
+  }
+  function cellUnderMouse(view, event) {
+    const mousePos = view.posAtCoords({
+      left: event.clientX,
+      top: event.clientY
+    });
+    if (!mousePos) return null;
+    let { inside, pos } = mousePos;
+    return inside >= 0 && cellAround(view.state.doc.resolve(inside)) || cellAround(view.state.doc.resolve(pos));
+  }
+  var TableView = class {
+    constructor(node, defaultCellMinWidth) {
+      this.node = node;
+      this.defaultCellMinWidth = defaultCellMinWidth;
+      this.dom = document.createElement("div");
+      this.dom.className = "tableWrapper";
+      this.table = this.dom.appendChild(document.createElement("table"));
+      this.table.style.setProperty("--default-cell-min-width", `${defaultCellMinWidth}px`);
+      this.colgroup = this.table.appendChild(document.createElement("colgroup"));
+      updateColumnsOnResize(node, this.colgroup, this.table, defaultCellMinWidth);
+      this.contentDOM = this.table.appendChild(document.createElement("tbody"));
+    }
+    update(node) {
+      if (node.type != this.node.type) return false;
+      this.node = node;
+      updateColumnsOnResize(node, this.colgroup, this.table, this.defaultCellMinWidth);
+      return true;
+    }
+    ignoreMutation(record) {
+      return record.type == "attributes" && (record.target == this.table || this.colgroup.contains(record.target));
+    }
+  };
+  function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overrideCol, overrideValue) {
+    let totalWidth = 0;
+    let fixedWidth = true;
+    let nextDOM = colgroup.firstChild;
+    const row = node.firstChild;
+    if (!row) return;
+    for (let i = 0, col = 0; i < row.childCount; i++) {
+      const { colspan, colwidth } = row.child(i).attrs;
+      for (let j = 0; j < colspan; j++, col++) {
+        const hasWidth = overrideCol == col ? overrideValue : colwidth && colwidth[j];
+        const cssWidth = hasWidth ? hasWidth + "px" : "";
+        totalWidth += hasWidth || defaultCellMinWidth;
+        if (!hasWidth) fixedWidth = false;
+        if (!nextDOM) {
+          const col$1 = document.createElement("col");
+          col$1.style.width = cssWidth;
+          colgroup.appendChild(col$1);
+        } else {
+          if (nextDOM.style.width != cssWidth) nextDOM.style.width = cssWidth;
+          nextDOM = nextDOM.nextSibling;
+        }
+      }
+    }
+    while (nextDOM) {
+      var _nextDOM$parentNode;
+      const after = nextDOM.nextSibling;
+      (_nextDOM$parentNode = nextDOM.parentNode) === null || _nextDOM$parentNode === void 0 || _nextDOM$parentNode.removeChild(nextDOM);
+      nextDOM = after;
+    }
+    if (fixedWidth) {
+      table.style.width = totalWidth + "px";
+      table.style.minWidth = "";
+    } else {
+      table.style.width = "";
+      table.style.minWidth = totalWidth + "px";
+    }
+  }
+  var columnResizingPluginKey = new PluginKey("tableColumnResizing");
+  function columnResizing({ handleWidth = 5, cellMinWidth = 25, defaultCellMinWidth = 100, View = TableView, lastColumnResizable = true } = {}) {
+    const plugin = new Plugin({
+      key: columnResizingPluginKey,
+      state: {
+        init(_, state) {
+          var _plugin$spec;
+          const nodeViews = (_plugin$spec = plugin.spec) === null || _plugin$spec === void 0 || (_plugin$spec = _plugin$spec.props) === null || _plugin$spec === void 0 ? void 0 : _plugin$spec.nodeViews;
+          const tableName = tableNodeTypes(state.schema).table.name;
+          if (View && nodeViews) nodeViews[tableName] = (node, view) => {
+            return new View(node, defaultCellMinWidth, view);
+          };
+          return new ResizeState(-1, false);
+        },
+        apply(tr2, prev) {
+          return prev.apply(tr2);
+        }
+      },
+      props: {
+        attributes: (state) => {
+          const pluginState = columnResizingPluginKey.getState(state);
+          return pluginState && pluginState.activeHandle > -1 ? { class: "resize-cursor" } : {};
+        },
+        handleDOMEvents: {
+          mousemove: (view, event) => {
+            handleMouseMove(view, event, handleWidth, lastColumnResizable);
+          },
+          mouseleave: (view) => {
+            handleMouseLeave(view);
+          },
+          mousedown: (view, event) => {
+            handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth);
+          }
+        },
+        decorations: (state) => {
+          const pluginState = columnResizingPluginKey.getState(state);
+          if (pluginState && pluginState.activeHandle > -1) return handleDecorations(state, pluginState.activeHandle);
+        },
+        nodeViews: {}
+      }
+    });
+    return plugin;
+  }
+  var ResizeState = class ResizeState2 {
+    constructor(activeHandle, dragging) {
+      this.activeHandle = activeHandle;
+      this.dragging = dragging;
+    }
+    apply(tr2) {
+      const state = this;
+      const action = tr2.getMeta(columnResizingPluginKey);
+      if (action && action.setHandle != null) return new ResizeState2(action.setHandle, false);
+      if (action && action.setDragging !== void 0) return new ResizeState2(state.activeHandle, action.setDragging);
+      if (state.activeHandle > -1 && tr2.docChanged) {
+        let handle = tr2.mapping.map(state.activeHandle, -1);
+        if (!pointsAtCell(tr2.doc.resolve(handle))) handle = -1;
+        return new ResizeState2(handle, state.dragging);
+      }
+      return state;
+    }
+  };
+  function handleMouseMove(view, event, handleWidth, lastColumnResizable) {
+    if (!view.editable) return;
+    const pluginState = columnResizingPluginKey.getState(view.state);
+    if (!pluginState) return;
+    if (!pluginState.dragging) {
+      const target = domCellAround(event.target);
+      let cell = -1;
+      if (target) {
+        const { left, right } = target.getBoundingClientRect();
+        if (event.clientX - left <= handleWidth) cell = edgeCell(view, event, "left", handleWidth);
+        else if (right - event.clientX <= handleWidth) cell = edgeCell(view, event, "right", handleWidth);
+      }
+      if (cell != pluginState.activeHandle) {
+        if (!lastColumnResizable && cell !== -1) {
+          const $cell = view.state.doc.resolve(cell);
+          const table = $cell.node(-1);
+          const map3 = TableMap.get(table);
+          const tableStart = $cell.start(-1);
+          if (map3.colCount($cell.pos - tableStart) + $cell.nodeAfter.attrs.colspan - 1 == map3.width - 1) return;
+        }
+        updateHandle(view, cell);
+      }
+    }
+  }
+  function handleMouseLeave(view) {
+    if (!view.editable) return;
+    const pluginState = columnResizingPluginKey.getState(view.state);
+    if (pluginState && pluginState.activeHandle > -1 && !pluginState.dragging) updateHandle(view, -1);
+  }
+  function handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth) {
+    var _view$dom$ownerDocume;
+    if (!view.editable) return false;
+    const win = (_view$dom$ownerDocume = view.dom.ownerDocument.defaultView) !== null && _view$dom$ownerDocume !== void 0 ? _view$dom$ownerDocume : window;
+    const pluginState = columnResizingPluginKey.getState(view.state);
+    if (!pluginState || pluginState.activeHandle == -1 || pluginState.dragging) return false;
+    const cell = view.state.doc.nodeAt(pluginState.activeHandle);
+    const width = currentColWidth(view, pluginState.activeHandle, cell.attrs);
+    view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: {
+      startX: event.clientX,
+      startWidth: width
+    } }));
+    function finish(event$1) {
+      win.removeEventListener("mouseup", finish);
+      win.removeEventListener("mousemove", move);
+      const pluginState$1 = columnResizingPluginKey.getState(view.state);
+      if (pluginState$1 === null || pluginState$1 === void 0 ? void 0 : pluginState$1.dragging) {
+        updateColumnWidth(view, pluginState$1.activeHandle, draggedWidth(pluginState$1.dragging, event$1, cellMinWidth));
+        view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: null }));
+      }
+    }
+    function move(event$1) {
+      if (!event$1.which) return finish(event$1);
+      const pluginState$1 = columnResizingPluginKey.getState(view.state);
+      if (!pluginState$1) return;
+      if (pluginState$1.dragging) {
+        const dragged = draggedWidth(pluginState$1.dragging, event$1, cellMinWidth);
+        displayColumnWidth(view, pluginState$1.activeHandle, dragged, defaultCellMinWidth);
+      }
+    }
+    displayColumnWidth(view, pluginState.activeHandle, width, defaultCellMinWidth);
+    win.addEventListener("mouseup", finish);
+    win.addEventListener("mousemove", move);
+    event.preventDefault();
+    return true;
+  }
+  function currentColWidth(view, cellPos, { colspan, colwidth }) {
+    const width = colwidth && colwidth[colwidth.length - 1];
+    if (width) return width;
+    const dom = view.domAtPos(cellPos);
+    let domWidth = dom.node.childNodes[dom.offset].offsetWidth, parts = colspan;
+    if (colwidth) {
+      for (let i = 0; i < colspan; i++) if (colwidth[i]) {
+        domWidth -= colwidth[i];
+        parts--;
+      }
+    }
+    return domWidth / parts;
+  }
+  function domCellAround(target) {
+    while (target && target.nodeName != "TD" && target.nodeName != "TH") target = target.classList && target.classList.contains("ProseMirror") ? null : target.parentNode;
+    return target;
+  }
+  function edgeCell(view, event, side, handleWidth) {
+    const offset3 = side == "right" ? -handleWidth : handleWidth;
+    const found2 = view.posAtCoords({
+      left: event.clientX + offset3,
+      top: event.clientY
+    });
+    if (!found2) return -1;
+    const { pos } = found2;
+    const $cell = cellAround(view.state.doc.resolve(pos));
+    if (!$cell) return -1;
+    if (side == "right") return $cell.pos;
+    const map3 = TableMap.get($cell.node(-1)), start = $cell.start(-1);
+    const index = map3.map.indexOf($cell.pos - start);
+    return index % map3.width == 0 ? -1 : start + map3.map[index - 1];
+  }
+  function draggedWidth(dragging, event, resizeMinWidth) {
+    const offset3 = event.clientX - dragging.startX;
+    return Math.max(resizeMinWidth, dragging.startWidth + offset3);
+  }
+  function updateHandle(view, value) {
+    view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setHandle: value }));
+  }
+  function updateColumnWidth(view, cell, width) {
+    const $cell = view.state.doc.resolve(cell);
+    const table = $cell.node(-1), map3 = TableMap.get(table), start = $cell.start(-1);
+    const col = map3.colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+    const tr2 = view.state.tr;
+    for (let row = 0; row < map3.height; row++) {
+      const mapIndex = row * map3.width + col;
+      if (row && map3.map[mapIndex] == map3.map[mapIndex - map3.width]) continue;
+      const pos = map3.map[mapIndex];
+      const attrs = table.nodeAt(pos).attrs;
+      const index = attrs.colspan == 1 ? 0 : col - map3.colCount(pos);
+      if (attrs.colwidth && attrs.colwidth[index] == width) continue;
+      const colwidth = attrs.colwidth ? attrs.colwidth.slice() : zeroes(attrs.colspan);
+      colwidth[index] = width;
+      tr2.setNodeMarkup(start + pos, null, {
+        ...attrs,
+        colwidth
+      });
+    }
+    if (tr2.docChanged) view.dispatch(tr2);
+  }
+  function displayColumnWidth(view, cell, width, defaultCellMinWidth) {
+    const $cell = view.state.doc.resolve(cell);
+    const table = $cell.node(-1), start = $cell.start(-1);
+    const col = TableMap.get(table).colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+    let dom = view.domAtPos($cell.start(-1)).node;
+    while (dom && dom.nodeName != "TABLE") dom = dom.parentNode;
+    if (!dom) return;
+    updateColumnsOnResize(table, dom.firstChild, dom, defaultCellMinWidth, col, width);
+  }
+  function zeroes(n) {
+    return Array(n).fill(0);
+  }
+  function handleDecorations(state, cell) {
+    const decorations = [];
+    const $cell = state.doc.resolve(cell);
+    const table = $cell.node(-1);
+    if (!table) return DecorationSet.empty;
+    const map3 = TableMap.get(table);
+    const start = $cell.start(-1);
+    const col = map3.colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+    for (let row = 0; row < map3.height; row++) {
+      const index = col + row * map3.width;
+      if ((col == map3.width - 1 || map3.map[index] != map3.map[index + 1]) && (row == 0 || map3.map[index] != map3.map[index - map3.width])) {
+        var _columnResizingPlugin;
+        const cellPos = map3.map[index];
+        const pos = start + cellPos + table.nodeAt(cellPos).nodeSize - 1;
+        const dom = document.createElement("div");
+        dom.className = "column-resize-handle";
+        if ((_columnResizingPlugin = columnResizingPluginKey.getState(state)) === null || _columnResizingPlugin === void 0 ? void 0 : _columnResizingPlugin.dragging) decorations.push(Decoration.node(start + cellPos, start + cellPos + table.nodeAt(cellPos).nodeSize, { class: "column-resize-dragging" }));
+        decorations.push(Decoration.widget(pos, dom));
+      }
+    }
+    return DecorationSet.create(state.doc, decorations);
+  }
+  function tableEditing({ allowTableNodeSelection = false } = {}) {
+    return new Plugin({
+      key: tableEditingKey,
+      state: {
+        init() {
+          return null;
+        },
+        apply(tr2, cur) {
+          const set = tr2.getMeta(tableEditingKey);
+          if (set != null) return set == -1 ? null : set;
+          if (cur == null || !tr2.docChanged) return cur;
+          const { deleted, pos } = tr2.mapping.mapResult(cur);
+          return deleted ? null : pos;
+        }
+      },
+      props: {
+        decorations: drawCellSelection,
+        handleDOMEvents: { mousedown: handleMouseDown$1 },
+        createSelectionBetween(view) {
+          return tableEditingKey.getState(view.state) != null ? view.state.selection : null;
+        },
+        handleTripleClick: handleTripleClick2,
+        handleKeyDown,
+        handlePaste
+      },
+      appendTransaction(_, oldState, state) {
+        return normalizeSelection(state, fixTables(state, oldState), allowTableNodeSelection);
+      }
+    });
+  }
+
+  // node_modules/@tiptap/extension-table/dist/index.js
+  function getColStyleDeclaration(minWidth, width) {
+    if (width) {
+      return ["width", `${Math.max(width, minWidth)}px`];
+    }
+    return ["min-width", `${minWidth}px`];
+  }
+  function updateColumns(node, colgroup, table, cellMinWidth, overrideCol, overrideValue) {
+    var _a;
+    let totalWidth = 0;
+    let fixedWidth = true;
+    let nextDOM = colgroup.firstChild;
+    const row = node.firstChild;
+    if (row !== null) {
+      for (let i = 0, col = 0; i < row.childCount; i += 1) {
+        const { colspan, colwidth } = row.child(i).attrs;
+        for (let j = 0; j < colspan; j += 1, col += 1) {
+          const hasWidth = overrideCol === col ? overrideValue : colwidth && colwidth[j];
+          const cssWidth = hasWidth ? `${hasWidth}px` : "";
+          totalWidth += hasWidth || cellMinWidth;
+          if (!hasWidth) {
+            fixedWidth = false;
+          }
+          if (!nextDOM) {
+            const colElement = document.createElement("col");
+            const [propertyKey, propertyValue] = getColStyleDeclaration(cellMinWidth, hasWidth);
+            colElement.style.setProperty(propertyKey, propertyValue);
+            colgroup.appendChild(colElement);
+          } else {
+            if (nextDOM.style.width !== cssWidth) {
+              const [propertyKey, propertyValue] = getColStyleDeclaration(cellMinWidth, hasWidth);
+              nextDOM.style.setProperty(propertyKey, propertyValue);
+            }
+            nextDOM = nextDOM.nextSibling;
+          }
+        }
+      }
+    }
+    while (nextDOM) {
+      const after = nextDOM.nextSibling;
+      (_a = nextDOM.parentNode) === null || _a === void 0 ? void 0 : _a.removeChild(nextDOM);
+      nextDOM = after;
+    }
+    if (fixedWidth) {
+      table.style.width = `${totalWidth}px`;
+      table.style.minWidth = "";
+    } else {
+      table.style.width = "";
+      table.style.minWidth = `${totalWidth}px`;
+    }
+  }
+  var TableView2 = class {
+    constructor(node, cellMinWidth) {
+      this.node = node;
+      this.cellMinWidth = cellMinWidth;
+      this.dom = document.createElement("div");
+      this.dom.className = "tableWrapper";
+      this.table = this.dom.appendChild(document.createElement("table"));
+      this.colgroup = this.table.appendChild(document.createElement("colgroup"));
+      updateColumns(node, this.colgroup, this.table, cellMinWidth);
+      this.contentDOM = this.table.appendChild(document.createElement("tbody"));
+    }
+    update(node) {
+      if (node.type !== this.node.type) {
+        return false;
+      }
+      this.node = node;
+      updateColumns(node, this.colgroup, this.table, this.cellMinWidth);
+      return true;
+    }
+    ignoreMutation(mutation) {
+      return mutation.type === "attributes" && (mutation.target === this.table || this.colgroup.contains(mutation.target));
+    }
+  };
+  function createColGroup(node, cellMinWidth, overrideCol, overrideValue) {
+    let totalWidth = 0;
+    let fixedWidth = true;
+    const cols = [];
+    const row = node.firstChild;
+    if (!row) {
+      return {};
+    }
+    for (let i = 0, col = 0; i < row.childCount; i += 1) {
+      const { colspan, colwidth } = row.child(i).attrs;
+      for (let j = 0; j < colspan; j += 1, col += 1) {
+        const hasWidth = overrideCol === col ? overrideValue : colwidth && colwidth[j];
+        totalWidth += hasWidth || cellMinWidth;
+        if (!hasWidth) {
+          fixedWidth = false;
+        }
+        const [property, value] = getColStyleDeclaration(cellMinWidth, hasWidth);
+        cols.push([
+          "col",
+          { style: `${property}: ${value}` }
+        ]);
+      }
+    }
+    const tableWidth = fixedWidth ? `${totalWidth}px` : "";
+    const tableMinWidth = fixedWidth ? "" : `${totalWidth}px`;
+    const colgroup = ["colgroup", {}, ...cols];
+    return { colgroup, tableWidth, tableMinWidth };
+  }
+  function createCell(cellType, cellContent) {
+    if (cellContent) {
+      return cellType.createChecked(null, cellContent);
+    }
+    return cellType.createAndFill();
+  }
+  function getTableNodeTypes(schema) {
+    if (schema.cached.tableNodeTypes) {
+      return schema.cached.tableNodeTypes;
+    }
+    const roles = {};
+    Object.keys(schema.nodes).forEach((type) => {
+      const nodeType = schema.nodes[type];
+      if (nodeType.spec.tableRole) {
+        roles[nodeType.spec.tableRole] = nodeType;
+      }
+    });
+    schema.cached.tableNodeTypes = roles;
+    return roles;
+  }
+  function createTable(schema, rowsCount, colsCount, withHeaderRow, cellContent) {
+    const types = getTableNodeTypes(schema);
+    const headerCells = [];
+    const cells = [];
+    for (let index = 0; index < colsCount; index += 1) {
+      const cell = createCell(types.cell, cellContent);
+      if (cell) {
+        cells.push(cell);
+      }
+      if (withHeaderRow) {
+        const headerCell = createCell(types.header_cell, cellContent);
+        if (headerCell) {
+          headerCells.push(headerCell);
+        }
+      }
+    }
+    const rows = [];
+    for (let index = 0; index < rowsCount; index += 1) {
+      rows.push(types.row.createChecked(null, withHeaderRow && index === 0 ? headerCells : cells));
+    }
+    return types.table.createChecked(null, rows);
+  }
+  function isCellSelection(value) {
+    return value instanceof CellSelection;
+  }
+  var deleteTableWhenAllCellsSelected = ({ editor }) => {
+    const { selection } = editor.state;
+    if (!isCellSelection(selection)) {
+      return false;
+    }
+    let cellCount = 0;
+    const table = findParentNodeClosestToPos(selection.ranges[0].$from, (node) => {
+      return node.type.name === "table";
+    });
+    table === null || table === void 0 ? void 0 : table.node.descendants((node) => {
+      if (node.type.name === "table") {
+        return false;
+      }
+      if (["tableCell", "tableHeader"].includes(node.type.name)) {
+        cellCount += 1;
+      }
+    });
+    const allCellsSelected = cellCount === selection.ranges.length;
+    if (!allCellsSelected) {
+      return false;
+    }
+    editor.commands.deleteTable();
+    return true;
+  };
+  var Table = Node3.create({
+    name: "table",
+    // @ts-ignore
+    addOptions() {
+      return {
+        HTMLAttributes: {},
+        resizable: false,
+        renderWrapper: false,
+        handleWidth: 5,
+        cellMinWidth: 25,
+        // TODO: fix
+        View: TableView2,
+        lastColumnResizable: true,
+        allowTableNodeSelection: false
+      };
+    },
+    content: "tableRow+",
+    tableRole: "table",
+    isolating: true,
+    group: "block",
+    parseHTML() {
+      return [{ tag: "table" }];
+    },
+    renderHTML({ node, HTMLAttributes }) {
+      const { colgroup, tableWidth, tableMinWidth } = createColGroup(node, this.options.cellMinWidth);
+      const table = [
+        "table",
+        mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+          style: tableWidth ? `width: ${tableWidth}` : `min-width: ${tableMinWidth}`
+        }),
+        colgroup,
+        ["tbody", 0]
+      ];
+      return this.options.renderWrapper ? ["div", { class: "tableWrapper" }, table] : table;
+    },
+    addCommands() {
+      return {
+        insertTable: ({ rows = 3, cols = 3, withHeaderRow = true } = {}) => ({ tr: tr2, dispatch, editor }) => {
+          const node = createTable(editor.schema, rows, cols, withHeaderRow);
+          if (dispatch) {
+            const offset3 = tr2.selection.from + 1;
+            tr2.replaceSelectionWith(node).scrollIntoView().setSelection(TextSelection.near(tr2.doc.resolve(offset3)));
+          }
+          return true;
+        },
+        addColumnBefore: () => ({ state, dispatch }) => {
+          return addColumnBefore(state, dispatch);
+        },
+        addColumnAfter: () => ({ state, dispatch }) => {
+          return addColumnAfter(state, dispatch);
+        },
+        deleteColumn: () => ({ state, dispatch }) => {
+          return deleteColumn(state, dispatch);
+        },
+        addRowBefore: () => ({ state, dispatch }) => {
+          return addRowBefore(state, dispatch);
+        },
+        addRowAfter: () => ({ state, dispatch }) => {
+          return addRowAfter(state, dispatch);
+        },
+        deleteRow: () => ({ state, dispatch }) => {
+          return deleteRow(state, dispatch);
+        },
+        deleteTable: () => ({ state, dispatch }) => {
+          return deleteTable(state, dispatch);
+        },
+        mergeCells: () => ({ state, dispatch }) => {
+          return mergeCells(state, dispatch);
+        },
+        splitCell: () => ({ state, dispatch }) => {
+          return splitCell(state, dispatch);
+        },
+        toggleHeaderColumn: () => ({ state, dispatch }) => {
+          return toggleHeader("column")(state, dispatch);
+        },
+        toggleHeaderRow: () => ({ state, dispatch }) => {
+          return toggleHeader("row")(state, dispatch);
+        },
+        toggleHeaderCell: () => ({ state, dispatch }) => {
+          return toggleHeaderCell(state, dispatch);
+        },
+        mergeOrSplit: () => ({ state, dispatch }) => {
+          if (mergeCells(state, dispatch)) {
+            return true;
+          }
+          return splitCell(state, dispatch);
+        },
+        setCellAttribute: (name, value) => ({ state, dispatch }) => {
+          return setCellAttr(name, value)(state, dispatch);
+        },
+        goToNextCell: () => ({ state, dispatch }) => {
+          return goToNextCell(1)(state, dispatch);
+        },
+        goToPreviousCell: () => ({ state, dispatch }) => {
+          return goToNextCell(-1)(state, dispatch);
+        },
+        fixTables: () => ({ state, dispatch }) => {
+          if (dispatch) {
+            fixTables(state);
+          }
+          return true;
+        },
+        setCellSelection: (position) => ({ tr: tr2, dispatch }) => {
+          if (dispatch) {
+            const selection = CellSelection.create(tr2.doc, position.anchorCell, position.headCell);
+            tr2.setSelection(selection);
+          }
+          return true;
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        Tab: () => {
+          if (this.editor.commands.goToNextCell()) {
+            return true;
+          }
+          if (!this.editor.can().addRowAfter()) {
+            return false;
+          }
+          return this.editor.chain().addRowAfter().goToNextCell().run();
+        },
+        "Shift-Tab": () => this.editor.commands.goToPreviousCell(),
+        Backspace: deleteTableWhenAllCellsSelected,
+        "Mod-Backspace": deleteTableWhenAllCellsSelected,
+        Delete: deleteTableWhenAllCellsSelected,
+        "Mod-Delete": deleteTableWhenAllCellsSelected
+      };
+    },
+    addProseMirrorPlugins() {
+      const isResizable = this.options.resizable && this.editor.isEditable;
+      return [
+        ...isResizable ? [
+          columnResizing({
+            handleWidth: this.options.handleWidth,
+            cellMinWidth: this.options.cellMinWidth,
+            defaultCellMinWidth: this.options.cellMinWidth,
+            View: this.options.View,
+            lastColumnResizable: this.options.lastColumnResizable
+          })
+        ] : [],
+        tableEditing({
+          allowTableNodeSelection: this.options.allowTableNodeSelection
+        })
+      ];
+    },
+    extendNodeSchema(extension) {
+      const context = {
+        name: extension.name,
+        options: extension.options,
+        storage: extension.storage
+      };
+      return {
+        tableRole: callOrReturn(getExtensionField(extension, "tableRole", context))
+      };
+    }
+  });
+
+  // node_modules/@tiptap/extension-table-cell/dist/index.js
+  var TableCell = Node3.create({
+    name: "tableCell",
+    addOptions() {
+      return {
+        HTMLAttributes: {}
+      };
+    },
+    content: "block+",
+    addAttributes() {
+      return {
+        colspan: {
+          default: 1
+        },
+        rowspan: {
+          default: 1
+        },
+        colwidth: {
+          default: null,
+          parseHTML: (element2) => {
+            const colwidth = element2.getAttribute("colwidth");
+            const value = colwidth ? colwidth.split(",").map((width) => parseInt(width, 10)) : null;
+            return value;
+          }
+        }
+      };
+    },
+    tableRole: "cell",
+    isolating: true,
+    parseHTML() {
+      return [
+        { tag: "td" }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["td", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    }
+  });
+
+  // node_modules/@tiptap/extension-table-header/dist/index.js
+  var TableHeader = Node3.create({
+    name: "tableHeader",
+    addOptions() {
+      return {
+        HTMLAttributes: {}
+      };
+    },
+    content: "block+",
+    addAttributes() {
+      return {
+        colspan: {
+          default: 1
+        },
+        rowspan: {
+          default: 1
+        },
+        colwidth: {
+          default: null,
+          parseHTML: (element2) => {
+            const colwidth = element2.getAttribute("colwidth");
+            const value = colwidth ? colwidth.split(",").map((width) => parseInt(width, 10)) : null;
+            return value;
+          }
+        }
+      };
+    },
+    tableRole: "header_cell",
+    isolating: true,
+    parseHTML() {
+      return [
+        { tag: "th" }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["th", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    }
+  });
+
+  // node_modules/@tiptap/extension-table-row/dist/index.js
+  var TableRow = Node3.create({
+    name: "tableRow",
+    addOptions() {
+      return {
+        HTMLAttributes: {}
+      };
+    },
+    content: "(tableCell | tableHeader)*",
+    tableRole: "row",
+    parseHTML() {
+      return [
+        { tag: "tr" }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["tr", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    }
+  });
+
+  // node_modules/@tiptap/extension-task-item/dist/index.js
+  var inputRegex3 = /^\s*(\[([( |x])?\])\s$/;
+  var TaskItem = Node3.create({
+    name: "taskItem",
+    addOptions() {
+      return {
+        nested: false,
+        HTMLAttributes: {},
+        taskListTypeName: "taskList",
+        a11y: void 0
+      };
+    },
+    content() {
+      return this.options.nested ? "paragraph block*" : "paragraph+";
+    },
+    defining: true,
+    addAttributes() {
+      return {
+        checked: {
+          default: false,
+          keepOnSplit: false,
+          parseHTML: (element2) => {
+            const dataChecked = element2.getAttribute("data-checked");
+            return dataChecked === "" || dataChecked === "true";
+          },
+          renderHTML: (attributes) => ({
+            "data-checked": attributes.checked
+          })
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: `li[data-type="${this.name}"]`,
+          priority: 51
+        }
+      ];
+    },
+    renderHTML({ node, HTMLAttributes }) {
+      return [
+        "li",
+        mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+          "data-type": this.name
+        }),
+        [
+          "label",
+          [
+            "input",
+            {
+              type: "checkbox",
+              checked: node.attrs.checked ? "checked" : null
+            }
+          ],
+          ["span"]
+        ],
+        ["div", 0]
+      ];
+    },
+    addKeyboardShortcuts() {
+      const shortcuts = {
+        Enter: () => this.editor.commands.splitListItem(this.name),
+        "Shift-Tab": () => this.editor.commands.liftListItem(this.name)
+      };
+      if (!this.options.nested) {
+        return shortcuts;
+      }
+      return {
+        ...shortcuts,
+        Tab: () => this.editor.commands.sinkListItem(this.name)
+      };
+    },
+    addNodeView() {
+      return ({ node, HTMLAttributes, getPos, editor }) => {
+        const listItem = document.createElement("li");
+        const checkboxWrapper = document.createElement("label");
+        const checkboxStyler = document.createElement("span");
+        const checkbox = document.createElement("input");
+        const content = document.createElement("div");
+        const updateA11Y = () => {
+          var _a, _b;
+          checkbox.ariaLabel = ((_b = (_a = this.options.a11y) === null || _a === void 0 ? void 0 : _a.checkboxLabel) === null || _b === void 0 ? void 0 : _b.call(_a, node, checkbox.checked)) || `Task item checkbox for ${node.textContent || "empty task item"}`;
+        };
+        updateA11Y();
+        checkboxWrapper.contentEditable = "false";
+        checkbox.type = "checkbox";
+        checkbox.addEventListener("mousedown", (event) => event.preventDefault());
+        checkbox.addEventListener("change", (event) => {
+          if (!editor.isEditable && !this.options.onReadOnlyChecked) {
+            checkbox.checked = !checkbox.checked;
+            return;
+          }
+          const { checked } = event.target;
+          if (editor.isEditable && typeof getPos === "function") {
+            editor.chain().focus(void 0, { scrollIntoView: false }).command(({ tr: tr2 }) => {
+              const position = getPos();
+              if (typeof position !== "number") {
+                return false;
+              }
+              const currentNode = tr2.doc.nodeAt(position);
+              tr2.setNodeMarkup(position, void 0, {
+                ...currentNode === null || currentNode === void 0 ? void 0 : currentNode.attrs,
+                checked
+              });
+              return true;
+            }).run();
+          }
+          if (!editor.isEditable && this.options.onReadOnlyChecked) {
+            if (!this.options.onReadOnlyChecked(node, checked)) {
+              checkbox.checked = !checkbox.checked;
+            }
+          }
+        });
+        Object.entries(this.options.HTMLAttributes).forEach(([key, value]) => {
+          listItem.setAttribute(key, value);
+        });
+        listItem.dataset.checked = node.attrs.checked;
+        checkbox.checked = node.attrs.checked;
+        checkboxWrapper.append(checkbox, checkboxStyler);
+        listItem.append(checkboxWrapper, content);
+        Object.entries(HTMLAttributes).forEach(([key, value]) => {
+          listItem.setAttribute(key, value);
+        });
+        return {
+          dom: listItem,
+          contentDOM: content,
+          update: (updatedNode) => {
+            if (updatedNode.type !== this.type) {
+              return false;
+            }
+            listItem.dataset.checked = updatedNode.attrs.checked;
+            checkbox.checked = updatedNode.attrs.checked;
+            updateA11Y();
+            return true;
+          }
+        };
+      };
+    },
+    addInputRules() {
+      return [
+        wrappingInputRule({
+          find: inputRegex3,
+          type: this.type,
+          getAttributes: (match2) => ({
+            checked: match2[match2.length - 1] === "x"
+          })
+        })
+      ];
+    }
+  });
+
+  // node_modules/@tiptap/extension-task-list/dist/index.js
+  var TaskList = Node3.create({
+    name: "taskList",
+    addOptions() {
+      return {
+        itemTypeName: "taskItem",
+        HTMLAttributes: {}
+      };
+    },
+    group: "block list",
+    content() {
+      return `${this.options.itemTypeName}+`;
+    },
+    parseHTML() {
+      return [
+        {
+          tag: `ul[data-type="${this.name}"]`,
+          priority: 51
+        }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["ul", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { "data-type": this.name }), 0];
+    },
+    addCommands() {
+      return {
+        toggleTaskList: () => ({ commands: commands2 }) => {
+          return commands2.toggleList(this.name, this.options.itemTypeName);
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-9": () => this.editor.commands.toggleTaskList()
+      };
+    }
+  });
+
+  // node_modules/@tiptap/extension-text-align/dist/index.js
+  var TextAlign = Extension.create({
+    name: "textAlign",
+    addOptions() {
+      return {
+        types: [],
+        alignments: ["left", "center", "right", "justify"],
+        defaultAlignment: null
+      };
+    },
+    addGlobalAttributes() {
+      return [
+        {
+          types: this.options.types,
+          attributes: {
+            textAlign: {
+              default: this.options.defaultAlignment,
+              parseHTML: (element2) => {
+                const alignment = element2.style.textAlign;
+                return this.options.alignments.includes(alignment) ? alignment : this.options.defaultAlignment;
+              },
+              renderHTML: (attributes) => {
+                if (!attributes.textAlign) {
+                  return {};
+                }
+                return { style: `text-align: ${attributes.textAlign}` };
+              }
+            }
+          }
+        }
+      ];
+    },
+    addCommands() {
+      return {
+        setTextAlign: (alignment) => ({ commands: commands2 }) => {
+          if (!this.options.alignments.includes(alignment)) {
+            return false;
+          }
+          return this.options.types.map((type) => commands2.updateAttributes(type, { textAlign: alignment })).every((response) => response);
+        },
+        unsetTextAlign: () => ({ commands: commands2 }) => {
+          return this.options.types.map((type) => commands2.resetAttributes(type, "textAlign")).every((response) => response);
+        },
+        toggleTextAlign: (alignment) => ({ editor, commands: commands2 }) => {
+          if (!this.options.alignments.includes(alignment)) {
+            return false;
+          }
+          if (editor.isActive({ textAlign: alignment })) {
+            return commands2.unsetTextAlign();
+          }
+          return commands2.setTextAlign(alignment);
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-l": () => this.editor.commands.setTextAlign("left"),
+        "Mod-Shift-e": () => this.editor.commands.setTextAlign("center"),
+        "Mod-Shift-r": () => this.editor.commands.setTextAlign("right"),
+        "Mod-Shift-j": () => this.editor.commands.setTextAlign("justify")
+      };
+    }
+  });
+
+  // node_modules/@tiptap/extension-typography/dist/index.js
+  var emDash = (override) => textInputRule({
+    find: /--$/,
+    replace: override !== null && override !== void 0 ? override : "\u2014"
+  });
+  var ellipsis = (override) => textInputRule({
+    find: /\.\.\.$/,
+    replace: override !== null && override !== void 0 ? override : "\u2026"
+  });
+  var openDoubleQuote = (override) => textInputRule({
+    find: /(?:^|[\s{[(<'"\u2018\u201C])(")$/,
+    replace: override !== null && override !== void 0 ? override : "\u201C"
+  });
+  var closeDoubleQuote = (override) => textInputRule({
+    find: /"$/,
+    replace: override !== null && override !== void 0 ? override : "\u201D"
+  });
+  var openSingleQuote = (override) => textInputRule({
+    find: /(?:^|[\s{[(<'"\u2018\u201C])(')$/,
+    replace: override !== null && override !== void 0 ? override : "\u2018"
+  });
+  var closeSingleQuote = (override) => textInputRule({
+    find: /'$/,
+    replace: override !== null && override !== void 0 ? override : "\u2019"
+  });
+  var leftArrow = (override) => textInputRule({
+    find: /<-$/,
+    replace: override !== null && override !== void 0 ? override : "\u2190"
+  });
+  var rightArrow = (override) => textInputRule({
+    find: /->$/,
+    replace: override !== null && override !== void 0 ? override : "\u2192"
+  });
+  var copyright = (override) => textInputRule({
+    find: /\(c\)$/,
+    replace: override !== null && override !== void 0 ? override : "\xA9"
+  });
+  var trademark = (override) => textInputRule({
+    find: /\(tm\)$/,
+    replace: override !== null && override !== void 0 ? override : "\u2122"
+  });
+  var servicemark = (override) => textInputRule({
+    find: /\(sm\)$/,
+    replace: override !== null && override !== void 0 ? override : "\u2120"
+  });
+  var registeredTrademark = (override) => textInputRule({
+    find: /\(r\)$/,
+    replace: override !== null && override !== void 0 ? override : "\xAE"
+  });
+  var oneHalf = (override) => textInputRule({
+    find: /(?:^|\s)(1\/2)\s$/,
+    replace: override !== null && override !== void 0 ? override : "\xBD"
+  });
+  var plusMinus = (override) => textInputRule({
+    find: /\+\/-$/,
+    replace: override !== null && override !== void 0 ? override : "\xB1"
+  });
+  var notEqual = (override) => textInputRule({
+    find: /!=$/,
+    replace: override !== null && override !== void 0 ? override : "\u2260"
+  });
+  var laquo = (override) => textInputRule({
+    find: /<<$/,
+    replace: override !== null && override !== void 0 ? override : "\xAB"
+  });
+  var raquo = (override) => textInputRule({
+    find: />>$/,
+    replace: override !== null && override !== void 0 ? override : "\xBB"
+  });
+  var multiplication = (override) => textInputRule({
+    find: /\d+\s?([*x])\s?\d+$/,
+    replace: override !== null && override !== void 0 ? override : "\xD7"
+  });
+  var superscriptTwo = (override) => textInputRule({
+    find: /\^2$/,
+    replace: override !== null && override !== void 0 ? override : "\xB2"
+  });
+  var superscriptThree = (override) => textInputRule({
+    find: /\^3$/,
+    replace: override !== null && override !== void 0 ? override : "\xB3"
+  });
+  var oneQuarter = (override) => textInputRule({
+    find: /(?:^|\s)(1\/4)\s$/,
+    replace: override !== null && override !== void 0 ? override : "\xBC"
+  });
+  var threeQuarters = (override) => textInputRule({
+    find: /(?:^|\s)(3\/4)\s$/,
+    replace: override !== null && override !== void 0 ? override : "\xBE"
+  });
+  var Typography = Extension.create({
+    name: "typography",
+    addOptions() {
+      return {
+        closeDoubleQuote: "\u201D",
+        closeSingleQuote: "\u2019",
+        copyright: "\xA9",
+        ellipsis: "\u2026",
+        emDash: "\u2014",
+        laquo: "\xAB",
+        leftArrow: "\u2190",
+        multiplication: "\xD7",
+        notEqual: "\u2260",
+        oneHalf: "\xBD",
+        oneQuarter: "\xBC",
+        openDoubleQuote: "\u201C",
+        openSingleQuote: "\u2018",
+        plusMinus: "\xB1",
+        raquo: "\xBB",
+        registeredTrademark: "\xAE",
+        rightArrow: "\u2192",
+        servicemark: "\u2120",
+        superscriptThree: "\xB3",
+        superscriptTwo: "\xB2",
+        threeQuarters: "\xBE",
+        trademark: "\u2122"
+      };
+    },
+    addInputRules() {
+      const rules = [];
+      if (this.options.emDash !== false) {
+        rules.push(emDash(this.options.emDash));
+      }
+      if (this.options.ellipsis !== false) {
+        rules.push(ellipsis(this.options.ellipsis));
+      }
+      if (this.options.openDoubleQuote !== false) {
+        rules.push(openDoubleQuote(this.options.openDoubleQuote));
+      }
+      if (this.options.closeDoubleQuote !== false) {
+        rules.push(closeDoubleQuote(this.options.closeDoubleQuote));
+      }
+      if (this.options.openSingleQuote !== false) {
+        rules.push(openSingleQuote(this.options.openSingleQuote));
+      }
+      if (this.options.closeSingleQuote !== false) {
+        rules.push(closeSingleQuote(this.options.closeSingleQuote));
+      }
+      if (this.options.leftArrow !== false) {
+        rules.push(leftArrow(this.options.leftArrow));
+      }
+      if (this.options.rightArrow !== false) {
+        rules.push(rightArrow(this.options.rightArrow));
+      }
+      if (this.options.copyright !== false) {
+        rules.push(copyright(this.options.copyright));
+      }
+      if (this.options.trademark !== false) {
+        rules.push(trademark(this.options.trademark));
+      }
+      if (this.options.servicemark !== false) {
+        rules.push(servicemark(this.options.servicemark));
+      }
+      if (this.options.registeredTrademark !== false) {
+        rules.push(registeredTrademark(this.options.registeredTrademark));
+      }
+      if (this.options.oneHalf !== false) {
+        rules.push(oneHalf(this.options.oneHalf));
+      }
+      if (this.options.plusMinus !== false) {
+        rules.push(plusMinus(this.options.plusMinus));
+      }
+      if (this.options.notEqual !== false) {
+        rules.push(notEqual(this.options.notEqual));
+      }
+      if (this.options.laquo !== false) {
+        rules.push(laquo(this.options.laquo));
+      }
+      if (this.options.raquo !== false) {
+        rules.push(raquo(this.options.raquo));
+      }
+      if (this.options.multiplication !== false) {
+        rules.push(multiplication(this.options.multiplication));
+      }
+      if (this.options.superscriptTwo !== false) {
+        rules.push(superscriptTwo(this.options.superscriptTwo));
+      }
+      if (this.options.superscriptThree !== false) {
+        rules.push(superscriptThree(this.options.superscriptThree));
+      }
+      if (this.options.oneQuarter !== false) {
+        rules.push(oneQuarter(this.options.oneQuarter));
+      }
+      if (this.options.threeQuarters !== false) {
+        rules.push(threeQuarters(this.options.threeQuarters));
+      }
+      return rules;
+    }
+  });
+
+  // node_modules/@tiptap/extension-underline/dist/index.js
+  var Underline = Mark2.create({
+    name: "underline",
+    addOptions() {
+      return {
+        HTMLAttributes: {}
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: "u"
+        },
+        {
+          style: "text-decoration",
+          consuming: false,
+          getAttrs: (style2) => style2.includes("underline") ? {} : false
+        }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["u", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    },
+    addCommands() {
+      return {
+        setUnderline: () => ({ commands: commands2 }) => {
+          return commands2.setMark(this.name);
+        },
+        toggleUnderline: () => ({ commands: commands2 }) => {
+          return commands2.toggleMark(this.name);
+        },
+        unsetUnderline: () => ({ commands: commands2 }) => {
+          return commands2.unsetMark(this.name);
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        "Mod-u": () => this.editor.commands.toggleUnderline(),
+        "Mod-U": () => this.editor.commands.toggleUnderline()
+      };
+    }
+  });
+
   // node_modules/@tiptap/extension-blockquote/dist/index.js
-  var inputRegex = /^\s*>\s$/;
+  var inputRegex4 = /^\s*>\s$/;
   var Blockquote = Node3.create({
     name: "blockquote",
     addOptions() {
@@ -27013,7 +32332,7 @@ ${err.toString()}`);
     addInputRules() {
       return [
         wrappingInputRule({
-          find: inputRegex,
+          find: inputRegex4,
           type: this.type
         })
       ];
@@ -27102,7 +32421,7 @@ ${err.toString()}`);
   // node_modules/@tiptap/extension-bullet-list/dist/index.js
   var ListItemName = "listItem";
   var TextStyleName = "textStyle";
-  var inputRegex2 = /^\s*([-+*])\s$/;
+  var inputRegex5 = /^\s*([-+*])\s$/;
   var BulletList = Node3.create({
     name: "bulletList",
     addOptions() {
@@ -27142,12 +32461,12 @@ ${err.toString()}`);
     },
     addInputRules() {
       let inputRule = wrappingInputRule({
-        find: inputRegex2,
+        find: inputRegex5,
         type: this.type
       });
       if (this.options.keepMarks || this.options.keepAttributes) {
         inputRule = wrappingInputRule({
-          find: inputRegex2,
+          find: inputRegex5,
           type: this.type,
           keepMarks: this.options.keepMarks,
           keepAttributes: this.options.keepAttributes,
@@ -27164,8 +32483,8 @@ ${err.toString()}`);
   });
 
   // node_modules/@tiptap/extension-code/dist/index.js
-  var inputRegex3 = /(^|[^`])`([^`]+)`(?!`)/;
-  var pasteRegex = /(^|[^`])`([^`]+)`(?!`)/g;
+  var inputRegex6 = /(^|[^`])`([^`]+)`(?!`)/;
+  var pasteRegex2 = /(^|[^`])`([^`]+)`(?!`)/g;
   var Code = Mark2.create({
     name: "code",
     addOptions() {
@@ -27205,7 +32524,7 @@ ${err.toString()}`);
     addInputRules() {
       return [
         markInputRule({
-          find: inputRegex3,
+          find: inputRegex6,
           type: this.type
         })
       ];
@@ -27213,7 +32532,7 @@ ${err.toString()}`);
     addPasteRules() {
       return [
         markPasteRule({
-          find: pasteRegex,
+          find: pasteRegex2,
           type: this.type
         })
       ];
@@ -27320,8 +32639,8 @@ ${err.toString()}`);
           if (!isAtEnd || !endsWithDoubleNewline) {
             return false;
           }
-          return editor.chain().command(({ tr }) => {
-            tr.delete($from.pos - 2, $from.pos);
+          return editor.chain().command(({ tr: tr2 }) => {
+            tr2.delete($from.pos - 2, $from.pos);
             return true;
           }).exitCode().run();
         },
@@ -27346,8 +32665,8 @@ ${err.toString()}`);
           }
           const nodeAfter = doc4.nodeAt(after);
           if (nodeAfter) {
-            return editor.commands.command(({ tr }) => {
-              tr.setSelection(Selection.near(doc4.resolve(after)));
+            return editor.commands.command(({ tr: tr2 }) => {
+              tr2.setSelection(Selection.near(doc4.resolve(after)));
               return true;
             });
           }
@@ -27394,14 +32713,14 @@ ${err.toString()}`);
               if (!text2 || !language) {
                 return false;
               }
-              const { tr, schema } = view.state;
+              const { tr: tr2, schema } = view.state;
               const textNode = schema.text(text2.replace(/\r\n?/g, "\n"));
-              tr.replaceSelectionWith(this.type.create({ language }, textNode));
-              if (tr.selection.$from.parent.type !== this.type) {
-                tr.setSelection(TextSelection.near(tr.doc.resolve(Math.max(0, tr.selection.from - 2))));
+              tr2.replaceSelectionWith(this.type.create({ language }, textNode));
+              if (tr2.selection.$from.parent.type !== this.type) {
+                tr2.setSelection(TextSelection.near(tr2.doc.resolve(Math.max(0, tr2.selection.from - 2))));
               }
-              tr.setMeta("paste", true);
-              view.dispatch(tr);
+              tr2.setMeta("paste", true);
+              view.dispatch(tr2);
               return true;
             }
           }
@@ -27729,18 +33048,18 @@ ${err.toString()}`);
           return $anchor.pos == $head.pos && GapCursor.valid($head) ? new GapCursor($head) : null;
         },
         handleClick,
-        handleKeyDown,
+        handleKeyDown: handleKeyDown2,
         handleDOMEvents: { beforeinput }
       }
     });
   }
-  var handleKeyDown = keydownHandler({
-    "ArrowLeft": arrow("horiz", -1),
-    "ArrowRight": arrow("horiz", 1),
-    "ArrowUp": arrow("vert", -1),
-    "ArrowDown": arrow("vert", 1)
+  var handleKeyDown2 = keydownHandler({
+    "ArrowLeft": arrow2("horiz", -1),
+    "ArrowRight": arrow2("horiz", 1),
+    "ArrowUp": arrow2("vert", -1),
+    "ArrowDown": arrow2("vert", 1)
   });
-  function arrow(axis, dir) {
+  function arrow2(axis, dir) {
     const dirStr = axis == "vert" ? dir > 0 ? "down" : "up" : dir > 0 ? "right" : "left";
     return function(state, dispatch, view) {
       let sel = state.selection;
@@ -27781,9 +33100,9 @@ ${err.toString()}`);
     let frag = Fragment.empty;
     for (let i = insert.length - 1; i >= 0; i--)
       frag = Fragment.from(insert[i].createAndFill(null, frag));
-    let tr = view.state.tr.replace($from.pos, $from.pos, new Slice(frag, 0, 0));
-    tr.setSelection(TextSelection.near(tr.doc.resolve($from.pos + 1)));
-    view.dispatch(tr);
+    let tr2 = view.state.tr.replace($from.pos, $from.pos, new Slice(frag, 0, 0));
+    tr2.setSelection(TextSelection.near(tr2.doc.resolve($from.pos + 1)));
+    view.dispatch(tr2);
     return false;
   }
   function drawGapCursor(state) {
@@ -27852,10 +33171,10 @@ ${err.toString()}`);
               const { keepMarks } = this.options;
               const { splittableMarks } = editor.extensionManager;
               const marks = storedMarks || selection.$to.parentOffset && selection.$from.marks();
-              return chain().insertContent({ type: this.name }).command(({ tr, dispatch }) => {
+              return chain().insertContent({ type: this.name }).command(({ tr: tr2, dispatch }) => {
                 if (dispatch && marks && keepMarks) {
                   const filteredMarks = marks.filter((mark) => splittableMarks.includes(mark.type.name));
-                  tr.ensureMarks(filteredMarks);
+                  tr2.ensureMarks(filteredMarks);
                 }
                 return true;
               }).run();
@@ -28019,16 +33338,16 @@ ${err.toString()}`);
     Leaf2.prototype.getInner = function getInner(i) {
       return this.values[i];
     };
-    Leaf2.prototype.forEachInner = function forEachInner(f, from3, to, start2) {
+    Leaf2.prototype.forEachInner = function forEachInner(f, from3, to, start) {
       for (var i = from3; i < to; i++) {
-        if (f(this.values[i], start2 + i) === false) {
+        if (f(this.values[i], start + i) === false) {
           return false;
         }
       }
     };
-    Leaf2.prototype.forEachInvertedInner = function forEachInvertedInner(f, from3, to, start2) {
+    Leaf2.prototype.forEachInvertedInner = function forEachInvertedInner(f, from3, to, start) {
       for (var i = from3 - 1; i >= to; i--) {
-        if (f(this.values[i], start2 + i) === false) {
+        if (f(this.values[i], start + i) === false) {
           return false;
         }
       }
@@ -28070,21 +33389,21 @@ ${err.toString()}`);
     Append2.prototype.getInner = function getInner(i) {
       return i < this.left.length ? this.left.get(i) : this.right.get(i - this.left.length);
     };
-    Append2.prototype.forEachInner = function forEachInner(f, from3, to, start2) {
+    Append2.prototype.forEachInner = function forEachInner(f, from3, to, start) {
       var leftLen = this.left.length;
-      if (from3 < leftLen && this.left.forEachInner(f, from3, Math.min(to, leftLen), start2) === false) {
+      if (from3 < leftLen && this.left.forEachInner(f, from3, Math.min(to, leftLen), start) === false) {
         return false;
       }
-      if (to > leftLen && this.right.forEachInner(f, Math.max(from3 - leftLen, 0), Math.min(this.length, to) - leftLen, start2 + leftLen) === false) {
+      if (to > leftLen && this.right.forEachInner(f, Math.max(from3 - leftLen, 0), Math.min(this.length, to) - leftLen, start + leftLen) === false) {
         return false;
       }
     };
-    Append2.prototype.forEachInvertedInner = function forEachInvertedInner(f, from3, to, start2) {
+    Append2.prototype.forEachInvertedInner = function forEachInvertedInner(f, from3, to, start) {
       var leftLen = this.left.length;
-      if (from3 > leftLen && this.right.forEachInvertedInner(f, from3 - leftLen, Math.max(to, leftLen) - leftLen, start2 + leftLen) === false) {
+      if (from3 > leftLen && this.right.forEachInvertedInner(f, from3 - leftLen, Math.max(to, leftLen) - leftLen, start + leftLen) === false) {
         return false;
       }
-      if (to < leftLen && this.left.forEachInvertedInner(f, Math.min(from3, leftLen), to, start2) === false) {
+      if (to < leftLen && this.left.forEachInvertedInner(f, Math.min(from3, leftLen), to, start) === false) {
         return false;
       }
     };
@@ -28231,14 +33550,14 @@ ${err.toString()}`);
     rebased(rebasedTransform, rebasedCount) {
       if (!this.eventCount)
         return this;
-      let rebasedItems = [], start2 = Math.max(0, this.items.length - rebasedCount);
+      let rebasedItems = [], start = Math.max(0, this.items.length - rebasedCount);
       let mapping = rebasedTransform.mapping;
       let newUntil = rebasedTransform.steps.length;
       let eventCount = this.eventCount;
       this.items.forEach((item) => {
         if (item.selection)
           eventCount--;
-      }, start2);
+      }, start);
       let iRebased = rebasedCount;
       this.items.forEach((item) => {
         let pos = mapping.getMirror(--iRebased);
@@ -28255,11 +33574,11 @@ ${err.toString()}`);
         } else {
           rebasedItems.push(new Item2(map3));
         }
-      }, start2);
+      }, start);
       let newMaps = [];
       for (let i = rebasedCount; i < newUntil; i++)
         newMaps.push(new Item2(mapping.maps[i]));
-      let items = this.items.slice(0, start2).append(newMaps).append(rebasedItems);
+      let items = this.items.slice(0, start).append(newMaps).append(rebasedItems);
       let branch = new _Branch(items, eventCount);
       if (branch.emptyItemCount() > max_empty_items)
         branch = branch.compress(this.items.length - rebasedItems.length);
@@ -28345,29 +33664,29 @@ ${err.toString()}`);
     }
   };
   var DEPTH_OVERFLOW = 20;
-  function applyTransaction(history2, state, tr, options) {
-    let historyTr = tr.getMeta(historyKey), rebased;
+  function applyTransaction(history2, state, tr2, options) {
+    let historyTr = tr2.getMeta(historyKey), rebased;
     if (historyTr)
       return historyTr.historyState;
-    if (tr.getMeta(closeHistoryKey))
+    if (tr2.getMeta(closeHistoryKey))
       history2 = new HistoryState(history2.done, history2.undone, null, 0, -1);
-    let appended = tr.getMeta("appendedTransaction");
-    if (tr.steps.length == 0) {
+    let appended = tr2.getMeta("appendedTransaction");
+    if (tr2.steps.length == 0) {
       return history2;
     } else if (appended && appended.getMeta(historyKey)) {
       if (appended.getMeta(historyKey).redo)
-        return new HistoryState(history2.done.addTransform(tr, void 0, options, mustPreserveItems(state)), history2.undone, rangesFor(tr.mapping.maps), history2.prevTime, history2.prevComposition);
+        return new HistoryState(history2.done.addTransform(tr2, void 0, options, mustPreserveItems(state)), history2.undone, rangesFor(tr2.mapping.maps), history2.prevTime, history2.prevComposition);
       else
-        return new HistoryState(history2.done, history2.undone.addTransform(tr, void 0, options, mustPreserveItems(state)), null, history2.prevTime, history2.prevComposition);
-    } else if (tr.getMeta("addToHistory") !== false && !(appended && appended.getMeta("addToHistory") === false)) {
-      let composition = tr.getMeta("composition");
-      let newGroup = history2.prevTime == 0 || !appended && history2.prevComposition != composition && (history2.prevTime < (tr.time || 0) - options.newGroupDelay || !isAdjacentTo(tr, history2.prevRanges));
-      let prevRanges = appended ? mapRanges(history2.prevRanges, tr.mapping) : rangesFor(tr.mapping.maps);
-      return new HistoryState(history2.done.addTransform(tr, newGroup ? state.selection.getBookmark() : void 0, options, mustPreserveItems(state)), Branch.empty, prevRanges, tr.time, composition == null ? history2.prevComposition : composition);
-    } else if (rebased = tr.getMeta("rebased")) {
-      return new HistoryState(history2.done.rebased(tr, rebased), history2.undone.rebased(tr, rebased), mapRanges(history2.prevRanges, tr.mapping), history2.prevTime, history2.prevComposition);
+        return new HistoryState(history2.done, history2.undone.addTransform(tr2, void 0, options, mustPreserveItems(state)), null, history2.prevTime, history2.prevComposition);
+    } else if (tr2.getMeta("addToHistory") !== false && !(appended && appended.getMeta("addToHistory") === false)) {
+      let composition = tr2.getMeta("composition");
+      let newGroup = history2.prevTime == 0 || !appended && history2.prevComposition != composition && (history2.prevTime < (tr2.time || 0) - options.newGroupDelay || !isAdjacentTo(tr2, history2.prevRanges));
+      let prevRanges = appended ? mapRanges(history2.prevRanges, tr2.mapping) : rangesFor(tr2.mapping.maps);
+      return new HistoryState(history2.done.addTransform(tr2, newGroup ? state.selection.getBookmark() : void 0, options, mustPreserveItems(state)), Branch.empty, prevRanges, tr2.time, composition == null ? history2.prevComposition : composition);
+    } else if (rebased = tr2.getMeta("rebased")) {
+      return new HistoryState(history2.done.rebased(tr2, rebased), history2.undone.rebased(tr2, rebased), mapRanges(history2.prevRanges, tr2.mapping), history2.prevTime, history2.prevComposition);
     } else {
-      return new HistoryState(history2.done.addMaps(tr.mapping.maps), history2.undone.addMaps(tr.mapping.maps), mapRanges(history2.prevRanges, tr.mapping), history2.prevTime, history2.prevComposition);
+      return new HistoryState(history2.done.addMaps(tr2.mapping.maps), history2.undone.addMaps(tr2.mapping.maps), mapRanges(history2.prevRanges, tr2.mapping), history2.prevTime, history2.prevComposition);
     }
   }
   function isAdjacentTo(transform, prevRanges) {
@@ -28376,9 +33695,9 @@ ${err.toString()}`);
     if (!transform.docChanged)
       return true;
     let adjacent = false;
-    transform.mapping.maps[0].forEach((start2, end) => {
+    transform.mapping.maps[0].forEach((start, end) => {
       for (let i = 0; i < prevRanges.length; i += 2)
-        if (start2 <= prevRanges[i + 1] && end >= prevRanges[i])
+        if (start <= prevRanges[i + 1] && end >= prevRanges[i])
           adjacent = true;
     });
     return adjacent;
@@ -28439,8 +33758,8 @@ ${err.toString()}`);
         init() {
           return new HistoryState(Branch.empty, Branch.empty, null, 0, -1);
         },
-        apply(tr, hist, state) {
-          return applyTransaction(hist, state, tr, config);
+        apply(tr2, hist, state) {
+          return applyTransaction(hist, state, tr2, config);
         }
       },
       config,
@@ -28464,9 +33783,9 @@ ${err.toString()}`);
       if (!hist || (redo3 ? hist.undone : hist.done).eventCount == 0)
         return false;
       if (dispatch) {
-        let tr = histTransaction(hist, state, redo3);
-        if (tr)
-          dispatch(scroll ? tr.scrollIntoView() : tr);
+        let tr2 = histTransaction(hist, state, redo3);
+        if (tr2)
+          dispatch(scroll ? tr2.scrollIntoView() : tr2);
       }
       return true;
     };
@@ -28550,27 +33869,27 @@ ${err.toString()}`);
           } else {
             currentChain.insertContent({ type: this.name });
           }
-          return currentChain.command(({ tr, dispatch }) => {
+          return currentChain.command(({ tr: tr2, dispatch }) => {
             var _a;
             if (dispatch) {
-              const { $to } = tr.selection;
+              const { $to } = tr2.selection;
               const posAfter = $to.end();
               if ($to.nodeAfter) {
                 if ($to.nodeAfter.isTextblock) {
-                  tr.setSelection(TextSelection.create(tr.doc, $to.pos + 1));
+                  tr2.setSelection(TextSelection.create(tr2.doc, $to.pos + 1));
                 } else if ($to.nodeAfter.isBlock) {
-                  tr.setSelection(NodeSelection.create(tr.doc, $to.pos));
+                  tr2.setSelection(NodeSelection.create(tr2.doc, $to.pos));
                 } else {
-                  tr.setSelection(TextSelection.create(tr.doc, $to.pos));
+                  tr2.setSelection(TextSelection.create(tr2.doc, $to.pos));
                 }
               } else {
                 const node = (_a = $to.parent.type.contentMatch.defaultType) === null || _a === void 0 ? void 0 : _a.create();
                 if (node) {
-                  tr.insert(posAfter, node);
-                  tr.setSelection(TextSelection.create(tr.doc, posAfter + 1));
+                  tr2.insert(posAfter, node);
+                  tr2.setSelection(TextSelection.create(tr2.doc, posAfter + 1));
                 }
               }
-              tr.scrollIntoView();
+              tr2.scrollIntoView();
             }
             return true;
           }).run();
@@ -28699,7 +34018,7 @@ ${err.toString()}`);
   // node_modules/@tiptap/extension-ordered-list/dist/index.js
   var ListItemName2 = "listItem";
   var TextStyleName2 = "textStyle";
-  var inputRegex4 = /^(\d+)\.\s$/;
+  var inputRegex7 = /^(\d+)\.\s$/;
   var OrderedList = Node3.create({
     name: "orderedList",
     addOptions() {
@@ -28736,8 +34055,8 @@ ${err.toString()}`);
       ];
     },
     renderHTML({ HTMLAttributes }) {
-      const { start: start2, ...attributesWithoutStart } = HTMLAttributes;
-      return start2 === 1 ? ["ol", mergeAttributes(this.options.HTMLAttributes, attributesWithoutStart), 0] : ["ol", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+      const { start, ...attributesWithoutStart } = HTMLAttributes;
+      return start === 1 ? ["ol", mergeAttributes(this.options.HTMLAttributes, attributesWithoutStart), 0] : ["ol", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
     },
     addCommands() {
       return {
@@ -28756,14 +34075,14 @@ ${err.toString()}`);
     },
     addInputRules() {
       let inputRule = wrappingInputRule({
-        find: inputRegex4,
+        find: inputRegex7,
         type: this.type,
         getAttributes: (match2) => ({ start: +match2[1] }),
         joinPredicate: (match2, node) => node.childCount + node.attrs.start === +match2[1]
       });
       if (this.options.keepMarks || this.options.keepAttributes) {
         inputRule = wrappingInputRule({
-          find: inputRegex4,
+          find: inputRegex7,
           type: this.type,
           keepMarks: this.options.keepMarks,
           keepAttributes: this.options.keepAttributes,
@@ -28812,8 +34131,8 @@ ${err.toString()}`);
   });
 
   // node_modules/@tiptap/extension-strike/dist/index.js
-  var inputRegex5 = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))$/;
-  var pasteRegex2 = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))/g;
+  var inputRegex8 = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))$/;
+  var pasteRegex3 = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))/g;
   var Strike = Mark2.create({
     name: "strike",
     addOptions() {
@@ -28863,7 +34182,7 @@ ${err.toString()}`);
     addInputRules() {
       return [
         markInputRule({
-          find: inputRegex5,
+          find: inputRegex8,
           type: this.type
         })
       ];
@@ -28871,7 +34190,7 @@ ${err.toString()}`);
     addPasteRules() {
       return [
         markPasteRule({
-          find: pasteRegex2,
+          find: pasteRegex3,
           type: this.type
         })
       ];
@@ -28879,7 +34198,7 @@ ${err.toString()}`);
   });
 
   // node_modules/@tiptap/extension-text/dist/index.js
-  var Text = Node3.create({
+  var Text2 = Node3.create({
     name: "text",
     group: "inline"
   });
@@ -28941,91 +34260,11 @@ ${err.toString()}`);
         extensions.push(Strike.configure(this.options.strike));
       }
       if (this.options.text !== false) {
-        extensions.push(Text.configure(this.options.text));
+        extensions.push(Text2.configure(this.options.text));
       }
       return extensions;
     }
   });
-
-  // web/hosted-collab.ts
-  function mountHostedCollab(options) {
-    const ydoc = new Doc();
-    let editor;
-    let socket;
-    let ready = false;
-    let acks = 0;
-    let reconnectTimer;
-    let closed = false;
-    const setStatus2 = (text2) => {
-      options.onStatus?.(text2);
-    };
-    const bytesToB64 = (bytes) => {
-      let binary = "";
-      for (const byte of bytes) binary += String.fromCharCode(byte);
-      return btoa(binary);
-    };
-    const b64ToBytes = (value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
-    const sendUpdate = (update) => {
-      if (!socket || socket.readyState !== WebSocket.OPEN || !ready) return;
-      socket.send(JSON.stringify({ type: "update", update: bytesToB64(update) }));
-    };
-    ydoc.on("update", (update, origin) => {
-      if (origin === "remote" || !ready) return;
-      sendUpdate(update);
-    });
-    const ensureEditor = () => {
-      if (editor) return;
-      editor = new Editor({
-        element: options.element,
-        extensions: [
-          StarterKit.configure({ history: false }),
-          Placeholder.configure({ placeholder: "Start writing\u2026" }),
-          Collaboration.configure({ document: ydoc, field: "default" })
-        ]
-      });
-    };
-    const connect = () => {
-      if (closed) return;
-      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-      const wsUrl = `${protocol}://${window.location.host}/yjs?token=${encodeURIComponent(options.token)}&documentId=${encodeURIComponent(options.documentId)}`;
-      socket = new WebSocket(wsUrl);
-      socket.addEventListener("open", () => setStatus2("connected"));
-      socket.addEventListener("message", (event) => {
-        const message = JSON.parse(String(event.data));
-        if ((message.type === "init" || message.type === "update") && message.update) {
-          applyUpdate(ydoc, b64ToBytes(message.update), "remote");
-          ready = true;
-          ensureEditor();
-          setStatus2(message.type === "init" ? "ready" : `acks:${acks}`);
-        }
-        if (message.type === "ack") {
-          acks += 1;
-          setStatus2(`acks:${acks}`);
-        }
-      });
-      socket.addEventListener("close", () => {
-        ready = false;
-        if (closed) return;
-        setStatus2("reconnecting");
-        if (reconnectTimer !== void 0) window.clearTimeout(reconnectTimer);
-        reconnectTimer = window.setTimeout(connect, 250);
-      });
-    };
-    connect();
-    return {
-      getText: () => editor?.getText() ?? "",
-      acks: () => acks,
-      ready: () => ready,
-      editor: () => editor,
-      destroy: () => {
-        closed = true;
-        if (reconnectTimer !== void 0) window.clearTimeout(reconnectTimer);
-        socket?.close();
-        editor?.destroy();
-        ydoc.destroy();
-      }
-    };
-  }
 
   // node_modules/@floating-ui/utils/dist/floating-ui.utils.mjs
   var min2 = Math.min;
@@ -29042,8 +34281,8 @@ ${err.toString()}`);
     bottom: "top",
     top: "bottom"
   };
-  function clamp(start2, value, end) {
-    return max2(start2, min2(value, end));
+  function clamp(start, value, end) {
+    return max2(start, min2(value, end));
   }
   function evaluate(value, param) {
     return typeof value === "function" ? value(param) : value;
@@ -29298,7 +34537,7 @@ ${err.toString()}`);
         x: nextX,
         y: nextY,
         data,
-        reset
+        reset: reset2
       } = await fn({
         x,
         y,
@@ -29319,18 +34558,18 @@ ${err.toString()}`);
         ...middlewareData[name],
         ...data
       };
-      if (reset && resetCount < MAX_RESET_COUNT) {
+      if (reset2 && resetCount < MAX_RESET_COUNT) {
         resetCount++;
-        if (typeof reset === "object") {
-          if (reset.placement) {
-            statefulPlacement = reset.placement;
+        if (typeof reset2 === "object") {
+          if (reset2.placement) {
+            statefulPlacement = reset2.placement;
           }
-          if (reset.rects) {
-            rects = reset.rects === true ? await platform2.getElementRects({
+          if (reset2.rects) {
+            rects = reset2.rects === true ? await platform2.getElementRects({
               reference,
               floating,
               strategy
-            }) : reset.rects;
+            }) : reset2.rects;
           }
           ({
             x,
@@ -30428,1647 +35667,154 @@ ${err.toString()}`);
     });
   };
 
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/public-utils/combine.js
-  function combine() {
-    for (var _len = arguments.length, fns = new Array(_len), _key = 0; _key < _len; _key++) {
-      fns[_key] = arguments[_key];
-    }
-    return function cleanup() {
-      fns.forEach(function(fn) {
-        return fn();
-      });
-    };
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/arrayWithHoles.js
-  function _arrayWithHoles(r) {
-    if (Array.isArray(r)) return r;
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/iterableToArrayLimit.js
-  function _iterableToArrayLimit(r, l) {
-    var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"];
-    if (null != t) {
-      var e, n, i, u, a = [], f = true, o = false;
-      try {
-        if (i = (t = t.call(r)).next, 0 === l) {
-          if (Object(t) !== t) return;
-          f = false;
-        } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = true) ;
-      } catch (r2) {
-        o = true, n = r2;
-      } finally {
-        try {
-          if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return;
-        } finally {
-          if (o) throw n;
-        }
-      }
-      return a;
-    }
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/arrayLikeToArray.js
-  function _arrayLikeToArray(r, a) {
-    (null == a || a > r.length) && (a = r.length);
-    for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e];
-    return n;
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/unsupportedIterableToArray.js
-  function _unsupportedIterableToArray(r, a) {
-    if (r) {
-      if ("string" == typeof r) return _arrayLikeToArray(r, a);
-      var t = {}.toString.call(r).slice(8, -1);
-      return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0;
-    }
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/nonIterableRest.js
-  function _nonIterableRest() {
-    throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/slicedToArray.js
-  function _slicedToArray(r, e) {
-    return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest();
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js
-  var import_bind_event_listener4 = __toESM(require_dist());
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/honey-pot-fix/honey-pot-data-attribute.js
-  var honeyPotDataAttribute = "data-pdnd-honey-pot";
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/honey-pot-fix/is-honey-pot-element.js
-  function isHoneyPotElement(target) {
-    return target instanceof Element && target.hasAttribute(honeyPotDataAttribute);
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/honey-pot-fix/get-element-from-point-without-honey-pot.js
-  function getElementFromPointWithoutHoneypot(client) {
-    var _document$elementsFro = document.elementsFromPoint(client.x, client.y), _document$elementsFro2 = _slicedToArray(_document$elementsFro, 2), top = _document$elementsFro2[0], second = _document$elementsFro2[1];
-    if (!top) {
-      return null;
-    }
-    if (isHoneyPotElement(top)) {
-      return second !== null && second !== void 0 ? second : null;
-    }
-    return top;
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/typeof.js
-  function _typeof(o) {
-    "@babel/helpers - typeof";
-    return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o2) {
-      return typeof o2;
-    } : function(o2) {
-      return o2 && "function" == typeof Symbol && o2.constructor === Symbol && o2 !== Symbol.prototype ? "symbol" : typeof o2;
-    }, _typeof(o);
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/toPrimitive.js
-  function toPrimitive(t, r) {
-    if ("object" != _typeof(t) || !t) return t;
-    var e = t[Symbol.toPrimitive];
-    if (void 0 !== e) {
-      var i = e.call(t, r || "default");
-      if ("object" != _typeof(i)) return i;
-      throw new TypeError("@@toPrimitive must return a primitive value.");
-    }
-    return ("string" === r ? String : Number)(t);
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/toPropertyKey.js
-  function toPropertyKey(t) {
-    var i = toPrimitive(t, "string");
-    return "symbol" == _typeof(i) ? i : i + "";
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/defineProperty.js
-  function _defineProperty(e, r, t) {
-    return (r = toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
-      value: t,
-      enumerable: true,
-      configurable: true,
-      writable: true
-    }) : e[r] = t, e;
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/honey-pot-fix/make-honey-pot-fix.js
-  var import_bind_event_listener = __toESM(require_dist());
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/max-z-index.js
-  var maxZIndex = 2147483647;
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/popover-reset-styles.js
-  var popoverResetUserAgentStyles = {
-    inset: "unset",
-    border: "none",
-    padding: 0,
-    margin: 0,
-    overflow: "visible",
-    color: "inherit",
-    background: "transparent",
-    width: "auto",
-    height: "auto"
+  // web/noma-panel.ts
+  var TITLES = {
+    info: "Info",
+    note: "Note",
+    warning: "Warning",
+    success: "Success",
+    claim: "Claim",
+    decision: "Decision"
   };
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/public-utils/once.js
-  function once(fn) {
-    var cache = null;
-    return function wrapped() {
-      if (!cache) {
-        for (var _len = arguments.length, args2 = new Array(_len), _key = 0; _key < _len; _key++) {
-          args2[_key] = arguments[_key];
-        }
-        var result = fn.apply(this, args2);
-        cache = {
-          result
-        };
-      }
-      return cache.result;
-    };
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/supports-popover.js
-  var supportsPopover = once(function supportsPopover2() {
-    return typeof HTMLElement !== "undefined" && typeof HTMLElement.prototype.showPopover === "function";
-  });
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/honey-pot-fix/make-honey-pot-fix.js
-  function ownKeys(e, r) {
-    var t = Object.keys(e);
-    if (Object.getOwnPropertySymbols) {
-      var o = Object.getOwnPropertySymbols(e);
-      r && (o = o.filter(function(r2) {
-        return Object.getOwnPropertyDescriptor(e, r2).enumerable;
-      })), t.push.apply(t, o);
-    }
-    return t;
-  }
-  function _objectSpread(e) {
-    for (var r = 1; r < arguments.length; r++) {
-      var t = null != arguments[r] ? arguments[r] : {};
-      r % 2 ? ownKeys(Object(t), true).forEach(function(r2) {
-        _defineProperty(e, r2, t[r2]);
-      }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function(r2) {
-        Object.defineProperty(e, r2, Object.getOwnPropertyDescriptor(t, r2));
-      });
-    }
-    return e;
-  }
-  var honeyPotSize = 2;
-  var halfHoneyPotSize = honeyPotSize / 2;
-  function floorToClosestPixel(point) {
-    return {
-      x: Math.floor(point.x),
-      y: Math.floor(point.y)
-    };
-  }
-  function pullBackByHalfHoneyPotSize(point) {
-    return {
-      x: point.x - halfHoneyPotSize,
-      y: point.y - halfHoneyPotSize
-    };
-  }
-  function preventGoingBackwardsOffScreen(point) {
-    return {
-      x: Math.max(point.x, 0),
-      y: Math.max(point.y, 0)
-    };
-  }
-  function preventGoingForwardsOffScreen(point) {
-    return {
-      x: Math.min(point.x, window.innerWidth - honeyPotSize),
-      y: Math.min(point.y, window.innerHeight - honeyPotSize)
-    };
-  }
-  function getHoneyPotRectFor(_ref) {
-    var client = _ref.client;
-    var point = preventGoingForwardsOffScreen(preventGoingBackwardsOffScreen(pullBackByHalfHoneyPotSize(floorToClosestPixel(client))));
-    return DOMRect.fromRect({
-      x: point.x,
-      y: point.y,
-      width: honeyPotSize,
-      height: honeyPotSize
-    });
-  }
-  function getRectStyles(_ref2) {
-    var clientRect2 = _ref2.clientRect;
-    return {
-      left: "".concat(clientRect2.left, "px"),
-      top: "".concat(clientRect2.top, "px"),
-      width: "".concat(clientRect2.width, "px"),
-      height: "".concat(clientRect2.height, "px")
-    };
-  }
-  function isWithin(_ref3) {
-    var client = _ref3.client, clientRect2 = _ref3.clientRect;
-    return (
-      // is within horizontal bounds
-      client.x >= clientRect2.x && client.x <= clientRect2.x + clientRect2.width && // is within vertical bounds
-      client.y >= clientRect2.y && client.y <= clientRect2.y + clientRect2.height
-    );
-  }
-  function mountHoneyPot(_ref4) {
-    var initial = _ref4.initial;
-    var element2 = document.createElement("div");
-    element2.setAttribute(honeyPotDataAttribute, "true");
-    if (supportsPopover()) {
-      element2.setAttribute("popover", "manual");
-    }
-    var clientRect2 = getHoneyPotRectFor({
-      client: initial
-    });
-    Object.assign(element2.style, _objectSpread(_objectSpread({
-      position: "fixed"
-    }, supportsPopover() ? (
-      // needs to come first as it has 'inset: unset' which
-      // needs to be overridden by our top / left values
-      popoverResetUserAgentStyles
-    ) : {
-      // Fallback: using maximum possible z-index so that this element
-      // will always be on top of other positioned content.
-      zIndex: maxZIndex
-    }), {}, {
-      // Setting a background color explicitly to avoid any inherited styles.
-      // Looks like this could be `opacity: 0`, but worried that _might_
-      // cause the element to be ignored on some platforms.
-      // When debugging, set backgroundColor to something like "red".
-      backgroundColor: "transparent",
-      // Being explicit to avoid inheriting styles
-      padding: 0,
-      margin: 0,
-      boxSizing: "border-box",
-      // We want this element to absorb pointer events,
-      // it's kind of the whole point 😉
-      pointerEvents: "auto"
-    }, getRectStyles({
-      clientRect: clientRect2
-    })));
-    document.body.appendChild(element2);
-    if (supportsPopover()) {
-      element2.showPopover();
-    }
-    var unbindPointerMove = (0, import_bind_event_listener.bind)(window, {
-      type: "pointermove",
-      listener: function listener(event) {
-        var client = {
-          x: event.clientX,
-          y: event.clientY
-        };
-        clientRect2 = getHoneyPotRectFor({
-          client
-        });
-        Object.assign(element2.style, getRectStyles({
-          clientRect: clientRect2
-        }));
-      },
-      // using capture so we are less likely to be impacted by event stopping
-      options: {
-        capture: true
-      }
-    });
-    return function finish(_ref5) {
-      var current = _ref5.current;
-      unbindPointerMove();
-      if (isWithin({
-        client: current,
-        clientRect: clientRect2
-      })) {
-        element2.remove();
-        return;
-      }
-      function cleanup() {
-        unbindPostDragEvents();
-        element2.remove();
-      }
-      var unbindPostDragEvents = (0, import_bind_event_listener.bindAll)(window, [
-        {
-          type: "pointerdown",
-          listener: cleanup
-        },
-        {
-          type: "pointermove",
-          listener: cleanup
-        },
-        {
-          type: "focusin",
-          listener: cleanup
-        },
-        {
-          type: "focusout",
-          listener: cleanup
-        },
-        // a 'pointerdown' should happen before 'dragstart', but just being super safe
-        {
-          type: "dragstart",
-          listener: cleanup
-        },
-        // if the user has dragged something out of the window
-        // and then is dragging something back into the window
-        // the first events we will see are "dragenter" (and then "dragover").
-        // So if we see any of these we need to clear the post drag fix.
-        {
-          type: "dragenter",
-          listener: cleanup
-        },
-        {
-          type: "dragover",
-          listener: cleanup
-        }
-        // Not adding a "wheel" event listener, as "wheel" by itself does not
-        // resolve the bug.
-      ], {
-        // Using `capture` so less likely to be impacted by other code stopping events
-        capture: true
-      });
-    };
-  }
-  function makeHoneyPotFix() {
-    var latestPointerMove = null;
-    function bindEvents() {
-      latestPointerMove = null;
-      return (0, import_bind_event_listener.bind)(window, {
-        type: "pointermove",
-        listener: function listener(event) {
-          latestPointerMove = {
-            x: event.clientX,
-            y: event.clientY
-          };
-        },
-        // listening for pointer move in capture phase
-        // so we are less likely to be impacted by events being stopped.
-        options: {
-          capture: true
-        }
-      });
-    }
-    function getOnPostDispatch() {
-      var finish = null;
-      return function onPostEvent(_ref6) {
-        var eventName = _ref6.eventName, payload2 = _ref6.payload;
-        if (eventName === "onDragStart") {
-          var input = payload2.location.initial.input;
-          var initial = latestPointerMove !== null && latestPointerMove !== void 0 ? latestPointerMove : {
-            x: input.clientX,
-            y: input.clientY
-          };
-          finish = mountHoneyPot({
-            initial
-          });
-        }
-        if (eventName === "onDrop") {
-          var _finish;
-          var _input = payload2.location.current.input;
-          (_finish = finish) === null || _finish === void 0 || _finish({
-            current: {
-              x: _input.clientX,
-              y: _input.clientY
-            }
-          });
-          finish = null;
-          latestPointerMove = null;
-        }
-      };
-    }
-    return {
-      bindEvents,
-      getOnPostDispatch
-    };
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/arrayWithoutHoles.js
-  function _arrayWithoutHoles(r) {
-    if (Array.isArray(r)) return _arrayLikeToArray(r);
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/iterableToArray.js
-  function _iterableToArray(r) {
-    if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r);
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/nonIterableSpread.js
-  function _nonIterableSpread() {
-    throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
-  }
-
-  // node_modules/@babel/runtime/helpers/esm/toConsumableArray.js
-  function _toConsumableArray(r) {
-    return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread();
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/ledger/lifecycle-manager.js
-  var import_bind_event_listener3 = __toESM(require_dist());
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/is-firefox.js
-  var isFirefox = once(function isFirefox2() {
-    if (false) {
-      return false;
-    }
-    return navigator.userAgent.includes("Firefox");
-  });
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/is-safari.js
-  var isSafari = once(function isSafari2() {
-    if (false) {
-      return false;
-    }
-    var _navigator = navigator, userAgent = _navigator.userAgent;
-    return userAgent.includes("AppleWebKit") && !userAgent.includes("Chrome");
-  });
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/changing-window/is-from-another-window.js
-  function isNodeLike(target) {
-    return "nodeName" in target;
-  }
-  function isFromAnotherWindow(eventTarget) {
-    return isNodeLike(eventTarget) && eventTarget.ownerDocument !== document;
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/changing-window/count-events-for-safari.js
-  var import_bind_event_listener2 = __toESM(require_dist());
-  var symbols = {
-    isLeavingWindow: Symbol("leaving"),
-    isEnteringWindow: Symbol("entering")
-  };
-  (function fixSafari() {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (false) {
-      return;
-    }
-    if (!isSafari()) {
-      return;
-    }
-    function getInitialState() {
+  var NomaPanel = Node3.create({
+    name: "nomaPanel",
+    group: "block",
+    content: "block+",
+    defining: true,
+    addAttributes() {
       return {
-        enterCount: 0,
-        isOverWindow: false
+        kind: {
+          default: "info",
+          parseHTML: (element2) => element2.getAttribute("data-noma-panel") || "info",
+          renderHTML: (attributes) => ({ "data-noma-panel": attributes.kind ?? "info" })
+        }
+      };
+    },
+    parseHTML() {
+      return [{ tag: "div[data-noma-panel]" }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      const kind = String(HTMLAttributes["data-noma-panel"] ?? HTMLAttributes.kind ?? "info");
+      return [
+        "div",
+        mergeAttributes(HTMLAttributes, {
+          class: `ew-panel ew-panel-${kind}`,
+          "data-panel-title": TITLES[kind] ?? kind
+        }),
+        0
+      ];
+    },
+    addCommands() {
+      return {
+        setNomaPanel: (kind) => ({ commands: commands2 }) => commands2.insertContent({
+          type: this.name,
+          attrs: { kind },
+          content: [{ type: "paragraph" }]
+        })
       };
     }
-    var state = getInitialState();
-    function resetState() {
-      state = getInitialState();
-    }
-    (0, import_bind_event_listener2.bindAll)(
-      window,
-      [{
-        type: "dragstart",
-        listener: function listener() {
-          state.enterCount = 0;
-          state.isOverWindow = true;
-        }
-      }, {
-        type: "drop",
-        listener: resetState
-      }, {
-        type: "dragend",
-        listener: resetState
-      }, {
-        type: "dragenter",
-        listener: function listener(event) {
-          if (!state.isOverWindow && state.enterCount === 0) {
-            event[symbols.isEnteringWindow] = true;
-          }
-          state.isOverWindow = true;
-          state.enterCount++;
-        }
-      }, {
-        type: "dragleave",
-        listener: function listener(event) {
-          state.enterCount--;
-          if (state.isOverWindow && state.enterCount === 0) {
-            event[symbols.isLeavingWindow] = true;
-            state.isOverWindow = false;
-          }
-        }
-      }],
-      // using `capture: true` so that adding event listeners
-      // in bubble phase will have the correct symbols
-      {
-        capture: true
-      }
-    );
-  })();
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/changing-window/is-leaving-window-in-safari.js
-  function isLeavingWindowInSafari(_ref) {
-    var dragLeave = _ref.dragLeave;
-    if (!isSafari()) {
-      return false;
-    }
-    return dragLeave.hasOwnProperty(symbols.isLeavingWindow);
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/changing-window/is-leaving-window.js
-  function isLeavingWindow(_ref) {
-    var dragLeave = _ref.dragLeave;
-    var type = dragLeave.type, relatedTarget = dragLeave.relatedTarget;
-    if (type !== "dragleave") {
-      return false;
-    }
-    if (isSafari()) {
-      return isLeavingWindowInSafari({
-        dragLeave
-      });
-    }
-    if (relatedTarget == null) {
-      return true;
-    }
-    if (isFirefox()) {
-      return isFromAnotherWindow(relatedTarget);
-    }
-    return relatedTarget instanceof HTMLIFrameElement;
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/detect-broken-drag.js
-  function getBindingsForBrokenDrags(_ref) {
-    var onDragEnd = _ref.onDragEnd;
-    return [
-      // ## Detecting drag ending for removed draggables
-      //
-      // If a draggable element is removed during a drag and the user drops:
-      // 1. if over a valid drop target: we get a "drop" event to know the drag is finished
-      // 2. if not over a valid drop target (or cancelled): we get nothing
-      // The "dragend" event will not fire on the source draggable if it has been
-      // removed from the DOM.
-      // So we need to figure out if a drag operation has finished by looking at other events
-      // We can do this by looking at other events
-      // ### First detection: "pointermove" events
-      // 1. "pointermove" events cannot fire during a drag and drop operation
-      // according to the spec. So if we get a "pointermove" it means that
-      // the drag and drop operations has finished. So if we get a "pointermove"
-      // we know that the drag is over
-      // 2. 🦊😤 Drag and drop operations are _supposed_ to suppress
-      // other pointer events. However, firefox will allow a few
-      // pointer event to get through after a drag starts.
-      // The most I've seen is 3
-      {
-        type: "pointermove",
-        listener: /* @__PURE__ */ (function() {
-          var callCount = 0;
-          return function listener() {
-            if (callCount < 20) {
-              callCount++;
-              return;
-            }
-            onDragEnd();
-          };
-        })()
-      },
-      // ### Second detection: "pointerdown" events
-      // If we receive this event then we know that a drag operation has finished
-      // and potentially another one is about to start.
-      // Note: `pointerdown` fires on all browsers / platforms before "dragstart"
-      {
-        type: "pointerdown",
-        listener: onDragEnd
-      }
-    ];
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/get-input.js
-  function getInput(event) {
-    return {
-      altKey: event.altKey,
-      button: event.button,
-      buttons: event.buttons,
-      ctrlKey: event.ctrlKey,
-      metaKey: event.metaKey,
-      shiftKey: event.shiftKey,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      pageX: event.pageX,
-      pageY: event.pageY
-    };
-  }
-
-  // node_modules/raf-schd/dist/raf-schd.esm.js
-  var rafSchd = function rafSchd2(fn) {
-    var lastArgs = [];
-    var frameId = null;
-    var wrapperFn = function wrapperFn2() {
-      for (var _len = arguments.length, args2 = new Array(_len), _key = 0; _key < _len; _key++) {
-        args2[_key] = arguments[_key];
-      }
-      lastArgs = args2;
-      if (frameId) {
-        return;
-      }
-      frameId = requestAnimationFrame(function() {
-        frameId = null;
-        fn.apply(void 0, lastArgs);
-      });
-    };
-    wrapperFn.cancel = function() {
-      if (!frameId) {
-        return;
-      }
-      cancelAnimationFrame(frameId);
-      frameId = null;
-    };
-    return wrapperFn;
-  };
-  var raf_schd_esm_default = rafSchd;
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/ledger/dispatch-consumer-event.js
-  var scheduleOnDrag = raf_schd_esm_default(function(fn) {
-    return fn();
   });
-  var dragStart = /* @__PURE__ */ (function() {
-    var scheduled = null;
-    function schedule(fn) {
-      var frameId = requestAnimationFrame(function() {
-        scheduled = null;
-        fn();
-      });
-      scheduled = {
-        frameId,
-        fn
-      };
-    }
-    function flush() {
-      if (scheduled) {
-        cancelAnimationFrame(scheduled.frameId);
-        scheduled.fn();
-        scheduled = null;
-      }
-    }
-    return {
-      schedule,
-      flush
-    };
-  })();
-  function makeDispatch(_ref) {
-    var source = _ref.source, initial = _ref.initial, dispatchEvent2 = _ref.dispatchEvent;
-    var previous = {
-      dropTargets: []
-    };
-    function safeDispatch(args2) {
-      dispatchEvent2(args2);
-      previous = {
-        dropTargets: args2.payload.location.current.dropTargets
-      };
-    }
-    var dispatch = {
-      start: function start2(_ref2) {
-        var nativeSetDragImage = _ref2.nativeSetDragImage;
-        var location2 = {
-          current: initial,
-          previous,
-          initial
-        };
-        safeDispatch({
-          eventName: "onGenerateDragPreview",
-          payload: {
-            source,
-            location: location2,
-            nativeSetDragImage
-          }
-        });
-        dragStart.schedule(function() {
-          safeDispatch({
-            eventName: "onDragStart",
-            payload: {
-              source,
-              location: location2
-            }
-          });
-        });
-      },
-      dragUpdate: function dragUpdate(_ref3) {
-        var current = _ref3.current;
-        dragStart.flush();
-        scheduleOnDrag.cancel();
-        safeDispatch({
-          eventName: "onDropTargetChange",
-          payload: {
-            source,
-            location: {
-              initial,
-              previous,
-              current
-            }
-          }
-        });
-      },
-      drag: function drag(_ref4) {
-        var current = _ref4.current;
-        scheduleOnDrag(function() {
-          dragStart.flush();
-          var location2 = {
-            initial,
-            previous,
-            current
-          };
-          safeDispatch({
-            eventName: "onDrag",
-            payload: {
-              source,
-              location: location2
-            }
-          });
-        });
-      },
-      drop: function drop(_ref5) {
-        var current = _ref5.current, updatedSourcePayload = _ref5.updatedSourcePayload;
-        dragStart.flush();
-        scheduleOnDrag.cancel();
-        safeDispatch({
-          eventName: "onDrop",
-          payload: {
-            source: updatedSourcePayload !== null && updatedSourcePayload !== void 0 ? updatedSourcePayload : source,
-            location: {
-              current,
-              previous,
-              initial
-            }
-          }
-        });
-      }
-    };
-    return dispatch;
-  }
 
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/ledger/lifecycle-manager.js
-  var globalState = {
-    isActive: false
-  };
-  function canStart() {
-    return !globalState.isActive;
+  // web/mention-suggestion.ts
+  function escapeHtml(value) {
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  function getNativeSetDragImage(event) {
-    if (event.dataTransfer) {
-      return event.dataTransfer.setDragImage.bind(event.dataTransfer);
-    }
-    return null;
-  }
-  function hasHierarchyChanged(_ref) {
-    var current = _ref.current, next = _ref.next;
-    if (current.length !== next.length) {
-      return true;
-    }
-    for (var i = 0; i < current.length; i++) {
-      if (current[i].element !== next[i].element) {
-        return true;
-      }
-    }
-    return false;
-  }
-  function start(_ref2) {
-    var event = _ref2.event, dragType = _ref2.dragType, getDropTargetsOver = _ref2.getDropTargetsOver, dispatchEvent2 = _ref2.dispatchEvent;
-    if (!canStart()) {
-      return;
-    }
-    var initial = getStartLocation({
-      event,
-      dragType,
-      getDropTargetsOver
-    });
-    globalState.isActive = true;
-    var state = {
-      current: initial
-    };
-    setDropEffectOnEvent({
-      event,
-      current: initial.dropTargets
-    });
-    var dispatch = makeDispatch({
-      source: dragType.payload,
-      dispatchEvent: dispatchEvent2,
-      initial
-    });
-    function updateState(next) {
-      var hasChanged = hasHierarchyChanged({
-        current: state.current.dropTargets,
-        next: next.dropTargets
-      });
-      state.current = next;
-      if (hasChanged) {
-        dispatch.dragUpdate({
-          current: state.current
-        });
-      }
-    }
-    function onUpdateEvent(event2) {
-      var input = getInput(event2);
-      var target = isHoneyPotElement(event2.target) ? getElementFromPointWithoutHoneypot({
-        x: input.clientX,
-        y: input.clientY
-      }) : event2.target;
-      var nextDropTargets = getDropTargetsOver({
-        target,
-        input,
-        source: dragType.payload,
-        current: state.current.dropTargets
-      });
-      if (nextDropTargets.length) {
-        event2.preventDefault();
-        setDropEffectOnEvent({
-          event: event2,
-          current: nextDropTargets
-        });
-      }
-      updateState({
-        dropTargets: nextDropTargets,
-        input
-      });
-    }
-    function cancel() {
-      if (state.current.dropTargets.length) {
-        updateState({
-          dropTargets: [],
-          input: state.current.input
-        });
-      }
-      dispatch.drop({
-        current: state.current,
-        updatedSourcePayload: null
-      });
-      finish();
-    }
-    function finish() {
-      globalState.isActive = false;
-      unbindEvents();
-    }
-    var unbindEvents = (0, import_bind_event_listener3.bindAll)(
-      window,
-      [{
-        // 👋 Note: we are repurposing the `dragover` event as our `drag` event
-        // this is because firefox does not publish pointer coordinates during
-        // a `drag` event, but does for every other type of drag event
-        // `dragover` fires on all elements that are being dragged over
-        // Because we are binding to `window` - our `dragover` is effectively the same as a `drag`
-        // 🦊😤
-        type: "dragover",
-        listener: function listener(event2) {
-          onUpdateEvent(event2);
-          dispatch.drag({
-            current: state.current
+  function mentionSuggestion(people) {
+    return {
+      char: "@",
+      allowSpaces: false,
+      items: ({ query }) => {
+        const needle = query.toLowerCase();
+        return people.filter((person) => person.name.toLowerCase().includes(needle) || person.id.toLowerCase().includes(needle)).slice(0, 8).map((person) => ({ id: person.id, label: person.name }));
+      },
+      render: () => {
+        const menu = document.createElement("div");
+        menu.className = "ew-mention-suggest";
+        menu.hidden = true;
+        menu.setAttribute("role", "listbox");
+        menu.setAttribute("aria-label", "Mention someone in the page");
+        document.body.appendChild(menu);
+        let active = 0;
+        let current;
+        const hide2 = () => {
+          menu.hidden = true;
+        };
+        const place = (props) => {
+          const rect = props.clientRect?.();
+          const reference = props.decorationNode ?? (rect ? { getBoundingClientRect: () => rect } : void 0);
+          if (!reference) return;
+          void computePosition2(reference, menu, {
+            strategy: "fixed",
+            placement: "bottom-start",
+            middleware: [offset2(8), flip2(), shift3({ padding: 8 })]
+          }).then(({ x, y }) => {
+            menu.style.position = "fixed";
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
           });
-        }
-      }, {
-        type: "dragenter",
-        listener: onUpdateEvent
-      }, {
-        type: "dragleave",
-        listener: function listener(event2) {
-          if (!isLeavingWindow({
-            dragLeave: event2
-          })) {
+        };
+        const paint = (props) => {
+          current = props;
+          if (!props.items.length) {
+            hide2();
             return;
           }
-          updateState({
-            input: state.current.input,
-            dropTargets: []
-          });
-          if (dragType.startedFrom === "external") {
-            cancel();
-          }
-        }
-      }, {
-        // A "drop" can only happen if the browser allowed the drop
-        type: "drop",
-        listener: function listener(event2) {
-          state.current = {
-            dropTargets: state.current.dropTargets,
-            input: getInput(event2)
-          };
-          if (!state.current.dropTargets.length) {
-            cancel();
-            return;
-          }
-          event2.preventDefault();
-          setDropEffectOnEvent({
-            event: event2,
-            current: state.current.dropTargets
-          });
-          dispatch.drop({
-            current: state.current,
-            // When dropping something native, we need to extract the latest
-            // `.items` from the "drop" event as it is now accessible
-            updatedSourcePayload: dragType.type === "external" ? dragType.getDropPayload(event2) : null
-          });
-          finish();
-        }
-      }, {
-        // "dragend" fires when on the drag source (eg a draggable element)
-        // when the drag is finished.
-        // "dragend" will fire after "drop" (if there was a successful drop)
-        // "dragend" does not fire if the draggable source has been removed during the drag
-        // or for external drag sources (eg files)
-        // This "dragend" listener will not fire if there was a successful drop
-        // as we will have already removed the event listener
-        type: "dragend",
-        listener: function listener(event2) {
-          state.current = {
-            dropTargets: state.current.dropTargets,
-            input: getInput(event2)
-          };
-          cancel();
-        }
-      }].concat(_toConsumableArray(getBindingsForBrokenDrags({
-        onDragEnd: cancel
-      }))),
-      // Once we have started a managed drag operation it is important that we see / own all drag events
-      // We got one adoption bug pop up where some code was stopping (`event.stopPropagation()`)
-      // all "drop" events in the bubble phase on the `document.body`.
-      // This meant that we never saw the "drop" event.
-      {
-        capture: true
-      }
-    );
-    dispatch.start({
-      nativeSetDragImage: getNativeSetDragImage(event)
-    });
-  }
-  function setDropEffectOnEvent(_ref3) {
-    var _current$;
-    var event = _ref3.event, current = _ref3.current;
-    var innerMost = (_current$ = current[0]) === null || _current$ === void 0 ? void 0 : _current$.dropEffect;
-    if (innerMost != null && event.dataTransfer) {
-      event.dataTransfer.dropEffect = innerMost;
-    }
-  }
-  function getStartLocation(_ref4) {
-    var event = _ref4.event, dragType = _ref4.dragType, getDropTargetsOver = _ref4.getDropTargetsOver;
-    var input = getInput(event);
-    if (dragType.startedFrom === "external") {
-      return {
-        input,
-        dropTargets: []
-      };
-    }
-    var dropTargets = getDropTargetsOver({
-      input,
-      source: dragType.payload,
-      target: event.target,
-      current: []
-    });
-    return {
-      input,
-      dropTargets
-    };
-  }
-  var lifecycle = {
-    canStart,
-    start
-  };
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/ledger/usage-ledger.js
-  var ledger = /* @__PURE__ */ new Map();
-  function registerUsage(_ref) {
-    var typeKey = _ref.typeKey, mount2 = _ref.mount;
-    var entry = ledger.get(typeKey);
-    if (entry) {
-      entry.usageCount++;
-      return entry;
-    }
-    var initial = {
-      typeKey,
-      unmount: mount2(),
-      usageCount: 1
-    };
-    ledger.set(typeKey, initial);
-    return initial;
-  }
-  function register(args2) {
-    var entry = registerUsage(args2);
-    return function unregister() {
-      entry.usageCount--;
-      if (entry.usageCount > 0) {
-        return;
-      }
-      entry.unmount();
-      ledger.delete(args2.typeKey);
-    };
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/add-attribute.js
-  function addAttribute(element2, _ref) {
-    var attribute = _ref.attribute, value = _ref.value;
-    element2.setAttribute(attribute, value);
-    return function() {
-      return element2.removeAttribute(attribute);
-    };
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/make-adapter/make-drop-target.js
-  function ownKeys2(e, r) {
-    var t = Object.keys(e);
-    if (Object.getOwnPropertySymbols) {
-      var o = Object.getOwnPropertySymbols(e);
-      r && (o = o.filter(function(r2) {
-        return Object.getOwnPropertyDescriptor(e, r2).enumerable;
-      })), t.push.apply(t, o);
-    }
-    return t;
-  }
-  function _objectSpread2(e) {
-    for (var r = 1; r < arguments.length; r++) {
-      var t = null != arguments[r] ? arguments[r] : {};
-      r % 2 ? ownKeys2(Object(t), true).forEach(function(r2) {
-        _defineProperty(e, r2, t[r2]);
-      }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys2(Object(t)).forEach(function(r2) {
-        Object.defineProperty(e, r2, Object.getOwnPropertyDescriptor(t, r2));
-      });
-    }
-    return e;
-  }
-  function _createForOfIteratorHelper(r, e) {
-    var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"];
-    if (!t) {
-      if (Array.isArray(r) || (t = _unsupportedIterableToArray2(r)) || e && r && "number" == typeof r.length) {
-        t && (r = t);
-        var _n = 0, F = function F2() {
+          active = Math.max(0, Math.min(active, props.items.length - 1));
+          menu.hidden = false;
+          menu.innerHTML = props.items.map(
+            (item, index) => `<button type="button" role="option" class="ew-mention-suggest-item${index === active ? " is-active" : ""}" data-mention-id="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`
+          ).join("");
+          place(props);
         };
-        return { s: F, n: function n() {
-          return _n >= r.length ? { done: true } : { done: false, value: r[_n++] };
-        }, e: function e2(r2) {
-          throw r2;
-        }, f: F };
-      }
-      throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
-    }
-    var o, a = true, u = false;
-    return { s: function s() {
-      t = t.call(r);
-    }, n: function n() {
-      var r2 = t.next();
-      return a = r2.done, r2;
-    }, e: function e2(r2) {
-      u = true, o = r2;
-    }, f: function f() {
-      try {
-        a || null == t.return || t.return();
-      } finally {
-        if (u) throw o;
-      }
-    } };
-  }
-  function _unsupportedIterableToArray2(r, a) {
-    if (r) {
-      if ("string" == typeof r) return _arrayLikeToArray2(r, a);
-      var t = {}.toString.call(r).slice(8, -1);
-      return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray2(r, a) : void 0;
-    }
-  }
-  function _arrayLikeToArray2(r, a) {
-    (null == a || a > r.length) && (a = r.length);
-    for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e];
-    return n;
-  }
-  function copyReverse(array) {
-    return array.slice(0).reverse();
-  }
-  function makeDropTarget(_ref) {
-    var typeKey = _ref.typeKey, defaultDropEffect = _ref.defaultDropEffect;
-    var registry = /* @__PURE__ */ new WeakMap();
-    var dropTargetDataAtt = "data-drop-target-for-".concat(typeKey);
-    var dropTargetSelector = "[".concat(dropTargetDataAtt, "]");
-    function addToRegistry2(args2) {
-      registry.set(args2.element, args2);
-      return function() {
-        return registry.delete(args2.element);
-      };
-    }
-    function dropTargetForConsumers(args2) {
-      if (true) {
-        var existing = registry.get(args2.element);
-        if (existing) {
-          console.warn("You have already registered a [".concat(typeKey, "] dropTarget on the same element"), {
-            existing,
-            proposed: args2
-          });
-        }
-        if (args2.element instanceof HTMLIFrameElement) {
-          console.warn("\n            We recommend not registering <iframe> elements as drop targets\n            as it can result in some strange browser event ordering.\n          ".replace(/\s{2,}/g, " ").trim());
-        }
-      }
-      var cleanup = combine(addAttribute(args2.element, {
-        attribute: dropTargetDataAtt,
-        value: "true"
-      }), addToRegistry2(args2));
-      return once(cleanup);
-    }
-    function getActualDropTargets(_ref2) {
-      var _args$getData, _args$getData2, _args$getDropEffect, _args$getDropEffect2;
-      var source = _ref2.source, target = _ref2.target, input = _ref2.input, _ref2$result = _ref2.result, result = _ref2$result === void 0 ? [] : _ref2$result;
-      if (target == null) {
-        return result;
-      }
-      if (!(target instanceof Element)) {
-        if (target instanceof Node) {
-          return getActualDropTargets({
-            source,
-            target: target.parentElement,
-            input,
-            result
-          });
-        }
-        return result;
-      }
-      var closest = target.closest(dropTargetSelector);
-      if (closest == null) {
-        return result;
-      }
-      var args2 = registry.get(closest);
-      if (args2 == null) {
-        return result;
-      }
-      var feedback = {
-        input,
-        source,
-        element: args2.element
-      };
-      if (args2.canDrop && !args2.canDrop(feedback)) {
-        return getActualDropTargets({
-          source,
-          target: args2.element.parentElement,
-          input,
-          result
+        menu.addEventListener("mousedown", (event) => {
+          const button = event.target.closest("[data-mention-id]");
+          if (!button?.dataset.mentionId || !current) return;
+          event.preventDefault();
+          const item = current.items.find((entry) => entry.id === button.dataset.mentionId);
+          if (item) current.command(item);
         });
-      }
-      var data = (_args$getData = (_args$getData2 = args2.getData) === null || _args$getData2 === void 0 ? void 0 : _args$getData2.call(args2, feedback)) !== null && _args$getData !== void 0 ? _args$getData : {};
-      var dropEffect = (_args$getDropEffect = (_args$getDropEffect2 = args2.getDropEffect) === null || _args$getDropEffect2 === void 0 ? void 0 : _args$getDropEffect2.call(args2, feedback)) !== null && _args$getDropEffect !== void 0 ? _args$getDropEffect : defaultDropEffect;
-      var record = {
-        data,
-        element: args2.element,
-        dropEffect,
-        // we are collecting _actual_ drop targets, so these are
-        // being applied _not_ due to stickiness
-        isActiveDueToStickiness: false
-      };
-      return getActualDropTargets({
-        source,
-        target: args2.element.parentElement,
-        input,
-        // Using bubble ordering. Same ordering as `event.getPath()`
-        result: [].concat(_toConsumableArray(result), [record])
-      });
-    }
-    function notifyCurrent(_ref3) {
-      var eventName = _ref3.eventName, payload2 = _ref3.payload;
-      var _iterator = _createForOfIteratorHelper(payload2.location.current.dropTargets), _step;
-      try {
-        for (_iterator.s(); !(_step = _iterator.n()).done; ) {
-          var _entry$eventName;
-          var record = _step.value;
-          var entry = registry.get(record.element);
-          var args2 = _objectSpread2(_objectSpread2({}, payload2), {}, {
-            self: record
-          });
-          entry === null || entry === void 0 || (_entry$eventName = entry[eventName]) === null || _entry$eventName === void 0 || _entry$eventName.call(
-            entry,
-            // I cannot seem to get the types right here.
-            // TS doesn't seem to like that one event can need `nativeSetDragImage`
-            // @ts-expect-error
-            args2
-          );
-        }
-      } catch (err) {
-        _iterator.e(err);
-      } finally {
-        _iterator.f();
-      }
-    }
-    var actions = {
-      onGenerateDragPreview: notifyCurrent,
-      onDrag: notifyCurrent,
-      onDragStart: notifyCurrent,
-      onDrop: notifyCurrent,
-      onDropTargetChange: function onDropTargetChange(_ref4) {
-        var payload2 = _ref4.payload;
-        var isCurrent = new Set(payload2.location.current.dropTargets.map(function(record2) {
-          return record2.element;
-        }));
-        var visited = /* @__PURE__ */ new Set();
-        var _iterator2 = _createForOfIteratorHelper(payload2.location.previous.dropTargets), _step2;
-        try {
-          for (_iterator2.s(); !(_step2 = _iterator2.n()).done; ) {
-            var _entry$onDropTargetCh;
-            var record = _step2.value;
-            visited.add(record.element);
-            var entry = registry.get(record.element);
-            var isOver = isCurrent.has(record.element);
-            var args2 = _objectSpread2(_objectSpread2({}, payload2), {}, {
-              self: record
-            });
-            entry === null || entry === void 0 || (_entry$onDropTargetCh = entry.onDropTargetChange) === null || _entry$onDropTargetCh === void 0 || _entry$onDropTargetCh.call(entry, args2);
-            if (!isOver) {
-              var _entry$onDragLeave;
-              entry === null || entry === void 0 || (_entry$onDragLeave = entry.onDragLeave) === null || _entry$onDragLeave === void 0 || _entry$onDragLeave.call(entry, args2);
-            }
-          }
-        } catch (err) {
-          _iterator2.e(err);
-        } finally {
-          _iterator2.f();
-        }
-        var _iterator3 = _createForOfIteratorHelper(payload2.location.current.dropTargets), _step3;
-        try {
-          for (_iterator3.s(); !(_step3 = _iterator3.n()).done; ) {
-            var _entry$onDropTargetCh2, _entry$onDragEnter;
-            var _record = _step3.value;
-            if (visited.has(_record.element)) {
-              continue;
-            }
-            var _args = _objectSpread2(_objectSpread2({}, payload2), {}, {
-              self: _record
-            });
-            var _entry = registry.get(_record.element);
-            _entry === null || _entry === void 0 || (_entry$onDropTargetCh2 = _entry.onDropTargetChange) === null || _entry$onDropTargetCh2 === void 0 || _entry$onDropTargetCh2.call(_entry, _args);
-            _entry === null || _entry === void 0 || (_entry$onDragEnter = _entry.onDragEnter) === null || _entry$onDragEnter === void 0 || _entry$onDragEnter.call(_entry, _args);
-          }
-        } catch (err) {
-          _iterator3.e(err);
-        } finally {
-          _iterator3.f();
-        }
-      }
-    };
-    function dispatchEvent2(args2) {
-      actions[args2.eventName](args2);
-    }
-    function getIsOver(_ref5) {
-      var source = _ref5.source, target = _ref5.target, input = _ref5.input, current = _ref5.current;
-      var actual = getActualDropTargets({
-        source,
-        target,
-        input
-      });
-      if (actual.length >= current.length) {
-        return actual;
-      }
-      var lastCaptureOrdered = copyReverse(current);
-      var actualCaptureOrdered = copyReverse(actual);
-      var resultCaptureOrdered = [];
-      for (var index = 0; index < lastCaptureOrdered.length; index++) {
-        var _argsForLast$getIsSti;
-        var last2 = lastCaptureOrdered[index];
-        var fresh = actualCaptureOrdered[index];
-        if (fresh != null) {
-          resultCaptureOrdered.push(fresh);
-          continue;
-        }
-        var parent = resultCaptureOrdered[index - 1];
-        var lastParent = lastCaptureOrdered[index - 1];
-        if ((parent === null || parent === void 0 ? void 0 : parent.element) !== (lastParent === null || lastParent === void 0 ? void 0 : lastParent.element)) {
-          break;
-        }
-        var argsForLast = registry.get(last2.element);
-        if (!argsForLast) {
-          break;
-        }
-        var feedback = {
-          input,
-          source,
-          element: argsForLast.element
-        };
-        if (argsForLast.canDrop && !argsForLast.canDrop(feedback)) {
-          break;
-        }
-        if (!((_argsForLast$getIsSti = argsForLast.getIsSticky) !== null && _argsForLast$getIsSti !== void 0 && _argsForLast$getIsSti.call(argsForLast, feedback))) {
-          break;
-        }
-        resultCaptureOrdered.push(_objectSpread2(_objectSpread2({}, last2), {}, {
-          // making it clear to consumers this drop target is active due to stickiness
-          isActiveDueToStickiness: true
-        }));
-      }
-      return copyReverse(resultCaptureOrdered);
-    }
-    return {
-      dropTargetForConsumers,
-      getIsOver,
-      dispatchEvent: dispatchEvent2
-    };
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/make-adapter/make-monitor.js
-  function _createForOfIteratorHelper2(r, e) {
-    var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"];
-    if (!t) {
-      if (Array.isArray(r) || (t = _unsupportedIterableToArray3(r)) || e && r && "number" == typeof r.length) {
-        t && (r = t);
-        var _n = 0, F = function F2() {
-        };
-        return { s: F, n: function n() {
-          return _n >= r.length ? { done: true } : { done: false, value: r[_n++] };
-        }, e: function e2(r2) {
-          throw r2;
-        }, f: F };
-      }
-      throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
-    }
-    var o, a = true, u = false;
-    return { s: function s() {
-      t = t.call(r);
-    }, n: function n() {
-      var r2 = t.next();
-      return a = r2.done, r2;
-    }, e: function e2(r2) {
-      u = true, o = r2;
-    }, f: function f() {
-      try {
-        a || null == t.return || t.return();
-      } finally {
-        if (u) throw o;
-      }
-    } };
-  }
-  function _unsupportedIterableToArray3(r, a) {
-    if (r) {
-      if ("string" == typeof r) return _arrayLikeToArray3(r, a);
-      var t = {}.toString.call(r).slice(8, -1);
-      return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray3(r, a) : void 0;
-    }
-  }
-  function _arrayLikeToArray3(r, a) {
-    (null == a || a > r.length) && (a = r.length);
-    for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e];
-    return n;
-  }
-  function ownKeys3(e, r) {
-    var t = Object.keys(e);
-    if (Object.getOwnPropertySymbols) {
-      var o = Object.getOwnPropertySymbols(e);
-      r && (o = o.filter(function(r2) {
-        return Object.getOwnPropertyDescriptor(e, r2).enumerable;
-      })), t.push.apply(t, o);
-    }
-    return t;
-  }
-  function _objectSpread3(e) {
-    for (var r = 1; r < arguments.length; r++) {
-      var t = null != arguments[r] ? arguments[r] : {};
-      r % 2 ? ownKeys3(Object(t), true).forEach(function(r2) {
-        _defineProperty(e, r2, t[r2]);
-      }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys3(Object(t)).forEach(function(r2) {
-        Object.defineProperty(e, r2, Object.getOwnPropertyDescriptor(t, r2));
-      });
-    }
-    return e;
-  }
-  function makeMonitor() {
-    var registry = /* @__PURE__ */ new Set();
-    var dragging = null;
-    function tryAddToActive(monitor) {
-      if (!dragging) {
-        return;
-      }
-      if (!monitor.canMonitor || monitor.canMonitor(dragging.canMonitorArgs)) {
-        dragging.active.add(monitor);
-      }
-    }
-    function monitorForConsumers(args2) {
-      var entry = _objectSpread3({}, args2);
-      registry.add(entry);
-      tryAddToActive(entry);
-      function cleanup() {
-        registry.delete(entry);
-        if (dragging) {
-          dragging.active.delete(entry);
-        }
-      }
-      return once(cleanup);
-    }
-    function dispatchEvent2(_ref) {
-      var eventName = _ref.eventName, payload2 = _ref.payload;
-      if (eventName === "onGenerateDragPreview") {
-        dragging = {
-          canMonitorArgs: {
-            initial: payload2.location.initial,
-            source: payload2.source
+        return {
+          onStart: (props) => {
+            active = 0;
+            paint(props);
           },
-          active: /* @__PURE__ */ new Set()
-        };
-        var _iterator = _createForOfIteratorHelper2(registry), _step;
-        try {
-          for (_iterator.s(); !(_step = _iterator.n()).done; ) {
-            var monitor = _step.value;
-            tryAddToActive(monitor);
-          }
-        } catch (err) {
-          _iterator.e(err);
-        } finally {
-          _iterator.f();
-        }
-      }
-      if (!dragging) {
-        return;
-      }
-      var active = Array.from(dragging.active);
-      for (var _i = 0, _active = active; _i < _active.length; _i++) {
-        var _monitor = _active[_i];
-        if (dragging.active.has(_monitor)) {
-          var _monitor$eventName;
-          (_monitor$eventName = _monitor[eventName]) === null || _monitor$eventName === void 0 || _monitor$eventName.call(_monitor, payload2);
-        }
-      }
-      if (eventName === "onDrop") {
-        dragging.active.clear();
-        dragging = null;
-      }
-    }
-    return {
-      dispatchEvent: dispatchEvent2,
-      monitorForConsumers
-    };
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/make-adapter/make-adapter.js
-  function makeAdapter(_ref) {
-    var typeKey = _ref.typeKey, mount2 = _ref.mount, dispatchEventToSource2 = _ref.dispatchEventToSource, onPostDispatch = _ref.onPostDispatch, defaultDropEffect = _ref.defaultDropEffect;
-    var monitorAPI = makeMonitor();
-    var dropTargetAPI = makeDropTarget({
-      typeKey,
-      defaultDropEffect
-    });
-    function dispatchEvent2(args2) {
-      dispatchEventToSource2 === null || dispatchEventToSource2 === void 0 || dispatchEventToSource2(args2);
-      dropTargetAPI.dispatchEvent(args2);
-      monitorAPI.dispatchEvent(args2);
-      onPostDispatch === null || onPostDispatch === void 0 || onPostDispatch(args2);
-    }
-    function start2(_ref2) {
-      var event = _ref2.event, dragType = _ref2.dragType;
-      lifecycle.start({
-        event,
-        dragType,
-        getDropTargetsOver: dropTargetAPI.getIsOver,
-        dispatchEvent: dispatchEvent2
-      });
-    }
-    function registerUsage2() {
-      function mountAdapter() {
-        var api2 = {
-          canStart: lifecycle.canStart,
-          start: start2
-        };
-        return mount2(api2);
-      }
-      return register({
-        typeKey,
-        mount: mountAdapter
-      });
-    }
-    return {
-      registerUsage: registerUsage2,
-      dropTarget: dropTargetAPI.dropTargetForConsumers,
-      monitor: monitorAPI.monitorForConsumers
-    };
-  }
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/android.js
-  var isAndroid2 = once(function isAndroid3() {
-    return navigator.userAgent.toLocaleLowerCase().includes("android");
-  });
-  var androidFallbackText = "pdnd:android-fallback";
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/media-types/text-media-type.js
-  var textMediaType = "text/plain";
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/util/media-types/url-media-type.js
-  var URLMediaType = "text/uri-list";
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter-native-data-key.js
-  var elementAdapterNativeDataKey = "application/vnd.pdnd";
-
-  // node_modules/@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js
-  var draggableRegistry = /* @__PURE__ */ new WeakMap();
-  function addToRegistry(args2) {
-    draggableRegistry.set(args2.element, args2);
-    return function cleanup() {
-      draggableRegistry.delete(args2.element);
-    };
-  }
-  var honeyPotFix = makeHoneyPotFix();
-  var adapter = makeAdapter({
-    typeKey: "element",
-    defaultDropEffect: "move",
-    mount: function mount(api2) {
-      return combine(honeyPotFix.bindEvents(), (0, import_bind_event_listener4.bind)(document, {
-        type: "dragstart",
-        listener: function listener(event) {
-          var _entry$dragHandle, _entry$getInitialData, _entry$getInitialData2, _entry$dragHandle2, _entry$getInitialData3, _entry$getInitialData4;
-          if (!api2.canStart(event)) {
-            return;
-          }
-          if (event.defaultPrevented) {
-            return;
-          }
-          if (!event.dataTransfer) {
-            if (true) {
-              console.warn("\n              It appears as though you have are not testing DragEvents correctly.\n\n              - If you are unit testing, ensure you have polyfilled DragEvent.\n              - If you are browser testing, ensure you are dispatching drag events correctly.\n\n              Please see our testing guides for more information:\n              https://atlassian.design/components/pragmatic-drag-and-drop/core-package/testing\n            ".replace(/ {2}/g, ""));
-            }
-            return;
-          }
-          var target = event.target;
-          if (!(target instanceof HTMLElement)) {
-            return;
-          }
-          var entry = draggableRegistry.get(target);
-          if (!entry) {
-            return;
-          }
-          var input = getInput(event);
-          var feedback = {
-            element: entry.element,
-            dragHandle: (_entry$dragHandle = entry.dragHandle) !== null && _entry$dragHandle !== void 0 ? _entry$dragHandle : null,
-            input
-          };
-          if (entry.canDrag && !entry.canDrag(feedback)) {
-            event.preventDefault();
-            return;
-          }
-          if (entry.dragHandle) {
-            var over = getElementFromPointWithoutHoneypot({
-              x: input.clientX,
-              y: input.clientY
-            });
-            if (!entry.dragHandle.contains(over)) {
+          onUpdate: (props) => paint(props),
+          onKeyDown: ({ event }) => {
+            if (menu.hidden || !current?.items.length) return false;
+            if (event.key === "ArrowDown") {
               event.preventDefault();
-              return;
+              active = (active + 1) % current.items.length;
+              paint(current);
+              return true;
             }
-          }
-          var nativeData = (_entry$getInitialData = (_entry$getInitialData2 = entry.getInitialDataForExternal) === null || _entry$getInitialData2 === void 0 ? void 0 : _entry$getInitialData2.call(entry, feedback)) !== null && _entry$getInitialData !== void 0 ? _entry$getInitialData : null;
-          if (nativeData) {
-            for (var _i = 0, _Object$entries = Object.entries(nativeData); _i < _Object$entries.length; _i++) {
-              var _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2), key = _Object$entries$_i[0], data = _Object$entries$_i[1];
-              event.dataTransfer.setData(key, data !== null && data !== void 0 ? data : "");
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              active = (active - 1 + current.items.length) % current.items.length;
+              paint(current);
+              return true;
             }
+            if (event.key === "Enter") {
+              const item = current.items[active];
+              if (item) {
+                event.preventDefault();
+                current.command(item);
+                return true;
+              }
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              hide2();
+              return true;
+            }
+            return false;
+          },
+          onExit: () => {
+            hide2();
+            menu.replaceChildren();
           }
-          if (isAndroid2() && !event.dataTransfer.types.includes(textMediaType) && !event.dataTransfer.types.includes(URLMediaType)) {
-            event.dataTransfer.setData(textMediaType, androidFallbackText);
-          }
-          event.dataTransfer.setData(elementAdapterNativeDataKey, "");
-          var payload2 = {
-            element: entry.element,
-            dragHandle: (_entry$dragHandle2 = entry.dragHandle) !== null && _entry$dragHandle2 !== void 0 ? _entry$dragHandle2 : null,
-            data: (_entry$getInitialData3 = (_entry$getInitialData4 = entry.getInitialData) === null || _entry$getInitialData4 === void 0 ? void 0 : _entry$getInitialData4.call(entry, feedback)) !== null && _entry$getInitialData3 !== void 0 ? _entry$getInitialData3 : {}
-          };
-          var dragType = {
-            type: "element",
-            payload: payload2,
-            startedFrom: "internal"
-          };
-          api2.start({
-            event,
-            dragType
-          });
-        }
-      }));
-    },
-    dispatchEventToSource: function dispatchEventToSource(_ref) {
-      var _draggableRegistry$ge, _draggableRegistry$ge2;
-      var eventName = _ref.eventName, payload2 = _ref.payload;
-      (_draggableRegistry$ge = draggableRegistry.get(payload2.source.element)) === null || _draggableRegistry$ge === void 0 || (_draggableRegistry$ge2 = _draggableRegistry$ge[eventName]) === null || _draggableRegistry$ge2 === void 0 || _draggableRegistry$ge2.call(
-        _draggableRegistry$ge,
-        // I cannot seem to get the types right here.
-        // TS doesn't seem to like that one event can need `nativeSetDragImage`
-        // @ts-expect-error
-        payload2
-      );
-    },
-    onPostDispatch: honeyPotFix.getOnPostDispatch()
-  });
-  var dropTargetForElements = adapter.dropTarget;
-  var monitorForElements = adapter.monitor;
-  function draggable(args2) {
-    if (true) {
-      if (args2.dragHandle && !args2.element.contains(args2.dragHandle)) {
-        console.warn("Drag handle element must be contained in draggable element", {
-          element: args2.element,
-          dragHandle: args2.dragHandle
-        });
+        };
       }
-    }
-    if (true) {
-      var existing = draggableRegistry.get(args2.element);
-      if (existing) {
-        console.warn("You have already registered a `draggable` on the same element", {
-          existing,
-          proposed: args2
-        });
-      }
-    }
-    var cleanup = combine(
-      // making the draggable register the adapter rather than drop targets
-      // this is because you *must* have a draggable element to start a drag
-      // but you _might_ not have any drop targets immediately
-      // (You might create drop targets async)
-      adapter.registerUsage(),
-      addToRegistry(args2),
-      addAttribute(args2.element, {
-        attribute: "draggable",
-        value: "true"
-      })
-    );
-    return once(cleanup);
+    };
   }
 
   // node_modules/lucide/dist/esm/defaultAttributes.mjs
@@ -32215,6 +35961,65 @@ ${err.toString()}`);
     ["path", { d: "M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/bug.mjs
+  var Bug = [
+    ["path", { d: "M12 20v-9" }],
+    ["path", { d: "M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z" }],
+    ["path", { d: "M14.12 3.88 16 2" }],
+    ["path", { d: "M21 21a4 4 0 0 0-3.81-4" }],
+    ["path", { d: "M21 5a4 4 0 0 1-3.55 3.97" }],
+    ["path", { d: "M22 13h-4" }],
+    ["path", { d: "M3 21a4 4 0 0 1 3.81-4" }],
+    ["path", { d: "M3 5a4 4 0 0 0 3.55 3.97" }],
+    ["path", { d: "M6 13H2" }],
+    ["path", { d: "m8 2 1.88 1.88" }],
+    ["path", { d: "M9 7.13V6a3 3 0 1 1 6 0v1.13" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/chart-column-stacked.mjs
+  var ChartColumnStacked = [
+    ["path", { d: "M11 13H7" }],
+    ["path", { d: "M19 9h-4" }],
+    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16" }],
+    ["rect", { x: "15", y: "5", width: "4", height: "12", rx: "1" }],
+    ["rect", { x: "7", y: "8", width: "4", height: "9", rx: "1" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/chart-column.mjs
+  var ChartColumn = [
+    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16" }],
+    ["path", { d: "M18 17V9" }],
+    ["path", { d: "M13 17V5" }],
+    ["path", { d: "M8 17v-3" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/chevron-down.mjs
+  var ChevronDown = [["path", { d: "m6 9 6 6 6-6" }]];
+
+  // node_modules/lucide/dist/esm/icons/circle-check.mjs
+  var CircleCheck = [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "m16 9-5.5 5.5L8 12" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/code.mjs
+  var Code2 = [
+    ["path", { d: "m16 18 6-6-6-6" }],
+    ["path", { d: "m8 6-6 6 6 6" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/command.mjs
+  var Command = [
+    ["path", { d: "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/download.mjs
+  var Download = [
+    ["path", { d: "M12 15V3" }],
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }],
+    ["path", { d: "m7 10 5 5 5-5" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/file-text.mjs
   var FileText = [
     [
@@ -32227,6 +36032,39 @@ ${err.toString()}`);
     ["path", { d: "M10 9H8" }],
     ["path", { d: "M16 13H8" }],
     ["path", { d: "M16 17H8" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/flag.mjs
+  var Flag = [
+    [
+      "path",
+      {
+        d: "M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"
+      }
+    ]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/funnel.mjs
+  var Funnel = [
+    [
+      "path",
+      {
+        d: "M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"
+      }
+    ]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/hand.mjs
+  var Hand = [
+    ["path", { d: "M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2" }],
+    ["path", { d: "M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2" }],
+    ["path", { d: "M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8" }],
+    [
+      "path",
+      {
+        d: "M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"
+      }
+    ]
   ];
 
   // node_modules/lucide/dist/esm/icons/heading-1.mjs
@@ -32245,8 +36083,14 @@ ${err.toString()}`);
     ["path", { d: "M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/highlighter.mjs
+  var Highlighter = [
+    ["path", { d: "m9 11-6 6v3h9l3-3" }],
+    ["path", { d: "m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/image.mjs
-  var Image = [
+  var Image2 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2" }],
     ["circle", { cx: "9", cy: "9", r: "2" }],
     ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" }]
@@ -32259,11 +36103,45 @@ ${err.toString()}`);
     ["path", { d: "M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/info.mjs
+  var Info = [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "M12 16v-4" }],
+    ["path", { d: "M12 8h.01" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/italic.mjs
   var Italic2 = [
     ["line", { x1: "19", x2: "10", y1: "4", y2: "4" }],
     ["line", { x1: "14", x2: "5", y1: "20", y2: "20" }],
     ["line", { x1: "15", x2: "9", y1: "4", y2: "20" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/lightbulb.mjs
+  var Lightbulb = [
+    [
+      "path",
+      {
+        d: "M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"
+      }
+    ],
+    ["path", { d: "M9 18h6" }],
+    ["path", { d: "M10 22h4" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/link.mjs
+  var Link2 = [
+    ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" }],
+    ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/list-checks.mjs
+  var ListChecks = [
+    ["path", { d: "M13 5h8" }],
+    ["path", { d: "M13 12h8" }],
+    ["path", { d: "M13 19h8" }],
+    ["path", { d: "m3 17 2 2 4-4" }],
+    ["path", { d: "m3 7 2 2 4-4" }]
   ];
 
   // node_modules/lucide/dist/esm/icons/list-ordered.mjs
@@ -32276,6 +36154,15 @@ ${err.toString()}`);
     ["path", { d: "M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/list-todo.mjs
+  var ListTodo = [
+    ["path", { d: "M13 5h8" }],
+    ["path", { d: "M13 12h8" }],
+    ["path", { d: "M13 19h8" }],
+    ["path", { d: "m3 17 2 2 4-4" }],
+    ["rect", { x: "3", y: "4", width: "6", height: "6", rx: "1" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/list.mjs
   var List = [
     ["path", { d: "M3 5h.01" }],
@@ -32286,12 +36173,53 @@ ${err.toString()}`);
     ["path", { d: "M8 19h13" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/maximize-2.mjs
+  var Maximize2 = [
+    ["path", { d: "M15 3h6v6" }],
+    ["path", { d: "m21 3-7 7" }],
+    ["path", { d: "m3 21 7-7" }],
+    ["path", { d: "M9 21H3v-6" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/message-square.mjs
+  var MessageSquare = [
+    [
+      "path",
+      {
+        d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"
+      }
+    ]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/monitor-play.mjs
+  var MonitorPlay = [
+    [
+      "path",
+      {
+        d: "M15.033 9.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56V7.648a.645.645 0 0 1 .967-.56z"
+      }
+    ],
+    ["path", { d: "M12 17v4" }],
+    ["path", { d: "M8 21h8" }],
+    ["rect", { x: "2", y: "3", width: "20", height: "14", rx: "2" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/moon.mjs
   var Moon = [
     [
       "path",
       {
         d: "M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"
+      }
+    ]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/mouse-pointer-2.mjs
+  var MousePointer2 = [
+    [
+      "path",
+      {
+        d: "M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"
       }
     ]
   ];
@@ -32307,6 +36235,22 @@ ${err.toString()}`);
     ["path", { d: "M2 3h20" }],
     ["path", { d: "M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" }],
     ["path", { d: "m7 21 5-5 5 5" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/quote.mjs
+  var Quote = [
+    [
+      "path",
+      {
+        d: "M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"
+      }
+    ],
+    [
+      "path",
+      {
+        d: "M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"
+      }
+    ]
   ];
 
   // node_modules/lucide/dist/esm/icons/search.mjs
@@ -32334,6 +36278,17 @@ ${err.toString()}`);
     ["path", { d: "M16 7v9" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/sticky-note.mjs
+  var StickyNote = [
+    [
+      "path",
+      {
+        d: "M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"
+      }
+    ],
+    ["path", { d: "M15 3v5a1 1 0 0 0 1 1h5" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/strikethrough.mjs
   var Strikethrough = [
     ["path", { d: "M16 4H9a3 3 0 0 0-2.83 4" }],
@@ -32354,10 +36309,88 @@ ${err.toString()}`);
     ["path", { d: "m19.07 4.93-1.41 1.41" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/table.mjs
+  var Table2 = [
+    ["path", { d: "M12 3v18" }],
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+    ["path", { d: "M3 9h18" }],
+    ["path", { d: "M3 15h18" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/text-align-center.mjs
+  var TextAlignCenter = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M17 12H7" }],
+    ["path", { d: "M19 19H5" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/text-align-end.mjs
+  var TextAlignEnd = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M21 12H9" }],
+    ["path", { d: "M21 19H7" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/text-align-start.mjs
+  var TextAlignStart = [
+    ["path", { d: "M21 5H3" }],
+    ["path", { d: "M15 12H3" }],
+    ["path", { d: "M17 19H3" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/trash.mjs
+  var Trash = [
+    ["path", { d: "M10 11v6" }],
+    ["path", { d: "M14 11v6" }],
+    ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" }],
+    ["path", { d: "M3 6h18" }],
+    ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/triangle-alert.mjs
+  var TriangleAlert = [
+    ["path", { d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" }],
+    ["path", { d: "M12 9v4" }],
+    ["path", { d: "M12 17h.01" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/underline.mjs
+  var Underline2 = [
+    ["path", { d: "M6 4v6a6 6 0 0 0 12 0V4" }],
+    ["line", { x1: "4", x2: "20", y1: "20", y2: "20" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/undo-2.mjs
+  var Undo2 = [
+    ["path", { d: "M9 14 4 9l5-5" }],
+    ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/user.mjs
+  var User = [
+    ["path", { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" }],
+    ["circle", { cx: "12", cy: "7", r: "4" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/video.mjs
   var Video = [
     ["path", { d: "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" }],
     ["rect", { x: "2", y: "6", width: "14", height: "12", rx: "2" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/zoom-in.mjs
+  var ZoomIn = [
+    ["circle", { cx: "11", cy: "11", r: "8" }],
+    ["line", { x1: "21", x2: "16.65", y1: "21", y2: "16.65" }],
+    ["line", { x1: "11", x2: "11", y1: "8", y2: "14" }],
+    ["line", { x1: "8", x2: "14", y1: "11", y2: "11" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/zoom-out.mjs
+  var ZoomOut = [
+    ["circle", { cx: "11", cy: "11", r: "8" }],
+    ["line", { x1: "21", x2: "16.65", y1: "21", y2: "16.65" }],
+    ["line", { x1: "8", x2: "14", y1: "11", y2: "11" }]
   ];
 
   // node_modules/lucide/dist/esm/lucide.mjs
@@ -32403,27 +36436,87 @@ ${err.toString()}`);
     }
   };
 
+  // web/status-path.ts
+  var STATUS_EDGES = {
+    backlog: ["todo"],
+    todo: ["backlog", "in_progress"],
+    in_progress: ["todo", "in_review"],
+    in_review: ["in_progress", "done"],
+    done: ["todo"]
+  };
+  function statusPath(from3, to) {
+    if (!from3 || !to || from3 === to) return [];
+    const queue = [{ node: from3, path: [] }];
+    const seen = /* @__PURE__ */ new Set([from3]);
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current) break;
+      for (const next of STATUS_EDGES[current.node] ?? []) {
+        if (seen.has(next)) continue;
+        const path = [...current.path, next];
+        if (next === to) return path;
+        seen.add(next);
+        queue.push({ node: next, path });
+      }
+    }
+    return [];
+  }
+
   // web/ui-kit.ts
   var ICONS = {
+    AlertTriangle: TriangleAlert,
+    AlignCenter: TextAlignCenter,
+    AlignLeft: TextAlignStart,
+    AlignRight: TextAlignEnd,
     Bell,
     Bold: Bold2,
+    Bug,
+    ChartColumn,
+    ChartColumnStacked,
+    ChevronDown,
+    CircleCheck,
+    Code: Code2,
+    Command,
+    Download,
     FileText,
+    Filter: Funnel,
+    Flag,
+    Hand,
     Heading1,
     Heading2,
-    Image,
+    Highlighter,
+    Image: Image2,
     Import,
+    Info,
     Italic: Italic2,
+    Lightbulb,
+    Link: Link2,
     List,
+    ListChecks,
     ListOrdered,
+    ListTodo,
+    Maximize2,
+    MessageSquare,
+    MonitorPlay,
     Moon,
+    MousePointer2,
     Plus,
     Presentation,
+    Quote,
     Search,
     Settings,
     SquareKanban,
+    StickyNote,
     Strikethrough,
     Sun,
-    Video
+    Table: Table2,
+    Trash2: Trash,
+    Underline: Underline2,
+    Undo2,
+    User,
+    Video,
+    ZoomIn,
+    ZoomOut
   };
   var ICON_ATTRS = {
     width: 16,
@@ -32455,8 +36548,8 @@ ${err.toString()}`);
           shift3({ padding: 8 }),
           size3({
             apply({ rects, availableWidth }) {
-              floating.style.width = `${Math.max(rects.reference.width, 320)}px`;
-              floating.style.maxWidth = `${Math.max(280, availableWidth)}px`;
+              floating.style.width = `${Math.max(rects.reference.width, 220)}px`;
+              floating.style.maxWidth = `${Math.min(640, Math.max(220, availableWidth))}px`;
             }
           })
         ]
@@ -32467,53 +36560,803 @@ ${err.toString()}`);
     });
   }
   function bindIssueBoard(board, onDrop) {
-    const cleanups = [];
-    for (const card of board.querySelectorAll(".ew-card")) {
+    let dragging = false;
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (target.closest(".ew-column-add")) return;
+      const card = target.closest(".ew-card");
+      if (!card || !board.contains(card)) return;
       const issueId = card.dataset.issue ?? "";
-      cleanups.push(
-        draggable({
-          element: card,
-          getInitialData: () => ({ type: "issue-card", issueId }),
-          onDragStart: () => card.classList.add("is-dragging"),
-          onDrop: () => card.classList.remove("is-dragging")
-        }),
-        dropTargetForElements({
-          element: card,
-          getData: () => ({ type: "issue-card", issueId }),
-          canDrop: ({ source }) => source.data.type === "issue-card" && source.data.issueId !== issueId
-        })
-      );
-    }
-    for (const column of board.querySelectorAll(".ew-column")) {
-      const statusId = column.dataset.status ?? "";
-      cleanups.push(
-        dropTargetForElements({
-          element: column,
-          getData: () => ({ type: "column", statusId }),
-          canDrop: ({ source }) => source.data.type === "issue-card",
-          onDragEnter: () => column.classList.add("is-drop"),
-          onDragLeave: () => column.classList.remove("is-drop"),
-          onDrop: () => column.classList.remove("is-drop")
-        })
-      );
-    }
-    cleanups.push(
-      monitorForElements({
-        canMonitor: ({ source }) => source.data.type === "issue-card",
-        onDrop: ({ source, location: location2 }) => {
-          const issueId = String(source.data.issueId ?? "");
-          const column = location2.current.dropTargets.find((target) => target.data.type === "column");
-          const card = location2.current.dropTargets.find((target) => target.data.type === "issue-card");
-          if (!issueId || !column) return;
-          onDrop({
-            issueId,
-            beforeId: String(card?.data.issueId ?? ""),
-            statusId: String(column.data.statusId ?? "")
-          });
+      if (!issueId) return;
+      const origin = card.getBoundingClientRect();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let ghost;
+      dragging = false;
+      const highlight = (clientX, clientY) => {
+        for (const column of board.querySelectorAll(".ew-column")) column.classList.remove("is-drop");
+        const hit = document.elementFromPoint(clientX, clientY)?.closest(".ew-column");
+        hit?.classList.add("is-drop");
+        return hit ?? void 0;
+      };
+      const onMove = (move) => {
+        const dx = move.clientX - startX;
+        const dy = move.clientY - startY;
+        if (!dragging && dx * dx + dy * dy < 36) return;
+        if (!dragging) {
+          dragging = true;
+          board.classList.add("is-sorting");
+          card.classList.add("is-dragging");
+          ghost = card.cloneNode(true);
+          ghost.classList.add("ew-drag-ghost");
+          ghost.setAttribute("aria-hidden", "true");
+          ghost.style.width = `${origin.width}px`;
+          document.body.appendChild(ghost);
         }
-      })
-    );
-    return combine(...cleanups);
+        if (ghost) {
+          ghost.style.left = `${move.clientX - 16}px`;
+          ghost.style.top = `${move.clientY - 12}px`;
+        }
+        highlight(move.clientX, move.clientY);
+      };
+      const onUp = (up) => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        ghost?.remove();
+        card.classList.remove("is-dragging");
+        const column = highlight(up.clientX, up.clientY);
+        for (const node of board.querySelectorAll(".ew-column")) node.classList.remove("is-drop");
+        board.classList.remove("is-sorting");
+        if (!dragging || !column) return;
+        let beforeId = "";
+        for (const other of column.querySelectorAll(".ew-card")) {
+          if (other === card) continue;
+          const box = other.getBoundingClientRect();
+          if (up.clientY < box.top + box.height / 2) {
+            beforeId = other.dataset.issue ?? "";
+            break;
+          }
+        }
+        onDrop({ issueId, beforeId, statusId: column.dataset.status ?? "" });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    };
+    board.addEventListener("pointerdown", onPointerDown);
+    const onClick = (event) => {
+      if (!dragging) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragging = false;
+    };
+    board.addEventListener("click", onClick, true);
+    return () => {
+      board.removeEventListener("pointerdown", onPointerDown);
+      board.removeEventListener("click", onClick, true);
+    };
+  }
+  function pageScale(page) {
+    const match2 = /scale\(([-0-9.]+)\)/.exec(page.style.transform);
+    return match2 ? Number(match2[1]) : 1;
+  }
+  function setCanvasZoom(stage, zoom) {
+    const page = stage.querySelector(".pd-page");
+    if (!page) return;
+    const next = Math.min(2.5, Math.max(0.35, zoom));
+    stage.dataset.zoom = String(next);
+    page.style.transform = `scale(${next})`;
+    page.style.transformOrigin = "top left";
+    const label = document.getElementById("zoom-label");
+    if (label) label.textContent = `${Math.round(next * 100)}%`;
+  }
+  function syncCanvasArrows(stage) {
+    for (const arrow4 of stage.querySelectorAll(".pd-el-arrow")) {
+      const from3 = stage.querySelector(`.pd-el[data-id="${CSS.escape(arrow4.dataset.from ?? "")}"]`);
+      const to = stage.querySelector(`.pd-el[data-id="${CSS.escape(arrow4.dataset.to ?? "")}"]`);
+      const line = arrow4.querySelector("line");
+      if (!from3 || !to || !line) continue;
+      const ax = Number.parseFloat(arrow4.style.left) || 0;
+      const ay = Number.parseFloat(arrow4.style.top) || 0;
+      line.setAttribute("x1", String((Number.parseFloat(from3.style.left) || 0) + from3.offsetWidth / 2 - ax));
+      line.setAttribute("y1", String((Number.parseFloat(from3.style.top) || 0) + from3.offsetHeight / 2 - ay));
+      line.setAttribute("x2", String((Number.parseFloat(to.style.left) || 0) + to.offsetWidth / 2 - ax));
+      line.setAttribute("y2", String((Number.parseFloat(to.style.top) || 0) + to.offsetHeight / 2 - ay));
+    }
+  }
+  function bindVisualStage(stage, handlers2) {
+    let dragging = false;
+    let connectFrom = "";
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (target.closest("video, input, textarea, button, a, select")) return;
+      const page = stage.querySelector(".pd-page");
+      if (!page) return;
+      const tool = stage.dataset.tool ?? "select";
+      const scale = pageScale(page);
+      if (tool === "sticky") {
+        const box = page.getBoundingClientRect();
+        handlers2.onPlaceSticky?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
+        return;
+      }
+      if (tool === "comment") {
+        const box = page.getBoundingClientRect();
+        handlers2.onPlaceComment?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
+        return;
+      }
+      if (tool === "connect") {
+        const card2 = target.closest(".pd-el");
+        if (!card2 || card2.classList.contains("pd-el-arrow") || !card2.dataset.id) return;
+        if (!connectFrom || connectFrom === card2.dataset.id) {
+          connectFrom = card2.dataset.id;
+          for (const node of stage.querySelectorAll(".pd-el")) node.classList.toggle("is-connect", node === card2);
+          return;
+        }
+        handlers2.onConnect?.(connectFrom, card2.dataset.id);
+        connectFrom = "";
+        for (const node of stage.querySelectorAll(".pd-el")) node.classList.remove("is-connect");
+        return;
+      }
+      if (tool === "pan") {
+        dragging = true;
+        const startX2 = event.clientX;
+        const startY2 = event.clientY;
+        const originLeft2 = stage.scrollLeft;
+        const originTop2 = stage.scrollTop;
+        const onMove2 = (move) => {
+          stage.scrollLeft = originLeft2 - (move.clientX - startX2);
+          stage.scrollTop = originTop2 - (move.clientY - startY2);
+        };
+        const onUp2 = () => {
+          window.removeEventListener("pointermove", onMove2);
+          window.removeEventListener("pointerup", onUp2);
+          dragging = false;
+        };
+        window.addEventListener("pointermove", onMove2);
+        window.addEventListener("pointerup", onUp2);
+        return;
+      }
+      const resizing = target.closest(".pd-resize");
+      const card = target.closest(".pd-el");
+      if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) {
+        if (!target.closest(".pd-el")) handlers2.onSelect?.("");
+        return;
+      }
+      const id2 = card.dataset.id ?? "";
+      if (!id2) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const originLeft = Number.parseFloat(card.style.left) || 0;
+      const originTop = Number.parseFloat(card.style.top) || 0;
+      const originWidth = card.offsetWidth;
+      const originHeight = card.offsetHeight;
+      dragging = false;
+      const onMove = (move) => {
+        const dx = move.clientX - startX;
+        const dy = move.clientY - startY;
+        if (!dragging && dx * dx + dy * dy < 36) return;
+        dragging = true;
+        card.classList.add("is-dragging");
+        if (resizing) {
+          card.style.width = `${Math.max(80, originWidth + dx / scale)}px`;
+          card.style.height = `${Math.max(48, originHeight + dy / scale)}px`;
+        } else {
+          card.style.left = `${originLeft + dx / scale}px`;
+          card.style.top = `${originTop + dy / scale}px`;
+        }
+        syncCanvasArrows(stage);
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        card.classList.remove("is-dragging");
+        if (!dragging) {
+          handlers2.onSelect?.(id2);
+          return;
+        }
+        handlers2.onMove({
+          id: id2,
+          x: Number.parseFloat(card.style.left) || originLeft,
+          y: Number.parseFloat(card.style.top) || originTop,
+          width: card.offsetWidth,
+          height: card.offsetHeight,
+          previous: { x: originLeft, y: originTop, width: originWidth, height: originHeight }
+        });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    };
+    const onDblClick = (event) => {
+      const card = event.target.closest(".pd-el");
+      if (!card || card.classList.contains("pd-el-arrow")) return;
+      const label = card.querySelector(".pd-el-text");
+      if (!label) return;
+      label.contentEditable = "true";
+      label.focus();
+      const finish = () => {
+        label.contentEditable = "false";
+        label.removeEventListener("blur", finish);
+        handlers2.onEdit?.(card.dataset.id ?? "", label.textContent ?? "");
+      };
+      label.addEventListener("blur", finish);
+    };
+    const onWheel = (event) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      const page = stage.querySelector(".pd-page");
+      if (!page) return;
+      event.preventDefault();
+      const current = Number(stage.dataset.zoom ?? String(pageScale(page)));
+      setCanvasZoom(stage, current + (event.deltaY < 0 ? 0.08 : -0.08));
+    };
+    const onClick = (event) => {
+      if (!dragging) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragging = false;
+    };
+    stage.addEventListener("pointerdown", onPointerDown);
+    stage.addEventListener("dblclick", onDblClick);
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    stage.addEventListener("click", onClick, true);
+    return () => {
+      stage.removeEventListener("pointerdown", onPointerDown);
+      stage.removeEventListener("dblclick", onDblClick);
+      stage.removeEventListener("wheel", onWheel);
+      stage.removeEventListener("click", onClick, true);
+    };
+  }
+  function enhanceSelects(root) {
+    for (const select of root.querySelectorAll("select")) {
+      if (select.closest(".ew-select")) continue;
+      const wrap2 = document.createElement("div");
+      wrap2.className = "ew-select";
+      select.parentNode?.insertBefore(wrap2, select);
+      wrap2.append(select);
+      select.classList.add("ew-select-native");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ew-select-btn";
+      button.setAttribute("aria-haspopup", "listbox");
+      button.setAttribute("aria-expanded", "false");
+      if (select.id) button.setAttribute("aria-controls", `${select.id}-menu`);
+      const chevron = iconSvg("ChevronDown");
+      const label = () => select.options[select.selectedIndex]?.text ?? "Select";
+      const sync = () => {
+        button.innerHTML = `<span>${label()}</span>${chevron}`;
+      };
+      sync();
+      const menu = document.createElement("div");
+      menu.className = "ew-select-menu";
+      menu.hidden = true;
+      menu.setAttribute("role", "listbox");
+      if (select.id) menu.id = `${select.id}-menu`;
+      wrap2.append(button, menu);
+      let stop;
+      const close2 = () => {
+        menu.hidden = true;
+        button.setAttribute("aria-expanded", "false");
+        stop?.();
+        stop = void 0;
+      };
+      const open = () => {
+        menu.innerHTML = [...select.options].map(
+          (option) => `<button type="button" role="option" class="ew-select-option${option.selected ? " is-active" : ""}" data-value="${option.value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}">${(option.textContent ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")}</button>`
+        ).join("");
+        menu.hidden = false;
+        button.setAttribute("aria-expanded", "true");
+        stop = positionPopup(button, menu);
+      };
+      button.addEventListener("click", () => menu.hidden ? open() : close2());
+      menu.addEventListener("click", (event) => {
+        const option = event.target.closest("[data-value]");
+        if (!option) return;
+        select.value = option.dataset.value ?? "";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        sync();
+        close2();
+      });
+      document.addEventListener("pointerdown", (event) => {
+        if (!wrap2.isConnected) return;
+        if (!wrap2.contains(event.target)) close2();
+      });
+    }
+  }
+  function bindMentionBox(input, people, onPick) {
+    const menu = document.createElement("div");
+    menu.className = "ew-mention";
+    menu.hidden = true;
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "Mention someone");
+    document.body.append(menu);
+    let stop;
+    const close2 = () => {
+      menu.hidden = true;
+      stop?.();
+      stop = void 0;
+    };
+    const onInput = () => {
+      const match2 = input.value.slice(0, input.selectionStart ?? 0).match(/@([a-zA-Z][\w.-]*)$/);
+      if (!match2) {
+        close2();
+        return;
+      }
+      const needle = (match2[1] ?? "").toLowerCase();
+      const hits = people.filter((person) => person.name.toLowerCase().includes(needle)).slice(0, 6);
+      if (!hits.length) {
+        close2();
+        return;
+      }
+      menu.hidden = false;
+      menu.innerHTML = hits.map((person) => `<button type="button" role="option" data-name="${person.name}">${person.name}</button>`).join("");
+      stop?.();
+      stop = positionPopup(input, menu);
+    };
+    menu.addEventListener("mousedown", (event) => {
+      const button = event.target.closest("[data-name]");
+      if (!button?.dataset.name) return;
+      event.preventDefault();
+      const start = input.value.slice(0, input.selectionStart ?? 0).replace(/@([a-zA-Z][\w.-]*)$/, `@${button.dataset.name} `);
+      input.value = `${start}${input.value.slice(input.selectionStart ?? 0)}`;
+      close2();
+      onPick?.(button.dataset.name);
+      input.focus();
+    });
+    input.addEventListener("input", onInput);
+    input.addEventListener("blur", () => window.setTimeout(close2, 120));
+    return () => {
+      input.removeEventListener("input", onInput);
+      menu.remove();
+    };
+  }
+
+  // web/hosted-collab.ts
+  var SLASH_ITEMS = [
+    { id: "h1", label: "Heading 1", icon: "Heading1", run: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+    { id: "h2", label: "Heading 2", icon: "Heading2", run: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+    { id: "bullet", label: "Bullet list", icon: "List", run: (editor) => editor.chain().focus().toggleBulletList().run() },
+    { id: "ordered", label: "Numbered list", icon: "ListOrdered", run: (editor) => editor.chain().focus().toggleOrderedList().run() },
+    { id: "task", label: "Action items", icon: "ListChecks", run: (editor) => editor.chain().focus().toggleTaskList().run() },
+    { id: "table", label: "Table", icon: "Table", run: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+    { id: "quote", label: "Quote", icon: "Quote", run: (editor) => editor.chain().focus().toggleBlockquote().run() },
+    { id: "code", label: "Code block", icon: "Code", run: (editor) => editor.chain().focus().toggleCodeBlock().run() },
+    { id: "info", label: "Info panel", icon: "Info", run: (editor) => editor.chain().focus().setNomaPanel("info").run() },
+    { id: "note", label: "Note panel", icon: "Lightbulb", run: (editor) => editor.chain().focus().setNomaPanel("note").run() },
+    { id: "warning", label: "Warning panel", icon: "AlertTriangle", run: (editor) => editor.chain().focus().setNomaPanel("warning").run() },
+    { id: "success", label: "Success panel", icon: "CircleCheck", run: (editor) => editor.chain().focus().setNomaPanel("success").run() },
+    { id: "claim", label: "Claim", icon: "Highlighter", run: (editor) => editor.chain().focus().setNomaPanel("claim").run() },
+    { id: "decision", label: "Decision", icon: "CircleCheck", run: (editor) => editor.chain().focus().setNomaPanel("decision").run() }
+  ];
+  function bindSlashMenu(editor) {
+    const menu = document.createElement("div");
+    menu.className = "ew-slash";
+    menu.hidden = true;
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "Insert block");
+    document.body.appendChild(menu);
+    let query = "";
+    let active = 0;
+    const hide2 = () => {
+      menu.hidden = true;
+      query = "";
+      active = 0;
+    };
+    const visibleItems = () => SLASH_ITEMS.filter((item) => item.label.toLowerCase().includes(query.toLowerCase()) || item.id.startsWith(query.toLowerCase()));
+    const render = () => {
+      const items = visibleItems();
+      if (!items.length) {
+        hide2();
+        return;
+      }
+      active = Math.max(0, Math.min(active, items.length - 1));
+      menu.hidden = false;
+      menu.innerHTML = items.map(
+        (item, index) => `<button type="button" role="option" class="ew-slash-item${index === active ? " is-active" : ""}" data-slash="${item.id}">${iconSvg(item.icon)}<span>${item.label}</span></button>`
+      ).join("");
+      const coords = editor.view.coordsAtPos(editor.state.selection.from);
+      const anchor = document.createElement("div");
+      anchor.style.position = "fixed";
+      anchor.style.left = `${coords.left}px`;
+      anchor.style.top = `${coords.bottom}px`;
+      anchor.style.width = "1px";
+      anchor.style.height = "1px";
+      document.body.appendChild(anchor);
+      void computePosition2(anchor, menu, {
+        placement: "bottom-start",
+        middleware: [offset2(8), flip2(), shift3({ padding: 8 })]
+      }).then(({ x, y }) => {
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+        anchor.remove();
+      });
+    };
+    const apply2 = (id2) => {
+      const item = SLASH_ITEMS.find((entry) => entry.id === id2);
+      const { $from } = editor.state.selection;
+      const text2 = $from.parent.textBetween(0, $from.parentOffset, void 0, "\uFFFC");
+      const match2 = text2.match(/(\/[a-z]*)$/i);
+      if (match2?.[1]) {
+        editor.chain().focus().deleteRange({ from: editor.state.selection.from - match2[1].length, to: editor.state.selection.from }).run();
+      }
+      hide2();
+      item?.run(editor);
+    };
+    const onUpdate = () => {
+      const { $from } = editor.state.selection;
+      if (!$from.parent.isTextblock) {
+        hide2();
+        return;
+      }
+      const text2 = $from.parent.textBetween(0, $from.parentOffset, void 0, "\uFFFC");
+      const match2 = text2.match(/\/([a-z]*)$/i);
+      if (!match2) {
+        hide2();
+        return;
+      }
+      query = match2[1] ?? "";
+      render();
+    };
+    const onKey = (event) => {
+      if (menu.hidden) return false;
+      const items = visibleItems();
+      if (!items.length) return false;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        active = (active + 1) % items.length;
+        render();
+        return true;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        active = (active - 1 + items.length) % items.length;
+        render();
+        return true;
+      }
+      if (event.key === "Enter") {
+        const item = items[active];
+        if (item) {
+          event.preventDefault();
+          apply2(item.id);
+          return true;
+        }
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        hide2();
+        return true;
+      }
+      return false;
+    };
+    menu.addEventListener("mousedown", (event) => {
+      const button = event.target.closest("[data-slash]");
+      if (!button?.dataset.slash) return;
+      event.preventDefault();
+      apply2(button.dataset.slash);
+    });
+    const onKeyDown = (event) => {
+      if (onKey(event)) event.stopPropagation();
+    };
+    editor.on("selectionUpdate", onUpdate);
+    editor.on("update", onUpdate);
+    editor.view.dom.addEventListener("keydown", onKeyDown);
+    return () => {
+      editor.off("selectionUpdate", onUpdate);
+      editor.off("update", onUpdate);
+      editor.view.dom.removeEventListener("keydown", onKeyDown);
+      menu.remove();
+    };
+  }
+  function bindFormatBubble(editor, onComment) {
+    const bar = document.createElement("div");
+    bar.className = "ew-bubble";
+    bar.hidden = true;
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("aria-label", "Selection formatting");
+    bar.innerHTML = [
+      ["bold", "Bold", "Bold"],
+      ["italic", "Italic", "Italic"],
+      ["underline", "Underline", "Underline"],
+      ["highlight", "Highlight", "Highlighter"],
+      ["align-left", "Align left", "AlignLeft"],
+      ["align-center", "Align center", "AlignCenter"],
+      ["align-right", "Align right", "AlignRight"]
+    ].map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon)}</button>`).join("") + `<span class="ew-bubble-sep" aria-hidden="true"></span>
+     <button type="button" data-bubble="comment" class="ew-bubble-comment" aria-label="Comment on selection">${iconSvg("MessageSquare")} Comment</button>`;
+    document.body.appendChild(bar);
+    const hide2 = () => {
+      bar.hidden = true;
+    };
+    const place = () => {
+      const { empty: empty2, from: from3 } = editor.state.selection;
+      if (empty2 || !editor.isFocused) {
+        hide2();
+        return;
+      }
+      bar.hidden = false;
+      const coords = editor.view.coordsAtPos(from3);
+      const anchor = document.createElement("div");
+      anchor.style.position = "fixed";
+      anchor.style.left = `${coords.left}px`;
+      anchor.style.top = `${coords.top}px`;
+      anchor.style.width = "1px";
+      anchor.style.height = "1px";
+      document.body.appendChild(anchor);
+      void computePosition2(anchor, bar, {
+        placement: "top",
+        middleware: [offset2(8), flip2(), shift3({ padding: 8 })]
+      }).then(({ x, y }) => {
+        bar.style.left = `${x}px`;
+        bar.style.top = `${y}px`;
+        anchor.remove();
+      });
+    };
+    bar.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const cmd = event.target.closest("[data-bubble]")?.dataset.bubble;
+      if (cmd === "bold") editor.chain().focus().toggleBold().run();
+      if (cmd === "italic") editor.chain().focus().toggleItalic().run();
+      if (cmd === "underline") editor.chain().focus().toggleUnderline().run();
+      if (cmd === "highlight") editor.chain().focus().toggleHighlight().run();
+      if (cmd === "align-left") editor.chain().focus().setTextAlign("left").run();
+      if (cmd === "align-center") editor.chain().focus().setTextAlign("center").run();
+      if (cmd === "align-right") editor.chain().focus().setTextAlign("right").run();
+      if (cmd === "comment") {
+        const { from: from3, to } = editor.state.selection;
+        const quote = editor.state.doc.textBetween(from3, to, " ").trim();
+        hide2();
+        onComment?.(quote);
+        return;
+      }
+      place();
+    });
+    editor.on("selectionUpdate", place);
+    editor.on("blur", hide2);
+    return () => {
+      editor.off("selectionUpdate", place);
+      editor.off("blur", hide2);
+      bar.remove();
+    };
+  }
+  function editorCounts(instance) {
+    const storage = instance?.storage;
+    return {
+      words: storage?.characterCount?.words() ?? 0,
+      characters: storage?.characterCount?.characters() ?? 0
+    };
+  }
+  function mountHostedCollab(options) {
+    const ydoc = new Doc();
+    const awareness = new Awareness(ydoc);
+    if (options.user) awareness.setLocalStateField("user", { name: options.user.name, color: options.user.color });
+    let editor;
+    let socket;
+    let ready = false;
+    let acks = 0;
+    let reconnectTimer;
+    let closed = false;
+    let stopSlash;
+    let stopBubble;
+    const setStatus2 = (text2) => {
+      options.onStatus?.(text2);
+    };
+    const bytesToB64 = (bytes) => {
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    };
+    const b64ToBytes = (value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+    const sendAwareness = () => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ type: "awareness", update: bytesToB64(encodeAwarenessUpdate(awareness, [awareness.clientID])) }));
+    };
+    awareness.on("update", (_changes, origin) => {
+      if (origin === "remote") return;
+      sendAwareness();
+    });
+    const sendUpdate = (update) => {
+      if (!socket || socket.readyState !== WebSocket.OPEN || !ready) return;
+      socket.send(JSON.stringify({ type: "update", update: bytesToB64(update) }));
+    };
+    ydoc.on("update", (update, origin) => {
+      if (origin === "remote" || !ready) return;
+      sendUpdate(update);
+    });
+    const ensureEditor = () => {
+      if (editor) return;
+      editor = new Editor({
+        element: options.element,
+        extensions: [
+          StarterKit.configure({ history: false }),
+          Placeholder.configure({ placeholder: "Type / for commands or @ to mention\u2026" }),
+          Typography,
+          Underline,
+          Highlight,
+          TaskList,
+          TaskItem.configure({ nested: true }),
+          Table.configure({ resizable: true }),
+          TableRow,
+          TableHeader,
+          TableCell,
+          NomaPanel,
+          TextAlign.configure({ types: ["heading", "paragraph"] }),
+          Mention.configure({
+            HTMLAttributes: { class: "ew-mention-chip" },
+            suggestion: mentionSuggestion(options.people ?? [])
+          }),
+          CharacterCount,
+          Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
+          Image.configure({ inline: false, allowBase64: false }),
+          Collaboration.configure({ document: ydoc, field: "default" }),
+          CollaborationCursor.configure({
+            provider: { awareness },
+            user: options.user ? { name: options.user.name, color: options.user.color } : { name: "Guest", color: "#0C66E4" }
+          })
+        ]
+      });
+      stopSlash = bindSlashMenu(editor);
+      stopBubble = bindFormatBubble(editor, options.onComment);
+      editor.on("update", () => {
+        options.onUpdate?.();
+        options.onCount?.(editorCounts(editor));
+      });
+      options.onCount?.(editorCounts(editor));
+    };
+    const connect = () => {
+      if (closed) return;
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = `${protocol}://${window.location.host}/yjs?token=${encodeURIComponent(options.token)}&documentId=${encodeURIComponent(options.documentId)}`;
+      socket = new WebSocket(wsUrl);
+      socket.addEventListener("open", () => setStatus2("connected"));
+      socket.addEventListener("message", (event) => {
+        const message = JSON.parse(String(event.data));
+        if ((message.type === "init" || message.type === "update") && message.update) {
+          applyUpdate(ydoc, b64ToBytes(message.update), "remote");
+          ready = true;
+          ensureEditor();
+          setStatus2(message.type === "init" ? "ready" : `acks:${acks}`);
+          if (message.type === "init" && socket?.readyState === WebSocket.OPEN) {
+            if (options.user) socket.send(JSON.stringify({ type: "presence", user: options.user }));
+            sendAwareness();
+          }
+          if (message.users) options.onPresence?.(message.users);
+        }
+        if (message.type === "presence" && message.users) options.onPresence?.(message.users);
+        if (message.type === "awareness" && message.update) applyAwarenessUpdate(awareness, b64ToBytes(message.update), "remote");
+        if (message.type === "ack") {
+          acks += 1;
+          setStatus2(`acks:${acks}`);
+        }
+      });
+      socket.addEventListener("close", () => {
+        ready = false;
+        if (closed) return;
+        setStatus2("reconnecting");
+        if (reconnectTimer !== void 0) window.clearTimeout(reconnectTimer);
+        reconnectTimer = window.setTimeout(connect, 250);
+      });
+    };
+    connect();
+    return {
+      getText: () => editor?.getText() ?? "",
+      acks: () => acks,
+      ready: () => ready,
+      editor: () => editor,
+      counts: () => editorCounts(editor),
+      destroy: () => {
+        closed = true;
+        stopSlash?.();
+        stopBubble?.();
+        for (const menu of document.querySelectorAll(".ew-mention-suggest")) menu.remove();
+        removeAwarenessStates(awareness, [awareness.clientID], "local");
+        if (reconnectTimer !== void 0) window.clearTimeout(reconnectTimer);
+        socket?.close();
+        editor?.destroy();
+        if (typeof awareness.destroy === "function") awareness.destroy();
+        ydoc.destroy();
+      }
+    };
+  }
+
+  // web/noma-html.ts
+  function nomaToEditorHtml(title, source, token2) {
+    let text2 = source.replace(/^---[\s\S]*?---\n/, "").trim();
+    text2 = text2.replace(/^\{#[^\n]*\}\n?/gm, "");
+    const chunks = [];
+    const lines = text2.split("\n");
+    let index = 0;
+    while (index < lines.length) {
+      const line = lines[index] ?? "";
+      if (!line.trim()) {
+        index += 1;
+        continue;
+      }
+      const fence = line.match(/^::(\w+)(?:\{([^}]*)\})?\s*$/);
+      if (fence) {
+        const name = fence[1] ?? "";
+        const attrs = fence[2] ?? "";
+        const body2 = [];
+        index += 1;
+        while (index < lines.length && !/^(::|:::)\s*$/.test(lines[index] ?? "")) {
+          body2.push(lines[index] ?? "");
+          index += 1;
+        }
+        if (index < lines.length) index += 1;
+        chunks.push(renderDirective(name, attrs, body2.join("\n").trim(), token2));
+        continue;
+      }
+      if (/^#{1,6}\s+/.test(line)) {
+        const level = line.match(/^#+/)?.[0].length ?? 1;
+        const heading = line.replace(/^#{1,6}\s+/, "").replace(/\s*\{[^}]*\}\s*$/, "").trim();
+        index += 1;
+        if (level === 1 && heading.toLowerCase() === title.toLowerCase()) continue;
+        const tag = level === 1 ? "h1" : "h2";
+        chunks.push(`<${tag}>${inlineHtml(heading)}</${tag}>`);
+        continue;
+      }
+      if (/^\s*[-*]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
+        const ordered = /^\s*\d+\.\s+/.test(line);
+        const items = [];
+        while (index < lines.length && (/^\s*[-*]\s+/.test(lines[index] ?? "") || /^\s*\d+\.\s+/.test(lines[index] ?? ""))) {
+          items.push((lines[index] ?? "").replace(/^\s*(?:[-*]|\d+\.)\s+/, ""));
+          index += 1;
+        }
+        const tag = ordered ? "ol" : "ul";
+        chunks.push(`<${tag}>${items.map((item) => `<li><p>${inlineHtml(item)}</p></li>`).join("")}</${tag}>`);
+        continue;
+      }
+      const paragraph = [];
+      while (index < lines.length && (lines[index] ?? "").trim() && !/^(::|#|\s*[-*]\s+|\s*\d+\.\s+)/.test(lines[index] ?? "")) {
+        paragraph.push(lines[index] ?? "");
+        index += 1;
+      }
+      const body = paragraph.join(" ").trim();
+      if (body) chunks.push(`<p>${inlineHtml(body)}</p>`);
+    }
+    return chunks.filter(Boolean).join("") || `<p></p>`;
+  }
+  function renderDirective(name, attrs, body, token2) {
+    const src = /(?:src|asset)="([^"]+)"/.exec(attrs)?.[1] ?? "";
+    const alt = /(?:alt|title)="([^"]+)"/.exec(attrs)?.[1] ?? name;
+    if (name === "figure" && src) {
+      const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token2)}`;
+      return `<p><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}"></p>`;
+    }
+    if (name === "video" && src) {
+      const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token2)}`;
+      return `<p><video src="${escapeAttr(url)}" controls></video></p>`;
+    }
+    if (name === "claim" || name === "info" || name === "note" || name === "warning" || name === "success" || name === "decision") {
+      const confidence = /confidence=([0-9.]+)/.exec(attrs)?.[1];
+      const title = name === "claim" ? confidence ? `Claim \xB7 ${confidence}` : "Claim" : `${name[0].toUpperCase()}${name.slice(1)}`;
+      return `<div data-noma-panel="${escapeAttr(name)}" data-panel-title="${escapeAttr(title)}" class="ew-panel ew-panel-${escapeAttr(name)}"><p><strong>${escapeHtml2(title)}</strong> ${inlineHtml(body)}</p></div>`;
+    }
+    if (body) return `<blockquote><p><strong>${escapeHtml2(name)}</strong> ${inlineHtml(body)}</p></blockquote>`;
+    return "";
+  }
+  function escapeHtml2(value) {
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function escapeAttr(value) {
+    return escapeHtml2(value).replace(/"/g, "&quot;");
+  }
+  function inlineHtml(value) {
+    const parts = [];
+    const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[([^\]]+)\]\(([^)]+)\))/g;
+    let cursor = 0;
+    let match2;
+    while (match2 = pattern.exec(value)) {
+      parts.push(escapeHtml2(value.slice(cursor, match2.index)));
+      const token2 = match2[0];
+      if (token2.startsWith("`")) parts.push(`<code>${escapeHtml2(token2.slice(1, -1))}</code>`);
+      else if (token2.startsWith("**")) parts.push(`<strong>${escapeHtml2(token2.slice(2, -2))}</strong>`);
+      else if (token2.startsWith("*")) parts.push(`<em>${escapeHtml2(token2.slice(1, -1))}</em>`);
+      else parts.push(`<a href="${escapeAttr(match2[3] ?? "")}">${escapeHtml2(match2[2] ?? "")}</a>`);
+      cursor = match2.index + token2.length;
+    }
+    parts.push(escapeHtml2(value.slice(cursor)));
+    return parts.join("");
   }
 
   // web/enterprise-workspace.ts
@@ -32531,6 +37374,23 @@ ${err.toString()}`);
   var jqlFilterIds;
   var searchPopupStop;
   var boardDndStop;
+  var canvasStop;
+  var boardFilter = "all";
+  var epicFilter = "";
+  var boardSearch = "";
+  var typeFilter = "";
+  var swimlanes = false;
+  var boardView = "board";
+  var paletteIndex = 0;
+  var mentionStop;
+  var canvasHistory = [];
+  var selectedCanvasId = "";
+  var stickyColor = "yellow";
+  var findMatches = [];
+  var findIndex = 0;
+  var reportsToken = 0;
+  var exportTarget = "svg";
+  var presenting = false;
   var $2 = (id2) => {
     const node = document.getElementById(id2);
     if (!node) throw new Error(`missing #${id2}`);
@@ -32549,11 +37409,11 @@ ${err.toString()}`);
     statusEl.textContent = text2;
     statusEl.dataset.state = state;
   }
-  async function api(path, init = {}) {
-    const headers = new Headers(init.headers);
+  async function api(path, init2 = {}) {
+    const headers = new Headers(init2.headers);
     if (token) headers.set("authorization", `Bearer ${token}`);
-    if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
-    const response = await fetch(path, { ...init, headers });
+    if (init2.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+    const response = await fetch(path, { ...init2, headers });
     const text2 = await response.text();
     const body = text2 ? JSON.parse(text2) : {};
     if (!response.ok) {
@@ -32568,11 +37428,18 @@ ${err.toString()}`);
   function showGate(visible) {
     gate.hidden = !visible;
   }
-  function escapeHtml(value) {
+  function escapeHtml3(value) {
     return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function currentProject() {
     return payload?.projects.find((project) => project.id === selectedProjectId) ?? payload?.projects[0];
+  }
+  function activeSprint() {
+    if (!payload) return void 0;
+    const project = currentProject();
+    const boards = payload.boards.filter((board2) => !project || board2.projectId === project.id);
+    const board = boards[0];
+    return payload.sprints.find((sprint) => sprint.state === "active" && (!board || sprint.boardId === board.id));
   }
   function currentSpaceId() {
     return selectedSpaceId || payload?.spaces[0]?.id || "";
@@ -32590,7 +37457,7 @@ ${err.toString()}`);
     return (letters || "?").toUpperCase();
   }
   function avatarMarkup(name, size4 = "sm") {
-    return `<span class="ew-avatar${size4 === "lg" ? " lg" : ""}" aria-hidden="true">${escapeHtml(initials(name))}</span>`;
+    return `<span class="ew-avatar${size4 === "lg" ? " lg" : ""}" aria-hidden="true">${escapeHtml3(initials(name))}</span>`;
   }
   function spaceColor(name) {
     let hash = 0;
@@ -32636,16 +37503,322 @@ ${err.toString()}`);
     const space = payload?.spaces.find((item) => item.id === doc4.spaceId);
     const chain = documentAncestors(doc4.id);
     crumbs.innerHTML = [
-      `<span>${escapeHtml(space?.name ?? "Space")}</span>`,
+      `<span>${escapeHtml3(space?.name ?? "Space")}</span>`,
       ...chain.map(
-        (item, index) => index === chain.length - 1 ? `<span>${escapeHtml(item.title)}</span>` : `<button type="button" data-kind="document" data-id="${item.id}">${escapeHtml(item.title)}</button>`
+        (item, index) => index === chain.length - 1 ? `<span>${escapeHtml3(item.title)}</span>` : `<button type="button" data-kind="document" data-id="${item.id}">${escapeHtml3(item.title)}</button>`
       )
     ].join("");
+  }
+  function presenceColor(id2) {
+    const palette = ["#0C66E4", "#1F845A", "#B38600", "#C9372C", "#6E5DC6", "#E56910"];
+    let hash = 0;
+    for (let index = 0; index < id2.length; index += 1) hash = hash * 33 + id2.charCodeAt(index) >>> 0;
+    return palette[hash % palette.length] ?? "#0C66E4";
+  }
+  function renderWordCount(counts) {
+    const node = document.getElementById("doc-count");
+    if (!node) return;
+    const next = counts ?? collab?.counts() ?? { words: 0, characters: 0 };
+    node.textContent = `${next.words} words \xB7 ${next.characters} characters`;
+  }
+  function isOverdue(issue) {
+    const due = (issue.dueAt ?? "").slice(0, 10);
+    if (!due || issue.statusId === "done" || issue.statusId === "cancelled") return false;
+    const today = /* @__PURE__ */ new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    return due < iso;
+  }
+  function formatHours(hours) {
+    if (!Number.isFinite(hours) || hours < 1 / 60) return "< 1m";
+    if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+    if (hours < 24) return `${hours.toFixed(1)}h`;
+    return `${(hours / 24).toFixed(1)}d`;
+  }
+  function median(values) {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const left = sorted[mid - 1] ?? sorted[mid] ?? 0;
+    const right = sorted[mid] ?? left;
+    return sorted.length % 2 === 0 ? (left + right) / 2 : right;
+  }
+  function sampleSeries(points, max3 = 36) {
+    if (points.length <= max3) return points;
+    const step = (points.length - 1) / (max3 - 1);
+    return Array.from({ length: max3 }, (_, index) => points[Math.round(index * step)]).filter(Boolean);
+  }
+  function barChartSvg(points, ariaLabel) {
+    const width = 640;
+    const height = 220;
+    const pad = { l: 40, r: 12, t: 16, b: 40 };
+    const innerW = width - pad.l - pad.r;
+    const innerH = height - pad.t - pad.b;
+    const max3 = Math.max(1, ...points.map((point) => point.value));
+    const ticks = [0, 0.5, 1].map((frac) => {
+      const value = Math.round(max3 * frac);
+      const y = pad.t + innerH - value / max3 * innerH;
+      return `<line class="ew-chart-axis" x1="${pad.l}" x2="${width - pad.r}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" />
+      <text class="ew-chart-label" x="${pad.l - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${value}</text>`;
+    });
+    const bars = points.length === 0 ? `<text class="ew-chart-label" x="${width / 2}" y="${pad.t + innerH / 2}" text-anchor="middle">No completions yet</text>` : points.map((point, index) => {
+      const slots = Math.max(points.length, 6);
+      const slot = innerW / slots;
+      const barW = Math.min(48, slot * 0.62);
+      const x = pad.l + index * slot + (slot - barW) / 2;
+      const h = Math.max(2, point.value / max3 * innerH);
+      const y = pad.t + innerH - h;
+      const caption = point.label.length > 10 ? point.label.slice(5) : point.label;
+      return `<rect class="ew-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3">
+              <title>${escapeHtml3(point.label)}: ${point.value} completed</title>
+            </rect>
+            <text class="ew-chart-label" x="${(x + barW / 2).toFixed(1)}" y="${height - 14}" text-anchor="middle">${escapeHtml3(caption)}</text>`;
+    }).join("");
+    return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">${ticks.join("")}${bars}</svg>`;
+  }
+  function stackedAreaSvg(points, ariaLabel) {
+    const sampled = sampleSeries(points, 40);
+    const width = 640;
+    const height = 240;
+    const pad = { l: 40, r: 12, t: 16, b: 36 };
+    const innerW = width - pad.l - pad.r;
+    const innerH = height - pad.t - pad.b;
+    if (sampled.length === 0) {
+      return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+      <text class="ew-chart-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No workflow events yet</text>
+    </svg>`;
+    }
+    const max3 = Math.max(1, ...sampled.map((point) => point.todo + point.in_progress + point.done));
+    const last2 = sampled.length - 1;
+    const xAt = (index) => pad.l + (last2 === 0 ? innerW / 2 : index / last2 * innerW);
+    const yAt = (value) => pad.t + innerH - value / max3 * innerH;
+    const area = (values, className) => {
+      const top = values.map((value, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(value).toFixed(1)}`).join(" ");
+      return `<path class="${className}" d="${top} L${xAt(last2).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z" />`;
+    };
+    const totals = sampled.map((point) => point.todo + point.in_progress + point.done);
+    const progress = sampled.map((point) => point.done + point.in_progress);
+    const done = sampled.map((point) => point.done);
+    const firstLabel = sampled[0]?.at.slice(0, 10) ?? "";
+    const lastLabel = sampled[last2]?.at.slice(0, 10) ?? "";
+    return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+    ${area(totals, "ew-area-todo")}
+    ${area(progress, "ew-area-progress")}
+    ${area(done, "ew-area-done")}
+    <text class="ew-chart-label" x="${pad.l}" y="${height - 12}">${escapeHtml3(firstLabel)}</text>
+    <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml3(lastLabel)}</text>
+  </svg>`;
+  }
+  function lineChartSvg(points, ariaLabel) {
+    const width = 640;
+    const height = 220;
+    const pad = { l: 40, r: 12, t: 16, b: 36 };
+    const innerW = width - pad.l - pad.r;
+    const innerH = height - pad.t - pad.b;
+    const sampled = sampleSeries(points, 48);
+    if (sampled.length === 0) {
+      return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+      <text class="ew-chart-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No sprint remaining yet</text>
+    </svg>`;
+    }
+    const max3 = Math.max(1, ...sampled.map((point) => point.value));
+    const last2 = sampled.length - 1;
+    const xAt = (index) => pad.l + (last2 === 0 ? innerW / 2 : index / last2 * innerW);
+    const yAt = (value) => pad.t + innerH - value / max3 * innerH;
+    const line = sampled.map((point, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(point.value).toFixed(1)}`).join(" ");
+    const area = `${line} L${xAt(last2).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z`;
+    return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+    <path class="ew-area-progress" d="${area}" />
+    <path class="ew-line" d="${line}" fill="none" />
+    <text class="ew-chart-label" x="${pad.l}" y="${height - 12}">${escapeHtml3(sampled[0]?.label ?? "")}</text>
+    <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml3(sampled[last2]?.label ?? "")}</text>
+  </svg>`;
+  }
+  function reportKpis(reports) {
+    const completed = reports.throughput.reduce((sum, point) => sum + point.completed, 0);
+    const last2 = reports.cumulativeFlow[reports.cumulativeFlow.length - 1];
+    return {
+      completed,
+      medianCycle: reports.cycleTime.length ? formatHours(median(reports.cycleTime.map((row) => row.hours))) : "\u2014",
+      inProgress: last2?.in_progress ?? 0
+    };
+  }
+  function renderReportsMarkup(reports, burndown) {
+    const kpis = reportKpis(reports);
+    const cycleRows = reports.cycleTime.length === 0 ? `<p class="ew-meta">No completed issues yet.</p>` : reports.cycleTime.slice().sort((a, b) => b.hours - a.hours).map(
+      (row) => `<button type="button" class="ew-cycle-row" data-issue="${escapeHtml3(row.issueId)}">
+                <span class="ew-key">${escapeHtml3(row.key)}</span>
+                <strong>${escapeHtml3(row.summary)}</strong>
+                <span class="ew-cycle-hours">${escapeHtml3(formatHours(row.hours))}</span>
+              </button>`
+    ).join("");
+    const burn = burndown && burndown.points.length ? `<article id="report-burndown" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Burndown</h2>
+      <p class="ew-report-lead">${escapeHtml3(burndown.name)} remaining estimate.</p>
+      ${lineChartSvg(
+      burndown.points.map((point) => ({ label: point.at.slice(0, 10), value: point.remaining })),
+      `${burndown.name} sprint burndown`
+    )}
+    </article>` : `<article id="report-burndown" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Burndown</h2>
+      <p class="ew-report-lead">Start a sprint to plot remaining estimate.</p>
+    </article>`;
+    return `<div id="work-reports" class="ew-reports">
+    <div id="report-kpis" class="ew-report-kpis">
+      <div class="ew-kpi"><strong>${kpis.completed}</strong><span>Completed</span></div>
+      <div class="ew-kpi"><strong>${escapeHtml3(kpis.medianCycle)}</strong><span>Median cycle</span></div>
+      <div class="ew-kpi"><strong>${kpis.inProgress}</strong><span>In progress</span></div>
+    </div>
+    ${burn}
+    <article id="report-throughput" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Throughput</h2>
+      <p class="ew-report-lead">Issues moved to Done each day.</p>
+      ${barChartSvg(
+      reports.throughput.map((point) => ({ label: point.day, value: point.completed })),
+      "Throughput completed per day"
+    )}
+    </article>
+    <article id="report-cycle" class="ew-report">
+      <h2>${iconSvg("ChartColumnStacked")} Cycle time</h2>
+      <p class="ew-report-lead">Created to Done for each completed issue.</p>
+      <div class="ew-cycle-list">${cycleRows}</div>
+    </article>
+    <article id="report-cfd" class="ew-report">
+      <h2>${iconSvg("ChartColumnStacked")} Cumulative flow</h2>
+      <p class="ew-report-lead">To do, in progress, and done over the project timeline.</p>
+      ${stackedAreaSvg(reports.cumulativeFlow, "Cumulative flow of to do, in progress, and done issues")}
+      <ul class="ew-legend" aria-hidden="true">
+        <li><span class="ew-swatch-todo"></span> To do</li>
+        <li><span class="ew-swatch-progress"></span> In progress</li>
+        <li><span class="ew-swatch-done"></span> Done</li>
+      </ul>
+    </article>
+  </div>`;
+  }
+  async function loadProjectReports() {
+    const project = currentProject();
+    if (!project || boardView !== "reports") return;
+    const token2 = ++reportsToken;
+    const board = $2("work-board");
+    board.innerHTML = `<p class="ew-meta">Loading reports\u2026</p>`;
+    try {
+      const reports = await api(`/v1/projects/${encodeURIComponent(project.id)}/reports`);
+      if (token2 !== reportsToken || boardView !== "reports") return;
+      const sprint = activeSprint();
+      const burndown = sprint ? {
+        name: sprint.name,
+        points: (await api(`/v1/sprints/${encodeURIComponent(sprint.id)}/burndown`)).points
+      } : void 0;
+      if (token2 !== reportsToken || boardView !== "reports") return;
+      board.innerHTML = renderReportsMarkup(reports, burndown);
+      hydrateIcons(board);
+      document.querySelector(".ew-body")?.classList.remove("is-issue");
+      $2("inspector-title").textContent = "Reports";
+      const kpis = reportKpis(reports);
+      inspector.innerHTML = `<div class="ew-meta">
+        <strong>${escapeHtml3(project.key)} reports</strong>
+        <span>${kpis.completed} completed</span>
+        <span>Median cycle ${escapeHtml3(kpis.medianCycle)}</span>
+        <span>${kpis.inProgress} in progress</span>
+      </div>
+      <p class="ew-report-lead">Throughput, cycle time, and cumulative flow come from issue events. Filters on the board do not change these charts.</p>`;
+    } catch (error) {
+      if (token2 !== reportsToken || boardView !== "reports") return;
+      board.innerHTML = `<p class="ew-error" role="alert">${escapeHtml3(error instanceof Error ? error.message : "Could not load reports")}</p>`;
+    }
+  }
+  function stickyAlt(color) {
+    return color === "yellow" ? "Sticky" : `Sticky:${color}`;
+  }
+  function beginSelectionComment(quote) {
+    const box = $2("doc-comment-input");
+    const chip = document.getElementById("doc-comment-quote");
+    if (quote) {
+      box.dataset.quote = quote;
+      box.placeholder = `Comment on \u201C${quote.slice(0, 72)}\u201D`;
+      if (chip) {
+        chip.hidden = false;
+        chip.textContent = quote;
+      }
+    }
+    box.focus();
+    $2("doc-discussion").scrollIntoView({ block: "nearest" });
+  }
+  function closePageFind() {
+    const bar = document.getElementById("page-find");
+    if (bar) bar.hidden = true;
+    findMatches = [];
+    findIndex = 0;
+  }
+  function collectFindMatches(query) {
+    const editor = collab?.editor();
+    if (!editor || !query) return [];
+    const needle = query.toLowerCase();
+    const matches2 = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      const hay = node.text.toLowerCase();
+      let index = 0;
+      while (index < hay.length) {
+        const found2 = hay.indexOf(needle, index);
+        if (found2 < 0) break;
+        matches2.push({ from: pos + found2, to: pos + found2 + needle.length });
+        index = found2 + Math.max(1, needle.length);
+      }
+    });
+    return matches2;
+  }
+  function jumpFind(delta = 0) {
+    const editor = collab?.editor();
+    const count = document.getElementById("page-find-count");
+    if (!editor || !findMatches.length) {
+      if (count) count.textContent = "0 of 0";
+      return 0;
+    }
+    findIndex = (findIndex + delta + findMatches.length) % findMatches.length;
+    const match2 = findMatches[findIndex];
+    if (match2) {
+      editor.chain().focus().setTextSelection({ from: match2.from, to: match2.to }).scrollIntoView().run();
+    }
+    if (count) count.textContent = `${findIndex + 1} of ${findMatches.length}`;
+    return findMatches.length;
+  }
+  function runPageFind(query) {
+    const bar = document.getElementById("page-find");
+    if (bar) bar.hidden = false;
+    const input = document.getElementById("page-find-input");
+    if (input instanceof HTMLInputElement && input.value !== query) input.value = query;
+    const needle = query.trim();
+    if (needle.length < 2) {
+      findMatches = [];
+      findIndex = 0;
+      const count = document.getElementById("page-find-count");
+      if (count) count.textContent = "0 of 0";
+      return 0;
+    }
+    findMatches = collectFindMatches(needle);
+    findIndex = 0;
+    return jumpFind(0);
+  }
+  function openPageFind() {
+    const bar = $2("page-find");
+    bar.hidden = false;
+    const input = $2("page-find-input");
+    input.focus();
+    input.select();
+    if (input.value.trim()) runPageFind(input.value);
+  }
+  function renderPresence(users) {
+    const node = document.getElementById("doc-presence");
+    if (!node) return;
+    const unique = [...new Map(users.map((user) => [user.id, user])).values()];
+    node.innerHTML = unique.map(
+      (user) => `<span class="ew-avatar" title="${escapeHtml3(user.name)}" style="background:${escapeHtml3(user.color)}">${escapeHtml3(initials(user.name))}</span>`
+    ).join("");
   }
   function renderByline(doc4) {
     const actorName = payload?.actor.name ?? "Unknown";
     const when = formatWhen(doc4?.updatedAt);
-    $2("doc-byline").innerHTML = `${avatarMarkup(actorName)}<span><strong>${escapeHtml(actorName)}</strong>${when ? ` \xB7 ${escapeHtml(when)}` : ""}</span>`;
+    $2("doc-byline").innerHTML = `${avatarMarkup(actorName)}<span><strong>${escapeHtml3(actorName)}</strong>${when ? ` \xB7 ${escapeHtml3(when)}` : ""}</span>`;
   }
   async function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -32669,7 +37842,7 @@ ${err.toString()}`);
     return links.map((link) => {
       const href = linkHref(link);
       const external = Boolean(link.url);
-      return `<a class="ew-link" href="${escapeHtml(href)}" ${external ? `target="_blank" rel="noreferrer"` : ""} data-kind="${escapeHtml(link.targetKind ?? link.provider)}" data-id="${escapeHtml(link.targetId ?? "")}">${escapeHtml(link.provider)} \xB7 ${escapeHtml(link.label ?? link.url ?? link.id)}</a>`;
+      return `<a class="ew-link" href="${escapeHtml3(href)}" ${external ? `target="_blank" rel="noreferrer"` : ""} data-kind="${escapeHtml3(link.targetKind ?? link.provider)}" data-id="${escapeHtml3(link.targetId ?? "")}">${escapeHtml3(link.provider)} \xB7 ${escapeHtml3(link.label ?? link.url ?? link.id)}</a>`;
     }).join("");
   }
   function documentDepth(id2, seen = /* @__PURE__ */ new Set()) {
@@ -32691,7 +37864,17 @@ ${err.toString()}`);
     const walk = (parentId) => (byParent.get(parentId) ?? []).flatMap((doc4) => [doc4, ...walk(doc4.id)]);
     return walk("");
   }
+  function setPresenting(on) {
+    presenting = on;
+    const shell = document.getElementById("workspace-shell");
+    shell?.classList.toggle("is-presenting", on);
+    const exit = document.getElementById("present-exit");
+    if (exit) exit.hidden = !on;
+    $2("page-present")?.setAttribute("aria-pressed", String(on && mode === "docs"));
+    $2("canvas-present")?.setAttribute("aria-pressed", String(on && mode === "visuals"));
+  }
   function setMode(next) {
+    if (presenting) setPresenting(false);
     mode = next;
     for (const button of document.querySelectorAll(".ew-modes button")) {
       button.setAttribute("aria-selected", String(button.dataset.mode === next));
@@ -32704,6 +37887,7 @@ ${err.toString()}`);
     $2("rail-kicker").textContent = next === "docs" ? "Content" : next === "visuals" ? "Whiteboards" : next === "work" ? "Projects" : "Admin";
     const section = document.getElementById("rail-section");
     if (section) section.textContent = next === "docs" ? "Pages" : next === "visuals" ? "Boards" : next === "work" ? "Projects" : "Spaces";
+    if (next !== "work") document.querySelector(".ew-body")?.classList.remove("is-issue");
     if (next !== "visuals") $2("visual-outline").replaceChildren();
     renderRail();
     if (next === "docs") openDocument(selectedDocumentId || payload?.documents[0]?.id);
@@ -32720,7 +37904,7 @@ ${err.toString()}`);
     icon.textContent = initials(spaceName).slice(0, 1);
     icon.style.background = spaceColor(spaceName);
     const actions = $2("rail-actions");
-    const spaceOptions = payload.spaces.map((space) => `<option value="${space.id}" ${space.id === currentSpaceId() ? "selected" : ""}>${escapeHtml(space.name)}</option>`).join("");
+    const spaceOptions = payload.spaces.map((space) => `<option value="${space.id}" ${space.id === currentSpaceId() ? "selected" : ""}>${escapeHtml3(space.name)}</option>`).join("");
     if (mode === "docs") {
       actions.innerHTML = `
       <label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>
@@ -32735,14 +37919,14 @@ ${err.toString()}`);
       railList.innerHTML = orderedDocuments().filter((doc4) => !currentSpaceId() || doc4.spaceId === currentSpaceId()).map((doc4) => {
         const depth = Math.min(documentDepth(doc4.id), 2);
         return `<button class="ew-rail-item" type="button" data-kind="document" data-id="${doc4.id}" data-depth="${depth}" aria-current="${doc4.id === selectedDocumentId}">
-          ${pageIcon()}<strong>${escapeHtml(doc4.title)}</strong><small>${escapeHtml(doc4.lifecycle)} \xB7 ${escapeHtml(doc4.classification)}</small>
+          ${pageIcon()}<strong>${escapeHtml3(doc4.title)}</strong><small>${escapeHtml3(doc4.lifecycle)} \xB7 ${escapeHtml3(doc4.classification)}</small>
         </button>`;
       }).join("");
     } else if (mode === "visuals") {
       actions.innerHTML = `<label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>`;
       railList.innerHTML = payload.artifacts.filter((art) => !currentSpaceId() || art.spaceId === currentSpaceId()).map(
         (art) => `<button class="ew-rail-item" type="button" data-kind="artifact" data-id="${art.id}" aria-current="${art.id === selectedArtifactId}">
-          ${boardIcon()}<strong>${escapeHtml(art.title)}</strong><small>rev ${art.draftRevision}</small>
+          ${boardIcon()}<strong>${escapeHtml3(art.title)}</strong><small>rev ${art.draftRevision}</small>
         </button>`
       ).join("");
     } else if (mode === "work") {
@@ -32751,50 +37935,47 @@ ${err.toString()}`);
       <button type="button" id="create-issue">Create issue</button>`;
       railList.innerHTML = payload.projects.map(
         (project) => `<button class="ew-rail-item" type="button" data-kind="project" data-id="${project.id}" aria-current="${project.id === currentProject()?.id}">
-          ${projectIcon()}<strong>${escapeHtml(project.name)}</strong><small>${escapeHtml(project.key)}</small>
+          ${projectIcon()}<strong>${escapeHtml3(project.name)}</strong><small>${escapeHtml3(project.key)}</small>
         </button>`
       ).join("");
     } else {
       actions.replaceChildren();
       railList.innerHTML = payload.spaces.map(
         (space) => `<button class="ew-rail-item" type="button" data-kind="space" data-id="${space.id}" aria-current="${space.id === currentSpaceId()}">
-          <span class="ew-space-icon" style="background:${spaceColor(space.name)}">${escapeHtml(initials(space.name).slice(0, 1))}</span>
-          <strong>${escapeHtml(space.name)}</strong><small>${escapeHtml(space.classification)}</small>
+          <span class="ew-space-icon" style="background:${spaceColor(space.name)}">${escapeHtml3(initials(space.name).slice(0, 1))}</span>
+          <strong>${escapeHtml3(space.name)}</strong><small>${escapeHtml3(space.classification)}</small>
         </button>`
       ).join("");
     }
     hydrateIcons(actions);
     hydrateIcons(railList);
+    enhanceSelects(actions);
   }
-  function nomaToEditorHtml(title, source) {
-    const stripped = source.replace(/^---[\s\S]*?---\n/, "").trim();
-    const blocks = stripped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
-    const body = blocks.map((block) => {
-      const figure = block.match(/^::figure\{([^}]*)\}/m);
-      if (figure) {
-        const src = /src="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "";
-        const alt = /alt="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "image";
-        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
-        return `<p>Image: ${escapeHtml(alt)}</p><p><img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}"></p>`;
-      }
-      const video = block.match(/^::video\{([^}]*)\}/m);
-      if (video) {
-        const src = /src="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "";
-        const name = /title="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "video";
-        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
-        return `<p>Video: ${escapeHtml(name)}</p><p><video src="${escapeHtml(url)}" controls></video></p>`;
-      }
-      const text2 = escapeHtml(block.replace(/^#{1,6}\s+/, "").replace(/^::\w+.*$/gm, "").trim());
-      if (!text2) return "";
-      if (/^#\s+/.test(block)) return `<h1>${escapeHtml(block.replace(/^#\s+/, ""))}</h1>`;
-      if (/^##\s+/.test(block)) return `<h2>${escapeHtml(block.replace(/^##\s+/, ""))}</h2>`;
-      return `<p>${text2}</p>`;
-    }).filter(Boolean).join("");
-    return body || `<h1>${escapeHtml(title)}</h1><p></p>`;
+  function uniqueHits(hits) {
+    const seen = /* @__PURE__ */ new Set();
+    return hits.filter((hit) => {
+      const key = `${hit.resourceKind}:${hit.resourceId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  function bindWorkspaceMentions() {
+    mentionStop?.();
+    const people = (payload?.principals ?? []).map((person) => ({ id: person.id, name: person.name }));
+    const stops = [];
+    for (const id2 of ["doc-comment-input", "issue-comment"]) {
+      const box = document.getElementById(id2);
+      if (box instanceof HTMLTextAreaElement) stops.push(bindMentionBox(box, people));
+    }
+    mentionStop = () => {
+      for (const stop of stops) stop();
+    };
   }
   function openDocument(id2) {
     if (!id2 || !payload) return;
     selectedDocumentId = id2;
+    closePageFind();
     const doc4 = payload.documents.find((item) => item.id === id2);
     $2("doc-title").textContent = doc4?.title ?? "Untitled";
     const kicker = $2("doc-kicker");
@@ -32810,6 +37991,15 @@ ${err.toString()}`);
       element: editorMount,
       token,
       documentId: id2,
+      user: payload?.actor ? { id: payload.actor.principalId, name: payload.actor.name, color: presenceColor(payload.actor.principalId) } : void 0,
+      people: (payload?.principals ?? []).map((person) => ({ id: person.id, name: person.name })),
+      onPresence: renderPresence,
+      onUpdate: () => {
+        renderPageToc();
+        renderWordCount();
+      },
+      onCount: renderWordCount,
+      onComment: beginSelectionComment,
       onStatus: (text2) => {
         $2("collab-status").textContent = text2;
         setStatus(`${payload?.actor.name ?? "Session"} \xB7 ${text2}`, text2.startsWith("ack") || text2 === "ready" ? "ok" : "connecting");
@@ -32817,6 +38007,37 @@ ${err.toString()}`);
       }
     });
     void renderDocumentInspector(id2);
+  }
+  function pageHeadings() {
+    const headings = [];
+    const editor = collab?.editor();
+    editor?.state.doc.descendants((node) => {
+      if (node.type.name === "heading") {
+        const text2 = node.textContent.trim();
+        if (text2) headings.push({ text: text2, level: Number(node.attrs.level ?? 1) });
+      }
+    });
+    return headings.slice(0, 24);
+  }
+  function renderPageToc() {
+    const toc = document.getElementById("page-toc");
+    if (!toc) return;
+    const headings = pageHeadings();
+    toc.innerHTML = headings.length ? headings.map(
+      (heading) => `<button type="button" class="ew-toc-item" data-toc="${escapeHtml3(heading.text)}" data-level="${heading.level}">${escapeHtml3(heading.text)}</button>`
+    ).join("") : `<div class="ew-note">Headings on this page appear here</div>`;
+  }
+  function setPageCover(assets) {
+    const cover = document.getElementById("doc-cover");
+    if (!cover) return;
+    const image = assets.find((asset) => asset.mime.startsWith("image/"));
+    if (!image) {
+      cover.hidden = true;
+      cover.replaceChildren();
+      return;
+    }
+    cover.hidden = false;
+    cover.innerHTML = `<img src="${escapeHtml3(assetUrl(image.assetId))}" alt="${escapeHtml3(image.filename)}" />`;
   }
   async function renderDocumentInspector(id2) {
     const doc4 = payload?.documents.find((item) => item.id === id2);
@@ -32833,37 +38054,40 @@ ${err.toString()}`);
       (comment) => `<article class="ew-comment">
           ${avatarMarkup(comment.authorName, "lg")}
           <div>
-            <div class="ew-comment-meta"><strong>${escapeHtml(comment.authorName)}</strong><span>${escapeHtml(formatWhen(comment.createdAt))}</span></div>
-            <p>${escapeHtml(comment.body)}</p>
+            <div class="ew-comment-meta"><strong>${escapeHtml3(comment.authorName)}</strong><span>${escapeHtml3(formatWhen(comment.createdAt))}</span></div>
+            ${comment.quote ? `<button type="button" class="ew-comment-quote" data-quote="${escapeHtml3(comment.quote)}">${escapeHtml3(comment.quote)}</button>` : ""}
+            <p>${escapeHtml3(comment.body)}</p>
           </div>
         </article>`
     ).join("") || `<div class="ew-note">No comments yet</div>`;
     $2("doc-media").innerHTML = assets.assets.map((asset) => {
       const src = assetUrl(asset.assetId);
       if (asset.mime.startsWith("video/")) {
-        return `<video src="${escapeHtml(src)}" controls title="${escapeHtml(asset.filename)}"></video>`;
+        return `<video src="${escapeHtml3(src)}" controls title="${escapeHtml3(asset.filename)}"></video>`;
       }
       if (asset.mime.startsWith("image/")) {
-        return `<img src="${escapeHtml(src)}" alt="${escapeHtml(asset.filename)}" />`;
+        return `<img src="${escapeHtml3(src)}" alt="${escapeHtml3(asset.filename)}" />`;
       }
-      return `<span>${escapeHtml(asset.filename)}</span>`;
+      return `<span>${escapeHtml3(asset.filename)}</span>`;
     }).join("") || `<div class="ew-note">No images or videos on this page</div>`;
     const parents = (payload?.documents ?? []).filter((item) => item.id !== id2);
-    const people = (payload?.principals ?? []).map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("");
-    const issues = (payload?.issues ?? []).map((issue) => `<option value="${issue.id}">${escapeHtml(issue.key)} ${escapeHtml(issue.summary)}</option>`).join("");
-    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(doc4?.title ?? "")}</strong><span>Hash ${escapeHtml((doc4?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml(doc4?.classification ?? "")}</span></div>
-    <label for="rename-page">Title<input id="rename-page" value="${escapeHtml(doc4?.title ?? "")}" /></label>
+    const people = (payload?.principals ?? []).map((person) => `<option value="${person.id}">${escapeHtml3(person.name)}</option>`).join("");
+    const issues = (payload?.issues ?? []).map((issue) => `<option value="${issue.id}">${escapeHtml3(issue.key)} ${escapeHtml3(issue.summary)}</option>`).join("");
+    setPageCover(assets.assets);
+    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml3(doc4?.title ?? "")}</strong><span>Hash ${escapeHtml3((doc4?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml3(doc4?.classification ?? "")}</span></div>
+    <div class="ew-meta"><strong>On this page</strong><div id="page-toc" class="ew-toc"></div></div>
+    <label for="rename-page">Title<input id="rename-page" value="${escapeHtml3(doc4?.title ?? "")}" /></label>
     <label for="move-page">Parent
       <select id="move-page">
         <option value="">Space root</option>
-        ${parents.map((item) => `<option value="${item.id}" ${item.id === doc4?.parentId ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
+        ${parents.map((item) => `<option value="${item.id}" ${item.id === doc4?.parentId ? "selected" : ""}>${escapeHtml3(item.title)}</option>`).join("")}
       </select>
     </label>
     <div class="ew-actions">
       <button type="button" id="save-page-meta">Save location</button>
-      <label for="attach-file">Attach<input id="attach-file" type="file" /></label>
+      <label class="ew-file" for="attach-file">Attach file<input id="attach-file" type="file" /></label>
     </div>
-    <div class="ew-meta"><strong>Permissions</strong>${grants.grants.map((grant) => `<span>${escapeHtml(grant.name)} \xB7 ${escapeHtml(grant.role)}</span>`).join("") || "<span>Inherited from workspace</span>"}</div>
+    <div class="ew-meta"><strong>Permissions</strong>${grants.grants.map((grant) => `<span>${escapeHtml3(grant.name)} \xB7 ${escapeHtml3(grant.role)}</span>`).join("") || "<span>Inherited from workspace</span>"}</div>
     <label for="grant-principal">Person<select id="grant-principal">${people}</select></label>
     <label for="grant-role">Role<select id="grant-role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="owner">owner</option></select></label>
     <button type="button" id="grant-document">Grant access</button>
@@ -32872,40 +38096,103 @@ ${err.toString()}`);
     <button type="button" id="add-github-link">Link GitHub</button>
     <label for="issue-link">Work issue<select id="issue-link">${issues}</select></label>
     <button type="button" id="add-issue-link">Link issue</button>
-    <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} \xB7 ${escapeHtml(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
-    <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
+    <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} \xB7 ${escapeHtml3(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
+    <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml3(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
+    enhanceSelects(inspector);
+    renderPageToc();
   }
   async function seedEmptyEditor(id2, title) {
     if ((collab?.getText() ?? "").trim()) return;
     const document2 = await api(`/v1/documents/${encodeURIComponent(id2)}`);
     const editor = collab?.editor();
     if (!editor || (editor.getText() ?? "").trim()) return;
-    editor.commands.setContent(nomaToEditorHtml(document2.title || title, document2.source));
+    editor.commands.setContent(nomaToEditorHtml(document2.title || title, document2.source, token));
+    renderPageToc();
+    renderWordCount();
   }
   async function openArtifact(id2) {
     if (!id2) return;
+    if (selectedArtifactId !== id2) canvasHistory = [];
     selectedArtifactId = id2;
     const data = await api(`/v1/artifacts/${encodeURIComponent(id2)}`);
     $2("visual-title").textContent = data.document.title;
     $2("visual-stage").innerHTML = rewriteAssetHtml(data.html);
     const from3 = $2("arrow-from");
     const to = $2("arrow-to");
-    const options = data.outline.filter((entry) => entry.type !== "arrow").map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.label)}</option>`).join("");
+    const options = data.outline.filter((entry) => entry.type !== "arrow").map((entry) => `<option value="${escapeHtml3(entry.id)}">${escapeHtml3(entry.label)}</option>`).join("");
     from3.innerHTML = options;
     to.innerHTML = options;
     if (data.outline[1]) to.value = data.outline[1].id;
     const page = $2("visual-stage").querySelector(".pd-page");
     if (page instanceof HTMLElement) {
       const width = Math.max(page.offsetWidth, 960);
-      const scale = Math.min(1, ($2("visual-stage").clientWidth - 32) / width);
-      page.style.transform = `scale(${scale})`;
-      page.style.transformOrigin = "top left";
-      page.style.marginBottom = `${Math.max(0, page.offsetHeight * (scale - 1))}px`;
+      const fit = Math.min(1, ($2("visual-stage").clientWidth - 32) / width);
+      const zoom = Number($2("visual-stage").dataset.zoom || String(fit));
+      setCanvasZoom($2("visual-stage"), zoom);
+      page.style.marginBottom = `${Math.max(0, page.offsetHeight * (zoom - 1))}px`;
     }
-    $2("visual-outline").innerHTML = data.outline.map((entry) => `<button type="button" data-frame="${escapeHtml(entry.id)}"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.type)}</small></button>`).join("");
-    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(data.document.title)}</strong><span>Revision ${data.document.revision}</span><span>${data.outline.length} frames</span></div>`;
+    $2("visual-outline").innerHTML = data.outline.map((entry) => `<button type="button" data-frame="${escapeHtml3(entry.id)}"><strong>${escapeHtml3(entry.label)}</strong><small>${escapeHtml3(entry.type)}</small></button>`).join("");
+    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml3(data.document.title)}</strong><span>Revision ${data.document.revision}</span><span>${data.outline.length} frames</span></div>`;
     $2("inspector-title").textContent = "Canvas";
     renderRail();
+    enhanceSelects($2("canvas-visuals"));
+    canvasStop?.();
+    const undoBtn = document.getElementById("canvas-undo");
+    if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = canvasHistory.length === 0;
+    canvasStop = bindVisualStage($2("visual-stage"), {
+      onMove: (move) => {
+        if (move.previous) {
+          canvasHistory.push({ id: move.id, ...move.previous });
+          if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = false;
+        }
+        void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(move.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ geometry: { x: move.x, y: move.y, width: move.width, height: move.height } })
+        });
+        syncCanvasArrows($2("visual-stage"));
+      },
+      onEdit: (elementId, text2) => {
+        const card = $2("visual-stage").querySelector(`.pd-el[data-id="${CSS.escape(elementId)}"]`);
+        const color = card?.dataset.sticky;
+        const pin = card?.dataset.comment;
+        void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(elementId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ text: text2, altText: color ? stickyAlt(color) : pin ? "Comment" : text2 })
+        });
+      },
+      onPlaceSticky: (x, y) => {
+        $2("visual-stage").dataset.tool = "select";
+        syncVisualTools();
+        void addCanvasElement({
+          type: "shape",
+          text: "New note",
+          altText: stickyAlt(stickyColor),
+          geometry: { x, y, width: 200, height: 160 }
+        });
+      },
+      onPlaceComment: (x, y) => {
+        $2("visual-stage").dataset.tool = "select";
+        syncVisualTools();
+        void addCanvasElement({
+          type: "shape",
+          text: "Comment",
+          altText: "Comment",
+          geometry: { x, y, width: 160, height: 72 }
+        });
+      },
+      onConnect: (fromId, toId) => {
+        $2("visual-stage").dataset.tool = "select";
+        syncVisualTools();
+        void addCanvasElement({ type: "arrow", fromId, toId, altText: "Arrow" });
+      },
+      onSelect: (elementId) => {
+        selectedCanvasId = elementId;
+        for (const node of $2("visual-stage").querySelectorAll(".pd-el")) {
+          node.classList.toggle("is-selected", node.getAttribute("data-id") === elementId);
+        }
+      }
+    });
+    syncCanvasArrows($2("visual-stage"));
   }
   function renderSprintBar() {
     if (!payload) return;
@@ -32915,7 +38202,7 @@ ${err.toString()}`);
     const sprints = payload.sprints.filter((sprint) => !board || sprint.boardId === board.id);
     const active = sprints.find((sprint) => sprint.state === "active");
     $2("sprint-bar").innerHTML = `
-    <span>${escapeHtml(active ? `${active.name} \xB7 ${active.state}` : "No active sprint")}</span>
+    <span>${escapeHtml3(active ? `${active.name} \xB7 ${active.state}` : "No active sprint")}</span>
     ${board && !active ? `<button type="button" id="create-sprint" data-board="${board.id}">Plan sprint</button>` : ""}
     ${active ? `<button type="button" id="close-sprint" data-sprint="${active.id}">Close sprint</button>` : ""}
     ${board && sprints.some((sprint) => sprint.state === "planned") ? `<button type="button" id="start-sprint" data-sprint="${sprints.find((sprint) => sprint.state === "planned")?.id ?? ""}">Start sprint</button>` : ""}
@@ -32927,58 +38214,232 @@ ${err.toString()}`);
     selectedProjectId = project?.id ?? "";
     $2("work-title").textContent = project ? `${project.key} \xB7 ${project.name}` : "Work";
     renderSprintBar();
+    $2("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
+    $2("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
+    $2("filter-unassigned")?.setAttribute("aria-pressed", String(boardFilter === "unassigned"));
+    $2("filter-overdue")?.setAttribute("aria-pressed", String(boardFilter === "overdue"));
+    $2("filter-flagged")?.setAttribute("aria-pressed", String(boardFilter === "flagged"));
+    $2("filter-watching")?.setAttribute("aria-pressed", String(boardFilter === "watching"));
+    $2("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
+    $2("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
+    $2("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
+    $2("view-reports")?.setAttribute("aria-pressed", String(boardView === "reports"));
+    $2("view-backlog")?.setAttribute("aria-pressed", String(boardView === "backlog"));
+    const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
+    $2("type-filters").innerHTML = [
+      `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
+      ...projectTypes.map(
+        (type) => `<button type="button" data-type="${escapeHtml3(type.key)}" aria-pressed="${String(typeFilter === type.key)}">${escapeHtml3(type.name)}</button>`
+      )
+    ].join("");
     const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
-    const visible = payload.issues.filter((issue) => (!project || issue.projectId === project.id) && (!jqlFilterIds || jqlFilterIds.includes(issue.id)));
-    $2("work-board").innerHTML = columns.map((status) => {
-      const cards = visible.filter((issue) => issue.statusId === status.id);
-      return `<section class="ew-column" data-status="${escapeHtml(status.id)}">
-        <h3>${escapeHtml(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
-        ${cards.map(
-        (issue) => {
-          const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
-          return `<button class="ew-card" type="button" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
-              <span class="ew-key">${escapeHtml(issue.key)}</span>
-              <strong>${escapeHtml(issue.summary)}</strong>
-              <span class="ew-card-foot">
-                <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
-                ${assignee ? avatarMarkup(assignee.name) : ""}
-              </span>
-            </button>`;
-        }
-      ).join("")}
+    const epicSelect = document.getElementById("filter-epic");
+    if (epicSelect instanceof HTMLSelectElement) {
+      const epics = payload.issues.filter((issue) => issue.typeKey === "epic" && (!project || issue.projectId === project.id));
+      epicSelect.innerHTML = `<option value="">All epics</option>` + epics.map((epic) => `<option value="${epic.id}" ${epic.id === epicFilter ? "selected" : ""}>${escapeHtml3(epic.key)} ${escapeHtml3(epic.summary)}</option>`).join("");
+    }
+    const inEpic = (issue, epicId) => {
+      if (issue.id === epicId) return true;
+      const seen = /* @__PURE__ */ new Set();
+      let current = issue;
+      while (current?.parentId && !seen.has(current.id)) {
+        seen.add(current.id);
+        if (current.parentId === epicId) return true;
+        current = payload.issues.find((item) => item.id === current?.parentId);
+      }
+      return false;
+    };
+    const visible = payload.issues.filter((issue) => {
+      if (project && issue.projectId !== project.id) return false;
+      if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
+      if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
+      if (boardFilter === "unassigned" && issue.assigneeId) return false;
+      if (boardFilter === "overdue" && !isOverdue(issue)) return false;
+      if (boardFilter === "flagged" && !issue.flagged) return false;
+      if (boardFilter === "watching" && !issue.watching) return false;
+      if (epicFilter && !inEpic(issue, epicFilter)) return false;
+      if (typeFilter && issue.typeKey !== typeFilter) return false;
+      if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
+      return true;
+    });
+    const issueCard = (issue) => {
+      const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
+      const parent = payload?.issues.find((item) => item.id === issue.parentId);
+      const due = (issue.dueAt ?? "").slice(0, 10);
+      const labels = (issue.labels ?? []).map((label) => `<span class="ew-label">${escapeHtml3(label)}</span>`).join("");
+      return `<button class="ew-card${issue.id === selectedIssueId ? " is-open" : ""}" type="button" data-issue="${issue.id}" data-type="${escapeHtml3(issue.typeKey)}">
+      <span class="ew-key">${escapeHtml3(issue.key)}</span>
+      <strong>${escapeHtml3(issue.summary)}</strong>
+      <span class="ew-card-foot">
+        <span class="ew-pill">${escapeHtml3(issue.typeKey)}</span>
+        ${parent ? `<span class="ew-epic">${escapeHtml3(parent.key)}</span>` : ""}
+        ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
+        <span class="ew-priority" data-priority="${escapeHtml3(issue.priority)}">${escapeHtml3(issue.priority)}</span>
+        ${issue.flagged ? `<span class="ew-flag">Flagged</span>` : ""}
+        ${issue.watching ? `<span class="ew-watch">Watching</span>` : ""}
+        ${due ? `<span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml3(due)}</span>` : ""}
+        ${labels}
+        ${assignee ? avatarMarkup(assignee.name) : ""}
+      </span>
+    </button>`;
+    };
+    const columnsMarkup = (laneIssues, laneId) => columns.map((status) => {
+      const cards = laneIssues.filter((issue) => issue.statusId === status.id);
+      const createId = laneId === "board" ? `create-${status.id}` : `create-${laneId}-${status.id}`;
+      return `<section class="ew-column" data-status="${escapeHtml3(status.id)}">
+        <h3>${escapeHtml3(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
+        <div class="ew-column-list">
+        ${cards.map((issue) => issueCard(issue)).join("")}
+        </div>
+        <label class="ew-sr" for="${escapeHtml3(createId)}">Create in ${escapeHtml3(status.name)}</label>
+        <input id="${escapeHtml3(createId)}" class="ew-column-add" data-status="${escapeHtml3(status.id)}" placeholder="Create" />
       </section>`;
     }).join("");
-    $2("inspector-title").textContent = "Board";
-    inspector.innerHTML = `<div class="ew-meta"><strong>${visible.length} issues</strong><span>${payload.notifications.length} notifications</span></div>
+    const board = $2("work-board");
+    board.classList.toggle("has-swimlanes", swimlanes && boardView === "board");
+    board.classList.toggle("is-list", boardView === "list");
+    board.classList.toggle("is-reports", boardView === "reports");
+    board.classList.toggle("is-backlog", boardView === "backlog");
+    if (boardView === "reports") {
+      boardDndStop?.();
+      boardDndStop = void 0;
+      void loadProjectReports();
+      renderRail();
+      return;
+    }
+    if (boardView === "backlog") {
+      boardDndStop?.();
+      boardDndStop = void 0;
+      const sprint = activeSprint();
+      const inSprint = visible.filter((issue) => sprint && issue.sprintId === sprint.id);
+      const queued = visible.filter((issue) => !sprint || issue.sprintId !== sprint.id);
+      const points = inSprint.reduce((sum, issue) => sum + (issue.estimate ?? 0), 0);
+      const row = (issue, action) => `<div class="ew-backlog-row${issue.id === selectedIssueId ? " is-open" : ""}">
+        ${issueCard(issue)}
+        ${sprint ? `<button type="button" class="ew-sprint-action" data-sprint-action="${action}" data-issue="${escapeHtml3(issue.id)}" data-sprint="${escapeHtml3(sprint.id)}">${action === "add" ? "Add to sprint" : "Remove"}</button>` : ""}
+      </div>`;
+      board.innerHTML = `<div id="work-backlog" class="ew-backlog">
+      <section id="sprint-plan" class="ew-backlog-pane">
+        <h2>${escapeHtml3(sprint ? sprint.name : "No active sprint")} <span id="sprint-points">${points} pts \xB7 ${inSprint.length}</span></h2>
+        ${inSprint.map((issue) => row(issue, "remove")).join("") || `<p class="ew-meta">Pull issues from the backlog into this sprint.</p>`}
+      </section>
+      <section id="backlog-list" class="ew-backlog-pane">
+        <h2>Backlog <span>${queued.length}</span></h2>
+        ${queued.map((issue) => row(issue, "add")).join("") || `<p class="ew-meta">Backlog is empty.</p>`}
+      </section>
+    </div>`;
+      if (!selectedIssueId) {
+        document.querySelector(".ew-body")?.classList.remove("is-issue");
+        $2("inspector-title").textContent = "Backlog";
+        inspector.innerHTML = `<div class="ew-meta"><strong>${queued.length} in backlog</strong><span>${inSprint.length} in sprint</span><span>${points} points committed</span></div>
+        <p class="ew-report-lead">${sprint ? "Add work to the active sprint, then run the board." : "Plan a sprint from the sprint bar to start committing work."}</p>`;
+      }
+      renderRail();
+      return;
+    }
+    if (boardView === "list") {
+      const statusName = (id2) => columns.find((status) => status.id === id2)?.name ?? id2;
+      board.innerHTML = `<div class="ew-issue-table" role="table" aria-label="Issue list">
+      <div class="ew-row ew-row-head" role="row">
+        <span>Key</span><span>Summary</span><span>Status</span><span>Priority</span><span>Due</span><span>Estimate</span>
+      </div>
+      ${visible.map((issue) => {
+        const due = (issue.dueAt ?? "").slice(0, 10);
+        return `<button type="button" class="ew-row${issue.id === selectedIssueId ? " is-open" : ""}" data-issue="${issue.id}" data-type="${escapeHtml3(issue.typeKey)}" role="row">
+            <span class="ew-key">${escapeHtml3(issue.key)}</span>
+            <strong>${escapeHtml3(issue.summary)}</strong>
+            <span>${escapeHtml3(statusName(issue.statusId))}</span>
+            <span class="ew-priority" data-priority="${escapeHtml3(issue.priority)}">${escapeHtml3(issue.priority)}</span>
+            <span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml3(due)}</span>
+            <span class="ew-points">${issue.estimate ?? ""}</span>
+          </button>`;
+      }).join("")}
+    </div>`;
+    } else if (swimlanes) {
+      const epicLane = (issue) => {
+        if (issue.typeKey === "epic") return { id: issue.id, title: `${issue.key} ${issue.summary}` };
+        const seen = /* @__PURE__ */ new Set();
+        let current = issue;
+        while (current?.parentId && !seen.has(current.id)) {
+          seen.add(current.id);
+          const parent = payload?.issues.find((item) => item.id === current?.parentId);
+          if (!parent) break;
+          if (parent.typeKey === "epic") return { id: parent.id, title: `${parent.key} ${parent.summary}` };
+          current = parent;
+        }
+        return { id: "none", title: "No epic" };
+      };
+      const groups = /* @__PURE__ */ new Map();
+      for (const issue of visible) {
+        const lane = epicLane(issue);
+        const existing = groups.get(lane.id);
+        if (existing) existing.issues.push(issue);
+        else groups.set(lane.id, { title: lane.title, issues: [issue] });
+      }
+      board.innerHTML = [...groups.entries()].map(
+        ([laneId, group]) => `<section class="ew-swimlane" data-epic="${escapeHtml3(laneId)}">
+          <h3>${escapeHtml3(group.title)} <span>${group.issues.length}</span></h3>
+          <div class="ew-swimlane-cols">${columnsMarkup(group.issues, laneId)}</div>
+        </section>`
+      ).join("");
+    } else {
+      board.innerHTML = columnsMarkup(visible, "board");
+    }
+    if (!selectedIssueId) {
+      document.querySelector(".ew-body")?.classList.remove("is-issue");
+      $2("inspector-title").textContent = "Board";
+      inspector.innerHTML = `<div class="ew-meta"><strong>${visible.length} issues</strong><span>${payload.notifications.length} notifications</span></div>
     <label for="new-issue-summary">Create issue
       <input id="new-issue-summary" placeholder="Summary" />
     </label>
     <label for="new-issue-type">Type
-      <select id="new-issue-type">${payload.issueTypes.filter((type) => type.projectId === project?.id).map((type) => `<option value="${escapeHtml(type.key)}">${escapeHtml(type.name)}</option>`).join("")}</select>
+      <select id="new-issue-type">${payload.issueTypes.filter((type) => type.projectId === project?.id).map((type) => `<option value="${escapeHtml3(type.key)}">${escapeHtml3(type.name)}</option>`).join("")}</select>
     </label>
     <div class="ew-actions"><button type="button" id="submit-issue">${iconSvg("Plus")} Create</button></div>`;
+      enhanceSelects(inspector);
+    }
     renderRail();
     boardDndStop?.();
     boardDndStop = bindIssueBoard($2("work-board"), (drop) => {
       void applyBoardDrop(drop);
     });
   }
+  async function transitionIssueTo(issueId, from3, to) {
+    for (const status of statusPath(from3, to)) {
+      await api(`/v1/issues/${encodeURIComponent(issueId)}/transition`, {
+        method: "POST",
+        body: JSON.stringify({ to: status, fields: status === "done" ? { resolution: "completed" } : {} })
+      });
+    }
+  }
   async function applyBoardDrop(drop) {
     const project = currentProject();
     if (!project || !payload) return;
-    const ordered = [...payload.issues.filter((issue) => issue.projectId === project.id)].map((issue) => issue.id);
-    const from3 = ordered.indexOf(drop.issueId);
-    if (from3 < 0) return;
-    ordered.splice(from3, 1);
-    if (drop.beforeId) {
-      const to = ordered.indexOf(drop.beforeId);
-      ordered.splice(to < 0 ? ordered.length : to, 0, drop.issueId);
-    } else {
-      ordered.push(drop.issueId);
-    }
-    await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
-    await refreshWorkspace();
+    const issue = payload.issues.find((item) => item.id === drop.issueId);
+    if (!issue) return;
+    const previous = issue.statusId;
+    const nextStatus = drop.statusId || previous;
+    issue.statusId = nextStatus;
     renderBoard();
+    try {
+      if (nextStatus !== previous) await transitionIssueTo(drop.issueId, previous, nextStatus);
+      const ordered = [...payload.issues.filter((item) => item.projectId === project.id)].map((item) => item.id);
+      const from3 = ordered.indexOf(drop.issueId);
+      if (from3 >= 0) ordered.splice(from3, 1);
+      if (drop.beforeId) {
+        const to = ordered.indexOf(drop.beforeId);
+        ordered.splice(to < 0 ? ordered.length : to, 0, drop.issueId);
+      } else {
+        ordered.push(drop.issueId);
+      }
+      await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
+    } catch {
+      issue.statusId = previous;
+    } finally {
+      await refreshWorkspace();
+      renderBoard();
+      if (selectedIssueId) await inspectIssue(selectedIssueId);
+    }
   }
   async function inspectIssue(id2) {
     if (!payload) return;
@@ -32992,41 +38453,93 @@ ${err.toString()}`);
       const order = ["backlog", "todo", "in_progress", "in_review", "done"];
       return order.indexOf(status.id) === order.indexOf(issue.statusId) + 1;
     });
-    const people = payload.principals.map((person) => `<option value="${person.id}" ${person.id === detail.assignee_id ? "selected" : ""}>${escapeHtml(person.name)}</option>`).join("");
-    const sprints = payload.sprints.map((sprint) => `<option value="${sprint.id}" ${sprint.id === detail.sprint_id ? "selected" : ""}>${escapeHtml(sprint.name)}</option>`).join("");
-    inspector.innerHTML = `<div class="ew-meta">
-      <span class="ew-key">${escapeHtml(issue.key)}</span>
-      <strong>${escapeHtml(detail.summary)}</strong>
-      <span>${escapeHtml(current?.name ?? issue.statusId)} \xB7 ${escapeHtml(detail.typeKey)}</span>
-    </div>
-    <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
-    <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
-    <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
-    <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
-    <div class="ew-actions">
-      <button type="button" id="save-issue">Save</button>
-      ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml(next.id)}">Move to ${escapeHtml(next.name)}</button>` : ""}
-      ${detail.transitions.map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml(item.to)}" data-fields="${escapeHtml(item.requiredFields.join(","))}">${escapeHtml(item.to)}</button>`).join("")}
-    </div>
-    <div class="ew-meta"><strong>Comments</strong>${detail.comments.map((comment) => `<span>${escapeHtml(comment.authorName)}: ${escapeHtml(comment.body)}</span>`).join("") || "<span>None</span>"}</div>
-    <label for="issue-comment">Comment<textarea id="issue-comment" rows="2"></textarea></label>
-    <button type="button" id="issue-comment-submit">Comment</button>
-    <div class="ew-meta"><strong>Worklog</strong>${detail.worklogs.map((log) => `<span>${escapeHtml(log.authorName)} \xB7 ${Math.round(log.durationSeconds / 60)}m ${escapeHtml(log.note ?? "")}</span>`).join("") || "<span>None</span>"}</div>
-    <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
-    <label for="worklog-note">Note<input id="worklog-note" /></label>
-    <button type="button" id="worklog-submit">Log work</button>`;
+    const people = payload.principals.map((person) => `<option value="${person.id}" ${person.id === detail.assignee_id ? "selected" : ""}>${escapeHtml3(person.name)}</option>`).join("");
+    const sprints = payload.sprints.map((sprint) => `<option value="${sprint.id}" ${sprint.id === detail.sprint_id ? "selected" : ""}>${escapeHtml3(sprint.name)}</option>`).join("");
+    const reporter = payload.principals.find((person) => person.id === (detail.reporter_id ?? issue.reporterId));
+    const parentId = detail.parent_id ?? issue.parentId;
+    const parents = payload.issues.filter((item) => item.projectId === issue.projectId && item.id !== issue.id).map((item) => `<option value="${item.id}" ${item.id === parentId ? "selected" : ""}>${escapeHtml3(item.key)} ${escapeHtml3(item.summary)}</option>`).join("");
+    inspector.innerHTML = `<div class="ew-issue">
+      <div class="ew-issue-kicker ew-meta">
+        <span class="ew-key">${escapeHtml3(issue.key)}</span>
+        <span class="ew-pill">${escapeHtml3(detail.typeKey)}</span>
+        <span class="ew-lozenge">${escapeHtml3(current?.name ?? issue.statusId)}</span>
+        <button type="button" id="close-issue">Close</button>
+      </div>
+      <p id="issue-reporter" class="ew-note">Reported by ${escapeHtml3(reporter?.name ?? "Unknown")}</p>
+      <label class="ew-check" for="issue-flag"><input id="issue-flag" type="checkbox" ${issue.flagged || Boolean(detail.flagged) ? "checked" : ""} /> Flagged</label>
+      <div id="issue-watchers" class="ew-watchers">
+        <button type="button" id="issue-watch">${detail.watching || issue.watching ? "Watching" : "Watch"}</button>
+        <span>${(detail.watchers ?? []).map((watcher) => avatarMarkup(watcher.name)).join("") || "No watchers"}</span>
+      </div>
+      <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml3(detail.summary)}" /></label>
+      <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml3(detail.description ?? "")}</textarea></label>
+      <div class="ew-issue-grid">
+        <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
+        <label for="issue-parent">Parent<select id="issue-parent"><option value="">No parent</option>${parents}</select></label>
+        <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
+        <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
+        <label for="issue-due">Due date<input id="issue-due" type="date" value="${escapeHtml3((detail.due_at ?? issue.dueAt ?? "").slice(0, 10))}" /></label>
+        <label for="issue-estimate">Estimate<input id="issue-estimate" type="number" min="0" step="1" value="${escapeHtml3(String(detail.estimate ?? issue.estimate ?? ""))}" /></label>
+        <label for="issue-labels">Labels<input id="issue-labels" value="${escapeHtml3((() => {
+      try {
+        const parsed = typeof detail.labels_json === "string" ? JSON.parse(detail.labels_json) : issue.labels;
+        return Array.isArray(parsed) ? parsed.join(", ") : (issue.labels ?? []).join(", ");
+      } catch {
+        return (issue.labels ?? []).join(", ");
+      }
+    })())}" placeholder="canvas, urgent" /></label>
+      </div>
+      <div id="issue-children" class="ew-activity">
+        <strong>Child work</strong>
+        ${payload.issues.filter((item) => item.parentId === issue.id).map(
+      (item) => `<button type="button" class="ew-child" data-issue="${item.id}">${escapeHtml3(item.key)} ${escapeHtml3(item.summary)}</button>`
+    ).join("") || `<div class="ew-note">No child issues</div>`}
+        <label for="issue-child-summary">Add child<input id="issue-child-summary" placeholder="Subtask summary" /></label>
+        <button type="button" id="issue-child-submit">Add child</button>
+      </div>
+      <div class="ew-actions">
+        <button type="button" id="save-issue">Save</button>
+        ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml3(next.id)}">Move to ${escapeHtml3(next.name)}</button>` : ""}
+        ${detail.transitions.filter((item) => item.to !== next?.id).map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml3(item.to)}" data-fields="${escapeHtml3(item.requiredFields.join(","))}">${escapeHtml3(item.to.replaceAll("_", " "))}</button>`).join("")}
+      </div>
+      <div class="ew-activity">
+        <strong>Comments</strong>
+        ${detail.comments.map((comment) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml3(comment.authorName)}</strong></div><p>${escapeHtml3(comment.body)}</p></div></article>`).join("") || `<div class="ew-note">No comments</div>`}
+        <label for="issue-comment">Comment<textarea id="issue-comment" rows="2" placeholder="Write a comment. Mention with @name"></textarea></label>
+        <button type="button" id="issue-comment-submit">Comment</button>
+      </div>
+      <div class="ew-activity">
+        <strong>Worklog</strong>
+        ${detail.worklogs.map((log) => `<span>${escapeHtml3(log.authorName)} \xB7 ${Math.round(log.durationSeconds / 60)}m ${escapeHtml3(log.note ?? "")}</span>`).join("") || `<div class="ew-note">No time logged</div>`}
+        <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
+        <label for="worklog-note">Note<input id="worklog-note" /></label>
+        <button type="button" id="worklog-submit">Log work</button>
+      </div>
+      <div class="ew-activity">
+        <strong>Activity</strong>
+        ${(detail.events ?? []).map(
+      (event) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml3(event.actorName)}</strong><span>${escapeHtml3(event.action.replaceAll("_", " "))}</span></div></div></article>`
+    ).join("") || `<div class="ew-note">No activity yet</div>`}
+      </div>
+    </div>`;
     const links = await api(
       `/v1/issues/${encodeURIComponent(id2)}/links`
     );
-    const docs = (payload.documents ?? []).map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("");
+    const docs = (payload.documents ?? []).map((item) => `<option value="${item.id}">${escapeHtml3(item.title)}</option>`).join("");
     inspector.insertAdjacentHTML(
       "beforeend",
       `<div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
+    <label for="issue-relates">Related issue<select id="issue-relates">${payload.issues.filter((item) => item.id !== issue.id).map((item) => `<option value="${item.id}">${escapeHtml3(item.key)} ${escapeHtml3(item.summary)}</option>`).join("")}</select></label>
+    <button type="button" id="add-issue-relates">Link issue</button>
     <label for="issue-github-url">GitHub URL<input id="issue-github-url" placeholder="https://github.com/org/repo/issues/1" /></label>
     <button type="button" id="add-issue-github">Link GitHub</button>
     <label for="issue-doc-link">Page<select id="issue-doc-link">${docs}</select></label>
     <button type="button" id="add-issue-doc-link">Link page</button>`
     );
+    $2("inspector-title").textContent = issue.key;
+    document.querySelector(".ew-body")?.classList.add("is-issue");
+    enhanceSelects(inspector);
+    bindWorkspaceMentions();
   }
   function renderAdmin() {
     if (!payload) return;
@@ -33051,7 +38564,7 @@ ${err.toString()}`);
     <section>
       <h2>Grant</h2>
       <div class="ew-form-row">
-        <select id="admin-grant-principal">${payload.principals.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")}</select>
+        <select id="admin-grant-principal">${payload.principals.map((person) => `<option value="${person.id}">${escapeHtml3(person.name)}</option>`).join("")}</select>
         <select id="admin-grant-kind"><option value="space">space</option><option value="project">project</option><option value="document">document</option></select>
         <input id="admin-grant-resource" placeholder="Resource id" />
         <select id="admin-grant-role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="owner">owner</option></select>
@@ -33060,14 +38573,15 @@ ${err.toString()}`);
     </section>
     <section>
       <h2>Grants</h2>
-      ${payload.grants.map((grant) => `<div class="ew-note">${escapeHtml(grant.role)} on ${escapeHtml(grant.resourceKind)} ${escapeHtml(grant.resourceId)}</div>`).join("") || `<div class="ew-note">None listed</div>`}
+      ${payload.grants.map((grant) => `<div class="ew-note">${escapeHtml3(grant.role)} on ${escapeHtml3(grant.resourceKind)} ${escapeHtml3(grant.resourceId)}</div>`).join("") || `<div class="ew-note">None listed</div>`}
     </section>`;
+    enhanceSelects($2("admin-panel"));
   }
   function renderNotifications() {
     const items = payload?.notifications ?? [];
     $2("notify-list").innerHTML = items.map(
-      (item) => `<button class="ew-hit" type="button" data-notification="${escapeHtml(item.id)}" data-kind="${escapeHtml(item.resource_kind ?? "")}" data-id="${escapeHtml(item.resource_id ?? "")}">
-          <strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.body)}</small>
+      (item) => `<button class="ew-hit" type="button" data-notification="${escapeHtml3(item.id)}" data-kind="${escapeHtml3(item.resource_kind ?? "")}" data-id="${escapeHtml3(item.resource_id ?? "")}">
+          <strong>${escapeHtml3(item.title)}</strong><small>${escapeHtml3(item.body)}</small>
         </button>`
     ).join("") || `<div class="ew-note">Inbox empty</div>`;
     const badge = $2("notify-badge");
@@ -33168,8 +38682,24 @@ ${err.toString()}`);
     }
   });
   $2("work-board").addEventListener("click", (event) => {
-    const card = event.target.closest("button[data-issue]");
-    if (card?.dataset.issue) void inspectIssue(card.dataset.issue);
+    const action = event.target.closest("[data-sprint-action]");
+    if (action?.dataset.issue) {
+      event.preventDefault();
+      event.stopPropagation();
+      const sprintId = action.dataset.sprintAction === "add" ? action.dataset.sprint ?? null : null;
+      void (async () => {
+        await api(`/v1/issues/${encodeURIComponent(action.dataset.issue)}/sprint`, {
+          method: "POST",
+          body: JSON.stringify({ sprintId })
+        });
+        await refreshWorkspace();
+        renderBoard();
+        if (selectedIssueId) await inspectIssue(selectedIssueId);
+      })();
+      return;
+    }
+    const card = event.target.closest("[data-issue]");
+    if (card?.dataset.issue && !$2("work-board").classList.contains("is-sorting")) void inspectIssue(card.dataset.issue);
   });
   inspector.addEventListener("click", async (event) => {
     const link = event.target.closest("a.ew-link");
@@ -33188,6 +38718,29 @@ ${err.toString()}`);
     const button = event.target.closest("button");
     if (!button) return;
     try {
+      if (button.id === "close-issue") {
+        selectedIssueId = "";
+        document.querySelector(".ew-body")?.classList.remove("is-issue");
+        renderBoard();
+        return;
+      }
+      if (button.id === "export-svg") {
+        await showCanvasExport("svg");
+        return;
+      }
+      if (button.id === "export-png") {
+        await showCanvasExport("png");
+        return;
+      }
+      if (button.id === "export-pptx") {
+        await showCanvasExport("pptx");
+        return;
+      }
+      if (button.dataset.toc) {
+        const heading = [...editorMount.querySelectorAll("h1, h2, h3")].find((node) => node.textContent?.trim() === button.dataset.toc);
+        heading?.scrollIntoView({ block: "center" });
+        return;
+      }
       if (button.id === "advance-issue" || button.classList.contains("ew-transition")) {
         if (!selectedIssueId) return;
         const to = button.dataset.to ?? "";
@@ -33199,13 +38752,53 @@ ${err.toString()}`);
         renderBoard();
         await inspectIssue(selectedIssueId);
       }
+      if (button.id === "issue-watch" && selectedIssueId) {
+        const watching = button.textContent?.trim() === "Watching";
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/watch`, { method: watching ? "DELETE" : "POST" });
+        await refreshWorkspace();
+        renderBoard();
+        await inspectIssue(selectedIssueId);
+        return;
+      }
+      if (button.classList.contains("ew-child") && button.dataset.issue) {
+        await inspectIssue(button.dataset.issue);
+        return;
+      }
+      if (button.id === "issue-child-submit" && selectedIssueId && currentProject()) {
+        const summary = $2("issue-child-summary").value.trim();
+        if (!summary) return;
+        await api(`/v1/projects/${encodeURIComponent(currentProject().id)}/issues`, {
+          method: "POST",
+          body: JSON.stringify({ summary, typeKey: "subtask", parentId: selectedIssueId })
+        });
+        await refreshWorkspace();
+        renderBoard();
+        await inspectIssue(selectedIssueId);
+        return;
+      }
+      if (button.id === "add-issue-relates" && selectedIssueId) {
+        const related = $2("issue-relates").value;
+        if (!related) return;
+        await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}/links`, {
+          method: "POST",
+          body: JSON.stringify({ provider: "issue", issueId: related, label: "relates" })
+        });
+        await inspectIssue(selectedIssueId);
+        return;
+      }
       if (button.id === "save-issue" && selectedIssueId) {
         await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
           method: "PATCH",
           body: JSON.stringify({
             summary: $2("issue-summary").value,
             description: $2("issue-description").value,
-            assigneeId: $2("issue-assignee").value || null
+            assigneeId: $2("issue-assignee").value || null,
+            parentId: $2("issue-parent").value || null,
+            priority: $2("issue-priority").value,
+            dueAt: $2("issue-due").value || null,
+            estimate: $2("issue-estimate").value === "" ? null : Number($2("issue-estimate").value),
+            flagged: $2("issue-flag").checked,
+            labels: $2("issue-labels").value.split(",").map((item) => item.trim()).filter(Boolean)
           })
         });
         const sprintId = $2("issue-sprint").value || null;
@@ -33329,11 +38922,21 @@ ${err.toString()}`);
         renderRail();
       }
     } catch (error) {
-      inspector.insertAdjacentHTML("beforeend", `<p class="ew-error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`);
+      inspector.insertAdjacentHTML("beforeend", `<p class="ew-error">${escapeHtml3(error instanceof Error ? error.message : String(error))}</p>`);
     }
   });
   inspector.addEventListener("change", async (event) => {
     const input = event.target;
+    if (input.id === "issue-flag" && selectedIssueId) {
+      await api(`/v1/issues/${encodeURIComponent(selectedIssueId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ flagged: input.checked })
+      });
+      await refreshWorkspace();
+      renderBoard();
+      await inspectIssue(selectedIssueId);
+      return;
+    }
     if (input.id !== "attach-file" || !input.files?.[0] || !selectedDocumentId) return;
     const file = input.files[0];
     await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/assets`, {
@@ -33398,7 +39001,7 @@ ${err.toString()}`);
       })
     });
     const editor = collab?.editor();
-    editor?.chain().focus().insertContent(`<p>${kind === "video" ? "Video" : "Image"}: ${escapeHtml(file.name)}</p>`).run();
+    editor?.chain().focus().insertContent(`<p>${kind === "video" ? "Video" : "Image"}: ${escapeHtml3(file.name)}</p>`).run();
     await refreshWorkspace();
     await renderDocumentInspector(selectedDocumentId);
   }
@@ -33412,6 +39015,63 @@ ${err.toString()}`);
     if (file) await embedPageMedia("video", file);
     event.target.value = "";
   });
+  async function showCanvasExport(target = exportTarget) {
+    if (!selectedArtifactId) return;
+    exportTarget = target;
+    const report = await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/export?target=${encodeURIComponent(target)}`);
+    $2("inspector-title").textContent = "Export";
+    inspector.innerHTML = `<div id="canvas-export-report" class="ew-export">
+    <p class="ew-kicker">${escapeHtml3(target.toUpperCase())} fidelity</p>
+    <strong>Supported frames</strong>
+    <ul class="ew-export-list">${report.supported.map((item) => `<li>${escapeHtml3(item)}</li>`).join("") || "<li>None</li>"}</ul>
+    <strong>Gaps</strong>
+    <ul class="ew-export-list">${report.unsupported.map((item) => `<li>${escapeHtml3(item)}</li>`).join("") || "<li>No extra gaps for this target</li>"}</ul>
+    <p class="ew-export-note">${report.completeOfficeFidelity ? "Complete Office fidelity" : "Office theme mapping is not complete. SVG and PNG keep PaperDOM geometry."}</p>
+    <div class="ew-actions">
+      <button type="button" id="export-svg" aria-pressed="${String(target === "svg")}">SVG</button>
+      <button type="button" id="export-png" aria-pressed="${String(target === "png")}">PNG</button>
+      <button type="button" id="export-pptx" aria-pressed="${String(target === "pptx")}">PPTX</button>
+    </div>
+  </div>`;
+  }
+  async function restackCanvas(direction) {
+    if (!selectedArtifactId || !selectedCanvasId) return;
+    const data = await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}`);
+    const values = data.document.elements.map((element2) => element2.zIndex);
+    const next = direction === "front" ? Math.max(0, ...values) + 1 : Math.min(0, ...values) - 1;
+    await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(selectedCanvasId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ zIndex: next })
+    });
+    await openArtifact(selectedArtifactId);
+  }
+  async function deleteCanvasSelection() {
+    if (!selectedArtifactId || !selectedCanvasId) return;
+    const id2 = selectedCanvasId;
+    selectedCanvasId = "";
+    await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(id2)}`, { method: "DELETE" });
+    canvasHistory = canvasHistory.filter((item) => item.id !== id2);
+    await refreshWorkspace();
+    await openArtifact(selectedArtifactId);
+  }
+  async function undoCanvas() {
+    const last2 = canvasHistory.pop();
+    const undoBtn = document.getElementById("canvas-undo");
+    if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = canvasHistory.length === 0;
+    if (!last2 || !selectedArtifactId) return;
+    const card = $2("visual-stage").querySelector(`.pd-el[data-id="${CSS.escape(last2.id)}"]`);
+    if (card) {
+      card.style.left = `${last2.x}px`;
+      card.style.top = `${last2.y}px`;
+      card.style.width = `${last2.width}px`;
+      card.style.height = `${last2.height}px`;
+      syncCanvasArrows($2("visual-stage"));
+    }
+    await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(last2.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ geometry: { x: last2.x, y: last2.y, width: last2.width, height: last2.height } })
+    });
+  }
   async function addCanvasElement(input) {
     if (!selectedArtifactId) return;
     await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements`, {
@@ -33432,6 +39092,65 @@ ${err.toString()}`);
   });
   $2("add-frame").addEventListener("click", async () => {
     await addCanvasElement({ type: "shape", text: "Frame", altText: "Frame" });
+  });
+  function syncVisualTools() {
+    const tool = $2("visual-stage").dataset.tool ?? "select";
+    for (const button of document.querySelectorAll("#visual-toolbar [data-tool]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
+    }
+    for (const button of document.querySelectorAll("#sticky-colors [data-sticky-color]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.stickyColor === stickyColor));
+    }
+    $2("visual-stage").classList.toggle("is-panning", tool === "pan");
+    $2("visual-stage").classList.toggle("is-sticky", tool === "sticky");
+    $2("visual-stage").classList.toggle("is-connecting", tool === "connect");
+    $2("visual-stage").classList.toggle("is-commenting", tool === "comment");
+  }
+  $2("visual-toolbar").addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    const color = button.dataset.stickyColor;
+    if (color === "yellow" || color === "pink" || color === "green" || color === "blue") {
+      stickyColor = color;
+      $2("visual-stage").dataset.tool = "sticky";
+      syncVisualTools();
+      return;
+    }
+    if (button.id === "canvas-undo") {
+      void undoCanvas();
+      return;
+    }
+    if (button.id === "canvas-delete") {
+      void deleteCanvasSelection();
+      return;
+    }
+    if (button.id === "canvas-front") {
+      void restackCanvas("front");
+      return;
+    }
+    if (button.id === "canvas-back") {
+      void restackCanvas("back");
+      return;
+    }
+    if (button.id === "canvas-export") {
+      void showCanvasExport(exportTarget);
+      return;
+    }
+    if (button.id === "canvas-present") {
+      setPresenting(!presenting);
+      return;
+    }
+    if (button.dataset.tool) {
+      $2("visual-stage").dataset.tool = button.dataset.tool;
+      syncVisualTools();
+    }
+    const current = Number($2("visual-stage").dataset.zoom ?? "1");
+    if (button.id === "zoom-in") setCanvasZoom($2("visual-stage"), current + 0.1);
+    if (button.id === "zoom-out") setCanvasZoom($2("visual-stage"), current - 0.1);
+    if (button.id === "zoom-fit") {
+      const page = $2("visual-stage").querySelector(".pd-page");
+      if (page) setCanvasZoom($2("visual-stage"), Math.min(1, ($2("visual-stage").clientWidth - 32) / Math.max(page.offsetWidth, 960)));
+    }
   });
   $2("add-arrow").addEventListener("click", async () => {
     await addCanvasElement({
@@ -33463,13 +39182,48 @@ ${err.toString()}`);
   });
   $2("doc-comment-submit").addEventListener("click", async () => {
     if (!selectedDocumentId) return;
+    const box = $2("doc-comment-input");
+    const body = box.value.trim();
+    if (!body) return;
+    const quote = box.dataset.quote?.trim() || "";
     await api(`/v1/documents/${encodeURIComponent(selectedDocumentId)}/comments`, {
       method: "POST",
-      body: JSON.stringify({ body: $2("doc-comment-input").value })
+      body: JSON.stringify({ body, quote: quote || void 0 })
     });
-    $2("doc-comment-input").value = "";
+    box.value = "";
+    delete box.dataset.quote;
+    box.placeholder = "Write a comment. Mention with @alice";
+    const chip = document.getElementById("doc-comment-quote");
+    if (chip) {
+      chip.hidden = true;
+      chip.textContent = "";
+    }
     await refreshWorkspace();
     await renderDocumentInspector(selectedDocumentId);
+  });
+  $2("page-find-open").addEventListener("click", () => openPageFind());
+  $2("page-present").addEventListener("click", () => setPresenting(!presenting));
+  $2("present-exit").addEventListener("click", () => setPresenting(false));
+  $2("page-find-close").addEventListener("click", () => closePageFind());
+  $2("page-find-next").addEventListener("click", () => jumpFind(1));
+  $2("page-find-prev").addEventListener("click", () => jumpFind(-1));
+  $2("page-find-input").addEventListener("input", (event) => {
+    runPageFind(event.target.value);
+  });
+  $2("page-find-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      jumpFind(event.shiftKey ? -1 : 1);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePageFind();
+    }
+  });
+  $2("doc-comments").addEventListener("click", (event) => {
+    const quote = event.target.closest("button[data-quote]");
+    if (!quote?.dataset.quote) return;
+    runPageFind(quote.dataset.quote);
   });
   $2("visual-outline").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-frame]");
@@ -33497,9 +39251,10 @@ ${err.toString()}`);
       `/v1/search?q=${encodeURIComponent(query)}`
     );
     searchResults.hidden = false;
-    searchResults.innerHTML = result.hits.map(
-      (hit) => `<button class="ew-hit" type="button" data-kind="${escapeHtml(hit.resourceKind)}" data-id="${escapeHtml(hit.resourceId)}">
-        <strong>${escapeHtml(hit.title)}</strong><small>${escapeHtml(hit.excerpt)}</small>
+    const hits = uniqueHits(result.hits);
+    searchResults.innerHTML = hits.map(
+      (hit) => `<button class="ew-hit" type="button" data-kind="${escapeHtml3(hit.resourceKind)}" data-id="${escapeHtml3(hit.resourceId)}">
+        <strong>${escapeHtml3(hit.title)}</strong><small>${escapeHtml3(hit.excerpt)}</small>
       </button>`
     ).join("") || `<div class="ew-meta">No matches</div>`;
     syncSearchPopup();
@@ -33576,7 +39331,7 @@ ${err.toString()}`);
       openDocument(result.documentId);
       inspector.insertAdjacentHTML(
         "beforeend",
-        result.lossReport.length ? `<div class="ew-tree-loss">${result.lossReport.map((item) => `<div>Unsupported macro: ${escapeHtml(item.name)}</div>`).join("")}</div>` : `<div class="ew-note">Imported with no macro loss</div>`
+        result.lossReport.length ? `<div class="ew-tree-loss">${result.lossReport.map((item) => `<div>Unsupported macro: ${escapeHtml3(item.name)}</div>`).join("")}</div>` : `<div class="ew-note">Imported with no macro loss</div>`
       );
     } catch (error) {
       $2("import-error").textContent = error instanceof Error ? error.message : String(error);
@@ -33597,10 +39352,239 @@ ${err.toString()}`);
       if (cmd === "bold") chain.toggleBold().run();
       if (cmd === "italic") chain.toggleItalic().run();
       if (cmd === "strike") chain.toggleStrike().run();
+      if (cmd === "underline") chain.toggleUnderline().run();
       if (cmd === "heading") chain.toggleHeading({ level: button.dataset.level === "1" ? 1 : 2 }).run();
       if (cmd === "bullet") chain.toggleBulletList().run();
       if (cmd === "ordered") chain.toggleOrderedList().run();
+      if (cmd === "quote") chain.toggleBlockquote().run();
+      if (cmd === "code") chain.toggleCodeBlock().run();
+      if (cmd === "task") chain.toggleTaskList().run();
+      if (cmd === "table") chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+      if (cmd === "panel") chain.setNomaPanel(button.dataset.kind === "warning" ? "warning" : "info").run();
+      if (cmd === "align-left") chain.setTextAlign("left").run();
+      if (cmd === "align-center") chain.setTextAlign("center").run();
+      if (cmd === "align-right") chain.setTextAlign("right").run();
     });
+  });
+  function paletteItems(query) {
+    const needle = query.trim().toLowerCase();
+    const items = [
+      { kind: "command", id: "mode:docs", title: "Open Docs", subtitle: "Pages" },
+      { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
+      { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
+      { kind: "command", id: "mode:reports", title: "Open reports", subtitle: "Work" },
+      { kind: "command", id: "mode:backlog", title: "Open backlog", subtitle: "Work" },
+      { kind: "command", id: "present", title: "Present", subtitle: "Docs and Visuals" },
+      { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
+      { kind: "command", id: "find", title: "Find in page", subtitle: "Docs" }
+    ];
+    for (const doc4 of payload?.documents ?? []) items.push({ kind: "document", id: doc4.id, title: doc4.title, subtitle: "Page" });
+    for (const issue of payload?.issues ?? []) {
+      items.push({ kind: "issue", id: issue.id, title: `${issue.key} ${issue.summary}`, subtitle: issue.typeKey });
+    }
+    for (const person of payload?.principals ?? []) {
+      items.push({ kind: "person", id: person.id, title: person.name, subtitle: person.email ?? "Person" });
+    }
+    const filtered = needle ? items.filter((item) => item.title.toLowerCase().includes(needle) || item.subtitle.toLowerCase().includes(needle)) : items;
+    return filtered.slice(0, 12);
+  }
+  function renderPalette() {
+    const items = paletteItems($2("command-input").value);
+    paletteIndex = Math.min(paletteIndex, Math.max(0, items.length - 1));
+    $2("command-list").innerHTML = items.map(
+      (item, index) => `<button type="button" class="ew-palette-item${index === paletteIndex ? " is-active" : ""}" role="option" data-kind="${item.kind}" data-id="${escapeHtml3(item.id)}">
+          <strong>${escapeHtml3(item.title)}</strong><small>${escapeHtml3(item.subtitle)}</small>
+        </button>`
+    ).join("") || `<div class="ew-meta">No matches</div>`;
+  }
+  function openPalette() {
+    $2("command-palette").hidden = false;
+    $2("command-input").value = "";
+    paletteIndex = 0;
+    renderPalette();
+    hydrateIcons($2("command-palette"));
+    $2("command-input").focus();
+  }
+  function closePalette() {
+    $2("command-palette").hidden = true;
+  }
+  function runPalette(kind, id2) {
+    closePalette();
+    if (id2 === "mode:docs") setMode("docs");
+    if (id2 === "mode:visuals") setMode("visuals");
+    if (id2 === "mode:work") setMode("work");
+    if (id2 === "mode:reports") {
+      setMode("work");
+      boardView = "reports";
+      renderBoard();
+    }
+    if (id2 === "mode:backlog") {
+      setMode("work");
+      boardView = "backlog";
+      renderBoard();
+    }
+    if (id2 === "present") setPresenting(true);
+    if (id2 === "create-page") void createPage();
+    if (id2 === "find") {
+      setMode("docs");
+      openPageFind();
+    }
+    if (kind === "document") {
+      setMode("docs");
+      openDocument(id2);
+    }
+    if (kind === "issue") {
+      setMode("work");
+      void inspectIssue(id2);
+    }
+  }
+  $2("command-input").addEventListener("input", () => {
+    paletteIndex = 0;
+    renderPalette();
+  });
+  $2("command-list").addEventListener("click", (event) => {
+    const item = event.target.closest("[data-kind][data-id]");
+    if (item?.dataset.kind && item.dataset.id) runPalette(item.dataset.kind, item.dataset.id);
+  });
+  $2("command-palette").addEventListener("click", (event) => {
+    if (event.target === $2("command-palette")) closePalette();
+  });
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    const typing = Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && mode === "visuals") {
+      if (!typing) {
+        event.preventDefault();
+        void undoCanvas();
+        return;
+      }
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      if ($2("command-palette").hidden) openPalette();
+      else closePalette();
+      return;
+    }
+    if (!$2("command-palette").hidden) {
+      const items = paletteItems($2("command-input").value);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePalette();
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        paletteIndex = Math.min(items.length - 1, paletteIndex + 1);
+        renderPalette();
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        paletteIndex = Math.max(0, paletteIndex - 1);
+        renderPalette();
+      }
+      if (event.key === "Enter") {
+        const item = items[paletteIndex];
+        if (item) {
+          event.preventDefault();
+          runPalette(item.kind, item.id);
+        }
+      }
+      return;
+    }
+    if (mode === "docs" && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      openPageFind();
+      return;
+    }
+    if (presenting && event.key === "Escape") {
+      event.preventDefault();
+      setPresenting(false);
+      return;
+    }
+    const findBar = document.getElementById("page-find");
+    if (findBar && !findBar.hidden && event.key === "Escape") {
+      event.preventDefault();
+      closePageFind();
+      return;
+    }
+    if (mode === "visuals" && (event.key === "Delete" || event.key === "Backspace") && !typing) {
+      event.preventDefault();
+      void deleteCanvasSelection();
+    }
+  });
+  $2("board-filters").addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    if (button.id === "swimlane-epic") {
+      swimlanes = !swimlanes;
+      renderBoard();
+      return;
+    }
+    if (button.id === "view-list") {
+      boardView = "list";
+      renderBoard();
+      if (selectedIssueId) void inspectIssue(selectedIssueId);
+      return;
+    }
+    if (button.id === "view-board") {
+      boardView = "board";
+      renderBoard();
+      if (selectedIssueId) void inspectIssue(selectedIssueId);
+      return;
+    }
+    if (button.id === "view-reports") {
+      boardView = "reports";
+      renderBoard();
+      return;
+    }
+    if (button.id === "view-backlog") {
+      boardView = "backlog";
+      renderBoard();
+      if (selectedIssueId) void inspectIssue(selectedIssueId);
+      return;
+    }
+    if (!button.dataset.filter) return;
+    const next = button.dataset.filter;
+    boardFilter = next === "mine" || next === "unassigned" || next === "overdue" || next === "flagged" || next === "watching" ? next : "all";
+    renderBoard();
+  });
+  $2("type-filters").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-type]");
+    if (button?.dataset.type === void 0) return;
+    typeFilter = button.dataset.type;
+    renderBoard();
+  });
+  $2("filter-epic").addEventListener("change", (event) => {
+    epicFilter = event.target.value;
+    renderBoard();
+  });
+  $2("board-search").addEventListener("input", (event) => {
+    boardSearch = event.target.value.trim().toLowerCase();
+    renderBoard();
+  });
+  $2("work-board").addEventListener("keydown", (event) => {
+    const target = event.target;
+    if ((event.key === "Enter" || event.key === " ") && (target.closest(".ew-card") || target.closest(".ew-row")) && !target.classList.contains("ew-column-add")) {
+      const card = target.closest("[data-issue].ew-card");
+      if (card?.dataset.issue) {
+        event.preventDefault();
+        void inspectIssue(card.dataset.issue);
+      }
+      return;
+    }
+    if (event.key !== "Enter" || !target.classList.contains("ew-column-add")) return;
+    const summary = target.value.trim();
+    const status = target.dataset.status ?? "backlog";
+    const project = currentProject();
+    if (!summary || !project) return;
+    void (async () => {
+      const created = await api(`/v1/projects/${encodeURIComponent(project.id)}/issues`, {
+        method: "POST",
+        body: JSON.stringify({ summary, typeKey: "task" })
+      });
+      await transitionIssueTo(created.id, "backlog", status);
+      await refreshWorkspace();
+      renderBoard();
+    })();
   });
   $2("login-submit").addEventListener("click", () => {
     void signIn($2("login-tenant").value.trim(), $2("login-token").value.trim()).catch((error) => {
@@ -33619,10 +39603,21 @@ ${err.toString()}`);
       ready: () => Boolean(payload),
       mode: () => mode,
       setMode,
-      text: () => collab?.getText() ?? ""
+      text: () => collab?.getText() ?? "",
+      html: () => collab?.editor()?.getHTML() ?? "",
+      selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
+      findInPage: (query) => runPageFind(query),
+      counts: () => collab?.counts() ?? { words: 0, characters: 0 },
+      boardView: () => boardView,
+      presenting: () => presenting,
+      undoCanvas,
+      deleteCanvas: deleteCanvasSelection,
+      openPalette,
+      applyBoardDrop
     }
   });
   hydrateIcons();
+  bindWorkspaceMentions();
   if (token) {
     void loadWorkspace().catch(() => {
       localStorage.removeItem(STORAGE_KEY);
@@ -33657,23 +39652,57 @@ lucide/dist/esm/shared/src/utils/toPascalCase.mjs:
 lucide/dist/esm/replaceElement.mjs:
 lucide/dist/esm/icons/bell.mjs:
 lucide/dist/esm/icons/bold.mjs:
+lucide/dist/esm/icons/bug.mjs:
+lucide/dist/esm/icons/chart-column-stacked.mjs:
+lucide/dist/esm/icons/chart-column.mjs:
+lucide/dist/esm/icons/chevron-down.mjs:
+lucide/dist/esm/icons/circle-check.mjs:
+lucide/dist/esm/icons/code.mjs:
+lucide/dist/esm/icons/command.mjs:
+lucide/dist/esm/icons/download.mjs:
 lucide/dist/esm/icons/file-text.mjs:
+lucide/dist/esm/icons/flag.mjs:
+lucide/dist/esm/icons/funnel.mjs:
+lucide/dist/esm/icons/hand.mjs:
 lucide/dist/esm/icons/heading-1.mjs:
 lucide/dist/esm/icons/heading-2.mjs:
+lucide/dist/esm/icons/highlighter.mjs:
 lucide/dist/esm/icons/image.mjs:
 lucide/dist/esm/icons/import.mjs:
+lucide/dist/esm/icons/info.mjs:
 lucide/dist/esm/icons/italic.mjs:
+lucide/dist/esm/icons/lightbulb.mjs:
+lucide/dist/esm/icons/link.mjs:
+lucide/dist/esm/icons/list-checks.mjs:
 lucide/dist/esm/icons/list-ordered.mjs:
+lucide/dist/esm/icons/list-todo.mjs:
 lucide/dist/esm/icons/list.mjs:
+lucide/dist/esm/icons/maximize-2.mjs:
+lucide/dist/esm/icons/message-square.mjs:
+lucide/dist/esm/icons/monitor-play.mjs:
 lucide/dist/esm/icons/moon.mjs:
+lucide/dist/esm/icons/mouse-pointer-2.mjs:
 lucide/dist/esm/icons/plus.mjs:
 lucide/dist/esm/icons/presentation.mjs:
+lucide/dist/esm/icons/quote.mjs:
 lucide/dist/esm/icons/search.mjs:
 lucide/dist/esm/icons/settings.mjs:
 lucide/dist/esm/icons/square-kanban.mjs:
+lucide/dist/esm/icons/sticky-note.mjs:
 lucide/dist/esm/icons/strikethrough.mjs:
 lucide/dist/esm/icons/sun.mjs:
+lucide/dist/esm/icons/table.mjs:
+lucide/dist/esm/icons/text-align-center.mjs:
+lucide/dist/esm/icons/text-align-end.mjs:
+lucide/dist/esm/icons/text-align-start.mjs:
+lucide/dist/esm/icons/trash.mjs:
+lucide/dist/esm/icons/triangle-alert.mjs:
+lucide/dist/esm/icons/underline.mjs:
+lucide/dist/esm/icons/undo-2.mjs:
+lucide/dist/esm/icons/user.mjs:
 lucide/dist/esm/icons/video.mjs:
+lucide/dist/esm/icons/zoom-in.mjs:
+lucide/dist/esm/icons/zoom-out.mjs:
 lucide/dist/esm/lucide.mjs:
   (**
    * @license lucide v1.46.0 - ISC

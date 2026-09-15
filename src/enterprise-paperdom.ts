@@ -200,6 +200,19 @@ function escapeMarkup(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+export function paperCommentPin(altText: string | undefined): boolean {
+  return Boolean(altText && (altText === "Comment" || altText.startsWith("Comment:")));
+}
+
+export function paperStickyColor(altText: string | undefined): "yellow" | "pink" | "green" | "blue" | undefined {
+  if (!altText) return undefined;
+  if (altText === "Sticky") return "yellow";
+  const match = /^Sticky:(yellow|pink|green|blue)$/i.exec(altText.trim());
+  const color = match?.[1]?.toLowerCase();
+  if (color === "yellow" || color === "pink" || color === "green" || color === "blue") return color;
+  return undefined;
+}
+
 function chartBars(chart: PaperChartData): string {
   const max = Math.max(1, ...chart.values);
   return `<div class="pd-chart" role="img" aria-label="${escapeMarkup(chart.datasetId)}">${chart.values
@@ -242,7 +255,13 @@ export function paperCanvasMarkup(doc: PaperDocument): string {
         const markerId = `ah-${escapeMarkup(el.id)}`;
         inner = `<svg class="pd-arrow" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><marker id="${markerId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#0C66E4"/></marker></defs><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0C66E4" stroke-width="2.5" marker-end="url(#${markerId})"/></svg>`;
       }
-      return `<div class="pd-el pd-el-${escapeMarkup(el.type)}" data-id="${escapeMarkup(el.id)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg)">${inner}</div>`;
+      const color = paperStickyColor(el.altText);
+      const pin = paperCommentPin(el.altText);
+      const sticky = color ? ` pd-el-sticky pd-el-sticky-${color}` : pin ? " pd-el-comment" : "";
+      const stickyAttr = color ? ` data-sticky="${color}"` : pin ? ` data-comment="true"` : "";
+      const fromTo = el.type === "arrow" ? ` data-from="${escapeMarkup(el.fromId ?? "")}" data-to="${escapeMarkup(el.toId ?? "")}"` : "";
+      const handle = el.type === "arrow" ? "" : `<span class="pd-resize" aria-hidden="true"></span>`;
+      return `<div class="pd-el pd-el-${escapeMarkup(el.type)}${sticky}" data-id="${escapeMarkup(el.id)}" data-x="${x}" data-y="${y}"${fromTo}${stickyAttr} style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg)">${inner}${handle}</div>`;
     })
     .join("");
   return `<div class="pd-page" data-paper-id="${escapeMarkup(doc.id)}" style="width:${width}px;min-height:${height}px">${items}</div>`;
@@ -250,9 +269,22 @@ export function paperCanvasMarkup(doc: PaperDocument): string {
 
 export function paperCanvasStyles(): string {
   return `.pd-page{position:relative;background:transparent;border:none;box-shadow:none;overflow:visible}
-.pd-el{position:absolute;box-sizing:border-box;padding:12px 14px;border-radius:8px;background:#fff;border:1px solid #091e4224;box-shadow:0 1px 1px #091e4224,0 0 1px #091e4224;overflow:hidden}
+.pd-el{position:absolute;box-sizing:border-box;padding:12px 14px;border-radius:8px;background:#fff;border:1px solid #091e4224;box-shadow:0 1px 1px #091e4224,0 0 1px #091e4224;overflow:visible}
 .pd-el-text{font:500 14px/20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif;color:#172b4d;white-space:pre-wrap}
-.pd-el-shape{background:#e9f2ff;border-color:#0c66e44d}
+.pd-el-shape{background:#e9f2ff;border-color:#0c66e44d;box-shadow:0 8px 24px -18px #0c66e4aa}
+.pd-el-sticky{background:#fef7c8;border-color:#f5cd47;box-shadow:0 10px 18px -12px #091e428a;transform-origin:center}
+.pd-el-sticky::after{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 14px 14px 0;border-color:#f5cd47 #fff}
+.pd-el-sticky-pink{background:#fdd0ec;border-color:#e774bb}
+.pd-el-sticky-pink::after{border-color:#e774bb #fff}
+.pd-el-sticky-green{background:#c3f0d8;border-color:#4bce97}
+.pd-el-sticky-green::after{border-color:#4bce97 #fff}
+.pd-el-sticky-blue{background:#cce0ff;border-color:#579dff}
+.pd-el-sticky-blue::after{border-color:#579dff #fff}
+.pd-resize{position:absolute;right:3px;bottom:3px;width:10px;height:10px;border-radius:2px;background:#0C66E4;cursor:nwse-resize}
+.pd-el.is-dragging{opacity:.92;box-shadow:0 12px 24px -12px #091e428a;z-index:20}
+.pd-el-comment{background:#fff7d6;border-color:#f5cd47;border-radius:18px 18px 18px 4px;box-shadow:0 10px 18px -12px #091e428a;padding:12px 12px 10px 28px}
+.pd-el-comment::before{content:"";position:absolute;left:10px;top:12px;width:10px;height:10px;border-radius:50%;background:#e56910;box-shadow:0 0 0 3px #ffd2a6}
+.pd-el-comment .pd-el-text{font-size:12px;font-weight:600}
 .pd-el-chart{background:#1d2125;color:#b6c2cf;border-color:transparent}
 .pd-el-chart .pd-el-text{color:#b6c2cf}
 .pd-chart{display:flex;align-items:flex-end;gap:8px;height:100%;padding-top:8px}

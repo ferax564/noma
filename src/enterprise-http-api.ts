@@ -146,7 +146,35 @@ export async function dispatchEnterpriseApi(
     return true;
   }
 
+  const artifactElement = path.match(/^\/v1\/artifacts\/([^/]+)\/elements\/([^/]+)$/);
+  if (artifactElement && method === "PATCH") {
+    const body = await readJson(req);
+    send(
+      res,
+      200,
+      ws.updateArtifactElement(actor, decodeURIComponent(artifactElement[1]!), decodeURIComponent(artifactElement[2]!), {
+        geometry: body.geometry as { x?: number; y?: number; width?: number; height?: number } | undefined,
+        text: body.text ? String(body.text) : undefined,
+        altText: body.altText ? String(body.altText) : undefined,
+        zIndex: typeof body.zIndex === "number" ? body.zIndex : undefined,
+      }),
+    );
+    return true;
+  }
+  if (artifactElement && method === "DELETE") {
+    send(res, 200, ws.deleteArtifactElement(actor, decodeURIComponent(artifactElement[1]!), decodeURIComponent(artifactElement[2]!)));
+    return true;
+  }
+
   const artifactMatch = path.match(/^\/v1\/artifacts\/([^/]+)(?:\/(elements))?$/);
+  const artifactExport = path.match(/^\/v1\/artifacts\/([^/]+)\/export$/);
+  if (artifactExport && method === "GET") {
+    const requested = url.searchParams.get("target") ?? "svg";
+    const target = requested === "pptx" || requested === "png" ? requested : "svg";
+    send(res, 200, ws.artifactExportReport(actor, decodeURIComponent(artifactExport[1]!), target));
+    return true;
+  }
+
   if (artifactMatch && method === "GET" && !artifactMatch[2]) {
     const artifactId = decodeURIComponent(artifactMatch[1]!);
     const read = ws.readArtifact(actor, artifactId, "draft");
@@ -223,7 +251,7 @@ export async function dispatchEnterpriseApi(
     }
     if (action === "comments" && method === "POST") {
       const body = await readJson(req);
-      send(res, 200, ws.addDocumentComment(actor, documentId, String(body.body ?? "")));
+      send(res, 200, ws.addDocumentComment(actor, documentId, String(body.body ?? ""), body.quote ? String(body.quote) : undefined));
       return true;
     }
     if (action === "assets" && method === "GET") {
@@ -313,6 +341,12 @@ export async function dispatchEnterpriseApi(
     }
   }
 
+  const projectReports = path.match(/^\/v1\/projects\/([^/]+)\/reports$/);
+  if (projectReports && method === "GET") {
+    send(res, 200, ws.projectReports(actor, decodeURIComponent(projectReports[1]!)));
+    return true;
+  }
+
   const projectIssues = path.match(/^\/v1\/projects\/([^/]+)\/issues$/);
   if (projectIssues && method === "GET") {
     const jql = url.searchParams.get("jql") ?? "";
@@ -369,6 +403,11 @@ export async function dispatchEnterpriseApi(
     send(res, 200, { id });
     return true;
   }
+  const sprintBurndown = path.match(/^\/v1\/sprints\/([^/]+)\/burndown$/);
+  if (sprintBurndown && method === "GET") {
+    send(res, 200, { points: ws.burndown(actor, decodeURIComponent(sprintBurndown[1]!)) });
+    return true;
+  }
   const sprintAction = path.match(/^\/v1\/sprints\/([^/]+)\/(start|close)$/);
   if (sprintAction && method === "POST") {
     const sprintId = decodeURIComponent(sprintAction[1]!);
@@ -381,7 +420,7 @@ export async function dispatchEnterpriseApi(
     return true;
   }
 
-  const issueMatch = path.match(/^\/v1\/issues\/([^/]+)(?:\/(transition|comments|worklog|sprint|links))?$/);
+  const issueMatch = path.match(/^\/v1\/issues\/([^/]+)(?:\/(transition|comments|worklog|sprint|links|watch))?$/);
   if (issueMatch) {
     const issueId = decodeURIComponent(issueMatch[1]!);
     const action = issueMatch[2];
@@ -396,6 +435,15 @@ export async function dispatchEnterpriseApi(
         description: typeof body.description === "string" ? body.description : undefined,
         assigneeId: body.assigneeId === undefined ? undefined : body.assigneeId === null ? null : String(body.assigneeId),
         parentId: body.parentId === undefined ? undefined : body.parentId === null ? null : String(body.parentId),
+        priority: typeof body.priority === "string" ? body.priority : undefined,
+        dueAt: body.dueAt === undefined ? undefined : body.dueAt === null || body.dueAt === "" ? null : String(body.dueAt),
+        labels: Array.isArray(body.labels)
+          ? body.labels.map(String)
+          : typeof body.labels === "string"
+            ? body.labels.split(",").map((item: string) => item.trim()).filter(Boolean)
+            : undefined,
+        estimate: body.estimate === undefined ? undefined : body.estimate === null || body.estimate === "" ? null : Number(body.estimate),
+        flagged: typeof body.flagged === "boolean" ? body.flagged : undefined,
       });
       send(res, 200, { ok: true });
       return true;
@@ -457,6 +505,14 @@ export async function dispatchEnterpriseApi(
           }),
         },
       );
+      return true;
+    }
+    if (action === "watch" && method === "POST") {
+      send(res, 200, ws.watchIssue(actor, issueId));
+      return true;
+    }
+    if (action === "watch" && method === "DELETE") {
+      send(res, 200, ws.unwatchIssue(actor, issueId));
       return true;
     }
   }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { listenEnterpriseHttp } from "../src/enterprise-http.js";
 import { seedEnterpriseProductFixture } from "../src/enterprise-shell.js";
+import { paperCanvasMarkup, paperCommentPin, paperStickyColor } from "../src/enterprise-paperdom.js";
 import { translateSqliteToPostgres } from "../src/enterprise-sql.js";
 import { postgresRuntimeAvailable } from "../src/enterprise-pg-sync.js";
 import { createTestOidc, EnterpriseWorkspace } from "../src/enterprise-workspace.js";
@@ -193,6 +194,10 @@ test("HTTP productizes docs, work, admin, import loss report, and notifications"
     const jqlBody = await jql.json() as { field?: string; reported?: boolean };
     assert.equal(jqlBody.field, "labels");
     assert.equal(jqlBody.reported, true);
+    const burn = await fetch(`${origin}/v1/sprints/${fixture.sprintId}/burndown`, { headers: auth }).then((res) => res.json()) as {
+      points: Array<{ remaining: number }>;
+    };
+    assert.ok(burn.points.length >= 1);
     await fetch(`${origin}/v1/sprints/${fixture.sprintId}/close`, { method: "POST", headers: auth, body: JSON.stringify({ carry: true }) });
     const admin = await fetch(`${origin}/v1/admin`, { headers: auth }).then((res) => res.json()) as { spaces: unknown[] };
     assert.ok(admin.spaces.length >= 1);
@@ -256,6 +261,17 @@ test("HTTP productizes docs, work, admin, import loss report, and notifications"
     const readBoard = await fetch(`${origin}/v1/artifacts/${board.id}`, { headers: auth }).then((res) => res.json()) as {
       document: { elements: Array<{ id: string; type: string }> };
     };
+    const firstId = readBoard.document.elements[0]?.id;
+    const moved = await fetch(`${origin}/v1/artifacts/${board.id}/elements/${firstId}`, {
+      method: "PATCH",
+      headers: auth,
+      body: JSON.stringify({ geometry: { x: 120, y: 80 } }),
+    });
+    assert.equal(moved.status, 200);
+    const afterMove = await fetch(`${origin}/v1/artifacts/${board.id}`, { headers: auth }).then((res) => res.json()) as {
+      document: { elements: Array<{ id: string; geometry: { x: number; y: number } }> };
+    };
+    assert.equal(afterMove.document.elements.find((el) => el.id === firstId)?.geometry.x, 120);
     const arrow = await fetch(`${origin}/v1/artifacts/${board.id}/elements`, {
       method: "POST",
       headers: auth,
@@ -269,6 +285,20 @@ test("HTTP productizes docs, work, admin, import loss report, and notifications"
     assert.ok(arrow.id);
     const marked = await fetch(`${origin}/v1/artifacts/${board.id}`, { headers: auth }).then((res) => res.json()) as { html: string };
     assert.match(marked.html, /pd-el-arrow/);
+    const exportReport = await fetch(`${origin}/v1/artifacts/${board.id}/export?target=svg`, { headers: auth }).then((res) => res.json()) as {
+      supported: string[];
+      completeOfficeFidelity: boolean;
+    };
+    assert.ok(exportReport.supported.includes("shape"));
+    assert.equal(exportReport.completeOfficeFidelity, false);
+    const reports = await fetch(`${origin}/v1/projects/${fixture.projectId}/reports`, { headers: auth }).then((res) => res.json()) as {
+      throughput: Array<{ completed: number }>;
+      cycleTime: Array<{ key: string }>;
+      cumulativeFlow: unknown[];
+    };
+    assert.ok(reports.throughput.some((point) => point.completed >= 1));
+    assert.ok(reports.cycleTime.some((row) => row.key.startsWith("ATLAS-")));
+    assert.ok(reports.cumulativeFlow.length >= 1);
   } finally {
     await server.close();
     ws.close();
@@ -279,6 +309,70 @@ test("sqlite-to-postgres translation keeps ignore/replace semantics", () => {
   assert.match(translateSqliteToPostgres("INSERT OR IGNORE INTO spaces(id) VALUES (?)"), /ON CONFLICT DO NOTHING/);
   assert.match(translateSqliteToPostgres("INSERT OR REPLACE INTO documents(id, title) VALUES (?, ?)"), /ON CONFLICT \(id\) DO UPDATE SET title = excluded.title/);
   assert.equal(translateSqliteToPostgres("SELECT * FROM issues WHERE id = ?"), "SELECT * FROM issues WHERE id = $1");
+});
+
+test("sticky notes keep color in PaperDOM markup", () => {
+  assert.equal(paperStickyColor("Sticky"), "yellow");
+  assert.equal(paperStickyColor("Sticky:pink"), "pink");
+  assert.equal(paperStickyColor("Sticky:green"), "green");
+  const html = paperCanvasMarkup({
+    id: "board",
+    title: "Notes",
+    schemaVersion: 1,
+    revision: 1,
+    elements: [
+      {
+        id: "note",
+        type: "shape",
+        geometry: { x: 8, y: 8, width: 120, height: 80 },
+        zIndex: 1,
+        text: "Risk",
+        altText: "Sticky:blue",
+      },
+    ],
+  });
+  assert.match(html, /pd-el-sticky-blue/);
+  assert.match(html, /data-sticky="blue"/);
+});
+
+test("quoted comments, flags, comment pins, and canvas delete are kernel-backed", () => {
+  assert.equal(paperCommentPin("Comment"), true);
+  assert.equal(paperCommentPin("Sticky:pink"), false);
+  const pin = paperCanvasMarkup({
+    id: "board",
+    title: "Notes",
+    schemaVersion: 1,
+    revision: 1,
+    elements: [
+      {
+        id: "pin",
+        type: "shape",
+        geometry: { x: 16, y: 16, width: 140, height: 64 },
+        zIndex: 1,
+        text: "Call this out in review",
+        altText: "Comment",
+      },
+    ],
+  });
+  assert.match(pin, /pd-el-comment/);
+  assert.match(pin, /data-comment="true"/);
+
+  const { ws, session } = harness();
+  try {
+    const fixture = seedEnterpriseProductFixture(ws, session.actor);
+    const shell = ws.workspaceShell(session.actor);
+    assert.ok(shell.issues.some((issue) => issue.flagged && /leak/i.test(issue.summary)));
+    assert.ok(shell.issues.some((issue) => issue.typeKey === "subtask" && issue.parentId));
+    ws.addDocumentComment(session.actor, fixture.documentId, "Need a sharper claim", "One login should take a team");
+    const comments = ws.listDocumentComments(session.actor, fixture.documentId);
+    assert.ok(comments.some((comment) => comment.quote === "One login should take a team"));
+    assert.ok(shell.issues.some((issue) => issue.watching && /PaperDOM/i.test(issue.summary)));
+    ws.deleteArtifactElement(session.actor, fixture.artifactId, "note-comment");
+    const board = ws.readArtifact(session.actor, fixture.artifactId, "draft");
+    assert.equal(board.document.elements.some((element) => element.id === "note-comment"), false);
+  } finally {
+    ws.close();
+  }
 });
 
 test("postgres can be a running store when a runtime is available", async (t) => {

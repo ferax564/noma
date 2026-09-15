@@ -58,6 +58,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
         <p id="login-error" class="ew-error" role="alert"></p>
       </div>
     </div>
+    <button type="button" id="present-exit" hidden>Exit present</button>
     <div id="workspace-shell" class="ew-shell">
       <header class="ew-topbar">
         <button type="button" class="ew-app-switcher" aria-label="Switch applications" disabled>
@@ -81,7 +82,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
           <span>Search</span>
           <span class="ew-search-box">
             <span data-lucide="search"></span>
-            <input id="workspace-search" type="search" placeholder="Search" autocomplete="off" />
+            <input id="workspace-search" type="search" placeholder="Search pages and work" autocomplete="off" />
           </span>
         </label>
         <div class="ew-top-actions">
@@ -117,18 +118,39 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <button type="button" data-cmd="bold" aria-label="Bold"><span data-lucide="bold"></span></button>
               <button type="button" data-cmd="italic" aria-label="Italic"><span data-lucide="italic"></span></button>
               <button type="button" data-cmd="strike" aria-label="Strikethrough"><span data-lucide="strikethrough"></span></button>
+              <button type="button" data-cmd="underline" aria-label="Underline"><span data-lucide="underline"></span></button>
+              <button type="button" data-cmd="align-left" aria-label="Align left"><span data-lucide="align-left"></span></button>
+              <button type="button" data-cmd="align-center" aria-label="Align center"><span data-lucide="align-center"></span></button>
+              <button type="button" data-cmd="align-right" aria-label="Align right"><span data-lucide="align-right"></span></button>
               <span class="ew-toolbar-sep" aria-hidden="true"></span>
               <button type="button" data-cmd="heading" data-level="1" aria-label="Heading 1"><span data-lucide="heading-1"></span></button>
               <button type="button" data-cmd="heading" data-level="2" aria-label="Heading 2"><span data-lucide="heading-2"></span></button>
               <button type="button" data-cmd="bullet" aria-label="Bullet list"><span data-lucide="list"></span></button>
               <button type="button" data-cmd="ordered" aria-label="Ordered list"><span data-lucide="list-ordered"></span></button>
+              <button type="button" data-cmd="quote" aria-label="Quote"><span data-lucide="quote"></span></button>
+              <button type="button" data-cmd="code" aria-label="Code block"><span data-lucide="code"></span></button>
+              <button type="button" data-cmd="task" aria-label="Action items"><span data-lucide="list-checks"></span></button>
+              <button type="button" data-cmd="table" aria-label="Insert table"><span data-lucide="table"></span></button>
+              <button type="button" data-cmd="panel" data-kind="info" aria-label="Info panel"><span data-lucide="info"></span></button>
+              <button type="button" data-cmd="panel" data-kind="warning" aria-label="Warning panel"><span data-lucide="alert-triangle"></span></button>
               <span class="ew-toolbar-sep" aria-hidden="true"></span>
               <span id="collab-status" class="ew-chip">idle</span>
-              <label for="insert-image"><span data-lucide="image"></span> Insert image<input id="insert-image" type="file" accept="image/*" /></label>
-              <label for="insert-video"><span data-lucide="video"></span> Insert video<input id="insert-video" type="file" accept="video/*" /></label>
+              <label class="ew-file" for="insert-image"><span data-lucide="image"></span> Image<input id="insert-image" type="file" accept="image/*" /></label>
+              <label class="ew-file" for="insert-video"><span data-lucide="video"></span> Video<input id="insert-video" type="file" accept="video/*" /></label>
               <button id="doc-publish" type="button">Publish</button>
+              <button type="button" id="page-find-open" aria-label="Find in page"><span data-lucide="search"></span> Find</button>
+              <button type="button" id="page-present" aria-label="Present page"><span data-lucide="monitor-play"></span> Present</button>
+            </div>
+            <div id="page-find" class="ew-find" hidden>
+              <label class="ew-sr" for="page-find-input">Find in page</label>
+              <input id="page-find-input" type="search" placeholder="Find in page" autocomplete="off" />
+              <span id="page-find-count" class="ew-find-count">0 of 0</span>
+              <button type="button" id="page-find-prev" aria-label="Previous match">Prev</button>
+              <button type="button" id="page-find-next" aria-label="Next match">Next</button>
+              <button type="button" id="page-find-close" aria-label="Close find">Close</button>
             </div>
             <article class="ew-paper">
+              <div id="doc-cover" class="ew-cover" hidden></div>
               <nav id="doc-crumbs" class="ew-crumbs" aria-label="Breadcrumb"></nav>
               <div class="ew-title-row">
                 <span class="ew-page-icon" data-lucide="file-text"></span>
@@ -137,6 +159,8 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <div class="ew-byline">
                 <span id="doc-kicker" class="ew-lozenge">Draft</span>
                 <div id="doc-byline"></div>
+                <div id="doc-count" class="ew-count" aria-live="polite">0 words</div>
+                <div id="doc-presence" class="ew-presence" aria-label="People on this page"></div>
               </div>
               <div id="editor" class="ew-editor"></div>
               <div id="doc-media" class="ew-media-strip" aria-label="Page media"></div>
@@ -147,6 +171,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <div class="ew-comment ew-comment-compose">
                 <span id="comment-avatar" class="ew-avatar lg" aria-hidden="true">?</span>
                 <div>
+                  <p id="doc-comment-quote" class="ew-comment-quote" hidden></p>
                   <label for="doc-comment-input">Comment
                     <textarea id="doc-comment-input" rows="2" placeholder="Write a comment. Mention with @alice"></textarea>
                   </label>
@@ -160,6 +185,29 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <p class="ew-kicker">Whiteboards</p>
               <h1 id="visual-title">Untitled board</h1>
               <div id="visual-toolbar" class="ew-toolbar ew-visual-toolbar" role="toolbar" aria-label="Canvas tools">
+                <button type="button" id="tool-select" data-tool="select" aria-pressed="true">Select</button>
+                <button type="button" id="tool-pan" data-tool="pan" aria-pressed="false">Pan</button>
+                <button type="button" id="tool-sticky" data-tool="sticky" aria-pressed="false">Sticky</button>
+                <span id="sticky-colors" class="ew-swatches" role="group" aria-label="Sticky color">
+                  <button type="button" id="sticky-yellow" class="ew-swatch" data-sticky-color="yellow" aria-label="Yellow sticky" aria-pressed="true"></button>
+                  <button type="button" id="sticky-pink" class="ew-swatch" data-sticky-color="pink" aria-label="Pink sticky" aria-pressed="false"></button>
+                  <button type="button" id="sticky-green" class="ew-swatch" data-sticky-color="green" aria-label="Green sticky" aria-pressed="false"></button>
+                  <button type="button" id="sticky-blue" class="ew-swatch" data-sticky-color="blue" aria-label="Blue sticky" aria-pressed="false"></button>
+                </span>
+                <button type="button" id="tool-connect" data-tool="connect" aria-pressed="false">Connect</button>
+                <button type="button" id="tool-comment" data-tool="comment" aria-pressed="false"><span data-lucide="message-square"></span> Comment</button>
+                <button type="button" id="canvas-undo" aria-label="Undo canvas move"><span data-lucide="undo-2"></span> Undo</button>
+                <button type="button" id="canvas-delete" aria-label="Delete selected frame"><span data-lucide="trash-2"></span> Delete</button>
+                <button type="button" id="canvas-front" aria-label="Bring selected frame to front">Front</button>
+                <button type="button" id="canvas-back" aria-label="Send selected frame to back">Back</button>
+                <button type="button" id="canvas-export" aria-label="Export fidelity report"><span data-lucide="download"></span> Export</button>
+                <button type="button" id="canvas-present" aria-label="Present board"><span data-lucide="monitor-play"></span> Present</button>
+                <span class="ew-toolbar-sep" aria-hidden="true"></span>
+                <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
+                <span id="zoom-label">100%</span>
+                <button type="button" id="zoom-in" aria-label="Zoom in"><span data-lucide="zoom-in"></span></button>
+                <button type="button" id="zoom-fit" aria-label="Fit canvas"><span data-lucide="maximize-2"></span></button>
+                <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <label for="new-board-title">Board title<input id="new-board-title" placeholder="Q3 review" /></label>
                 <button type="button" id="create-board">New presentation</button>
                 <button type="button" id="add-frame">Add frame</button>
@@ -170,8 +218,8 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                   <select id="arrow-to"></select>
                 </label>
                 <button type="button" id="add-arrow">Add arrow</button>
-                <label for="canvas-image">Canvas image<input id="canvas-image" type="file" accept="image/*" /></label>
-                <label for="canvas-video">Canvas video<input id="canvas-video" type="file" accept="video/*" /></label>
+                <label class="ew-file" for="canvas-image">Image<input id="canvas-image" type="file" accept="image/*" /></label>
+                <label class="ew-file" for="canvas-video">Video<input id="canvas-video" type="file" accept="video/*" /></label>
               </div>
             </div>
             <div id="visual-stage" class="ew-visual-stage"></div>
@@ -182,8 +230,29 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <h1 id="work-title">Work</h1>
               <div id="sprint-bar" class="ew-sprint"></div>
               <label class="ew-jql" for="jql-input">JQL
-                <input id="jql-input" type="search" placeholder="status = in_progress AND assignee = currentUser()" autocomplete="off" />
+                <input id="jql-input" type="search" placeholder="status = todo AND assignee = currentUser()" autocomplete="off" />
               </label>
+              <label class="ew-jql" for="board-search">Search issues
+                <input id="board-search" type="search" placeholder="Search issues" autocomplete="off" />
+              </label>
+              <div id="board-filters" class="ew-filters" role="group" aria-label="Board filters">
+                <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All issues</button>
+                <button type="button" id="filter-mine" data-filter="mine" aria-pressed="false">Assigned to me</button>
+                <button type="button" id="filter-unassigned" data-filter="unassigned" aria-pressed="false">Unassigned</button>
+                <button type="button" id="filter-overdue" data-filter="overdue" aria-pressed="false">Overdue</button>
+                <button type="button" id="filter-flagged" data-filter="flagged" aria-pressed="false"><span data-lucide="flag"></span> Flagged</button>
+                <button type="button" id="filter-watching" data-filter="watching" aria-pressed="false">Watching</button>
+                <label class="ew-sr" for="filter-epic">Epic</label>
+                <select id="filter-epic" aria-label="Filter by epic">
+                  <option value="">All epics</option>
+                </select>
+                <button type="button" id="swimlane-epic" aria-pressed="false">Group by epic</button>
+                <button type="button" id="view-board" aria-pressed="true">Board</button>
+                <button type="button" id="view-list" aria-pressed="false">List</button>
+                <button type="button" id="view-reports" aria-pressed="false"><span data-lucide="chart-column"></span> Reports</button>
+                <button type="button" id="view-backlog" aria-pressed="false"><span data-lucide="list-todo"></span> Backlog</button>
+              </div>
+              <div id="type-filters" class="ew-filters" role="group" aria-label="Issue types"></div>
               <p id="jql-error" class="ew-error" role="alert"></p>
             </div>
             <div id="work-board" class="ew-board"></div>
@@ -202,6 +271,17 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
           <div id="inspector" class="ew-inspector-body"></div>
           <div id="visual-outline" class="ew-outline"></div>
         </aside>
+      </div>
+    </div>
+    <div id="command-palette" class="ew-palette" hidden>
+      <div class="ew-palette-card" role="dialog" aria-modal="true" aria-labelledby="command-heading">
+        <h2 id="command-heading" class="ew-sr">Command palette</h2>
+        <label class="ew-palette-search" for="command-input">
+          <span data-lucide="search"></span>
+          <input id="command-input" type="search" placeholder="Jump to a page, issue, person, or command" autocomplete="off" />
+        </label>
+        <div id="command-list" class="ew-palette-list" role="listbox"></div>
+        <p class="ew-palette-hint">↑↓ move · Enter open · Esc close · Ctrl/⌘K</p>
       </div>
     </div>
     <aside id="notify-drawer" class="ew-drawer" hidden>
@@ -271,11 +351,12 @@ title: Q3 strategy memo
 
 The hosted workspace is the product surface: documents, canvases, and work share one session.
 
+## Why this surface
+
 ::claim{id="north-star" confidence=0.9}
 One login should take a team from a brief to a board without changing tools.
 ::
 
-{#p}
 Tiptap persists through Yjs only after the host acknowledges the update. Visual frames keep geometry. Issues inherit the same identity and grants.
 `,
   });
@@ -391,6 +472,39 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
         imageAssetId: image.assetId,
       },
     },
+    {
+      op: "insert_element",
+      element: {
+        id: "note-risk",
+        type: "shape",
+        geometry: { x: 870, y: 140, width: 188, height: 132 },
+        zIndex: 5,
+        text: "Keep the grant graph in one place",
+        altText: "Sticky",
+      },
+    },
+    {
+      op: "insert_element",
+      element: {
+        id: "note-next",
+        type: "shape",
+        geometry: { x: 870, y: 292, width: 188, height: 132 },
+        zIndex: 5,
+        text: "Color the remaining risks",
+        altText: "Sticky:pink",
+      },
+    },
+    {
+      op: "insert_element",
+      element: {
+        id: "note-comment",
+        type: "shape",
+        geometry: { x: 596, y: 40, width: 160, height: 72 },
+        zIndex: 6,
+        text: "Call this out in review",
+        altText: "Comment",
+      },
+    },
   ];
   ws.applyArtifactCommands(actor, artifactId, commands, 0);
   const projectId = ws.createProject(actor, { key: "ATLAS", name: "Atlas", spaceId });
@@ -425,6 +539,12 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
   ws.startSprint(actor, sprintId);
   ws.setIssueSprint(actor, collab.id, sprintId);
   ws.setIssueSprint(actor, canvas.id, sprintId);
+  ws.updateIssue(actor, canvas.id, { dueAt: "2026-09-22", priority: "high", labels: ["canvas", "urgent"], estimate: 5, assigneeId: actor.principalId });
+  ws.updateIssue(actor, epic.id, { dueAt: "2026-01-15", labels: ["shell"] });
+  ws.updateIssue(actor, leak.id, { flagged: true });
+  ws.createIssue(actor, { projectId, typeKey: "subtask", summary: "Delete frames from the canvas", parentId: canvas.id });
+  ws.watchIssue(actor, canvas.id);
+  ws.addExternalLink(actor, { fromKind: "issue", fromId: collab.id, provider: "issue", issueId: canvas.id, label: "blocks" });
   ws.addIssueComment(actor, collab.id, "Hosted collab is on the sprint.");
   ws.logWork(actor, { issueId: collab.id, durationSeconds: 3600, note: "Wired persist-before-ack" });
   ws.addExternalLink(actor, {

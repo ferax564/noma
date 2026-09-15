@@ -57,6 +57,7 @@ import {
   semanticOutline,
   type PaperDocument,
   type PaperElement,
+  type PaperGeometry,
   type VisualCommand,
 } from "./enterprise-paperdom.js";
 import { EnterpriseStore } from "./enterprise-store.js";
@@ -558,15 +559,15 @@ export class EnterpriseWorkspace {
     return { hash: row.hash };
   }
 
-  addDocumentComment(actor: ActorContext, documentId: string, body: string): { id: string; mentions: string[] } {
+  addDocumentComment(actor: ActorContext, documentId: string, body: string, quote?: string): { id: string; mentions: string[] } {
     this.requireRole(actor, "document", documentId, "viewer");
     const mentions = this.resolveMentions(actor.tenantId, body);
     const id = this.id();
     this.store.db
       .prepare(
-        "INSERT INTO document_comments(id, document_id, body, mentions_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO document_comments(id, document_id, body, quote, mentions_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(id, documentId, body, JSON.stringify(mentions), actor.principalId, this.now());
+      .run(id, documentId, body, quote?.trim() || null, JSON.stringify(mentions), actor.principalId, this.now());
     const doc = this.documentRow(documentId, actor.tenantId);
     this.notify(actor.tenantId, doc.owner_id ?? actor.principalId, "New comment", body.slice(0, 180), "document", documentId);
     for (const mention of mentions) {
@@ -581,7 +582,7 @@ export class EnterpriseWorkspace {
     this.requireRole(actor, "document", documentId, "viewer");
     return this.store.db
       .prepare(
-        `SELECT c.id, c.body, c.mentions_json AS mentionsJson, c.created_by AS createdBy, c.created_at AS createdAt, p.name AS authorName
+        `SELECT c.id, c.body, c.quote, c.mentions_json AS mentionsJson, c.created_by AS createdBy, c.created_at AS createdAt, p.name AS authorName
          FROM document_comments c JOIN principals p ON p.id = c.created_by
          WHERE c.document_id = ? ORDER BY c.created_at`,
       )
@@ -660,7 +661,7 @@ export class EnterpriseWorkspace {
     },
   ): string {
     this.requireRole(actor, input.fromKind, input.fromId, "editor");
-    let url = input.url ?? null;
+    const url = input.url ?? null;
     let targetKind: ResourceKind | null = null;
     let targetId: string | null = null;
     let label = input.label ?? "";
@@ -778,6 +779,40 @@ export class EnterpriseWorkspace {
     return { id, revision: applied.revision };
   }
 
+  updateArtifactElement(
+    actor: ActorContext,
+    artifactId: string,
+    elementId: string,
+    patch: { geometry?: Partial<PaperGeometry>; text?: string; altText?: string; zIndex?: number },
+  ): { revision: number; hash: string } {
+    const read = this.readArtifact(actor, artifactId, "draft");
+    const current = read.document.elements.find((element) => element.id === elementId);
+    if (!current) throw new EnterpriseError("not_found", "element not found");
+    return this.applyArtifactCommands(
+      actor,
+      artifactId,
+      [
+        {
+          op: "update_element",
+          elementId,
+          patch: {
+            text: patch.text,
+            altText: patch.altText,
+            zIndex: patch.zIndex,
+            geometry: patch.geometry ? { ...current.geometry, ...patch.geometry } : undefined,
+          },
+        },
+      ],
+      read.document.revision,
+    );
+  }
+
+  deleteArtifactElement(actor: ActorContext, artifactId: string, elementId: string): { revision: number; hash: string } {
+    const read = this.readArtifact(actor, artifactId, "draft");
+    if (!read.document.elements.some((element) => element.id === elementId)) throw new EnterpriseError("not_found", "element not found");
+    return this.applyArtifactCommands(actor, artifactId, [{ op: "delete_element", elementId }], read.document.revision);
+  }
+
   markNotificationRead(actor: ActorContext, notificationId: string): void {
     this.store.db
       .prepare("UPDATE notifications SET read_at = ? WHERE id = ? AND tenant_id = ? AND user_id = ?")
@@ -847,8 +882,14 @@ export class EnterpriseWorkspace {
       estimate: number | null;
       assigneeId: string | null;
       parentId: string | null;
+      reporterId: string | null;
       rank: string;
       sprintId: string | null;
+      priority: string;
+      dueAt: string | null;
+      labels: string[];
+      flagged: boolean;
+      watching: boolean;
     }>;
     principals: Array<{ id: string; name: string; kind: PrincipalKind; email: string | null }>;
     boards: Array<{ id: string; projectId: string; name: string; kind: string }>;
@@ -901,10 +942,17 @@ export class EnterpriseWorkspace {
     )
       .filter((row) => this.hasRole(actor, "project", row.id, "viewer"))
       .map((row) => ({ ...row, statuses: this.activeWorkflow(row.id).statuses }));
+    const watchingIds = new Set(
+      (
+        this.store.db
+          .prepare("SELECT issue_id AS issueId FROM issue_watchers WHERE tenant_id = ? AND principal_id = ?")
+          .all(actor.tenantId, actor.principalId) as Array<{ issueId: string }>
+      ).map((row) => row.issueId),
+    );
     const issues = (
       this.store.db
         .prepare(
-          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId
+          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId, i.priority, i.due_at AS dueAt, i.labels_json AS labelsJson, i.flagged
            FROM issues i JOIN issue_types t ON t.id = i.type_id
            WHERE i.tenant_id = ? ORDER BY i.rank`,
         )
@@ -923,6 +971,10 @@ export class EnterpriseWorkspace {
         parentId: string | null;
         rank: string;
         sprintId: string | null;
+        priority: string;
+        dueAt: string | null;
+        labelsJson: string;
+        flagged: number | null;
       }>
     )
       .filter((row) =>
@@ -944,8 +996,21 @@ export class EnterpriseWorkspace {
         estimate: row.estimate,
         assigneeId: row.assigneeId,
         parentId: row.parentId,
+        reporterId: row.reporterId,
         rank: row.rank,
         sprintId: row.sprintId,
+        priority: row.priority,
+        dueAt: row.dueAt,
+        flagged: row.flagged === 1,
+        watching: watchingIds.has(row.id),
+        labels: (() => {
+          try {
+            const parsed = JSON.parse(row.labelsJson || "[]") as unknown;
+            return Array.isArray(parsed) ? parsed.map(String) : [];
+          } catch {
+            return [];
+          }
+        })(),
       }));
     const principals = this.store.db
       .prepare("SELECT id, name, kind, email FROM principals WHERE tenant_id = ? AND active = 1 ORDER BY name")
@@ -1347,7 +1412,7 @@ export class EnterpriseWorkspace {
   updateIssue(
     actor: ActorContext,
     issueId: string,
-    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[] },
+    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[]; priority?: string; dueAt?: string | null; estimate?: number | null; flagged?: boolean },
   ): void {
     const issue = this.issueRow(issueId, actor.tenantId);
     this.requireRole(actor, "project", issue.project_id, "editor");
@@ -1357,10 +1422,15 @@ export class EnterpriseWorkspace {
       };
       this.assertHierarchy(patch.parentId, type.hierarchy);
     }
+    if (patch.priority && !["lowest", "low", "medium", "high", "highest"].includes(patch.priority)) {
+      throw new EnterpriseError("invalid", "unknown priority");
+    }
     this.store.db
       .prepare(
         `UPDATE issues SET summary = COALESCE(?, summary), description = COALESCE(?, description), assignee_id = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
-         parent_id = CASE WHEN ? = 1 THEN ? ELSE parent_id END, labels_json = COALESCE(?, labels_json), updated_at = ? WHERE id = ?`,
+         parent_id = CASE WHEN ? = 1 THEN ? ELSE parent_id END, labels_json = COALESCE(?, labels_json), priority = COALESCE(?, priority),
+         due_at = CASE WHEN ? = 1 THEN ? ELSE due_at END, estimate = CASE WHEN ? = 1 THEN ? ELSE estimate END,
+         flagged = CASE WHEN ? = 1 THEN ? ELSE flagged END, updated_at = ? WHERE id = ?`,
       )
       .run(
         patch.summary ?? null,
@@ -1370,6 +1440,13 @@ export class EnterpriseWorkspace {
         patch.parentId === undefined ? 0 : 1,
         patch.parentId ?? null,
         patch.labels ? JSON.stringify(patch.labels) : null,
+        patch.priority ?? null,
+        patch.dueAt === undefined ? 0 : 1,
+        patch.dueAt ?? null,
+        patch.estimate === undefined ? 0 : 1,
+        patch.estimate ?? null,
+        patch.flagged === undefined ? 0 : 1,
+        patch.flagged ? 1 : 0,
         this.now(),
         issueId,
       );
@@ -1386,6 +1463,13 @@ export class EnterpriseWorkspace {
     const mentions = this.resolveMentions(actor.tenantId, body);
     for (const mention of mentions) {
       this.notify(actor.tenantId, mention, "Mentioned on an issue", body.slice(0, 180), "issue", issueId);
+    }
+    const watchers = this.store.db
+      .prepare("SELECT principal_id AS principalId FROM issue_watchers WHERE issue_id = ?")
+      .all(issueId) as Array<{ principalId: string }>;
+    for (const watcher of watchers) {
+      if (watcher.principalId === actor.principalId || mentions.includes(watcher.principalId)) continue;
+      this.notify(actor.tenantId, watcher.principalId, "Watched issue updated", body.slice(0, 180), "issue", issueId);
     }
     this.issueEvent(issueId, actor.principalId, "commented", { id });
     return id;
@@ -1412,6 +1496,7 @@ export class EnterpriseWorkspace {
       name: string;
       hierarchy: string;
     };
+    const watchers = this.listIssueWatchers(actor, issueId);
     return {
       ...issue,
       typeKey: type.key,
@@ -1420,7 +1505,57 @@ export class EnterpriseWorkspace {
       comments: this.listIssueComments(actor, issueId),
       worklogs: this.listWorklogs(actor, issueId),
       transitions: this.listIssueTransitions(actor, issueId),
+      events: this.listIssueEvents(actor, issueId),
+      watchers,
+      watching: watchers.some((watcher) => watcher.id === actor.principalId),
     };
+  }
+
+  listIssueWatchers(actor: ActorContext, issueId: string): Array<{ id: string; name: string }> {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    return this.store.db
+      .prepare(
+        `SELECT p.id, p.name FROM issue_watchers w JOIN principals p ON p.id = w.principal_id
+         WHERE w.issue_id = ? ORDER BY p.name`,
+      )
+      .all(issueId) as Array<{ id: string; name: string }>;
+  }
+
+  watchIssue(actor: ActorContext, issueId: string): { watching: true } {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    this.store.db
+      .prepare("INSERT OR IGNORE INTO issue_watchers(issue_id, principal_id, tenant_id, created_at) VALUES (?, ?, ?, ?)")
+      .run(issueId, actor.principalId, actor.tenantId, this.now());
+    this.issueEvent(issueId, actor.principalId, "watched", {});
+    return { watching: true };
+  }
+
+  unwatchIssue(actor: ActorContext, issueId: string): { watching: false } {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    this.store.db.prepare("DELETE FROM issue_watchers WHERE issue_id = ? AND principal_id = ?").run(issueId, actor.principalId);
+    this.issueEvent(issueId, actor.principalId, "unwatched", {});
+    return { watching: false };
+  }
+
+  listIssueEvents(actor: ActorContext, issueId: string): Array<{ action: string; detail: unknown; createdAt: string; actorName: string }> {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    const rows = this.store.db
+      .prepare(
+        `SELECT e.action, e.detail_json AS detailJson, e.created_at AS createdAt, p.name AS actorName
+         FROM issue_events e JOIN principals p ON p.id = e.actor_id
+         WHERE e.issue_id = ? ORDER BY e.created_at DESC LIMIT 24`,
+      )
+      .all(issueId) as Array<{ action: string; detailJson: string; createdAt: string; actorName: string }>;
+    return rows.map((row) => ({
+      action: row.action,
+      detail: JSON.parse(row.detailJson) as unknown,
+      createdAt: row.createdAt,
+      actorName: row.actorName,
+    }));
   }
 
   listIssueTransitions(actor: ActorContext, issueId: string): Array<{ id: string; from: string; to: string; requiredFields: string[] }> {
@@ -1498,8 +1633,10 @@ export class EnterpriseWorkspace {
   }
 
   burndown(actor: ActorContext, sprintId: string): Array<{ at: string; remaining: number }> {
-    const sprint = this.store.db.prepare("SELECT * FROM sprints WHERE id = ?").get(sprintId) as { board_id: string; start_at: string | null };
-    const board = this.store.db.prepare("SELECT project_id FROM boards WHERE id = ?").get(sprint.board_id) as { project_id: string };
+    const sprint = this.store.db.prepare("SELECT * FROM sprints WHERE id = ?").get(sprintId) as { board_id: string; start_at: string | null } | undefined;
+    if (!sprint) throw new EnterpriseError("not_found", "sprint not found");
+    const board = this.store.db.prepare("SELECT project_id FROM boards WHERE id = ?").get(sprint.board_id) as { project_id: string } | undefined;
+    if (!board) throw new EnterpriseError("not_found", "board not found");
     this.requireRole(actor, "project", board.project_id, "viewer");
     const events = this.store.db
       .prepare(
@@ -1942,6 +2079,26 @@ export class EnterpriseWorkspace {
     return cumulativeFlowFromEvents(this.projectIssueEvents(projectId));
   }
 
+  projectReports(actor: ActorContext, projectId: string) {
+    this.requireRole(actor, "project", projectId, "viewer");
+    const events = this.projectIssueEvents(projectId);
+    const issues = this.store.db.prepare("SELECT id, key, summary FROM issues WHERE project_id = ? AND tenant_id = ?").all(projectId, actor.tenantId) as Array<{
+      id: string;
+      key: string;
+      summary: string;
+    }>;
+    const byId = new Map(issues.map((issue) => [issue.id, issue]));
+    return {
+      throughput: throughputFromEvents(events),
+      cycleTime: cycleTimeFromEvents(events).map((row) => ({
+        ...row,
+        key: byId.get(row.issueId)?.key ?? row.issueId,
+        summary: byId.get(row.issueId)?.summary ?? "",
+      })),
+      cumulativeFlow: cumulativeFlowFromEvents(events),
+    };
+  }
+
   bulkEditPreview(
     actor: ActorContext,
     issueIds: string[],
@@ -2168,8 +2325,11 @@ export class EnterpriseWorkspace {
       statuses: DEFAULT_STATUSES,
       transitions: [
         { id: "start", from: "backlog", to: "todo" },
+        { id: "unstart", from: "todo", to: "backlog" },
         { id: "begin", from: "todo", to: "in_progress" },
+        { id: "pause", from: "in_progress", to: "todo" },
         { id: "review", from: "in_progress", to: "in_review" },
+        { id: "unreview", from: "in_review", to: "in_progress" },
         { id: "complete", from: "in_review", to: "done", requiredFields: ["resolution"] },
         { id: "cancel", from: "in_progress", to: "cancelled", requireDecision: true },
         { id: "reopen", from: "done", to: "todo" },
@@ -2357,6 +2517,7 @@ export class EnterpriseWorkspace {
       else if (field === "assignee") clauses.push({ type: "eq", field: "assignee_id", value });
       else if (field === "issuetype" || field === "type") clauses.push({ type: "eq", field: "type_id", value });
       else if (field === "priority") clauses.push({ type: "eq", field: "priority", value });
+      else if (field === "duedate" || field === "due") clauses.push({ type: "eq", field: "due_at", value });
       else throw new EnterpriseError("invalid", `unsupported JQL field ${field}`, { field, reported: true });
     }
     return { type: "and", clauses };
