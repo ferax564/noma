@@ -35835,6 +35835,15 @@ ${err.toString()}`);
     ["path", { d: "M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/list-todo.mjs
+  var ListTodo = [
+    ["path", { d: "M13 5h8" }],
+    ["path", { d: "M13 12h8" }],
+    ["path", { d: "M13 19h8" }],
+    ["path", { d: "m3 17 2 2 4-4" }],
+    ["rect", { x: "3", y: "4", width: "6", height: "6", rx: "1" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/list.mjs
   var List = [
     ["path", { d: "M3 5h.01" }],
@@ -35861,6 +35870,19 @@ ${err.toString()}`);
         d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"
       }
     ]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/monitor-play.mjs
+  var MonitorPlay = [
+    [
+      "path",
+      {
+        d: "M15.033 9.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56V7.648a.645.645 0 0 1 .967-.56z"
+      }
+    ],
+    ["path", { d: "M12 17v4" }],
+    ["path", { d: "M8 21h8" }],
+    ["rect", { x: "2", y: "3", width: "20", height: "14", rx: "2" }]
   ];
 
   // node_modules/lucide/dist/esm/icons/moon.mjs
@@ -36084,8 +36106,10 @@ ${err.toString()}`);
     List,
     ListChecks,
     ListOrdered,
+    ListTodo,
     Maximize2,
     MessageSquare,
+    MonitorPlay,
     Moon,
     MousePointer2,
     Plus,
@@ -36531,9 +36555,11 @@ lucide/dist/esm/icons/lightbulb.mjs:
 lucide/dist/esm/icons/link.mjs:
 lucide/dist/esm/icons/list-checks.mjs:
 lucide/dist/esm/icons/list-ordered.mjs:
+lucide/dist/esm/icons/list-todo.mjs:
 lucide/dist/esm/icons/list.mjs:
 lucide/dist/esm/icons/maximize-2.mjs:
 lucide/dist/esm/icons/message-square.mjs:
+lucide/dist/esm/icons/monitor-play.mjs:
 lucide/dist/esm/icons/moon.mjs:
 lucide/dist/esm/icons/mouse-pointer-2.mjs:
 lucide/dist/esm/icons/plus.mjs:

@@ -36154,6 +36154,15 @@ ${err.toString()}`);
     ["path", { d: "M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/list-todo.mjs
+  var ListTodo = [
+    ["path", { d: "M13 5h8" }],
+    ["path", { d: "M13 12h8" }],
+    ["path", { d: "M13 19h8" }],
+    ["path", { d: "m3 17 2 2 4-4" }],
+    ["rect", { x: "3", y: "4", width: "6", height: "6", rx: "1" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/list.mjs
   var List = [
     ["path", { d: "M3 5h.01" }],
@@ -36180,6 +36189,19 @@ ${err.toString()}`);
         d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"
       }
     ]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/monitor-play.mjs
+  var MonitorPlay = [
+    [
+      "path",
+      {
+        d: "M15.033 9.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56V7.648a.645.645 0 0 1 .967-.56z"
+      }
+    ],
+    ["path", { d: "M12 17v4" }],
+    ["path", { d: "M8 21h8" }],
+    ["rect", { x: "2", y: "3", width: "20", height: "14", rx: "2" }]
   ];
 
   // node_modules/lucide/dist/esm/icons/moon.mjs
@@ -36472,8 +36494,10 @@ ${err.toString()}`);
     List,
     ListChecks,
     ListOrdered,
+    ListTodo,
     Maximize2,
     MessageSquare,
+    MonitorPlay,
     Moon,
     MousePointer2,
     Plus,
@@ -37366,6 +37390,7 @@ ${err.toString()}`);
   var findIndex = 0;
   var reportsToken = 0;
   var exportTarget = "svg";
+  var presenting = false;
   var $2 = (id2) => {
     const node = document.getElementById(id2);
     if (!node) throw new Error(`missing #${id2}`);
@@ -37408,6 +37433,13 @@ ${err.toString()}`);
   }
   function currentProject() {
     return payload?.projects.find((project) => project.id === selectedProjectId) ?? payload?.projects[0];
+  }
+  function activeSprint() {
+    if (!payload) return void 0;
+    const project = currentProject();
+    const boards = payload.boards.filter((board2) => !project || board2.projectId === project.id);
+    const board = boards[0];
+    return payload.sprints.find((sprint) => sprint.state === "active" && (!board || sprint.boardId === board.id));
   }
   function currentSpaceId() {
     return selectedSpaceId || payload?.spaces[0]?.id || "";
@@ -37529,8 +37561,9 @@ ${err.toString()}`);
       <text class="ew-chart-label" x="${pad.l - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${value}</text>`;
     });
     const bars = points.length === 0 ? `<text class="ew-chart-label" x="${width / 2}" y="${pad.t + innerH / 2}" text-anchor="middle">No completions yet</text>` : points.map((point, index) => {
-      const slot = innerW / points.length;
-      const barW = slot * 0.62;
+      const slots = Math.max(points.length, 6);
+      const slot = innerW / slots;
+      const barW = Math.min(48, slot * 0.62);
       const x = pad.l + index * slot + (slot - barW) / 2;
       const h = Math.max(2, point.value / max3 * innerH);
       const y = pad.t + innerH - h;
@@ -37575,6 +37608,31 @@ ${err.toString()}`);
     <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml3(lastLabel)}</text>
   </svg>`;
   }
+  function lineChartSvg(points, ariaLabel) {
+    const width = 640;
+    const height = 220;
+    const pad = { l: 40, r: 12, t: 16, b: 36 };
+    const innerW = width - pad.l - pad.r;
+    const innerH = height - pad.t - pad.b;
+    const sampled = sampleSeries(points, 48);
+    if (sampled.length === 0) {
+      return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+      <text class="ew-chart-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No sprint remaining yet</text>
+    </svg>`;
+    }
+    const max3 = Math.max(1, ...sampled.map((point) => point.value));
+    const last2 = sampled.length - 1;
+    const xAt = (index) => pad.l + (last2 === 0 ? innerW / 2 : index / last2 * innerW);
+    const yAt = (value) => pad.t + innerH - value / max3 * innerH;
+    const line = sampled.map((point, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(point.value).toFixed(1)}`).join(" ");
+    const area = `${line} L${xAt(last2).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z`;
+    return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+    <path class="ew-area-progress" d="${area}" />
+    <path class="ew-line" d="${line}" fill="none" />
+    <text class="ew-chart-label" x="${pad.l}" y="${height - 12}">${escapeHtml3(sampled[0]?.label ?? "")}</text>
+    <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml3(sampled[last2]?.label ?? "")}</text>
+  </svg>`;
+  }
   function reportKpis(reports) {
     const completed = reports.throughput.reduce((sum, point) => sum + point.completed, 0);
     const last2 = reports.cumulativeFlow[reports.cumulativeFlow.length - 1];
@@ -37584,7 +37642,7 @@ ${err.toString()}`);
       inProgress: last2?.in_progress ?? 0
     };
   }
-  function renderReportsMarkup(reports) {
+  function renderReportsMarkup(reports, burndown) {
     const kpis = reportKpis(reports);
     const cycleRows = reports.cycleTime.length === 0 ? `<p class="ew-meta">No completed issues yet.</p>` : reports.cycleTime.slice().sort((a, b) => b.hours - a.hours).map(
       (row) => `<button type="button" class="ew-cycle-row" data-issue="${escapeHtml3(row.issueId)}">
@@ -37593,12 +37651,24 @@ ${err.toString()}`);
                 <span class="ew-cycle-hours">${escapeHtml3(formatHours(row.hours))}</span>
               </button>`
     ).join("");
+    const burn = burndown && burndown.points.length ? `<article id="report-burndown" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Burndown</h2>
+      <p class="ew-report-lead">${escapeHtml3(burndown.name)} remaining estimate.</p>
+      ${lineChartSvg(
+      burndown.points.map((point) => ({ label: point.at.slice(0, 10), value: point.remaining })),
+      `${burndown.name} sprint burndown`
+    )}
+    </article>` : `<article id="report-burndown" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Burndown</h2>
+      <p class="ew-report-lead">Start a sprint to plot remaining estimate.</p>
+    </article>`;
     return `<div id="work-reports" class="ew-reports">
     <div id="report-kpis" class="ew-report-kpis">
       <div class="ew-kpi"><strong>${kpis.completed}</strong><span>Completed</span></div>
       <div class="ew-kpi"><strong>${escapeHtml3(kpis.medianCycle)}</strong><span>Median cycle</span></div>
       <div class="ew-kpi"><strong>${kpis.inProgress}</strong><span>In progress</span></div>
     </div>
+    ${burn}
     <article id="report-throughput" class="ew-report">
       <h2>${iconSvg("ChartColumn")} Throughput</h2>
       <p class="ew-report-lead">Issues moved to Done each day.</p>
@@ -37633,7 +37703,13 @@ ${err.toString()}`);
     try {
       const reports = await api(`/v1/projects/${encodeURIComponent(project.id)}/reports`);
       if (token2 !== reportsToken || boardView !== "reports") return;
-      board.innerHTML = renderReportsMarkup(reports);
+      const sprint = activeSprint();
+      const burndown = sprint ? {
+        name: sprint.name,
+        points: (await api(`/v1/sprints/${encodeURIComponent(sprint.id)}/burndown`)).points
+      } : void 0;
+      if (token2 !== reportsToken || boardView !== "reports") return;
+      board.innerHTML = renderReportsMarkup(reports, burndown);
       hydrateIcons(board);
       document.querySelector(".ew-body")?.classList.remove("is-issue");
       $2("inspector-title").textContent = "Reports";
@@ -37788,7 +37864,17 @@ ${err.toString()}`);
     const walk = (parentId) => (byParent.get(parentId) ?? []).flatMap((doc4) => [doc4, ...walk(doc4.id)]);
     return walk("");
   }
+  function setPresenting(on) {
+    presenting = on;
+    const shell = document.getElementById("workspace-shell");
+    shell?.classList.toggle("is-presenting", on);
+    const exit = document.getElementById("present-exit");
+    if (exit) exit.hidden = !on;
+    $2("page-present")?.setAttribute("aria-pressed", String(on && mode === "docs"));
+    $2("canvas-present")?.setAttribute("aria-pressed", String(on && mode === "visuals"));
+  }
   function setMode(next) {
+    if (presenting) setPresenting(false);
     mode = next;
     for (const button of document.querySelectorAll(".ew-modes button")) {
       button.setAttribute("aria-selected", String(button.dataset.mode === next));
@@ -38138,6 +38224,7 @@ ${err.toString()}`);
     $2("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
     $2("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
     $2("view-reports")?.setAttribute("aria-pressed", String(boardView === "reports"));
+    $2("view-backlog")?.setAttribute("aria-pressed", String(boardView === "backlog"));
     const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
     $2("type-filters").innerHTML = [
       `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
@@ -38212,10 +38299,41 @@ ${err.toString()}`);
     board.classList.toggle("has-swimlanes", swimlanes && boardView === "board");
     board.classList.toggle("is-list", boardView === "list");
     board.classList.toggle("is-reports", boardView === "reports");
+    board.classList.toggle("is-backlog", boardView === "backlog");
     if (boardView === "reports") {
       boardDndStop?.();
       boardDndStop = void 0;
       void loadProjectReports();
+      renderRail();
+      return;
+    }
+    if (boardView === "backlog") {
+      boardDndStop?.();
+      boardDndStop = void 0;
+      const sprint = activeSprint();
+      const inSprint = visible.filter((issue) => sprint && issue.sprintId === sprint.id);
+      const queued = visible.filter((issue) => !sprint || issue.sprintId !== sprint.id);
+      const points = inSprint.reduce((sum, issue) => sum + (issue.estimate ?? 0), 0);
+      const row = (issue, action) => `<div class="ew-backlog-row${issue.id === selectedIssueId ? " is-open" : ""}">
+        ${issueCard(issue)}
+        ${sprint ? `<button type="button" class="ew-sprint-action" data-sprint-action="${action}" data-issue="${escapeHtml3(issue.id)}" data-sprint="${escapeHtml3(sprint.id)}">${action === "add" ? "Add to sprint" : "Remove"}</button>` : ""}
+      </div>`;
+      board.innerHTML = `<div id="work-backlog" class="ew-backlog">
+      <section id="sprint-plan" class="ew-backlog-pane">
+        <h2>${escapeHtml3(sprint ? sprint.name : "No active sprint")} <span id="sprint-points">${points} pts \xB7 ${inSprint.length}</span></h2>
+        ${inSprint.map((issue) => row(issue, "remove")).join("") || `<p class="ew-meta">Pull issues from the backlog into this sprint.</p>`}
+      </section>
+      <section id="backlog-list" class="ew-backlog-pane">
+        <h2>Backlog <span>${queued.length}</span></h2>
+        ${queued.map((issue) => row(issue, "add")).join("") || `<p class="ew-meta">Backlog is empty.</p>`}
+      </section>
+    </div>`;
+      if (!selectedIssueId) {
+        document.querySelector(".ew-body")?.classList.remove("is-issue");
+        $2("inspector-title").textContent = "Backlog";
+        inspector.innerHTML = `<div class="ew-meta"><strong>${queued.length} in backlog</strong><span>${inSprint.length} in sprint</span><span>${points} points committed</span></div>
+        <p class="ew-report-lead">${sprint ? "Add work to the active sprint, then run the board." : "Plan a sprint from the sprint bar to start committing work."}</p>`;
+      }
       renderRail();
       return;
     }
@@ -38564,6 +38682,22 @@ ${err.toString()}`);
     }
   });
   $2("work-board").addEventListener("click", (event) => {
+    const action = event.target.closest("[data-sprint-action]");
+    if (action?.dataset.issue) {
+      event.preventDefault();
+      event.stopPropagation();
+      const sprintId = action.dataset.sprintAction === "add" ? action.dataset.sprint ?? null : null;
+      void (async () => {
+        await api(`/v1/issues/${encodeURIComponent(action.dataset.issue)}/sprint`, {
+          method: "POST",
+          body: JSON.stringify({ sprintId })
+        });
+        await refreshWorkspace();
+        renderBoard();
+        if (selectedIssueId) await inspectIssue(selectedIssueId);
+      })();
+      return;
+    }
     const card = event.target.closest("[data-issue]");
     if (card?.dataset.issue && !$2("work-board").classList.contains("is-sorting")) void inspectIssue(card.dataset.issue);
   });
@@ -39002,6 +39136,10 @@ ${err.toString()}`);
       void showCanvasExport(exportTarget);
       return;
     }
+    if (button.id === "canvas-present") {
+      setPresenting(!presenting);
+      return;
+    }
     if (button.dataset.tool) {
       $2("visual-stage").dataset.tool = button.dataset.tool;
       syncVisualTools();
@@ -39064,6 +39202,8 @@ ${err.toString()}`);
     await renderDocumentInspector(selectedDocumentId);
   });
   $2("page-find-open").addEventListener("click", () => openPageFind());
+  $2("page-present").addEventListener("click", () => setPresenting(!presenting));
+  $2("present-exit").addEventListener("click", () => setPresenting(false));
   $2("page-find-close").addEventListener("click", () => closePageFind());
   $2("page-find-next").addEventListener("click", () => jumpFind(1));
   $2("page-find-prev").addEventListener("click", () => jumpFind(-1));
@@ -39233,6 +39373,8 @@ ${err.toString()}`);
       { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
       { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
       { kind: "command", id: "mode:reports", title: "Open reports", subtitle: "Work" },
+      { kind: "command", id: "mode:backlog", title: "Open backlog", subtitle: "Work" },
+      { kind: "command", id: "present", title: "Present", subtitle: "Docs and Visuals" },
       { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
       { kind: "command", id: "find", title: "Find in page", subtitle: "Docs" }
     ];
@@ -39276,6 +39418,12 @@ ${err.toString()}`);
       boardView = "reports";
       renderBoard();
     }
+    if (id2 === "mode:backlog") {
+      setMode("work");
+      boardView = "backlog";
+      renderBoard();
+    }
+    if (id2 === "present") setPresenting(true);
     if (id2 === "create-page") void createPage();
     if (id2 === "find") {
       setMode("docs");
@@ -39347,6 +39495,11 @@ ${err.toString()}`);
       openPageFind();
       return;
     }
+    if (presenting && event.key === "Escape") {
+      event.preventDefault();
+      setPresenting(false);
+      return;
+    }
     const findBar = document.getElementById("page-find");
     if (findBar && !findBar.hidden && event.key === "Escape") {
       event.preventDefault();
@@ -39381,6 +39534,12 @@ ${err.toString()}`);
     if (button.id === "view-reports") {
       boardView = "reports";
       renderBoard();
+      return;
+    }
+    if (button.id === "view-backlog") {
+      boardView = "backlog";
+      renderBoard();
+      if (selectedIssueId) void inspectIssue(selectedIssueId);
       return;
     }
     if (!button.dataset.filter) return;
@@ -39450,6 +39609,7 @@ ${err.toString()}`);
       findInPage: (query) => runPageFind(query),
       counts: () => collab?.counts() ?? { words: 0, characters: 0 },
       boardView: () => boardView,
+      presenting: () => presenting,
       undoCanvas,
       deleteCanvas: deleteCanvasSelection,
       openPalette,
@@ -39515,9 +39675,11 @@ lucide/dist/esm/icons/lightbulb.mjs:
 lucide/dist/esm/icons/link.mjs:
 lucide/dist/esm/icons/list-checks.mjs:
 lucide/dist/esm/icons/list-ordered.mjs:
+lucide/dist/esm/icons/list-todo.mjs:
 lucide/dist/esm/icons/list.mjs:
 lucide/dist/esm/icons/maximize-2.mjs:
 lucide/dist/esm/icons/message-square.mjs:
+lucide/dist/esm/icons/monitor-play.mjs:
 lucide/dist/esm/icons/moon.mjs:
 lucide/dist/esm/icons/mouse-pointer-2.mjs:
 lucide/dist/esm/icons/plus.mjs:
