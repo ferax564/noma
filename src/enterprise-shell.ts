@@ -145,6 +145,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <div class="ew-byline">
                 <span id="doc-kicker" class="ew-lozenge">Draft</span>
                 <div id="doc-byline"></div>
+                <div id="doc-count" class="ew-count" aria-live="polite">0 words</div>
                 <div id="doc-presence" class="ew-presence" aria-label="People on this page"></div>
               </div>
               <div id="editor" class="ew-editor"></div>
@@ -172,7 +173,14 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="tool-select" data-tool="select" aria-pressed="true">Select</button>
                 <button type="button" id="tool-pan" data-tool="pan" aria-pressed="false">Pan</button>
                 <button type="button" id="tool-sticky" data-tool="sticky" aria-pressed="false">Sticky</button>
+                <span id="sticky-colors" class="ew-swatches" role="group" aria-label="Sticky color">
+                  <button type="button" id="sticky-yellow" class="ew-swatch" data-sticky-color="yellow" aria-label="Yellow sticky" aria-pressed="true"></button>
+                  <button type="button" id="sticky-pink" class="ew-swatch" data-sticky-color="pink" aria-label="Pink sticky" aria-pressed="false"></button>
+                  <button type="button" id="sticky-green" class="ew-swatch" data-sticky-color="green" aria-label="Green sticky" aria-pressed="false"></button>
+                  <button type="button" id="sticky-blue" class="ew-swatch" data-sticky-color="blue" aria-label="Blue sticky" aria-pressed="false"></button>
+                </span>
                 <button type="button" id="tool-connect" data-tool="connect" aria-pressed="false">Connect</button>
+                <button type="button" id="canvas-undo" aria-label="Undo canvas move">Undo</button>
                 <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
                 <span id="zoom-label">100%</span>
@@ -209,6 +217,8 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <div id="board-filters" class="ew-filters" role="group" aria-label="Board filters">
                 <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All issues</button>
                 <button type="button" id="filter-mine" data-filter="mine" aria-pressed="false">Assigned to me</button>
+                <button type="button" id="filter-unassigned" data-filter="unassigned" aria-pressed="false">Unassigned</button>
+                <button type="button" id="filter-overdue" data-filter="overdue" aria-pressed="false">Overdue</button>
                 <button type="button" id="swimlane-epic" aria-pressed="false">Group by epic</button>
                 <button type="button" id="view-board" aria-pressed="true">Board</button>
                 <button type="button" id="view-list" aria-pressed="false">List</button>
@@ -433,6 +443,28 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
         imageAssetId: image.assetId,
       },
     },
+    {
+      op: "insert_element",
+      element: {
+        id: "note-risk",
+        type: "shape",
+        geometry: { x: 870, y: 140, width: 188, height: 132 },
+        zIndex: 5,
+        text: "Keep the grant graph in one place",
+        altText: "Sticky",
+      },
+    },
+    {
+      op: "insert_element",
+      element: {
+        id: "note-next",
+        type: "shape",
+        geometry: { x: 870, y: 292, width: 188, height: 132 },
+        zIndex: 5,
+        text: "Color the remaining risks",
+        altText: "Sticky:pink",
+      },
+    },
   ];
   ws.applyArtifactCommands(actor, artifactId, commands, 0);
   const projectId = ws.createProject(actor, { key: "ATLAS", name: "Atlas", spaceId });
@@ -467,8 +499,8 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
   ws.startSprint(actor, sprintId);
   ws.setIssueSprint(actor, collab.id, sprintId);
   ws.setIssueSprint(actor, canvas.id, sprintId);
-  ws.updateIssue(actor, canvas.id, { dueAt: "2026-09-22", priority: "high", labels: ["canvas", "urgent"], estimate: 5 });
-  ws.updateIssue(actor, epic.id, { dueAt: "2026-09-30", labels: ["shell"] });
+  ws.updateIssue(actor, canvas.id, { dueAt: "2026-09-22", priority: "high", labels: ["canvas", "urgent"], estimate: 5, assigneeId: actor.principalId });
+  ws.updateIssue(actor, epic.id, { dueAt: "2026-01-15", labels: ["shell"] });
   ws.addIssueComment(actor, collab.id, "Hosted collab is on the sprint.");
   ws.logWork(actor, { issueId: collab.id, durationSeconds: 3600, note: "Wired persist-before-ack" });
   ws.addExternalLink(actor, {

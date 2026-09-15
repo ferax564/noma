@@ -55,6 +55,7 @@ interface ShellIssue {
   priority: string;
   dueAt?: string | null;
   labels?: string[];
+  reporterId?: string | null;
 }
 
 interface WorkspacePayload {
@@ -105,13 +106,15 @@ let jqlFilterIds: string[] | undefined;
 let searchPopupStop: (() => void) | undefined;
 let boardDndStop: (() => void) | undefined;
 let canvasStop: (() => void) | undefined;
-let boardFilter: "all" | "mine" = "all";
+let boardFilter: "all" | "mine" | "unassigned" | "overdue" = "all";
 let boardSearch = "";
 let typeFilter = "";
 let swimlanes = false;
 let boardView: "board" | "list" = "board";
 let paletteIndex = 0;
 let mentionStop: (() => void) | undefined;
+let canvasHistory: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+let stickyColor: "yellow" | "pink" | "green" | "blue" = "yellow";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -253,6 +256,25 @@ function presenceColor(id: string): string {
   let hash = 0;
   for (let index = 0; index < id.length; index += 1) hash = (hash * 33 + id.charCodeAt(index)) >>> 0;
   return palette[hash % palette.length] ?? "#0C66E4";
+}
+
+function renderWordCount(counts?: { words: number; characters: number }): void {
+  const node = document.getElementById("doc-count");
+  if (!node) return;
+  const next = counts ?? collab?.counts() ?? { words: 0, characters: 0 };
+  node.textContent = `${next.words} words · ${next.characters} characters`;
+}
+
+function isOverdue(issue: ShellIssue): boolean {
+  const due = (issue.dueAt ?? "").slice(0, 10);
+  if (!due || issue.statusId === "done" || issue.statusId === "cancelled") return false;
+  const today = new Date();
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return due < iso;
+}
+
+function stickyAlt(color: string): string {
+  return color === "yellow" ? "Sticky" : `Sticky:${color}`;
 }
 
 function renderPresence(users: Array<{ id: string; name: string; color: string }>): void {
@@ -461,8 +483,13 @@ function openDocument(id: string | undefined): void {
     user: payload?.actor
       ? { id: payload.actor.principalId, name: payload.actor.name, color: presenceColor(payload.actor.principalId) }
       : undefined,
+    people: (payload?.principals ?? []).map((person) => ({ id: person.id, name: person.name })),
     onPresence: renderPresence,
-    onUpdate: renderPageToc,
+    onUpdate: () => {
+      renderPageToc();
+      renderWordCount();
+    },
+    onCount: renderWordCount,
     onStatus: (text) => {
       $("collab-status").textContent = text;
       setStatus(`${payload?.actor.name ?? "Session"} · ${text}`, text.startsWith("ack") || text === "ready" ? "ok" : "connecting");
@@ -590,10 +617,12 @@ async function seedEmptyEditor(id: string, title: string): Promise<void> {
   if (!editor || (editor.getText() ?? "").trim()) return;
   editor.commands.setContent(nomaToEditorHtml(document.title || title, document.source, token));
   renderPageToc();
+  renderWordCount();
 }
 
 async function openArtifact(id: string | undefined): Promise<void> {
   if (!id) return;
+  if (selectedArtifactId !== id) canvasHistory = [];
   selectedArtifactId = id;
   const data = await api<ArtifactPayload>(`/v1/artifacts/${encodeURIComponent(id)}`);
   $("visual-title").textContent = data.document.title;
@@ -623,8 +652,14 @@ async function openArtifact(id: string | undefined): Promise<void> {
   renderRail();
   enhanceSelects($("canvas-visuals"));
   canvasStop?.();
+  const undoBtn = document.getElementById("canvas-undo");
+  if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = canvasHistory.length === 0;
   canvasStop = bindVisualStage($("visual-stage"), {
     onMove: (move) => {
+      if (move.previous) {
+        canvasHistory.push({ id: move.id, ...move.previous });
+        if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = false;
+      }
       void api(`/v1/artifacts/${encodeURIComponent(id)}/elements/${encodeURIComponent(move.id)}`, {
         method: "PATCH",
         body: JSON.stringify({ geometry: { x: move.x, y: move.y, width: move.width, height: move.height } }),
@@ -632,9 +667,11 @@ async function openArtifact(id: string | undefined): Promise<void> {
       syncCanvasArrows($("visual-stage"));
     },
     onEdit: (elementId, text) => {
+      const card = $("visual-stage").querySelector<HTMLElement>(`.pd-el[data-id="${CSS.escape(elementId)}"]`);
+      const color = card?.dataset.sticky;
       void api(`/v1/artifacts/${encodeURIComponent(id)}/elements/${encodeURIComponent(elementId)}`, {
         method: "PATCH",
-        body: JSON.stringify({ text, altText: text }),
+        body: JSON.stringify({ text, altText: color ? stickyAlt(color) : text }),
       });
     },
     onPlaceSticky: (x, y) => {
@@ -643,7 +680,7 @@ async function openArtifact(id: string | undefined): Promise<void> {
       void addCanvasElement({
         type: "shape",
         text: "New note",
-        altText: "Sticky",
+        altText: stickyAlt(stickyColor),
         geometry: { x, y, width: 200, height: 160 },
       });
     },
@@ -679,6 +716,8 @@ function renderBoard(): void {
   renderSprintBar();
   $("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
   $("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
+  $("filter-unassigned")?.setAttribute("aria-pressed", String(boardFilter === "unassigned"));
+  $("filter-overdue")?.setAttribute("aria-pressed", String(boardFilter === "overdue"));
   $("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
   $("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
   $("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
@@ -695,6 +734,8 @@ function renderBoard(): void {
     if (project && issue.projectId !== project.id) return false;
     if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
     if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
+    if (boardFilter === "unassigned" && issue.assigneeId) return false;
+    if (boardFilter === "overdue" && !isOverdue(issue)) return false;
     if (typeFilter && issue.typeKey !== typeFilter) return false;
     if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
     return true;
@@ -712,7 +753,7 @@ function renderBoard(): void {
         ${parent ? `<span class="ew-epic">${escapeHtml(parent.key)}</span>` : ""}
         ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
         <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
-        ${due ? `<span class="ew-due">${escapeHtml(due)}</span>` : ""}
+        ${due ? `<span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml(due)}</span>` : ""}
         ${labels}
         ${assignee ? avatarMarkup(assignee.name) : ""}
       </span>
@@ -750,7 +791,7 @@ function renderBoard(): void {
             <strong>${escapeHtml(issue.summary)}</strong>
             <span>${escapeHtml(statusName(issue.statusId))}</span>
             <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
-            <span class="ew-due">${escapeHtml(due)}</span>
+            <span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml(due)}</span>
             <span class="ew-points">${issue.estimate ?? ""}</span>
           </button>`;
         })
@@ -864,6 +905,7 @@ async function inspectIssue(id: string): Promise<void> {
     typeKey: string;
     key?: string;
     status_id: string;
+    reporter_id?: string | null;
     priority?: string;
     due_at?: string | null;
     labels_json?: string;
@@ -878,6 +920,12 @@ async function inspectIssue(id: string): Promise<void> {
   });
   const people = payload.principals.map((person) => `<option value="${person.id}" ${person.id === detail.assignee_id ? "selected" : ""}>${escapeHtml(person.name)}</option>`).join("");
   const sprints = payload.sprints.map((sprint) => `<option value="${sprint.id}" ${sprint.id === detail.sprint_id ? "selected" : ""}>${escapeHtml(sprint.name)}</option>`).join("");
+  const reporter = payload.principals.find((person) => person.id === (detail.reporter_id ?? issue.reporterId));
+  const parentId = detail.parent_id ?? issue.parentId;
+  const parents = payload.issues
+    .filter((item) => item.projectId === issue.projectId && item.id !== issue.id)
+    .map((item) => `<option value="${item.id}" ${item.id === parentId ? "selected" : ""}>${escapeHtml(item.key)} ${escapeHtml(item.summary)}</option>`)
+    .join("");
   inspector.innerHTML = `<div class="ew-issue">
       <div class="ew-issue-kicker ew-meta">
         <span class="ew-key">${escapeHtml(issue.key)}</span>
@@ -885,10 +933,12 @@ async function inspectIssue(id: string): Promise<void> {
         <span class="ew-lozenge">${escapeHtml(current?.name ?? issue.statusId)}</span>
         <button type="button" id="close-issue">Close</button>
       </div>
+      <p id="issue-reporter" class="ew-note">Reported by ${escapeHtml(reporter?.name ?? "Unknown")}</p>
       <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
       <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
       <div class="ew-issue-grid">
         <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
+        <label for="issue-parent">Parent<select id="issue-parent"><option value="">No parent</option>${parents}</select></label>
         <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
         <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
         <label for="issue-due">Due date<input id="issue-due" type="date" value="${escapeHtml((detail.due_at ?? issue.dueAt ?? "").slice(0, 10))}" /></label>
@@ -1154,6 +1204,7 @@ inspector.addEventListener("click", async (event) => {
           summary: $<HTMLInputElement>("issue-summary").value,
           description: $<HTMLTextAreaElement>("issue-description").value,
           assigneeId: $<HTMLSelectElement>("issue-assignee").value || null,
+          parentId: $<HTMLSelectElement>("issue-parent").value || null,
           priority: $<HTMLSelectElement>("issue-priority").value,
           dueAt: $<HTMLInputElement>("issue-due").value || null,
           estimate: $<HTMLInputElement>("issue-estimate").value === "" ? null : Number($<HTMLInputElement>("issue-estimate").value),
@@ -1374,6 +1425,25 @@ $("insert-video").addEventListener("change", async (event) => {
   (event.target as HTMLInputElement).value = "";
 });
 
+async function undoCanvas(): Promise<void> {
+  const last = canvasHistory.pop();
+  const undoBtn = document.getElementById("canvas-undo");
+  if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = canvasHistory.length === 0;
+  if (!last || !selectedArtifactId) return;
+  const card = $("visual-stage").querySelector<HTMLElement>(`.pd-el[data-id="${CSS.escape(last.id)}"]`);
+  if (card) {
+    card.style.left = `${last.x}px`;
+    card.style.top = `${last.y}px`;
+    card.style.width = `${last.width}px`;
+    card.style.height = `${last.height}px`;
+    syncCanvasArrows($("visual-stage"));
+  }
+  await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(last.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ geometry: { x: last.x, y: last.y, width: last.width, height: last.height } }),
+  });
+}
+
 async function addCanvasElement(input: Record<string, unknown>): Promise<void> {
   if (!selectedArtifactId) return;
   await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements`, {
@@ -1402,6 +1472,9 @@ function syncVisualTools(): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>("#visual-toolbar [data-tool]")) {
     button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
   }
+  for (const button of document.querySelectorAll<HTMLButtonElement>("#sticky-colors [data-sticky-color]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.stickyColor === stickyColor));
+  }
   $("visual-stage").classList.toggle("is-panning", tool === "pan");
   $("visual-stage").classList.toggle("is-sticky", tool === "sticky");
   $("visual-stage").classList.toggle("is-connecting", tool === "connect");
@@ -1410,6 +1483,17 @@ function syncVisualTools(): void {
 $("visual-toolbar").addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
   if (!button) return;
+  const color = button.dataset.stickyColor;
+  if (color === "yellow" || color === "pink" || color === "green" || color === "blue") {
+    stickyColor = color;
+    $("visual-stage").dataset.tool = "sticky";
+    syncVisualTools();
+    return;
+  }
+  if (button.id === "canvas-undo") {
+    void undoCanvas();
+    return;
+  }
   if (button.dataset.tool) {
     $("visual-stage").dataset.tool = button.dataset.tool;
     syncVisualTools();
@@ -1696,6 +1780,14 @@ $("command-palette").addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && mode === "visuals") {
+    const target = event.target as HTMLElement;
+    if (!target.closest("input, textarea, select, [contenteditable='true']")) {
+      event.preventDefault();
+      void undoCanvas();
+      return;
+    }
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     if ($("command-palette").hidden) openPalette();
@@ -1746,7 +1838,8 @@ $("board-filters").addEventListener("click", (event) => {
     return;
   }
   if (!button.dataset.filter) return;
-  boardFilter = button.dataset.filter === "mine" ? "mine" : "all";
+  const next = button.dataset.filter;
+  boardFilter = next === "mine" || next === "unassigned" || next === "overdue" ? next : "all";
   renderBoard();
 });
 $("type-filters").addEventListener("click", (event) => {
@@ -1808,6 +1901,8 @@ Object.assign(window, {
     text: () => collab?.getText() ?? "",
     html: () => collab?.editor()?.getHTML() ?? "",
     selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
+    counts: () => collab?.counts() ?? { words: 0, characters: 0 },
+    undoCanvas,
     openPalette,
     applyBoardDrop,
   },

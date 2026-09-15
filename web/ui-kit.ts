@@ -37,6 +37,7 @@ import {
   Sun,
   Table,
   Underline,
+  Undo2,
   User,
   Video,
   ZoomIn,
@@ -85,6 +86,7 @@ const ICONS = {
   Sun,
   Table,
   Underline,
+  Undo2,
   User,
   Video,
   ZoomIn,
@@ -238,6 +240,7 @@ export interface VisualMove {
   y: number;
   width?: number;
   height?: number;
+  previous?: { x: number; y: number; width: number; height: number };
 }
 
 export interface VisualStageHandlers {
@@ -370,6 +373,7 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
         y: Number.parseFloat(card.style.top) || originTop,
         width: card.offsetWidth,
         height: card.offsetHeight,
+        previous: { x: originLeft, y: originTop, width: originWidth, height: originHeight },
       });
     };
     window.addEventListener("pointermove", onMove);

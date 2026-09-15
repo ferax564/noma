@@ -16456,6 +16456,9 @@ img.ProseMirror-separator {
     }
     return false;
   }
+  function escapeForRegEx(string) {
+    return string.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  }
 
   // node_modules/lib0/map.js
   var create = () => /* @__PURE__ */ new Map();
@@ -27434,6 +27437,101 @@ ${err.toString()}`);
     }
   });
 
+  // node_modules/@tiptap/extension-character-count/dist/index.js
+  var CharacterCount = Extension.create({
+    name: "characterCount",
+    addOptions() {
+      return {
+        limit: null,
+        mode: "textSize",
+        textCounter: (text2) => text2.length,
+        wordCounter: (text2) => text2.split(" ").filter((word2) => word2 !== "").length
+      };
+    },
+    addStorage() {
+      return {
+        characters: () => 0,
+        words: () => 0
+      };
+    },
+    onBeforeCreate() {
+      this.storage.characters = (options) => {
+        const node = (options === null || options === void 0 ? void 0 : options.node) || this.editor.state.doc;
+        const mode2 = (options === null || options === void 0 ? void 0 : options.mode) || this.options.mode;
+        if (mode2 === "textSize") {
+          const text2 = node.textBetween(0, node.content.size, void 0, " ");
+          return this.options.textCounter(text2);
+        }
+        return node.nodeSize;
+      };
+      this.storage.words = (options) => {
+        const node = (options === null || options === void 0 ? void 0 : options.node) || this.editor.state.doc;
+        const text2 = node.textBetween(0, node.content.size, " ", " ");
+        return this.options.wordCounter(text2);
+      };
+    },
+    addProseMirrorPlugins() {
+      let initialEvaluationDone = false;
+      return [
+        new Plugin({
+          key: new PluginKey("characterCount"),
+          appendTransaction: (transactions, oldState, newState) => {
+            if (initialEvaluationDone) {
+              return;
+            }
+            const limit = this.options.limit;
+            if (limit === null || limit === void 0 || limit === 0) {
+              initialEvaluationDone = true;
+              return;
+            }
+            const initialContentSize = this.storage.characters({ node: newState.doc });
+            if (initialContentSize > limit) {
+              const over = initialContentSize - limit;
+              const from3 = 0;
+              const to = over;
+              console.warn(`[CharacterCount] Initial content exceeded limit of ${limit} characters. Content was automatically trimmed.`);
+              const tr2 = newState.tr.deleteRange(from3, to);
+              initialEvaluationDone = true;
+              return tr2;
+            }
+            initialEvaluationDone = true;
+          },
+          filterTransaction: (transaction, state) => {
+            const limit = this.options.limit;
+            if (!transaction.docChanged || limit === 0 || limit === null || limit === void 0) {
+              return true;
+            }
+            const oldSize = this.storage.characters({ node: state.doc });
+            const newSize = this.storage.characters({ node: transaction.doc });
+            if (newSize <= limit) {
+              return true;
+            }
+            if (oldSize > limit && newSize > limit && newSize <= oldSize) {
+              return true;
+            }
+            if (oldSize > limit && newSize > limit && newSize > oldSize) {
+              return false;
+            }
+            const isPaste = transaction.getMeta("paste");
+            if (!isPaste) {
+              return false;
+            }
+            const pos = transaction.selection.$head.pos;
+            const over = newSize - limit;
+            const from3 = pos - over;
+            const to = pos;
+            transaction.deleteRange(from3, to);
+            const updatedSize = this.storage.characters({ node: transaction.doc });
+            if (updatedSize > limit) {
+              return false;
+            }
+            return true;
+          }
+        })
+      ];
+    }
+  });
+
   // node_modules/@tiptap/extension-highlight/dist/index.js
   var inputRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==(?!\s+==))$/;
   var pasteRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==(?!\s+==))/g;
@@ -29074,6 +29172,430 @@ ${err.toString()}`);
         }));
       }
       return plugins;
+    }
+  });
+
+  // node_modules/@tiptap/suggestion/dist/index.js
+  function findSuggestionMatch(config) {
+    var _a;
+    const { char, allowSpaces: allowSpacesOption, allowToIncludeChar, allowedPrefixes, startOfLine, $position } = config;
+    const allowSpaces = allowSpacesOption && !allowToIncludeChar;
+    const escapedChar = escapeForRegEx(char);
+    const suffix = new RegExp(`\\s${escapedChar}$`);
+    const prefix = startOfLine ? "^" : "";
+    const finalEscapedChar = allowToIncludeChar ? "" : escapedChar;
+    const regexp = allowSpaces ? new RegExp(`${prefix}${escapedChar}.*?(?=\\s${finalEscapedChar}|$)`, "gm") : new RegExp(`${prefix}(?:^)?${escapedChar}[^\\s${finalEscapedChar}]*`, "gm");
+    const text2 = ((_a = $position.nodeBefore) === null || _a === void 0 ? void 0 : _a.isText) && $position.nodeBefore.text;
+    if (!text2) {
+      return null;
+    }
+    const textFrom = $position.pos - text2.length;
+    const match2 = Array.from(text2.matchAll(regexp)).pop();
+    if (!match2 || match2.input === void 0 || match2.index === void 0) {
+      return null;
+    }
+    const matchPrefix = match2.input.slice(Math.max(0, match2.index - 1), match2.index);
+    const matchPrefixIsAllowed = new RegExp(`^[${allowedPrefixes === null || allowedPrefixes === void 0 ? void 0 : allowedPrefixes.join("")}\0]?$`).test(matchPrefix);
+    if (allowedPrefixes !== null && !matchPrefixIsAllowed) {
+      return null;
+    }
+    const from3 = textFrom + match2.index;
+    let to = from3 + match2[0].length;
+    if (allowSpaces && suffix.test(text2.slice(to - 1, to + 1))) {
+      match2[0] += " ";
+      to += 1;
+    }
+    if (from3 < $position.pos && to >= $position.pos) {
+      return {
+        range: {
+          from: from3,
+          to
+        },
+        query: match2[0].slice(char.length),
+        text: match2[0]
+      };
+    }
+    return null;
+  }
+  var SuggestionPluginKey = new PluginKey("suggestion");
+  function Suggestion({ pluginKey = SuggestionPluginKey, editor, char = "@", allowSpaces = false, allowToIncludeChar = false, allowedPrefixes = [" "], startOfLine = false, decorationTag = "span", decorationClass = "suggestion", decorationContent = "", decorationEmptyClass = "is-empty", command: command2 = () => null, items = () => [], render = () => ({}), allow = () => true, findSuggestionMatch: findSuggestionMatch$1 = findSuggestionMatch }) {
+    let props;
+    const renderer = render === null || render === void 0 ? void 0 : render();
+    const plugin = new Plugin({
+      key: pluginKey,
+      view() {
+        return {
+          update: async (view, prevState) => {
+            var _a, _b, _c, _d, _e, _f, _g;
+            const prev = (_a = this.key) === null || _a === void 0 ? void 0 : _a.getState(prevState);
+            const next = (_b = this.key) === null || _b === void 0 ? void 0 : _b.getState(view.state);
+            const moved = prev.active && next.active && prev.range.from !== next.range.from;
+            const started = !prev.active && next.active;
+            const stopped = prev.active && !next.active;
+            const changed = !started && !stopped && prev.query !== next.query;
+            const handleStart = started || moved && changed;
+            const handleChange = changed || moved;
+            const handleExit = stopped || moved && changed;
+            if (!handleStart && !handleChange && !handleExit) {
+              return;
+            }
+            const state = handleExit && !handleStart ? prev : next;
+            const decorationNode = view.dom.querySelector(`[data-decoration-id="${state.decorationId}"]`);
+            props = {
+              editor,
+              range: state.range,
+              query: state.query,
+              text: state.text,
+              items: [],
+              command: (commandProps) => {
+                return command2({
+                  editor,
+                  range: state.range,
+                  props: commandProps
+                });
+              },
+              decorationNode,
+              // virtual node for popper.js or tippy.js
+              // this can be used for building popups without a DOM node
+              clientRect: decorationNode ? () => {
+                var _a2;
+                const { decorationId } = (_a2 = this.key) === null || _a2 === void 0 ? void 0 : _a2.getState(editor.state);
+                const currentDecorationNode = view.dom.querySelector(`[data-decoration-id="${decorationId}"]`);
+                return (currentDecorationNode === null || currentDecorationNode === void 0 ? void 0 : currentDecorationNode.getBoundingClientRect()) || null;
+              } : null
+            };
+            if (handleStart) {
+              (_c = renderer === null || renderer === void 0 ? void 0 : renderer.onBeforeStart) === null || _c === void 0 ? void 0 : _c.call(renderer, props);
+            }
+            if (handleChange) {
+              (_d = renderer === null || renderer === void 0 ? void 0 : renderer.onBeforeUpdate) === null || _d === void 0 ? void 0 : _d.call(renderer, props);
+            }
+            if (handleChange || handleStart) {
+              props.items = await items({
+                editor,
+                query: state.query
+              });
+            }
+            if (handleExit) {
+              (_e = renderer === null || renderer === void 0 ? void 0 : renderer.onExit) === null || _e === void 0 ? void 0 : _e.call(renderer, props);
+            }
+            if (handleChange) {
+              (_f = renderer === null || renderer === void 0 ? void 0 : renderer.onUpdate) === null || _f === void 0 ? void 0 : _f.call(renderer, props);
+            }
+            if (handleStart) {
+              (_g = renderer === null || renderer === void 0 ? void 0 : renderer.onStart) === null || _g === void 0 ? void 0 : _g.call(renderer, props);
+            }
+          },
+          destroy: () => {
+            var _a;
+            if (!props) {
+              return;
+            }
+            (_a = renderer === null || renderer === void 0 ? void 0 : renderer.onExit) === null || _a === void 0 ? void 0 : _a.call(renderer, props);
+          }
+        };
+      },
+      state: {
+        // Initialize the plugin's internal state.
+        init() {
+          const state = {
+            active: false,
+            range: {
+              from: 0,
+              to: 0
+            },
+            query: null,
+            text: null,
+            composing: false
+          };
+          return state;
+        },
+        // Apply changes to the plugin state from a view transaction.
+        apply(transaction, prev, _oldState, state) {
+          const { isEditable } = editor;
+          const { composing } = editor.view;
+          const { selection } = transaction;
+          const { empty: empty2, from: from3 } = selection;
+          const next = { ...prev };
+          next.composing = composing;
+          if (isEditable && (empty2 || editor.view.composing)) {
+            if ((from3 < prev.range.from || from3 > prev.range.to) && !composing && !prev.composing) {
+              next.active = false;
+            }
+            const match2 = findSuggestionMatch$1({
+              char,
+              allowSpaces,
+              allowToIncludeChar,
+              allowedPrefixes,
+              startOfLine,
+              $position: selection.$from
+            });
+            const decorationId = `id_${Math.floor(Math.random() * 4294967295)}`;
+            if (match2 && allow({
+              editor,
+              state,
+              range: match2.range,
+              isActive: prev.active
+            })) {
+              next.active = true;
+              next.decorationId = prev.decorationId ? prev.decorationId : decorationId;
+              next.range = match2.range;
+              next.query = match2.query;
+              next.text = match2.text;
+            } else {
+              next.active = false;
+            }
+          } else {
+            next.active = false;
+          }
+          if (!next.active) {
+            next.decorationId = null;
+            next.range = { from: 0, to: 0 };
+            next.query = null;
+            next.text = null;
+          }
+          return next;
+        }
+      },
+      props: {
+        // Call the keydown hook if suggestion is active.
+        handleKeyDown(view, event) {
+          var _a;
+          const { active, range } = plugin.getState(view.state);
+          if (!active) {
+            return false;
+          }
+          return ((_a = renderer === null || renderer === void 0 ? void 0 : renderer.onKeyDown) === null || _a === void 0 ? void 0 : _a.call(renderer, { view, event, range })) || false;
+        },
+        // Setup decorator on the currently active suggestion.
+        decorations(state) {
+          const { active, range, decorationId, query } = plugin.getState(state);
+          if (!active) {
+            return null;
+          }
+          const isEmpty3 = !(query === null || query === void 0 ? void 0 : query.length);
+          const classNames = [decorationClass];
+          if (isEmpty3) {
+            classNames.push(decorationEmptyClass);
+          }
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(range.from, range.to, {
+              nodeName: decorationTag,
+              class: classNames.join(" "),
+              "data-decoration-id": decorationId,
+              "data-decoration-content": decorationContent
+            })
+          ]);
+        }
+      }
+    });
+    return plugin;
+  }
+
+  // node_modules/@tiptap/extension-mention/dist/index.js
+  function getSuggestionOptions({ editor: tiptapEditor, overrideSuggestionOptions, extensionName, char = "@" }) {
+    const pluginKey = new PluginKey();
+    return {
+      editor: tiptapEditor,
+      char,
+      pluginKey,
+      command: ({ editor, range, props }) => {
+        var _a, _b, _c;
+        const nodeAfter = editor.view.state.selection.$to.nodeAfter;
+        const overrideSpace = (_a = nodeAfter === null || nodeAfter === void 0 ? void 0 : nodeAfter.text) === null || _a === void 0 ? void 0 : _a.startsWith(" ");
+        if (overrideSpace) {
+          range.to += 1;
+        }
+        editor.chain().focus().insertContentAt(range, [
+          {
+            type: extensionName,
+            attrs: { ...props, mentionSuggestionChar: char }
+          },
+          {
+            type: "text",
+            text: " "
+          }
+        ]).run();
+        (_c = (_b = editor.view.dom.ownerDocument.defaultView) === null || _b === void 0 ? void 0 : _b.getSelection()) === null || _c === void 0 ? void 0 : _c.collapseToEnd();
+      },
+      allow: ({ state, range }) => {
+        const $from = state.doc.resolve(range.from);
+        const type = state.schema.nodes[extensionName];
+        const allow = !!$from.parent.type.contentMatch.matchType(type);
+        return allow;
+      },
+      ...overrideSuggestionOptions
+    };
+  }
+  function getSuggestions(options) {
+    return (options.options.suggestions.length ? options.options.suggestions : [options.options.suggestion]).map((suggestion) => getSuggestionOptions({
+      // @ts-ignore `editor` can be `undefined` when converting the document to HTML with the HTML utility
+      editor: options.editor,
+      overrideSuggestionOptions: suggestion,
+      extensionName: options.name,
+      char: suggestion.char
+    }));
+  }
+  function getSuggestionFromChar(options, char) {
+    const suggestions = getSuggestions(options);
+    const suggestion = suggestions.find((s) => s.char === char);
+    if (suggestion) {
+      return suggestion;
+    }
+    if (suggestions.length) {
+      return suggestions[0];
+    }
+    return null;
+  }
+  var Mention = Node3.create({
+    name: "mention",
+    priority: 101,
+    addOptions() {
+      return {
+        HTMLAttributes: {},
+        renderText({ node, suggestion }) {
+          var _a, _b;
+          return `${(_a = suggestion === null || suggestion === void 0 ? void 0 : suggestion.char) !== null && _a !== void 0 ? _a : "@"}${(_b = node.attrs.label) !== null && _b !== void 0 ? _b : node.attrs.id}`;
+        },
+        deleteTriggerWithBackspace: false,
+        renderHTML({ options, node, suggestion }) {
+          var _a, _b;
+          return [
+            "span",
+            mergeAttributes(this.HTMLAttributes, options.HTMLAttributes),
+            `${(_a = suggestion === null || suggestion === void 0 ? void 0 : suggestion.char) !== null && _a !== void 0 ? _a : "@"}${(_b = node.attrs.label) !== null && _b !== void 0 ? _b : node.attrs.id}`
+          ];
+        },
+        suggestions: [],
+        suggestion: {}
+      };
+    },
+    group: "inline",
+    inline: true,
+    selectable: false,
+    atom: true,
+    addAttributes() {
+      return {
+        id: {
+          default: null,
+          parseHTML: (element2) => element2.getAttribute("data-id"),
+          renderHTML: (attributes) => {
+            if (!attributes.id) {
+              return {};
+            }
+            return {
+              "data-id": attributes.id
+            };
+          }
+        },
+        label: {
+          default: null,
+          parseHTML: (element2) => element2.getAttribute("data-label"),
+          renderHTML: (attributes) => {
+            if (!attributes.label) {
+              return {};
+            }
+            return {
+              "data-label": attributes.label
+            };
+          }
+        },
+        // When there are multiple types of mentions, this attribute helps distinguish them
+        mentionSuggestionChar: {
+          default: "@",
+          parseHTML: (element2) => element2.getAttribute("data-mention-suggestion-char"),
+          renderHTML: (attributes) => {
+            return {
+              "data-mention-suggestion-char": attributes.mentionSuggestionChar
+            };
+          }
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: `span[data-type="${this.name}"]`
+        }
+      ];
+    },
+    renderHTML({ node, HTMLAttributes }) {
+      const suggestion = getSuggestionFromChar(this, node.attrs.mentionSuggestionChar);
+      if (this.options.renderLabel !== void 0) {
+        console.warn("renderLabel is deprecated use renderText and renderHTML instead");
+        return [
+          "span",
+          mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes),
+          this.options.renderLabel({
+            options: this.options,
+            node,
+            suggestion
+          })
+        ];
+      }
+      const mergedOptions = { ...this.options };
+      mergedOptions.HTMLAttributes = mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes);
+      const html = this.options.renderHTML({
+        options: mergedOptions,
+        node,
+        suggestion
+      });
+      if (typeof html === "string") {
+        return [
+          "span",
+          mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes),
+          html
+        ];
+      }
+      return html;
+    },
+    renderText({ node }) {
+      const args2 = {
+        options: this.options,
+        node,
+        suggestion: getSuggestionFromChar(this, node.attrs.mentionSuggestionChar)
+      };
+      if (this.options.renderLabel !== void 0) {
+        console.warn("renderLabel is deprecated use renderText and renderHTML instead");
+        return this.options.renderLabel(args2);
+      }
+      return this.options.renderText(args2);
+    },
+    addKeyboardShortcuts() {
+      return {
+        Backspace: () => this.editor.commands.command(({ tr: tr2, state }) => {
+          let isMention = false;
+          const { selection } = state;
+          const { empty: empty2, anchor } = selection;
+          if (!empty2) {
+            return false;
+          }
+          state.doc.nodesBetween(anchor - 1, anchor, (node, pos) => {
+            if (node.type.name === this.name) {
+              isMention = true;
+              tr2.insertText(this.options.deleteTriggerWithBackspace ? "" : this.options.suggestion.char || "", pos, pos + node.nodeSize);
+              return false;
+            }
+          });
+          let mentionNode = new Node2();
+          let mentionPos = 0;
+          state.doc.nodesBetween(anchor - 1, anchor, (node, pos) => {
+            if (node.type.name === this.name) {
+              isMention = true;
+              mentionNode = node;
+              mentionPos = pos;
+              return false;
+            }
+          });
+          if (isMention) {
+            tr2.insertText(this.options.deleteTriggerWithBackspace ? "" : mentionNode.attrs.mentionSuggestionChar, mentionPos, mentionPos + mentionNode.nodeSize);
+          }
+          return isMention;
+        })
+      };
+    },
+    addProseMirrorPlugins() {
+      return getSuggestions(this).map(Suggestion);
     }
   });
 
@@ -35129,6 +35651,108 @@ ${err.toString()}`);
     }
   });
 
+  // web/mention-suggestion.ts
+  function escapeHtml(value) {
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function mentionSuggestion(people) {
+    return {
+      char: "@",
+      allowSpaces: false,
+      items: ({ query }) => {
+        const needle = query.toLowerCase();
+        return people.filter((person) => person.name.toLowerCase().includes(needle) || person.id.toLowerCase().includes(needle)).slice(0, 8).map((person) => ({ id: person.id, label: person.name }));
+      },
+      render: () => {
+        const menu = document.createElement("div");
+        menu.className = "ew-mention-suggest";
+        menu.hidden = true;
+        menu.setAttribute("role", "listbox");
+        menu.setAttribute("aria-label", "Mention someone in the page");
+        document.body.appendChild(menu);
+        let active = 0;
+        let current;
+        const hide2 = () => {
+          menu.hidden = true;
+        };
+        const place = (props) => {
+          const rect = props.clientRect?.();
+          const reference = props.decorationNode ?? (rect ? { getBoundingClientRect: () => rect } : void 0);
+          if (!reference) return;
+          void computePosition2(reference, menu, {
+            strategy: "fixed",
+            placement: "bottom-start",
+            middleware: [offset2(8), flip2(), shift3({ padding: 8 })]
+          }).then(({ x, y }) => {
+            menu.style.position = "fixed";
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+          });
+        };
+        const paint = (props) => {
+          current = props;
+          if (!props.items.length) {
+            hide2();
+            return;
+          }
+          active = Math.max(0, Math.min(active, props.items.length - 1));
+          menu.hidden = false;
+          menu.innerHTML = props.items.map(
+            (item, index) => `<button type="button" role="option" class="ew-mention-suggest-item${index === active ? " is-active" : ""}" data-mention-id="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`
+          ).join("");
+          place(props);
+        };
+        menu.addEventListener("mousedown", (event) => {
+          const button = event.target.closest("[data-mention-id]");
+          if (!button?.dataset.mentionId || !current) return;
+          event.preventDefault();
+          const item = current.items.find((entry) => entry.id === button.dataset.mentionId);
+          if (item) current.command(item);
+        });
+        return {
+          onStart: (props) => {
+            active = 0;
+            paint(props);
+          },
+          onUpdate: (props) => paint(props),
+          onKeyDown: ({ event }) => {
+            if (menu.hidden || !current?.items.length) return false;
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              active = (active + 1) % current.items.length;
+              paint(current);
+              return true;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              active = (active - 1 + current.items.length) % current.items.length;
+              paint(current);
+              return true;
+            }
+            if (event.key === "Enter") {
+              const item = current.items[active];
+              if (item) {
+                event.preventDefault();
+                current.command(item);
+                return true;
+              }
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              hide2();
+              return true;
+            }
+            return false;
+          },
+          onExit: () => {
+            hide2();
+            menu.replaceChildren();
+          }
+        };
+      }
+    };
+  }
+
   // node_modules/lucide/dist/esm/defaultAttributes.mjs
   var defaultAttributes = {
     xmlns: "http://www.w3.org/2000/svg",
@@ -35576,6 +36200,12 @@ ${err.toString()}`);
     ["line", { x1: "4", x2: "20", y1: "20", y2: "20" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/undo-2.mjs
+  var Undo2 = [
+    ["path", { d: "M9 14 4 9l5-5" }],
+    ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/user.mjs
   var User = [
     ["path", { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" }],
@@ -35711,6 +36341,7 @@ ${err.toString()}`);
     Sun,
     Table: Table2,
     Underline: Underline2,
+    Undo2,
     User,
     Video,
     ZoomIn,
@@ -35949,7 +36580,8 @@ ${err.toString()}`);
           x: Number.parseFloat(card.style.left) || originLeft,
           y: Number.parseFloat(card.style.top) || originTop,
           width: card.offsetWidth,
-          height: card.offsetHeight
+          height: card.offsetHeight,
+          previous: { x: originLeft, y: originTop, width: originWidth, height: originHeight }
         });
       };
       window.addEventListener("pointermove", onMove);
@@ -36291,6 +36923,13 @@ ${err.toString()}`);
       bar.remove();
     };
   }
+  function editorCounts(instance) {
+    const storage = instance?.storage;
+    return {
+      words: storage?.characterCount?.words() ?? 0,
+      characters: storage?.characterCount?.characters() ?? 0
+    };
+  }
   function mountHostedCollab(options) {
     const ydoc = new Doc();
     const awareness = new Awareness(ydoc);
@@ -36334,7 +36973,7 @@ ${err.toString()}`);
         element: options.element,
         extensions: [
           StarterKit.configure({ history: false }),
-          Placeholder.configure({ placeholder: "Type / for commands \u2014 panels, tables, and action items\u2026" }),
+          Placeholder.configure({ placeholder: "Type / for commands or @ to mention\u2026" }),
           Typography,
           Underline,
           Highlight,
@@ -36345,6 +36984,11 @@ ${err.toString()}`);
           TableHeader,
           TableCell,
           NomaPanel,
+          Mention.configure({
+            HTMLAttributes: { class: "ew-mention-chip" },
+            suggestion: mentionSuggestion(options.people ?? [])
+          }),
+          CharacterCount,
           Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
           Image.configure({ inline: false, allowBase64: false }),
           Collaboration.configure({ document: ydoc, field: "default" }),
@@ -36356,7 +37000,11 @@ ${err.toString()}`);
       });
       stopSlash = bindSlashMenu(editor);
       stopBubble = bindFormatBubble(editor);
-      editor.on("update", () => options.onUpdate?.());
+      editor.on("update", () => {
+        options.onUpdate?.();
+        options.onCount?.(editorCounts(editor));
+      });
+      options.onCount?.(editorCounts(editor));
     };
     const connect = () => {
       if (closed) return;
@@ -36398,10 +37046,12 @@ ${err.toString()}`);
       acks: () => acks,
       ready: () => ready,
       editor: () => editor,
+      counts: () => editorCounts(editor),
       destroy: () => {
         closed = true;
         stopSlash?.();
         stopBubble?.();
+        for (const menu of document.querySelectorAll(".ew-mention-suggest")) menu.remove();
         removeAwarenessStates(awareness, [awareness.clientID], "local");
         if (reconnectTimer !== void 0) window.clearTimeout(reconnectTimer);
         socket?.close();
@@ -36483,16 +37133,16 @@ ${err.toString()}`);
     if (name === "claim" || name === "info" || name === "note" || name === "warning" || name === "success" || name === "decision") {
       const confidence = /confidence=([0-9.]+)/.exec(attrs)?.[1];
       const title = name === "claim" ? confidence ? `Claim \xB7 ${confidence}` : "Claim" : `${name[0].toUpperCase()}${name.slice(1)}`;
-      return `<div data-noma-panel="${escapeAttr(name)}" data-panel-title="${escapeAttr(title)}" class="ew-panel ew-panel-${escapeAttr(name)}"><p><strong>${escapeHtml(title)}</strong> ${inlineHtml(body)}</p></div>`;
+      return `<div data-noma-panel="${escapeAttr(name)}" data-panel-title="${escapeAttr(title)}" class="ew-panel ew-panel-${escapeAttr(name)}"><p><strong>${escapeHtml2(title)}</strong> ${inlineHtml(body)}</p></div>`;
     }
-    if (body) return `<blockquote><p><strong>${escapeHtml(name)}</strong> ${inlineHtml(body)}</p></blockquote>`;
+    if (body) return `<blockquote><p><strong>${escapeHtml2(name)}</strong> ${inlineHtml(body)}</p></blockquote>`;
     return "";
   }
-  function escapeHtml(value) {
+  function escapeHtml2(value) {
     return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function escapeAttr(value) {
-    return escapeHtml(value).replace(/"/g, "&quot;");
+    return escapeHtml2(value).replace(/"/g, "&quot;");
   }
   function inlineHtml(value) {
     const parts = [];
@@ -36500,15 +37150,15 @@ ${err.toString()}`);
     let cursor = 0;
     let match2;
     while (match2 = pattern.exec(value)) {
-      parts.push(escapeHtml(value.slice(cursor, match2.index)));
+      parts.push(escapeHtml2(value.slice(cursor, match2.index)));
       const token2 = match2[0];
-      if (token2.startsWith("`")) parts.push(`<code>${escapeHtml(token2.slice(1, -1))}</code>`);
-      else if (token2.startsWith("**")) parts.push(`<strong>${escapeHtml(token2.slice(2, -2))}</strong>`);
-      else if (token2.startsWith("*")) parts.push(`<em>${escapeHtml(token2.slice(1, -1))}</em>`);
-      else parts.push(`<a href="${escapeAttr(match2[3] ?? "")}">${escapeHtml(match2[2] ?? "")}</a>`);
+      if (token2.startsWith("`")) parts.push(`<code>${escapeHtml2(token2.slice(1, -1))}</code>`);
+      else if (token2.startsWith("**")) parts.push(`<strong>${escapeHtml2(token2.slice(2, -2))}</strong>`);
+      else if (token2.startsWith("*")) parts.push(`<em>${escapeHtml2(token2.slice(1, -1))}</em>`);
+      else parts.push(`<a href="${escapeAttr(match2[3] ?? "")}">${escapeHtml2(match2[2] ?? "")}</a>`);
       cursor = match2.index + token2.length;
     }
-    parts.push(escapeHtml(value.slice(cursor)));
+    parts.push(escapeHtml2(value.slice(cursor)));
     return parts.join("");
   }
 
@@ -36535,6 +37185,8 @@ ${err.toString()}`);
   var boardView = "board";
   var paletteIndex = 0;
   var mentionStop;
+  var canvasHistory = [];
+  var stickyColor = "yellow";
   var $2 = (id2) => {
     const node = document.getElementById(id2);
     if (!node) throw new Error(`missing #${id2}`);
@@ -36572,7 +37224,7 @@ ${err.toString()}`);
   function showGate(visible) {
     gate.hidden = !visible;
   }
-  function escapeHtml2(value) {
+  function escapeHtml3(value) {
     return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function currentProject() {
@@ -36594,7 +37246,7 @@ ${err.toString()}`);
     return (letters || "?").toUpperCase();
   }
   function avatarMarkup(name, size4 = "sm") {
-    return `<span class="ew-avatar${size4 === "lg" ? " lg" : ""}" aria-hidden="true">${escapeHtml2(initials(name))}</span>`;
+    return `<span class="ew-avatar${size4 === "lg" ? " lg" : ""}" aria-hidden="true">${escapeHtml3(initials(name))}</span>`;
   }
   function spaceColor(name) {
     let hash = 0;
@@ -36640,9 +37292,9 @@ ${err.toString()}`);
     const space = payload?.spaces.find((item) => item.id === doc4.spaceId);
     const chain = documentAncestors(doc4.id);
     crumbs.innerHTML = [
-      `<span>${escapeHtml2(space?.name ?? "Space")}</span>`,
+      `<span>${escapeHtml3(space?.name ?? "Space")}</span>`,
       ...chain.map(
-        (item, index) => index === chain.length - 1 ? `<span>${escapeHtml2(item.title)}</span>` : `<button type="button" data-kind="document" data-id="${item.id}">${escapeHtml2(item.title)}</button>`
+        (item, index) => index === chain.length - 1 ? `<span>${escapeHtml3(item.title)}</span>` : `<button type="button" data-kind="document" data-id="${item.id}">${escapeHtml3(item.title)}</button>`
       )
     ].join("");
   }
@@ -36652,18 +37304,34 @@ ${err.toString()}`);
     for (let index = 0; index < id2.length; index += 1) hash = hash * 33 + id2.charCodeAt(index) >>> 0;
     return palette[hash % palette.length] ?? "#0C66E4";
   }
+  function renderWordCount(counts) {
+    const node = document.getElementById("doc-count");
+    if (!node) return;
+    const next = counts ?? collab?.counts() ?? { words: 0, characters: 0 };
+    node.textContent = `${next.words} words \xB7 ${next.characters} characters`;
+  }
+  function isOverdue(issue) {
+    const due = (issue.dueAt ?? "").slice(0, 10);
+    if (!due || issue.statusId === "done" || issue.statusId === "cancelled") return false;
+    const today = /* @__PURE__ */ new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    return due < iso;
+  }
+  function stickyAlt(color) {
+    return color === "yellow" ? "Sticky" : `Sticky:${color}`;
+  }
   function renderPresence(users) {
     const node = document.getElementById("doc-presence");
     if (!node) return;
     const unique = [...new Map(users.map((user) => [user.id, user])).values()];
     node.innerHTML = unique.map(
-      (user) => `<span class="ew-avatar" title="${escapeHtml2(user.name)}" style="background:${escapeHtml2(user.color)}">${escapeHtml2(initials(user.name))}</span>`
+      (user) => `<span class="ew-avatar" title="${escapeHtml3(user.name)}" style="background:${escapeHtml3(user.color)}">${escapeHtml3(initials(user.name))}</span>`
     ).join("");
   }
   function renderByline(doc4) {
     const actorName = payload?.actor.name ?? "Unknown";
     const when = formatWhen(doc4?.updatedAt);
-    $2("doc-byline").innerHTML = `${avatarMarkup(actorName)}<span><strong>${escapeHtml2(actorName)}</strong>${when ? ` \xB7 ${escapeHtml2(when)}` : ""}</span>`;
+    $2("doc-byline").innerHTML = `${avatarMarkup(actorName)}<span><strong>${escapeHtml3(actorName)}</strong>${when ? ` \xB7 ${escapeHtml3(when)}` : ""}</span>`;
   }
   async function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -36687,7 +37355,7 @@ ${err.toString()}`);
     return links.map((link) => {
       const href = linkHref(link);
       const external = Boolean(link.url);
-      return `<a class="ew-link" href="${escapeHtml2(href)}" ${external ? `target="_blank" rel="noreferrer"` : ""} data-kind="${escapeHtml2(link.targetKind ?? link.provider)}" data-id="${escapeHtml2(link.targetId ?? "")}">${escapeHtml2(link.provider)} \xB7 ${escapeHtml2(link.label ?? link.url ?? link.id)}</a>`;
+      return `<a class="ew-link" href="${escapeHtml3(href)}" ${external ? `target="_blank" rel="noreferrer"` : ""} data-kind="${escapeHtml3(link.targetKind ?? link.provider)}" data-id="${escapeHtml3(link.targetId ?? "")}">${escapeHtml3(link.provider)} \xB7 ${escapeHtml3(link.label ?? link.url ?? link.id)}</a>`;
     }).join("");
   }
   function documentDepth(id2, seen = /* @__PURE__ */ new Set()) {
@@ -36739,7 +37407,7 @@ ${err.toString()}`);
     icon.textContent = initials(spaceName).slice(0, 1);
     icon.style.background = spaceColor(spaceName);
     const actions = $2("rail-actions");
-    const spaceOptions = payload.spaces.map((space) => `<option value="${space.id}" ${space.id === currentSpaceId() ? "selected" : ""}>${escapeHtml2(space.name)}</option>`).join("");
+    const spaceOptions = payload.spaces.map((space) => `<option value="${space.id}" ${space.id === currentSpaceId() ? "selected" : ""}>${escapeHtml3(space.name)}</option>`).join("");
     if (mode === "docs") {
       actions.innerHTML = `
       <label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>
@@ -36754,14 +37422,14 @@ ${err.toString()}`);
       railList.innerHTML = orderedDocuments().filter((doc4) => !currentSpaceId() || doc4.spaceId === currentSpaceId()).map((doc4) => {
         const depth = Math.min(documentDepth(doc4.id), 2);
         return `<button class="ew-rail-item" type="button" data-kind="document" data-id="${doc4.id}" data-depth="${depth}" aria-current="${doc4.id === selectedDocumentId}">
-          ${pageIcon()}<strong>${escapeHtml2(doc4.title)}</strong><small>${escapeHtml2(doc4.lifecycle)} \xB7 ${escapeHtml2(doc4.classification)}</small>
+          ${pageIcon()}<strong>${escapeHtml3(doc4.title)}</strong><small>${escapeHtml3(doc4.lifecycle)} \xB7 ${escapeHtml3(doc4.classification)}</small>
         </button>`;
       }).join("");
     } else if (mode === "visuals") {
       actions.innerHTML = `<label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>`;
       railList.innerHTML = payload.artifacts.filter((art) => !currentSpaceId() || art.spaceId === currentSpaceId()).map(
         (art) => `<button class="ew-rail-item" type="button" data-kind="artifact" data-id="${art.id}" aria-current="${art.id === selectedArtifactId}">
-          ${boardIcon()}<strong>${escapeHtml2(art.title)}</strong><small>rev ${art.draftRevision}</small>
+          ${boardIcon()}<strong>${escapeHtml3(art.title)}</strong><small>rev ${art.draftRevision}</small>
         </button>`
       ).join("");
     } else if (mode === "work") {
@@ -36770,15 +37438,15 @@ ${err.toString()}`);
       <button type="button" id="create-issue">Create issue</button>`;
       railList.innerHTML = payload.projects.map(
         (project) => `<button class="ew-rail-item" type="button" data-kind="project" data-id="${project.id}" aria-current="${project.id === currentProject()?.id}">
-          ${projectIcon()}<strong>${escapeHtml2(project.name)}</strong><small>${escapeHtml2(project.key)}</small>
+          ${projectIcon()}<strong>${escapeHtml3(project.name)}</strong><small>${escapeHtml3(project.key)}</small>
         </button>`
       ).join("");
     } else {
       actions.replaceChildren();
       railList.innerHTML = payload.spaces.map(
         (space) => `<button class="ew-rail-item" type="button" data-kind="space" data-id="${space.id}" aria-current="${space.id === currentSpaceId()}">
-          <span class="ew-space-icon" style="background:${spaceColor(space.name)}">${escapeHtml2(initials(space.name).slice(0, 1))}</span>
-          <strong>${escapeHtml2(space.name)}</strong><small>${escapeHtml2(space.classification)}</small>
+          <span class="ew-space-icon" style="background:${spaceColor(space.name)}">${escapeHtml3(initials(space.name).slice(0, 1))}</span>
+          <strong>${escapeHtml3(space.name)}</strong><small>${escapeHtml3(space.classification)}</small>
         </button>`
       ).join("");
     }
@@ -36826,8 +37494,13 @@ ${err.toString()}`);
       token,
       documentId: id2,
       user: payload?.actor ? { id: payload.actor.principalId, name: payload.actor.name, color: presenceColor(payload.actor.principalId) } : void 0,
+      people: (payload?.principals ?? []).map((person) => ({ id: person.id, name: person.name })),
       onPresence: renderPresence,
-      onUpdate: renderPageToc,
+      onUpdate: () => {
+        renderPageToc();
+        renderWordCount();
+      },
+      onCount: renderWordCount,
       onStatus: (text2) => {
         $2("collab-status").textContent = text2;
         setStatus(`${payload?.actor.name ?? "Session"} \xB7 ${text2}`, text2.startsWith("ack") || text2 === "ready" ? "ok" : "connecting");
@@ -36852,7 +37525,7 @@ ${err.toString()}`);
     if (!toc) return;
     const headings = pageHeadings();
     toc.innerHTML = headings.length ? headings.map(
-      (heading) => `<button type="button" class="ew-toc-item" data-toc="${escapeHtml2(heading.text)}" data-level="${heading.level}">${escapeHtml2(heading.text)}</button>`
+      (heading) => `<button type="button" class="ew-toc-item" data-toc="${escapeHtml3(heading.text)}" data-level="${heading.level}">${escapeHtml3(heading.text)}</button>`
     ).join("") : `<div class="ew-note">Headings on this page appear here</div>`;
   }
   function setPageCover(assets) {
@@ -36865,7 +37538,7 @@ ${err.toString()}`);
       return;
     }
     cover.hidden = false;
-    cover.innerHTML = `<img src="${escapeHtml2(assetUrl(image.assetId))}" alt="${escapeHtml2(image.filename)}" />`;
+    cover.innerHTML = `<img src="${escapeHtml3(assetUrl(image.assetId))}" alt="${escapeHtml3(image.filename)}" />`;
   }
   async function renderDocumentInspector(id2) {
     const doc4 = payload?.documents.find((item) => item.id === id2);
@@ -36882,39 +37555,39 @@ ${err.toString()}`);
       (comment) => `<article class="ew-comment">
           ${avatarMarkup(comment.authorName, "lg")}
           <div>
-            <div class="ew-comment-meta"><strong>${escapeHtml2(comment.authorName)}</strong><span>${escapeHtml2(formatWhen(comment.createdAt))}</span></div>
-            <p>${escapeHtml2(comment.body)}</p>
+            <div class="ew-comment-meta"><strong>${escapeHtml3(comment.authorName)}</strong><span>${escapeHtml3(formatWhen(comment.createdAt))}</span></div>
+            <p>${escapeHtml3(comment.body)}</p>
           </div>
         </article>`
     ).join("") || `<div class="ew-note">No comments yet</div>`;
     $2("doc-media").innerHTML = assets.assets.map((asset) => {
       const src = assetUrl(asset.assetId);
       if (asset.mime.startsWith("video/")) {
-        return `<video src="${escapeHtml2(src)}" controls title="${escapeHtml2(asset.filename)}"></video>`;
+        return `<video src="${escapeHtml3(src)}" controls title="${escapeHtml3(asset.filename)}"></video>`;
       }
       if (asset.mime.startsWith("image/")) {
-        return `<img src="${escapeHtml2(src)}" alt="${escapeHtml2(asset.filename)}" />`;
+        return `<img src="${escapeHtml3(src)}" alt="${escapeHtml3(asset.filename)}" />`;
       }
-      return `<span>${escapeHtml2(asset.filename)}</span>`;
+      return `<span>${escapeHtml3(asset.filename)}</span>`;
     }).join("") || `<div class="ew-note">No images or videos on this page</div>`;
     const parents = (payload?.documents ?? []).filter((item) => item.id !== id2);
-    const people = (payload?.principals ?? []).map((person) => `<option value="${person.id}">${escapeHtml2(person.name)}</option>`).join("");
-    const issues = (payload?.issues ?? []).map((issue) => `<option value="${issue.id}">${escapeHtml2(issue.key)} ${escapeHtml2(issue.summary)}</option>`).join("");
+    const people = (payload?.principals ?? []).map((person) => `<option value="${person.id}">${escapeHtml3(person.name)}</option>`).join("");
+    const issues = (payload?.issues ?? []).map((issue) => `<option value="${issue.id}">${escapeHtml3(issue.key)} ${escapeHtml3(issue.summary)}</option>`).join("");
     setPageCover(assets.assets);
-    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml2(doc4?.title ?? "")}</strong><span>Hash ${escapeHtml2((doc4?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml2(doc4?.classification ?? "")}</span></div>
+    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml3(doc4?.title ?? "")}</strong><span>Hash ${escapeHtml3((doc4?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml3(doc4?.classification ?? "")}</span></div>
     <div class="ew-meta"><strong>On this page</strong><div id="page-toc" class="ew-toc"></div></div>
-    <label for="rename-page">Title<input id="rename-page" value="${escapeHtml2(doc4?.title ?? "")}" /></label>
+    <label for="rename-page">Title<input id="rename-page" value="${escapeHtml3(doc4?.title ?? "")}" /></label>
     <label for="move-page">Parent
       <select id="move-page">
         <option value="">Space root</option>
-        ${parents.map((item) => `<option value="${item.id}" ${item.id === doc4?.parentId ? "selected" : ""}>${escapeHtml2(item.title)}</option>`).join("")}
+        ${parents.map((item) => `<option value="${item.id}" ${item.id === doc4?.parentId ? "selected" : ""}>${escapeHtml3(item.title)}</option>`).join("")}
       </select>
     </label>
     <div class="ew-actions">
       <button type="button" id="save-page-meta">Save location</button>
       <label class="ew-file" for="attach-file">Attach file<input id="attach-file" type="file" /></label>
     </div>
-    <div class="ew-meta"><strong>Permissions</strong>${grants.grants.map((grant) => `<span>${escapeHtml2(grant.name)} \xB7 ${escapeHtml2(grant.role)}</span>`).join("") || "<span>Inherited from workspace</span>"}</div>
+    <div class="ew-meta"><strong>Permissions</strong>${grants.grants.map((grant) => `<span>${escapeHtml3(grant.name)} \xB7 ${escapeHtml3(grant.role)}</span>`).join("") || "<span>Inherited from workspace</span>"}</div>
     <label for="grant-principal">Person<select id="grant-principal">${people}</select></label>
     <label for="grant-role">Role<select id="grant-role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="owner">owner</option></select></label>
     <button type="button" id="grant-document">Grant access</button>
@@ -36923,8 +37596,8 @@ ${err.toString()}`);
     <button type="button" id="add-github-link">Link GitHub</button>
     <label for="issue-link">Work issue<select id="issue-link">${issues}</select></label>
     <button type="button" id="add-issue-link">Link issue</button>
-    <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} \xB7 ${escapeHtml2(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
-    <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml2(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
+    <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} \xB7 ${escapeHtml3(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
+    <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml3(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
     enhanceSelects(inspector);
     renderPageToc();
   }
@@ -36935,16 +37608,18 @@ ${err.toString()}`);
     if (!editor || (editor.getText() ?? "").trim()) return;
     editor.commands.setContent(nomaToEditorHtml(document2.title || title, document2.source, token));
     renderPageToc();
+    renderWordCount();
   }
   async function openArtifact(id2) {
     if (!id2) return;
+    if (selectedArtifactId !== id2) canvasHistory = [];
     selectedArtifactId = id2;
     const data = await api(`/v1/artifacts/${encodeURIComponent(id2)}`);
     $2("visual-title").textContent = data.document.title;
     $2("visual-stage").innerHTML = rewriteAssetHtml(data.html);
     const from3 = $2("arrow-from");
     const to = $2("arrow-to");
-    const options = data.outline.filter((entry) => entry.type !== "arrow").map((entry) => `<option value="${escapeHtml2(entry.id)}">${escapeHtml2(entry.label)}</option>`).join("");
+    const options = data.outline.filter((entry) => entry.type !== "arrow").map((entry) => `<option value="${escapeHtml3(entry.id)}">${escapeHtml3(entry.label)}</option>`).join("");
     from3.innerHTML = options;
     to.innerHTML = options;
     if (data.outline[1]) to.value = data.outline[1].id;
@@ -36956,14 +37631,20 @@ ${err.toString()}`);
       setCanvasZoom($2("visual-stage"), zoom);
       page.style.marginBottom = `${Math.max(0, page.offsetHeight * (zoom - 1))}px`;
     }
-    $2("visual-outline").innerHTML = data.outline.map((entry) => `<button type="button" data-frame="${escapeHtml2(entry.id)}"><strong>${escapeHtml2(entry.label)}</strong><small>${escapeHtml2(entry.type)}</small></button>`).join("");
-    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml2(data.document.title)}</strong><span>Revision ${data.document.revision}</span><span>${data.outline.length} frames</span></div>`;
+    $2("visual-outline").innerHTML = data.outline.map((entry) => `<button type="button" data-frame="${escapeHtml3(entry.id)}"><strong>${escapeHtml3(entry.label)}</strong><small>${escapeHtml3(entry.type)}</small></button>`).join("");
+    inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml3(data.document.title)}</strong><span>Revision ${data.document.revision}</span><span>${data.outline.length} frames</span></div>`;
     $2("inspector-title").textContent = "Canvas";
     renderRail();
     enhanceSelects($2("canvas-visuals"));
     canvasStop?.();
+    const undoBtn = document.getElementById("canvas-undo");
+    if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = canvasHistory.length === 0;
     canvasStop = bindVisualStage($2("visual-stage"), {
       onMove: (move) => {
+        if (move.previous) {
+          canvasHistory.push({ id: move.id, ...move.previous });
+          if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = false;
+        }
         void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(move.id)}`, {
           method: "PATCH",
           body: JSON.stringify({ geometry: { x: move.x, y: move.y, width: move.width, height: move.height } })
@@ -36971,9 +37652,11 @@ ${err.toString()}`);
         syncCanvasArrows($2("visual-stage"));
       },
       onEdit: (elementId, text2) => {
+        const card = $2("visual-stage").querySelector(`.pd-el[data-id="${CSS.escape(elementId)}"]`);
+        const color = card?.dataset.sticky;
         void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(elementId)}`, {
           method: "PATCH",
-          body: JSON.stringify({ text: text2, altText: text2 })
+          body: JSON.stringify({ text: text2, altText: color ? stickyAlt(color) : text2 })
         });
       },
       onPlaceSticky: (x, y) => {
@@ -36982,7 +37665,7 @@ ${err.toString()}`);
         void addCanvasElement({
           type: "shape",
           text: "New note",
-          altText: "Sticky",
+          altText: stickyAlt(stickyColor),
           geometry: { x, y, width: 200, height: 160 }
         });
       },
@@ -37002,7 +37685,7 @@ ${err.toString()}`);
     const sprints = payload.sprints.filter((sprint) => !board || sprint.boardId === board.id);
     const active = sprints.find((sprint) => sprint.state === "active");
     $2("sprint-bar").innerHTML = `
-    <span>${escapeHtml2(active ? `${active.name} \xB7 ${active.state}` : "No active sprint")}</span>
+    <span>${escapeHtml3(active ? `${active.name} \xB7 ${active.state}` : "No active sprint")}</span>
     ${board && !active ? `<button type="button" id="create-sprint" data-board="${board.id}">Plan sprint</button>` : ""}
     ${active ? `<button type="button" id="close-sprint" data-sprint="${active.id}">Close sprint</button>` : ""}
     ${board && sprints.some((sprint) => sprint.state === "planned") ? `<button type="button" id="start-sprint" data-sprint="${sprints.find((sprint) => sprint.state === "planned")?.id ?? ""}">Start sprint</button>` : ""}
@@ -37016,6 +37699,8 @@ ${err.toString()}`);
     renderSprintBar();
     $2("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
     $2("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
+    $2("filter-unassigned")?.setAttribute("aria-pressed", String(boardFilter === "unassigned"));
+    $2("filter-overdue")?.setAttribute("aria-pressed", String(boardFilter === "overdue"));
     $2("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
     $2("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
     $2("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
@@ -37023,7 +37708,7 @@ ${err.toString()}`);
     $2("type-filters").innerHTML = [
       `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
       ...projectTypes.map(
-        (type) => `<button type="button" data-type="${escapeHtml2(type.key)}" aria-pressed="${String(typeFilter === type.key)}">${escapeHtml2(type.name)}</button>`
+        (type) => `<button type="button" data-type="${escapeHtml3(type.key)}" aria-pressed="${String(typeFilter === type.key)}">${escapeHtml3(type.name)}</button>`
       )
     ].join("");
     const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
@@ -37031,6 +37716,8 @@ ${err.toString()}`);
       if (project && issue.projectId !== project.id) return false;
       if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
       if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
+      if (boardFilter === "unassigned" && issue.assigneeId) return false;
+      if (boardFilter === "overdue" && !isOverdue(issue)) return false;
       if (typeFilter && issue.typeKey !== typeFilter) return false;
       if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
       return true;
@@ -37039,16 +37726,16 @@ ${err.toString()}`);
       const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
       const parent = payload?.issues.find((item) => item.id === issue.parentId);
       const due = (issue.dueAt ?? "").slice(0, 10);
-      const labels = (issue.labels ?? []).map((label) => `<span class="ew-label">${escapeHtml2(label)}</span>`).join("");
-      return `<button class="ew-card${issue.id === selectedIssueId ? " is-open" : ""}" type="button" data-issue="${issue.id}" data-type="${escapeHtml2(issue.typeKey)}">
-      <span class="ew-key">${escapeHtml2(issue.key)}</span>
-      <strong>${escapeHtml2(issue.summary)}</strong>
+      const labels = (issue.labels ?? []).map((label) => `<span class="ew-label">${escapeHtml3(label)}</span>`).join("");
+      return `<button class="ew-card${issue.id === selectedIssueId ? " is-open" : ""}" type="button" data-issue="${issue.id}" data-type="${escapeHtml3(issue.typeKey)}">
+      <span class="ew-key">${escapeHtml3(issue.key)}</span>
+      <strong>${escapeHtml3(issue.summary)}</strong>
       <span class="ew-card-foot">
-        <span class="ew-pill">${escapeHtml2(issue.typeKey)}</span>
-        ${parent ? `<span class="ew-epic">${escapeHtml2(parent.key)}</span>` : ""}
+        <span class="ew-pill">${escapeHtml3(issue.typeKey)}</span>
+        ${parent ? `<span class="ew-epic">${escapeHtml3(parent.key)}</span>` : ""}
         ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
-        <span class="ew-priority" data-priority="${escapeHtml2(issue.priority)}">${escapeHtml2(issue.priority)}</span>
-        ${due ? `<span class="ew-due">${escapeHtml2(due)}</span>` : ""}
+        <span class="ew-priority" data-priority="${escapeHtml3(issue.priority)}">${escapeHtml3(issue.priority)}</span>
+        ${due ? `<span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml3(due)}</span>` : ""}
         ${labels}
         ${assignee ? avatarMarkup(assignee.name) : ""}
       </span>
@@ -37057,13 +37744,13 @@ ${err.toString()}`);
     const columnsMarkup = (laneIssues, laneId) => columns.map((status) => {
       const cards = laneIssues.filter((issue) => issue.statusId === status.id);
       const createId = laneId === "board" ? `create-${status.id}` : `create-${laneId}-${status.id}`;
-      return `<section class="ew-column" data-status="${escapeHtml2(status.id)}">
-        <h3>${escapeHtml2(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
+      return `<section class="ew-column" data-status="${escapeHtml3(status.id)}">
+        <h3>${escapeHtml3(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
         <div class="ew-column-list">
         ${cards.map((issue) => issueCard(issue)).join("")}
         </div>
-        <label class="ew-sr" for="${escapeHtml2(createId)}">Create in ${escapeHtml2(status.name)}</label>
-        <input id="${escapeHtml2(createId)}" class="ew-column-add" data-status="${escapeHtml2(status.id)}" placeholder="Create" />
+        <label class="ew-sr" for="${escapeHtml3(createId)}">Create in ${escapeHtml3(status.name)}</label>
+        <input id="${escapeHtml3(createId)}" class="ew-column-add" data-status="${escapeHtml3(status.id)}" placeholder="Create" />
       </section>`;
     }).join("");
     const board = $2("work-board");
@@ -37077,12 +37764,12 @@ ${err.toString()}`);
       </div>
       ${visible.map((issue) => {
         const due = (issue.dueAt ?? "").slice(0, 10);
-        return `<button type="button" class="ew-row${issue.id === selectedIssueId ? " is-open" : ""}" data-issue="${issue.id}" data-type="${escapeHtml2(issue.typeKey)}" role="row">
-            <span class="ew-key">${escapeHtml2(issue.key)}</span>
-            <strong>${escapeHtml2(issue.summary)}</strong>
-            <span>${escapeHtml2(statusName(issue.statusId))}</span>
-            <span class="ew-priority" data-priority="${escapeHtml2(issue.priority)}">${escapeHtml2(issue.priority)}</span>
-            <span class="ew-due">${escapeHtml2(due)}</span>
+        return `<button type="button" class="ew-row${issue.id === selectedIssueId ? " is-open" : ""}" data-issue="${issue.id}" data-type="${escapeHtml3(issue.typeKey)}" role="row">
+            <span class="ew-key">${escapeHtml3(issue.key)}</span>
+            <strong>${escapeHtml3(issue.summary)}</strong>
+            <span>${escapeHtml3(statusName(issue.statusId))}</span>
+            <span class="ew-priority" data-priority="${escapeHtml3(issue.priority)}">${escapeHtml3(issue.priority)}</span>
+            <span class="ew-due${isOverdue(issue) ? " is-overdue" : ""}">${escapeHtml3(due)}</span>
             <span class="ew-points">${issue.estimate ?? ""}</span>
           </button>`;
       }).join("")}
@@ -37109,8 +37796,8 @@ ${err.toString()}`);
         else groups.set(lane.id, { title: lane.title, issues: [issue] });
       }
       board.innerHTML = [...groups.entries()].map(
-        ([laneId, group]) => `<section class="ew-swimlane" data-epic="${escapeHtml2(laneId)}">
-          <h3>${escapeHtml2(group.title)} <span>${group.issues.length}</span></h3>
+        ([laneId, group]) => `<section class="ew-swimlane" data-epic="${escapeHtml3(laneId)}">
+          <h3>${escapeHtml3(group.title)} <span>${group.issues.length}</span></h3>
           <div class="ew-swimlane-cols">${columnsMarkup(group.issues, laneId)}</div>
         </section>`
       ).join("");
@@ -37125,7 +37812,7 @@ ${err.toString()}`);
       <input id="new-issue-summary" placeholder="Summary" />
     </label>
     <label for="new-issue-type">Type
-      <select id="new-issue-type">${payload.issueTypes.filter((type) => type.projectId === project?.id).map((type) => `<option value="${escapeHtml2(type.key)}">${escapeHtml2(type.name)}</option>`).join("")}</select>
+      <select id="new-issue-type">${payload.issueTypes.filter((type) => type.projectId === project?.id).map((type) => `<option value="${escapeHtml3(type.key)}">${escapeHtml3(type.name)}</option>`).join("")}</select>
     </label>
     <div class="ew-actions"><button type="button" id="submit-issue">${iconSvg("Plus")} Create</button></div>`;
       enhanceSelects(inspector);
@@ -37185,24 +37872,29 @@ ${err.toString()}`);
       const order = ["backlog", "todo", "in_progress", "in_review", "done"];
       return order.indexOf(status.id) === order.indexOf(issue.statusId) + 1;
     });
-    const people = payload.principals.map((person) => `<option value="${person.id}" ${person.id === detail.assignee_id ? "selected" : ""}>${escapeHtml2(person.name)}</option>`).join("");
-    const sprints = payload.sprints.map((sprint) => `<option value="${sprint.id}" ${sprint.id === detail.sprint_id ? "selected" : ""}>${escapeHtml2(sprint.name)}</option>`).join("");
+    const people = payload.principals.map((person) => `<option value="${person.id}" ${person.id === detail.assignee_id ? "selected" : ""}>${escapeHtml3(person.name)}</option>`).join("");
+    const sprints = payload.sprints.map((sprint) => `<option value="${sprint.id}" ${sprint.id === detail.sprint_id ? "selected" : ""}>${escapeHtml3(sprint.name)}</option>`).join("");
+    const reporter = payload.principals.find((person) => person.id === (detail.reporter_id ?? issue.reporterId));
+    const parentId = detail.parent_id ?? issue.parentId;
+    const parents = payload.issues.filter((item) => item.projectId === issue.projectId && item.id !== issue.id).map((item) => `<option value="${item.id}" ${item.id === parentId ? "selected" : ""}>${escapeHtml3(item.key)} ${escapeHtml3(item.summary)}</option>`).join("");
     inspector.innerHTML = `<div class="ew-issue">
       <div class="ew-issue-kicker ew-meta">
-        <span class="ew-key">${escapeHtml2(issue.key)}</span>
-        <span class="ew-pill">${escapeHtml2(detail.typeKey)}</span>
-        <span class="ew-lozenge">${escapeHtml2(current?.name ?? issue.statusId)}</span>
+        <span class="ew-key">${escapeHtml3(issue.key)}</span>
+        <span class="ew-pill">${escapeHtml3(detail.typeKey)}</span>
+        <span class="ew-lozenge">${escapeHtml3(current?.name ?? issue.statusId)}</span>
         <button type="button" id="close-issue">Close</button>
       </div>
-      <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml2(detail.summary)}" /></label>
-      <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml2(detail.description ?? "")}</textarea></label>
+      <p id="issue-reporter" class="ew-note">Reported by ${escapeHtml3(reporter?.name ?? "Unknown")}</p>
+      <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml3(detail.summary)}" /></label>
+      <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml3(detail.description ?? "")}</textarea></label>
       <div class="ew-issue-grid">
         <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
+        <label for="issue-parent">Parent<select id="issue-parent"><option value="">No parent</option>${parents}</select></label>
         <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
         <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
-        <label for="issue-due">Due date<input id="issue-due" type="date" value="${escapeHtml2((detail.due_at ?? issue.dueAt ?? "").slice(0, 10))}" /></label>
-        <label for="issue-estimate">Estimate<input id="issue-estimate" type="number" min="0" step="1" value="${escapeHtml2(String(detail.estimate ?? issue.estimate ?? ""))}" /></label>
-        <label for="issue-labels">Labels<input id="issue-labels" value="${escapeHtml2((() => {
+        <label for="issue-due">Due date<input id="issue-due" type="date" value="${escapeHtml3((detail.due_at ?? issue.dueAt ?? "").slice(0, 10))}" /></label>
+        <label for="issue-estimate">Estimate<input id="issue-estimate" type="number" min="0" step="1" value="${escapeHtml3(String(detail.estimate ?? issue.estimate ?? ""))}" /></label>
+        <label for="issue-labels">Labels<input id="issue-labels" value="${escapeHtml3((() => {
       try {
         const parsed = typeof detail.labels_json === "string" ? JSON.parse(detail.labels_json) : issue.labels;
         return Array.isArray(parsed) ? parsed.join(", ") : (issue.labels ?? []).join(", ");
@@ -37213,18 +37905,18 @@ ${err.toString()}`);
       </div>
       <div class="ew-actions">
         <button type="button" id="save-issue">Save</button>
-        ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml2(next.id)}">Move to ${escapeHtml2(next.name)}</button>` : ""}
-        ${detail.transitions.filter((item) => item.to !== next?.id).map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml2(item.to)}" data-fields="${escapeHtml2(item.requiredFields.join(","))}">${escapeHtml2(item.to.replaceAll("_", " "))}</button>`).join("")}
+        ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml3(next.id)}">Move to ${escapeHtml3(next.name)}</button>` : ""}
+        ${detail.transitions.filter((item) => item.to !== next?.id).map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml3(item.to)}" data-fields="${escapeHtml3(item.requiredFields.join(","))}">${escapeHtml3(item.to.replaceAll("_", " "))}</button>`).join("")}
       </div>
       <div class="ew-activity">
         <strong>Comments</strong>
-        ${detail.comments.map((comment) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml2(comment.authorName)}</strong></div><p>${escapeHtml2(comment.body)}</p></div></article>`).join("") || `<div class="ew-note">No comments</div>`}
+        ${detail.comments.map((comment) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml3(comment.authorName)}</strong></div><p>${escapeHtml3(comment.body)}</p></div></article>`).join("") || `<div class="ew-note">No comments</div>`}
         <label for="issue-comment">Comment<textarea id="issue-comment" rows="2" placeholder="Write a comment. Mention with @name"></textarea></label>
         <button type="button" id="issue-comment-submit">Comment</button>
       </div>
       <div class="ew-activity">
         <strong>Worklog</strong>
-        ${detail.worklogs.map((log) => `<span>${escapeHtml2(log.authorName)} \xB7 ${Math.round(log.durationSeconds / 60)}m ${escapeHtml2(log.note ?? "")}</span>`).join("") || `<div class="ew-note">No time logged</div>`}
+        ${detail.worklogs.map((log) => `<span>${escapeHtml3(log.authorName)} \xB7 ${Math.round(log.durationSeconds / 60)}m ${escapeHtml3(log.note ?? "")}</span>`).join("") || `<div class="ew-note">No time logged</div>`}
         <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
         <label for="worklog-note">Note<input id="worklog-note" /></label>
         <button type="button" id="worklog-submit">Log work</button>
@@ -37232,14 +37924,14 @@ ${err.toString()}`);
       <div class="ew-activity">
         <strong>Activity</strong>
         ${(detail.events ?? []).map(
-      (event) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml2(event.actorName)}</strong><span>${escapeHtml2(event.action.replaceAll("_", " "))}</span></div></div></article>`
+      (event) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml3(event.actorName)}</strong><span>${escapeHtml3(event.action.replaceAll("_", " "))}</span></div></div></article>`
     ).join("") || `<div class="ew-note">No activity yet</div>`}
       </div>
     </div>`;
     const links = await api(
       `/v1/issues/${encodeURIComponent(id2)}/links`
     );
-    const docs = (payload.documents ?? []).map((item) => `<option value="${item.id}">${escapeHtml2(item.title)}</option>`).join("");
+    const docs = (payload.documents ?? []).map((item) => `<option value="${item.id}">${escapeHtml3(item.title)}</option>`).join("");
     inspector.insertAdjacentHTML(
       "beforeend",
       `<div class="ew-meta"><strong>Links</strong>${linksMarkup(links.links)}</div>
@@ -37276,7 +37968,7 @@ ${err.toString()}`);
     <section>
       <h2>Grant</h2>
       <div class="ew-form-row">
-        <select id="admin-grant-principal">${payload.principals.map((person) => `<option value="${person.id}">${escapeHtml2(person.name)}</option>`).join("")}</select>
+        <select id="admin-grant-principal">${payload.principals.map((person) => `<option value="${person.id}">${escapeHtml3(person.name)}</option>`).join("")}</select>
         <select id="admin-grant-kind"><option value="space">space</option><option value="project">project</option><option value="document">document</option></select>
         <input id="admin-grant-resource" placeholder="Resource id" />
         <select id="admin-grant-role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="owner">owner</option></select>
@@ -37285,15 +37977,15 @@ ${err.toString()}`);
     </section>
     <section>
       <h2>Grants</h2>
-      ${payload.grants.map((grant) => `<div class="ew-note">${escapeHtml2(grant.role)} on ${escapeHtml2(grant.resourceKind)} ${escapeHtml2(grant.resourceId)}</div>`).join("") || `<div class="ew-note">None listed</div>`}
+      ${payload.grants.map((grant) => `<div class="ew-note">${escapeHtml3(grant.role)} on ${escapeHtml3(grant.resourceKind)} ${escapeHtml3(grant.resourceId)}</div>`).join("") || `<div class="ew-note">None listed</div>`}
     </section>`;
     enhanceSelects($2("admin-panel"));
   }
   function renderNotifications() {
     const items = payload?.notifications ?? [];
     $2("notify-list").innerHTML = items.map(
-      (item) => `<button class="ew-hit" type="button" data-notification="${escapeHtml2(item.id)}" data-kind="${escapeHtml2(item.resource_kind ?? "")}" data-id="${escapeHtml2(item.resource_id ?? "")}">
-          <strong>${escapeHtml2(item.title)}</strong><small>${escapeHtml2(item.body)}</small>
+      (item) => `<button class="ew-hit" type="button" data-notification="${escapeHtml3(item.id)}" data-kind="${escapeHtml3(item.resource_kind ?? "")}" data-id="${escapeHtml3(item.resource_id ?? "")}">
+          <strong>${escapeHtml3(item.title)}</strong><small>${escapeHtml3(item.body)}</small>
         </button>`
     ).join("") || `<div class="ew-note">Inbox empty</div>`;
     const badge = $2("notify-badge");
@@ -37443,6 +38135,7 @@ ${err.toString()}`);
             summary: $2("issue-summary").value,
             description: $2("issue-description").value,
             assigneeId: $2("issue-assignee").value || null,
+            parentId: $2("issue-parent").value || null,
             priority: $2("issue-priority").value,
             dueAt: $2("issue-due").value || null,
             estimate: $2("issue-estimate").value === "" ? null : Number($2("issue-estimate").value),
@@ -37570,7 +38263,7 @@ ${err.toString()}`);
         renderRail();
       }
     } catch (error) {
-      inspector.insertAdjacentHTML("beforeend", `<p class="ew-error">${escapeHtml2(error instanceof Error ? error.message : String(error))}</p>`);
+      inspector.insertAdjacentHTML("beforeend", `<p class="ew-error">${escapeHtml3(error instanceof Error ? error.message : String(error))}</p>`);
     }
   });
   inspector.addEventListener("change", async (event) => {
@@ -37639,7 +38332,7 @@ ${err.toString()}`);
       })
     });
     const editor = collab?.editor();
-    editor?.chain().focus().insertContent(`<p>${kind === "video" ? "Video" : "Image"}: ${escapeHtml2(file.name)}</p>`).run();
+    editor?.chain().focus().insertContent(`<p>${kind === "video" ? "Video" : "Image"}: ${escapeHtml3(file.name)}</p>`).run();
     await refreshWorkspace();
     await renderDocumentInspector(selectedDocumentId);
   }
@@ -37653,6 +38346,24 @@ ${err.toString()}`);
     if (file) await embedPageMedia("video", file);
     event.target.value = "";
   });
+  async function undoCanvas() {
+    const last2 = canvasHistory.pop();
+    const undoBtn = document.getElementById("canvas-undo");
+    if (undoBtn instanceof HTMLButtonElement) undoBtn.disabled = canvasHistory.length === 0;
+    if (!last2 || !selectedArtifactId) return;
+    const card = $2("visual-stage").querySelector(`.pd-el[data-id="${CSS.escape(last2.id)}"]`);
+    if (card) {
+      card.style.left = `${last2.x}px`;
+      card.style.top = `${last2.y}px`;
+      card.style.width = `${last2.width}px`;
+      card.style.height = `${last2.height}px`;
+      syncCanvasArrows($2("visual-stage"));
+    }
+    await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements/${encodeURIComponent(last2.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ geometry: { x: last2.x, y: last2.y, width: last2.width, height: last2.height } })
+    });
+  }
   async function addCanvasElement(input) {
     if (!selectedArtifactId) return;
     await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/elements`, {
@@ -37679,6 +38390,9 @@ ${err.toString()}`);
     for (const button of document.querySelectorAll("#visual-toolbar [data-tool]")) {
       button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
     }
+    for (const button of document.querySelectorAll("#sticky-colors [data-sticky-color]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.stickyColor === stickyColor));
+    }
     $2("visual-stage").classList.toggle("is-panning", tool === "pan");
     $2("visual-stage").classList.toggle("is-sticky", tool === "sticky");
     $2("visual-stage").classList.toggle("is-connecting", tool === "connect");
@@ -37686,6 +38400,17 @@ ${err.toString()}`);
   $2("visual-toolbar").addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
+    const color = button.dataset.stickyColor;
+    if (color === "yellow" || color === "pink" || color === "green" || color === "blue") {
+      stickyColor = color;
+      $2("visual-stage").dataset.tool = "sticky";
+      syncVisualTools();
+      return;
+    }
+    if (button.id === "canvas-undo") {
+      void undoCanvas();
+      return;
+    }
     if (button.dataset.tool) {
       $2("visual-stage").dataset.tool = button.dataset.tool;
       syncVisualTools();
@@ -37764,8 +38489,8 @@ ${err.toString()}`);
     searchResults.hidden = false;
     const hits = uniqueHits(result.hits);
     searchResults.innerHTML = hits.map(
-      (hit) => `<button class="ew-hit" type="button" data-kind="${escapeHtml2(hit.resourceKind)}" data-id="${escapeHtml2(hit.resourceId)}">
-        <strong>${escapeHtml2(hit.title)}</strong><small>${escapeHtml2(hit.excerpt)}</small>
+      (hit) => `<button class="ew-hit" type="button" data-kind="${escapeHtml3(hit.resourceKind)}" data-id="${escapeHtml3(hit.resourceId)}">
+        <strong>${escapeHtml3(hit.title)}</strong><small>${escapeHtml3(hit.excerpt)}</small>
       </button>`
     ).join("") || `<div class="ew-meta">No matches</div>`;
     syncSearchPopup();
@@ -37842,7 +38567,7 @@ ${err.toString()}`);
       openDocument(result.documentId);
       inspector.insertAdjacentHTML(
         "beforeend",
-        result.lossReport.length ? `<div class="ew-tree-loss">${result.lossReport.map((item) => `<div>Unsupported macro: ${escapeHtml2(item.name)}</div>`).join("")}</div>` : `<div class="ew-note">Imported with no macro loss</div>`
+        result.lossReport.length ? `<div class="ew-tree-loss">${result.lossReport.map((item) => `<div>Unsupported macro: ${escapeHtml3(item.name)}</div>`).join("")}</div>` : `<div class="ew-note">Imported with no macro loss</div>`
       );
     } catch (error) {
       $2("import-error").textContent = error instanceof Error ? error.message : String(error);
@@ -37896,8 +38621,8 @@ ${err.toString()}`);
     const items = paletteItems($2("command-input").value);
     paletteIndex = Math.min(paletteIndex, Math.max(0, items.length - 1));
     $2("command-list").innerHTML = items.map(
-      (item, index) => `<button type="button" class="ew-palette-item${index === paletteIndex ? " is-active" : ""}" role="option" data-kind="${item.kind}" data-id="${escapeHtml2(item.id)}">
-          <strong>${escapeHtml2(item.title)}</strong><small>${escapeHtml2(item.subtitle)}</small>
+      (item, index) => `<button type="button" class="ew-palette-item${index === paletteIndex ? " is-active" : ""}" role="option" data-kind="${item.kind}" data-id="${escapeHtml3(item.id)}">
+          <strong>${escapeHtml3(item.title)}</strong><small>${escapeHtml3(item.subtitle)}</small>
         </button>`
     ).join("") || `<div class="ew-meta">No matches</div>`;
   }
@@ -37939,6 +38664,14 @@ ${err.toString()}`);
     if (event.target === $2("command-palette")) closePalette();
   });
   document.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && mode === "visuals") {
+      const target = event.target;
+      if (!target.closest("input, textarea, select, [contenteditable='true']")) {
+        event.preventDefault();
+        void undoCanvas();
+        return;
+      }
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       if ($2("command-palette").hidden) openPalette();
@@ -37988,7 +38721,8 @@ ${err.toString()}`);
       return;
     }
     if (!button.dataset.filter) return;
-    boardFilter = button.dataset.filter === "mine" ? "mine" : "all";
+    const next = button.dataset.filter;
+    boardFilter = next === "mine" || next === "unassigned" || next === "overdue" ? next : "all";
     renderBoard();
   });
   $2("type-filters").addEventListener("click", (event) => {
@@ -38046,6 +38780,8 @@ ${err.toString()}`);
       text: () => collab?.getText() ?? "",
       html: () => collab?.editor()?.getHTML() ?? "",
       selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
+      counts: () => collab?.counts() ?? { words: 0, characters: 0 },
+      undoCanvas,
       openPalette,
       applyBoardDrop
     }
@@ -38121,6 +38857,7 @@ lucide/dist/esm/icons/sun.mjs:
 lucide/dist/esm/icons/table.mjs:
 lucide/dist/esm/icons/triangle-alert.mjs:
 lucide/dist/esm/icons/underline.mjs:
+lucide/dist/esm/icons/undo-2.mjs:
 lucide/dist/esm/icons/user.mjs:
 lucide/dist/esm/icons/video.mjs:
 lucide/dist/esm/icons/zoom-in.mjs:

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { listenEnterpriseHttp } from "../src/enterprise-http.js";
 import { seedEnterpriseProductFixture } from "../src/enterprise-shell.js";
+import { paperCanvasMarkup, paperStickyColor } from "../src/enterprise-paperdom.js";
 import { translateSqliteToPostgres } from "../src/enterprise-sql.js";
 import { postgresRuntimeAvailable } from "../src/enterprise-pg-sync.js";
 import { createTestOidc, EnterpriseWorkspace } from "../src/enterprise-workspace.js";
@@ -290,6 +291,30 @@ test("sqlite-to-postgres translation keeps ignore/replace semantics", () => {
   assert.match(translateSqliteToPostgres("INSERT OR IGNORE INTO spaces(id) VALUES (?)"), /ON CONFLICT DO NOTHING/);
   assert.match(translateSqliteToPostgres("INSERT OR REPLACE INTO documents(id, title) VALUES (?, ?)"), /ON CONFLICT \(id\) DO UPDATE SET title = excluded.title/);
   assert.equal(translateSqliteToPostgres("SELECT * FROM issues WHERE id = ?"), "SELECT * FROM issues WHERE id = $1");
+});
+
+test("sticky notes keep color in PaperDOM markup", () => {
+  assert.equal(paperStickyColor("Sticky"), "yellow");
+  assert.equal(paperStickyColor("Sticky:pink"), "pink");
+  assert.equal(paperStickyColor("Sticky:green"), "green");
+  const html = paperCanvasMarkup({
+    id: "board",
+    title: "Notes",
+    schemaVersion: 1,
+    revision: 1,
+    elements: [
+      {
+        id: "note",
+        type: "shape",
+        geometry: { x: 8, y: 8, width: 120, height: 80 },
+        zIndex: 1,
+        text: "Risk",
+        altText: "Sticky:blue",
+      },
+    ],
+  });
+  assert.match(html, /pd-el-sticky-blue/);
+  assert.match(html, /data-sticky="blue"/);
 });
 
 test("postgres can be a running store when a runtime is available", async (t) => {

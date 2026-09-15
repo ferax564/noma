@@ -16456,6 +16456,9 @@ img.ProseMirror-separator {
     }
     return false;
   }
+  function escapeForRegEx(string) {
+    return string.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  }
 
   // node_modules/lib0/map.js
   var create = () => /* @__PURE__ */ new Map();
@@ -27434,6 +27437,101 @@ ${err.toString()}`);
     }
   });
 
+  // node_modules/@tiptap/extension-character-count/dist/index.js
+  var CharacterCount = Extension.create({
+    name: "characterCount",
+    addOptions() {
+      return {
+        limit: null,
+        mode: "textSize",
+        textCounter: (text2) => text2.length,
+        wordCounter: (text2) => text2.split(" ").filter((word2) => word2 !== "").length
+      };
+    },
+    addStorage() {
+      return {
+        characters: () => 0,
+        words: () => 0
+      };
+    },
+    onBeforeCreate() {
+      this.storage.characters = (options) => {
+        const node = (options === null || options === void 0 ? void 0 : options.node) || this.editor.state.doc;
+        const mode = (options === null || options === void 0 ? void 0 : options.mode) || this.options.mode;
+        if (mode === "textSize") {
+          const text2 = node.textBetween(0, node.content.size, void 0, " ");
+          return this.options.textCounter(text2);
+        }
+        return node.nodeSize;
+      };
+      this.storage.words = (options) => {
+        const node = (options === null || options === void 0 ? void 0 : options.node) || this.editor.state.doc;
+        const text2 = node.textBetween(0, node.content.size, " ", " ");
+        return this.options.wordCounter(text2);
+      };
+    },
+    addProseMirrorPlugins() {
+      let initialEvaluationDone = false;
+      return [
+        new Plugin({
+          key: new PluginKey("characterCount"),
+          appendTransaction: (transactions, oldState, newState) => {
+            if (initialEvaluationDone) {
+              return;
+            }
+            const limit = this.options.limit;
+            if (limit === null || limit === void 0 || limit === 0) {
+              initialEvaluationDone = true;
+              return;
+            }
+            const initialContentSize = this.storage.characters({ node: newState.doc });
+            if (initialContentSize > limit) {
+              const over = initialContentSize - limit;
+              const from3 = 0;
+              const to = over;
+              console.warn(`[CharacterCount] Initial content exceeded limit of ${limit} characters. Content was automatically trimmed.`);
+              const tr2 = newState.tr.deleteRange(from3, to);
+              initialEvaluationDone = true;
+              return tr2;
+            }
+            initialEvaluationDone = true;
+          },
+          filterTransaction: (transaction, state) => {
+            const limit = this.options.limit;
+            if (!transaction.docChanged || limit === 0 || limit === null || limit === void 0) {
+              return true;
+            }
+            const oldSize = this.storage.characters({ node: state.doc });
+            const newSize = this.storage.characters({ node: transaction.doc });
+            if (newSize <= limit) {
+              return true;
+            }
+            if (oldSize > limit && newSize > limit && newSize <= oldSize) {
+              return true;
+            }
+            if (oldSize > limit && newSize > limit && newSize > oldSize) {
+              return false;
+            }
+            const isPaste = transaction.getMeta("paste");
+            if (!isPaste) {
+              return false;
+            }
+            const pos = transaction.selection.$head.pos;
+            const over = newSize - limit;
+            const from3 = pos - over;
+            const to = pos;
+            transaction.deleteRange(from3, to);
+            const updatedSize = this.storage.characters({ node: transaction.doc });
+            if (updatedSize > limit) {
+              return false;
+            }
+            return true;
+          }
+        })
+      ];
+    }
+  });
+
   // node_modules/@tiptap/extension-highlight/dist/index.js
   var inputRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==(?!\s+==))$/;
   var pasteRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==(?!\s+==))/g;
@@ -29074,6 +29172,430 @@ ${err.toString()}`);
         }));
       }
       return plugins;
+    }
+  });
+
+  // node_modules/@tiptap/suggestion/dist/index.js
+  function findSuggestionMatch(config) {
+    var _a;
+    const { char, allowSpaces: allowSpacesOption, allowToIncludeChar, allowedPrefixes, startOfLine, $position } = config;
+    const allowSpaces = allowSpacesOption && !allowToIncludeChar;
+    const escapedChar = escapeForRegEx(char);
+    const suffix = new RegExp(`\\s${escapedChar}$`);
+    const prefix = startOfLine ? "^" : "";
+    const finalEscapedChar = allowToIncludeChar ? "" : escapedChar;
+    const regexp = allowSpaces ? new RegExp(`${prefix}${escapedChar}.*?(?=\\s${finalEscapedChar}|$)`, "gm") : new RegExp(`${prefix}(?:^)?${escapedChar}[^\\s${finalEscapedChar}]*`, "gm");
+    const text2 = ((_a = $position.nodeBefore) === null || _a === void 0 ? void 0 : _a.isText) && $position.nodeBefore.text;
+    if (!text2) {
+      return null;
+    }
+    const textFrom = $position.pos - text2.length;
+    const match2 = Array.from(text2.matchAll(regexp)).pop();
+    if (!match2 || match2.input === void 0 || match2.index === void 0) {
+      return null;
+    }
+    const matchPrefix = match2.input.slice(Math.max(0, match2.index - 1), match2.index);
+    const matchPrefixIsAllowed = new RegExp(`^[${allowedPrefixes === null || allowedPrefixes === void 0 ? void 0 : allowedPrefixes.join("")}\0]?$`).test(matchPrefix);
+    if (allowedPrefixes !== null && !matchPrefixIsAllowed) {
+      return null;
+    }
+    const from3 = textFrom + match2.index;
+    let to = from3 + match2[0].length;
+    if (allowSpaces && suffix.test(text2.slice(to - 1, to + 1))) {
+      match2[0] += " ";
+      to += 1;
+    }
+    if (from3 < $position.pos && to >= $position.pos) {
+      return {
+        range: {
+          from: from3,
+          to
+        },
+        query: match2[0].slice(char.length),
+        text: match2[0]
+      };
+    }
+    return null;
+  }
+  var SuggestionPluginKey = new PluginKey("suggestion");
+  function Suggestion({ pluginKey = SuggestionPluginKey, editor, char = "@", allowSpaces = false, allowToIncludeChar = false, allowedPrefixes = [" "], startOfLine = false, decorationTag = "span", decorationClass = "suggestion", decorationContent = "", decorationEmptyClass = "is-empty", command: command2 = () => null, items = () => [], render = () => ({}), allow = () => true, findSuggestionMatch: findSuggestionMatch$1 = findSuggestionMatch }) {
+    let props;
+    const renderer = render === null || render === void 0 ? void 0 : render();
+    const plugin = new Plugin({
+      key: pluginKey,
+      view() {
+        return {
+          update: async (view, prevState) => {
+            var _a, _b, _c, _d, _e, _f, _g;
+            const prev = (_a = this.key) === null || _a === void 0 ? void 0 : _a.getState(prevState);
+            const next = (_b = this.key) === null || _b === void 0 ? void 0 : _b.getState(view.state);
+            const moved = prev.active && next.active && prev.range.from !== next.range.from;
+            const started = !prev.active && next.active;
+            const stopped = prev.active && !next.active;
+            const changed = !started && !stopped && prev.query !== next.query;
+            const handleStart = started || moved && changed;
+            const handleChange = changed || moved;
+            const handleExit = stopped || moved && changed;
+            if (!handleStart && !handleChange && !handleExit) {
+              return;
+            }
+            const state = handleExit && !handleStart ? prev : next;
+            const decorationNode = view.dom.querySelector(`[data-decoration-id="${state.decorationId}"]`);
+            props = {
+              editor,
+              range: state.range,
+              query: state.query,
+              text: state.text,
+              items: [],
+              command: (commandProps) => {
+                return command2({
+                  editor,
+                  range: state.range,
+                  props: commandProps
+                });
+              },
+              decorationNode,
+              // virtual node for popper.js or tippy.js
+              // this can be used for building popups without a DOM node
+              clientRect: decorationNode ? () => {
+                var _a2;
+                const { decorationId } = (_a2 = this.key) === null || _a2 === void 0 ? void 0 : _a2.getState(editor.state);
+                const currentDecorationNode = view.dom.querySelector(`[data-decoration-id="${decorationId}"]`);
+                return (currentDecorationNode === null || currentDecorationNode === void 0 ? void 0 : currentDecorationNode.getBoundingClientRect()) || null;
+              } : null
+            };
+            if (handleStart) {
+              (_c = renderer === null || renderer === void 0 ? void 0 : renderer.onBeforeStart) === null || _c === void 0 ? void 0 : _c.call(renderer, props);
+            }
+            if (handleChange) {
+              (_d = renderer === null || renderer === void 0 ? void 0 : renderer.onBeforeUpdate) === null || _d === void 0 ? void 0 : _d.call(renderer, props);
+            }
+            if (handleChange || handleStart) {
+              props.items = await items({
+                editor,
+                query: state.query
+              });
+            }
+            if (handleExit) {
+              (_e = renderer === null || renderer === void 0 ? void 0 : renderer.onExit) === null || _e === void 0 ? void 0 : _e.call(renderer, props);
+            }
+            if (handleChange) {
+              (_f = renderer === null || renderer === void 0 ? void 0 : renderer.onUpdate) === null || _f === void 0 ? void 0 : _f.call(renderer, props);
+            }
+            if (handleStart) {
+              (_g = renderer === null || renderer === void 0 ? void 0 : renderer.onStart) === null || _g === void 0 ? void 0 : _g.call(renderer, props);
+            }
+          },
+          destroy: () => {
+            var _a;
+            if (!props) {
+              return;
+            }
+            (_a = renderer === null || renderer === void 0 ? void 0 : renderer.onExit) === null || _a === void 0 ? void 0 : _a.call(renderer, props);
+          }
+        };
+      },
+      state: {
+        // Initialize the plugin's internal state.
+        init() {
+          const state = {
+            active: false,
+            range: {
+              from: 0,
+              to: 0
+            },
+            query: null,
+            text: null,
+            composing: false
+          };
+          return state;
+        },
+        // Apply changes to the plugin state from a view transaction.
+        apply(transaction, prev, _oldState, state) {
+          const { isEditable } = editor;
+          const { composing } = editor.view;
+          const { selection } = transaction;
+          const { empty: empty2, from: from3 } = selection;
+          const next = { ...prev };
+          next.composing = composing;
+          if (isEditable && (empty2 || editor.view.composing)) {
+            if ((from3 < prev.range.from || from3 > prev.range.to) && !composing && !prev.composing) {
+              next.active = false;
+            }
+            const match2 = findSuggestionMatch$1({
+              char,
+              allowSpaces,
+              allowToIncludeChar,
+              allowedPrefixes,
+              startOfLine,
+              $position: selection.$from
+            });
+            const decorationId = `id_${Math.floor(Math.random() * 4294967295)}`;
+            if (match2 && allow({
+              editor,
+              state,
+              range: match2.range,
+              isActive: prev.active
+            })) {
+              next.active = true;
+              next.decorationId = prev.decorationId ? prev.decorationId : decorationId;
+              next.range = match2.range;
+              next.query = match2.query;
+              next.text = match2.text;
+            } else {
+              next.active = false;
+            }
+          } else {
+            next.active = false;
+          }
+          if (!next.active) {
+            next.decorationId = null;
+            next.range = { from: 0, to: 0 };
+            next.query = null;
+            next.text = null;
+          }
+          return next;
+        }
+      },
+      props: {
+        // Call the keydown hook if suggestion is active.
+        handleKeyDown(view, event) {
+          var _a;
+          const { active, range } = plugin.getState(view.state);
+          if (!active) {
+            return false;
+          }
+          return ((_a = renderer === null || renderer === void 0 ? void 0 : renderer.onKeyDown) === null || _a === void 0 ? void 0 : _a.call(renderer, { view, event, range })) || false;
+        },
+        // Setup decorator on the currently active suggestion.
+        decorations(state) {
+          const { active, range, decorationId, query } = plugin.getState(state);
+          if (!active) {
+            return null;
+          }
+          const isEmpty3 = !(query === null || query === void 0 ? void 0 : query.length);
+          const classNames = [decorationClass];
+          if (isEmpty3) {
+            classNames.push(decorationEmptyClass);
+          }
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(range.from, range.to, {
+              nodeName: decorationTag,
+              class: classNames.join(" "),
+              "data-decoration-id": decorationId,
+              "data-decoration-content": decorationContent
+            })
+          ]);
+        }
+      }
+    });
+    return plugin;
+  }
+
+  // node_modules/@tiptap/extension-mention/dist/index.js
+  function getSuggestionOptions({ editor: tiptapEditor, overrideSuggestionOptions, extensionName, char = "@" }) {
+    const pluginKey = new PluginKey();
+    return {
+      editor: tiptapEditor,
+      char,
+      pluginKey,
+      command: ({ editor, range, props }) => {
+        var _a, _b, _c;
+        const nodeAfter = editor.view.state.selection.$to.nodeAfter;
+        const overrideSpace = (_a = nodeAfter === null || nodeAfter === void 0 ? void 0 : nodeAfter.text) === null || _a === void 0 ? void 0 : _a.startsWith(" ");
+        if (overrideSpace) {
+          range.to += 1;
+        }
+        editor.chain().focus().insertContentAt(range, [
+          {
+            type: extensionName,
+            attrs: { ...props, mentionSuggestionChar: char }
+          },
+          {
+            type: "text",
+            text: " "
+          }
+        ]).run();
+        (_c = (_b = editor.view.dom.ownerDocument.defaultView) === null || _b === void 0 ? void 0 : _b.getSelection()) === null || _c === void 0 ? void 0 : _c.collapseToEnd();
+      },
+      allow: ({ state, range }) => {
+        const $from = state.doc.resolve(range.from);
+        const type = state.schema.nodes[extensionName];
+        const allow = !!$from.parent.type.contentMatch.matchType(type);
+        return allow;
+      },
+      ...overrideSuggestionOptions
+    };
+  }
+  function getSuggestions(options) {
+    return (options.options.suggestions.length ? options.options.suggestions : [options.options.suggestion]).map((suggestion) => getSuggestionOptions({
+      // @ts-ignore `editor` can be `undefined` when converting the document to HTML with the HTML utility
+      editor: options.editor,
+      overrideSuggestionOptions: suggestion,
+      extensionName: options.name,
+      char: suggestion.char
+    }));
+  }
+  function getSuggestionFromChar(options, char) {
+    const suggestions = getSuggestions(options);
+    const suggestion = suggestions.find((s) => s.char === char);
+    if (suggestion) {
+      return suggestion;
+    }
+    if (suggestions.length) {
+      return suggestions[0];
+    }
+    return null;
+  }
+  var Mention = Node3.create({
+    name: "mention",
+    priority: 101,
+    addOptions() {
+      return {
+        HTMLAttributes: {},
+        renderText({ node, suggestion }) {
+          var _a, _b;
+          return `${(_a = suggestion === null || suggestion === void 0 ? void 0 : suggestion.char) !== null && _a !== void 0 ? _a : "@"}${(_b = node.attrs.label) !== null && _b !== void 0 ? _b : node.attrs.id}`;
+        },
+        deleteTriggerWithBackspace: false,
+        renderHTML({ options, node, suggestion }) {
+          var _a, _b;
+          return [
+            "span",
+            mergeAttributes(this.HTMLAttributes, options.HTMLAttributes),
+            `${(_a = suggestion === null || suggestion === void 0 ? void 0 : suggestion.char) !== null && _a !== void 0 ? _a : "@"}${(_b = node.attrs.label) !== null && _b !== void 0 ? _b : node.attrs.id}`
+          ];
+        },
+        suggestions: [],
+        suggestion: {}
+      };
+    },
+    group: "inline",
+    inline: true,
+    selectable: false,
+    atom: true,
+    addAttributes() {
+      return {
+        id: {
+          default: null,
+          parseHTML: (element2) => element2.getAttribute("data-id"),
+          renderHTML: (attributes) => {
+            if (!attributes.id) {
+              return {};
+            }
+            return {
+              "data-id": attributes.id
+            };
+          }
+        },
+        label: {
+          default: null,
+          parseHTML: (element2) => element2.getAttribute("data-label"),
+          renderHTML: (attributes) => {
+            if (!attributes.label) {
+              return {};
+            }
+            return {
+              "data-label": attributes.label
+            };
+          }
+        },
+        // When there are multiple types of mentions, this attribute helps distinguish them
+        mentionSuggestionChar: {
+          default: "@",
+          parseHTML: (element2) => element2.getAttribute("data-mention-suggestion-char"),
+          renderHTML: (attributes) => {
+            return {
+              "data-mention-suggestion-char": attributes.mentionSuggestionChar
+            };
+          }
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: `span[data-type="${this.name}"]`
+        }
+      ];
+    },
+    renderHTML({ node, HTMLAttributes }) {
+      const suggestion = getSuggestionFromChar(this, node.attrs.mentionSuggestionChar);
+      if (this.options.renderLabel !== void 0) {
+        console.warn("renderLabel is deprecated use renderText and renderHTML instead");
+        return [
+          "span",
+          mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes),
+          this.options.renderLabel({
+            options: this.options,
+            node,
+            suggestion
+          })
+        ];
+      }
+      const mergedOptions = { ...this.options };
+      mergedOptions.HTMLAttributes = mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes);
+      const html = this.options.renderHTML({
+        options: mergedOptions,
+        node,
+        suggestion
+      });
+      if (typeof html === "string") {
+        return [
+          "span",
+          mergeAttributes({ "data-type": this.name }, this.options.HTMLAttributes, HTMLAttributes),
+          html
+        ];
+      }
+      return html;
+    },
+    renderText({ node }) {
+      const args2 = {
+        options: this.options,
+        node,
+        suggestion: getSuggestionFromChar(this, node.attrs.mentionSuggestionChar)
+      };
+      if (this.options.renderLabel !== void 0) {
+        console.warn("renderLabel is deprecated use renderText and renderHTML instead");
+        return this.options.renderLabel(args2);
+      }
+      return this.options.renderText(args2);
+    },
+    addKeyboardShortcuts() {
+      return {
+        Backspace: () => this.editor.commands.command(({ tr: tr2, state }) => {
+          let isMention = false;
+          const { selection } = state;
+          const { empty: empty2, anchor } = selection;
+          if (!empty2) {
+            return false;
+          }
+          state.doc.nodesBetween(anchor - 1, anchor, (node, pos) => {
+            if (node.type.name === this.name) {
+              isMention = true;
+              tr2.insertText(this.options.deleteTriggerWithBackspace ? "" : this.options.suggestion.char || "", pos, pos + node.nodeSize);
+              return false;
+            }
+          });
+          let mentionNode = new Node2();
+          let mentionPos = 0;
+          state.doc.nodesBetween(anchor - 1, anchor, (node, pos) => {
+            if (node.type.name === this.name) {
+              isMention = true;
+              mentionNode = node;
+              mentionPos = pos;
+              return false;
+            }
+          });
+          if (isMention) {
+            tr2.insertText(this.options.deleteTriggerWithBackspace ? "" : mentionNode.attrs.mentionSuggestionChar, mentionPos, mentionPos + mentionNode.nodeSize);
+          }
+          return isMention;
+        })
+      };
+    },
+    addProseMirrorPlugins() {
+      return getSuggestions(this).map(Suggestion);
     }
   });
 
@@ -34902,6 +35424,108 @@ ${err.toString()}`);
     }
   });
 
+  // web/mention-suggestion.ts
+  function escapeHtml(value) {
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function mentionSuggestion(people) {
+    return {
+      char: "@",
+      allowSpaces: false,
+      items: ({ query }) => {
+        const needle = query.toLowerCase();
+        return people.filter((person) => person.name.toLowerCase().includes(needle) || person.id.toLowerCase().includes(needle)).slice(0, 8).map((person) => ({ id: person.id, label: person.name }));
+      },
+      render: () => {
+        const menu = document.createElement("div");
+        menu.className = "ew-mention-suggest";
+        menu.hidden = true;
+        menu.setAttribute("role", "listbox");
+        menu.setAttribute("aria-label", "Mention someone in the page");
+        document.body.appendChild(menu);
+        let active = 0;
+        let current;
+        const hide2 = () => {
+          menu.hidden = true;
+        };
+        const place = (props) => {
+          const rect = props.clientRect?.();
+          const reference = props.decorationNode ?? (rect ? { getBoundingClientRect: () => rect } : void 0);
+          if (!reference) return;
+          void computePosition2(reference, menu, {
+            strategy: "fixed",
+            placement: "bottom-start",
+            middleware: [offset2(8), flip2(), shift3({ padding: 8 })]
+          }).then(({ x, y }) => {
+            menu.style.position = "fixed";
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+          });
+        };
+        const paint = (props) => {
+          current = props;
+          if (!props.items.length) {
+            hide2();
+            return;
+          }
+          active = Math.max(0, Math.min(active, props.items.length - 1));
+          menu.hidden = false;
+          menu.innerHTML = props.items.map(
+            (item, index) => `<button type="button" role="option" class="ew-mention-suggest-item${index === active ? " is-active" : ""}" data-mention-id="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`
+          ).join("");
+          place(props);
+        };
+        menu.addEventListener("mousedown", (event) => {
+          const button = event.target.closest("[data-mention-id]");
+          if (!button?.dataset.mentionId || !current) return;
+          event.preventDefault();
+          const item = current.items.find((entry) => entry.id === button.dataset.mentionId);
+          if (item) current.command(item);
+        });
+        return {
+          onStart: (props) => {
+            active = 0;
+            paint(props);
+          },
+          onUpdate: (props) => paint(props),
+          onKeyDown: ({ event }) => {
+            if (menu.hidden || !current?.items.length) return false;
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              active = (active + 1) % current.items.length;
+              paint(current);
+              return true;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              active = (active - 1 + current.items.length) % current.items.length;
+              paint(current);
+              return true;
+            }
+            if (event.key === "Enter") {
+              const item = current.items[active];
+              if (item) {
+                event.preventDefault();
+                current.command(item);
+                return true;
+              }
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              hide2();
+              return true;
+            }
+            return false;
+          },
+          onExit: () => {
+            hide2();
+            menu.replaceChildren();
+          }
+        };
+      }
+    };
+  }
+
   // node_modules/lucide/dist/esm/defaultAttributes.mjs
   var defaultAttributes = {
     xmlns: "http://www.w3.org/2000/svg",
@@ -35257,6 +35881,12 @@ ${err.toString()}`);
     ["line", { x1: "4", x2: "20", y1: "20", y2: "20" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/undo-2.mjs
+  var Undo2 = [
+    ["path", { d: "M9 14 4 9l5-5" }],
+    ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/user.mjs
   var User = [
     ["path", { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" }],
@@ -35323,6 +35953,7 @@ ${err.toString()}`);
     Sun,
     Table: Table2,
     Underline: Underline2,
+    Undo2,
     User,
     Video,
     ZoomIn,
@@ -35533,6 +36164,13 @@ ${err.toString()}`);
       bar.remove();
     };
   }
+  function editorCounts(instance) {
+    const storage = instance?.storage;
+    return {
+      words: storage?.characterCount?.words() ?? 0,
+      characters: storage?.characterCount?.characters() ?? 0
+    };
+  }
   function mountHostedCollab(options) {
     const ydoc = new Doc();
     const awareness = new Awareness(ydoc);
@@ -35576,7 +36214,7 @@ ${err.toString()}`);
         element: options.element,
         extensions: [
           StarterKit.configure({ history: false }),
-          Placeholder.configure({ placeholder: "Type / for commands \u2014 panels, tables, and action items\u2026" }),
+          Placeholder.configure({ placeholder: "Type / for commands or @ to mention\u2026" }),
           Typography,
           Underline,
           Highlight,
@@ -35587,6 +36225,11 @@ ${err.toString()}`);
           TableHeader,
           TableCell,
           NomaPanel,
+          Mention.configure({
+            HTMLAttributes: { class: "ew-mention-chip" },
+            suggestion: mentionSuggestion(options.people ?? [])
+          }),
+          CharacterCount,
           Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
           Image.configure({ inline: false, allowBase64: false }),
           Collaboration.configure({ document: ydoc, field: "default" }),
@@ -35598,7 +36241,11 @@ ${err.toString()}`);
       });
       stopSlash = bindSlashMenu(editor);
       stopBubble = bindFormatBubble(editor);
-      editor.on("update", () => options.onUpdate?.());
+      editor.on("update", () => {
+        options.onUpdate?.();
+        options.onCount?.(editorCounts(editor));
+      });
+      options.onCount?.(editorCounts(editor));
     };
     const connect = () => {
       if (closed) return;
@@ -35640,10 +36287,12 @@ ${err.toString()}`);
       acks: () => acks,
       ready: () => ready,
       editor: () => editor,
+      counts: () => editorCounts(editor),
       destroy: () => {
         closed = true;
         stopSlash?.();
         stopBubble?.();
+        for (const menu of document.querySelectorAll(".ew-mention-suggest")) menu.remove();
         removeAwarenessStates(awareness, [awareness.clientID], "local");
         if (reconnectTimer !== void 0) window.clearTimeout(reconnectTimer);
         socket?.close();
@@ -35732,6 +36381,7 @@ lucide/dist/esm/icons/sun.mjs:
 lucide/dist/esm/icons/table.mjs:
 lucide/dist/esm/icons/triangle-alert.mjs:
 lucide/dist/esm/icons/underline.mjs:
+lucide/dist/esm/icons/undo-2.mjs:
 lucide/dist/esm/icons/user.mjs:
 lucide/dist/esm/icons/video.mjs:
 lucide/dist/esm/icons/zoom-in.mjs:

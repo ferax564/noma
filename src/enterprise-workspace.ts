@@ -875,6 +875,7 @@ export class EnterpriseWorkspace {
       estimate: number | null;
       assigneeId: string | null;
       parentId: string | null;
+      reporterId: string | null;
       rank: string;
       sprintId: string | null;
       priority: string;
@@ -978,6 +979,7 @@ export class EnterpriseWorkspace {
         estimate: row.estimate,
         assigneeId: row.assigneeId,
         parentId: row.parentId,
+        reporterId: row.reporterId,
         rank: row.rank,
         sprintId: row.sprintId,
         priority: row.priority,

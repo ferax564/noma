@@ -1,8 +1,10 @@
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
+import CharacterCount from "@tiptap/extension-character-count";
 import Highlight from "@tiptap/extension-highlight";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
+import Mention from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
 import Table from "@tiptap/extension-table";
 import TableCell from "@tiptap/extension-table-cell";
@@ -18,6 +20,7 @@ import * as Y from "yjs";
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from "y-protocols/awareness";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { NomaPanel } from "./noma-panel";
+import { mentionSuggestion, type MentionPerson } from "./mention-suggestion";
 import { iconSvg, type IconName } from "./ui-kit";
 
 export interface PresenceUser {
@@ -31,6 +34,7 @@ export interface HostedCollab {
   acks: () => number;
   ready: () => boolean;
   editor: () => Editor | undefined;
+  counts: () => { words: number; characters: number };
   destroy: () => void;
 }
 
@@ -255,14 +259,24 @@ function bindFormatBubble(editor: Editor): () => void {
   };
 }
 
+function editorCounts(instance: Editor | undefined): { words: number; characters: number } {
+  const storage = instance?.storage as { characterCount?: { words: () => number; characters: () => number } } | undefined;
+  return {
+    words: storage?.characterCount?.words() ?? 0,
+    characters: storage?.characterCount?.characters() ?? 0,
+  };
+}
+
 export function mountHostedCollab(options: {
   element: HTMLElement;
   token: string;
   documentId: string;
   user?: PresenceUser;
+  people?: MentionPerson[];
   onStatus?: (text: string) => void;
   onPresence?: (users: PresenceUser[]) => void;
   onUpdate?: () => void;
+  onCount?: (counts: { words: number; characters: number }) => void;
 }): HostedCollab {
   const ydoc = new Y.Doc();
   const awareness = new Awareness(ydoc);
@@ -314,7 +328,7 @@ export function mountHostedCollab(options: {
       element: options.element,
       extensions: [
         StarterKit.configure({ history: false }),
-        Placeholder.configure({ placeholder: "Type / for commands — panels, tables, and action items…" }),
+        Placeholder.configure({ placeholder: "Type / for commands or @ to mention…" }),
         Typography,
         Underline,
         Highlight,
@@ -325,6 +339,11 @@ export function mountHostedCollab(options: {
         TableHeader,
         TableCell,
         NomaPanel,
+        Mention.configure({
+          HTMLAttributes: { class: "ew-mention-chip" },
+          suggestion: mentionSuggestion(options.people ?? []),
+        }),
+        CharacterCount,
         Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
         Image.configure({ inline: false, allowBase64: false }),
         Collaboration.configure({ document: ydoc, field: "default" }),
@@ -336,7 +355,11 @@ export function mountHostedCollab(options: {
     });
     stopSlash = bindSlashMenu(editor);
     stopBubble = bindFormatBubble(editor);
-    editor.on("update", () => options.onUpdate?.());
+    editor.on("update", () => {
+      options.onUpdate?.();
+      options.onCount?.(editorCounts(editor));
+    });
+    options.onCount?.(editorCounts(editor));
   };
 
   const connect = (): void => {
@@ -381,10 +404,12 @@ export function mountHostedCollab(options: {
     acks: () => acks,
     ready: () => ready,
     editor: () => editor,
+    counts: () => editorCounts(editor),
     destroy: () => {
       closed = true;
       stopSlash?.();
       stopBubble?.();
+      for (const menu of document.querySelectorAll(".ew-mention-suggest")) menu.remove();
       removeAwarenessStates(awareness, [awareness.clientID], "local");
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       socket?.close();

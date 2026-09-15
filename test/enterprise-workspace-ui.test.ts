@@ -58,6 +58,7 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   assert.ok(shell.documents.length >= 1);
   assert.ok(shell.artifacts.length >= 1);
   assert.ok(shell.issues.length >= 5);
+  assert.ok((shell.issues as Array<{ reporterId?: string | null }>).every((issue) => Boolean(issue.reporterId)));
 
   const browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
   browsers.push(browser);
@@ -92,6 +93,18 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   assert.match(await page.$eval(".ew-slash", (element) => element.textContent ?? ""), /Info panel|Table|Action items/);
   await page.keyboard.press("Escape");
   await page.waitForSelector(".ew-slash[hidden]");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("@");
+  await page.waitForSelector(".ew-mention-suggest:not([hidden])");
+  assert.match(await page.$eval(".ew-mention-suggest", (element) => element.textContent ?? ""), /Alice/);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".ew-mention-suggest[hidden]");
+  await page.waitForSelector("#doc-count");
+  await page.waitForFunction(() => {
+    const text = document.querySelector("#doc-count")?.textContent ?? "";
+    const match = /^(\d+) words/.exec(text);
+    return Boolean(match && Number(match[1]) > 0);
+  });
   await page.click("#editor .ProseMirror");
   const selected = await page.evaluate(() =>
     Boolean((window as unknown as { nomaWorkspace?: { selectAll?: () => boolean } }).nomaWorkspace?.selectAll?.()),
@@ -126,6 +139,9 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector(".pd-el-arrow");
   await page.waitForSelector("#tool-sticky");
   await page.waitForSelector("#tool-connect");
+  await page.waitForSelector("#sticky-pink");
+  await page.waitForSelector("#canvas-undo");
+  await page.waitForSelector(".pd-el-sticky");
   await page.waitForSelector(".pd-resize");
   assert.match(await text(page, "#visual-title"), /Atlas architecture/);
   assert.match(await text(page, "#visual-stage"), /Atlas architecture/);
@@ -152,6 +168,11 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   assert.match(await text(page, "#work-board"), /2026-09-22/);
   assert.match(await text(page, "#work-board"), /urgent|canvas/);
   await page.waitForSelector("#board-filters");
+  await page.waitForSelector("#filter-unassigned");
+  await page.waitForSelector("#filter-overdue");
+  await page.locator("#filter-overdue").click();
+  assert.match(await text(page, "#work-board"), /Ship the product shell/);
+  await page.locator("#filter-all").click();
   const movedByPointer = await page.evaluate(async () => {
     const card = document.querySelector<HTMLElement>('.ew-card[data-type="story"]');
     const dest = document.querySelector<HTMLElement>('[data-status="in_progress"] .ew-column-list');
@@ -178,6 +199,9 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   }, undefined, before);
   await page.waitForSelector("#issue-due");
   await page.waitForSelector("#issue-labels");
+  await page.waitForSelector("#issue-parent");
+  await page.waitForSelector("#issue-reporter");
+  assert.match(await text(page, "#issue-reporter"), /Alice|Reported by/);
   await page.locator("#swimlane-epic").click();
   await page.waitForSelector(".ew-swimlane");
   assert.match(await text(page, "#work-board"), /Ship the product shell/);
