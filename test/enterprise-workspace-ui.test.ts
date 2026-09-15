@@ -112,6 +112,9 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#inspector .ew-link");
   assert.match(await text(page, "#inspector"), /github/i);
   await page.waitForSelector("#page-toc");
+  await page.waitForFunction(() => (document.querySelector("#page-toc")?.textContent ?? "").includes("Why this surface"), {
+    timeout: 20_000,
+  });
   await page.waitForSelector("#doc-cover:not([hidden]) img");
   assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 

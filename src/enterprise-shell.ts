@@ -310,6 +310,8 @@ title: Q3 strategy memo
 
 The hosted workspace is the product surface: documents, canvases, and work share one session.
 
+## Why this surface
+
 ::claim{id="north-star" confidence=0.9}
 One login should take a team from a brief to a board without changing tools.
 ::

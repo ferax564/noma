@@ -587,6 +587,7 @@ async function seedEmptyEditor(id: string, title: string): Promise<void> {
   const editor = collab?.editor();
   if (!editor || (editor.getText() ?? "").trim()) return;
   editor.commands.setContent(nomaToEditorHtml(document.title || title, document.source, token));
+  renderPageToc();
 }
 
 async function openArtifact(id: string | undefined): Promise<void> {
