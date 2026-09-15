@@ -775,7 +775,7 @@ input:focus, select:focus, textarea:focus {
   box-shadow: var(--ds-shadow-overlay);
   padding: 16px;
 }
-.ew-drawer[hidden], #import-modal[hidden], #search-results[hidden], #command-palette[hidden], .ew-slash[hidden] { display: none !important; }
+.ew-drawer[hidden], #import-modal[hidden], #search-results[hidden], #command-palette[hidden], .ew-slash[hidden], .ew-mention[hidden], .ew-select-menu[hidden] { display: none !important; }
 .ew-drawer-head { display: flex; align-items: center; gap: 8px; }
 .ew-drawer-head h2 { margin: 0; flex: 1; font-size: 16px; }
 .ew-note {
@@ -995,7 +995,73 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   gap: 6px;
 }
-.ew-toolbar button { display: inline-flex; align-items: center; justify-content: center; }
+.ew-drag-ghost {
+  position: fixed;
+  z-index: 120;
+  pointer-events: none;
+  margin: 0;
+  opacity: 0.92;
+  box-shadow: var(--ds-shadow-overlay);
+  transform: rotate(2deg);
+}
+.ew-select {
+  position: relative;
+  width: 100%;
+}
+.ew-select-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.ew-select-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: var(--ds-background-input);
+}
+.ew-select-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ew-select-menu {
+  z-index: 70;
+  display: grid;
+  gap: 2px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--ds-surface-overlay);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-200);
+  box-shadow: var(--ds-shadow-overlay);
+}
+.ew-select-option, .ew-mention button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: var(--ds-radius);
+}
+.ew-select-option.is-active, .ew-select-option:hover, .ew-mention button:hover {
+  background: var(--ds-background-selected);
+}
+.ew-mention {
+  position: absolute;
+  z-index: 90;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--ds-surface-overlay);
+  border: 1px solid var(--ds-border);
+  border-radius: 8px;
+  box-shadow: var(--ds-shadow-overlay);
+}
+.ew-issue { display: grid; gap: 10px; }
+.ew-issue-kicker { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ew-issue-grid { display: grid; gap: 8px; }
+.ew-activity { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--ds-border); }
+.ew-activity .ew-comment { border: 0; padding: 0; grid-template-columns: minmax(0, 1fr); }
 .ew-column.is-drop { background: var(--ds-background-selected); }
 .ew-card.is-dragging, .ew-card.is-ghost { opacity: 0.45; }
 .ew-card.is-chosen { box-shadow: var(--ds-shadow-overlay); }

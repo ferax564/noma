@@ -1,6 +1,6 @@
 import { mountHostedCollab, type HostedCollab } from "./hosted-collab";
 import { nomaToEditorHtml } from "./noma-html";
-import { bindIssueBoard, hydrateIcons, iconSvg, positionPopup, statusPath, type BoardDrop } from "./ui-kit";
+import { bindIssueBoard, bindMentionBox, enhanceSelects, hydrateIcons, iconSvg, positionPopup, statusPath, type BoardDrop } from "./ui-kit";
 
 type Mode = "docs" | "visuals" | "work" | "admin";
 
@@ -101,6 +101,7 @@ let searchPopupStop: (() => void) | undefined;
 let boardDndStop: (() => void) | undefined;
 let boardFilter: "all" | "mine" = "all";
 let paletteIndex = 0;
+let mentionStop: (() => void) | undefined;
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -383,6 +384,7 @@ function renderRail(): void {
   }
   hydrateIcons(actions);
   hydrateIcons(railList);
+  enhanceSelects(actions);
 }
 
 function uniqueHits<T extends { resourceKind: string; resourceId: string }>(hits: T[]): T[] {
@@ -393,6 +395,19 @@ function uniqueHits<T extends { resourceKind: string; resourceId: string }>(hits
     seen.add(key);
     return true;
   });
+}
+
+function bindWorkspaceMentions(): void {
+  mentionStop?.();
+  const people = (payload?.principals ?? []).map((person) => ({ id: person.id, name: person.name }));
+  const stops: Array<() => void> = [];
+  for (const id of ["doc-comment-input", "issue-comment"]) {
+    const box = document.getElementById(id);
+    if (box instanceof HTMLTextAreaElement) stops.push(bindMentionBox(box, people));
+  }
+  mentionStop = () => {
+    for (const stop of stops) stop();
+  };
 }
 
 function openDocument(id: string | undefined): void {
@@ -488,6 +503,7 @@ async function renderDocumentInspector(id: string): Promise<void> {
     <button type="button" id="add-issue-link">Link issue</button>
     <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} · ${escapeHtml(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
     <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
+  enhanceSelects(inspector);
 }
 
 async function seedEmptyEditor(id: string, title: string): Promise<void> {
@@ -527,6 +543,7 @@ async function openArtifact(id: string | undefined): Promise<void> {
   inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml(data.document.title)}</strong><span>Revision ${data.document.revision}</span><span>${data.outline.length} frames</span></div>`;
   $("inspector-title").textContent = "Canvas";
   renderRail();
+  enhanceSelects($("canvas-visuals"));
 }
 
 function renderSprintBar(): void {
@@ -596,6 +613,7 @@ function renderBoard(): void {
       <select id="new-issue-type">${(payload.issueTypes.filter((type) => type.projectId === project?.id)).map((type) => `<option value="${escapeHtml(type.key)}">${escapeHtml(type.name)}</option>`).join("")}</select>
     </label>
     <div class="ew-actions"><button type="button" id="submit-issue">${iconSvg("Plus")} Create</button></div>`;
+  enhanceSelects(inspector);
   renderRail();
   boardDndStop?.();
   boardDndStop = bindIssueBoard($("work-board"), (drop) => {
@@ -667,27 +685,40 @@ async function inspectIssue(id: string): Promise<void> {
   });
   const people = payload.principals.map((person) => `<option value="${person.id}" ${person.id === detail.assignee_id ? "selected" : ""}>${escapeHtml(person.name)}</option>`).join("");
   const sprints = payload.sprints.map((sprint) => `<option value="${sprint.id}" ${sprint.id === detail.sprint_id ? "selected" : ""}>${escapeHtml(sprint.name)}</option>`).join("");
-  inspector.innerHTML = `<div class="ew-meta">
-      <span class="ew-key">${escapeHtml(issue.key)}</span>
-      <strong>${escapeHtml(detail.summary)}</strong>
-      <span>${escapeHtml(current?.name ?? issue.statusId)} · ${escapeHtml(detail.typeKey)}</span>
-    </div>
-    <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
-    <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
-    <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
-    <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
-    <div class="ew-actions">
-      <button type="button" id="save-issue">Save</button>
-      ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml(next.id)}">Move to ${escapeHtml(next.name)}</button>` : ""}
-      ${detail.transitions.map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml(item.to)}" data-fields="${escapeHtml(item.requiredFields.join(","))}">${escapeHtml(item.to)}</button>`).join("")}
-    </div>
-    <div class="ew-meta"><strong>Comments</strong>${detail.comments.map((comment) => `<span>${escapeHtml(comment.authorName)}: ${escapeHtml(comment.body)}</span>`).join("") || "<span>None</span>"}</div>
-    <label for="issue-comment">Comment<textarea id="issue-comment" rows="2"></textarea></label>
-    <button type="button" id="issue-comment-submit">Comment</button>
-    <div class="ew-meta"><strong>Worklog</strong>${detail.worklogs.map((log) => `<span>${escapeHtml(log.authorName)} · ${Math.round(log.durationSeconds / 60)}m ${escapeHtml(log.note ?? "")}</span>`).join("") || "<span>None</span>"}</div>
-    <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
-    <label for="worklog-note">Note<input id="worklog-note" /></label>
-    <button type="button" id="worklog-submit">Log work</button>`;
+  inspector.innerHTML = `<div class="ew-issue">
+      <div class="ew-issue-kicker ew-meta">
+        <span class="ew-key">${escapeHtml(issue.key)}</span>
+        <span class="ew-pill">${escapeHtml(detail.typeKey)}</span>
+        <span class="ew-lozenge">${escapeHtml(current?.name ?? issue.statusId)}</span>
+      </div>
+      <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml(detail.summary)}" /></label>
+      <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml(detail.description ?? "")}</textarea></label>
+      <div class="ew-issue-grid">
+        <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
+        <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
+      </div>
+      <div class="ew-actions">
+        <button type="button" id="save-issue">Save</button>
+        ${next ? `<button type="button" id="advance-issue" data-to="${escapeHtml(next.id)}">Move to ${escapeHtml(next.name)}</button>` : ""}
+        ${detail.transitions
+          .filter((item) => item.to !== next?.id)
+          .map((item) => `<button type="button" class="ew-transition" data-to="${escapeHtml(item.to)}" data-fields="${escapeHtml(item.requiredFields.join(","))}">${escapeHtml(item.to.replaceAll("_", " "))}</button>`)
+          .join("")}
+      </div>
+      <div class="ew-activity">
+        <strong>Comments</strong>
+        ${detail.comments.map((comment) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml(comment.authorName)}</strong></div><p>${escapeHtml(comment.body)}</p></div></article>`).join("") || `<div class="ew-note">No comments</div>`}
+        <label for="issue-comment">Comment<textarea id="issue-comment" rows="2" placeholder="Write a comment. Mention with @name"></textarea></label>
+        <button type="button" id="issue-comment-submit">Comment</button>
+      </div>
+      <div class="ew-activity">
+        <strong>Worklog</strong>
+        ${detail.worklogs.map((log) => `<span>${escapeHtml(log.authorName)} · ${Math.round(log.durationSeconds / 60)}m ${escapeHtml(log.note ?? "")}</span>`).join("") || `<div class="ew-note">No time logged</div>`}
+        <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
+        <label for="worklog-note">Note<input id="worklog-note" /></label>
+        <button type="button" id="worklog-submit">Log work</button>
+      </div>
+    </div>`;
   const links = await api<{ links: Array<{ id: string; provider: string; url?: string | null; label?: string; targetKind?: string | null; targetId?: string | null }> }>(
     `/v1/issues/${encodeURIComponent(id)}/links`,
   );
@@ -700,6 +731,8 @@ async function inspectIssue(id: string): Promise<void> {
     <label for="issue-doc-link">Page<select id="issue-doc-link">${docs}</select></label>
     <button type="button" id="add-issue-doc-link">Link page</button>`,
   );
+  enhanceSelects(inspector);
+  bindWorkspaceMentions();
 }
 
 function renderAdmin(): void {
@@ -736,6 +769,7 @@ function renderAdmin(): void {
       <h2>Grants</h2>
       ${payload.grants.map((grant) => `<div class="ew-note">${escapeHtml(grant.role)} on ${escapeHtml(grant.resourceKind)} ${escapeHtml(grant.resourceId)}</div>`).join("") || `<div class="ew-note">None listed</div>`}
     </section>`;
+  enhanceSelects($("admin-panel"));
 }
 
 function renderNotifications(): void {
@@ -1490,6 +1524,7 @@ Object.assign(window, {
 });
 
 hydrateIcons();
+bindWorkspaceMentions();
 
 if (token) {
   void loadWorkspace().catch(() => {

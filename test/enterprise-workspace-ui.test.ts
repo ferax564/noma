@@ -110,20 +110,28 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector(".ew-card");
   assert.match(await text(page, "#work-board"), /ATLAS-/);
   await page.waitForSelector("#board-filters");
-  const moved = await page.evaluate(async () => {
-    const api = window as unknown as { nomaWorkspace: { applyBoardDrop: (drop: { issueId: string; beforeId: string; statusId: string }) => Promise<void> } };
-    const card = document.querySelector<HTMLElement>('.ew-card[data-type="task"]') ?? document.querySelector<HTMLElement>(".ew-card");
-    const issueId = card?.dataset.issue ?? "";
-    await api.nomaWorkspace.applyBoardDrop({ issueId, beforeId: "", statusId: "in_review" });
-    return document.querySelector(`[data-status="in_review"] [data-issue="${issueId}"]`) !== null;
+  const movedByPointer = await page.evaluate(async () => {
+    const card = document.querySelector<HTMLElement>('.ew-card[data-type="story"]');
+    const dest = document.querySelector<HTMLElement>('[data-status="in_progress"] .ew-column-list');
+    if (!card || !dest) return false;
+    const issueId = card.dataset.issue ?? "";
+    const from = card.getBoundingClientRect();
+    const to = dest.getBoundingClientRect();
+    card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: from.left + 8, clientY: from.top + 8, pointerId: 1, button: 0, buttons: 1 }));
+    window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: from.left + 20, clientY: from.top + 24, pointerId: 1, buttons: 1 }));
+    window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: to.left + 28, clientY: to.top + 56, pointerId: 1, buttons: 1 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: to.left + 28, clientY: to.top + 56, pointerId: 1, button: 0 }));
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    return Boolean(document.querySelector(`[data-status="in_progress"] [data-issue="${issueId}"]`));
   });
-  assert.equal(moved, true);
+  assert.equal(movedByPointer, true);
   await page.locator(".ew-card").click();
   await page.waitForSelector("#advance-issue");
-  const before = await text(page, ".ew-meta");
+  await page.waitForSelector(".ew-select-btn");
+  const before = await text(page, ".ew-issue-kicker");
   await page.locator("#advance-issue").click();
   await page.waitForFunction((previous) => {
-    const current = document.querySelector(".ew-meta")?.textContent ?? "";
+    const current = document.querySelector(".ew-issue-kicker")?.textContent ?? "";
     return current.length > 0 && current !== previous;
   }, undefined, before);
 

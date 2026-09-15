@@ -296,13 +296,13 @@
     Create a new fragment in which the node at the given index is
     replaced by the given node.
     */
-    replaceChild(index2, node) {
-      let current = this.content[index2];
+    replaceChild(index, node) {
+      let current = this.content[index];
       if (current == node)
         return this;
       let copy3 = this.content.slice();
       let size3 = this.size + node.nodeSize - current.nodeSize;
-      copy3[index2] = node;
+      copy3[index] = node;
       return new _Fragment(copy3, size3);
     }
     /**
@@ -352,17 +352,17 @@
     Get the child node at the given index. Raise an error when the
     index is out of range.
     */
-    child(index2) {
-      let found2 = this.content[index2];
+    child(index) {
+      let found2 = this.content[index];
       if (!found2)
-        throw new RangeError("Index " + index2 + " out of range for " + this);
+        throw new RangeError("Index " + index + " out of range for " + this);
       return found2;
     }
     /**
     Get the child node at the given index, if it exists.
     */
-    maybeChild(index2) {
-      return this.content[index2] || null;
+    maybeChild(index) {
+      return this.content[index] || null;
     }
     /**
     Call `f` for every child node, passing the node, its offset
@@ -482,8 +482,8 @@
   };
   Fragment.empty = new Fragment([], 0);
   var found = { index: 0, offset: 0 };
-  function retIndex(index2, offset3) {
-    found.index = index2;
+  function retIndex(index, offset3) {
+    found.index = index;
     found.offset = offset3;
     return found;
   }
@@ -722,26 +722,26 @@
   };
   Slice.empty = new Slice(Fragment.empty, 0, 0);
   function removeRange(content, from3, to) {
-    let { index: index2, offset: offset3 } = content.findIndex(from3), child = content.maybeChild(index2);
+    let { index, offset: offset3 } = content.findIndex(from3), child = content.maybeChild(index);
     let { index: indexTo, offset: offsetTo } = content.findIndex(to);
     if (offset3 == from3 || child.isText) {
       if (offsetTo != to && !content.child(indexTo).isText)
         throw new RangeError("Removing non-flat range");
       return content.cut(0, from3).append(content.cut(to));
     }
-    if (index2 != indexTo)
+    if (index != indexTo)
       throw new RangeError("Removing non-flat range");
-    return content.replaceChild(index2, child.copy(removeRange(child.content, from3 - offset3 - 1, to - offset3 - 1)));
+    return content.replaceChild(index, child.copy(removeRange(child.content, from3 - offset3 - 1, to - offset3 - 1)));
   }
   function insertInto(content, dist, insert, openStart, openEnd, parent) {
-    let { index: index2, offset: offset3 } = content.findIndex(dist), child = content.maybeChild(index2);
+    let { index, offset: offset3 } = content.findIndex(dist), child = content.maybeChild(index);
     if (offset3 == dist || child.isText) {
-      if (parent && openStart <= 0 && openEnd <= 0 && !parent.canReplace(index2, index2, insert))
+      if (parent && openStart <= 0 && openEnd <= 0 && !parent.canReplace(index, index, insert))
         return null;
       return content.cut(0, dist).append(insert).append(content.cut(dist));
     }
-    let inner = insertInto(child.content, dist - offset3 - 1, insert, index2 == 0 ? openStart - 1 : 0, index2 == content.childCount - 1 ? openEnd - 1 : 0, child);
-    return inner && content.replaceChild(index2, child.copy(inner));
+    let inner = insertInto(child.content, dist - offset3 - 1, insert, index == 0 ? openStart - 1 : 0, index == content.childCount - 1 ? openEnd - 1 : 0, child);
+    return inner && content.replaceChild(index, child.copy(inner));
   }
   function replace($from, $to, slice2) {
     if (slice2.openStart > $from.depth)
@@ -751,10 +751,10 @@
     return replaceOuter($from, $to, slice2, 0);
   }
   function replaceOuter($from, $to, slice2, depth) {
-    let index2 = $from.index(depth), node = $from.node(depth);
-    if (index2 == $to.index(depth) && depth < $from.depth - slice2.openStart) {
+    let index = $from.index(depth), node = $from.node(depth);
+    if (index == $to.index(depth) && depth < $from.depth - slice2.openStart) {
       let inner = replaceOuter($from, $to, slice2, depth + 1);
-      return node.copy(node.content.replaceChild(index2, inner));
+      return node.copy(node.content.replaceChild(index, inner));
     } else if (!slice2.content.size) {
       return close(node, replaceTwoWay($from, $to, depth));
     } else if (!slice2.openStart && !slice2.openEnd && $from.depth == depth && $to.depth == depth) {
@@ -949,11 +949,11 @@
     position is returned.
     */
     get nodeAfter() {
-      let parent = this.parent, index2 = this.index(this.depth);
-      if (index2 == parent.childCount)
+      let parent = this.parent, index = this.index(this.depth);
+      if (index == parent.childCount)
         return null;
-      let dOff = this.pos - this.path[this.path.length - 1], child = parent.child(index2);
-      return dOff ? parent.child(index2).cut(dOff) : child;
+      let dOff = this.pos - this.path[this.path.length - 1], child = parent.child(index);
+      return dOff ? parent.child(index).cut(dOff) : child;
     }
     /**
     Get the node directly before the position, if any. If the
@@ -961,20 +961,20 @@
     before the position is returned.
     */
     get nodeBefore() {
-      let index2 = this.index(this.depth);
+      let index = this.index(this.depth);
       let dOff = this.pos - this.path[this.path.length - 1];
       if (dOff)
-        return this.parent.child(index2).cut(0, dOff);
-      return index2 == 0 ? null : this.parent.child(index2 - 1);
+        return this.parent.child(index).cut(0, dOff);
+      return index == 0 ? null : this.parent.child(index - 1);
     }
     /**
     Get the position at the given index in the parent node at the
     given depth (which defaults to `this.depth`).
     */
-    posAtIndex(index2, depth) {
+    posAtIndex(index, depth) {
       depth = this.resolveDepth(depth);
       let node = this.path[depth * 3], pos = depth == 0 ? 0 : this.path[depth * 3 - 1] + 1;
-      for (let i = 0; i < index2; i++)
+      for (let i = 0; i < index; i++)
         pos += node.child(i).nodeSize;
       return pos;
     }
@@ -985,12 +985,12 @@
     node after it (if any) are returned.
     */
     marks() {
-      let parent = this.parent, index2 = this.index();
+      let parent = this.parent, index = this.index();
       if (parent.content.size == 0)
         return Mark.none;
       if (this.textOffset)
-        return parent.child(index2).marks;
-      let main = parent.maybeChild(index2 - 1), other = parent.maybeChild(index2);
+        return parent.child(index).marks;
+      let main = parent.maybeChild(index - 1), other = parent.maybeChild(index);
       if (!main) {
         let tmp = main;
         main = other;
@@ -1083,12 +1083,12 @@
       let path = [];
       let start = 0, parentOffset = pos;
       for (let node = doc4; ; ) {
-        let { index: index2, offset: offset3 } = node.content.findIndex(parentOffset);
+        let { index, offset: offset3 } = node.content.findIndex(parentOffset);
         let rem = parentOffset - offset3;
-        path.push(node, index2, start + offset3);
+        path.push(node, index, start + offset3);
         if (!rem)
           break;
-        node = node.child(index2);
+        node = node.child(index);
         if (node.isText)
           break;
         parentOffset = rem - 1;
@@ -1202,14 +1202,14 @@
     Get the child node at the given index. Raises an error when the
     index is out of range.
     */
-    child(index2) {
-      return this.content.child(index2);
+    child(index) {
+      return this.content.child(index);
     }
     /**
     Get the child node at the given index, if it exists.
     */
-    maybeChild(index2) {
-      return this.content.maybeChild(index2);
+    maybeChild(index) {
+      return this.content.maybeChild(index);
     }
     /**
     Call `f` for every child node, passing the node, its offset
@@ -1345,8 +1345,8 @@
     */
     nodeAt(pos) {
       for (let node = this; ; ) {
-        let { index: index2, offset: offset3 } = node.content.findIndex(pos);
-        node = node.maybeChild(index2);
+        let { index, offset: offset3 } = node.content.findIndex(pos);
+        node = node.maybeChild(index);
         if (!node)
           return null;
         if (offset3 == pos || node.isText)
@@ -1360,8 +1360,8 @@
     node.
     */
     childAfter(pos) {
-      let { index: index2, offset: offset3 } = this.content.findIndex(pos);
-      return { node: this.content.maybeChild(index2), index: index2, offset: offset3 };
+      let { index, offset: offset3 } = this.content.findIndex(pos);
+      return { node: this.content.maybeChild(index), index, offset: offset3 };
     }
     /**
     Find the (direct) child node before the given offset, if any,
@@ -1371,11 +1371,11 @@
     childBefore(pos) {
       if (pos == 0)
         return { node: null, index: 0, offset: 0 };
-      let { index: index2, offset: offset3 } = this.content.findIndex(pos);
+      let { index, offset: offset3 } = this.content.findIndex(pos);
       if (offset3 < pos)
-        return { node: this.content.child(index2), index: index2, offset: offset3 };
-      let node = this.content.child(index2 - 1);
-      return { node, index: index2 - 1, offset: offset3 - node.nodeSize };
+        return { node: this.content.child(index), index, offset: offset3 };
+      let node = this.content.child(index - 1);
+      return { node, index: index - 1, offset: offset3 - node.nodeSize };
     }
     /**
     Resolve the given position in the document, returning an
@@ -1467,8 +1467,8 @@
     /**
     Get the content match in this node at the given index.
     */
-    contentMatchAt(index2) {
-      let match2 = this.type.contentMatch.matchFragment(this.content, 0, index2);
+    contentMatchAt(index) {
+      let match2 = this.type.contentMatch.matchFragment(this.content, 0, index);
       if (!match2)
         throw new Error("Called contentMatchAt on a node with invalid content");
       return match2;
@@ -2023,14 +2023,14 @@
     }
   }
   function defaultAttrs(attrs) {
-    let defaults3 = /* @__PURE__ */ Object.create(null);
+    let defaults2 = /* @__PURE__ */ Object.create(null);
     for (let attrName in attrs) {
       let attr = attrs[attrName];
       if (!attr.hasDefault)
         return null;
-      defaults3[attrName] = attr.default;
+      defaults2[attrName] = attr.default;
     }
-    return defaults3;
+    return defaults2;
   }
   function computeAttrs(attrs, value) {
     let built = /* @__PURE__ */ Object.create(null);
@@ -2297,8 +2297,8 @@
       this.spec = spec;
       this.attrs = initAttrs(name, spec.attrs);
       this.excluded = null;
-      let defaults3 = defaultAttrs(this.attrs);
-      this.instance = defaults3 ? new Mark(this, defaults3) : null;
+      let defaults2 = defaultAttrs(this.attrs);
+      this.instance = defaults2 ? new Mark(this, defaults2) : null;
     }
     /**
     Create a mark of this type. `attrs` may be `null` or an object
@@ -2882,12 +2882,12 @@
     // whole node, if not given). If `sync` is passed, use it to
     // synchronize after every block element.
     addAll(parent, marks, startIndex, endIndex) {
-      let index2 = startIndex || 0;
-      for (let dom = startIndex ? parent.childNodes[startIndex] : parent.firstChild, end = endIndex == null ? null : parent.childNodes[endIndex]; dom != end; dom = dom.nextSibling, ++index2) {
-        this.findAtPoint(parent, index2);
+      let index = startIndex || 0;
+      for (let dom = startIndex ? parent.childNodes[startIndex] : parent.firstChild, end = endIndex == null ? null : parent.childNodes[endIndex]; dom != end; dom = dom.nextSibling, ++index) {
+        this.findAtPoint(parent, index);
         this.addDOM(dom, marks);
       }
-      this.findAtPoint(parent, index2);
+      this.findAtPoint(parent, index);
     }
     // Try to find a way to fit the given node type into the current
     // context. May add intermediate wrappers and/or leave non-solid
@@ -3040,9 +3040,9 @@
       if (context.indexOf("|") > -1)
         return context.split(/\s*\|\s*/).some(this.matchesContext, this);
       let parts = context.split("/");
-      let option2 = this.options.context;
-      let useRoot = !this.isOpen && (!option2 || option2.parent.type == this.nodes[0].type);
-      let minDepth = -(option2 ? option2.depth + 1 : 0) + (useRoot ? 0 : 1);
+      let option = this.options.context;
+      let useRoot = !this.isOpen && (!option || option.parent.type == this.nodes[0].type);
+      let minDepth = -(option ? option.depth + 1 : 0) + (useRoot ? 0 : 1);
       let match2 = (i, depth) => {
         for (; i >= 0; i--) {
           let part = parts[i];
@@ -3054,7 +3054,7 @@
                 return true;
             return false;
           } else {
-            let next = depth > 0 || depth == 0 && useRoot ? this.nodes[depth].type : option2 && depth >= minDepth ? option2.node(depth - minDepth).type : null;
+            let next = depth > 0 || depth == 0 && useRoot ? this.nodes[depth].type : option && depth >= minDepth ? option.node(depth - minDepth).type : null;
             if (!next || next.name != part && !next.isInGroup(part))
               return false;
             depth--;
@@ -3339,8 +3339,8 @@
   // node_modules/prosemirror-transform/dist/index.js
   var lower16 = 65535;
   var factor16 = Math.pow(2, 16);
-  function makeRecover(index2, offset3) {
-    return index2 + offset3 * factor16;
+  function makeRecover(index, offset3) {
+    return index + offset3 * factor16;
   }
   function recoverIndex(value) {
     return value & lower16;
@@ -3406,11 +3406,11 @@
     @internal
     */
     recover(value) {
-      let diff = 0, index2 = recoverIndex(value);
+      let diff = 0, index = recoverIndex(value);
       if (!this.inverted)
-        for (let i = 0; i < index2; i++)
+        for (let i = 0; i < index; i++)
           diff += this.ranges[i * 3 + 2] - this.ranges[i * 3 + 1];
-      return this.ranges[index2 * 3] + diff + recoverOffset(value);
+      return this.ranges[index * 3] + diff + recoverOffset(value);
     }
     mapResult(pos, assoc = 1) {
       return this._map(pos, assoc, false);
@@ -3422,12 +3422,12 @@
     @internal
     */
     _map(pos, assoc, simple) {
-      let diff = 0, oldIndex2 = this.inverted ? 2 : 1, newIndex2 = this.inverted ? 1 : 2;
+      let diff = 0, oldIndex = this.inverted ? 2 : 1, newIndex = this.inverted ? 1 : 2;
       for (let i = 0; i < this.ranges.length; i += 3) {
         let start = this.ranges[i] - (this.inverted ? diff : 0);
         if (start > pos)
           break;
-        let oldSize = this.ranges[i + oldIndex2], newSize = this.ranges[i + newIndex2], end = start + oldSize;
+        let oldSize = this.ranges[i + oldIndex], newSize = this.ranges[i + newIndex], end = start + oldSize;
         if (pos <= end) {
           let side = !oldSize ? assoc : pos == start ? -1 : pos == end ? 1 : assoc;
           let result = start + diff + (side < 0 ? 0 : newSize);
@@ -3447,16 +3447,16 @@
     @internal
     */
     touches(pos, recover) {
-      let diff = 0, index2 = recoverIndex(recover);
-      let oldIndex2 = this.inverted ? 2 : 1, newIndex2 = this.inverted ? 1 : 2;
+      let diff = 0, index = recoverIndex(recover);
+      let oldIndex = this.inverted ? 2 : 1, newIndex = this.inverted ? 1 : 2;
       for (let i = 0; i < this.ranges.length; i += 3) {
         let start = this.ranges[i] - (this.inverted ? diff : 0);
         if (start > pos)
           break;
-        let oldSize = this.ranges[i + oldIndex2], end = start + oldSize;
-        if (pos <= end && i == index2 * 3)
+        let oldSize = this.ranges[i + oldIndex], end = start + oldSize;
+        if (pos <= end && i == index * 3)
           return true;
-        diff += this.ranges[i + newIndex2] - oldSize;
+        diff += this.ranges[i + newIndex] - oldSize;
       }
       return false;
     }
@@ -3465,10 +3465,10 @@
     this map.
     */
     forEach(f) {
-      let oldIndex2 = this.inverted ? 2 : 1, newIndex2 = this.inverted ? 1 : 2;
+      let oldIndex = this.inverted ? 2 : 1, newIndex = this.inverted ? 1 : 2;
       for (let i = 0, diff = 0; i < this.ranges.length; i += 3) {
         let start = this.ranges[i], oldStart = start - (this.inverted ? diff : 0), newStart = start + (this.inverted ? 0 : diff);
-        let oldSize = this.ranges[i + oldIndex2], newSize = this.ranges[i + newIndex2];
+        let oldSize = this.ranges[i + oldIndex], newSize = this.ranges[i + newIndex];
         f(oldStart, oldStart + oldSize, newStart, newStart + newSize);
         diff += newSize - oldSize;
       }
@@ -4160,12 +4160,12 @@
     let content = parent.content.cutByIndex(range.startIndex, range.endIndex);
     for (let depth = range.depth, contentBefore = 0, contentAfter = 0; ; --depth) {
       let node = range.$from.node(depth);
-      let index2 = range.$from.index(depth) + contentBefore, endIndex = range.$to.indexAfter(depth) - contentAfter;
-      if (depth < range.depth && node.canReplace(index2, endIndex, content))
+      let index = range.$from.index(depth) + contentBefore, endIndex = range.$to.indexAfter(depth) - contentAfter;
+      if (depth < range.depth && node.canReplace(index, endIndex, content))
         return depth;
-      if (depth == 0 || node.type.spec.isolating || !canCut(node, index2, endIndex))
+      if (depth == 0 || node.type.spec.isolating || !canCut(node, index, endIndex))
         break;
-      if (index2)
+      if (index)
         contentBefore = 1;
       if (endIndex < node.childCount)
         contentAfter = 1;
@@ -4288,8 +4288,8 @@
     });
   }
   function canChangeType(doc4, pos, type) {
-    let $pos = doc4.resolve(pos), index2 = $pos.index();
-    return $pos.parent.canReplaceWith(index2, index2 + 1, type);
+    let $pos = doc4.resolve(pos), index = $pos.index();
+    return $pos.parent.canReplaceWith(index, index + 1, type);
   }
   function setNodeMarkup(tr2, pos, type, attrs, marks) {
     let node = tr2.doc.nodeAt(pos);
@@ -4310,20 +4310,20 @@
     if (base2 < 0 || $pos.parent.type.spec.isolating || !$pos.parent.canReplace($pos.index(), $pos.parent.childCount) || !innerType.type.validContent($pos.parent.content.cutByIndex($pos.index(), $pos.parent.childCount)))
       return false;
     for (let d = $pos.depth - 1, i = depth - 2; d > base2; d--, i--) {
-      let node = $pos.node(d), index3 = $pos.index(d);
+      let node = $pos.node(d), index2 = $pos.index(d);
       if (node.type.spec.isolating)
         return false;
-      let rest = node.content.cutByIndex(index3, node.childCount);
+      let rest = node.content.cutByIndex(index2, node.childCount);
       let overrideChild = typesAfter && typesAfter[i + 1];
       if (overrideChild)
         rest = rest.replaceChild(0, overrideChild.type.create(overrideChild.attrs));
       let after = typesAfter && typesAfter[i] || node;
-      if (!node.canReplace(index3 + 1, node.childCount) || !after.type.validContent(rest))
+      if (!node.canReplace(index2 + 1, node.childCount) || !after.type.validContent(rest))
         return false;
     }
-    let index2 = $pos.indexAfter(base2);
+    let index = $pos.indexAfter(base2);
     let baseType = typesAfter && typesAfter[0];
-    return $pos.node(base2).canReplaceWith(index2, index2, baseType ? baseType.type : $pos.node(base2 + 1).type);
+    return $pos.node(base2).canReplaceWith(index, index, baseType ? baseType.type : $pos.node(base2 + 1).type);
   }
   function split(tr2, pos, depth = 1, typesAfter) {
     let $pos = tr2.doc.resolve(pos), before = Fragment.empty, after = Fragment.empty;
@@ -4335,8 +4335,8 @@
     tr2.step(new ReplaceStep(pos, pos, new Slice(before.append(after), depth, depth), true));
   }
   function canJoin(doc4, pos) {
-    let $pos = doc4.resolve(pos), index2 = $pos.index();
-    return joinable2($pos.nodeBefore, $pos.nodeAfter) && $pos.parent.canReplace(index2, index2 + 1);
+    let $pos = doc4.resolve(pos), index = $pos.index();
+    return joinable2($pos.nodeBefore, $pos.nodeAfter) && $pos.parent.canReplace(index, index + 1);
   }
   function canAppendWithSubstitutedLinebreaks(a, b) {
     if (!b.content.size)
@@ -4360,19 +4360,19 @@
   function joinPoint(doc4, pos, dir = -1) {
     let $pos = doc4.resolve(pos);
     for (let d = $pos.depth; ; d--) {
-      let before, after, index2 = $pos.index(d);
+      let before, after, index = $pos.index(d);
       if (d == $pos.depth) {
         before = $pos.nodeBefore;
         after = $pos.nodeAfter;
       } else if (dir > 0) {
         before = $pos.node(d + 1);
-        index2++;
-        after = $pos.node(d).maybeChild(index2);
+        index++;
+        after = $pos.node(d).maybeChild(index);
       } else {
-        before = $pos.node(d).maybeChild(index2 - 1);
+        before = $pos.node(d).maybeChild(index - 1);
         after = $pos.node(d + 1);
       }
-      if (before && !before.isTextblock && joinable2(before, after) && $pos.node(d).canReplace(index2, index2 + 1))
+      if (before && !before.isTextblock && joinable2(before, after) && $pos.node(d).canReplace(index, index + 1))
         return pos;
       if (d == 0)
         break;
@@ -4412,18 +4412,18 @@
       return pos;
     if ($pos.parentOffset == 0)
       for (let d = $pos.depth - 1; d >= 0; d--) {
-        let index2 = $pos.index(d);
-        if ($pos.node(d).canReplaceWith(index2, index2, nodeType))
+        let index = $pos.index(d);
+        if ($pos.node(d).canReplaceWith(index, index, nodeType))
           return $pos.before(d + 1);
-        if (index2 > 0)
+        if (index > 0)
           return null;
       }
     if ($pos.parentOffset == $pos.parent.content.size)
       for (let d = $pos.depth - 1; d >= 0; d--) {
-        let index2 = $pos.indexAfter(d);
-        if ($pos.node(d).canReplaceWith(index2, index2, nodeType))
+        let index = $pos.indexAfter(d);
+        if ($pos.node(d).canReplaceWith(index, index, nodeType))
           return $pos.after(d + 1);
-        if (index2 < $pos.node(d).childCount)
+        if (index < $pos.node(d).childCount)
           return null;
       }
     return null;
@@ -4584,12 +4584,12 @@
       }
       let openEndCount = fragment.size + sliceDepth - (slice2.content.size - slice2.openEnd);
       while (taken < fragment.childCount) {
-        let next = fragment.child(taken), matches3 = match2.matchType(next.type);
-        if (!matches3)
+        let next = fragment.child(taken), matches2 = match2.matchType(next.type);
+        if (!matches2)
           break;
         taken++;
         if (taken > 1 || openStart == 0 || next.content.size) {
-          match2 = matches3;
+          match2 = matches2;
           add.push(closeNodeStart(next.mark(type.allowedMarks(next.marks)), taken == 1 ? openStart : 0, taken == fragment.childCount ? openEndCount : -1));
         }
       }
@@ -4627,8 +4627,8 @@
           continue;
         for (let d = i - 1; d >= 0; d--) {
           let { match: match3, type: type2 } = this.frontier[d];
-          let matches3 = contentAfterFits($to, d, type2, match3, true);
-          if (!matches3 || matches3.childCount)
+          let matches2 = contentAfterFits($to, d, type2, match3, true);
+          if (!matches2 || matches2.childCount)
             continue scan;
         }
         return { depth: i, fit, move: dropInner ? $to.doc.resolve($to.after(i + 1)) : $to };
@@ -4691,11 +4691,11 @@
     return node.copy(frag);
   }
   function contentAfterFits($to, depth, type, match2, open) {
-    let node = $to.node(depth), index2 = open ? $to.indexAfter(depth) : $to.index(depth);
-    if (index2 == node.childCount && !type.compatibleContent(node.type))
+    let node = $to.node(depth), index = open ? $to.indexAfter(depth) : $to.index(depth);
+    if (index == node.childCount && !type.compatibleContent(node.type))
       return null;
-    let fit = match2.fillBefore(node.content, true, index2);
-    return fit && !invalidMarks(type, node.content, index2) ? fit : null;
+    let fit = match2.fillBefore(node.content, true, index);
+    return fit && !invalidMarks(type, node.content, index) ? fit : null;
   }
   function invalidMarks(type, fragment, start) {
     for (let i = start; i < fragment.childCount; i++)
@@ -4761,8 +4761,8 @@
           expand = false;
           targetDepth = -targetDepth;
         }
-        let parent = $from.node(targetDepth - 1), index2 = $from.index(targetDepth - 1);
-        if (parent.canReplaceWith(index2, index2, insert.type, insert.marks))
+        let parent = $from.node(targetDepth - 1), index = $from.index(targetDepth - 1);
+        if (parent.canReplaceWith(index, index, insert.type, insert.marks))
           return tr2.replace($from.before(targetDepth), expand ? $to.after(targetDepth) : to, new Slice(closeFragment(slice2.content, 0, slice2.openStart, openDepth), openDepth, slice2.openEnd));
       }
     }
@@ -5614,10 +5614,10 @@
       return new AllSelection(doc4);
     }
   };
-  function findSelectionIn(doc4, node, pos, index2, dir, text2 = false) {
+  function findSelectionIn(doc4, node, pos, index, dir, text2 = false) {
     if (node.inlineContent)
       return TextSelection.create(doc4, pos);
-    for (let i = index2 - (dir > 0 ? 0 : 1); dir > 0 ? i < node.childCount : i >= 0; i += dir) {
+    for (let i = index - (dir > 0 ? 0 : 1); dir > 0 ? i < node.childCount : i >= 0; i += dir) {
       let child = node.child(i);
       if (!child.isAtom) {
         let inner = findSelectionIn(doc4, child, pos + dir, dir < 0 ? child.childCount : 0, dir, text2);
@@ -5878,13 +5878,13 @@
     })
   ];
   var Configuration = class {
-    constructor(schema, plugins2) {
+    constructor(schema, plugins) {
       this.schema = schema;
       this.plugins = [];
       this.pluginsByKey = /* @__PURE__ */ Object.create(null);
       this.fields = baseFields.slice();
-      if (plugins2)
-        plugins2.forEach((plugin) => {
+      if (plugins)
+        plugins.forEach((plugin) => {
           if (this.pluginsByKey[plugin.key])
             throw new RangeError("Adding different instances of a keyed plugin (" + plugin.key + ")");
           this.plugins.push(plugin);
@@ -6132,10 +6132,10 @@
 
   // node_modules/prosemirror-view/dist/index.js
   var domIndex = function(node) {
-    for (var index2 = 0; ; index2++) {
+    for (var index = 0; ; index++) {
       node = node.previousSibling;
       if (!node)
-        return index2;
+        return index;
     }
   };
   var parentNode = function(node) {
@@ -6152,31 +6152,31 @@
   var clearReusedRange = function() {
     reusedRange = null;
   };
-  var isEquivalentPosition = function(node, off2, targetNode, targetOff) {
-    return targetNode && (scanFor(node, off2, targetNode, targetOff, -1) || scanFor(node, off2, targetNode, targetOff, 1));
+  var isEquivalentPosition = function(node, off, targetNode, targetOff) {
+    return targetNode && (scanFor(node, off, targetNode, targetOff, -1) || scanFor(node, off, targetNode, targetOff, 1));
   };
   var atomElements = /^(img|br|input|textarea|hr)$/i;
-  function scanFor(node, off2, targetNode, targetOff, dir) {
+  function scanFor(node, off, targetNode, targetOff, dir) {
     var _a;
     for (; ; ) {
-      if (node == targetNode && off2 == targetOff)
+      if (node == targetNode && off == targetOff)
         return true;
-      if (off2 == (dir < 0 ? 0 : nodeSize(node))) {
+      if (off == (dir < 0 ? 0 : nodeSize(node))) {
         let parent = node.parentNode;
         if (!parent || parent.nodeType != 1 || hasBlockDesc(node) || atomElements.test(node.nodeName) || node.contentEditable == "false")
           return false;
-        off2 = domIndex(node) + (dir < 0 ? 0 : 1);
+        off = domIndex(node) + (dir < 0 ? 0 : 1);
         node = parent;
       } else if (node.nodeType == 1) {
-        let child = node.childNodes[off2 + (dir < 0 ? -1 : 0)];
+        let child = node.childNodes[off + (dir < 0 ? -1 : 0)];
         if (child.nodeType == 1 && child.contentEditable == "false") {
           if ((_a = child.pmViewDesc) === null || _a === void 0 ? void 0 : _a.ignoreForSelection)
-            off2 += dir;
+            off += dir;
           else
             return false;
         } else {
           node = child;
-          off2 = dir < 0 ? nodeSize(node) : 0;
+          off = dir < 0 ? nodeSize(node) : 0;
         }
       } else {
         return false;
@@ -6224,12 +6224,12 @@
     for (let atStart = offset3 == 0, atEnd = offset3 == nodeSize(node); atStart || atEnd; ) {
       if (node == parent)
         return true;
-      let index2 = domIndex(node);
+      let index = domIndex(node);
       node = node.parentNode;
       if (!node)
         return false;
-      atStart = atStart && index2 == 0;
-      atEnd = atEnd && index2 == nodeSize(node);
+      atStart = atStart && index == 0;
+      atEnd = atEnd && index == nodeSize(node);
     }
   }
   function hasBlockDesc(dom) {
@@ -6420,7 +6420,7 @@
     }
   }
   function findOffsetInNode(node, coords) {
-    let closest2, dxClosest = 2e8, coordsClosest, offset3 = 0;
+    let closest, dxClosest = 2e8, coordsClosest, offset3 = 0;
     let rowBot = coords.top, rowTop = coords.top;
     let firstBelow, coordsBelow;
     for (let child = node.firstChild, childIndex = 0; child; child = child.nextSibling, childIndex++) {
@@ -6438,9 +6438,9 @@
           rowTop = Math.min(rect.top, rowTop);
           let dx = rect.left > coords.left ? rect.left - coords.left : rect.right < coords.left ? coords.left - rect.right : 0;
           if (dx < dxClosest) {
-            closest2 = child;
+            closest = child;
             dxClosest = dx;
-            coordsClosest = dx && closest2.nodeType == 3 ? {
+            coordsClosest = dx && closest.nodeType == 3 ? {
               left: rect.right < coords.left ? rect.right : rect.left,
               top: coords.top
             } : coords;
@@ -6452,20 +6452,20 @@
           firstBelow = child;
           coordsBelow = { left: Math.max(rect.left, Math.min(rect.right, coords.left)), top: rect.top };
         }
-        if (!closest2 && (coords.left >= rect.right && coords.top >= rect.top || coords.left >= rect.left && coords.top >= rect.bottom))
+        if (!closest && (coords.left >= rect.right && coords.top >= rect.top || coords.left >= rect.left && coords.top >= rect.bottom))
           offset3 = childIndex + 1;
       }
     }
-    if (!closest2 && firstBelow) {
-      closest2 = firstBelow;
+    if (!closest && firstBelow) {
+      closest = firstBelow;
       coordsClosest = coordsBelow;
       dxClosest = 0;
     }
-    if (closest2 && closest2.nodeType == 3)
-      return findOffsetInText(closest2, coordsClosest);
-    if (!closest2 || dxClosest && closest2.nodeType == 1)
+    if (closest && closest.nodeType == 3)
+      return findOffsetInText(closest, coordsClosest);
+    if (!closest || dxClosest && closest.nodeType == 1)
       return { node, offset: offset3 };
-    return findOffsetInNode(closest2, coordsClosest);
+    return findOffsetInNode(closest, coordsClosest);
   }
   function findOffsetInText(node, coords) {
     let len = node.nodeValue.length;
@@ -7369,7 +7369,7 @@
     // separate step, syncs the DOM inside `this.contentDOM` to
     // `this.children`.
     updateChildren(view, pos) {
-      let inline2 = this.node.inlineContent, off2 = pos;
+      let inline2 = this.node.inlineContent, off = pos;
       let composition = view.composing ? this.localCompositionInfo(view, pos) : null;
       let localComposition = composition && composition.pos > -1 ? composition : null;
       let compositionInChild = composition && composition.pos < 0;
@@ -7379,17 +7379,17 @@
           updater.syncToMarks(widget.spec.marks, inline2, view, i);
         else if (widget.type.side >= 0 && !insideNode)
           updater.syncToMarks(i == this.node.childCount ? Mark.none : this.node.child(i).marks, inline2, view, i);
-        updater.placeWidget(widget, view, off2);
+        updater.placeWidget(widget, view, off);
       }, (child, outerDeco, innerDeco, i) => {
         updater.syncToMarks(child.marks, inline2, view, i);
         let compIndex;
         if (updater.findNodeMatch(child, outerDeco, innerDeco, i)) ;
-        else if (compositionInChild && view.state.selection.from > off2 && view.state.selection.to < off2 + child.nodeSize && (compIndex = updater.findIndexWithChild(composition.node)) > -1 && updater.updateNodeAt(child, outerDeco, innerDeco, compIndex, view)) ;
-        else if (updater.updateNextNode(child, outerDeco, innerDeco, view, i, off2)) ;
+        else if (compositionInChild && view.state.selection.from > off && view.state.selection.to < off + child.nodeSize && (compIndex = updater.findIndexWithChild(composition.node)) > -1 && updater.updateNodeAt(child, outerDeco, innerDeco, compIndex, view)) ;
+        else if (updater.updateNextNode(child, outerDeco, innerDeco, view, i, off)) ;
         else {
-          updater.addNode(child, outerDeco, innerDeco, view, off2);
+          updater.addNode(child, outerDeco, innerDeco, view, off);
         }
-        off2 += child.nodeSize;
+        off += child.nodeSize;
       });
       updater.syncToMarks([], inline2, view, 0);
       if (this.node.isTextblock)
@@ -7807,9 +7807,9 @@
     }
     // Try to find a node desc matching the given data. Skip over it and
     // return true when successful.
-    findNodeMatch(node, outerDeco, innerDeco, index2) {
+    findNodeMatch(node, outerDeco, innerDeco, index) {
       let found2 = -1, targetDesc;
-      if (index2 >= this.preMatch.index && (targetDesc = this.preMatch.matches[index2 - this.preMatch.index]).parent == this.top && targetDesc.matchesNode(node, outerDeco, innerDeco)) {
+      if (index >= this.preMatch.index && (targetDesc = this.preMatch.matches[index - this.preMatch.index]).parent == this.top && targetDesc.matchesNode(node, outerDeco, innerDeco)) {
         found2 = this.top.children.indexOf(targetDesc, this.index);
       } else {
         for (let i = this.index, e = Math.min(this.top.children.length, i + 5); i < e; i++) {
@@ -7826,13 +7826,13 @@
       this.index++;
       return true;
     }
-    updateNodeAt(node, outerDeco, innerDeco, index2, view) {
-      let child = this.top.children[index2];
+    updateNodeAt(node, outerDeco, innerDeco, index, view) {
+      let child = this.top.children[index];
       if (child.dirty == NODE_DIRTY && child.dom == child.contentDOM)
         child.dirty = CONTENT_DIRTY;
       if (!child.update(node, outerDeco, innerDeco, view))
         return false;
-      this.destroyBetween(this.index, index2);
+      this.destroyBetween(this.index, index);
       this.index++;
       return true;
     }
@@ -7855,12 +7855,12 @@
     }
     // Try to update the next node, if any, to the given data. Checks
     // pre-matches to avoid overwriting nodes that could still be used.
-    updateNextNode(node, outerDeco, innerDeco, view, index2, pos) {
+    updateNextNode(node, outerDeco, innerDeco, view, index, pos) {
       for (let i = this.index; i < this.top.children.length; i++) {
         let next = this.top.children[i];
         if (next instanceof NodeViewDesc) {
           let preMatch2 = this.preMatch.matched.get(next);
-          if (preMatch2 != null && preMatch2 != index2)
+          if (preMatch2 != null && preMatch2 != index)
             return false;
           let nextDOM = next.dom, updated;
           let locked = this.isLocked(nextDOM) && !(node.isText && next.node && next.node.isText && next.nodeDOM.nodeValue == node.text && next.dirty != NODE_DIRTY && sameOuterDeco(outerDeco, next.outerDeco));
@@ -7923,14 +7923,14 @@
     // Make sure a textblock looks and behaves correctly in
     // contentEditable.
     addTextblockHacks() {
-      let lastChild2 = this.top.children[this.index - 1], parent = this.top;
-      while (lastChild2 instanceof MarkViewDesc) {
-        parent = lastChild2;
-        lastChild2 = parent.children[parent.children.length - 1];
+      let lastChild = this.top.children[this.index - 1], parent = this.top;
+      while (lastChild instanceof MarkViewDesc) {
+        parent = lastChild;
+        lastChild = parent.children[parent.children.length - 1];
       }
-      if (!lastChild2 || // Empty textblock
-      !(lastChild2 instanceof TextViewDesc) || /\n$/.test(lastChild2.node.text) || this.view.requiresGeckoHackNode && /\s$/.test(lastChild2.node.text)) {
-        if ((safari || chrome) && lastChild2 && lastChild2.dom.contentEditable == "false")
+      if (!lastChild || // Empty textblock
+      !(lastChild instanceof TextViewDesc) || /\n$/.test(lastChild.node.text) || this.view.requiresGeckoHackNode && /\s$/.test(lastChild.node.text)) {
+        if ((safari || chrome) && lastChild && lastChild.dom.contentEditable == "false")
           this.addHackNode("IMG", parent);
         this.addHackNode("BR", this.top);
       }
@@ -7960,7 +7960,7 @@
   };
   function preMatch(frag, parentDesc) {
     let curDesc = parentDesc, descI = curDesc.children.length;
-    let fI = frag.childCount, matched = /* @__PURE__ */ new Map(), matches3 = [];
+    let fI = frag.childCount, matched = /* @__PURE__ */ new Map(), matches2 = [];
     outer: while (fI > 0) {
       let desc;
       for (; ; ) {
@@ -7988,9 +7988,9 @@
         break;
       --fI;
       matched.set(desc, fI);
-      matches3.push(desc);
+      matches2.push(desc);
     }
-    return { index: fI, matched, matches: matches3.reverse() };
+    return { index: fI, matched, matches: matches2.reverse() };
   }
   function compareSide(a, b) {
     return a.type.side - b.type.side;
@@ -8026,13 +8026,13 @@
           onWidget(widget, parentIndex, !!restNode);
         }
       }
-      let child, index2;
+      let child, index;
       if (restNode) {
-        index2 = -1;
+        index = -1;
         child = restNode;
         restNode = null;
       } else if (parentIndex < parent.childCount) {
-        index2 = parentIndex;
+        index = parentIndex;
         child = parent.child(parentIndex++);
       } else {
         break;
@@ -8054,14 +8054,14 @@
           restNode = child.cut(cutAt - offset3);
           child = child.cut(0, cutAt - offset3);
           end = cutAt;
-          index2 = -1;
+          index = -1;
         }
       } else {
         while (decoIndex < locals.length && locals[decoIndex].to < end)
           decoIndex++;
       }
       let outerDeco = child.isInline && !child.isLeaf ? active.filter((d) => !d.inline) : active.slice();
-      onNode(child, outerDeco, deco.forChild(offset3, child), index2);
+      onNode(child, outerDeco, deco.forChild(offset3, child), index);
       offset3 = end;
     }
   }
@@ -8101,8 +8101,8 @@
   }
   function replaceNodes(nodes, from3, to, view, replacement) {
     let result = [];
-    for (let i = 0, off2 = 0; i < nodes.length; i++) {
-      let child = nodes[i], start = off2, end = off2 += child.size;
+    for (let i = 0, off = 0; i < nodes.length; i++) {
+      let child = nodes[i], start = off, end = off += child.size;
       if (start >= to || end <= from3) {
         result.push(child);
       } else {
@@ -8857,9 +8857,9 @@
       for (let j = 0; j < style2.rules.length; j++) {
         let rule = style2.rules[j];
         if (rule instanceof CSSStyleRule) {
-          let matches3 = elt.querySelectorAll(rule.selectorText);
-          for (let k = 0; k < matches3.length; k++)
-            matches3[k].style.cssText += rule.style.cssText;
+          let matches2 = elt.querySelectorAll(rule.selectorText);
+          for (let k = 0; k < matches2.length; k++)
+            matches2[k].style.cssText += rule.style.cssText;
         }
       }
     }
@@ -9736,8 +9736,8 @@
       return new Decoration(from3.pos - offset3, to.pos - offset3, this);
     }
     valid(node, span) {
-      let { index: index2, offset: offset3 } = node.content.findIndex(span.from), child;
-      return offset3 == span.from && !(child = node.child(index2)).isText && offset3 + child.nodeSize == span.to;
+      let { index, offset: offset3 } = node.content.findIndex(span.from), child;
+      return offset3 == span.from && !(child = node.child(index)).isText && offset3 + child.nodeSize == span.to;
     }
     eq(other) {
       return this == other || other instanceof _NodeType && compareObjs(this.attrs, other.attrs) && compareObjs(this.spec, other.spec);
@@ -10112,14 +10112,14 @@
   function mapChildren(oldChildren, newLocal, mapping, node, offset3, oldOffset, options) {
     let children = oldChildren.slice();
     for (let i = 0, baseOffset = oldOffset; i < mapping.maps.length; i++) {
-      let moved2 = 0;
+      let moved = 0;
       mapping.maps[i].forEach((oldStart, oldEnd, newStart, newEnd) => {
         let dSize = newEnd - newStart - (oldEnd - oldStart);
         for (let i2 = 0; i2 < children.length; i2 += 3) {
           let end = children[i2 + 1];
-          if (end < 0 || oldStart > end + baseOffset - moved2)
+          if (end < 0 || oldStart > end + baseOffset - moved)
             continue;
-          let start = children[i2] + baseOffset - moved2;
+          let start = children[i2] + baseOffset - moved;
           if (oldEnd >= start) {
             children[i2 + 1] = oldStart <= start ? -2 : -1;
           } else if (oldStart >= baseOffset && dSize) {
@@ -10127,7 +10127,7 @@
             children[i2 + 1] += dSize;
           }
         }
-        moved2 += dSize;
+        moved += dSize;
       });
       baseOffset = mapping.maps[i].map(baseOffset, -1);
     }
@@ -10145,8 +10145,8 @@
           continue;
         }
         let to = mapping.map(oldChildren[i + 1] + oldOffset, -1), toLocal = to - offset3;
-        let { index: index2, offset: childOffset } = node.content.findIndex(fromLocal);
-        let childNode = node.maybeChild(index2);
+        let { index, offset: childOffset } = node.content.findIndex(fromLocal);
+        let childNode = node.maybeChild(index);
         if (childNode && childOffset == fromLocal && childOffset + childNode.nodeSize == toLocal) {
           let mapped = children[i + 2].mapInner(mapping, childNode, from3 + 1, oldChildren[i] + oldOffset + 1, options);
           if (mapped != empty) {
@@ -10637,18 +10637,18 @@
   function parseBetween(view, from_, to_, addedNodes) {
     let { node: parent, fromOffset, toOffset, from: from3, to } = view.docView.parseRange(from_, to_);
     let domSel = view.domSelectionRange();
-    let find4;
+    let find3;
     let anchor = domSel.anchorNode;
     if (anchor && view.dom.contains(anchor.nodeType == 1 ? anchor : anchor.parentNode)) {
-      find4 = [{ node: anchor, offset: domSel.anchorOffset }];
+      find3 = [{ node: anchor, offset: domSel.anchorOffset }];
       if (!selectionCollapsed(domSel))
-        find4.push({ node: domSel.focusNode, offset: domSel.focusOffset });
+        find3.push({ node: domSel.focusNode, offset: domSel.focusOffset });
     }
     if (chrome && view.input.lastKeyCode === 8) {
-      for (let off2 = toOffset; off2 > fromOffset; off2--) {
-        let node = parent.childNodes[off2 - 1], desc = node.pmViewDesc;
+      for (let off = toOffset; off > fromOffset; off--) {
+        let node = parent.childNodes[off - 1], desc = node.pmViewDesc;
         if (node.nodeName == "BR" && !desc) {
-          toOffset = off2;
+          toOffset = off;
           break;
         }
         if (!desc || desc.size)
@@ -10665,12 +10665,12 @@
       from: fromOffset,
       to: toOffset,
       preserveWhitespace: $from.parent.type.whitespace == "pre" ? "full" : true,
-      findPositions: find4,
+      findPositions: find3,
       ruleFromNode: ruleFromNode(addedNodes),
       context: $from
     });
-    if (find4 && find4[0].pos != null) {
-      let anchor2 = find4[0].pos, head = find4[1] && find4[1].pos;
+    if (find3 && find3[0].pos != null) {
+      let anchor2 = find3[0].pos, head = find3[1] && find3[1].pos;
       if (head == null)
         head = anchor2;
       sel = { anchor: anchor2 + from3, head: head + from3 };
@@ -11135,8 +11135,8 @@
         found2 = sel.from;
       } else {
         let movedPos = sel.from + (this.state.doc.content.size - prev.doc.content.size);
-        let moved2 = movedPos > 0 && movedPos < this.state.doc.content.size && this.state.doc.nodeAt(movedPos);
-        if (moved2 == sel.node)
+        let moved = movedPos > 0 && movedPos < this.state.doc.content.size && this.state.doc.nodeAt(movedPos);
+        if (moved == sel.node)
           found2 = movedPos;
       }
       this.dragging = new Dragging(dragging.slice, dragging.move, found2 < 0 ? void 0 : NodeSelection.create(this.state.doc, found2));
@@ -11150,10 +11150,10 @@
         if (prop2 != null && (value = f ? f(prop2) : prop2))
           return value;
       }
-      let plugins2 = this.state.plugins;
-      if (plugins2)
-        for (let i = 0; i < plugins2.length; i++) {
-          let prop2 = plugins2[i].props[propName];
+      let plugins = this.state.plugins;
+      if (plugins)
+        for (let i = 0; i < plugins.length; i++) {
+          let prop2 = plugins[i].props[propName];
           if (prop2 != null && (value = f ? f(prop2) : prop2))
             return value;
         }
@@ -11990,15 +11990,15 @@
     return true;
   };
   function joinMaybeClear(state, $pos, dispatch) {
-    let before = $pos.nodeBefore, after = $pos.nodeAfter, index2 = $pos.index();
+    let before = $pos.nodeBefore, after = $pos.nodeAfter, index = $pos.index();
     if (!before || !after || !before.type.compatibleContent(after.type))
       return false;
-    if (!before.content.size && $pos.parent.canReplace(index2 - 1, index2)) {
+    if (!before.content.size && $pos.parent.canReplace(index - 1, index)) {
       if (dispatch)
         dispatch(state.tr.delete($pos.pos - before.nodeSize, $pos.pos).scrollIntoView());
       return true;
     }
-    if (!$pos.parent.canReplace(index2, index2 + 1) || !(after.isTextblock || canJoin(state.doc, $pos.pos)))
+    if (!$pos.parent.canReplace(index, index + 1) || !(after.isTextblock || canJoin(state.doc, $pos.pos)))
       return false;
     if (dispatch)
       dispatch(state.tr.join($pos.pos).scrollIntoView());
@@ -12097,8 +12097,8 @@
           if (node.type == nodeType) {
             applicable = true;
           } else {
-            let $pos = state.doc.resolve(pos), index2 = $pos.index();
-            applicable = $pos.parent.canReplaceWith(index2, index2 + 1, nodeType);
+            let $pos = state.doc.resolve(pos), index = $pos.index();
+            applicable = $pos.parent.canReplaceWith(index, index + 1, nodeType);
           }
         });
       }
@@ -12776,13 +12776,13 @@
   var getTextContentFromNodes = ($from, maxMatch = 500) => {
     let textBefore = "";
     const sliceEndPos = $from.parentOffset;
-    $from.parent.nodesBetween(Math.max(0, sliceEndPos - maxMatch), sliceEndPos, (node, pos, parent, index2) => {
+    $from.parent.nodesBetween(Math.max(0, sliceEndPos - maxMatch), sliceEndPos, (node, pos, parent, index) => {
       var _a, _b;
       const chunk = ((_b = (_a = node.type.spec).toText) === null || _b === void 0 ? void 0 : _b.call(_a, {
         node,
         pos,
         parent,
-        index: index2
+        index
       })) || node.textContent || "%leaf%";
       textBefore += node.isAtom && !node.isText ? chunk : chunk.slice(0, Math.max(0, sliceEndPos - pos));
     });
@@ -12797,11 +12797,11 @@
       this.handler = config.handler;
     }
   };
-  var inputRuleMatcherHandler = (text2, find4) => {
-    if (isRegExp(find4)) {
-      return find4.exec(text2);
+  var inputRuleMatcherHandler = (text2, find3) => {
+    if (isRegExp(find3)) {
+      return find3.exec(text2);
     }
-    const inputRuleMatch = find4(text2);
+    const inputRuleMatch = find3(text2);
     if (!inputRuleMatch) {
       return null;
     }
@@ -13079,15 +13079,15 @@
       this.handler = config.handler;
     }
   };
-  var pasteRuleMatcherHandler = (text2, find4, event) => {
-    if (isRegExp(find4)) {
-      return [...text2.matchAll(find4)];
+  var pasteRuleMatcherHandler = (text2, find3, event) => {
+    if (isRegExp(find3)) {
+      return [...text2.matchAll(find3)];
     }
-    const matches3 = find4(text2, event);
-    if (!matches3) {
+    const matches2 = find3(text2, event);
+    if (!matches2) {
       return [];
     }
-    return matches3.map((pasteRuleMatch) => {
+    return matches2.map((pasteRuleMatch) => {
       const result = [pasteRuleMatch.text];
       result.index = pasteRuleMatch.index;
       result.input = text2;
@@ -13115,8 +13115,8 @@
       const resolvedFrom = Math.max(from3, pos);
       const resolvedTo = Math.min(to, pos + node.content.size);
       const textToMatch = node.textBetween(resolvedFrom - pos, resolvedTo - pos, void 0, "\uFFFC");
-      const matches3 = pasteRuleMatcherHandler(textToMatch, rule.find, pasteEvent);
-      matches3.forEach((match2) => {
+      const matches2 = pasteRuleMatcherHandler(textToMatch, rule.find, pasteEvent);
+      matches2.forEach((match2) => {
         if (match2.index === void 0) {
           return;
         }
@@ -13189,7 +13189,7 @@
       pasteEvent = typeof ClipboardEvent !== "undefined" ? new ClipboardEvent("paste") : null;
       return tr2;
     };
-    const plugins2 = rules.map((rule) => {
+    const plugins = rules.map((rule) => {
       return new Plugin({
         // we register a global drag handler to track the current drag source element
         view(view) {
@@ -13283,10 +13283,10 @@
         }
       });
     });
-    return plugins2;
+    return plugins;
   }
   function findDuplicates(items) {
-    const filtered = items.filter((el, index2) => items.indexOf(el) !== index2);
+    const filtered = items.filter((el, index) => items.indexOf(el) !== index);
     return Array.from(new Set(filtered));
   }
   var ExtensionManager = class _ExtensionManager {
@@ -13389,7 +13389,7 @@
           editor,
           type: getSchemaTypeByName(extension.name, this.schema)
         };
-        const plugins2 = [];
+        const plugins = [];
         const addKeyboardShortcuts = getExtensionField(extension, "addKeyboardShortcuts", context);
         let defaultBindings = {};
         if (extension.type === "mark" && getExtensionField(extension, "exitable", context)) {
@@ -13402,7 +13402,7 @@
           defaultBindings = { ...defaultBindings, ...bindings };
         }
         const keyMapPlugin = keymap(defaultBindings);
-        plugins2.push(keyMapPlugin);
+        plugins.push(keyMapPlugin);
         const addInputRules = getExtensionField(extension, "addInputRules", context);
         if (isExtensionRulesEnabled(extension, editor.options.enableInputRules) && addInputRules) {
           inputRules.push(...addInputRules());
@@ -13414,9 +13414,9 @@
         const addProseMirrorPlugins = getExtensionField(extension, "addProseMirrorPlugins", context);
         if (addProseMirrorPlugins) {
           const proseMirrorPlugins = addProseMirrorPlugins();
-          plugins2.push(...proseMirrorPlugins);
+          plugins.push(...proseMirrorPlugins);
         }
-        return plugins2;
+        return plugins;
       }).flat();
       return [
         inputRulesPlugin({
@@ -13596,7 +13596,7 @@
     const { from: from3, to } = range;
     const { blockSeparator = "\n\n", textSerializers = {} } = options || {};
     let text2 = "";
-    startNode.nodesBetween(from3, to, (node, pos, parent, index2) => {
+    startNode.nodesBetween(from3, to, (node, pos, parent, index) => {
       var _a;
       if (node.isBlock && pos > from3) {
         text2 += blockSeparator;
@@ -13608,7 +13608,7 @@
             node,
             pos,
             parent,
-            index: index2,
+            index,
             range
           });
         }
@@ -13933,7 +13933,7 @@
     return true;
   };
   var forEach = (items, fn) => (props) => {
-    return items.every((item, index2) => fn(item, { ...props, index: index2 }));
+    return items.every((item, index) => fn(item, { ...props, index }));
   };
   var insertContent = (value, options) => ({ tr: tr2, commands: commands2 }) => {
     return commands2.insertContentAt({ from: tr2.selection.from, to: tr2.selection.to }, value, options);
@@ -14519,8 +14519,8 @@
   }
   function simplifyChangedRanges(changes) {
     const uniqueChanges = removeDuplicates(changes);
-    return uniqueChanges.length === 1 ? uniqueChanges : uniqueChanges.filter((change, index2) => {
-      const rest = uniqueChanges.filter((_, i) => i !== index2);
+    return uniqueChanges.length === 1 ? uniqueChanges : uniqueChanges.filter((change, index) => {
+      const rest = uniqueChanges.filter((_, i) => i !== index);
       return !rest.some((otherChange) => {
         return change.oldRange.from >= otherChange.oldRange.from && change.oldRange.to <= otherChange.oldRange.to && change.newRange.from >= otherChange.newRange.from && change.newRange.to <= otherChange.newRange.to;
       });
@@ -14529,10 +14529,10 @@
   function getChangedRanges(transform) {
     const { mapping, steps } = transform;
     const changes = [];
-    mapping.maps.forEach((stepMap, index2) => {
+    mapping.maps.forEach((stepMap, index) => {
       const ranges = [];
       if (!stepMap.ranges.length) {
-        const { from: from3, to } = steps[index2];
+        const { from: from3, to } = steps[index];
         if (from3 === void 0 || to === void 0) {
           return;
         }
@@ -14543,8 +14543,8 @@
         });
       }
       ranges.forEach(({ from: from3, to }) => {
-        const newStart = mapping.slice(index2).map(from3, -1);
-        const newEnd = mapping.slice(index2).map(to);
+        const newStart = mapping.slice(index).map(from3, -1);
+        const newEnd = mapping.slice(index).map(to);
         const oldStart = mapping.invert().map(newStart, -1);
         const oldEnd = mapping.invert().map(newEnd);
         changes.push({
@@ -15081,9 +15081,9 @@
     return commands2.wrapIn(type, attributes);
   };
   var undoInputRule = () => ({ state, dispatch }) => {
-    const plugins2 = state.plugins;
-    for (let i = 0; i < plugins2.length; i += 1) {
-      const plugin = plugins2[i];
+    const plugins = state.plugins;
+    for (let i = 0; i < plugins.length; i += 1) {
+      const plugin = plugins[i];
       let undoable;
       if (plugin.spec.isInputRules && (undoable = plugin.getState(state))) {
         if (dispatch) {
@@ -15309,12 +15309,12 @@
         new Plugin({
           key: new PluginKey("tiptapDrop"),
           props: {
-            handleDrop: (_, e, slice2, moved2) => {
+            handleDrop: (_, e, slice2, moved) => {
               this.editor.emit("drop", {
                 editor: this.editor,
                 event: e,
                 slice: slice2,
-                moved: moved2
+                moved
               });
             }
           }
@@ -15633,8 +15633,8 @@
           if (Object.keys(attributes).length > 0) {
             const nodeAttributes = currentNode.node.attrs;
             const attrKeys = Object.keys(attributes);
-            for (let index2 = 0; index2 < attrKeys.length; index2 += 1) {
-              const key = attrKeys[index2];
+            for (let index = 0; index < attrKeys.length; index += 1) {
+              const key = attrKeys[index];
               if (nodeAttributes[key] !== attributes[key]) {
                 break;
               }
@@ -15825,7 +15825,7 @@ img.ProseMirror-separator {
       this.on("focus", this.options.onFocus);
       this.on("blur", this.options.onBlur);
       this.on("destroy", this.options.onDestroy);
-      this.on("drop", ({ event, slice: slice2, moved: moved2 }) => this.options.onDrop(event, slice2, moved2));
+      this.on("drop", ({ event, slice: slice2, moved }) => this.options.onDrop(event, slice2, moved));
       this.on("paste", ({ event, slice: slice2 }) => this.options.onPaste(event, slice2));
       window.setTimeout(() => {
         if (this.isDestroyed) {
@@ -15915,8 +15915,8 @@ img.ProseMirror-separator {
      * @returns The new editor state
      */
     registerPlugin(plugin, handlePlugins) {
-      const plugins2 = isFunction(handlePlugins) ? handlePlugins(plugin, [...this.state.plugins]) : [...this.state.plugins, plugin];
-      const state = this.state.reconfigure({ plugins: plugins2 });
+      const plugins = isFunction(handlePlugins) ? handlePlugins(plugin, [...this.state.plugins]) : [...this.state.plugins, plugin];
+      const state = this.state.reconfigure({ plugins });
       this.view.updateState(state);
       return state;
     }
@@ -15931,16 +15931,16 @@ img.ProseMirror-separator {
         return void 0;
       }
       const prevPlugins = this.state.plugins;
-      let plugins2 = prevPlugins;
+      let plugins = prevPlugins;
       [].concat(nameOrPluginKeyToRemove).forEach((nameOrPluginKey) => {
         const name = typeof nameOrPluginKey === "string" ? `${nameOrPluginKey}$` : nameOrPluginKey.key;
-        plugins2 = plugins2.filter((plugin) => !plugin.key.startsWith(name));
+        plugins = plugins.filter((plugin) => !plugin.key.startsWith(name));
       });
-      if (prevPlugins.length === plugins2.length) {
+      if (prevPlugins.length === plugins.length) {
         return void 0;
       }
       const state = this.state.reconfigure({
-        plugins: plugins2
+        plugins
       });
       this.view.updateState(state);
       return state;
@@ -16440,15 +16440,15 @@ img.ProseMirror-separator {
     const { selection } = state;
     const { $from } = selection;
     if (selection instanceof NodeSelection) {
-      const index2 = $from.index();
+      const index = $from.index();
       const parent = $from.parent;
-      return parent.canReplaceWith(index2, index2 + 1, nodeType);
+      return parent.canReplaceWith(index, index + 1, nodeType);
     }
     let depth = $from.depth;
     while (depth >= 0) {
-      const index2 = $from.index(depth);
+      const index = $from.index(depth);
       const parent = $from.node(depth);
-      const match2 = parent.contentMatchAt(index2);
+      const match2 = parent.contentMatchAt(index);
       if (match2.matchType(nodeType)) {
         return true;
       }
@@ -18616,18 +18616,18 @@ ${err.toString()}`);
           if (state < clockEnd) {
             addToDeleteSet(unappliedDS, client, state, clockEnd - state);
           }
-          let index2 = findIndexSS(structs, clock);
-          let struct = structs[index2];
+          let index = findIndexSS(structs, clock);
+          let struct = structs[index];
           if (!struct.deleted && struct.id.clock < clock) {
-            structs.splice(index2 + 1, 0, splitItem(transaction, struct, clock - struct.id.clock));
-            index2++;
+            structs.splice(index + 1, 0, splitItem(transaction, struct, clock - struct.id.clock));
+            index++;
           }
-          while (index2 < structs.length) {
-            struct = structs[index2++];
+          while (index < structs.length) {
+            struct = structs[index++];
             if (struct.id.clock < clockEnd) {
               if (!struct.deleted) {
                 if (clockEnd < struct.id.clock + struct.length) {
-                  structs.splice(index2, 0, splitItem(transaction, struct, clockEnd - struct.id.clock));
+                  structs.splice(index, 0, splitItem(transaction, struct, clockEnd - struct.id.clock));
                 }
                 struct.delete(transaction);
               }
@@ -19731,13 +19731,13 @@ ${err.toString()}`);
      * @param {number} index
      * @param {number} [assoc]
      */
-    constructor(type, index2, assoc = 0) {
+    constructor(type, index, assoc = 0) {
       this.type = type;
-      this.index = index2;
+      this.index = index;
       this.assoc = assoc;
     }
   };
-  var createAbsolutePosition = (type, index2, assoc = 0) => new AbsolutePosition(type, index2, assoc);
+  var createAbsolutePosition = (type, index, assoc = 0) => new AbsolutePosition(type, index, assoc);
   var createRelativePosition = (type, item, assoc) => {
     let typeid = null;
     let tname = null;
@@ -19748,20 +19748,20 @@ ${err.toString()}`);
     }
     return new RelativePosition(typeid, tname, item, assoc);
   };
-  var createRelativePositionFromTypeIndex = (type, index2, assoc = 0) => {
+  var createRelativePositionFromTypeIndex = (type, index, assoc = 0) => {
     let t = type._start;
     if (assoc < 0) {
-      if (index2 === 0) {
+      if (index === 0) {
         return createRelativePosition(type, null, assoc);
       }
-      index2--;
+      index--;
     }
     while (t !== null) {
       if (!t.deleted && t.countable) {
-        if (t.length > index2) {
-          return createRelativePosition(type, createID(t.id.client, t.id.clock + index2), assoc);
+        if (t.length > index) {
+          return createRelativePosition(type, createID(t.id.client, t.id.clock + index), assoc);
         }
-        index2 -= t.length;
+        index -= t.length;
       }
       if (t.right === null && assoc < 0) {
         return createRelativePosition(type, t.lastId, assoc);
@@ -19785,7 +19785,7 @@ ${err.toString()}`);
     const tname = rpos.tname;
     const assoc = rpos.assoc;
     let type = null;
-    let index2 = 0;
+    let index = 0;
     if (rightID !== null) {
       if (getState(store, rightID.client) <= rightID.clock) {
         return null;
@@ -19798,11 +19798,11 @@ ${err.toString()}`);
       type = /** @type {AbstractType<any>} */
       right.parent;
       if (type._item === null || !type._item.deleted) {
-        index2 = right.deleted || !right.countable ? 0 : res.diff + (assoc >= 0 ? 0 : 1);
+        index = right.deleted || !right.countable ? 0 : res.diff + (assoc >= 0 ? 0 : 1);
         let n = right.left;
         while (n !== null) {
           if (!n.deleted && n.countable) {
-            index2 += n.length;
+            index += n.length;
           }
           n = n.left;
         }
@@ -19824,12 +19824,12 @@ ${err.toString()}`);
         throw unexpectedCase();
       }
       if (assoc >= 0) {
-        index2 = type._length;
+        index = type._length;
       } else {
-        index2 = 0;
+        index = 0;
       }
     }
-    return createAbsolutePosition(type, index2, rpos.assoc);
+    return createAbsolutePosition(type, index, rpos.assoc);
   };
   var Snapshot = class {
     /**
@@ -19928,13 +19928,13 @@ ${err.toString()}`);
     find
   );
   var findIndexCleanStart = (transaction, structs, clock) => {
-    const index2 = findIndexSS(structs, clock);
-    const struct = structs[index2];
+    const index = findIndexSS(structs, clock);
+    const struct = structs[index];
     if (struct.id.clock < clock && struct instanceof Item) {
-      structs.splice(index2 + 1, 0, splitItem(transaction, struct, clock - struct.id.clock));
-      return index2 + 1;
+      structs.splice(index + 1, 0, splitItem(transaction, struct, clock - struct.id.clock));
+      return index + 1;
     }
-    return index2;
+    return index;
   };
   var getItemCleanStart = (transaction, id2) => {
     const structs = (
@@ -19945,10 +19945,10 @@ ${err.toString()}`);
   };
   var getItemCleanEnd = (transaction, store, id2) => {
     const structs = store.clients.get(id2.client);
-    const index2 = findIndexSS(structs, id2.clock);
-    const struct = structs[index2];
+    const index = findIndexSS(structs, id2.clock);
+    const struct = structs[index];
     if (id2.clock !== struct.id.clock + struct.length - 1 && struct.constructor !== GC) {
-      structs.splice(index2 + 1, 0, splitItem(transaction, struct, id2.clock - struct.id.clock + 1));
+      structs.splice(index + 1, 0, splitItem(transaction, struct, id2.clock - struct.id.clock + 1));
     }
     return struct;
   };
@@ -19964,15 +19964,15 @@ ${err.toString()}`);
       return;
     }
     const clockEnd = clockStart + len;
-    let index2 = findIndexCleanStart(transaction, structs, clockStart);
+    let index = findIndexCleanStart(transaction, structs, clockStart);
     let struct;
     do {
-      struct = structs[index2++];
+      struct = structs[index++];
       if (clockEnd < struct.id.clock + struct.length) {
         findIndexCleanStart(transaction, structs, clockEnd);
       }
       f(struct);
-    } while (index2 < structs.length && structs[index2].id.clock < clockEnd);
+    } while (index < structs.length && structs[index].id.clock < clockEnd);
   };
   var Transaction2 = class {
     /**
@@ -20985,39 +20985,39 @@ ${err.toString()}`);
      * @param {Item} p
      * @param {number} index
      */
-    constructor(p, index2) {
+    constructor(p, index) {
       p.marker = true;
       this.p = p;
-      this.index = index2;
+      this.index = index;
       this.timestamp = globalSearchMarkerTimestamp++;
     }
   };
   var refreshMarkerTimestamp = (marker) => {
     marker.timestamp = globalSearchMarkerTimestamp++;
   };
-  var overwriteMarker = (marker, p, index2) => {
+  var overwriteMarker = (marker, p, index) => {
     marker.p.marker = false;
     marker.p = p;
     p.marker = true;
-    marker.index = index2;
+    marker.index = index;
     marker.timestamp = globalSearchMarkerTimestamp++;
   };
-  var markPosition = (searchMarker, p, index2) => {
+  var markPosition = (searchMarker, p, index) => {
     if (searchMarker.length >= maxSearchMarker) {
       const marker = searchMarker.reduce((a, b) => a.timestamp < b.timestamp ? a : b);
-      overwriteMarker(marker, p, index2);
+      overwriteMarker(marker, p, index);
       return marker;
     } else {
-      const pm = new ArraySearchMarker(p, index2);
+      const pm = new ArraySearchMarker(p, index);
       searchMarker.push(pm);
       return pm;
     }
   };
-  var findMarker = (yarray, index2) => {
-    if (yarray._start === null || index2 === 0 || yarray._searchMarker === null) {
+  var findMarker = (yarray, index) => {
+    if (yarray._start === null || index === 0 || yarray._searchMarker === null) {
       return null;
     }
-    const marker = yarray._searchMarker.length === 0 ? null : yarray._searchMarker.reduce((a, b) => abs(index2 - a.index) < abs(index2 - b.index) ? a : b);
+    const marker = yarray._searchMarker.length === 0 ? null : yarray._searchMarker.reduce((a, b) => abs(index - a.index) < abs(index - b.index) ? a : b);
     let p = yarray._start;
     let pindex = 0;
     if (marker !== null) {
@@ -21025,16 +21025,16 @@ ${err.toString()}`);
       pindex = marker.index;
       refreshMarkerTimestamp(marker);
     }
-    while (p.right !== null && pindex < index2) {
+    while (p.right !== null && pindex < index) {
       if (!p.deleted && p.countable) {
-        if (index2 < pindex + p.length) {
+        if (index < pindex + p.length) {
           break;
         }
         pindex += p.length;
       }
       p = p.right;
     }
-    while (p.left !== null && pindex > index2) {
+    while (p.left !== null && pindex > index) {
       p = p.left;
       if (!p.deleted && p.countable) {
         pindex -= p.length;
@@ -21054,7 +21054,7 @@ ${err.toString()}`);
       return markPosition(yarray._searchMarker, p, pindex);
     }
   };
-  var updateMarkerChanges = (searchMarker, index2, len) => {
+  var updateMarkerChanges = (searchMarker, index, len) => {
     for (let i = searchMarker.length - 1; i >= 0; i--) {
       const m = searchMarker[i];
       if (len > 0) {
@@ -21073,8 +21073,8 @@ ${err.toString()}`);
         m.p = p;
         p.marker = true;
       }
-      if (index2 < m.index || len > 0 && index2 === m.index) {
-        m.index = max(index2, m.index + len);
+      if (index < m.index || len > 0 && index === m.index) {
+        m.index = max(index, m.index + len);
       }
     }
   };
@@ -21265,14 +21265,14 @@ ${err.toString()}`);
     return cs;
   };
   var typeListForEach = (type, f) => {
-    let index2 = 0;
+    let index = 0;
     let n = type._start;
     type.doc ?? warnPrematureAccess();
     while (n !== null) {
       if (n.countable && !n.deleted) {
         const c = n.content.getContent();
         for (let i = 0; i < c.length; i++) {
-          f(c[i], index2++, type);
+          f(c[i], index++, type);
         }
       }
       n = n.right;
@@ -21319,20 +21319,20 @@ ${err.toString()}`);
       }
     };
   };
-  var typeListGet = (type, index2) => {
+  var typeListGet = (type, index) => {
     type.doc ?? warnPrematureAccess();
-    const marker = findMarker(type, index2);
+    const marker = findMarker(type, index);
     let n = type._start;
     if (marker !== null) {
       n = marker.p;
-      index2 -= marker.index;
+      index -= marker.index;
     }
     for (; n !== null; n = n.right) {
       if (!n.deleted && n.countable) {
-        if (index2 < n.length) {
-          return n.content.getContent()[index2];
+        if (index < n.length) {
+          return n.content.getContent()[index];
         }
-        index2 -= n.length;
+        index -= n.length;
       }
     }
   };
@@ -21394,36 +21394,36 @@ ${err.toString()}`);
     packJsonContent();
   };
   var lengthExceeded = () => create3("Length exceeded!");
-  var typeListInsertGenerics = (transaction, parent, index2, content) => {
-    if (index2 > parent._length) {
+  var typeListInsertGenerics = (transaction, parent, index, content) => {
+    if (index > parent._length) {
       throw lengthExceeded();
     }
-    if (index2 === 0) {
+    if (index === 0) {
       if (parent._searchMarker) {
-        updateMarkerChanges(parent._searchMarker, index2, content.length);
+        updateMarkerChanges(parent._searchMarker, index, content.length);
       }
       return typeListInsertGenericsAfter(transaction, parent, null, content);
     }
-    const startIndex = index2;
-    const marker = findMarker(parent, index2);
+    const startIndex = index;
+    const marker = findMarker(parent, index);
     let n = parent._start;
     if (marker !== null) {
       n = marker.p;
-      index2 -= marker.index;
-      if (index2 === 0) {
+      index -= marker.index;
+      if (index === 0) {
         n = n.prev;
-        index2 += n && n.countable && !n.deleted ? n.length : 0;
+        index += n && n.countable && !n.deleted ? n.length : 0;
       }
     }
     for (; n !== null; n = n.right) {
       if (!n.deleted && n.countable) {
-        if (index2 <= n.length) {
-          if (index2 < n.length) {
-            getItemCleanStart(transaction, createID(n.id.client, n.id.clock + index2));
+        if (index <= n.length) {
+          if (index < n.length) {
+            getItemCleanStart(transaction, createID(n.id.client, n.id.clock + index));
           }
           break;
         }
-        index2 -= n.length;
+        index -= n.length;
       }
     }
     if (parent._searchMarker) {
@@ -21441,24 +21441,24 @@ ${err.toString()}`);
     }
     return typeListInsertGenericsAfter(transaction, parent, n, content);
   };
-  var typeListDelete = (transaction, parent, index2, length2) => {
+  var typeListDelete = (transaction, parent, index, length2) => {
     if (length2 === 0) {
       return;
     }
-    const startIndex = index2;
+    const startIndex = index;
     const startLength = length2;
-    const marker = findMarker(parent, index2);
+    const marker = findMarker(parent, index);
     let n = parent._start;
     if (marker !== null) {
       n = marker.p;
-      index2 -= marker.index;
+      index -= marker.index;
     }
-    for (; n !== null && index2 > 0; n = n.right) {
+    for (; n !== null && index > 0; n = n.right) {
       if (!n.deleted && n.countable) {
-        if (index2 < n.length) {
-          getItemCleanStart(transaction, createID(n.id.client, n.id.clock + index2));
+        if (index < n.length) {
+          getItemCleanStart(transaction, createID(n.id.client, n.id.clock + index));
         }
-        index2 -= n.length;
+        index -= n.length;
       }
     }
     while (length2 > 0 && n !== null) {
@@ -21661,19 +21661,19 @@ ${err.toString()}`);
      * @param {number} index The index to insert content at.
      * @param {Array<T>} content The array of content
      */
-    insert(index2, content) {
+    insert(index, content) {
       if (this.doc !== null) {
         transact(this.doc, (transaction) => {
           typeListInsertGenerics(
             transaction,
             this,
-            index2,
+            index,
             /** @type {any} */
             content
           );
         });
       } else {
-        this._prelimContent.splice(index2, 0, ...content);
+        this._prelimContent.splice(index, 0, ...content);
       }
     }
     /**
@@ -21711,13 +21711,13 @@ ${err.toString()}`);
      * @param {number} index Index at which to start deleting elements
      * @param {number} length The number of elements to remove. Defaults to 1.
      */
-    delete(index2, length2 = 1) {
+    delete(index, length2 = 1) {
       if (this.doc !== null) {
         transact(this.doc, (transaction) => {
-          typeListDelete(transaction, this, index2, length2);
+          typeListDelete(transaction, this, index, length2);
         });
       } else {
-        this._prelimContent.splice(index2, length2);
+        this._prelimContent.splice(index, length2);
       }
     }
     /**
@@ -21726,8 +21726,8 @@ ${err.toString()}`);
      * @param {number} index The index of the element to return from the YArray
      * @return {T}
      */
-    get(index2) {
-      return typeListGet(this, index2);
+    get(index) {
+      return typeListGet(this, index);
     }
     /**
      * Transforms this YArray to a JavaScript Array.
@@ -22041,10 +22041,10 @@ ${err.toString()}`);
      * @param {number} index
      * @param {Map<string,any>} currentAttributes
      */
-    constructor(left, right, index2, currentAttributes) {
+    constructor(left, right, index, currentAttributes) {
       this.left = left;
       this.right = right;
-      this.index = index2;
+      this.index = index;
       this.currentAttributes = currentAttributes;
     }
     /**
@@ -22101,15 +22101,15 @@ ${err.toString()}`);
     }
     return pos;
   };
-  var findPosition = (transaction, parent, index2, useSearchMarker) => {
+  var findPosition = (transaction, parent, index, useSearchMarker) => {
     const currentAttributes = /* @__PURE__ */ new Map();
-    const marker = useSearchMarker ? findMarker(parent, index2) : null;
+    const marker = useSearchMarker ? findMarker(parent, index) : null;
     if (marker) {
       const pos = new ItemTextListPosition(marker.p.left, marker.p, marker.index, currentAttributes);
-      return findNextPosition(transaction, pos, index2 - marker.index);
+      return findNextPosition(transaction, pos, index - marker.index);
     } else {
       const pos = new ItemTextListPosition(null, parent._start, 0, currentAttributes);
-      return findNextPosition(transaction, pos, index2);
+      return findNextPosition(transaction, pos, index);
     }
   };
   var insertNegatedAttributes = (transaction, parent, currPos, negatedAttributes) => {
@@ -22197,14 +22197,14 @@ ${err.toString()}`);
       /** @type {string} */
       text2
     ) : text2 instanceof AbstractType ? new ContentType(text2) : new ContentEmbed(text2);
-    let { left, right, index: index2 } = currPos;
+    let { left, right, index } = currPos;
     if (parent._searchMarker) {
       updateMarkerChanges(parent._searchMarker, currPos.index, content.getLength());
     }
     right = new Item(createID(ownClientId, getState(doc4.store, ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, content);
     right.integrate(transaction, 0);
     currPos.right = right;
-    currPos.index = index2;
+    currPos.index = index;
     currPos.forward();
     insertNegatedAttributes(transaction, parent, currPos, negatedAttributes);
   };
@@ -22919,14 +22919,14 @@ ${err.toString()}`);
      *                                    Text.
      * @public
      */
-    insert(index2, text2, attributes) {
+    insert(index, text2, attributes) {
       if (text2.length <= 0) {
         return;
       }
       const y = this.doc;
       if (y !== null) {
         transact(y, (transaction) => {
-          const pos = findPosition(transaction, this, index2, !attributes);
+          const pos = findPosition(transaction, this, index, !attributes);
           if (!attributes) {
             attributes = {};
             pos.currentAttributes.forEach((v, k) => {
@@ -22936,7 +22936,7 @@ ${err.toString()}`);
           insertText(transaction, this, pos, text2, attributes);
         });
       } else {
-        this._pending.push(() => this.insert(index2, text2, attributes));
+        this._pending.push(() => this.insert(index, text2, attributes));
       }
     }
     /**
@@ -22949,15 +22949,15 @@ ${err.toString()}`);
      *
      * @public
      */
-    insertEmbed(index2, embed, attributes) {
+    insertEmbed(index, embed, attributes) {
       const y = this.doc;
       if (y !== null) {
         transact(y, (transaction) => {
-          const pos = findPosition(transaction, this, index2, !attributes);
+          const pos = findPosition(transaction, this, index, !attributes);
           insertText(transaction, this, pos, embed, attributes || {});
         });
       } else {
-        this._pending.push(() => this.insertEmbed(index2, embed, attributes || {}));
+        this._pending.push(() => this.insertEmbed(index, embed, attributes || {}));
       }
     }
     /**
@@ -22968,17 +22968,17 @@ ${err.toString()}`);
      *
      * @public
      */
-    delete(index2, length2) {
+    delete(index, length2) {
       if (length2 === 0) {
         return;
       }
       const y = this.doc;
       if (y !== null) {
         transact(y, (transaction) => {
-          deleteText(transaction, findPosition(transaction, this, index2, true), length2);
+          deleteText(transaction, findPosition(transaction, this, index, true), length2);
         });
       } else {
-        this._pending.push(() => this.delete(index2, length2));
+        this._pending.push(() => this.delete(index, length2));
       }
     }
     /**
@@ -22991,21 +22991,21 @@ ${err.toString()}`);
      *
      * @public
      */
-    format(index2, length2, attributes) {
+    format(index, length2, attributes) {
       if (length2 === 0) {
         return;
       }
       const y = this.doc;
       if (y !== null) {
         transact(y, (transaction) => {
-          const pos = findPosition(transaction, this, index2, false);
+          const pos = findPosition(transaction, this, index, false);
           if (pos.right === null) {
             return;
           }
           formatText(transaction, this, pos, length2, attributes);
         });
       } else {
-        this._pending.push(() => this.format(index2, length2, attributes));
+        this._pending.push(() => this.format(index, length2, attributes));
       }
     }
     /**
@@ -23313,13 +23313,13 @@ ${err.toString()}`);
      * @param {number} index The index to insert content at
      * @param {Array<YXmlElement|YXmlText>} content The array of content
      */
-    insert(index2, content) {
+    insert(index, content) {
       if (this.doc !== null) {
         transact(this.doc, (transaction) => {
-          typeListInsertGenerics(transaction, this, index2, content);
+          typeListInsertGenerics(transaction, this, index, content);
         });
       } else {
-        this._prelimContent.splice(index2, 0, ...content);
+        this._prelimContent.splice(index, 0, ...content);
       }
     }
     /**
@@ -23343,11 +23343,11 @@ ${err.toString()}`);
           /** @type {Array<any>} */
           this._prelimContent
         );
-        const index2 = ref === null ? 0 : pc.findIndex((el) => el === ref) + 1;
-        if (index2 === 0 && ref !== null) {
+        const index = ref === null ? 0 : pc.findIndex((el) => el === ref) + 1;
+        if (index === 0 && ref !== null) {
           throw create3("Reference item not found");
         }
-        pc.splice(index2, 0, ...content);
+        pc.splice(index, 0, ...content);
       }
     }
     /**
@@ -23356,13 +23356,13 @@ ${err.toString()}`);
      * @param {number} index Index at which to start deleting elements
      * @param {number} [length=1] The number of elements to remove. Defaults to 1.
      */
-    delete(index2, length2 = 1) {
+    delete(index, length2 = 1) {
       if (this.doc !== null) {
         transact(this.doc, (transaction) => {
-          typeListDelete(transaction, this, index2, length2);
+          typeListDelete(transaction, this, index, length2);
         });
       } else {
-        this._prelimContent.splice(index2, length2);
+        this._prelimContent.splice(index, length2);
       }
     }
     /**
@@ -23395,8 +23395,8 @@ ${err.toString()}`);
      * @param {number} index The index of the element to return from the YArray
      * @return {YXmlElement|YXmlText}
      */
-    get(index2) {
-      return typeListGet(this, index2);
+    get(index) {
+      return typeListGet(this, index);
     }
     /**
      * Returns a portion of this YXmlFragment into a JavaScript Array selected
@@ -26328,12 +26328,12 @@ ${err.toString()}`);
       ),
       attributes: Object.assign({}, nAttrs, marksToAttributes(p.marks, meta))
     }));
-    const { insert, remove, index: index2 } = simpleDiff(
+    const { insert, remove, index } = simpleDiff(
       str,
       content.map((c) => c.insert).join("")
     );
-    ytext.delete(index2, remove);
-    ytext.insert(index2, insert);
+    ytext.delete(index, remove);
+    ytext.insert(index, insert);
     ytext.applyDelta(
       content.map((c) => ({ retain: c.insert.length, attributes: c.attributes }))
     );
@@ -27517,13 +27517,13 @@ ${err.toString()}`);
   function stringToArray(str) {
     const result = [];
     const len = str.length;
-    let index2 = 0;
-    while (index2 < len) {
-      let first2 = str.charCodeAt(index2);
+    let index = 0;
+    while (index < len) {
+      let first2 = str.charCodeAt(index);
       let second;
-      let char = first2 < 55296 || first2 > 56319 || index2 + 1 === len || (second = str.charCodeAt(index2 + 1)) < 56320 || second > 57343 ? str[index2] : str.slice(index2, index2 + 2);
+      let char = first2 < 55296 || first2 > 56319 || index + 1 === len || (second = str.charCodeAt(index + 1)) < 56320 || second > 57343 ? str[index] : str.slice(index, index + 2);
       result.push(char);
-      index2 += char.length;
+      index += char.length;
     }
     return result;
   }
@@ -27637,19 +27637,19 @@ ${err.toString()}`);
      */
     get(key, operator, token2) {
       const isCallable = operator != null;
-      let option2 = this.o[key];
-      if (!option2) {
-        return option2;
+      let option = this.o[key];
+      if (!option) {
+        return option;
       }
-      if (typeof option2 === "object") {
-        option2 = token2.t in option2 ? option2[token2.t] : defaults[key];
-        if (typeof option2 === "function" && isCallable) {
-          option2 = option2(operator, token2);
+      if (typeof option === "object") {
+        option = token2.t in option ? option[token2.t] : defaults[key];
+        if (typeof option === "function" && isCallable) {
+          option = option(operator, token2);
         }
-      } else if (typeof option2 === "function" && isCallable) {
-        option2 = option2(operator, token2.t, token2);
+      } else if (typeof option === "function" && isCallable) {
+        option = option(operator, token2.t, token2);
       }
-      return option2;
+      return option;
     },
     /**
      * @template {keyof Opts} L
@@ -28435,10 +28435,10 @@ ${err.toString()}`);
       ];
     },
     addProseMirrorPlugins() {
-      const plugins2 = [];
+      const plugins = [];
       const { protocols, defaultProtocol } = this.options;
       if (this.options.autolink) {
-        plugins2.push(autolink({
+        plugins.push(autolink({
           type: this.type,
           defaultProtocol: this.options.defaultProtocol,
           validate: (url) => this.options.isAllowedUri(url, {
@@ -28450,18 +28450,18 @@ ${err.toString()}`);
         }));
       }
       if (this.options.openOnClick === true) {
-        plugins2.push(clickHandler({
+        plugins.push(clickHandler({
           type: this.type
         }));
       }
       if (this.options.linkOnPaste) {
-        plugins2.push(pasteHandler({
+        plugins.push(pasteHandler({
           editor: this.editor,
           defaultProtocol: this.options.defaultProtocol,
           type: this.type
         }));
       }
-      return plugins2;
+      return plugins;
     }
   });
 
@@ -29470,13 +29470,13 @@ ${err.toString()}`);
   }
   function closedBefore($pos) {
     for (let d = $pos.depth; d >= 0; d--) {
-      let index2 = $pos.index(d), parent = $pos.node(d);
-      if (index2 == 0) {
+      let index = $pos.index(d), parent = $pos.node(d);
+      if (index == 0) {
         if (parent.type.spec.isolating)
           return true;
         continue;
       }
-      for (let before = parent.child(index2 - 1); ; before = before.lastChild) {
+      for (let before = parent.child(index - 1); ; before = before.lastChild) {
         if (before.childCount == 0 && !before.inlineContent || needsGap(before.type))
           return true;
         if (before.inlineContent)
@@ -29487,13 +29487,13 @@ ${err.toString()}`);
   }
   function closedAfter($pos) {
     for (let d = $pos.depth; d >= 0; d--) {
-      let index2 = $pos.indexAfter(d), parent = $pos.node(d);
-      if (index2 == parent.childCount) {
+      let index = $pos.indexAfter(d), parent = $pos.node(d);
+      if (index == parent.childCount) {
         if (parent.type.spec.isolating)
           return true;
         continue;
       }
-      for (let after = parent.child(index2); ; after = after.firstChild) {
+      for (let after = parent.child(index); ; after = after.firstChild) {
         if (after.childCount == 0 && !after.inlineContent || needsGap(after.type))
           return true;
         if (after.inlineContent)
@@ -30195,12 +30195,12 @@ ${err.toString()}`);
   var cachedPreserveItems = false;
   var cachedPreserveItemsPlugins = null;
   function mustPreserveItems(state) {
-    let plugins2 = state.plugins;
-    if (cachedPreserveItemsPlugins != plugins2) {
+    let plugins = state.plugins;
+    if (cachedPreserveItemsPlugins != plugins) {
       cachedPreserveItems = false;
-      cachedPreserveItemsPlugins = plugins2;
-      for (let i = 0; i < plugins2.length; i++)
-        if (plugins2[i].spec.historyPreserveItems) {
+      cachedPreserveItemsPlugins = plugins;
+      for (let i = 0; i < plugins.length; i++)
+        if (plugins[i].spec.historyPreserveItems) {
           cachedPreserveItems = true;
           break;
         }
@@ -31364,8 +31364,8 @@ ${err.toString()}`);
   var isNotNone = (value) => !!value && value !== "none";
   var isWebKitValue;
   function isContainingBlock(elementOrCss) {
-    const css2 = isElement(elementOrCss) ? getComputedStyle2(elementOrCss) : elementOrCss;
-    return isNotNone(css2.transform) || isNotNone(css2.translate) || isNotNone(css2.scale) || isNotNone(css2.rotate) || isNotNone(css2.perspective) || !isWebKit() && (isNotNone(css2.backdropFilter) || isNotNone(css2.filter)) || willChangeRe.test(css2.willChange || "") || containRe.test(css2.contain || "");
+    const css = isElement(elementOrCss) ? getComputedStyle2(elementOrCss) : elementOrCss;
+    return isNotNone(css.transform) || isNotNone(css.translate) || isNotNone(css.scale) || isNotNone(css.rotate) || isNotNone(css.perspective) || !isWebKit() && (isNotNone(css.backdropFilter) || isNotNone(css.filter)) || willChangeRe.test(css.willChange || "") || containRe.test(css.contain || "");
   }
   function getContainingBlock(element2) {
     let currentNode = getParentNode(element2);
@@ -31450,9 +31450,9 @@ ${err.toString()}`);
 
   // node_modules/@floating-ui/dom/dist/floating-ui.dom.mjs
   function getCssDimensions(element2) {
-    const css2 = getComputedStyle2(element2);
-    let width = parseFloat(css2.width) || 0;
-    let height = parseFloat(css2.height) || 0;
+    const css = getComputedStyle2(element2);
+    let width = parseFloat(css.width) || 0;
+    let height = parseFloat(css.height) || 0;
     const hasOffset = isHTMLElement(element2);
     const offsetWidth = hasOffset ? element2.offsetWidth : width;
     const offsetHeight = hasOffset ? element2.offsetHeight : height;
@@ -31543,9 +31543,9 @@ ${err.toString()}`);
       while (currentIFrame && offsetWin !== currentWin) {
         const iframeScale = getScale(currentIFrame);
         const iframeRect = currentIFrame.getBoundingClientRect();
-        const css2 = getComputedStyle2(currentIFrame);
-        const left = iframeRect.left + (currentIFrame.clientLeft + parseFloat(css2.paddingLeft)) * iframeScale.x;
-        const top = iframeRect.top + (currentIFrame.clientTop + parseFloat(css2.paddingTop)) * iframeScale.y;
+        const css = getComputedStyle2(currentIFrame);
+        const left = iframeRect.left + (currentIFrame.clientLeft + parseFloat(css.paddingLeft)) * iframeScale.x;
+        const top = iframeRect.top + (currentIFrame.clientTop + parseFloat(css.paddingTop)) * iframeScale.y;
         x *= iframeScale.x;
         y *= iframeScale.y;
         width *= iframeScale.x;
@@ -31969,6 +31969,9 @@ ${err.toString()}`);
     ["path", { d: "M9 7.13V6a3 3 0 1 1 6 0v1.13" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/chevron-down.mjs
+  var ChevronDown = [["path", { d: "m6 9 6 6 6-6" }]];
+
   // node_modules/lucide/dist/esm/icons/code.mjs
   var Code2 = [
     ["path", { d: "m16 18 6-6-6-6" }],
@@ -32169,2199 +32172,12 @@ ${err.toString()}`);
     ["rect", { x: "2", y: "6", width: "14", height: "12", rx: "2" }]
   ];
 
-  // node_modules/sortablejs/modular/sortable.esm.js
-  function _defineProperty(e, r, t) {
-    return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
-      value: t,
-      enumerable: true,
-      configurable: true,
-      writable: true
-    }) : e[r] = t, e;
-  }
-  function _extends() {
-    return _extends = Object.assign ? Object.assign.bind() : function(n) {
-      for (var e = 1; e < arguments.length; e++) {
-        var t = arguments[e];
-        for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]);
-      }
-      return n;
-    }, _extends.apply(null, arguments);
-  }
-  function ownKeys(e, r) {
-    var t = Object.keys(e);
-    if (Object.getOwnPropertySymbols) {
-      var o = Object.getOwnPropertySymbols(e);
-      r && (o = o.filter(function(r2) {
-        return Object.getOwnPropertyDescriptor(e, r2).enumerable;
-      })), t.push.apply(t, o);
-    }
-    return t;
-  }
-  function _objectSpread2(e) {
-    for (var r = 1; r < arguments.length; r++) {
-      var t = null != arguments[r] ? arguments[r] : {};
-      r % 2 ? ownKeys(Object(t), true).forEach(function(r2) {
-        _defineProperty(e, r2, t[r2]);
-      }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function(r2) {
-        Object.defineProperty(e, r2, Object.getOwnPropertyDescriptor(t, r2));
-      });
-    }
-    return e;
-  }
-  function _objectWithoutProperties(e, t) {
-    if (null == e) return {};
-    var o, r, i = _objectWithoutPropertiesLoose(e, t);
-    if (Object.getOwnPropertySymbols) {
-      var n = Object.getOwnPropertySymbols(e);
-      for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]);
-    }
-    return i;
-  }
-  function _objectWithoutPropertiesLoose(r, e) {
-    if (null == r) return {};
-    var t = {};
-    for (var n in r) if ({}.hasOwnProperty.call(r, n)) {
-      if (-1 !== e.indexOf(n)) continue;
-      t[n] = r[n];
-    }
-    return t;
-  }
-  function _toPrimitive(t, r) {
-    if ("object" != typeof t || !t) return t;
-    var e = t[Symbol.toPrimitive];
-    if (void 0 !== e) {
-      var i = e.call(t, r || "default");
-      if ("object" != typeof i) return i;
-      throw new TypeError("@@toPrimitive must return a primitive value.");
-    }
-    return ("string" === r ? String : Number)(t);
-  }
-  function _toPropertyKey(t) {
-    var i = _toPrimitive(t, "string");
-    return "symbol" == typeof i ? i : i + "";
-  }
-  function _typeof(o) {
-    "@babel/helpers - typeof";
-    return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o2) {
-      return typeof o2;
-    } : function(o2) {
-      return o2 && "function" == typeof Symbol && o2.constructor === Symbol && o2 !== Symbol.prototype ? "symbol" : typeof o2;
-    }, _typeof(o);
-  }
-  var version = "1.15.7";
-  function userAgent(pattern) {
-    if (typeof window !== "undefined" && window.navigator) {
-      return !!/* @__PURE__ */ navigator.userAgent.match(pattern);
-    }
-  }
-  var IE11OrLess = userAgent(/(?:Trident.*rv[ :]?11\.|msie|iemobile|Windows Phone)/i);
-  var Edge = userAgent(/Edge/i);
-  var FireFox = userAgent(/firefox/i);
-  var Safari = userAgent(/safari/i) && !userAgent(/chrome/i) && !userAgent(/android/i);
-  var IOS = userAgent(/iP(ad|od|hone)/i);
-  var ChromeForAndroid = userAgent(/chrome/i) && userAgent(/android/i);
-  var captureMode = {
-    capture: false,
-    passive: false
-  };
-  function on(el, event, fn) {
-    el.addEventListener(event, fn, !IE11OrLess && captureMode);
-  }
-  function off(el, event, fn) {
-    el.removeEventListener(event, fn, !IE11OrLess && captureMode);
-  }
-  function matches2(el, selector) {
-    if (!selector) return;
-    selector[0] === ">" && (selector = selector.substring(1));
-    if (el) {
-      try {
-        if (el.matches) {
-          return el.matches(selector);
-        } else if (el.msMatchesSelector) {
-          return el.msMatchesSelector(selector);
-        } else if (el.webkitMatchesSelector) {
-          return el.webkitMatchesSelector(selector);
-        }
-      } catch (_) {
-        return false;
-      }
-    }
-    return false;
-  }
-  function getParentOrHost(el) {
-    return el.host && el !== document && el.host.nodeType && el.host !== el ? el.host : el.parentNode;
-  }
-  function closest(el, selector, ctx, includeCTX) {
-    if (el) {
-      ctx = ctx || document;
-      do {
-        if (selector != null && (selector[0] === ">" ? el.parentNode === ctx && matches2(el, selector) : matches2(el, selector)) || includeCTX && el === ctx) {
-          return el;
-        }
-        if (el === ctx) break;
-      } while (el = getParentOrHost(el));
-    }
-    return null;
-  }
-  var R_SPACE = /\s+/g;
-  function toggleClass(el, name, state) {
-    if (el && name) {
-      if (el.classList) {
-        el.classList[state ? "add" : "remove"](name);
-      } else {
-        var className = (" " + el.className + " ").replace(R_SPACE, " ").replace(" " + name + " ", " ");
-        el.className = (className + (state ? " " + name : "")).replace(R_SPACE, " ");
-      }
-    }
-  }
-  function css(el, prop, val) {
-    var style2 = el && el.style;
-    if (style2) {
-      if (val === void 0) {
-        if (document.defaultView && document.defaultView.getComputedStyle) {
-          val = document.defaultView.getComputedStyle(el, "");
-        } else if (el.currentStyle) {
-          val = el.currentStyle;
-        }
-        return prop === void 0 ? val : val[prop];
-      } else {
-        if (!(prop in style2) && prop.indexOf("webkit") === -1) {
-          prop = "-webkit-" + prop;
-        }
-        style2[prop] = val + (typeof val === "string" ? "" : "px");
-      }
-    }
-  }
-  function matrix(el, selfOnly) {
-    var appliedTransforms = "";
-    if (typeof el === "string") {
-      appliedTransforms = el;
-    } else {
-      do {
-        var transform = css(el, "transform");
-        if (transform && transform !== "none") {
-          appliedTransforms = transform + " " + appliedTransforms;
-        }
-      } while (!selfOnly && (el = el.parentNode));
-    }
-    var matrixFn = window.DOMMatrix || window.WebKitCSSMatrix || window.CSSMatrix || window.MSCSSMatrix;
-    return matrixFn && new matrixFn(appliedTransforms);
-  }
-  function find3(ctx, tagName, iterator) {
-    if (ctx) {
-      var list = ctx.getElementsByTagName(tagName), i = 0, n = list.length;
-      if (iterator) {
-        for (; i < n; i++) {
-          iterator(list[i], i);
-        }
-      }
-      return list;
-    }
-    return [];
-  }
-  function getWindowScrollingElement() {
-    var scrollingElement = document.scrollingElement;
-    if (scrollingElement) {
-      return scrollingElement;
-    } else {
-      return document.documentElement;
-    }
-  }
-  function getRect(el, relativeToContainingBlock, relativeToNonStaticParent, undoScale, container) {
-    if (!el.getBoundingClientRect && el !== window) return;
-    var elRect, top, left, bottom, right, height, width;
-    if (el !== window && el.parentNode && el !== getWindowScrollingElement()) {
-      elRect = el.getBoundingClientRect();
-      top = elRect.top;
-      left = elRect.left;
-      bottom = elRect.bottom;
-      right = elRect.right;
-      height = elRect.height;
-      width = elRect.width;
-    } else {
-      top = 0;
-      left = 0;
-      bottom = window.innerHeight;
-      right = window.innerWidth;
-      height = window.innerHeight;
-      width = window.innerWidth;
-    }
-    if ((relativeToContainingBlock || relativeToNonStaticParent) && el !== window) {
-      container = container || el.parentNode;
-      if (!IE11OrLess) {
-        do {
-          if (container && container.getBoundingClientRect && (css(container, "transform") !== "none" || relativeToNonStaticParent && css(container, "position") !== "static")) {
-            var containerRect = container.getBoundingClientRect();
-            top -= containerRect.top + parseInt(css(container, "border-top-width"));
-            left -= containerRect.left + parseInt(css(container, "border-left-width"));
-            bottom = top + elRect.height;
-            right = left + elRect.width;
-            break;
-          }
-        } while (container = container.parentNode);
-      }
-    }
-    if (undoScale && el !== window) {
-      var elMatrix = matrix(container || el), scaleX = elMatrix && elMatrix.a, scaleY = elMatrix && elMatrix.d;
-      if (elMatrix) {
-        top /= scaleY;
-        left /= scaleX;
-        width /= scaleX;
-        height /= scaleY;
-        bottom = top + height;
-        right = left + width;
-      }
-    }
-    return {
-      top,
-      left,
-      bottom,
-      right,
-      width,
-      height
-    };
-  }
-  function isScrolledPast(el, elSide, parentSide) {
-    var parent = getParentAutoScrollElement(el, true), elSideVal = getRect(el)[elSide];
-    while (parent) {
-      var parentSideVal = getRect(parent)[parentSide], visible = void 0;
-      if (parentSide === "top" || parentSide === "left") {
-        visible = elSideVal >= parentSideVal;
-      } else {
-        visible = elSideVal <= parentSideVal;
-      }
-      if (!visible) return parent;
-      if (parent === getWindowScrollingElement()) break;
-      parent = getParentAutoScrollElement(parent, false);
-    }
-    return false;
-  }
-  function getChild(el, childNum, options, includeDragEl) {
-    var currentChild = 0, i = 0, children = el.children;
-    while (i < children.length) {
-      if (children[i].style.display !== "none" && children[i] !== Sortable.ghost && (includeDragEl || children[i] !== Sortable.dragged) && closest(children[i], options.draggable, el, false)) {
-        if (currentChild === childNum) {
-          return children[i];
-        }
-        currentChild++;
-      }
-      i++;
-    }
-    return null;
-  }
-  function lastChild(el, selector) {
-    var last2 = el.lastElementChild;
-    while (last2 && (last2 === Sortable.ghost || css(last2, "display") === "none" || selector && !matches2(last2, selector))) {
-      last2 = last2.previousElementSibling;
-    }
-    return last2 || null;
-  }
-  function index(el, selector) {
-    var index2 = 0;
-    if (!el || !el.parentNode) {
-      return -1;
-    }
-    while (el = el.previousElementSibling) {
-      if (el.nodeName.toUpperCase() !== "TEMPLATE" && el !== Sortable.clone && (!selector || matches2(el, selector))) {
-        index2++;
-      }
-    }
-    return index2;
-  }
-  function getRelativeScrollOffset(el) {
-    var offsetLeft = 0, offsetTop = 0, winScroller = getWindowScrollingElement();
-    if (el) {
-      do {
-        var elMatrix = matrix(el), scaleX = elMatrix.a, scaleY = elMatrix.d;
-        offsetLeft += el.scrollLeft * scaleX;
-        offsetTop += el.scrollTop * scaleY;
-      } while (el !== winScroller && (el = el.parentNode));
-    }
-    return [offsetLeft, offsetTop];
-  }
-  function indexOfObject(arr, obj) {
-    for (var i in arr) {
-      if (!arr.hasOwnProperty(i)) continue;
-      for (var key in obj) {
-        if (obj.hasOwnProperty(key) && obj[key] === arr[i][key]) return Number(i);
-      }
-    }
-    return -1;
-  }
-  function getParentAutoScrollElement(el, includeSelf) {
-    if (!el || !el.getBoundingClientRect) return getWindowScrollingElement();
-    var elem = el;
-    var gotSelf = false;
-    do {
-      if (elem.clientWidth < elem.scrollWidth || elem.clientHeight < elem.scrollHeight) {
-        var elemCSS = css(elem);
-        if (elem.clientWidth < elem.scrollWidth && (elemCSS.overflowX == "auto" || elemCSS.overflowX == "scroll") || elem.clientHeight < elem.scrollHeight && (elemCSS.overflowY == "auto" || elemCSS.overflowY == "scroll")) {
-          if (!elem.getBoundingClientRect || elem === document.body) return getWindowScrollingElement();
-          if (gotSelf || includeSelf) return elem;
-          gotSelf = true;
-        }
-      }
-    } while (elem = elem.parentNode);
-    return getWindowScrollingElement();
-  }
-  function extend(dst, src) {
-    if (dst && src) {
-      for (var key in src) {
-        if (src.hasOwnProperty(key)) {
-          dst[key] = src[key];
-        }
-      }
-    }
-    return dst;
-  }
-  function isRectEqual(rect1, rect2) {
-    return Math.round(rect1.top) === Math.round(rect2.top) && Math.round(rect1.left) === Math.round(rect2.left) && Math.round(rect1.height) === Math.round(rect2.height) && Math.round(rect1.width) === Math.round(rect2.width);
-  }
-  var _throttleTimeout;
-  function throttle(callback, ms) {
-    return function() {
-      if (!_throttleTimeout) {
-        var args2 = arguments, _this = this;
-        if (args2.length === 1) {
-          callback.call(_this, args2[0]);
-        } else {
-          callback.apply(_this, args2);
-        }
-        _throttleTimeout = setTimeout(function() {
-          _throttleTimeout = void 0;
-        }, ms);
-      }
-    };
-  }
-  function cancelThrottle() {
-    clearTimeout(_throttleTimeout);
-    _throttleTimeout = void 0;
-  }
-  function scrollBy(el, x, y) {
-    el.scrollLeft += x;
-    el.scrollTop += y;
-  }
-  function clone(el) {
-    var Polymer = window.Polymer;
-    var $2 = window.jQuery || window.Zepto;
-    if (Polymer && Polymer.dom) {
-      return Polymer.dom(el).cloneNode(true);
-    } else if ($2) {
-      return $2(el).clone(true)[0];
-    } else {
-      return el.cloneNode(true);
-    }
-  }
-  function getChildContainingRectFromElement(container, options, ghostEl2) {
-    var rect = {};
-    Array.from(container.children).forEach(function(child) {
-      var _rect$left, _rect$top, _rect$right, _rect$bottom;
-      if (!closest(child, options.draggable, container, false) || child.animated || child === ghostEl2) return;
-      var childRect = getRect(child);
-      rect.left = Math.min((_rect$left = rect.left) !== null && _rect$left !== void 0 ? _rect$left : Infinity, childRect.left);
-      rect.top = Math.min((_rect$top = rect.top) !== null && _rect$top !== void 0 ? _rect$top : Infinity, childRect.top);
-      rect.right = Math.max((_rect$right = rect.right) !== null && _rect$right !== void 0 ? _rect$right : -Infinity, childRect.right);
-      rect.bottom = Math.max((_rect$bottom = rect.bottom) !== null && _rect$bottom !== void 0 ? _rect$bottom : -Infinity, childRect.bottom);
-    });
-    rect.width = rect.right - rect.left;
-    rect.height = rect.bottom - rect.top;
-    rect.x = rect.left;
-    rect.y = rect.top;
-    return rect;
-  }
-  var expando = "Sortable" + (/* @__PURE__ */ new Date()).getTime();
-  function AnimationStateManager() {
-    var animationStates = [], animationCallbackId;
-    return {
-      captureAnimationState: function captureAnimationState() {
-        animationStates = [];
-        if (!this.options.animation) return;
-        var children = [].slice.call(this.el.children);
-        children.forEach(function(child) {
-          if (css(child, "display") === "none" || child === Sortable.ghost) return;
-          animationStates.push({
-            target: child,
-            rect: getRect(child)
-          });
-          var fromRect = _objectSpread2({}, animationStates[animationStates.length - 1].rect);
-          if (child.thisAnimationDuration) {
-            var childMatrix = matrix(child, true);
-            if (childMatrix) {
-              fromRect.top -= childMatrix.f;
-              fromRect.left -= childMatrix.e;
-            }
-          }
-          child.fromRect = fromRect;
-        });
-      },
-      addAnimationState: function addAnimationState(state) {
-        animationStates.push(state);
-      },
-      removeAnimationState: function removeAnimationState(target) {
-        animationStates.splice(indexOfObject(animationStates, {
-          target
-        }), 1);
-      },
-      animateAll: function animateAll(callback) {
-        var _this = this;
-        if (!this.options.animation) {
-          clearTimeout(animationCallbackId);
-          if (typeof callback === "function") callback();
-          return;
-        }
-        var animating = false, animationTime = 0;
-        animationStates.forEach(function(state) {
-          var time = 0, target = state.target, fromRect = target.fromRect, toRect = getRect(target), prevFromRect = target.prevFromRect, prevToRect = target.prevToRect, animatingRect = state.rect, targetMatrix = matrix(target, true);
-          if (targetMatrix) {
-            toRect.top -= targetMatrix.f;
-            toRect.left -= targetMatrix.e;
-          }
-          target.toRect = toRect;
-          if (target.thisAnimationDuration) {
-            if (isRectEqual(prevFromRect, toRect) && !isRectEqual(fromRect, toRect) && // Make sure animatingRect is on line between toRect & fromRect
-            (animatingRect.top - toRect.top) / (animatingRect.left - toRect.left) === (fromRect.top - toRect.top) / (fromRect.left - toRect.left)) {
-              time = calculateRealTime(animatingRect, prevFromRect, prevToRect, _this.options);
-            }
-          }
-          if (!isRectEqual(toRect, fromRect)) {
-            target.prevFromRect = fromRect;
-            target.prevToRect = toRect;
-            if (!time) {
-              time = _this.options.animation;
-            }
-            _this.animate(target, animatingRect, toRect, time);
-          }
-          if (time) {
-            animating = true;
-            animationTime = Math.max(animationTime, time);
-            clearTimeout(target.animationResetTimer);
-            target.animationResetTimer = setTimeout(function() {
-              target.animationTime = 0;
-              target.prevFromRect = null;
-              target.fromRect = null;
-              target.prevToRect = null;
-              target.thisAnimationDuration = null;
-            }, time);
-            target.thisAnimationDuration = time;
-          }
-        });
-        clearTimeout(animationCallbackId);
-        if (!animating) {
-          if (typeof callback === "function") callback();
-        } else {
-          animationCallbackId = setTimeout(function() {
-            if (typeof callback === "function") callback();
-          }, animationTime);
-        }
-        animationStates = [];
-      },
-      animate: function animate(target, currentRect, toRect, duration) {
-        if (duration) {
-          css(target, "transition", "");
-          css(target, "transform", "");
-          var elMatrix = matrix(this.el), scaleX = elMatrix && elMatrix.a, scaleY = elMatrix && elMatrix.d, translateX = (currentRect.left - toRect.left) / (scaleX || 1), translateY = (currentRect.top - toRect.top) / (scaleY || 1);
-          target.animatingX = !!translateX;
-          target.animatingY = !!translateY;
-          css(target, "transform", "translate3d(" + translateX + "px," + translateY + "px,0)");
-          this.forRepaintDummy = repaint(target);
-          css(target, "transition", "transform " + duration + "ms" + (this.options.easing ? " " + this.options.easing : ""));
-          css(target, "transform", "translate3d(0,0,0)");
-          typeof target.animated === "number" && clearTimeout(target.animated);
-          target.animated = setTimeout(function() {
-            css(target, "transition", "");
-            css(target, "transform", "");
-            target.animated = false;
-            target.animatingX = false;
-            target.animatingY = false;
-          }, duration);
-        }
-      }
-    };
-  }
-  function repaint(target) {
-    return target.offsetWidth;
-  }
-  function calculateRealTime(animatingRect, fromRect, toRect, options) {
-    return Math.sqrt(Math.pow(fromRect.top - animatingRect.top, 2) + Math.pow(fromRect.left - animatingRect.left, 2)) / Math.sqrt(Math.pow(fromRect.top - toRect.top, 2) + Math.pow(fromRect.left - toRect.left, 2)) * options.animation;
-  }
-  var plugins = [];
-  var defaults2 = {
-    initializeByDefault: true
-  };
-  var PluginManager = {
-    mount: function mount(plugin) {
-      for (var option2 in defaults2) {
-        if (defaults2.hasOwnProperty(option2) && !(option2 in plugin)) {
-          plugin[option2] = defaults2[option2];
-        }
-      }
-      plugins.forEach(function(p) {
-        if (p.pluginName === plugin.pluginName) {
-          throw "Sortable: Cannot mount plugin ".concat(plugin.pluginName, " more than once");
-        }
-      });
-      plugins.push(plugin);
-    },
-    pluginEvent: function pluginEvent(eventName, sortable, evt) {
-      var _this = this;
-      this.eventCanceled = false;
-      evt.cancel = function() {
-        _this.eventCanceled = true;
-      };
-      var eventNameGlobal = eventName + "Global";
-      plugins.forEach(function(plugin) {
-        if (!sortable[plugin.pluginName]) return;
-        if (sortable[plugin.pluginName][eventNameGlobal]) {
-          sortable[plugin.pluginName][eventNameGlobal](_objectSpread2({
-            sortable
-          }, evt));
-        }
-        if (sortable.options[plugin.pluginName] && sortable[plugin.pluginName][eventName]) {
-          sortable[plugin.pluginName][eventName](_objectSpread2({
-            sortable
-          }, evt));
-        }
-      });
-    },
-    initializePlugins: function initializePlugins(sortable, el, defaults3, options) {
-      plugins.forEach(function(plugin) {
-        var pluginName = plugin.pluginName;
-        if (!sortable.options[pluginName] && !plugin.initializeByDefault) return;
-        var initialized = new plugin(sortable, el, sortable.options);
-        initialized.sortable = sortable;
-        initialized.options = sortable.options;
-        sortable[pluginName] = initialized;
-        _extends(defaults3, initialized.defaults);
-      });
-      for (var option2 in sortable.options) {
-        if (!sortable.options.hasOwnProperty(option2)) continue;
-        var modified = this.modifyOption(sortable, option2, sortable.options[option2]);
-        if (typeof modified !== "undefined") {
-          sortable.options[option2] = modified;
-        }
-      }
-    },
-    getEventProperties: function getEventProperties(name, sortable) {
-      var eventProperties = {};
-      plugins.forEach(function(plugin) {
-        if (typeof plugin.eventProperties !== "function") return;
-        _extends(eventProperties, plugin.eventProperties.call(sortable[plugin.pluginName], name));
-      });
-      return eventProperties;
-    },
-    modifyOption: function modifyOption(sortable, name, value) {
-      var modifiedValue;
-      plugins.forEach(function(plugin) {
-        if (!sortable[plugin.pluginName]) return;
-        if (plugin.optionListeners && typeof plugin.optionListeners[name] === "function") {
-          modifiedValue = plugin.optionListeners[name].call(sortable[plugin.pluginName], value);
-        }
-      });
-      return modifiedValue;
-    }
-  };
-  function dispatchEvent2(_ref) {
-    var sortable = _ref.sortable, rootEl2 = _ref.rootEl, name = _ref.name, targetEl = _ref.targetEl, cloneEl2 = _ref.cloneEl, toEl = _ref.toEl, fromEl = _ref.fromEl, oldIndex2 = _ref.oldIndex, newIndex2 = _ref.newIndex, oldDraggableIndex2 = _ref.oldDraggableIndex, newDraggableIndex2 = _ref.newDraggableIndex, originalEvent = _ref.originalEvent, putSortable2 = _ref.putSortable, extraEventProperties = _ref.extraEventProperties;
-    sortable = sortable || rootEl2 && rootEl2[expando];
-    if (!sortable) return;
-    var evt, options = sortable.options, onName = "on" + name.charAt(0).toUpperCase() + name.substr(1);
-    if (window.CustomEvent && !IE11OrLess && !Edge) {
-      evt = new CustomEvent(name, {
-        bubbles: true,
-        cancelable: true
-      });
-    } else {
-      evt = document.createEvent("Event");
-      evt.initEvent(name, true, true);
-    }
-    evt.to = toEl || rootEl2;
-    evt.from = fromEl || rootEl2;
-    evt.item = targetEl || rootEl2;
-    evt.clone = cloneEl2;
-    evt.oldIndex = oldIndex2;
-    evt.newIndex = newIndex2;
-    evt.oldDraggableIndex = oldDraggableIndex2;
-    evt.newDraggableIndex = newDraggableIndex2;
-    evt.originalEvent = originalEvent;
-    evt.pullMode = putSortable2 ? putSortable2.lastPutMode : void 0;
-    var allEventProperties = _objectSpread2(_objectSpread2({}, extraEventProperties), PluginManager.getEventProperties(name, sortable));
-    for (var option2 in allEventProperties) {
-      evt[option2] = allEventProperties[option2];
-    }
-    if (rootEl2) {
-      rootEl2.dispatchEvent(evt);
-    }
-    if (options[onName]) {
-      options[onName].call(sortable, evt);
-    }
-  }
-  var _excluded = ["evt"];
-  var pluginEvent2 = function pluginEvent3(eventName, sortable) {
-    var _ref = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {}, originalEvent = _ref.evt, data = _objectWithoutProperties(_ref, _excluded);
-    PluginManager.pluginEvent.bind(Sortable)(eventName, sortable, _objectSpread2({
-      dragEl,
-      parentEl,
-      ghostEl,
-      rootEl,
-      nextEl,
-      lastDownEl,
-      cloneEl,
-      cloneHidden,
-      dragStarted: moved,
-      putSortable,
-      activeSortable: Sortable.active,
-      originalEvent,
-      oldIndex,
-      oldDraggableIndex,
-      newIndex,
-      newDraggableIndex,
-      hideGhostForTarget: _hideGhostForTarget,
-      unhideGhostForTarget: _unhideGhostForTarget,
-      cloneNowHidden: function cloneNowHidden() {
-        cloneHidden = true;
-      },
-      cloneNowShown: function cloneNowShown() {
-        cloneHidden = false;
-      },
-      dispatchSortableEvent: function dispatchSortableEvent(name) {
-        _dispatchEvent({
-          sortable,
-          name,
-          originalEvent
-        });
-      }
-    }, data));
-  };
-  function _dispatchEvent(info) {
-    dispatchEvent2(_objectSpread2({
-      putSortable,
-      cloneEl,
-      targetEl: dragEl,
-      rootEl,
-      oldIndex,
-      oldDraggableIndex,
-      newIndex,
-      newDraggableIndex
-    }, info));
-  }
-  var dragEl;
-  var parentEl;
-  var ghostEl;
-  var rootEl;
-  var nextEl;
-  var lastDownEl;
-  var cloneEl;
-  var cloneHidden;
-  var oldIndex;
-  var newIndex;
-  var oldDraggableIndex;
-  var newDraggableIndex;
-  var activeGroup;
-  var putSortable;
-  var awaitingDragStarted = false;
-  var ignoreNextClick = false;
-  var sortables = [];
-  var tapEvt;
-  var touchEvt;
-  var lastDx;
-  var lastDy;
-  var tapDistanceLeft;
-  var tapDistanceTop;
-  var moved;
-  var lastTarget;
-  var lastDirection;
-  var pastFirstInvertThresh = false;
-  var isCircumstantialInvert = false;
-  var targetMoveDistance;
-  var ghostRelativeParent;
-  var ghostRelativeParentInitialScroll = [];
-  var _silent = false;
-  var savedInputChecked = [];
-  var documentExists = typeof document !== "undefined";
-  var PositionGhostAbsolutely = IOS;
-  var CSSFloatProperty = Edge || IE11OrLess ? "cssFloat" : "float";
-  var supportDraggable = documentExists && !ChromeForAndroid && !IOS && "draggable" in document.createElement("div");
-  var supportCssPointerEvents = (function() {
-    if (!documentExists) return;
-    if (IE11OrLess) {
-      return false;
-    }
-    var el = document.createElement("x");
-    el.style.cssText = "pointer-events:auto";
-    return el.style.pointerEvents === "auto";
-  })();
-  var _detectDirection = function _detectDirection2(el, options) {
-    var elCSS = css(el), elWidth = parseInt(elCSS.width) - parseInt(elCSS.paddingLeft) - parseInt(elCSS.paddingRight) - parseInt(elCSS.borderLeftWidth) - parseInt(elCSS.borderRightWidth), child1 = getChild(el, 0, options), child2 = getChild(el, 1, options), firstChildCSS = child1 && css(child1), secondChildCSS = child2 && css(child2), firstChildWidth = firstChildCSS && parseInt(firstChildCSS.marginLeft) + parseInt(firstChildCSS.marginRight) + getRect(child1).width, secondChildWidth = secondChildCSS && parseInt(secondChildCSS.marginLeft) + parseInt(secondChildCSS.marginRight) + getRect(child2).width;
-    if (elCSS.display === "flex") {
-      return elCSS.flexDirection === "column" || elCSS.flexDirection === "column-reverse" ? "vertical" : "horizontal";
-    }
-    if (elCSS.display === "grid") {
-      return elCSS.gridTemplateColumns.split(" ").length <= 1 ? "vertical" : "horizontal";
-    }
-    if (child1 && firstChildCSS["float"] && firstChildCSS["float"] !== "none") {
-      var touchingSideChild2 = firstChildCSS["float"] === "left" ? "left" : "right";
-      return child2 && (secondChildCSS.clear === "both" || secondChildCSS.clear === touchingSideChild2) ? "vertical" : "horizontal";
-    }
-    return child1 && (firstChildCSS.display === "block" || firstChildCSS.display === "flex" || firstChildCSS.display === "table" || firstChildCSS.display === "grid" || firstChildWidth >= elWidth && elCSS[CSSFloatProperty] === "none" || child2 && elCSS[CSSFloatProperty] === "none" && firstChildWidth + secondChildWidth > elWidth) ? "vertical" : "horizontal";
-  };
-  var _dragElInRowColumn = function _dragElInRowColumn2(dragRect, targetRect, vertical) {
-    var dragElS1Opp = vertical ? dragRect.left : dragRect.top, dragElS2Opp = vertical ? dragRect.right : dragRect.bottom, dragElOppLength = vertical ? dragRect.width : dragRect.height, targetS1Opp = vertical ? targetRect.left : targetRect.top, targetS2Opp = vertical ? targetRect.right : targetRect.bottom, targetOppLength = vertical ? targetRect.width : targetRect.height;
-    return dragElS1Opp === targetS1Opp || dragElS2Opp === targetS2Opp || dragElS1Opp + dragElOppLength / 2 === targetS1Opp + targetOppLength / 2;
-  };
-  var _detectNearestEmptySortable = function _detectNearestEmptySortable2(x, y) {
-    var ret;
-    sortables.some(function(sortable) {
-      var threshold = sortable[expando].options.emptyInsertThreshold;
-      if (!threshold || lastChild(sortable)) return;
-      var rect = getRect(sortable), insideHorizontally = x >= rect.left - threshold && x <= rect.right + threshold, insideVertically = y >= rect.top - threshold && y <= rect.bottom + threshold;
-      if (insideHorizontally && insideVertically) {
-        return ret = sortable;
-      }
-    });
-    return ret;
-  };
-  var _prepareGroup = function _prepareGroup2(options) {
-    function toFn(value, pull) {
-      return function(to, from3, dragEl2, evt) {
-        var sameGroup = to.options.group.name && from3.options.group.name && to.options.group.name === from3.options.group.name;
-        if (value == null && (pull || sameGroup)) {
-          return true;
-        } else if (value == null || value === false) {
-          return false;
-        } else if (pull && value === "clone") {
-          return value;
-        } else if (typeof value === "function") {
-          return toFn(value(to, from3, dragEl2, evt), pull)(to, from3, dragEl2, evt);
-        } else {
-          var otherGroup = (pull ? to : from3).options.group.name;
-          return value === true || typeof value === "string" && value === otherGroup || value.join && value.indexOf(otherGroup) > -1;
-        }
-      };
-    }
-    var group = {};
-    var originalGroup = options.group;
-    if (!originalGroup || _typeof(originalGroup) != "object") {
-      originalGroup = {
-        name: originalGroup
-      };
-    }
-    group.name = originalGroup.name;
-    group.checkPull = toFn(originalGroup.pull, true);
-    group.checkPut = toFn(originalGroup.put);
-    group.revertClone = originalGroup.revertClone;
-    options.group = group;
-  };
-  var _hideGhostForTarget = function _hideGhostForTarget2() {
-    if (!supportCssPointerEvents && ghostEl) {
-      css(ghostEl, "display", "none");
-    }
-  };
-  var _unhideGhostForTarget = function _unhideGhostForTarget2() {
-    if (!supportCssPointerEvents && ghostEl) {
-      css(ghostEl, "display", "");
-    }
-  };
-  if (documentExists && !ChromeForAndroid) {
-    document.addEventListener("click", function(evt) {
-      if (ignoreNextClick) {
-        evt.preventDefault();
-        evt.stopPropagation && evt.stopPropagation();
-        evt.stopImmediatePropagation && evt.stopImmediatePropagation();
-        ignoreNextClick = false;
-        return false;
-      }
-    }, true);
-  }
-  var nearestEmptyInsertDetectEvent = function nearestEmptyInsertDetectEvent2(evt) {
-    if (dragEl) {
-      evt = evt.touches ? evt.touches[0] : evt;
-      var nearest = _detectNearestEmptySortable(evt.clientX, evt.clientY);
-      if (nearest) {
-        var event = {};
-        for (var i in evt) {
-          if (evt.hasOwnProperty(i)) {
-            event[i] = evt[i];
-          }
-        }
-        event.target = event.rootEl = nearest;
-        event.preventDefault = void 0;
-        event.stopPropagation = void 0;
-        nearest[expando]._onDragOver(event);
-      }
-    }
-  };
-  var _checkOutsideTargetEl = function _checkOutsideTargetEl2(evt) {
-    if (dragEl) {
-      dragEl.parentNode[expando]._isOutsideThisEl(evt.target);
-    }
-  };
-  function Sortable(el, options) {
-    if (!(el && el.nodeType && el.nodeType === 1)) {
-      throw "Sortable: `el` must be an HTMLElement, not ".concat({}.toString.call(el));
-    }
-    this.el = el;
-    this.options = options = _extends({}, options);
-    el[expando] = this;
-    var defaults3 = {
-      group: null,
-      sort: true,
-      disabled: false,
-      store: null,
-      handle: null,
-      draggable: /^[uo]l$/i.test(el.nodeName) ? ">li" : ">*",
-      swapThreshold: 1,
-      // percentage; 0 <= x <= 1
-      invertSwap: false,
-      // invert always
-      invertedSwapThreshold: null,
-      // will be set to same as swapThreshold if default
-      removeCloneOnHide: true,
-      direction: function direction() {
-        return _detectDirection(el, this.options);
-      },
-      ghostClass: "sortable-ghost",
-      chosenClass: "sortable-chosen",
-      dragClass: "sortable-drag",
-      ignore: "a, img",
-      filter: null,
-      preventOnFilter: true,
-      animation: 0,
-      easing: null,
-      setData: function setData(dataTransfer, dragEl2) {
-        dataTransfer.setData("Text", dragEl2.textContent);
-      },
-      dropBubble: false,
-      dragoverBubble: false,
-      dataIdAttr: "data-id",
-      delay: 0,
-      delayOnTouchOnly: false,
-      touchStartThreshold: (Number.parseInt ? Number : window).parseInt(window.devicePixelRatio, 10) || 1,
-      forceFallback: false,
-      fallbackClass: "sortable-fallback",
-      fallbackOnBody: false,
-      fallbackTolerance: 0,
-      fallbackOffset: {
-        x: 0,
-        y: 0
-      },
-      // Disabled on Safari: #1571; Enabled on Safari IOS: #2244
-      supportPointer: Sortable.supportPointer !== false && "PointerEvent" in window && (!Safari || IOS),
-      emptyInsertThreshold: 5
-    };
-    PluginManager.initializePlugins(this, el, defaults3);
-    for (var name in defaults3) {
-      !(name in options) && (options[name] = defaults3[name]);
-    }
-    _prepareGroup(options);
-    for (var fn in this) {
-      if (fn.charAt(0) === "_" && typeof this[fn] === "function") {
-        this[fn] = this[fn].bind(this);
-      }
-    }
-    this.nativeDraggable = options.forceFallback ? false : supportDraggable;
-    if (this.nativeDraggable) {
-      this.options.touchStartThreshold = 1;
-    }
-    if (options.supportPointer) {
-      on(el, "pointerdown", this._onTapStart);
-    } else {
-      on(el, "mousedown", this._onTapStart);
-      on(el, "touchstart", this._onTapStart);
-    }
-    if (this.nativeDraggable) {
-      on(el, "dragover", this);
-      on(el, "dragenter", this);
-    }
-    sortables.push(this.el);
-    options.store && options.store.get && this.sort(options.store.get(this) || []);
-    _extends(this, AnimationStateManager());
-  }
-  Sortable.prototype = /** @lends Sortable.prototype */
-  {
-    constructor: Sortable,
-    _isOutsideThisEl: function _isOutsideThisEl(target) {
-      if (!this.el.contains(target) && target !== this.el) {
-        lastTarget = null;
-      }
-    },
-    _getDirection: function _getDirection(evt, target) {
-      return typeof this.options.direction === "function" ? this.options.direction.call(this, evt, target, dragEl) : this.options.direction;
-    },
-    _onTapStart: function _onTapStart(evt) {
-      if (!evt.cancelable) return;
-      var _this = this, el = this.el, options = this.options, preventOnFilter = options.preventOnFilter, type = evt.type, touch = evt.touches && evt.touches[0] || evt.pointerType && evt.pointerType === "touch" && evt, target = (touch || evt).target, originalTarget = evt.target.shadowRoot && (evt.path && evt.path[0] || evt.composedPath && evt.composedPath()[0]) || target, filter = options.filter;
-      _saveInputCheckedState(el);
-      if (dragEl) {
-        return;
-      }
-      if (/mousedown|pointerdown/.test(type) && evt.button !== 0 || options.disabled) {
-        return;
-      }
-      if (originalTarget.isContentEditable) {
-        return;
-      }
-      if (!this.nativeDraggable && Safari && target && target.tagName.toUpperCase() === "SELECT") {
-        return;
-      }
-      target = closest(target, options.draggable, el, false);
-      if (target && target.animated) {
-        return;
-      }
-      if (lastDownEl === target) {
-        return;
-      }
-      oldIndex = index(target);
-      oldDraggableIndex = index(target, options.draggable);
-      if (typeof filter === "function") {
-        if (filter.call(this, evt, target, this)) {
-          _dispatchEvent({
-            sortable: _this,
-            rootEl: originalTarget,
-            name: "filter",
-            targetEl: target,
-            toEl: el,
-            fromEl: el
-          });
-          pluginEvent2("filter", _this, {
-            evt
-          });
-          preventOnFilter && evt.preventDefault();
-          return;
-        }
-      } else if (filter) {
-        filter = filter.split(",").some(function(criteria) {
-          criteria = closest(originalTarget, criteria.trim(), el, false);
-          if (criteria) {
-            _dispatchEvent({
-              sortable: _this,
-              rootEl: criteria,
-              name: "filter",
-              targetEl: target,
-              fromEl: el,
-              toEl: el
-            });
-            pluginEvent2("filter", _this, {
-              evt
-            });
-            return true;
-          }
-        });
-        if (filter) {
-          preventOnFilter && evt.preventDefault();
-          return;
-        }
-      }
-      if (options.handle && !closest(originalTarget, options.handle, el, false)) {
-        return;
-      }
-      this._prepareDragStart(evt, touch, target);
-    },
-    _prepareDragStart: function _prepareDragStart(evt, touch, target) {
-      var _this = this, el = _this.el, options = _this.options, ownerDocument = el.ownerDocument, dragStartFn;
-      if (target && !dragEl && target.parentNode === el) {
-        var dragRect = getRect(target);
-        rootEl = el;
-        dragEl = target;
-        parentEl = dragEl.parentNode;
-        nextEl = dragEl.nextSibling;
-        lastDownEl = target;
-        activeGroup = options.group;
-        Sortable.dragged = dragEl;
-        tapEvt = {
-          target: dragEl,
-          clientX: (touch || evt).clientX,
-          clientY: (touch || evt).clientY
-        };
-        tapDistanceLeft = tapEvt.clientX - dragRect.left;
-        tapDistanceTop = tapEvt.clientY - dragRect.top;
-        this._lastX = (touch || evt).clientX;
-        this._lastY = (touch || evt).clientY;
-        dragEl.style["will-change"] = "all";
-        dragStartFn = function dragStartFn2() {
-          pluginEvent2("delayEnded", _this, {
-            evt
-          });
-          if (Sortable.eventCanceled) {
-            _this._onDrop();
-            return;
-          }
-          _this._disableDelayedDragEvents();
-          if (!FireFox && _this.nativeDraggable) {
-            dragEl.draggable = true;
-          }
-          _this._triggerDragStart(evt, touch);
-          _dispatchEvent({
-            sortable: _this,
-            name: "choose",
-            originalEvent: evt
-          });
-          toggleClass(dragEl, options.chosenClass, true);
-        };
-        options.ignore.split(",").forEach(function(criteria) {
-          find3(dragEl, criteria.trim(), _disableDraggable);
-        });
-        on(ownerDocument, "dragover", nearestEmptyInsertDetectEvent);
-        on(ownerDocument, "mousemove", nearestEmptyInsertDetectEvent);
-        on(ownerDocument, "touchmove", nearestEmptyInsertDetectEvent);
-        if (options.supportPointer) {
-          on(ownerDocument, "pointerup", _this._onDrop);
-          !this.nativeDraggable && on(ownerDocument, "pointercancel", _this._onDrop);
-        } else {
-          on(ownerDocument, "mouseup", _this._onDrop);
-          on(ownerDocument, "touchend", _this._onDrop);
-          on(ownerDocument, "touchcancel", _this._onDrop);
-        }
-        if (FireFox && this.nativeDraggable) {
-          this.options.touchStartThreshold = 4;
-          dragEl.draggable = true;
-        }
-        pluginEvent2("delayStart", this, {
-          evt
-        });
-        if (options.delay && (!options.delayOnTouchOnly || touch) && (!this.nativeDraggable || !(Edge || IE11OrLess))) {
-          if (Sortable.eventCanceled) {
-            this._onDrop();
-            return;
-          }
-          if (options.supportPointer) {
-            on(ownerDocument, "pointerup", _this._disableDelayedDrag);
-            on(ownerDocument, "pointercancel", _this._disableDelayedDrag);
-          } else {
-            on(ownerDocument, "mouseup", _this._disableDelayedDrag);
-            on(ownerDocument, "touchend", _this._disableDelayedDrag);
-            on(ownerDocument, "touchcancel", _this._disableDelayedDrag);
-          }
-          on(ownerDocument, "mousemove", _this._delayedDragTouchMoveHandler);
-          on(ownerDocument, "touchmove", _this._delayedDragTouchMoveHandler);
-          options.supportPointer && on(ownerDocument, "pointermove", _this._delayedDragTouchMoveHandler);
-          _this._dragStartTimer = setTimeout(dragStartFn, options.delay);
-        } else {
-          dragStartFn();
-        }
-      }
-    },
-    _delayedDragTouchMoveHandler: function _delayedDragTouchMoveHandler(e) {
-      var touch = e.touches ? e.touches[0] : e;
-      if (Math.max(Math.abs(touch.clientX - this._lastX), Math.abs(touch.clientY - this._lastY)) >= Math.floor(this.options.touchStartThreshold / (this.nativeDraggable && window.devicePixelRatio || 1))) {
-        this._disableDelayedDrag();
-      }
-    },
-    _disableDelayedDrag: function _disableDelayedDrag() {
-      dragEl && _disableDraggable(dragEl);
-      clearTimeout(this._dragStartTimer);
-      this._disableDelayedDragEvents();
-    },
-    _disableDelayedDragEvents: function _disableDelayedDragEvents() {
-      var ownerDocument = this.el.ownerDocument;
-      off(ownerDocument, "mouseup", this._disableDelayedDrag);
-      off(ownerDocument, "touchend", this._disableDelayedDrag);
-      off(ownerDocument, "touchcancel", this._disableDelayedDrag);
-      off(ownerDocument, "pointerup", this._disableDelayedDrag);
-      off(ownerDocument, "pointercancel", this._disableDelayedDrag);
-      off(ownerDocument, "mousemove", this._delayedDragTouchMoveHandler);
-      off(ownerDocument, "touchmove", this._delayedDragTouchMoveHandler);
-      off(ownerDocument, "pointermove", this._delayedDragTouchMoveHandler);
-    },
-    _triggerDragStart: function _triggerDragStart(evt, touch) {
-      touch = touch || evt.pointerType == "touch" && evt;
-      if (!this.nativeDraggable || touch) {
-        if (this.options.supportPointer) {
-          on(document, "pointermove", this._onTouchMove);
-        } else if (touch) {
-          on(document, "touchmove", this._onTouchMove);
-        } else {
-          on(document, "mousemove", this._onTouchMove);
-        }
-      } else {
-        on(dragEl, "dragend", this);
-        on(rootEl, "dragstart", this._onDragStart);
-      }
-      try {
-        if (document.selection) {
-          _nextTick(function() {
-            document.selection.empty();
-          });
-        } else {
-          window.getSelection().removeAllRanges();
-        }
-      } catch (err) {
-      }
-    },
-    _dragStarted: function _dragStarted(fallback, evt) {
-      awaitingDragStarted = false;
-      if (rootEl && dragEl) {
-        pluginEvent2("dragStarted", this, {
-          evt
-        });
-        if (this.nativeDraggable) {
-          on(document, "dragover", _checkOutsideTargetEl);
-        }
-        var options = this.options;
-        !fallback && toggleClass(dragEl, options.dragClass, false);
-        toggleClass(dragEl, options.ghostClass, true);
-        Sortable.active = this;
-        fallback && this._appendGhost();
-        _dispatchEvent({
-          sortable: this,
-          name: "start",
-          originalEvent: evt
-        });
-      } else {
-        this._nulling();
-      }
-    },
-    _emulateDragOver: function _emulateDragOver() {
-      if (touchEvt) {
-        this._lastX = touchEvt.clientX;
-        this._lastY = touchEvt.clientY;
-        _hideGhostForTarget();
-        var target = document.elementFromPoint(touchEvt.clientX, touchEvt.clientY);
-        var parent = target;
-        while (target && target.shadowRoot) {
-          target = target.shadowRoot.elementFromPoint(touchEvt.clientX, touchEvt.clientY);
-          if (target === parent) break;
-          parent = target;
-        }
-        dragEl.parentNode[expando]._isOutsideThisEl(target);
-        if (parent) {
-          do {
-            if (parent[expando]) {
-              var inserted = void 0;
-              inserted = parent[expando]._onDragOver({
-                clientX: touchEvt.clientX,
-                clientY: touchEvt.clientY,
-                target,
-                rootEl: parent
-              });
-              if (inserted && !this.options.dragoverBubble) {
-                break;
-              }
-            }
-            target = parent;
-          } while (parent = getParentOrHost(parent));
-        }
-        _unhideGhostForTarget();
-      }
-    },
-    _onTouchMove: function _onTouchMove(evt) {
-      if (tapEvt) {
-        var options = this.options, fallbackTolerance = options.fallbackTolerance, fallbackOffset = options.fallbackOffset, touch = evt.touches ? evt.touches[0] : evt, ghostMatrix = ghostEl && matrix(ghostEl, true), scaleX = ghostEl && ghostMatrix && ghostMatrix.a, scaleY = ghostEl && ghostMatrix && ghostMatrix.d, relativeScrollOffset = PositionGhostAbsolutely && ghostRelativeParent && getRelativeScrollOffset(ghostRelativeParent), dx = (touch.clientX - tapEvt.clientX + fallbackOffset.x) / (scaleX || 1) + (relativeScrollOffset ? relativeScrollOffset[0] - ghostRelativeParentInitialScroll[0] : 0) / (scaleX || 1), dy = (touch.clientY - tapEvt.clientY + fallbackOffset.y) / (scaleY || 1) + (relativeScrollOffset ? relativeScrollOffset[1] - ghostRelativeParentInitialScroll[1] : 0) / (scaleY || 1);
-        if (!Sortable.active && !awaitingDragStarted) {
-          if (fallbackTolerance && Math.max(Math.abs(touch.clientX - this._lastX), Math.abs(touch.clientY - this._lastY)) < fallbackTolerance) {
-            return;
-          }
-          this._onDragStart(evt, true);
-        }
-        if (ghostEl) {
-          if (ghostMatrix) {
-            ghostMatrix.e += dx - (lastDx || 0);
-            ghostMatrix.f += dy - (lastDy || 0);
-          } else {
-            ghostMatrix = {
-              a: 1,
-              b: 0,
-              c: 0,
-              d: 1,
-              e: dx,
-              f: dy
-            };
-          }
-          var cssMatrix = "matrix(".concat(ghostMatrix.a, ",").concat(ghostMatrix.b, ",").concat(ghostMatrix.c, ",").concat(ghostMatrix.d, ",").concat(ghostMatrix.e, ",").concat(ghostMatrix.f, ")");
-          css(ghostEl, "webkitTransform", cssMatrix);
-          css(ghostEl, "mozTransform", cssMatrix);
-          css(ghostEl, "msTransform", cssMatrix);
-          css(ghostEl, "transform", cssMatrix);
-          lastDx = dx;
-          lastDy = dy;
-          touchEvt = touch;
-        }
-        evt.cancelable && evt.preventDefault();
-      }
-    },
-    _appendGhost: function _appendGhost() {
-      if (!ghostEl) {
-        var container = this.options.fallbackOnBody ? document.body : rootEl, rect = getRect(dragEl, true, PositionGhostAbsolutely, true, container), options = this.options;
-        if (PositionGhostAbsolutely) {
-          ghostRelativeParent = container;
-          while (css(ghostRelativeParent, "position") === "static" && css(ghostRelativeParent, "transform") === "none" && ghostRelativeParent !== document) {
-            ghostRelativeParent = ghostRelativeParent.parentNode;
-          }
-          if (ghostRelativeParent !== document.body && ghostRelativeParent !== document.documentElement) {
-            if (ghostRelativeParent === document) ghostRelativeParent = getWindowScrollingElement();
-            rect.top += ghostRelativeParent.scrollTop;
-            rect.left += ghostRelativeParent.scrollLeft;
-          } else {
-            ghostRelativeParent = getWindowScrollingElement();
-          }
-          ghostRelativeParentInitialScroll = getRelativeScrollOffset(ghostRelativeParent);
-        }
-        ghostEl = dragEl.cloneNode(true);
-        toggleClass(ghostEl, options.ghostClass, false);
-        toggleClass(ghostEl, options.fallbackClass, true);
-        toggleClass(ghostEl, options.dragClass, true);
-        css(ghostEl, "transition", "");
-        css(ghostEl, "transform", "");
-        css(ghostEl, "box-sizing", "border-box");
-        css(ghostEl, "margin", 0);
-        css(ghostEl, "top", rect.top);
-        css(ghostEl, "left", rect.left);
-        css(ghostEl, "width", rect.width);
-        css(ghostEl, "height", rect.height);
-        css(ghostEl, "opacity", "0.8");
-        css(ghostEl, "position", PositionGhostAbsolutely ? "absolute" : "fixed");
-        css(ghostEl, "zIndex", "100000");
-        css(ghostEl, "pointerEvents", "none");
-        Sortable.ghost = ghostEl;
-        container.appendChild(ghostEl);
-        css(ghostEl, "transform-origin", tapDistanceLeft / parseInt(ghostEl.style.width) * 100 + "% " + tapDistanceTop / parseInt(ghostEl.style.height) * 100 + "%");
-      }
-    },
-    _onDragStart: function _onDragStart(evt, fallback) {
-      var _this = this;
-      var dataTransfer = evt.dataTransfer;
-      var options = _this.options;
-      pluginEvent2("dragStart", this, {
-        evt
-      });
-      if (Sortable.eventCanceled) {
-        this._onDrop();
-        return;
-      }
-      pluginEvent2("setupClone", this);
-      if (!Sortable.eventCanceled) {
-        cloneEl = clone(dragEl);
-        cloneEl.removeAttribute("id");
-        cloneEl.draggable = false;
-        cloneEl.style["will-change"] = "";
-        this._hideClone();
-        toggleClass(cloneEl, this.options.chosenClass, false);
-        Sortable.clone = cloneEl;
-      }
-      _this.cloneId = _nextTick(function() {
-        pluginEvent2("clone", _this);
-        if (Sortable.eventCanceled) return;
-        if (!_this.options.removeCloneOnHide) {
-          rootEl.insertBefore(cloneEl, dragEl);
-        }
-        _this._hideClone();
-        _dispatchEvent({
-          sortable: _this,
-          name: "clone"
-        });
-      });
-      !fallback && toggleClass(dragEl, options.dragClass, true);
-      if (fallback) {
-        ignoreNextClick = true;
-        _this._loopId = setInterval(_this._emulateDragOver, 50);
-      } else {
-        off(document, "mouseup", _this._onDrop);
-        off(document, "touchend", _this._onDrop);
-        off(document, "touchcancel", _this._onDrop);
-        if (dataTransfer) {
-          dataTransfer.effectAllowed = "move";
-          options.setData && options.setData.call(_this, dataTransfer, dragEl);
-        }
-        on(document, "drop", _this);
-        css(dragEl, "transform", "translateZ(0)");
-      }
-      awaitingDragStarted = true;
-      _this._dragStartId = _nextTick(_this._dragStarted.bind(_this, fallback, evt));
-      on(document, "selectstart", _this);
-      moved = true;
-      window.getSelection().removeAllRanges();
-      if (Safari) {
-        css(document.body, "user-select", "none");
-      }
-    },
-    // Returns true - if no further action is needed (either inserted or another condition)
-    _onDragOver: function _onDragOver(evt) {
-      var el = this.el, target = evt.target, dragRect, targetRect, revert, options = this.options, group = options.group, activeSortable = Sortable.active, isOwner = activeGroup === group, canSort = options.sort, fromSortable = putSortable || activeSortable, vertical, _this = this, completedFired = false;
-      if (_silent) return;
-      function dragOverEvent(name, extra) {
-        pluginEvent2(name, _this, _objectSpread2({
-          evt,
-          isOwner,
-          axis: vertical ? "vertical" : "horizontal",
-          revert,
-          dragRect,
-          targetRect,
-          canSort,
-          fromSortable,
-          target,
-          completed,
-          onMove: function onMove(target2, after2) {
-            return _onMove(rootEl, el, dragEl, dragRect, target2, getRect(target2), evt, after2);
-          },
-          changed
-        }, extra));
-      }
-      function capture() {
-        dragOverEvent("dragOverAnimationCapture");
-        _this.captureAnimationState();
-        if (_this !== fromSortable) {
-          fromSortable.captureAnimationState();
-        }
-      }
-      function completed(insertion) {
-        dragOverEvent("dragOverCompleted", {
-          insertion
-        });
-        if (insertion) {
-          if (isOwner) {
-            activeSortable._hideClone();
-          } else {
-            activeSortable._showClone(_this);
-          }
-          if (_this !== fromSortable) {
-            toggleClass(dragEl, putSortable ? putSortable.options.ghostClass : activeSortable.options.ghostClass, false);
-            toggleClass(dragEl, options.ghostClass, true);
-          }
-          if (putSortable !== _this && _this !== Sortable.active) {
-            putSortable = _this;
-          } else if (_this === Sortable.active && putSortable) {
-            putSortable = null;
-          }
-          if (fromSortable === _this) {
-            _this._ignoreWhileAnimating = target;
-          }
-          _this.animateAll(function() {
-            dragOverEvent("dragOverAnimationComplete");
-            _this._ignoreWhileAnimating = null;
-          });
-          if (_this !== fromSortable) {
-            fromSortable.animateAll();
-            fromSortable._ignoreWhileAnimating = null;
-          }
-        }
-        if (target === dragEl && !dragEl.animated || target === el && !target.animated) {
-          lastTarget = null;
-        }
-        if (!options.dragoverBubble && !evt.rootEl && target !== document) {
-          dragEl.parentNode[expando]._isOutsideThisEl(evt.target);
-          !insertion && nearestEmptyInsertDetectEvent(evt);
-        }
-        !options.dragoverBubble && evt.stopPropagation && evt.stopPropagation();
-        return completedFired = true;
-      }
-      function changed() {
-        newIndex = index(dragEl);
-        newDraggableIndex = index(dragEl, options.draggable);
-        _dispatchEvent({
-          sortable: _this,
-          name: "change",
-          toEl: el,
-          newIndex,
-          newDraggableIndex,
-          originalEvent: evt
-        });
-      }
-      if (evt.preventDefault !== void 0) {
-        evt.cancelable && evt.preventDefault();
-      }
-      target = closest(target, options.draggable, el, true);
-      dragOverEvent("dragOver");
-      if (Sortable.eventCanceled) return completedFired;
-      if (dragEl.contains(evt.target) || target.animated && target.animatingX && target.animatingY || _this._ignoreWhileAnimating === target) {
-        return completed(false);
-      }
-      ignoreNextClick = false;
-      if (activeSortable && !options.disabled && (isOwner ? canSort || (revert = parentEl !== rootEl) : putSortable === this || (this.lastPutMode = activeGroup.checkPull(this, activeSortable, dragEl, evt)) && group.checkPut(this, activeSortable, dragEl, evt))) {
-        vertical = this._getDirection(evt, target) === "vertical";
-        dragRect = getRect(dragEl);
-        dragOverEvent("dragOverValid");
-        if (Sortable.eventCanceled) return completedFired;
-        if (revert) {
-          parentEl = rootEl;
-          capture();
-          this._hideClone();
-          dragOverEvent("revert");
-          if (!Sortable.eventCanceled) {
-            if (nextEl) {
-              rootEl.insertBefore(dragEl, nextEl);
-            } else {
-              rootEl.appendChild(dragEl);
-            }
-          }
-          return completed(true);
-        }
-        var elLastChild = lastChild(el, options.draggable);
-        if (!elLastChild || _ghostIsLast(evt, vertical, this) && !elLastChild.animated) {
-          if (elLastChild === dragEl) {
-            return completed(false);
-          }
-          if (elLastChild && el === evt.target) {
-            target = elLastChild;
-          }
-          if (target) {
-            targetRect = getRect(target);
-          }
-          if (_onMove(rootEl, el, dragEl, dragRect, target, targetRect, evt, !!target) !== false) {
-            capture();
-            if (elLastChild && elLastChild.nextSibling) {
-              el.insertBefore(dragEl, elLastChild.nextSibling);
-            } else {
-              el.appendChild(dragEl);
-            }
-            parentEl = el;
-            changed();
-            return completed(true);
-          }
-        } else if (elLastChild && _ghostIsFirst(evt, vertical, this)) {
-          var firstChild = getChild(el, 0, options, true);
-          if (firstChild === dragEl) {
-            return completed(false);
-          }
-          target = firstChild;
-          targetRect = getRect(target);
-          if (_onMove(rootEl, el, dragEl, dragRect, target, targetRect, evt, false) !== false) {
-            capture();
-            el.insertBefore(dragEl, firstChild);
-            parentEl = el;
-            changed();
-            return completed(true);
-          }
-        } else if (target.parentNode === el) {
-          targetRect = getRect(target);
-          var direction = 0, targetBeforeFirstSwap, differentLevel = dragEl.parentNode !== el, differentRowCol = !_dragElInRowColumn(dragEl.animated && dragEl.toRect || dragRect, target.animated && target.toRect || targetRect, vertical), side1 = vertical ? "top" : "left", scrolledPastTop = isScrolledPast(target, "top", "top") || isScrolledPast(dragEl, "top", "top"), scrollBefore = scrolledPastTop ? scrolledPastTop.scrollTop : void 0;
-          if (lastTarget !== target) {
-            targetBeforeFirstSwap = targetRect[side1];
-            pastFirstInvertThresh = false;
-            isCircumstantialInvert = !differentRowCol && options.invertSwap || differentLevel;
-          }
-          direction = _getSwapDirection(evt, target, targetRect, vertical, differentRowCol ? 1 : options.swapThreshold, options.invertedSwapThreshold == null ? options.swapThreshold : options.invertedSwapThreshold, isCircumstantialInvert, lastTarget === target);
-          var sibling;
-          if (direction !== 0) {
-            var dragIndex = index(dragEl);
-            do {
-              dragIndex -= direction;
-              sibling = parentEl.children[dragIndex];
-            } while (sibling && (css(sibling, "display") === "none" || sibling === ghostEl));
-          }
-          if (direction === 0 || sibling === target) {
-            return completed(false);
-          }
-          lastTarget = target;
-          lastDirection = direction;
-          var nextSibling = target.nextElementSibling, after = false;
-          after = direction === 1;
-          var moveVector = _onMove(rootEl, el, dragEl, dragRect, target, targetRect, evt, after);
-          if (moveVector !== false) {
-            if (moveVector === 1 || moveVector === -1) {
-              after = moveVector === 1;
-            }
-            _silent = true;
-            setTimeout(_unsilent, 30);
-            capture();
-            if (after && !nextSibling) {
-              el.appendChild(dragEl);
-            } else {
-              target.parentNode.insertBefore(dragEl, after ? nextSibling : target);
-            }
-            if (scrolledPastTop) {
-              scrollBy(scrolledPastTop, 0, scrollBefore - scrolledPastTop.scrollTop);
-            }
-            parentEl = dragEl.parentNode;
-            if (targetBeforeFirstSwap !== void 0 && !isCircumstantialInvert) {
-              targetMoveDistance = Math.abs(targetBeforeFirstSwap - getRect(target)[side1]);
-            }
-            changed();
-            return completed(true);
-          }
-        }
-        if (el.contains(dragEl)) {
-          return completed(false);
-        }
-      }
-      return false;
-    },
-    _ignoreWhileAnimating: null,
-    _offMoveEvents: function _offMoveEvents() {
-      off(document, "mousemove", this._onTouchMove);
-      off(document, "touchmove", this._onTouchMove);
-      off(document, "pointermove", this._onTouchMove);
-      off(document, "dragover", nearestEmptyInsertDetectEvent);
-      off(document, "mousemove", nearestEmptyInsertDetectEvent);
-      off(document, "touchmove", nearestEmptyInsertDetectEvent);
-    },
-    _offUpEvents: function _offUpEvents() {
-      var ownerDocument = this.el.ownerDocument;
-      off(ownerDocument, "mouseup", this._onDrop);
-      off(ownerDocument, "touchend", this._onDrop);
-      off(ownerDocument, "pointerup", this._onDrop);
-      off(ownerDocument, "pointercancel", this._onDrop);
-      off(ownerDocument, "touchcancel", this._onDrop);
-      off(document, "selectstart", this);
-    },
-    _onDrop: function _onDrop(evt) {
-      var el = this.el, options = this.options;
-      newIndex = index(dragEl);
-      newDraggableIndex = index(dragEl, options.draggable);
-      pluginEvent2("drop", this, {
-        evt
-      });
-      parentEl = dragEl && dragEl.parentNode;
-      newIndex = index(dragEl);
-      newDraggableIndex = index(dragEl, options.draggable);
-      if (Sortable.eventCanceled) {
-        this._nulling();
-        return;
-      }
-      awaitingDragStarted = false;
-      isCircumstantialInvert = false;
-      pastFirstInvertThresh = false;
-      clearInterval(this._loopId);
-      clearTimeout(this._dragStartTimer);
-      _cancelNextTick(this.cloneId);
-      _cancelNextTick(this._dragStartId);
-      if (this.nativeDraggable) {
-        off(document, "drop", this);
-        off(el, "dragstart", this._onDragStart);
-      }
-      this._offMoveEvents();
-      this._offUpEvents();
-      if (Safari) {
-        css(document.body, "user-select", "");
-      }
-      css(dragEl, "transform", "");
-      if (evt) {
-        if (moved) {
-          evt.cancelable && evt.preventDefault();
-          !options.dropBubble && evt.stopPropagation();
-        }
-        ghostEl && ghostEl.parentNode && ghostEl.parentNode.removeChild(ghostEl);
-        if (rootEl === parentEl || putSortable && putSortable.lastPutMode !== "clone") {
-          cloneEl && cloneEl.parentNode && cloneEl.parentNode.removeChild(cloneEl);
-        }
-        if (dragEl) {
-          if (this.nativeDraggable) {
-            off(dragEl, "dragend", this);
-          }
-          _disableDraggable(dragEl);
-          dragEl.style["will-change"] = "";
-          if (moved && !awaitingDragStarted) {
-            toggleClass(dragEl, putSortable ? putSortable.options.ghostClass : this.options.ghostClass, false);
-          }
-          toggleClass(dragEl, this.options.chosenClass, false);
-          _dispatchEvent({
-            sortable: this,
-            name: "unchoose",
-            toEl: parentEl,
-            newIndex: null,
-            newDraggableIndex: null,
-            originalEvent: evt
-          });
-          if (rootEl !== parentEl) {
-            if (newIndex >= 0) {
-              _dispatchEvent({
-                rootEl: parentEl,
-                name: "add",
-                toEl: parentEl,
-                fromEl: rootEl,
-                originalEvent: evt
-              });
-              _dispatchEvent({
-                sortable: this,
-                name: "remove",
-                toEl: parentEl,
-                originalEvent: evt
-              });
-              _dispatchEvent({
-                rootEl: parentEl,
-                name: "sort",
-                toEl: parentEl,
-                fromEl: rootEl,
-                originalEvent: evt
-              });
-              _dispatchEvent({
-                sortable: this,
-                name: "sort",
-                toEl: parentEl,
-                originalEvent: evt
-              });
-            }
-            putSortable && putSortable.save();
-          } else {
-            if (newIndex !== oldIndex) {
-              if (newIndex >= 0) {
-                _dispatchEvent({
-                  sortable: this,
-                  name: "update",
-                  toEl: parentEl,
-                  originalEvent: evt
-                });
-                _dispatchEvent({
-                  sortable: this,
-                  name: "sort",
-                  toEl: parentEl,
-                  originalEvent: evt
-                });
-              }
-            }
-          }
-          if (Sortable.active) {
-            if (newIndex == null || newIndex === -1) {
-              newIndex = oldIndex;
-              newDraggableIndex = oldDraggableIndex;
-            }
-            _dispatchEvent({
-              sortable: this,
-              name: "end",
-              toEl: parentEl,
-              originalEvent: evt
-            });
-            this.save();
-          }
-        }
-      }
-      this._nulling();
-    },
-    _nulling: function _nulling() {
-      pluginEvent2("nulling", this);
-      rootEl = dragEl = parentEl = ghostEl = nextEl = cloneEl = lastDownEl = cloneHidden = tapEvt = touchEvt = moved = newIndex = newDraggableIndex = oldIndex = oldDraggableIndex = lastTarget = lastDirection = putSortable = activeGroup = Sortable.dragged = Sortable.ghost = Sortable.clone = Sortable.active = null;
-      var el = this.el;
-      savedInputChecked.forEach(function(checkEl) {
-        if (el.contains(checkEl)) {
-          checkEl.checked = true;
-        }
-      });
-      savedInputChecked.length = lastDx = lastDy = 0;
-    },
-    handleEvent: function handleEvent(evt) {
-      switch (evt.type) {
-        case "drop":
-        case "dragend":
-          this._onDrop(evt);
-          break;
-        case "dragenter":
-        case "dragover":
-          if (dragEl) {
-            this._onDragOver(evt);
-            _globalDragOver(evt);
-          }
-          break;
-        case "selectstart":
-          evt.preventDefault();
-          break;
-      }
-    },
-    /**
-     * Serializes the item into an array of string.
-     * @returns {String[]}
-     */
-    toArray: function toArray() {
-      var order = [], el, children = this.el.children, i = 0, n = children.length, options = this.options;
-      for (; i < n; i++) {
-        el = children[i];
-        if (closest(el, options.draggable, this.el, false)) {
-          order.push(el.getAttribute(options.dataIdAttr) || _generateId(el));
-        }
-      }
-      return order;
-    },
-    /**
-     * Sorts the elements according to the array.
-     * @param  {String[]}  order  order of the items
-     */
-    sort: function sort(order, useAnimation) {
-      var items = {}, rootEl2 = this.el;
-      this.toArray().forEach(function(id2, i) {
-        var el = rootEl2.children[i];
-        if (closest(el, this.options.draggable, rootEl2, false)) {
-          items[id2] = el;
-        }
-      }, this);
-      useAnimation && this.captureAnimationState();
-      order.forEach(function(id2) {
-        if (items[id2]) {
-          rootEl2.removeChild(items[id2]);
-          rootEl2.appendChild(items[id2]);
-        }
-      });
-      useAnimation && this.animateAll();
-    },
-    /**
-     * Save the current sorting
-     */
-    save: function save() {
-      var store = this.options.store;
-      store && store.set && store.set(this);
-    },
-    /**
-     * For each element in the set, get the first element that matches the selector by testing the element itself and traversing up through its ancestors in the DOM tree.
-     * @param   {HTMLElement}  el
-     * @param   {String}       [selector]  default: `options.draggable`
-     * @returns {HTMLElement|null}
-     */
-    closest: function closest$1(el, selector) {
-      return closest(el, selector || this.options.draggable, this.el, false);
-    },
-    /**
-     * Set/get option
-     * @param   {string} name
-     * @param   {*}      [value]
-     * @returns {*}
-     */
-    option: function option(name, value) {
-      var options = this.options;
-      if (value === void 0) {
-        return options[name];
-      } else {
-        var modifiedValue = PluginManager.modifyOption(this, name, value);
-        if (typeof modifiedValue !== "undefined") {
-          options[name] = modifiedValue;
-        } else {
-          options[name] = value;
-        }
-        if (name === "group") {
-          _prepareGroup(options);
-        }
-      }
-    },
-    /**
-     * Destroy
-     */
-    destroy: function destroy() {
-      pluginEvent2("destroy", this);
-      var el = this.el;
-      el[expando] = null;
-      off(el, "mousedown", this._onTapStart);
-      off(el, "touchstart", this._onTapStart);
-      off(el, "pointerdown", this._onTapStart);
-      if (this.nativeDraggable) {
-        off(el, "dragover", this);
-        off(el, "dragenter", this);
-      }
-      Array.prototype.forEach.call(el.querySelectorAll("[draggable]"), function(el2) {
-        el2.removeAttribute("draggable");
-      });
-      this._onDrop();
-      this._disableDelayedDragEvents();
-      sortables.splice(sortables.indexOf(this.el), 1);
-      this.el = el = null;
-    },
-    _hideClone: function _hideClone() {
-      if (!cloneHidden) {
-        pluginEvent2("hideClone", this);
-        if (Sortable.eventCanceled) return;
-        css(cloneEl, "display", "none");
-        if (this.options.removeCloneOnHide && cloneEl.parentNode) {
-          cloneEl.parentNode.removeChild(cloneEl);
-        }
-        cloneHidden = true;
-      }
-    },
-    _showClone: function _showClone(putSortable2) {
-      if (putSortable2.lastPutMode !== "clone") {
-        this._hideClone();
-        return;
-      }
-      if (cloneHidden) {
-        pluginEvent2("showClone", this);
-        if (Sortable.eventCanceled) return;
-        if (dragEl.parentNode == rootEl && !this.options.group.revertClone) {
-          rootEl.insertBefore(cloneEl, dragEl);
-        } else if (nextEl) {
-          rootEl.insertBefore(cloneEl, nextEl);
-        } else {
-          rootEl.appendChild(cloneEl);
-        }
-        if (this.options.group.revertClone) {
-          this.animate(dragEl, cloneEl);
-        }
-        css(cloneEl, "display", "");
-        cloneHidden = false;
-      }
-    }
-  };
-  function _globalDragOver(evt) {
-    if (evt.dataTransfer) {
-      evt.dataTransfer.dropEffect = "move";
-    }
-    evt.cancelable && evt.preventDefault();
-  }
-  function _onMove(fromEl, toEl, dragEl2, dragRect, targetEl, targetRect, originalEvent, willInsertAfter) {
-    var evt, sortable = fromEl[expando], onMoveFn = sortable.options.onMove, retVal;
-    if (window.CustomEvent && !IE11OrLess && !Edge) {
-      evt = new CustomEvent("move", {
-        bubbles: true,
-        cancelable: true
-      });
-    } else {
-      evt = document.createEvent("Event");
-      evt.initEvent("move", true, true);
-    }
-    evt.to = toEl;
-    evt.from = fromEl;
-    evt.dragged = dragEl2;
-    evt.draggedRect = dragRect;
-    evt.related = targetEl || toEl;
-    evt.relatedRect = targetRect || getRect(toEl);
-    evt.willInsertAfter = willInsertAfter;
-    evt.originalEvent = originalEvent;
-    fromEl.dispatchEvent(evt);
-    if (onMoveFn) {
-      retVal = onMoveFn.call(sortable, evt, originalEvent);
-    }
-    return retVal;
-  }
-  function _disableDraggable(el) {
-    el.draggable = false;
-  }
-  function _unsilent() {
-    _silent = false;
-  }
-  function _ghostIsFirst(evt, vertical, sortable) {
-    var firstElRect = getRect(getChild(sortable.el, 0, sortable.options, true));
-    var childContainingRect = getChildContainingRectFromElement(sortable.el, sortable.options, ghostEl);
-    var spacer = 10;
-    return vertical ? evt.clientX < childContainingRect.left - spacer || evt.clientY < firstElRect.top && evt.clientX < firstElRect.right : evt.clientY < childContainingRect.top - spacer || evt.clientY < firstElRect.bottom && evt.clientX < firstElRect.left;
-  }
-  function _ghostIsLast(evt, vertical, sortable) {
-    var lastElRect = getRect(lastChild(sortable.el, sortable.options.draggable));
-    var childContainingRect = getChildContainingRectFromElement(sortable.el, sortable.options, ghostEl);
-    var spacer = 10;
-    return vertical ? evt.clientX > childContainingRect.right + spacer || evt.clientY > lastElRect.bottom && evt.clientX > lastElRect.left : evt.clientY > childContainingRect.bottom + spacer || evt.clientX > lastElRect.right && evt.clientY > lastElRect.top;
-  }
-  function _getSwapDirection(evt, target, targetRect, vertical, swapThreshold, invertedSwapThreshold, invertSwap, isLastTarget) {
-    var mouseOnAxis = vertical ? evt.clientY : evt.clientX, targetLength = vertical ? targetRect.height : targetRect.width, targetS1 = vertical ? targetRect.top : targetRect.left, targetS2 = vertical ? targetRect.bottom : targetRect.right, invert = false;
-    if (!invertSwap) {
-      if (isLastTarget && targetMoveDistance < targetLength * swapThreshold) {
-        if (!pastFirstInvertThresh && (lastDirection === 1 ? mouseOnAxis > targetS1 + targetLength * invertedSwapThreshold / 2 : mouseOnAxis < targetS2 - targetLength * invertedSwapThreshold / 2)) {
-          pastFirstInvertThresh = true;
-        }
-        if (!pastFirstInvertThresh) {
-          if (lastDirection === 1 ? mouseOnAxis < targetS1 + targetMoveDistance : mouseOnAxis > targetS2 - targetMoveDistance) {
-            return -lastDirection;
-          }
-        } else {
-          invert = true;
-        }
-      } else {
-        if (mouseOnAxis > targetS1 + targetLength * (1 - swapThreshold) / 2 && mouseOnAxis < targetS2 - targetLength * (1 - swapThreshold) / 2) {
-          return _getInsertDirection(target);
-        }
-      }
-    }
-    invert = invert || invertSwap;
-    if (invert) {
-      if (mouseOnAxis < targetS1 + targetLength * invertedSwapThreshold / 2 || mouseOnAxis > targetS2 - targetLength * invertedSwapThreshold / 2) {
-        return mouseOnAxis > targetS1 + targetLength / 2 ? 1 : -1;
-      }
-    }
-    return 0;
-  }
-  function _getInsertDirection(target) {
-    if (index(dragEl) < index(target)) {
-      return 1;
-    } else {
-      return -1;
-    }
-  }
-  function _generateId(el) {
-    var str = el.tagName + el.className + el.src + el.href + el.textContent, i = str.length, sum = 0;
-    while (i--) {
-      sum += str.charCodeAt(i);
-    }
-    return sum.toString(36);
-  }
-  function _saveInputCheckedState(root) {
-    savedInputChecked.length = 0;
-    var inputs = root.getElementsByTagName("input");
-    var idx = inputs.length;
-    while (idx--) {
-      var el = inputs[idx];
-      el.checked && savedInputChecked.push(el);
-    }
-  }
-  function _nextTick(fn) {
-    return setTimeout(fn, 0);
-  }
-  function _cancelNextTick(id2) {
-    return clearTimeout(id2);
-  }
-  if (documentExists) {
-    on(document, "touchmove", function(evt) {
-      if ((Sortable.active || awaitingDragStarted) && evt.cancelable) {
-        evt.preventDefault();
-      }
-    });
-  }
-  Sortable.utils = {
-    on,
-    off,
-    css,
-    find: find3,
-    is: function is(el, selector) {
-      return !!closest(el, selector, el, false);
-    },
-    extend,
-    throttle,
-    closest,
-    toggleClass,
-    clone,
-    index,
-    nextTick: _nextTick,
-    cancelNextTick: _cancelNextTick,
-    detectDirection: _detectDirection,
-    getChild,
-    expando
-  };
-  Sortable.get = function(element2) {
-    return element2[expando];
-  };
-  Sortable.mount = function() {
-    for (var _len = arguments.length, plugins2 = new Array(_len), _key = 0; _key < _len; _key++) {
-      plugins2[_key] = arguments[_key];
-    }
-    if (plugins2[0].constructor === Array) plugins2 = plugins2[0];
-    plugins2.forEach(function(plugin) {
-      if (!plugin.prototype || !plugin.prototype.constructor) {
-        throw "Sortable: Mounted plugin must be a constructor function, not ".concat({}.toString.call(plugin));
-      }
-      if (plugin.utils) Sortable.utils = _objectSpread2(_objectSpread2({}, Sortable.utils), plugin.utils);
-      PluginManager.mount(plugin);
-    });
-  };
-  Sortable.create = function(el, options) {
-    return new Sortable(el, options);
-  };
-  Sortable.version = version;
-  var autoScrolls = [];
-  var scrollEl;
-  var scrollRootEl;
-  var scrolling = false;
-  var lastAutoScrollX;
-  var lastAutoScrollY;
-  var touchEvt$1;
-  var pointerElemChangedInterval;
-  function AutoScrollPlugin() {
-    function AutoScroll() {
-      this.defaults = {
-        scroll: true,
-        forceAutoScrollFallback: false,
-        scrollSensitivity: 30,
-        scrollSpeed: 10,
-        bubbleScroll: true
-      };
-      for (var fn in this) {
-        if (fn.charAt(0) === "_" && typeof this[fn] === "function") {
-          this[fn] = this[fn].bind(this);
-        }
-      }
-    }
-    AutoScroll.prototype = {
-      dragStarted: function dragStarted(_ref) {
-        var originalEvent = _ref.originalEvent;
-        if (this.sortable.nativeDraggable) {
-          on(document, "dragover", this._handleAutoScroll);
-        } else {
-          if (this.options.supportPointer) {
-            on(document, "pointermove", this._handleFallbackAutoScroll);
-          } else if (originalEvent.touches) {
-            on(document, "touchmove", this._handleFallbackAutoScroll);
-          } else {
-            on(document, "mousemove", this._handleFallbackAutoScroll);
-          }
-        }
-      },
-      dragOverCompleted: function dragOverCompleted(_ref2) {
-        var originalEvent = _ref2.originalEvent;
-        if (!this.options.dragOverBubble && !originalEvent.rootEl) {
-          this._handleAutoScroll(originalEvent);
-        }
-      },
-      drop: function drop3() {
-        if (this.sortable.nativeDraggable) {
-          off(document, "dragover", this._handleAutoScroll);
-        } else {
-          off(document, "pointermove", this._handleFallbackAutoScroll);
-          off(document, "touchmove", this._handleFallbackAutoScroll);
-          off(document, "mousemove", this._handleFallbackAutoScroll);
-        }
-        clearPointerElemChangedInterval();
-        clearAutoScrolls();
-        cancelThrottle();
-      },
-      nulling: function nulling() {
-        touchEvt$1 = scrollRootEl = scrollEl = scrolling = pointerElemChangedInterval = lastAutoScrollX = lastAutoScrollY = null;
-        autoScrolls.length = 0;
-      },
-      _handleFallbackAutoScroll: function _handleFallbackAutoScroll(evt) {
-        this._handleAutoScroll(evt, true);
-      },
-      _handleAutoScroll: function _handleAutoScroll(evt, fallback) {
-        var _this = this;
-        var x = (evt.touches ? evt.touches[0] : evt).clientX, y = (evt.touches ? evt.touches[0] : evt).clientY, elem = document.elementFromPoint(x, y);
-        touchEvt$1 = evt;
-        if (fallback || this.options.forceAutoScrollFallback || Edge || IE11OrLess || Safari) {
-          autoScroll(evt, this.options, elem, fallback);
-          var ogElemScroller = getParentAutoScrollElement(elem, true);
-          if (scrolling && (!pointerElemChangedInterval || x !== lastAutoScrollX || y !== lastAutoScrollY)) {
-            pointerElemChangedInterval && clearPointerElemChangedInterval();
-            pointerElemChangedInterval = setInterval(function() {
-              var newElem = getParentAutoScrollElement(document.elementFromPoint(x, y), true);
-              if (newElem !== ogElemScroller) {
-                ogElemScroller = newElem;
-                clearAutoScrolls();
-              }
-              autoScroll(evt, _this.options, newElem, fallback);
-            }, 10);
-            lastAutoScrollX = x;
-            lastAutoScrollY = y;
-          }
-        } else {
-          if (!this.options.bubbleScroll || getParentAutoScrollElement(elem, true) === getWindowScrollingElement()) {
-            clearAutoScrolls();
-            return;
-          }
-          autoScroll(evt, this.options, getParentAutoScrollElement(elem, false), false);
-        }
-      }
-    };
-    return _extends(AutoScroll, {
-      pluginName: "scroll",
-      initializeByDefault: true
-    });
-  }
-  function clearAutoScrolls() {
-    autoScrolls.forEach(function(autoScroll2) {
-      clearInterval(autoScroll2.pid);
-    });
-    autoScrolls = [];
-  }
-  function clearPointerElemChangedInterval() {
-    clearInterval(pointerElemChangedInterval);
-  }
-  var autoScroll = throttle(function(evt, options, rootEl2, isFallback) {
-    if (!options.scroll) return;
-    var x = (evt.touches ? evt.touches[0] : evt).clientX, y = (evt.touches ? evt.touches[0] : evt).clientY, sens = options.scrollSensitivity, speed = options.scrollSpeed, winScroller = getWindowScrollingElement();
-    var scrollThisInstance = false, scrollCustomFn;
-    if (scrollRootEl !== rootEl2) {
-      scrollRootEl = rootEl2;
-      clearAutoScrolls();
-      scrollEl = options.scroll;
-      scrollCustomFn = options.scrollFn;
-      if (scrollEl === true) {
-        scrollEl = getParentAutoScrollElement(rootEl2, true);
-      }
-    }
-    var layersOut = 0;
-    var currentParent = scrollEl;
-    do {
-      var el = currentParent, rect = getRect(el), top = rect.top, bottom = rect.bottom, left = rect.left, right = rect.right, width = rect.width, height = rect.height, canScrollX = void 0, canScrollY = void 0, scrollWidth = el.scrollWidth, scrollHeight = el.scrollHeight, elCSS = css(el), scrollPosX = el.scrollLeft, scrollPosY = el.scrollTop;
-      if (el === winScroller) {
-        canScrollX = width < scrollWidth && (elCSS.overflowX === "auto" || elCSS.overflowX === "scroll" || elCSS.overflowX === "visible");
-        canScrollY = height < scrollHeight && (elCSS.overflowY === "auto" || elCSS.overflowY === "scroll" || elCSS.overflowY === "visible");
-      } else {
-        canScrollX = width < scrollWidth && (elCSS.overflowX === "auto" || elCSS.overflowX === "scroll");
-        canScrollY = height < scrollHeight && (elCSS.overflowY === "auto" || elCSS.overflowY === "scroll");
-      }
-      var vx = canScrollX && (Math.abs(right - x) <= sens && scrollPosX + width < scrollWidth) - (Math.abs(left - x) <= sens && !!scrollPosX);
-      var vy = canScrollY && (Math.abs(bottom - y) <= sens && scrollPosY + height < scrollHeight) - (Math.abs(top - y) <= sens && !!scrollPosY);
-      if (!autoScrolls[layersOut]) {
-        for (var i = 0; i <= layersOut; i++) {
-          if (!autoScrolls[i]) {
-            autoScrolls[i] = {};
-          }
-        }
-      }
-      if (autoScrolls[layersOut].vx != vx || autoScrolls[layersOut].vy != vy || autoScrolls[layersOut].el !== el) {
-        autoScrolls[layersOut].el = el;
-        autoScrolls[layersOut].vx = vx;
-        autoScrolls[layersOut].vy = vy;
-        clearInterval(autoScrolls[layersOut].pid);
-        if (vx != 0 || vy != 0) {
-          scrollThisInstance = true;
-          autoScrolls[layersOut].pid = setInterval(function() {
-            if (isFallback && this.layer === 0) {
-              Sortable.active._onTouchMove(touchEvt$1);
-            }
-            var scrollOffsetY = autoScrolls[this.layer].vy ? autoScrolls[this.layer].vy * speed : 0;
-            var scrollOffsetX = autoScrolls[this.layer].vx ? autoScrolls[this.layer].vx * speed : 0;
-            if (typeof scrollCustomFn === "function") {
-              if (scrollCustomFn.call(Sortable.dragged.parentNode[expando], scrollOffsetX, scrollOffsetY, evt, touchEvt$1, autoScrolls[this.layer].el) !== "continue") {
-                return;
-              }
-            }
-            scrollBy(autoScrolls[this.layer].el, scrollOffsetX, scrollOffsetY);
-          }.bind({
-            layer: layersOut
-          }), 24);
-        }
-      }
-      layersOut++;
-    } while (options.bubbleScroll && currentParent !== winScroller && (currentParent = getParentAutoScrollElement(currentParent, false)));
-    scrolling = scrollThisInstance;
-  }, 30);
-  var drop = function drop2(_ref) {
-    var originalEvent = _ref.originalEvent, putSortable2 = _ref.putSortable, dragEl2 = _ref.dragEl, activeSortable = _ref.activeSortable, dispatchSortableEvent = _ref.dispatchSortableEvent, hideGhostForTarget = _ref.hideGhostForTarget, unhideGhostForTarget = _ref.unhideGhostForTarget;
-    if (!originalEvent) return;
-    var toSortable = putSortable2 || activeSortable;
-    hideGhostForTarget();
-    var touch = originalEvent.changedTouches && originalEvent.changedTouches.length ? originalEvent.changedTouches[0] : originalEvent;
-    var target = document.elementFromPoint(touch.clientX, touch.clientY);
-    unhideGhostForTarget();
-    if (toSortable && !toSortable.el.contains(target)) {
-      dispatchSortableEvent("spill");
-      this.onSpill({
-        dragEl: dragEl2,
-        putSortable: putSortable2
-      });
-    }
-  };
-  function Revert() {
-  }
-  Revert.prototype = {
-    startIndex: null,
-    dragStart: function dragStart(_ref2) {
-      var oldDraggableIndex2 = _ref2.oldDraggableIndex;
-      this.startIndex = oldDraggableIndex2;
-    },
-    onSpill: function onSpill(_ref3) {
-      var dragEl2 = _ref3.dragEl, putSortable2 = _ref3.putSortable;
-      this.sortable.captureAnimationState();
-      if (putSortable2) {
-        putSortable2.captureAnimationState();
-      }
-      var nextSibling = getChild(this.sortable.el, this.startIndex, this.options);
-      if (nextSibling) {
-        this.sortable.el.insertBefore(dragEl2, nextSibling);
-      } else {
-        this.sortable.el.appendChild(dragEl2);
-      }
-      this.sortable.animateAll();
-      if (putSortable2) {
-        putSortable2.animateAll();
-      }
-    },
-    drop
-  };
-  _extends(Revert, {
-    pluginName: "revertOnSpill"
-  });
-  function Remove() {
-  }
-  Remove.prototype = {
-    onSpill: function onSpill2(_ref4) {
-      var dragEl2 = _ref4.dragEl, putSortable2 = _ref4.putSortable;
-      var parentSortable = putSortable2 || this.sortable;
-      parentSortable.captureAnimationState();
-      dragEl2.parentNode && dragEl2.parentNode.removeChild(dragEl2);
-      parentSortable.animateAll();
-    },
-    drop
-  };
-  _extends(Remove, {
-    pluginName: "removeOnSpill"
-  });
-  Sortable.mount(new AutoScrollPlugin());
-  Sortable.mount(Remove, Revert);
-
   // web/ui-kit.ts
   var ICONS = {
     Bell,
     Bold: Bold2,
     Bug,
+    ChevronDown,
     Code: Code2,
     Command,
     FileText,
@@ -34432,7 +32248,7 @@ ${err.toString()}`);
       active = Math.max(0, Math.min(active, items.length - 1));
       menu.hidden = false;
       menu.innerHTML = items.map(
-        (item, index2) => `<button type="button" role="option" class="ew-slash-item${index2 === active ? " is-active" : ""}" data-slash="${item.id}">${iconSvg(item.icon)}<span>${item.label}</span></button>`
+        (item, index) => `<button type="button" role="option" class="ew-slash-item${index === active ? " is-active" : ""}" data-slash="${item.id}">${iconSvg(item.icon)}<span>${item.label}</span></button>`
       ).join("");
       const coords = editor.view.coordsAtPos(editor.state.selection.from);
       const anchor = document.createElement("div");
@@ -34618,13 +32434,13 @@ ${err.toString()}`);
   var token = params2.get("token") ?? "";
   var documentId = params2.get("documentId") ?? "";
   var status = document.getElementById("status");
-  var mount2 = document.getElementById("editor");
-  if (!mount2) throw new Error("missing #editor");
+  var mount = document.getElementById("editor");
+  if (!mount) throw new Error("missing #editor");
   function setStatus(text2) {
     if (status) status.textContent = text2;
   }
   var session = mountHostedCollab({
-    element: mount2,
+    element: mount,
     token,
     documentId,
     onStatus: setStatus
@@ -34657,6 +32473,7 @@ lucide/dist/esm/createElement.mjs:
 lucide/dist/esm/icons/bell.mjs:
 lucide/dist/esm/icons/bold.mjs:
 lucide/dist/esm/icons/bug.mjs:
+lucide/dist/esm/icons/chevron-down.mjs:
 lucide/dist/esm/icons/code.mjs:
 lucide/dist/esm/icons/command.mjs:
 lucide/dist/esm/icons/file-text.mjs:
@@ -34687,13 +32504,5 @@ lucide/dist/esm/lucide.mjs:
    *
    * This source code is licensed under the ISC license.
    * See the LICENSE file in the root directory of this source tree.
-   *)
-
-sortablejs/modular/sortable.esm.js:
-  (**!
-   * Sortable 1.15.7
-   * @author	RubaXa   <trash@rubaxa.org>
-   * @author	owenm    <owen23355@gmail.com>
-   * @license MIT
    *)
 */
