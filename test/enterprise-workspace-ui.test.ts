@@ -80,6 +80,16 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
     () => ((window as unknown as { nomaWorkspace: { text: () => string } }).nomaWorkspace.text() ?? "").length > 12,
     { timeout: 20_000 },
   );
+  assert.doesNotMatch(await page.$eval("#editor", (element) => element.textContent ?? ""), /\{#/);
+  assert.match(await page.$eval("#editor", (element) => element.textContent ?? ""), /Claim|hosted workspace/);
+  await page.keyboard.down("Control");
+  await page.keyboard.press("KeyK");
+  await page.keyboard.up("Control");
+  await page.waitForSelector("#command-palette:not([hidden])");
+  await page.locator("#command-input").fill("strategy");
+  await page.waitForFunction(() => document.querySelectorAll("#command-list [data-id]").length > 0);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector("#command-palette[hidden]");
   assert.match(await text(page, "#doc-title"), /Q3 strategy memo/);
   assert.match(await text(page, "#rail-list"), /Q3 strategy memo/);
   assert.match(await text(page, "#rail-list"), /Risks and open questions/);
@@ -99,6 +109,15 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.locator("#mode-work").click();
   await page.waitForSelector(".ew-card");
   assert.match(await text(page, "#work-board"), /ATLAS-/);
+  await page.waitForSelector("#board-filters");
+  const moved = await page.evaluate(async () => {
+    const api = window as unknown as { nomaWorkspace: { applyBoardDrop: (drop: { issueId: string; beforeId: string; statusId: string }) => Promise<void> } };
+    const card = document.querySelector<HTMLElement>('.ew-card[data-type="task"]') ?? document.querySelector<HTMLElement>(".ew-card");
+    const issueId = card?.dataset.issue ?? "";
+    await api.nomaWorkspace.applyBoardDrop({ issueId, beforeId: "", statusId: "in_review" });
+    return document.querySelector(`[data-status="in_review"] [data-issue="${issueId}"]`) !== null;
+  });
+  assert.equal(moved, true);
   await page.locator(".ew-card").click();
   await page.waitForSelector("#advance-issue");
   const before = await text(page, ".ew-meta");
@@ -111,6 +130,8 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.locator("#workspace-search").fill("strategy");
   await page.waitForSelector("#search-results .ew-hit");
   assert.match(await text(page, "#search-results"), /Q3 strategy memo/);
+  const searchTitles = await page.$$eval("#search-results .ew-hit strong", (nodes) => nodes.map((node) => node.textContent ?? ""));
+  assert.equal(new Set(searchTitles).size, searchTitles.length);
 
   await page.locator("#mode-docs").click();
   await page.waitForSelector("#editor .ProseMirror");

@@ -2168,8 +2168,11 @@ export class EnterpriseWorkspace {
       statuses: DEFAULT_STATUSES,
       transitions: [
         { id: "start", from: "backlog", to: "todo" },
+        { id: "unstart", from: "todo", to: "backlog" },
         { id: "begin", from: "todo", to: "in_progress" },
+        { id: "pause", from: "in_progress", to: "todo" },
         { id: "review", from: "in_progress", to: "in_review" },
+        { id: "unreview", from: "in_review", to: "in_progress" },
         { id: "complete", from: "in_review", to: "done", requiredFields: ["resolution"] },
         { id: "cancel", from: "in_progress", to: "cancelled", requireDecision: true },
         { id: "reopen", from: "done", to: "todo" },

@@ -1,5 +1,6 @@
 import { mountHostedCollab, type HostedCollab } from "./hosted-collab";
-import { bindIssueBoard, hydrateIcons, iconSvg, positionPopup, type BoardDrop } from "./ui-kit";
+import { nomaToEditorHtml } from "./noma-html";
+import { bindIssueBoard, hydrateIcons, iconSvg, positionPopup, statusPath, type BoardDrop } from "./ui-kit";
 
 type Mode = "docs" | "visuals" | "work" | "admin";
 
@@ -98,6 +99,8 @@ let collab: HostedCollab | undefined;
 let jqlFilterIds: string[] | undefined;
 let searchPopupStop: (() => void) | undefined;
 let boardDndStop: (() => void) | undefined;
+let boardFilter: "all" | "mine" = "all";
+let paletteIndex = 0;
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -382,34 +385,14 @@ function renderRail(): void {
   hydrateIcons(railList);
 }
 
-function nomaToEditorHtml(title: string, source: string): string {
-  const stripped = source.replace(/^---[\s\S]*?---\n/, "").trim();
-  const blocks = stripped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
-  const body = blocks
-    .map((block) => {
-      const figure = block.match(/^::figure\{([^}]*)\}/m);
-      if (figure) {
-        const src = /src="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "";
-        const alt = /alt="([^"]+)"/.exec(figure[1] ?? "")?.[1] ?? "image";
-        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
-        return `<p>Image: ${escapeHtml(alt)}</p><p><img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}"></p>`;
-      }
-      const video = block.match(/^::video\{([^}]*)\}/m);
-      if (video) {
-        const src = /src="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "";
-        const name = /title="([^"]+)"/.exec(video[1] ?? "")?.[1] ?? "video";
-        const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
-        return `<p>Video: ${escapeHtml(name)}</p><p><video src="${escapeHtml(url)}" controls></video></p>`;
-      }
-      const text = escapeHtml(block.replace(/^#{1,6}\s+/, "").replace(/^::\w+.*$/gm, "").trim());
-      if (!text) return "";
-      if (/^#\s+/.test(block)) return `<h1>${escapeHtml(block.replace(/^#\s+/, ""))}</h1>`;
-      if (/^##\s+/.test(block)) return `<h2>${escapeHtml(block.replace(/^##\s+/, ""))}</h2>`;
-      return `<p>${text}</p>`;
-    })
-    .filter(Boolean)
-    .join("");
-  return body || `<h1>${escapeHtml(title)}</h1><p></p>`;
+function uniqueHits<T extends { resourceKind: string; resourceId: string }>(hits: T[]): T[] {
+  const seen = new Set<string>();
+  return hits.filter((hit) => {
+    const key = `${hit.resourceKind}:${hit.resourceId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function openDocument(id: string | undefined): void {
@@ -492,7 +475,7 @@ async function renderDocumentInspector(id: string): Promise<void> {
     </label>
     <div class="ew-actions">
       <button type="button" id="save-page-meta">Save location</button>
-      <label for="attach-file">Attach<input id="attach-file" type="file" /></label>
+      <label class="ew-file" for="attach-file">Attach file<input id="attach-file" type="file" /></label>
     </div>
     <div class="ew-meta"><strong>Permissions</strong>${grants.grants.map((grant) => `<span>${escapeHtml(grant.name)} · ${escapeHtml(grant.role)}</span>`).join("") || "<span>Inherited from workspace</span>"}</div>
     <label for="grant-principal">Person<select id="grant-principal">${people}</select></label>
@@ -512,7 +495,7 @@ async function seedEmptyEditor(id: string, title: string): Promise<void> {
   const document = await api<{ title: string; source: string }>(`/v1/documents/${encodeURIComponent(id)}`);
   const editor = collab?.editor();
   if (!editor || (editor.getText() ?? "").trim()) return;
-  editor.commands.setContent(nomaToEditorHtml(document.title || title, document.source));
+  editor.commands.setContent(nomaToEditorHtml(document.title || title, document.source, token));
 }
 
 async function openArtifact(id: string | undefined): Promise<void> {
@@ -567,28 +550,40 @@ function renderBoard(): void {
   selectedProjectId = project?.id ?? "";
   $("work-title").textContent = project ? `${project.key} · ${project.name}` : "Work";
   renderSprintBar();
+  $("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
+  $("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
   const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
-  const visible = payload.issues.filter((issue) => (!project || issue.projectId === project.id) && (!jqlFilterIds || jqlFilterIds.includes(issue.id)));
+  const visible = payload.issues.filter((issue) => {
+    if (project && issue.projectId !== project.id) return false;
+    if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
+    if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
+    return true;
+  });
   $("work-board").innerHTML = columns
     .map((status) => {
       const cards = visible.filter((issue) => issue.statusId === status.id);
       return `<section class="ew-column" data-status="${escapeHtml(status.id)}">
         <h3>${escapeHtml(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
+        <div class="ew-column-list">
         ${cards
-          .map(
-            (issue) => {
-              const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
-              return `<button class="ew-card" type="button" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
+          .map((issue) => {
+            const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
+            const parent = payload?.issues.find((item) => item.id === issue.parentId);
+            return `<button class="ew-card" type="button" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
               <span class="ew-key">${escapeHtml(issue.key)}</span>
               <strong>${escapeHtml(issue.summary)}</strong>
               <span class="ew-card-foot">
                 <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
+                ${parent ? `<span class="ew-epic">${escapeHtml(parent.key)}</span>` : ""}
+                ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
                 ${assignee ? avatarMarkup(assignee.name) : ""}
               </span>
             </button>`;
-            },
-          )
+          })
           .join("")}
+        </div>
+        <label class="ew-sr" for="create-${escapeHtml(status.id)}">Create in ${escapeHtml(status.name)}</label>
+        <input id="create-${escapeHtml(status.id)}" class="ew-column-add" data-status="${escapeHtml(status.id)}" placeholder="Create" />
       </section>`;
     })
     .join("");
@@ -608,13 +603,26 @@ function renderBoard(): void {
   });
 }
 
+async function transitionIssueTo(issueId: string, from: string, to: string): Promise<void> {
+  for (const status of statusPath(from, to)) {
+    await api(`/v1/issues/${encodeURIComponent(issueId)}/transition`, {
+      method: "POST",
+      body: JSON.stringify({ to: status, fields: status === "done" ? { resolution: "completed" } : {} }),
+    });
+  }
+}
+
 async function applyBoardDrop(drop: BoardDrop): Promise<void> {
   const project = currentProject();
   if (!project || !payload) return;
-  const ordered = [...payload.issues.filter((issue) => issue.projectId === project.id)].map((issue) => issue.id);
+  const issue = payload.issues.find((item) => item.id === drop.issueId);
+  if (!issue) return;
+  if (drop.statusId && drop.statusId !== issue.statusId) {
+    await transitionIssueTo(drop.issueId, issue.statusId, drop.statusId);
+  }
+  const ordered = [...payload.issues.filter((item) => item.projectId === project.id)].map((item) => item.id);
   const from = ordered.indexOf(drop.issueId);
-  if (from < 0) return;
-  ordered.splice(from, 1);
+  if (from >= 0) ordered.splice(from, 1);
   if (drop.beforeId) {
     const to = ordered.indexOf(drop.beforeId);
     ordered.splice(to < 0 ? ordered.length : to, 0, drop.issueId);
@@ -1181,7 +1189,8 @@ $("workspace-search").addEventListener("input", async (event) => {
     `/v1/search?q=${encodeURIComponent(query)}`,
   );
   searchResults.hidden = false;
-  searchResults.innerHTML = result.hits
+  const hits = uniqueHits(result.hits);
+  searchResults.innerHTML = hits
     .map(
       (hit) => `<button class="ew-hit" type="button" data-kind="${escapeHtml(hit.resourceKind)}" data-id="${escapeHtml(hit.resourceId)}">
         <strong>${escapeHtml(hit.title)}</strong><small>${escapeHtml(hit.excerpt)}</small>
@@ -1291,10 +1300,152 @@ document.querySelectorAll<HTMLButtonElement>("#doc-toolbar [data-cmd]").forEach(
     if (cmd === "bold") chain.toggleBold().run();
     if (cmd === "italic") chain.toggleItalic().run();
     if (cmd === "strike") chain.toggleStrike().run();
+    if (cmd === "underline") chain.toggleUnderline().run();
     if (cmd === "heading") chain.toggleHeading({ level: button.dataset.level === "1" ? 1 : 2 }).run();
     if (cmd === "bullet") chain.toggleBulletList().run();
     if (cmd === "ordered") chain.toggleOrderedList().run();
+    if (cmd === "quote") chain.toggleBlockquote().run();
+    if (cmd === "code") chain.toggleCodeBlock().run();
   });
+});
+
+interface PaletteItem {
+  kind: "command" | "document" | "issue" | "person";
+  id: string;
+  title: string;
+  subtitle: string;
+}
+
+function paletteItems(query: string): PaletteItem[] {
+  const needle = query.trim().toLowerCase();
+  const items: PaletteItem[] = [
+    { kind: "command", id: "mode:docs", title: "Open Docs", subtitle: "Pages" },
+    { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
+    { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
+    { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
+  ];
+  for (const doc of payload?.documents ?? []) items.push({ kind: "document", id: doc.id, title: doc.title, subtitle: "Page" });
+  for (const issue of payload?.issues ?? []) {
+    items.push({ kind: "issue", id: issue.id, title: `${issue.key} ${issue.summary}`, subtitle: issue.typeKey });
+  }
+  for (const person of payload?.principals ?? []) {
+    items.push({ kind: "person", id: person.id, title: person.name, subtitle: person.email ?? "Person" });
+  }
+  const filtered = needle
+    ? items.filter((item) => item.title.toLowerCase().includes(needle) || item.subtitle.toLowerCase().includes(needle))
+    : items;
+  return filtered.slice(0, 12);
+}
+
+function renderPalette(): void {
+  const items = paletteItems($<HTMLInputElement>("command-input").value);
+  paletteIndex = Math.min(paletteIndex, Math.max(0, items.length - 1));
+  $("command-list").innerHTML = items
+    .map(
+      (item, index) =>
+        `<button type="button" class="ew-palette-item${index === paletteIndex ? " is-active" : ""}" role="option" data-kind="${item.kind}" data-id="${escapeHtml(item.id)}">
+          <strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.subtitle)}</small>
+        </button>`,
+    )
+    .join("") || `<div class="ew-meta">No matches</div>`;
+}
+
+function openPalette(): void {
+  $("command-palette").hidden = false;
+  $<HTMLInputElement>("command-input").value = "";
+  paletteIndex = 0;
+  renderPalette();
+  hydrateIcons($("command-palette"));
+  $<HTMLInputElement>("command-input").focus();
+}
+
+function closePalette(): void {
+  $("command-palette").hidden = true;
+}
+
+function runPalette(kind: string, id: string): void {
+  closePalette();
+  if (id === "mode:docs") setMode("docs");
+  if (id === "mode:visuals") setMode("visuals");
+  if (id === "mode:work") setMode("work");
+  if (id === "create-page") void createPage();
+  if (kind === "document") {
+    setMode("docs");
+    openDocument(id);
+  }
+  if (kind === "issue") {
+    setMode("work");
+    void inspectIssue(id);
+  }
+}
+
+$("command-input").addEventListener("input", () => {
+  paletteIndex = 0;
+  renderPalette();
+});
+$("command-list").addEventListener("click", (event) => {
+  const item = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-kind][data-id]");
+  if (item?.dataset.kind && item.dataset.id) runPalette(item.dataset.kind, item.dataset.id);
+});
+$("command-palette").addEventListener("click", (event) => {
+  if (event.target === $("command-palette")) closePalette();
+});
+
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if ($("command-palette").hidden) openPalette();
+    else closePalette();
+    return;
+  }
+  if ($("command-palette").hidden) return;
+  const items = paletteItems($<HTMLInputElement>("command-input").value);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closePalette();
+  }
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    paletteIndex = Math.min(items.length - 1, paletteIndex + 1);
+    renderPalette();
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    paletteIndex = Math.max(0, paletteIndex - 1);
+    renderPalette();
+  }
+  if (event.key === "Enter") {
+    const item = items[paletteIndex];
+    if (item) {
+      event.preventDefault();
+      runPalette(item.kind, item.id);
+    }
+  }
+});
+
+$("board-filters").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-filter]");
+  if (!button?.dataset.filter) return;
+  boardFilter = button.dataset.filter === "mine" ? "mine" : "all";
+  renderBoard();
+});
+
+$("work-board").addEventListener("keydown", (event) => {
+  const input = event.target as HTMLInputElement;
+  if (event.key !== "Enter" || !input.classList.contains("ew-column-add")) return;
+  const summary = input.value.trim();
+  const status = input.dataset.status ?? "backlog";
+  const project = currentProject();
+  if (!summary || !project) return;
+  void (async () => {
+    const created = await api<{ id: string }>(`/v1/projects/${encodeURIComponent(project.id)}/issues`, {
+      method: "POST",
+      body: JSON.stringify({ summary, typeKey: "task" }),
+    });
+    await transitionIssueTo(created.id, "backlog", status);
+    await refreshWorkspace();
+    renderBoard();
+  })();
 });
 
 $("login-submit").addEventListener("click", () => {
@@ -1317,6 +1468,9 @@ Object.assign(window, {
     mode: () => mode,
     setMode,
     text: () => collab?.getText() ?? "",
+    html: () => collab?.editor()?.getHTML() ?? "",
+    openPalette,
+    applyBoardDrop,
   },
 });
 

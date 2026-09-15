@@ -81,7 +81,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
           <span>Search</span>
           <span class="ew-search-box">
             <span data-lucide="search"></span>
-            <input id="workspace-search" type="search" placeholder="Search" autocomplete="off" />
+            <input id="workspace-search" type="search" placeholder="Search pages and work" autocomplete="off" />
           </span>
         </label>
         <div class="ew-top-actions">
@@ -117,15 +117,18 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <button type="button" data-cmd="bold" aria-label="Bold"><span data-lucide="bold"></span></button>
               <button type="button" data-cmd="italic" aria-label="Italic"><span data-lucide="italic"></span></button>
               <button type="button" data-cmd="strike" aria-label="Strikethrough"><span data-lucide="strikethrough"></span></button>
+              <button type="button" data-cmd="underline" aria-label="Underline"><span data-lucide="underline"></span></button>
               <span class="ew-toolbar-sep" aria-hidden="true"></span>
               <button type="button" data-cmd="heading" data-level="1" aria-label="Heading 1"><span data-lucide="heading-1"></span></button>
               <button type="button" data-cmd="heading" data-level="2" aria-label="Heading 2"><span data-lucide="heading-2"></span></button>
               <button type="button" data-cmd="bullet" aria-label="Bullet list"><span data-lucide="list"></span></button>
               <button type="button" data-cmd="ordered" aria-label="Ordered list"><span data-lucide="list-ordered"></span></button>
+              <button type="button" data-cmd="quote" aria-label="Quote"><span data-lucide="quote"></span></button>
+              <button type="button" data-cmd="code" aria-label="Code block"><span data-lucide="code"></span></button>
               <span class="ew-toolbar-sep" aria-hidden="true"></span>
               <span id="collab-status" class="ew-chip">idle</span>
-              <label for="insert-image"><span data-lucide="image"></span> Insert image<input id="insert-image" type="file" accept="image/*" /></label>
-              <label for="insert-video"><span data-lucide="video"></span> Insert video<input id="insert-video" type="file" accept="video/*" /></label>
+              <label class="ew-file" for="insert-image"><span data-lucide="image"></span> Image<input id="insert-image" type="file" accept="image/*" /></label>
+              <label class="ew-file" for="insert-video"><span data-lucide="video"></span> Video<input id="insert-video" type="file" accept="video/*" /></label>
               <button id="doc-publish" type="button">Publish</button>
             </div>
             <article class="ew-paper">
@@ -170,8 +173,8 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                   <select id="arrow-to"></select>
                 </label>
                 <button type="button" id="add-arrow">Add arrow</button>
-                <label for="canvas-image">Canvas image<input id="canvas-image" type="file" accept="image/*" /></label>
-                <label for="canvas-video">Canvas video<input id="canvas-video" type="file" accept="video/*" /></label>
+                <label class="ew-file" for="canvas-image">Image<input id="canvas-image" type="file" accept="image/*" /></label>
+                <label class="ew-file" for="canvas-video">Video<input id="canvas-video" type="file" accept="video/*" /></label>
               </div>
             </div>
             <div id="visual-stage" class="ew-visual-stage"></div>
@@ -184,6 +187,10 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <label class="ew-jql" for="jql-input">JQL
                 <input id="jql-input" type="search" placeholder="status = in_progress AND assignee = currentUser()" autocomplete="off" />
               </label>
+              <div id="board-filters" class="ew-filters" role="group" aria-label="Board filters">
+                <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All issues</button>
+                <button type="button" id="filter-mine" data-filter="mine" aria-pressed="false">Assigned to me</button>
+              </div>
               <p id="jql-error" class="ew-error" role="alert"></p>
             </div>
             <div id="work-board" class="ew-board"></div>
@@ -202,6 +209,17 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
           <div id="inspector" class="ew-inspector-body"></div>
           <div id="visual-outline" class="ew-outline"></div>
         </aside>
+      </div>
+    </div>
+    <div id="command-palette" class="ew-palette" hidden>
+      <div class="ew-palette-card" role="dialog" aria-modal="true" aria-labelledby="command-heading">
+        <h2 id="command-heading" class="ew-sr">Command palette</h2>
+        <label class="ew-palette-search" for="command-input">
+          <span data-lucide="search"></span>
+          <input id="command-input" type="search" placeholder="Jump to a page, issue, person, or command" autocomplete="off" />
+        </label>
+        <div id="command-list" class="ew-palette-list" role="listbox"></div>
+        <p class="ew-palette-hint">↑↓ move · Enter open · Esc close · Ctrl/⌘K</p>
       </div>
     </div>
     <aside id="notify-drawer" class="ew-drawer" hidden>
@@ -275,7 +293,6 @@ The hosted workspace is the product surface: documents, canvases, and work share
 One login should take a team from a brief to a board without changing tools.
 ::
 
-{#p}
 Tiptap persists through Yjs only after the host acknowledges the update. Visual frames keep geometry. Issues inherit the same identity and grants.
 `,
   });

@@ -1,50 +1,66 @@
 import { autoUpdate, computePosition, flip, offset, shift, size } from "@floating-ui/dom";
-import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
-import { draggable, dropTargetForElements, monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import {
   Bell,
   Bold,
+  Bug,
+  Code,
+  Command,
   FileText,
+  Filter,
   Heading1,
   Heading2,
   Image,
   Import,
   Italic,
+  Link,
   List,
   ListOrdered,
   Moon,
   Plus,
   Presentation,
+  Quote,
   Search,
   Settings,
   SquareKanban,
   Strikethrough,
   Sun,
+  Underline,
+  User,
   Video,
   createElement,
   createIcons,
   type IconNode,
 } from "lucide";
+import Sortable from "sortablejs";
+import { statusPath } from "./status-path";
 
 const ICONS = {
   Bell,
   Bold,
+  Bug,
+  Code,
+  Command,
   FileText,
+  Filter,
   Heading1,
   Heading2,
   Image,
   Import,
   Italic,
+  Link,
   List,
   ListOrdered,
   Moon,
   Plus,
   Presentation,
+  Quote,
   Search,
   Settings,
   SquareKanban,
   Strikethrough,
   Sun,
+  Underline,
+  User,
   Video,
 } as const;
 
@@ -84,7 +100,7 @@ export function positionPopup(anchor: Element, floating: HTMLElement): () => voi
         size({
           apply({ rects, availableWidth }) {
             floating.style.width = `${Math.max(rects.reference.width, 320)}px`;
-            floating.style.maxWidth = `${Math.max(280, availableWidth)}px`;
+            floating.style.maxWidth = `${Math.min(640, Math.max(280, availableWidth))}px`;
           },
         }),
       ],
@@ -101,52 +117,40 @@ export interface BoardDrop {
   statusId: string;
 }
 
+export { statusPath };
+
 export function bindIssueBoard(board: HTMLElement, onDrop: (drop: BoardDrop) => void): () => void {
-  const cleanups: Array<() => void> = [];
-  for (const card of board.querySelectorAll<HTMLButtonElement>(".ew-card")) {
-    const issueId = card.dataset.issue ?? "";
-    cleanups.push(
-      draggable({
-        element: card,
-        getInitialData: () => ({ type: "issue-card", issueId }),
-        onDragStart: () => card.classList.add("is-dragging"),
-        onDrop: () => card.classList.remove("is-dragging"),
-      }),
-      dropTargetForElements({
-        element: card,
-        getData: () => ({ type: "issue-card", issueId }),
-        canDrop: ({ source }) => source.data.type === "issue-card" && source.data.issueId !== issueId,
+  const sortables: Sortable[] = [];
+  for (const list of board.querySelectorAll<HTMLElement>(".ew-column-list")) {
+    const column = list.closest<HTMLElement>(".ew-column");
+    sortables.push(
+      new Sortable(list, {
+        group: "noma-issues",
+        animation: 160,
+        ghostClass: "is-ghost",
+        chosenClass: "is-chosen",
+        dragClass: "is-dragging",
+        draggable: ".ew-card",
+        delay: 40,
+        delayOnTouchOnly: true,
+        onStart: () => board.classList.add("is-sorting"),
+        onEnd: (event) => {
+          board.classList.remove("is-sorting");
+          const card = event.item;
+          const issueId = card.dataset.issue ?? "";
+          const target = event.to.closest<HTMLElement>(".ew-column");
+          const next = card.nextElementSibling;
+          if (!issueId || !target) return;
+          onDrop({
+            issueId,
+            beforeId: next instanceof HTMLElement ? (next.dataset.issue ?? "") : "",
+            statusId: target.dataset.status ?? column?.dataset.status ?? "",
+          });
+        },
       }),
     );
   }
-  for (const column of board.querySelectorAll<HTMLElement>(".ew-column")) {
-    const statusId = column.dataset.status ?? "";
-    cleanups.push(
-      dropTargetForElements({
-        element: column,
-        getData: () => ({ type: "column", statusId }),
-        canDrop: ({ source }) => source.data.type === "issue-card",
-        onDragEnter: () => column.classList.add("is-drop"),
-        onDragLeave: () => column.classList.remove("is-drop"),
-        onDrop: () => column.classList.remove("is-drop"),
-      }),
-    );
-  }
-  cleanups.push(
-    monitorForElements({
-      canMonitor: ({ source }) => source.data.type === "issue-card",
-      onDrop: ({ source, location }) => {
-        const issueId = String(source.data.issueId ?? "");
-        const column = location.current.dropTargets.find((target) => target.data.type === "column");
-        const card = location.current.dropTargets.find((target) => target.data.type === "issue-card");
-        if (!issueId || !column) return;
-        onDrop({
-          issueId,
-          beforeId: String(card?.data.issueId ?? ""),
-          statusId: String(column.data.statusId ?? ""),
-        });
-      },
-    }),
-  );
-  return combine(...cleanups);
+  return () => {
+    for (const sortable of sortables) sortable.destroy();
+  };
 }
