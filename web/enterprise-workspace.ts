@@ -75,6 +75,12 @@ interface WorkspacePayload {
   issueTypes: Array<{ projectId: string; key: string; name: string; hierarchy: string }>;
 }
 
+interface ProjectReports {
+  throughput: Array<{ day: string; completed: number }>;
+  cycleTime: Array<{ issueId: string; hours: number; key: string; summary: string }>;
+  cumulativeFlow: Array<{ at: string; todo: number; in_progress: number; done: number }>;
+}
+
 interface ArtifactPayload {
   document: {
     id: string;
@@ -113,7 +119,7 @@ let epicFilter = "";
 let boardSearch = "";
 let typeFilter = "";
 let swimlanes = false;
-let boardView: "board" | "list" = "board";
+let boardView: "board" | "list" | "reports" = "board";
 let paletteIndex = 0;
 let mentionStop: (() => void) | undefined;
 let canvasHistory: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
@@ -121,6 +127,8 @@ let selectedCanvasId = "";
 let stickyColor: "yellow" | "pink" | "green" | "blue" = "yellow";
 let findMatches: Array<{ from: number; to: number }> = [];
 let findIndex = 0;
+let reportsToken = 0;
+let exportTarget: "svg" | "png" | "pptx" = "svg";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -277,6 +285,184 @@ function isOverdue(issue: ShellIssue): boolean {
   const today = new Date();
   const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   return due < iso;
+}
+
+function formatHours(hours: number): string {
+  if (!Number.isFinite(hours) || hours < 1 / 60) return "< 1m";
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+  if (hours < 24) return `${hours.toFixed(1)}h`;
+  return `${(hours / 24).toFixed(1)}d`;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const left = sorted[mid - 1] ?? sorted[mid] ?? 0;
+  const right = sorted[mid] ?? left;
+  return sorted.length % 2 === 0 ? (left + right) / 2 : right;
+}
+
+function sampleSeries<T>(points: T[], max = 36): T[] {
+  if (points.length <= max) return points;
+  const step = (points.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, index) => points[Math.round(index * step)]!).filter(Boolean);
+}
+
+function barChartSvg(points: Array<{ label: string; value: number }>, ariaLabel: string): string {
+  const width = 640;
+  const height = 220;
+  const pad = { l: 40, r: 12, t: 16, b: 40 };
+  const innerW = width - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+  const max = Math.max(1, ...points.map((point) => point.value));
+  const ticks = [0, 0.5, 1].map((frac) => {
+    const value = Math.round(max * frac);
+    const y = pad.t + innerH - (value / max) * innerH;
+    return `<line class="ew-chart-axis" x1="${pad.l}" x2="${width - pad.r}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" />
+      <text class="ew-chart-label" x="${pad.l - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${value}</text>`;
+  });
+  const bars =
+    points.length === 0
+      ? `<text class="ew-chart-label" x="${width / 2}" y="${pad.t + innerH / 2}" text-anchor="middle">No completions yet</text>`
+      : points
+          .map((point, index) => {
+            const slot = innerW / points.length;
+            const barW = slot * 0.62;
+            const x = pad.l + index * slot + (slot - barW) / 2;
+            const h = Math.max(2, (point.value / max) * innerH);
+            const y = pad.t + innerH - h;
+            const caption = point.label.length > 10 ? point.label.slice(5) : point.label;
+            return `<rect class="ew-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3">
+              <title>${escapeHtml(point.label)}: ${point.value} completed</title>
+            </rect>
+            <text class="ew-chart-label" x="${(x + barW / 2).toFixed(1)}" y="${height - 14}" text-anchor="middle">${escapeHtml(caption)}</text>`;
+          })
+          .join("");
+  return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">${ticks.join("")}${bars}</svg>`;
+}
+
+function stackedAreaSvg(
+  points: Array<{ at: string; todo: number; in_progress: number; done: number }>,
+  ariaLabel: string,
+): string {
+  const sampled = sampleSeries(points, 40);
+  const width = 640;
+  const height = 240;
+  const pad = { l: 40, r: 12, t: 16, b: 36 };
+  const innerW = width - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+  if (sampled.length === 0) {
+    return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+      <text class="ew-chart-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No workflow events yet</text>
+    </svg>`;
+  }
+  const max = Math.max(1, ...sampled.map((point) => point.todo + point.in_progress + point.done));
+  const last = sampled.length - 1;
+  const xAt = (index: number) => pad.l + (last === 0 ? innerW / 2 : (index / last) * innerW);
+  const yAt = (value: number) => pad.t + innerH - (value / max) * innerH;
+  const area = (values: number[], className: string) => {
+    const top = values.map((value, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(value).toFixed(1)}`).join(" ");
+    return `<path class="${className}" d="${top} L${xAt(last).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z" />`;
+  };
+  const totals = sampled.map((point) => point.todo + point.in_progress + point.done);
+  const progress = sampled.map((point) => point.done + point.in_progress);
+  const done = sampled.map((point) => point.done);
+  const firstLabel = sampled[0]?.at.slice(0, 10) ?? "";
+  const lastLabel = sampled[last]?.at.slice(0, 10) ?? "";
+  return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+    ${area(totals, "ew-area-todo")}
+    ${area(progress, "ew-area-progress")}
+    ${area(done, "ew-area-done")}
+    <text class="ew-chart-label" x="${pad.l}" y="${height - 12}">${escapeHtml(firstLabel)}</text>
+    <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml(lastLabel)}</text>
+  </svg>`;
+}
+
+function reportKpis(reports: ProjectReports): { completed: number; medianCycle: string; inProgress: number } {
+  const completed = reports.throughput.reduce((sum, point) => sum + point.completed, 0);
+  const last = reports.cumulativeFlow[reports.cumulativeFlow.length - 1];
+  return {
+    completed,
+    medianCycle: reports.cycleTime.length ? formatHours(median(reports.cycleTime.map((row) => row.hours))) : "—",
+    inProgress: last?.in_progress ?? 0,
+  };
+}
+
+function renderReportsMarkup(reports: ProjectReports): string {
+  const kpis = reportKpis(reports);
+  const cycleRows =
+    reports.cycleTime.length === 0
+      ? `<p class="ew-meta">No completed issues yet.</p>`
+      : reports.cycleTime
+          .slice()
+          .sort((a, b) => b.hours - a.hours)
+          .map(
+            (row) =>
+              `<button type="button" class="ew-cycle-row" data-issue="${escapeHtml(row.issueId)}">
+                <span class="ew-key">${escapeHtml(row.key)}</span>
+                <strong>${escapeHtml(row.summary)}</strong>
+                <span class="ew-cycle-hours">${escapeHtml(formatHours(row.hours))}</span>
+              </button>`,
+          )
+          .join("");
+  return `<div id="work-reports" class="ew-reports">
+    <div id="report-kpis" class="ew-report-kpis">
+      <div class="ew-kpi"><strong>${kpis.completed}</strong><span>Completed</span></div>
+      <div class="ew-kpi"><strong>${escapeHtml(kpis.medianCycle)}</strong><span>Median cycle</span></div>
+      <div class="ew-kpi"><strong>${kpis.inProgress}</strong><span>In progress</span></div>
+    </div>
+    <article id="report-throughput" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Throughput</h2>
+      <p class="ew-report-lead">Issues moved to Done each day.</p>
+      ${barChartSvg(
+        reports.throughput.map((point) => ({ label: point.day, value: point.completed })),
+        "Throughput completed per day",
+      )}
+    </article>
+    <article id="report-cycle" class="ew-report">
+      <h2>${iconSvg("ChartColumnStacked")} Cycle time</h2>
+      <p class="ew-report-lead">Created to Done for each completed issue.</p>
+      <div class="ew-cycle-list">${cycleRows}</div>
+    </article>
+    <article id="report-cfd" class="ew-report">
+      <h2>${iconSvg("ChartColumnStacked")} Cumulative flow</h2>
+      <p class="ew-report-lead">To do, in progress, and done over the project timeline.</p>
+      ${stackedAreaSvg(reports.cumulativeFlow, "Cumulative flow of to do, in progress, and done issues")}
+      <ul class="ew-legend" aria-hidden="true">
+        <li><span class="ew-swatch-todo"></span> To do</li>
+        <li><span class="ew-swatch-progress"></span> In progress</li>
+        <li><span class="ew-swatch-done"></span> Done</li>
+      </ul>
+    </article>
+  </div>`;
+}
+
+async function loadProjectReports(): Promise<void> {
+  const project = currentProject();
+  if (!project || boardView !== "reports") return;
+  const token = ++reportsToken;
+  const board = $("work-board");
+  board.innerHTML = `<p class="ew-meta">Loading reports…</p>`;
+  try {
+    const reports = await api<ProjectReports>(`/v1/projects/${encodeURIComponent(project.id)}/reports`);
+    if (token !== reportsToken || boardView !== "reports") return;
+    board.innerHTML = renderReportsMarkup(reports);
+    hydrateIcons(board);
+    document.querySelector(".ew-body")?.classList.remove("is-issue");
+    $("inspector-title").textContent = "Reports";
+    const kpis = reportKpis(reports);
+    inspector.innerHTML = `<div class="ew-meta">
+        <strong>${escapeHtml(project.key)} reports</strong>
+        <span>${kpis.completed} completed</span>
+        <span>Median cycle ${escapeHtml(kpis.medianCycle)}</span>
+        <span>${kpis.inProgress} in progress</span>
+      </div>
+      <p class="ew-report-lead">Throughput, cycle time, and cumulative flow come from issue events. Filters on the board do not change these charts.</p>`;
+  } catch (error) {
+    if (token !== reportsToken || boardView !== "reports") return;
+    board.innerHTML = `<p class="ew-error" role="alert">${escapeHtml(error instanceof Error ? error.message : "Could not load reports")}</p>`;
+  }
 }
 
 function stickyAlt(color: string): string {
@@ -833,6 +1019,7 @@ function renderBoard(): void {
   $("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
   $("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
   $("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
+  $("view-reports")?.setAttribute("aria-pressed", String(boardView === "reports"));
   const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
   $("type-filters").innerHTML = [
     `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
@@ -912,6 +1099,14 @@ function renderBoard(): void {
   const board = $("work-board");
   board.classList.toggle("has-swimlanes", swimlanes && boardView === "board");
   board.classList.toggle("is-list", boardView === "list");
+  board.classList.toggle("is-reports", boardView === "reports");
+  if (boardView === "reports") {
+    boardDndStop?.();
+    boardDndStop = undefined;
+    void loadProjectReports();
+    renderRail();
+    return;
+  }
   if (boardView === "list") {
     const statusName = (id: string) => columns.find((status) => status.id === id)?.name ?? id;
     board.innerHTML = `<div class="ew-issue-table" role="table" aria-label="Issue list">
@@ -1341,6 +1536,18 @@ inspector.addEventListener("click", async (event) => {
       renderBoard();
       return;
     }
+    if (button.id === "export-svg") {
+      await showCanvasExport("svg");
+      return;
+    }
+    if (button.id === "export-png") {
+      await showCanvasExport("png");
+      return;
+    }
+    if (button.id === "export-pptx") {
+      await showCanvasExport("pptx");
+      return;
+    }
     if (button.dataset.toc) {
       const heading = [...editorMount.querySelectorAll("h1, h2, h3")].find((node) => node.textContent?.trim() === button.dataset.toc);
       heading?.scrollIntoView({ block: "center" });
@@ -1630,6 +1837,30 @@ $("insert-video").addEventListener("change", async (event) => {
   (event.target as HTMLInputElement).value = "";
 });
 
+async function showCanvasExport(target: "svg" | "png" | "pptx" = exportTarget): Promise<void> {
+  if (!selectedArtifactId) return;
+  exportTarget = target;
+  const report = await api<{
+    supported: string[];
+    unsupported: string[];
+    completeOfficeFidelity: boolean;
+  }>(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/export?target=${encodeURIComponent(target)}`);
+  $("inspector-title").textContent = "Export";
+  inspector.innerHTML = `<div id="canvas-export-report" class="ew-export">
+    <p class="ew-kicker">${escapeHtml(target.toUpperCase())} fidelity</p>
+    <strong>Supported frames</strong>
+    <ul class="ew-export-list">${report.supported.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>None</li>"}</ul>
+    <strong>Gaps</strong>
+    <ul class="ew-export-list">${report.unsupported.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>No extra gaps for this target</li>"}</ul>
+    <p class="ew-export-note">${report.completeOfficeFidelity ? "Complete Office fidelity" : "Office theme mapping is not complete. SVG and PNG keep PaperDOM geometry."}</p>
+    <div class="ew-actions">
+      <button type="button" id="export-svg" aria-pressed="${String(target === "svg")}">SVG</button>
+      <button type="button" id="export-png" aria-pressed="${String(target === "png")}">PNG</button>
+      <button type="button" id="export-pptx" aria-pressed="${String(target === "pptx")}">PPTX</button>
+    </div>
+  </div>`;
+}
+
 async function restackCanvas(direction: "front" | "back"): Promise<void> {
   if (!selectedArtifactId || !selectedCanvasId) return;
   const data = await api<ArtifactPayload>(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}`);
@@ -1732,6 +1963,10 @@ $("visual-toolbar").addEventListener("click", (event) => {
   }
   if (button.id === "canvas-back") {
     void restackCanvas("back");
+    return;
+  }
+  if (button.id === "canvas-export") {
+    void showCanvasExport(exportTarget);
     return;
   }
   if (button.dataset.tool) {
@@ -1987,6 +2222,7 @@ function paletteItems(query: string): PaletteItem[] {
     { kind: "command", id: "mode:docs", title: "Open Docs", subtitle: "Pages" },
     { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
     { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
+    { kind: "command", id: "mode:reports", title: "Open reports", subtitle: "Work" },
     { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
     { kind: "command", id: "find", title: "Find in page", subtitle: "Docs" },
   ];
@@ -2034,6 +2270,11 @@ function runPalette(kind: string, id: string): void {
   if (id === "mode:docs") setMode("docs");
   if (id === "mode:visuals") setMode("visuals");
   if (id === "mode:work") setMode("work");
+  if (id === "mode:reports") {
+    setMode("work");
+    boardView = "reports";
+    renderBoard();
+  }
   if (id === "create-page") void createPage();
   if (id === "find") {
     setMode("docs");
@@ -2130,10 +2371,17 @@ $("board-filters").addEventListener("click", (event) => {
   if (button.id === "view-list") {
     boardView = "list";
     renderBoard();
+    if (selectedIssueId) void inspectIssue(selectedIssueId);
     return;
   }
   if (button.id === "view-board") {
     boardView = "board";
+    renderBoard();
+    if (selectedIssueId) void inspectIssue(selectedIssueId);
+    return;
+  }
+  if (button.id === "view-reports") {
+    boardView = "reports";
     renderBoard();
     return;
   }
@@ -2207,6 +2455,7 @@ Object.assign(window, {
     selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
     findInPage: (query: string) => runPageFind(query),
     counts: () => collab?.counts() ?? { words: 0, characters: 0 },
+    boardView: () => boardView,
     undoCanvas,
     deleteCanvas: deleteCanvasSelection,
     openPalette,

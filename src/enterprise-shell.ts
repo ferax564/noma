@@ -198,6 +198,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="canvas-delete" aria-label="Delete selected frame"><span data-lucide="trash-2"></span> Delete</button>
                 <button type="button" id="canvas-front" aria-label="Bring selected frame to front">Front</button>
                 <button type="button" id="canvas-back" aria-label="Send selected frame to back">Back</button>
+                <button type="button" id="canvas-export" aria-label="Export fidelity report"><span data-lucide="download"></span> Export</button>
                 <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
                 <span id="zoom-label">100%</span>
@@ -245,6 +246,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="swimlane-epic" aria-pressed="false">Group by epic</button>
                 <button type="button" id="view-board" aria-pressed="true">Board</button>
                 <button type="button" id="view-list" aria-pressed="false">List</button>
+                <button type="button" id="view-reports" aria-pressed="false"><span data-lucide="chart-column"></span> Reports</button>
               </div>
               <div id="type-filters" class="ew-filters" role="group" aria-label="Issue types"></div>
               <p id="jql-error" class="ew-error" role="alert"></p>

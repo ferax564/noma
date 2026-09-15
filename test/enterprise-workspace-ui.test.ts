@@ -154,6 +154,7 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#canvas-delete");
   await page.waitForSelector("#canvas-front");
   await page.waitForSelector("#canvas-back");
+  await page.waitForSelector("#canvas-export");
   await page.waitForSelector(".pd-el-sticky");
   await page.waitForSelector(".pd-el-comment");
   await page.waitForSelector(".pd-resize");
@@ -161,6 +162,12 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   assert.match(await text(page, "#visual-stage"), /Atlas architecture/);
   assert.match(await text(page, "#visual-stage"), /Call this out in review/);
   assert.match(await text(page, "#visual-outline"), /Atlas architecture/);
+  await page.locator("#canvas-export").click();
+  await page.waitForSelector("#canvas-export-report");
+  assert.match(await text(page, "#canvas-export-report"), /text|shape|svg|fidelity/i);
+  await page.waitForSelector("#export-svg");
+  await page.waitForSelector("#export-png");
+  await page.waitForSelector("#export-pptx");
   const movedFrame = await page.evaluate(() => {
     const card = document.querySelector<HTMLElement>(".pd-el:not(.pd-el-arrow)");
     if (!card) return false;
@@ -179,6 +186,7 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#type-filters");
   await page.waitForSelector("#swimlane-epic");
   await page.waitForSelector("#view-list");
+  await page.waitForSelector("#view-reports");
   assert.match(await text(page, "#work-board"), /ATLAS-/);
   assert.match(await text(page, "#work-board"), /2026-09-22/);
   assert.match(await text(page, "#work-board"), /urgent|canvas/);
@@ -232,6 +240,15 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.locator("#view-list").click();
   await page.waitForSelector(".ew-issue-table");
   assert.match(await text(page, "#work-board"), /ATLAS-3/);
+  await page.locator("#view-reports").click();
+  await page.waitForSelector("#report-throughput");
+  await page.waitForSelector("#report-cycle");
+  await page.waitForSelector("#report-cfd");
+  assert.match(await text(page, "#report-throughput"), /Throughput/);
+  assert.match(await text(page, "#report-cycle"), /ATLAS-/);
+  assert.match(await text(page, "#report-cfd"), /Cumulative flow|To do|Done/);
+  await page.locator("#view-board").click();
+  await page.waitForSelector(".ew-card");
   await page.waitForSelector("#advance-issue");
   assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 

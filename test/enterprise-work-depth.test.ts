@@ -44,6 +44,9 @@ test("work reports derive throughput, cycle time, and CFD from events", () => {
   assert.ok(flow[flow.length - 1]!.done >= 1);
   assert.ok(ws.throughput(alice, projectId).some((point) => point.completed >= 1));
   assert.ok(ws.cycleTime(alice, projectId).some((row) => row.issueId === one.id && row.hours >= 0));
+  const reports = ws.projectReports(alice, projectId);
+  assert.ok(reports.cycleTime.some((row) => row.issueId === one.id && row.key.startsWith("ENG-")));
+  assert.ok(reports.cumulativeFlow.length >= 1);
   ws.close();
 });
 

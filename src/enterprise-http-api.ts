@@ -167,6 +167,14 @@ export async function dispatchEnterpriseApi(
   }
 
   const artifactMatch = path.match(/^\/v1\/artifacts\/([^/]+)(?:\/(elements))?$/);
+  const artifactExport = path.match(/^\/v1\/artifacts\/([^/]+)\/export$/);
+  if (artifactExport && method === "GET") {
+    const requested = url.searchParams.get("target") ?? "svg";
+    const target = requested === "pptx" || requested === "png" ? requested : "svg";
+    send(res, 200, ws.artifactExportReport(actor, decodeURIComponent(artifactExport[1]!), target));
+    return true;
+  }
+
   if (artifactMatch && method === "GET" && !artifactMatch[2]) {
     const artifactId = decodeURIComponent(artifactMatch[1]!);
     const read = ws.readArtifact(actor, artifactId, "draft");
@@ -331,6 +339,12 @@ export async function dispatchEnterpriseApi(
       });
       return true;
     }
+  }
+
+  const projectReports = path.match(/^\/v1\/projects\/([^/]+)\/reports$/);
+  if (projectReports && method === "GET") {
+    send(res, 200, ws.projectReports(actor, decodeURIComponent(projectReports[1]!)));
+    return true;
   }
 
   const projectIssues = path.match(/^\/v1\/projects\/([^/]+)\/issues$/);

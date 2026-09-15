@@ -281,6 +281,20 @@ test("HTTP productizes docs, work, admin, import loss report, and notifications"
     assert.ok(arrow.id);
     const marked = await fetch(`${origin}/v1/artifacts/${board.id}`, { headers: auth }).then((res) => res.json()) as { html: string };
     assert.match(marked.html, /pd-el-arrow/);
+    const exportReport = await fetch(`${origin}/v1/artifacts/${board.id}/export?target=svg`, { headers: auth }).then((res) => res.json()) as {
+      supported: string[];
+      completeOfficeFidelity: boolean;
+    };
+    assert.ok(exportReport.supported.includes("shape"));
+    assert.equal(exportReport.completeOfficeFidelity, false);
+    const reports = await fetch(`${origin}/v1/projects/${fixture.projectId}/reports`, { headers: auth }).then((res) => res.json()) as {
+      throughput: Array<{ completed: number }>;
+      cycleTime: Array<{ key: string }>;
+      cumulativeFlow: unknown[];
+    };
+    assert.ok(reports.throughput.some((point) => point.completed >= 1));
+    assert.ok(reports.cycleTime.some((row) => row.key.startsWith("ATLAS-")));
+    assert.ok(reports.cumulativeFlow.length >= 1);
   } finally {
     await server.close();
     ws.close();

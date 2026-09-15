@@ -2077,6 +2077,26 @@ export class EnterpriseWorkspace {
     return cumulativeFlowFromEvents(this.projectIssueEvents(projectId));
   }
 
+  projectReports(actor: ActorContext, projectId: string) {
+    this.requireRole(actor, "project", projectId, "viewer");
+    const events = this.projectIssueEvents(projectId);
+    const issues = this.store.db.prepare("SELECT id, key, summary FROM issues WHERE project_id = ? AND tenant_id = ?").all(projectId, actor.tenantId) as Array<{
+      id: string;
+      key: string;
+      summary: string;
+    }>;
+    const byId = new Map(issues.map((issue) => [issue.id, issue]));
+    return {
+      throughput: throughputFromEvents(events),
+      cycleTime: cycleTimeFromEvents(events).map((row) => ({
+        ...row,
+        key: byId.get(row.issueId)?.key ?? row.issueId,
+        summary: byId.get(row.issueId)?.summary ?? "",
+      })),
+      cumulativeFlow: cumulativeFlowFromEvents(events),
+    };
+  }
+
   bulkEditPreview(
     actor: ActorContext,
     issueIds: string[],
