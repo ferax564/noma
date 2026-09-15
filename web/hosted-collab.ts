@@ -1,4 +1,5 @@
 import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
 import Highlight from "@tiptap/extension-highlight";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
@@ -14,6 +15,7 @@ import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import { Editor } from "@tiptap/core";
 import * as Y from "yjs";
+import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from "y-protocols/awareness";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { NomaPanel } from "./noma-panel";
 import { iconSvg, type IconName } from "./ui-kit";
@@ -189,6 +191,70 @@ function bindSlashMenu(editor: Editor): () => void {
   };
 }
 
+function bindFormatBubble(editor: Editor): () => void {
+  const bar = document.createElement("div");
+  bar.className = "ew-bubble";
+  bar.hidden = true;
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", "Selection formatting");
+  bar.innerHTML = [
+    ["bold", "Bold", "Bold"],
+    ["italic", "Italic", "Italic"],
+    ["underline", "Underline", "Underline"],
+    ["highlight", "Highlight", "Highlighter"],
+  ]
+    .map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon as IconName)}</button>`)
+    .join("");
+  document.body.appendChild(bar);
+
+  const hide = (): void => {
+    bar.hidden = true;
+  };
+
+  const place = (): void => {
+    const { empty, from } = editor.state.selection;
+    if (empty || !editor.isFocused) {
+      hide();
+      return;
+    }
+    bar.hidden = false;
+    const coords = editor.view.coordsAtPos(from);
+    const anchor = document.createElement("div");
+    anchor.style.position = "fixed";
+    anchor.style.left = `${coords.left}px`;
+    anchor.style.top = `${coords.top}px`;
+    anchor.style.width = "1px";
+    anchor.style.height = "1px";
+    document.body.appendChild(anchor);
+    void computePosition(anchor, bar, {
+      placement: "top",
+      middleware: [offset(8), flip(), shift({ padding: 8 })],
+    }).then(({ x, y }) => {
+      bar.style.left = `${x}px`;
+      bar.style.top = `${y}px`;
+      anchor.remove();
+    });
+  };
+
+  bar.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    const cmd = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-bubble]")?.dataset.bubble;
+    if (cmd === "bold") editor.chain().focus().toggleBold().run();
+    if (cmd === "italic") editor.chain().focus().toggleItalic().run();
+    if (cmd === "underline") editor.chain().focus().toggleUnderline().run();
+    if (cmd === "highlight") editor.chain().focus().toggleHighlight().run();
+    place();
+  });
+
+  editor.on("selectionUpdate", place);
+  editor.on("blur", hide);
+  return () => {
+    editor.off("selectionUpdate", place);
+    editor.off("blur", hide);
+    bar.remove();
+  };
+}
+
 export function mountHostedCollab(options: {
   element: HTMLElement;
   token: string;
@@ -196,8 +262,11 @@ export function mountHostedCollab(options: {
   user?: PresenceUser;
   onStatus?: (text: string) => void;
   onPresence?: (users: PresenceUser[]) => void;
+  onUpdate?: () => void;
 }): HostedCollab {
   const ydoc = new Y.Doc();
+  const awareness = new Awareness(ydoc);
+  if (options.user) awareness.setLocalStateField("user", { name: options.user.name, color: options.user.color });
   let editor: Editor | undefined;
   let socket: WebSocket | undefined;
   let ready = false;
@@ -205,6 +274,7 @@ export function mountHostedCollab(options: {
   let reconnectTimer: number | undefined;
   let closed = false;
   let stopSlash: (() => void) | undefined;
+  let stopBubble: (() => void) | undefined;
 
   const setStatus = (text: string): void => {
     options.onStatus?.(text);
@@ -217,6 +287,16 @@ export function mountHostedCollab(options: {
   };
 
   const b64ToBytes = (value: string): Uint8Array => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+
+  const sendAwareness = (): void => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: "awareness", update: bytesToB64(encodeAwarenessUpdate(awareness, [awareness.clientID])) }));
+  };
+
+  awareness.on("update", (_changes: unknown, origin: unknown) => {
+    if (origin === "remote") return;
+    sendAwareness();
+  });
 
   const sendUpdate = (update: Uint8Array): void => {
     if (!socket || socket.readyState !== WebSocket.OPEN || !ready) return;
@@ -248,9 +328,15 @@ export function mountHostedCollab(options: {
         Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
         Image.configure({ inline: false, allowBase64: false }),
         Collaboration.configure({ document: ydoc, field: "default" }),
+        CollaborationCursor.configure({
+          provider: { awareness },
+          user: options.user ? { name: options.user.name, color: options.user.color } : { name: "Guest", color: "#0C66E4" },
+        }),
       ],
     });
     stopSlash = bindSlashMenu(editor);
+    stopBubble = bindFormatBubble(editor);
+    editor.on("update", () => options.onUpdate?.());
   };
 
   const connect = (): void => {
@@ -266,12 +352,14 @@ export function mountHostedCollab(options: {
         ready = true;
         ensureEditor();
         setStatus(message.type === "init" ? "ready" : `acks:${acks}`);
-        if (message.type === "init" && options.user && socket?.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "presence", user: options.user }));
+        if (message.type === "init" && socket?.readyState === WebSocket.OPEN) {
+          if (options.user) socket.send(JSON.stringify({ type: "presence", user: options.user }));
+          sendAwareness();
         }
         if (message.users) options.onPresence?.(message.users);
       }
       if (message.type === "presence" && message.users) options.onPresence?.(message.users);
+      if (message.type === "awareness" && message.update) applyAwarenessUpdate(awareness, b64ToBytes(message.update), "remote");
       if (message.type === "ack") {
         acks += 1;
         setStatus(`acks:${acks}`);
@@ -296,10 +384,14 @@ export function mountHostedCollab(options: {
     destroy: () => {
       closed = true;
       stopSlash?.();
+      stopBubble?.();
+      removeAwarenessStates(awareness, [awareness.clientID], "local");
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       socket?.close();
       editor?.destroy();
+      if (typeof awareness.destroy === "function") awareness.destroy();
       ydoc.destroy();
     },
   };
 }
+

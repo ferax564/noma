@@ -136,6 +136,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <button id="doc-publish" type="button">Publish</button>
             </div>
             <article class="ew-paper">
+              <div id="doc-cover" class="ew-cover" hidden></div>
               <nav id="doc-crumbs" class="ew-crumbs" aria-label="Breadcrumb"></nav>
               <div class="ew-title-row">
                 <span class="ew-page-icon" data-lucide="file-text"></span>
@@ -171,6 +172,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="tool-select" data-tool="select" aria-pressed="true">Select</button>
                 <button type="button" id="tool-pan" data-tool="pan" aria-pressed="false">Pan</button>
                 <button type="button" id="tool-sticky" data-tool="sticky" aria-pressed="false">Sticky</button>
+                <button type="button" id="tool-connect" data-tool="connect" aria-pressed="false">Connect</button>
                 <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
                 <span id="zoom-label">100%</span>
@@ -207,6 +209,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <div id="board-filters" class="ew-filters" role="group" aria-label="Board filters">
                 <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All issues</button>
                 <button type="button" id="filter-mine" data-filter="mine" aria-pressed="false">Assigned to me</button>
+                <button type="button" id="swimlane-epic" aria-pressed="false">Group by epic</button>
               </div>
               <div id="type-filters" class="ew-filters" role="group" aria-label="Issue types"></div>
               <p id="jql-error" class="ew-error" role="alert"></p>
@@ -460,6 +463,8 @@ Tiptap persists through Yjs only after the host acknowledges the update. Visual 
   ws.startSprint(actor, sprintId);
   ws.setIssueSprint(actor, collab.id, sprintId);
   ws.setIssueSprint(actor, canvas.id, sprintId);
+  ws.updateIssue(actor, canvas.id, { dueAt: "2026-09-22", priority: "high" });
+  ws.updateIssue(actor, epic.id, { dueAt: "2026-09-30" });
   ws.addIssueComment(actor, collab.id, "Hosted collab is on the sprint.");
   ws.logWork(actor, { issueId: collab.id, durationSeconds: 3600, note: "Wired persist-before-ack" });
   ws.addExternalLink(actor, {

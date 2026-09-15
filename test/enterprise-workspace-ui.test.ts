@@ -93,6 +93,11 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.keyboard.press("Escape");
   await page.waitForSelector(".ew-slash[hidden]");
   await page.keyboard.down("Control");
+  await page.keyboard.press("KeyA");
+  await page.keyboard.up("Control");
+  await page.waitForSelector(".ew-bubble:not([hidden])");
+  await page.keyboard.press("Escape");
+  await page.keyboard.down("Control");
   await page.keyboard.press("KeyK");
   await page.keyboard.up("Control");
   await page.waitForSelector("#command-palette:not([hidden])");
@@ -106,6 +111,8 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#doc-media img");
   await page.waitForSelector("#inspector .ew-link");
   assert.match(await text(page, "#inspector"), /github/i);
+  await page.waitForSelector("#page-toc");
+  await page.waitForSelector("#doc-cover:not([hidden]) img");
   assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 
   await page.locator("#mode-visuals").click();
@@ -113,6 +120,8 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector(".pd-el");
   await page.waitForSelector(".pd-el-arrow");
   await page.waitForSelector("#tool-sticky");
+  await page.waitForSelector("#tool-connect");
+  await page.waitForSelector(".pd-resize");
   assert.match(await text(page, "#visual-title"), /Atlas architecture/);
   assert.match(await text(page, "#visual-stage"), /Atlas architecture/);
   assert.match(await text(page, "#visual-outline"), /Atlas architecture/);
@@ -132,7 +141,9 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector(".ew-card");
   await page.waitForSelector("#board-search");
   await page.waitForSelector("#type-filters");
+  await page.waitForSelector("#swimlane-epic");
   assert.match(await text(page, "#work-board"), /ATLAS-/);
+  assert.match(await text(page, "#work-board"), /2026-09-22/);
   await page.waitForSelector("#board-filters");
   const movedByPointer = await page.evaluate(async () => {
     const card = document.querySelector<HTMLElement>('.ew-card[data-type="story"]');
@@ -158,6 +169,12 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
     const current = document.querySelector(".ew-issue-kicker")?.textContent ?? "";
     return current.length > 0 && current !== previous;
   }, undefined, before);
+  await page.waitForSelector("#issue-due");
+  await page.locator("#swimlane-epic").click();
+  await page.waitForSelector(".ew-swimlane");
+  assert.match(await text(page, "#work-board"), /Ship the product shell/);
+  await page.waitForSelector("#advance-issue");
+  assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 
   await page.locator("#workspace-search").fill("strategy");
   await page.waitForSelector("#search-results .ew-hit");

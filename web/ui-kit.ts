@@ -236,12 +236,15 @@ export interface VisualMove {
   id: string;
   x: number;
   y: number;
+  width?: number;
+  height?: number;
 }
 
 export interface VisualStageHandlers {
   onMove: (move: VisualMove) => void;
   onEdit?: (id: string, text: string) => void;
   onPlaceSticky?: (x: number, y: number) => void;
+  onConnect?: (fromId: string, toId: string) => void;
 }
 
 function pageScale(page: HTMLElement): number {
@@ -260,8 +263,24 @@ export function setCanvasZoom(stage: HTMLElement, zoom: number): void {
   if (label) label.textContent = `${Math.round(next * 100)}%`;
 }
 
+export function syncCanvasArrows(stage: HTMLElement): void {
+  for (const arrow of stage.querySelectorAll<HTMLElement>(".pd-el-arrow")) {
+    const from = stage.querySelector<HTMLElement>(`.pd-el[data-id="${CSS.escape(arrow.dataset.from ?? "")}"]`);
+    const to = stage.querySelector<HTMLElement>(`.pd-el[data-id="${CSS.escape(arrow.dataset.to ?? "")}"]`);
+    const line = arrow.querySelector("line");
+    if (!from || !to || !line) continue;
+    const ax = Number.parseFloat(arrow.style.left) || 0;
+    const ay = Number.parseFloat(arrow.style.top) || 0;
+    line.setAttribute("x1", String((Number.parseFloat(from.style.left) || 0) + from.offsetWidth / 2 - ax));
+    line.setAttribute("y1", String((Number.parseFloat(from.style.top) || 0) + from.offsetHeight / 2 - ay));
+    line.setAttribute("x2", String((Number.parseFloat(to.style.left) || 0) + to.offsetWidth / 2 - ax));
+    line.setAttribute("y2", String((Number.parseFloat(to.style.top) || 0) + to.offsetHeight / 2 - ay));
+  }
+}
+
 export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandlers): () => void {
   let dragging = false;
+  let connectFrom = "";
 
   const onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
@@ -275,6 +294,20 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
     if (tool === "sticky") {
       const box = page.getBoundingClientRect();
       handlers.onPlaceSticky?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
+      return;
+    }
+
+    if (tool === "connect") {
+      const card = target.closest<HTMLElement>(".pd-el");
+      if (!card || card.classList.contains("pd-el-arrow") || !card.dataset.id) return;
+      if (!connectFrom || connectFrom === card.dataset.id) {
+        connectFrom = card.dataset.id;
+        for (const node of stage.querySelectorAll(".pd-el")) node.classList.toggle("is-connect", node === card);
+        return;
+      }
+      handlers.onConnect?.(connectFrom, card.dataset.id);
+      connectFrom = "";
+      for (const node of stage.querySelectorAll(".pd-el")) node.classList.remove("is-connect");
       return;
     }
 
@@ -298,6 +331,7 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
       return;
     }
 
+    const resizing = target.closest(".pd-resize");
     const card = target.closest<HTMLElement>(".pd-el");
     if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) return;
     const id = card.dataset.id ?? "";
@@ -306,6 +340,8 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
     const startY = event.clientY;
     const originLeft = Number.parseFloat(card.style.left) || 0;
     const originTop = Number.parseFloat(card.style.top) || 0;
+    const originWidth = card.offsetWidth;
+    const originHeight = card.offsetHeight;
     dragging = false;
 
     const onMove = (move: PointerEvent): void => {
@@ -314,8 +350,14 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
       if (!dragging && dx * dx + dy * dy < 36) return;
       dragging = true;
       card.classList.add("is-dragging");
-      card.style.left = `${originLeft + dx / scale}px`;
-      card.style.top = `${originTop + dy / scale}px`;
+      if (resizing) {
+        card.style.width = `${Math.max(80, originWidth + dx / scale)}px`;
+        card.style.height = `${Math.max(48, originHeight + dy / scale)}px`;
+      } else {
+        card.style.left = `${originLeft + dx / scale}px`;
+        card.style.top = `${originTop + dy / scale}px`;
+      }
+      syncCanvasArrows(stage);
     };
     const onUp = (): void => {
       window.removeEventListener("pointermove", onMove);
@@ -326,6 +368,8 @@ export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandler
         id,
         x: Number.parseFloat(card.style.left) || originLeft,
         y: Number.parseFloat(card.style.top) || originTop,
+        width: card.offsetWidth,
+        height: card.offsetHeight,
       });
     };
     window.addEventListener("pointermove", onMove);

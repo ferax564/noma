@@ -878,6 +878,7 @@ export class EnterpriseWorkspace {
       rank: string;
       sprintId: string | null;
       priority: string;
+      dueAt: string | null;
     }>;
     principals: Array<{ id: string; name: string; kind: PrincipalKind; email: string | null }>;
     boards: Array<{ id: string; projectId: string; name: string; kind: string }>;
@@ -933,7 +934,7 @@ export class EnterpriseWorkspace {
     const issues = (
       this.store.db
         .prepare(
-          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId, i.priority
+          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId, i.priority, i.due_at AS dueAt
            FROM issues i JOIN issue_types t ON t.id = i.type_id
            WHERE i.tenant_id = ? ORDER BY i.rank`,
         )
@@ -953,6 +954,7 @@ export class EnterpriseWorkspace {
         rank: string;
         sprintId: string | null;
         priority: string;
+        dueAt: string | null;
       }>
     )
       .filter((row) =>
@@ -977,6 +979,7 @@ export class EnterpriseWorkspace {
         rank: row.rank,
         sprintId: row.sprintId,
         priority: row.priority,
+        dueAt: row.dueAt,
       }));
     const principals = this.store.db
       .prepare("SELECT id, name, kind, email FROM principals WHERE tenant_id = ? AND active = 1 ORDER BY name")
@@ -1378,7 +1381,7 @@ export class EnterpriseWorkspace {
   updateIssue(
     actor: ActorContext,
     issueId: string,
-    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[]; priority?: string },
+    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[]; priority?: string; dueAt?: string | null },
   ): void {
     const issue = this.issueRow(issueId, actor.tenantId);
     this.requireRole(actor, "project", issue.project_id, "editor");
@@ -1394,7 +1397,8 @@ export class EnterpriseWorkspace {
     this.store.db
       .prepare(
         `UPDATE issues SET summary = COALESCE(?, summary), description = COALESCE(?, description), assignee_id = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
-         parent_id = CASE WHEN ? = 1 THEN ? ELSE parent_id END, labels_json = COALESCE(?, labels_json), priority = COALESCE(?, priority), updated_at = ? WHERE id = ?`,
+         parent_id = CASE WHEN ? = 1 THEN ? ELSE parent_id END, labels_json = COALESCE(?, labels_json), priority = COALESCE(?, priority),
+         due_at = CASE WHEN ? = 1 THEN ? ELSE due_at END, updated_at = ? WHERE id = ?`,
       )
       .run(
         patch.summary ?? null,
@@ -1405,6 +1409,8 @@ export class EnterpriseWorkspace {
         patch.parentId ?? null,
         patch.labels ? JSON.stringify(patch.labels) : null,
         patch.priority ?? null,
+        patch.dueAt === undefined ? 0 : 1,
+        patch.dueAt ?? null,
         this.now(),
         issueId,
       );
@@ -2414,6 +2420,7 @@ export class EnterpriseWorkspace {
       else if (field === "assignee") clauses.push({ type: "eq", field: "assignee_id", value });
       else if (field === "issuetype" || field === "type") clauses.push({ type: "eq", field: "type_id", value });
       else if (field === "priority") clauses.push({ type: "eq", field: "priority", value });
+      else if (field === "duedate" || field === "due") clauses.push({ type: "eq", field: "due_at", value });
       else throw new EnterpriseError("invalid", `unsupported JQL field ${field}`, { field, reported: true });
     }
     return { type: "and", clauses };

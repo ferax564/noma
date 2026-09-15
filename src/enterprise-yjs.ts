@@ -192,6 +192,13 @@ export function attachEnterpriseYjs(http: Server, workspace: EnterpriseWorkspace
           broadcastPresence();
           return;
         }
+        if (message.type === "awareness" && typeof message.update === "string") {
+          const encoded = JSON.stringify({ type: "awareness", update: message.update });
+          for (const peer of room!.clients) {
+            if (peer !== ws && peer.readyState === peer.OPEN) peer.send(encoded);
+          }
+          return;
+        }
         if (message.type !== "update" || typeof message.update !== "string") return;
         const update = fromBase64(message.update);
         persistYjsUpdate(workspace, actor, documentId, update);

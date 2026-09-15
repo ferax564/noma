@@ -1278,3 +1278,102 @@ input:focus, select:focus, textarea:focus {
 .ew-visual-toolbar [aria-pressed="true"] { background: var(--ds-background-selected); color: var(--ds-text-selected); }
 .ew-visual-stage.is-panning { cursor: grab; }
 .ew-visual-stage.is-sticky { cursor: crosshair; }
+.ew-visual-stage.is-connecting { cursor: copy; }
+.ew-body.is-issue { grid-template-columns: 240px minmax(0, 1fr) min(480px, 38vw); }
+.ew-board.has-swimlanes {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ew-swimlane {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-200);
+  background: var(--ds-surface);
+}
+.ew-swimlane > h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ds-text);
+}
+.ew-swimlane-cols {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.ew-due {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-text-subtle);
+  font-family: var(--ds-mono);
+}
+.ew-card.is-open { outline: 2px solid var(--ds-border-focused); outline-offset: -1px; }
+.ew-cover {
+  width: min(760px, calc(100% - 48px));
+  margin: 16px auto 0;
+  overflow: hidden;
+  border-radius: 8px;
+  max-height: 180px;
+}
+.ew-cover img { display: block; width: 100%; height: 180px; object-fit: cover; }
+.ew-toc { display: grid; gap: 2px; }
+.ew-toc-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: var(--ds-radius);
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--ds-link);
+}
+.ew-toc-item[data-level="2"] { padding-left: 14px; }
+.ew-toc-item[data-level="3"] { padding-left: 22px; }
+.ew-toc-item:hover { background: var(--ds-background-neutral-subtle-hovered); }
+.ew-bubble {
+  position: fixed;
+  z-index: 220;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: #1d2125;
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: var(--ds-shadow-overlay);
+}
+.ew-bubble button {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  border-radius: 4px;
+}
+.ew-bubble button:hover { background: #454f59; }
+.collaboration-cursor__caret {
+  border-left: 2px solid currentColor;
+  margin-left: -1px;
+  pointer-events: none;
+  position: relative;
+  word-break: normal;
+}
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.35em;
+  left: -1px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  background: currentColor;
+}

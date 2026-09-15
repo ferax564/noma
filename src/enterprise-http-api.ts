@@ -412,6 +412,7 @@ export async function dispatchEnterpriseApi(
         assigneeId: body.assigneeId === undefined ? undefined : body.assigneeId === null ? null : String(body.assigneeId),
         parentId: body.parentId === undefined ? undefined : body.parentId === null ? null : String(body.parentId),
         priority: typeof body.priority === "string" ? body.priority : undefined,
+        dueAt: body.dueAt === undefined ? undefined : body.dueAt === null || body.dueAt === "" ? null : String(body.dueAt),
       });
       send(res, 200, { ok: true });
       return true;
