@@ -1,4 +1,5 @@
 import { mountHostedCollab, type HostedCollab } from "./hosted-collab";
+import { bindIssueBoard, hydrateIcons, iconSvg, positionPopup, type BoardDrop } from "./ui-kit";
 
 type Mode = "docs" | "visuals" | "work" | "admin";
 
@@ -95,7 +96,8 @@ let selectedProjectId = "";
 let selectedSpaceId = "";
 let collab: HostedCollab | undefined;
 let jqlFilterIds: string[] | undefined;
-let draggingIssueId = "";
+let searchPopupStop: (() => void) | undefined;
+let boardDndStop: (() => void) | undefined;
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -179,15 +181,15 @@ function spaceColor(name: string): string {
 }
 
 function pageIcon(): string {
-  return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5z"/></svg>`;
+  return iconSvg("FileText");
 }
 
 function boardIcon(): string {
-  return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16v4H4zm0 6h7v10H4zm9 0h7v10h-7z"/></svg>`;
+  return iconSvg("Presentation");
 }
 
 function projectIcon(): string {
-  return `<svg class="ew-tree-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h16v12H4zm2 2v8h12V8z"/></svg>`;
+  return iconSvg("SquareKanban");
 }
 
 function formatWhen(value: string | undefined): string {
@@ -327,13 +329,13 @@ function renderRail(): void {
   if (mode === "docs") {
     actions.innerHTML = `
       <label for="space-switch">Space<select id="space-switch">${spaceOptions}</select></label>
-      <button type="button" id="create-page">Create page</button>
+      <button type="button" id="create-page">${iconSvg("Plus")} Create page</button>
       <details class="ew-rail-more">
-        <summary>Space tools</summary>
+        <summary>${iconSvg("Settings")} Space tools</summary>
         <label for="new-page-title">Page title<input id="new-page-title" placeholder="Title" /></label>
         <label for="new-space-name">New space<input id="new-space-name" placeholder="Name" /></label>
         <button type="button" id="create-space">Create space</button>
-        <button type="button" id="import-page">Import</button>
+        <button type="button" id="import-page">${iconSvg("Import")} Import</button>
       </details>`;
     railList.innerHTML = orderedDocuments()
       .filter((doc) => !currentSpaceId() || doc.spaceId === currentSpaceId())
@@ -376,6 +378,8 @@ function renderRail(): void {
       )
       .join("");
   }
+  hydrateIcons(actions);
+  hydrateIcons(railList);
 }
 
 function nomaToEditorHtml(title: string, source: string): string {
@@ -574,7 +578,7 @@ function renderBoard(): void {
           .map(
             (issue) => {
               const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
-              return `<button class="ew-card" type="button" draggable="true" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
+              return `<button class="ew-card" type="button" data-issue="${issue.id}" data-type="${escapeHtml(issue.typeKey)}">
               <span class="ew-key">${escapeHtml(issue.key)}</span>
               <strong>${escapeHtml(issue.summary)}</strong>
               <span class="ew-card-foot">
@@ -596,8 +600,30 @@ function renderBoard(): void {
     <label for="new-issue-type">Type
       <select id="new-issue-type">${(payload.issueTypes.filter((type) => type.projectId === project?.id)).map((type) => `<option value="${escapeHtml(type.key)}">${escapeHtml(type.name)}</option>`).join("")}</select>
     </label>
-    <div class="ew-actions"><button type="button" id="submit-issue">Create</button></div>`;
+    <div class="ew-actions"><button type="button" id="submit-issue">${iconSvg("Plus")} Create</button></div>`;
   renderRail();
+  boardDndStop?.();
+  boardDndStop = bindIssueBoard($("work-board"), (drop) => {
+    void applyBoardDrop(drop);
+  });
+}
+
+async function applyBoardDrop(drop: BoardDrop): Promise<void> {
+  const project = currentProject();
+  if (!project || !payload) return;
+  const ordered = [...payload.issues.filter((issue) => issue.projectId === project.id)].map((issue) => issue.id);
+  const from = ordered.indexOf(drop.issueId);
+  if (from < 0) return;
+  ordered.splice(from, 1);
+  if (drop.beforeId) {
+    const to = ordered.indexOf(drop.beforeId);
+    ordered.splice(to < 0 ? ordered.length : to, 0, drop.issueId);
+  } else {
+    ordered.push(drop.issueId);
+  }
+  await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
+  await refreshWorkspace();
+  renderBoard();
 }
 
 async function inspectIssue(id: string): Promise<void> {
@@ -815,30 +841,6 @@ $("rail-actions").addEventListener("change", (event) => {
 $("work-board").addEventListener("click", (event) => {
   const card = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-issue]");
   if (card?.dataset.issue) void inspectIssue(card.dataset.issue);
-});
-
-$("work-board").addEventListener("dragstart", (event) => {
-  const card = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-issue]");
-  draggingIssueId = card?.dataset.issue ?? "";
-});
-$("work-board").addEventListener("dragover", (event) => event.preventDefault());
-$("work-board").addEventListener("drop", async (event) => {
-  event.preventDefault();
-  const column = (event.target as HTMLElement).closest<HTMLElement>(".ew-column");
-  const project = currentProject();
-  if (!column || !draggingIssueId || !project || !payload) return;
-  const ordered = [...payload.issues.filter((issue) => issue.projectId === project.id)].map((issue) => issue.id);
-  const from = ordered.indexOf(draggingIssueId);
-  const targetCard = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-issue]");
-  const toId = targetCard?.dataset.issue;
-  if (from >= 0 && toId) {
-    ordered.splice(from, 1);
-    const to = ordered.indexOf(toId);
-    ordered.splice(to < 0 ? ordered.length : to, 0, draggingIssueId);
-    await api(`/v1/projects/${encodeURIComponent(project.id)}/rank`, { method: "POST", body: JSON.stringify({ orderedIds: ordered }) });
-    await refreshWorkspace();
-    renderBoard();
-  }
 });
 
 inspector.addEventListener("click", async (event) => {
@@ -1158,11 +1160,21 @@ $("visual-outline").addEventListener("click", (event) => {
   for (const node of document.querySelectorAll(".pd-el")) node.classList.toggle("is-selected", node.getAttribute("data-id") === id);
 });
 
+function syncSearchPopup(): void {
+  searchPopupStop?.();
+  searchPopupStop = undefined;
+  if (searchResults.hidden) return;
+  const anchor = document.querySelector(".ew-search-box");
+  if (!(anchor instanceof HTMLElement)) return;
+  searchPopupStop = positionPopup(anchor, searchResults);
+}
+
 $("workspace-search").addEventListener("input", async (event) => {
   const query = (event.target as HTMLInputElement).value.trim();
   if (!query) {
     searchResults.hidden = true;
     searchResults.replaceChildren();
+    syncSearchPopup();
     return;
   }
   const result = await api<{ hits: Array<{ title: string; resourceKind: string; resourceId: string; excerpt: string }> }>(
@@ -1176,11 +1188,23 @@ $("workspace-search").addEventListener("input", async (event) => {
       </button>`,
     )
     .join("") || `<div class="ew-meta">No matches</div>`;
+  syncSearchPopup();
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (searchResults.hidden) return;
+  const target = event.target as Node;
+  const box = document.querySelector(".ew-search-box");
+  if (searchResults.contains(target) || box?.contains(target)) return;
+  searchResults.hidden = true;
+  syncSearchPopup();
 });
 
 searchResults.addEventListener("click", (event) => {
   const hit = (event.target as HTMLElement).closest<HTMLButtonElement>("button.ew-hit");
   if (!hit) return;
+  searchResults.hidden = true;
+  syncSearchPopup();
   if (hit.dataset.kind === "document") {
     setMode("docs");
     openDocument(hit.dataset.id);
@@ -1255,6 +1279,7 @@ $("theme-toggle").addEventListener("click", () => {
   const dark = document.documentElement.getAttribute("data-theme") === "dark";
   document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
   $("theme-toggle").setAttribute("aria-pressed", String(!dark));
+  $("theme-toggle").innerHTML = iconSvg(dark ? "Moon" : "Sun");
 });
 
 document.querySelectorAll<HTMLButtonElement>("#doc-toolbar [data-cmd]").forEach((button) => {
@@ -1294,6 +1319,8 @@ Object.assign(window, {
     text: () => collab?.getText() ?? "",
   },
 });
+
+hydrateIcons();
 
 if (token) {
   void loadWorkspace().catch(() => {

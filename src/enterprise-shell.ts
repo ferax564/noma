@@ -80,18 +80,18 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
         <label class="ew-search" for="workspace-search">
           <span>Search</span>
           <span class="ew-search-box">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 15.2a7 7 0 1 0-1.2 1.2l4.2 4.2 1.2-1.2zM10.5 16a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"/></svg>
+            <span data-lucide="search"></span>
             <input id="workspace-search" type="search" placeholder="Search" autocomplete="off" />
           </span>
         </label>
         <div class="ew-top-actions">
-          <button type="button" id="header-create">Create</button>
+          <button type="button" id="header-create"><span data-lucide="plus"></span>Create</button>
           <button id="notify-toggle" type="button" class="ew-icon-btn" aria-label="Notifications" aria-expanded="false" aria-controls="notify-drawer">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22zm6.4-6.2V11a6.4 6.4 0 0 0-5.1-6.3V4a1.3 1.3 0 1 0-2.6 0v.7A6.4 6.4 0 0 0 5.6 11v4.8L4 17.4V18h16v-.6z"/></svg>
+            <span data-lucide="bell"></span>
             <span id="notify-badge" class="ew-notify-badge" hidden></span>
           </button>
           <button id="theme-toggle" type="button" class="ew-icon-btn" aria-label="Switch theme" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 18.5A6.5 6.5 0 0 1 12 5.5V18.5zM12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg>
+            <span data-lucide="moon"></span>
           </button>
           <span id="session-status" class="ew-status" data-state="connecting" aria-live="polite">Connecting</span>
           <span id="session-avatar" class="ew-avatar" aria-hidden="true">?</span>
@@ -114,24 +114,24 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
         <main class="ew-main">
           <section id="canvas-docs" class="ew-canvas is-active" data-mode="docs">
             <div id="doc-toolbar" class="ew-toolbar" role="toolbar" aria-label="Document formatting">
-              <button type="button" data-cmd="bold" aria-label="Bold"><b>B</b></button>
-              <button type="button" data-cmd="italic" aria-label="Italic"><i>I</i></button>
-              <button type="button" data-cmd="strike" aria-label="Strikethrough"><s>S</s></button>
+              <button type="button" data-cmd="bold" aria-label="Bold"><span data-lucide="bold"></span></button>
+              <button type="button" data-cmd="italic" aria-label="Italic"><span data-lucide="italic"></span></button>
+              <button type="button" data-cmd="strike" aria-label="Strikethrough"><span data-lucide="strikethrough"></span></button>
               <span class="ew-toolbar-sep" aria-hidden="true"></span>
-              <button type="button" data-cmd="heading" data-level="1" aria-label="Heading 1">H1</button>
-              <button type="button" data-cmd="heading" data-level="2" aria-label="Heading 2">H2</button>
-              <button type="button" data-cmd="bullet" aria-label="Bullet list">List</button>
-              <button type="button" data-cmd="ordered" aria-label="Ordered list">1.</button>
+              <button type="button" data-cmd="heading" data-level="1" aria-label="Heading 1"><span data-lucide="heading-1"></span></button>
+              <button type="button" data-cmd="heading" data-level="2" aria-label="Heading 2"><span data-lucide="heading-2"></span></button>
+              <button type="button" data-cmd="bullet" aria-label="Bullet list"><span data-lucide="list"></span></button>
+              <button type="button" data-cmd="ordered" aria-label="Ordered list"><span data-lucide="list-ordered"></span></button>
               <span class="ew-toolbar-sep" aria-hidden="true"></span>
               <span id="collab-status" class="ew-chip">idle</span>
-              <label for="insert-image">Insert image<input id="insert-image" type="file" accept="image/*" /></label>
-              <label for="insert-video">Insert video<input id="insert-video" type="file" accept="video/*" /></label>
+              <label for="insert-image"><span data-lucide="image"></span> Insert image<input id="insert-image" type="file" accept="image/*" /></label>
+              <label for="insert-video"><span data-lucide="video"></span> Insert video<input id="insert-video" type="file" accept="video/*" /></label>
               <button id="doc-publish" type="button">Publish</button>
             </div>
             <article class="ew-paper">
               <nav id="doc-crumbs" class="ew-crumbs" aria-label="Breadcrumb"></nav>
               <div class="ew-title-row">
-                <svg class="ew-page-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5z"/></svg>
+                <span class="ew-page-icon" data-lucide="file-text"></span>
                 <h1 id="doc-title">Untitled</h1>
               </div>
               <div class="ew-byline">

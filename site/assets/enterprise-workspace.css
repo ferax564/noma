@@ -797,11 +797,10 @@ input:focus, select:focus, textarea:focus {
 #canvas-docs { overflow: auto; }
 #search-results {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  top: 52px;
+  top: 0;
+  left: 0;
   width: min(640px, calc(100vw - 32px));
-  z-index: 20;
+  z-index: 40;
   margin: 0;
   padding: 8px;
   background: var(--ds-surface);
@@ -973,3 +972,35 @@ input:focus, select:focus, textarea:focus {
 }
 .ew-rail-more summary::-webkit-details-marker { display: none; }
 .ew-visual-toolbar { flex-wrap: wrap; overflow: visible; }
+.ew-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  flex: none;
+  display: block;
+}
+.ew-rail-item .ew-icon { color: var(--ds-icon-subtle); }
+.ew-rail-item[aria-current="true"] .ew-icon { color: var(--ds-text-selected); }
+.ew-title-row > svg {
+  width: 24px;
+  height: 24px;
+  margin-top: 8px;
+  color: var(--ds-icon-subtle);
+  flex: none;
+}
+#header-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ew-toolbar button { display: inline-flex; align-items: center; justify-content: center; }
+.ew-column.is-drop { background: var(--ds-background-selected); }
+.ew-card.is-dragging { opacity: 0.55; }
+.ew-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ds-text-subtlest);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
