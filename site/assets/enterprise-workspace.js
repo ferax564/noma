@@ -36933,6 +36933,7 @@ ${err.toString()}`);
     const editor = collab?.editor();
     if (!editor || (editor.getText() ?? "").trim()) return;
     editor.commands.setContent(nomaToEditorHtml(document2.title || title, document2.source, token));
+    renderPageToc();
   }
   async function openArtifact(id2) {
     if (!id2) return;
