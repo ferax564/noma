@@ -36532,6 +36532,7 @@ ${err.toString()}`);
   var boardSearch = "";
   var typeFilter = "";
   var swimlanes = false;
+  var boardView = "board";
   var paletteIndex = 0;
   var mentionStop;
   var $2 = (id2) => {
@@ -37016,6 +37017,8 @@ ${err.toString()}`);
     $2("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
     $2("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
     $2("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
+    $2("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
+    $2("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
     const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
     $2("type-filters").innerHTML = [
       `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
@@ -37036,6 +37039,7 @@ ${err.toString()}`);
       const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
       const parent = payload?.issues.find((item) => item.id === issue.parentId);
       const due = (issue.dueAt ?? "").slice(0, 10);
+      const labels = (issue.labels ?? []).map((label) => `<span class="ew-label">${escapeHtml2(label)}</span>`).join("");
       return `<button class="ew-card${issue.id === selectedIssueId ? " is-open" : ""}" type="button" data-issue="${issue.id}" data-type="${escapeHtml2(issue.typeKey)}">
       <span class="ew-key">${escapeHtml2(issue.key)}</span>
       <strong>${escapeHtml2(issue.summary)}</strong>
@@ -37045,6 +37049,7 @@ ${err.toString()}`);
         ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
         <span class="ew-priority" data-priority="${escapeHtml2(issue.priority)}">${escapeHtml2(issue.priority)}</span>
         ${due ? `<span class="ew-due">${escapeHtml2(due)}</span>` : ""}
+        ${labels}
         ${assignee ? avatarMarkup(assignee.name) : ""}
       </span>
     </button>`;
@@ -37062,8 +37067,27 @@ ${err.toString()}`);
       </section>`;
     }).join("");
     const board = $2("work-board");
-    board.classList.toggle("has-swimlanes", swimlanes);
-    if (swimlanes) {
+    board.classList.toggle("has-swimlanes", swimlanes && boardView === "board");
+    board.classList.toggle("is-list", boardView === "list");
+    if (boardView === "list") {
+      const statusName = (id2) => columns.find((status) => status.id === id2)?.name ?? id2;
+      board.innerHTML = `<div class="ew-issue-table" role="table" aria-label="Issue list">
+      <div class="ew-row ew-row-head" role="row">
+        <span>Key</span><span>Summary</span><span>Status</span><span>Priority</span><span>Due</span><span>Estimate</span>
+      </div>
+      ${visible.map((issue) => {
+        const due = (issue.dueAt ?? "").slice(0, 10);
+        return `<button type="button" class="ew-row${issue.id === selectedIssueId ? " is-open" : ""}" data-issue="${issue.id}" data-type="${escapeHtml2(issue.typeKey)}" role="row">
+            <span class="ew-key">${escapeHtml2(issue.key)}</span>
+            <strong>${escapeHtml2(issue.summary)}</strong>
+            <span>${escapeHtml2(statusName(issue.statusId))}</span>
+            <span class="ew-priority" data-priority="${escapeHtml2(issue.priority)}">${escapeHtml2(issue.priority)}</span>
+            <span class="ew-due">${escapeHtml2(due)}</span>
+            <span class="ew-points">${issue.estimate ?? ""}</span>
+          </button>`;
+      }).join("")}
+    </div>`;
+    } else if (swimlanes) {
       const epicLane = (issue) => {
         if (issue.typeKey === "epic") return { id: issue.id, title: `${issue.key} ${issue.summary}` };
         const seen = /* @__PURE__ */ new Set();
@@ -37177,6 +37201,15 @@ ${err.toString()}`);
         <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
         <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
         <label for="issue-due">Due date<input id="issue-due" type="date" value="${escapeHtml2((detail.due_at ?? issue.dueAt ?? "").slice(0, 10))}" /></label>
+        <label for="issue-estimate">Estimate<input id="issue-estimate" type="number" min="0" step="1" value="${escapeHtml2(String(detail.estimate ?? issue.estimate ?? ""))}" /></label>
+        <label for="issue-labels">Labels<input id="issue-labels" value="${escapeHtml2((() => {
+      try {
+        const parsed = typeof detail.labels_json === "string" ? JSON.parse(detail.labels_json) : issue.labels;
+        return Array.isArray(parsed) ? parsed.join(", ") : (issue.labels ?? []).join(", ");
+      } catch {
+        return (issue.labels ?? []).join(", ");
+      }
+    })())}" placeholder="canvas, urgent" /></label>
       </div>
       <div class="ew-actions">
         <button type="button" id="save-issue">Save</button>
@@ -37361,7 +37394,7 @@ ${err.toString()}`);
     }
   });
   $2("work-board").addEventListener("click", (event) => {
-    const card = event.target.closest("[data-issue].ew-card");
+    const card = event.target.closest("[data-issue]");
     if (card?.dataset.issue && !$2("work-board").classList.contains("is-sorting")) void inspectIssue(card.dataset.issue);
   });
   inspector.addEventListener("click", async (event) => {
@@ -37411,7 +37444,9 @@ ${err.toString()}`);
             description: $2("issue-description").value,
             assigneeId: $2("issue-assignee").value || null,
             priority: $2("issue-priority").value,
-            dueAt: $2("issue-due").value || null
+            dueAt: $2("issue-due").value || null,
+            estimate: $2("issue-estimate").value === "" ? null : Number($2("issue-estimate").value),
+            labels: $2("issue-labels").value.split(",").map((item) => item.trim()).filter(Boolean)
           })
         });
         const sprintId = $2("issue-sprint").value || null;
@@ -37942,6 +37977,16 @@ ${err.toString()}`);
       renderBoard();
       return;
     }
+    if (button.id === "view-list") {
+      boardView = "list";
+      renderBoard();
+      return;
+    }
+    if (button.id === "view-board") {
+      boardView = "board";
+      renderBoard();
+      return;
+    }
     if (!button.dataset.filter) return;
     boardFilter = button.dataset.filter === "mine" ? "mine" : "all";
     renderBoard();
@@ -37958,7 +38003,7 @@ ${err.toString()}`);
   });
   $2("work-board").addEventListener("keydown", (event) => {
     const target = event.target;
-    if ((event.key === "Enter" || event.key === " ") && target.closest(".ew-card") && !target.classList.contains("ew-column-add")) {
+    if ((event.key === "Enter" || event.key === " ") && (target.closest(".ew-card") || target.closest(".ew-row")) && !target.classList.contains("ew-column-add")) {
       const card = target.closest("[data-issue].ew-card");
       if (card?.dataset.issue) {
         event.preventDefault();
