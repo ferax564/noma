@@ -16595,6 +16595,57 @@ img.ProseMirror-separator {
       this._observers = create();
     }
   };
+  var Observable = class {
+    constructor() {
+      this._observers = create();
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    on(name, f) {
+      setIfUndefined(this._observers, name, create2).add(f);
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    once(name, f) {
+      const _f = (...args2) => {
+        this.off(name, _f);
+        f(...args2);
+      };
+      this.on(name, _f);
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    off(name, f) {
+      const observers = this._observers.get(name);
+      if (observers !== void 0) {
+        observers.delete(f);
+        if (observers.size === 0) {
+          this._observers.delete(name);
+        }
+      }
+    }
+    /**
+     * Emit a named event. All registered event listeners that listen to the
+     * specified name will receive the event.
+     *
+     * @todo This should catch exceptions
+     *
+     * @param {N} name The event name.
+     * @param {Array<any>} args The arguments that are applied to the event listener.
+     */
+    emit(name, args2) {
+      return from((this._observers.get(name) || create()).values()).forEach((f) => f(...args2));
+    }
+    destroy() {
+      this._observers = create();
+    }
+  };
 
   // node_modules/lib0/math.js
   var floor = Math.floor;
@@ -19725,6 +19776,7 @@ ${err.toString()}`);
       this.assoc = assoc;
     }
   };
+  var createRelativePositionFromJSON = (json) => new RelativePosition(json.type == null ? null : createID(json.type.client, json.type.clock), json.tname ?? null, json.item == null ? null : createID(json.item.client, json.item.clock), json.assoc == null ? 0 : json.assoc);
   var AbsolutePosition = class {
     /**
      * @param {AbstractType<any>} type
@@ -19831,6 +19883,7 @@ ${err.toString()}`);
     }
     return createAbsolutePosition(type, index, rpos.assoc);
   };
+  var compareRelativePositions = (a, b) => a === b || a !== null && b !== null && a.tname === b.tname && compareIDs(a.item, b.item) && compareIDs(a.type, b.type) && a.assoc === b.assoc;
   var Snapshot = class {
     /**
      * @param {DeleteSet} ds
@@ -25348,6 +25401,208 @@ ${err.toString()}`);
   }
   glo[importIdentifier] = true;
 
+  // node_modules/y-protocols/awareness.js
+  var outdatedTimeout = 3e4;
+  var Awareness = class extends Observable {
+    /**
+     * @param {Y.Doc} doc
+     */
+    constructor(doc4) {
+      super();
+      this.doc = doc4;
+      this.clientID = doc4.clientID;
+      this.states = /* @__PURE__ */ new Map();
+      this.meta = /* @__PURE__ */ new Map();
+      this._checkInterval = /** @type {any} */
+      setInterval(() => {
+        const now = getUnixTime();
+        if (this.getLocalState() !== null && outdatedTimeout / 2 <= now - /** @type {{lastUpdated:number}} */
+        this.meta.get(this.clientID).lastUpdated) {
+          this.setLocalState(this.getLocalState());
+        }
+        const remove = [];
+        this.meta.forEach((meta, clientid) => {
+          if (clientid !== this.clientID && outdatedTimeout <= now - meta.lastUpdated && this.states.has(clientid)) {
+            remove.push(clientid);
+          }
+        });
+        if (remove.length > 0) {
+          removeAwarenessStates(this, remove, "timeout");
+        }
+      }, floor(outdatedTimeout / 10));
+      doc4.on("destroy", () => {
+        this.destroy();
+      });
+      this.setLocalState({});
+    }
+    destroy() {
+      this.emit("destroy", [this]);
+      this.setLocalState(null);
+      super.destroy();
+      clearInterval(this._checkInterval);
+    }
+    /**
+     * @return {Object<string,any>|null}
+     */
+    getLocalState() {
+      return this.states.get(this.clientID) || null;
+    }
+    /**
+     * @param {Object<string,any>|null} state
+     */
+    setLocalState(state) {
+      const clientID = this.clientID;
+      const currLocalMeta = this.meta.get(clientID);
+      const clock = currLocalMeta === void 0 ? 0 : currLocalMeta.clock + 1;
+      const prevState = this.states.get(clientID);
+      if (state === null) {
+        this.states.delete(clientID);
+      } else {
+        this.states.set(clientID, state);
+      }
+      this.meta.set(clientID, {
+        clock,
+        lastUpdated: getUnixTime()
+      });
+      const added = [];
+      const updated = [];
+      const filteredUpdated = [];
+      const removed = [];
+      if (state === null) {
+        removed.push(clientID);
+      } else if (prevState == null) {
+        if (state != null) {
+          added.push(clientID);
+        }
+      } else {
+        updated.push(clientID);
+        if (!equalityDeep(prevState, state)) {
+          filteredUpdated.push(clientID);
+        }
+      }
+      if (added.length > 0 || filteredUpdated.length > 0 || removed.length > 0) {
+        this.emit("change", [{ added, updated: filteredUpdated, removed }, "local"]);
+      }
+      this.emit("update", [{ added, updated, removed }, "local"]);
+    }
+    /**
+     * @param {string} field
+     * @param {any} value
+     */
+    setLocalStateField(field, value) {
+      const state = this.getLocalState();
+      if (state !== null) {
+        this.setLocalState({
+          ...state,
+          [field]: value
+        });
+      }
+    }
+    /**
+     * @return {Map<number,Object<string,any>>}
+     */
+    getStates() {
+      return this.states;
+    }
+  };
+  var removeAwarenessStates = (awareness, clients, origin) => {
+    const removed = [];
+    for (let i = 0; i < clients.length; i++) {
+      const clientID = clients[i];
+      if (awareness.states.has(clientID)) {
+        awareness.states.delete(clientID);
+        if (clientID === awareness.clientID) {
+          const curMeta = (
+            /** @type {MetaClientState} */
+            awareness.meta.get(clientID)
+          );
+          awareness.meta.set(clientID, {
+            clock: curMeta.clock + 1,
+            lastUpdated: getUnixTime()
+          });
+        }
+        removed.push(clientID);
+      }
+    }
+    if (removed.length > 0) {
+      awareness.emit("change", [{ added: [], updated: [], removed }, origin]);
+      awareness.emit("update", [{ added: [], updated: [], removed }, origin]);
+    }
+  };
+  var encodeAwarenessUpdate = (awareness, clients, states = awareness.states) => {
+    const len = clients.length;
+    const encoder = createEncoder();
+    writeVarUint(encoder, len);
+    for (let i = 0; i < len; i++) {
+      const clientID = clients[i];
+      const state = states.get(clientID) || null;
+      const clock = (
+        /** @type {MetaClientState} */
+        awareness.meta.get(clientID).clock
+      );
+      writeVarUint(encoder, clientID);
+      writeVarUint(encoder, clock);
+      writeVarString(encoder, JSON.stringify(state));
+    }
+    return toUint8Array(encoder);
+  };
+  var applyAwarenessUpdate = (awareness, update, origin) => {
+    const decoder = createDecoder(update);
+    const timestamp = getUnixTime();
+    const added = [];
+    const updated = [];
+    const filteredUpdated = [];
+    const removed = [];
+    const len = readVarUint(decoder);
+    for (let i = 0; i < len; i++) {
+      const clientID = readVarUint(decoder);
+      let clock = readVarUint(decoder);
+      const state = JSON.parse(readVarString(decoder));
+      const clientMeta = awareness.meta.get(clientID);
+      const prevState = awareness.states.get(clientID);
+      const currClock = clientMeta === void 0 ? 0 : clientMeta.clock;
+      if (currClock < clock || currClock === clock && state === null && awareness.states.has(clientID)) {
+        if (state === null) {
+          if (clientID === awareness.clientID && awareness.getLocalState() != null) {
+            clock++;
+          } else {
+            awareness.states.delete(clientID);
+          }
+        } else {
+          awareness.states.set(clientID, state);
+        }
+        awareness.meta.set(clientID, {
+          clock,
+          lastUpdated: timestamp
+        });
+        if (clientMeta === void 0 && state !== null) {
+          added.push(clientID);
+        } else if (clientMeta !== void 0 && state === null) {
+          removed.push(clientID);
+        } else if (state !== null) {
+          if (!equalityDeep(state, prevState)) {
+            filteredUpdated.push(clientID);
+          }
+          updated.push(clientID);
+        }
+      }
+    }
+    if (added.length > 0 || filteredUpdated.length > 0 || removed.length > 0) {
+      awareness.emit("change", [{
+        added,
+        updated: filteredUpdated,
+        removed
+      }, origin]);
+    }
+    if (added.length > 0 || updated.length > 0 || removed.length > 0) {
+      awareness.emit("update", [{
+        added,
+        updated,
+        removed
+      }, origin]);
+    }
+  };
+
   // node_modules/lib0/mutex.js
   var createMutex = () => {
     let token2 = true;
@@ -26498,6 +26753,31 @@ ${err.toString()}`);
   var matchNodeName = (yElement, pNode) => !(pNode instanceof Array) && yElement.nodeName === pNode.type.name;
 
   // node_modules/y-prosemirror/src/lib.js
+  var viewsToUpdate = null;
+  var updateMetas = () => {
+    const ups = (
+      /** @type {Map<EditorView, Map<any, any>>} */
+      viewsToUpdate
+    );
+    viewsToUpdate = null;
+    ups.forEach((metas, view) => {
+      const tr2 = view.state.tr;
+      const syncState = ySyncPluginKey.getState(view.state);
+      if (syncState && syncState.binding && !syncState.binding.isDestroyed) {
+        metas.forEach((val, key) => {
+          tr2.setMeta(key, val);
+        });
+        view.dispatch(tr2);
+      }
+    });
+  };
+  var setMeta2 = (view, key, value) => {
+    if (!viewsToUpdate) {
+      viewsToUpdate = /* @__PURE__ */ new Map();
+      timeout(0, updateMetas);
+    }
+    setIfUndefined(viewsToUpdate, view, create).set(key, value);
+  };
   var absolutePositionToRelativePosition = (pos, type, mapping) => {
     if (pos === 0) {
       return createRelativePositionFromTypeIndex(type, 0, type.length === 0 ? -1 : 0);
@@ -26700,6 +26980,179 @@ ${err.toString()}`);
     };
   }
 
+  // node_modules/y-prosemirror/src/plugins/cursor-plugin.js
+  var defaultAwarenessStateFilter = (currentClientId, userClientId, _user) => currentClientId !== userClientId;
+  var defaultCursorBuilder = (user) => {
+    const cursor = document.createElement("span");
+    cursor.classList.add("ProseMirror-yjs-cursor");
+    cursor.setAttribute("style", `border-color: ${user.color}`);
+    const userDiv = document.createElement("div");
+    userDiv.setAttribute("style", `background-color: ${user.color}`);
+    userDiv.insertBefore(document.createTextNode(user.name), null);
+    const nonbreakingSpace1 = document.createTextNode("\u2060");
+    const nonbreakingSpace2 = document.createTextNode("\u2060");
+    cursor.insertBefore(nonbreakingSpace1, null);
+    cursor.insertBefore(userDiv, null);
+    cursor.insertBefore(nonbreakingSpace2, null);
+    return cursor;
+  };
+  var defaultSelectionBuilder = (user) => {
+    return {
+      style: `background-color: ${user.color}70`,
+      class: "ProseMirror-yjs-selection"
+    };
+  };
+  var rxValidColor = /^#[0-9a-fA-F]{6}$/;
+  var createDecorations = (state, awareness, awarenessFilter, createCursor, createSelection) => {
+    const ystate = ySyncPluginKey.getState(state);
+    const y = ystate.doc;
+    const decorations = [];
+    if (ystate.snapshot != null || ystate.prevSnapshot != null || ystate.binding.mapping.size === 0) {
+      return DecorationSet.create(state.doc, []);
+    }
+    awareness.getStates().forEach((aw, clientId) => {
+      if (!awarenessFilter(y.clientID, clientId, aw)) {
+        return;
+      }
+      if (aw.cursor != null) {
+        const user = aw.user || {};
+        if (user.color == null) {
+          user.color = "#ffa500";
+        } else if (!rxValidColor.test(user.color)) {
+          console.warn("A user uses an unsupported color format", user);
+        }
+        if (user.name == null) {
+          user.name = `User: ${clientId}`;
+        }
+        let anchor = relativePositionToAbsolutePosition(
+          y,
+          ystate.type,
+          createRelativePositionFromJSON(aw.cursor.anchor),
+          ystate.binding.mapping
+        );
+        let head = relativePositionToAbsolutePosition(
+          y,
+          ystate.type,
+          createRelativePositionFromJSON(aw.cursor.head),
+          ystate.binding.mapping
+        );
+        if (anchor !== null && head !== null) {
+          const maxsize = max(state.doc.content.size - 1, 0);
+          anchor = min(anchor, maxsize);
+          head = min(head, maxsize);
+          decorations.push(
+            Decoration.widget(head, () => createCursor(user, clientId), {
+              key: clientId + "",
+              side: 10
+            })
+          );
+          const from3 = min(anchor, head);
+          const to = max(anchor, head);
+          decorations.push(
+            Decoration.inline(from3, to, createSelection(user, clientId), {
+              inclusiveEnd: true,
+              inclusiveStart: false
+            })
+          );
+        }
+      }
+    });
+    return DecorationSet.create(state.doc, decorations);
+  };
+  var yCursorPlugin = (awareness, {
+    awarenessStateFilter = defaultAwarenessStateFilter,
+    cursorBuilder = defaultCursorBuilder,
+    selectionBuilder = defaultSelectionBuilder,
+    getSelection: getSelection2 = (state) => state.selection
+  } = {}, cursorStateField = "cursor") => new Plugin({
+    key: yCursorPluginKey,
+    state: {
+      init(_, state) {
+        return createDecorations(
+          state,
+          awareness,
+          awarenessStateFilter,
+          cursorBuilder,
+          selectionBuilder
+        );
+      },
+      apply(tr2, prevState, _oldState, newState) {
+        const ystate = ySyncPluginKey.getState(newState);
+        const yCursorState = tr2.getMeta(yCursorPluginKey);
+        if (ystate && ystate.isChangeOrigin || yCursorState && yCursorState.awarenessUpdated) {
+          return createDecorations(
+            newState,
+            awareness,
+            awarenessStateFilter,
+            cursorBuilder,
+            selectionBuilder
+          );
+        }
+        return prevState.map(tr2.mapping, tr2.doc);
+      }
+    },
+    props: {
+      decorations: (state) => {
+        return yCursorPluginKey.getState(state);
+      }
+    },
+    view: (view) => {
+      const awarenessListener = () => {
+        if (view.docView) {
+          setMeta2(view, yCursorPluginKey, { awarenessUpdated: true });
+        }
+      };
+      const updateCursorInfo = () => {
+        const ystate = ySyncPluginKey.getState(view.state);
+        const current = awareness.getLocalState() || {};
+        if (view.hasFocus()) {
+          const selection = getSelection2(view.state);
+          const anchor = absolutePositionToRelativePosition(
+            selection.anchor,
+            ystate.type,
+            ystate.binding.mapping
+          );
+          const head = absolutePositionToRelativePosition(
+            selection.head,
+            ystate.type,
+            ystate.binding.mapping
+          );
+          if (current.cursor == null || !compareRelativePositions(
+            createRelativePositionFromJSON(current.cursor.anchor),
+            anchor
+          ) || !compareRelativePositions(
+            createRelativePositionFromJSON(current.cursor.head),
+            head
+          )) {
+            awareness.setLocalStateField(cursorStateField, {
+              anchor,
+              head
+            });
+          }
+        } else if (current.cursor != null && relativePositionToAbsolutePosition(
+          ystate.doc,
+          ystate.type,
+          createRelativePositionFromJSON(current.cursor.anchor),
+          ystate.binding.mapping
+        ) !== null) {
+          awareness.setLocalStateField(cursorStateField, null);
+        }
+      };
+      awareness.on("change", awarenessListener);
+      view.dom.addEventListener("focusin", updateCursorInfo);
+      view.dom.addEventListener("focusout", updateCursorInfo);
+      return {
+        update: updateCursorInfo,
+        destroy: () => {
+          view.dom.removeEventListener("focusin", updateCursorInfo);
+          view.dom.removeEventListener("focusout", updateCursorInfo);
+          awareness.off("change", awarenessListener);
+          awareness.setLocalStateField(cursorStateField, null);
+        }
+      };
+    }
+  });
+
   // node_modules/y-prosemirror/src/plugins/undo-plugin.js
   var undo = (state) => yUndoPluginKey.getState(state)?.undoManager?.undo() != null;
   var redo = (state) => yUndoPluginKey.getState(state)?.undoManager?.redo() != null;
@@ -26896,6 +27349,88 @@ ${err.toString()}`);
           }
         })
       ].filter(Boolean);
+    }
+  });
+
+  // node_modules/@tiptap/extension-collaboration-cursor/dist/index.js
+  var awarenessStatesToArray = (states) => {
+    return Array.from(states.entries()).map(([key, value]) => {
+      return {
+        clientId: key,
+        ...value.user
+      };
+    });
+  };
+  var defaultOnUpdate = () => null;
+  var CollaborationCursor = Extension.create({
+    name: "collaborationCursor",
+    priority: 999,
+    addOptions() {
+      return {
+        provider: null,
+        user: {
+          name: null,
+          color: null
+        },
+        render: (user) => {
+          const cursor = document.createElement("span");
+          cursor.classList.add("collaboration-cursor__caret");
+          cursor.setAttribute("style", `border-color: ${user.color}`);
+          const label = document.createElement("div");
+          label.classList.add("collaboration-cursor__label");
+          label.setAttribute("style", `background-color: ${user.color}`);
+          label.insertBefore(document.createTextNode(user.name), null);
+          cursor.insertBefore(label, null);
+          return cursor;
+        },
+        selectionRender: defaultSelectionBuilder,
+        onUpdate: defaultOnUpdate
+      };
+    },
+    onCreate() {
+      if (this.options.onUpdate !== defaultOnUpdate) {
+        console.warn('[tiptap warn]: DEPRECATED: The "onUpdate" option is deprecated. Please use `editor.storage.collaborationCursor.users` instead. Read more: https://tiptap.dev/api/extensions/collaboration-cursor');
+      }
+      if (!this.options.provider) {
+        throw new Error('The "provider" option is required for the CollaborationCursor extension');
+      }
+    },
+    addStorage() {
+      return {
+        users: []
+      };
+    },
+    addCommands() {
+      return {
+        updateUser: (attributes) => () => {
+          this.options.user = attributes;
+          this.options.provider.awareness.setLocalStateField("user", this.options.user);
+          return true;
+        },
+        user: (attributes) => ({ editor }) => {
+          console.warn('[tiptap warn]: DEPRECATED: The "user" command is deprecated. Please use "updateUser" instead. Read more: https://tiptap.dev/api/extensions/collaboration-cursor');
+          return editor.commands.updateUser(attributes);
+        }
+      };
+    },
+    addProseMirrorPlugins() {
+      return [
+        yCursorPlugin(
+          (() => {
+            this.options.provider.awareness.setLocalStateField("user", this.options.user);
+            this.storage.users = awarenessStatesToArray(this.options.provider.awareness.states);
+            this.options.provider.awareness.on("update", () => {
+              this.storage.users = awarenessStatesToArray(this.options.provider.awareness.states);
+            });
+            return this.options.provider.awareness;
+          })(),
+          // @ts-ignore
+          {
+            cursorBuilder: this.options.render,
+            selectionBuilder: this.options.selectionRender
+          }
+        )
+      ];
     }
   });
 
@@ -34941,8 +35476,67 @@ ${err.toString()}`);
       menu.remove();
     };
   }
+  function bindFormatBubble(editor) {
+    const bar = document.createElement("div");
+    bar.className = "ew-bubble";
+    bar.hidden = true;
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("aria-label", "Selection formatting");
+    bar.innerHTML = [
+      ["bold", "Bold", "Bold"],
+      ["italic", "Italic", "Italic"],
+      ["underline", "Underline", "Underline"],
+      ["highlight", "Highlight", "Highlighter"]
+    ].map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon)}</button>`).join("");
+    document.body.appendChild(bar);
+    const hide2 = () => {
+      bar.hidden = true;
+    };
+    const place = () => {
+      const { empty: empty2, from: from3 } = editor.state.selection;
+      if (empty2 || !editor.isFocused) {
+        hide2();
+        return;
+      }
+      bar.hidden = false;
+      const coords = editor.view.coordsAtPos(from3);
+      const anchor = document.createElement("div");
+      anchor.style.position = "fixed";
+      anchor.style.left = `${coords.left}px`;
+      anchor.style.top = `${coords.top}px`;
+      anchor.style.width = "1px";
+      anchor.style.height = "1px";
+      document.body.appendChild(anchor);
+      void computePosition2(anchor, bar, {
+        placement: "top",
+        middleware: [offset2(8), flip2(), shift3({ padding: 8 })]
+      }).then(({ x, y }) => {
+        bar.style.left = `${x}px`;
+        bar.style.top = `${y}px`;
+        anchor.remove();
+      });
+    };
+    bar.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const cmd = event.target.closest("[data-bubble]")?.dataset.bubble;
+      if (cmd === "bold") editor.chain().focus().toggleBold().run();
+      if (cmd === "italic") editor.chain().focus().toggleItalic().run();
+      if (cmd === "underline") editor.chain().focus().toggleUnderline().run();
+      if (cmd === "highlight") editor.chain().focus().toggleHighlight().run();
+      place();
+    });
+    editor.on("selectionUpdate", place);
+    editor.on("blur", hide2);
+    return () => {
+      editor.off("selectionUpdate", place);
+      editor.off("blur", hide2);
+      bar.remove();
+    };
+  }
   function mountHostedCollab(options) {
     const ydoc = new Doc();
+    const awareness = new Awareness(ydoc);
+    if (options.user) awareness.setLocalStateField("user", { name: options.user.name, color: options.user.color });
     let editor;
     let socket;
     let ready = false;
@@ -34950,6 +35544,7 @@ ${err.toString()}`);
     let reconnectTimer;
     let closed = false;
     let stopSlash;
+    let stopBubble;
     const setStatus2 = (text2) => {
       options.onStatus?.(text2);
     };
@@ -34959,6 +35554,14 @@ ${err.toString()}`);
       return btoa(binary);
     };
     const b64ToBytes = (value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+    const sendAwareness = () => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ type: "awareness", update: bytesToB64(encodeAwarenessUpdate(awareness, [awareness.clientID])) }));
+    };
+    awareness.on("update", (_changes, origin) => {
+      if (origin === "remote") return;
+      sendAwareness();
+    });
     const sendUpdate = (update) => {
       if (!socket || socket.readyState !== WebSocket.OPEN || !ready) return;
       socket.send(JSON.stringify({ type: "update", update: bytesToB64(update) }));
@@ -34986,10 +35589,16 @@ ${err.toString()}`);
           NomaPanel,
           Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
           Image.configure({ inline: false, allowBase64: false }),
-          Collaboration.configure({ document: ydoc, field: "default" })
+          Collaboration.configure({ document: ydoc, field: "default" }),
+          CollaborationCursor.configure({
+            provider: { awareness },
+            user: options.user ? { name: options.user.name, color: options.user.color } : { name: "Guest", color: "#0C66E4" }
+          })
         ]
       });
       stopSlash = bindSlashMenu(editor);
+      stopBubble = bindFormatBubble(editor);
+      editor.on("update", () => options.onUpdate?.());
     };
     const connect = () => {
       if (closed) return;
@@ -35004,12 +35613,14 @@ ${err.toString()}`);
           ready = true;
           ensureEditor();
           setStatus2(message.type === "init" ? "ready" : `acks:${acks}`);
-          if (message.type === "init" && options.user && socket?.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: "presence", user: options.user }));
+          if (message.type === "init" && socket?.readyState === WebSocket.OPEN) {
+            if (options.user) socket.send(JSON.stringify({ type: "presence", user: options.user }));
+            sendAwareness();
           }
           if (message.users) options.onPresence?.(message.users);
         }
         if (message.type === "presence" && message.users) options.onPresence?.(message.users);
+        if (message.type === "awareness" && message.update) applyAwarenessUpdate(awareness, b64ToBytes(message.update), "remote");
         if (message.type === "ack") {
           acks += 1;
           setStatus2(`acks:${acks}`);
@@ -35032,9 +35643,12 @@ ${err.toString()}`);
       destroy: () => {
         closed = true;
         stopSlash?.();
+        stopBubble?.();
+        removeAwarenessStates(awareness, [awareness.clientID], "local");
         if (reconnectTimer !== void 0) window.clearTimeout(reconnectTimer);
         socket?.close();
         editor?.destroy();
+        if (typeof awareness.destroy === "function") awareness.destroy();
         ydoc.destroy();
       }
     };

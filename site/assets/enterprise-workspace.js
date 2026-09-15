@@ -16595,6 +16595,57 @@ img.ProseMirror-separator {
       this._observers = create();
     }
   };
+  var Observable = class {
+    constructor() {
+      this._observers = create();
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    on(name, f) {
+      setIfUndefined(this._observers, name, create2).add(f);
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    once(name, f) {
+      const _f = (...args2) => {
+        this.off(name, _f);
+        f(...args2);
+      };
+      this.on(name, _f);
+    }
+    /**
+     * @param {N} name
+     * @param {function} f
+     */
+    off(name, f) {
+      const observers = this._observers.get(name);
+      if (observers !== void 0) {
+        observers.delete(f);
+        if (observers.size === 0) {
+          this._observers.delete(name);
+        }
+      }
+    }
+    /**
+     * Emit a named event. All registered event listeners that listen to the
+     * specified name will receive the event.
+     *
+     * @todo This should catch exceptions
+     *
+     * @param {N} name The event name.
+     * @param {Array<any>} args The arguments that are applied to the event listener.
+     */
+    emit(name, args2) {
+      return from((this._observers.get(name) || create()).values()).forEach((f) => f(...args2));
+    }
+    destroy() {
+      this._observers = create();
+    }
+  };
 
   // node_modules/lib0/math.js
   var floor = Math.floor;
@@ -19725,6 +19776,7 @@ ${err.toString()}`);
       this.assoc = assoc;
     }
   };
+  var createRelativePositionFromJSON = (json) => new RelativePosition(json.type == null ? null : createID(json.type.client, json.type.clock), json.tname ?? null, json.item == null ? null : createID(json.item.client, json.item.clock), json.assoc == null ? 0 : json.assoc);
   var AbsolutePosition = class {
     /**
      * @param {AbstractType<any>} type
@@ -19831,6 +19883,7 @@ ${err.toString()}`);
     }
     return createAbsolutePosition(type, index, rpos.assoc);
   };
+  var compareRelativePositions = (a, b) => a === b || a !== null && b !== null && a.tname === b.tname && compareIDs(a.item, b.item) && compareIDs(a.type, b.type) && a.assoc === b.assoc;
   var Snapshot = class {
     /**
      * @param {DeleteSet} ds
@@ -25348,6 +25401,208 @@ ${err.toString()}`);
   }
   glo[importIdentifier] = true;
 
+  // node_modules/y-protocols/awareness.js
+  var outdatedTimeout = 3e4;
+  var Awareness = class extends Observable {
+    /**
+     * @param {Y.Doc} doc
+     */
+    constructor(doc4) {
+      super();
+      this.doc = doc4;
+      this.clientID = doc4.clientID;
+      this.states = /* @__PURE__ */ new Map();
+      this.meta = /* @__PURE__ */ new Map();
+      this._checkInterval = /** @type {any} */
+      setInterval(() => {
+        const now = getUnixTime();
+        if (this.getLocalState() !== null && outdatedTimeout / 2 <= now - /** @type {{lastUpdated:number}} */
+        this.meta.get(this.clientID).lastUpdated) {
+          this.setLocalState(this.getLocalState());
+        }
+        const remove = [];
+        this.meta.forEach((meta2, clientid) => {
+          if (clientid !== this.clientID && outdatedTimeout <= now - meta2.lastUpdated && this.states.has(clientid)) {
+            remove.push(clientid);
+          }
+        });
+        if (remove.length > 0) {
+          removeAwarenessStates(this, remove, "timeout");
+        }
+      }, floor(outdatedTimeout / 10));
+      doc4.on("destroy", () => {
+        this.destroy();
+      });
+      this.setLocalState({});
+    }
+    destroy() {
+      this.emit("destroy", [this]);
+      this.setLocalState(null);
+      super.destroy();
+      clearInterval(this._checkInterval);
+    }
+    /**
+     * @return {Object<string,any>|null}
+     */
+    getLocalState() {
+      return this.states.get(this.clientID) || null;
+    }
+    /**
+     * @param {Object<string,any>|null} state
+     */
+    setLocalState(state) {
+      const clientID = this.clientID;
+      const currLocalMeta = this.meta.get(clientID);
+      const clock = currLocalMeta === void 0 ? 0 : currLocalMeta.clock + 1;
+      const prevState = this.states.get(clientID);
+      if (state === null) {
+        this.states.delete(clientID);
+      } else {
+        this.states.set(clientID, state);
+      }
+      this.meta.set(clientID, {
+        clock,
+        lastUpdated: getUnixTime()
+      });
+      const added = [];
+      const updated = [];
+      const filteredUpdated = [];
+      const removed = [];
+      if (state === null) {
+        removed.push(clientID);
+      } else if (prevState == null) {
+        if (state != null) {
+          added.push(clientID);
+        }
+      } else {
+        updated.push(clientID);
+        if (!equalityDeep(prevState, state)) {
+          filteredUpdated.push(clientID);
+        }
+      }
+      if (added.length > 0 || filteredUpdated.length > 0 || removed.length > 0) {
+        this.emit("change", [{ added, updated: filteredUpdated, removed }, "local"]);
+      }
+      this.emit("update", [{ added, updated, removed }, "local"]);
+    }
+    /**
+     * @param {string} field
+     * @param {any} value
+     */
+    setLocalStateField(field, value) {
+      const state = this.getLocalState();
+      if (state !== null) {
+        this.setLocalState({
+          ...state,
+          [field]: value
+        });
+      }
+    }
+    /**
+     * @return {Map<number,Object<string,any>>}
+     */
+    getStates() {
+      return this.states;
+    }
+  };
+  var removeAwarenessStates = (awareness, clients, origin) => {
+    const removed = [];
+    for (let i = 0; i < clients.length; i++) {
+      const clientID = clients[i];
+      if (awareness.states.has(clientID)) {
+        awareness.states.delete(clientID);
+        if (clientID === awareness.clientID) {
+          const curMeta = (
+            /** @type {MetaClientState} */
+            awareness.meta.get(clientID)
+          );
+          awareness.meta.set(clientID, {
+            clock: curMeta.clock + 1,
+            lastUpdated: getUnixTime()
+          });
+        }
+        removed.push(clientID);
+      }
+    }
+    if (removed.length > 0) {
+      awareness.emit("change", [{ added: [], updated: [], removed }, origin]);
+      awareness.emit("update", [{ added: [], updated: [], removed }, origin]);
+    }
+  };
+  var encodeAwarenessUpdate = (awareness, clients, states = awareness.states) => {
+    const len = clients.length;
+    const encoder = createEncoder();
+    writeVarUint(encoder, len);
+    for (let i = 0; i < len; i++) {
+      const clientID = clients[i];
+      const state = states.get(clientID) || null;
+      const clock = (
+        /** @type {MetaClientState} */
+        awareness.meta.get(clientID).clock
+      );
+      writeVarUint(encoder, clientID);
+      writeVarUint(encoder, clock);
+      writeVarString(encoder, JSON.stringify(state));
+    }
+    return toUint8Array(encoder);
+  };
+  var applyAwarenessUpdate = (awareness, update, origin) => {
+    const decoder = createDecoder(update);
+    const timestamp = getUnixTime();
+    const added = [];
+    const updated = [];
+    const filteredUpdated = [];
+    const removed = [];
+    const len = readVarUint(decoder);
+    for (let i = 0; i < len; i++) {
+      const clientID = readVarUint(decoder);
+      let clock = readVarUint(decoder);
+      const state = JSON.parse(readVarString(decoder));
+      const clientMeta = awareness.meta.get(clientID);
+      const prevState = awareness.states.get(clientID);
+      const currClock = clientMeta === void 0 ? 0 : clientMeta.clock;
+      if (currClock < clock || currClock === clock && state === null && awareness.states.has(clientID)) {
+        if (state === null) {
+          if (clientID === awareness.clientID && awareness.getLocalState() != null) {
+            clock++;
+          } else {
+            awareness.states.delete(clientID);
+          }
+        } else {
+          awareness.states.set(clientID, state);
+        }
+        awareness.meta.set(clientID, {
+          clock,
+          lastUpdated: timestamp
+        });
+        if (clientMeta === void 0 && state !== null) {
+          added.push(clientID);
+        } else if (clientMeta !== void 0 && state === null) {
+          removed.push(clientID);
+        } else if (state !== null) {
+          if (!equalityDeep(state, prevState)) {
+            filteredUpdated.push(clientID);
+          }
+          updated.push(clientID);
+        }
+      }
+    }
+    if (added.length > 0 || filteredUpdated.length > 0 || removed.length > 0) {
+      awareness.emit("change", [{
+        added,
+        updated: filteredUpdated,
+        removed
+      }, origin]);
+    }
+    if (added.length > 0 || updated.length > 0 || removed.length > 0) {
+      awareness.emit("update", [{
+        added,
+        updated,
+        removed
+      }, origin]);
+    }
+  };
+
   // node_modules/lib0/mutex.js
   var createMutex = () => {
     let token2 = true;
@@ -26498,6 +26753,31 @@ ${err.toString()}`);
   var matchNodeName = (yElement, pNode) => !(pNode instanceof Array) && yElement.nodeName === pNode.type.name;
 
   // node_modules/y-prosemirror/src/lib.js
+  var viewsToUpdate = null;
+  var updateMetas = () => {
+    const ups = (
+      /** @type {Map<EditorView, Map<any, any>>} */
+      viewsToUpdate
+    );
+    viewsToUpdate = null;
+    ups.forEach((metas, view) => {
+      const tr2 = view.state.tr;
+      const syncState = ySyncPluginKey.getState(view.state);
+      if (syncState && syncState.binding && !syncState.binding.isDestroyed) {
+        metas.forEach((val, key) => {
+          tr2.setMeta(key, val);
+        });
+        view.dispatch(tr2);
+      }
+    });
+  };
+  var setMeta2 = (view, key, value) => {
+    if (!viewsToUpdate) {
+      viewsToUpdate = /* @__PURE__ */ new Map();
+      timeout(0, updateMetas);
+    }
+    setIfUndefined(viewsToUpdate, view, create).set(key, value);
+  };
   var absolutePositionToRelativePosition = (pos, type, mapping) => {
     if (pos === 0) {
       return createRelativePositionFromTypeIndex(type, 0, type.length === 0 ? -1 : 0);
@@ -26700,6 +26980,179 @@ ${err.toString()}`);
     };
   }
 
+  // node_modules/y-prosemirror/src/plugins/cursor-plugin.js
+  var defaultAwarenessStateFilter = (currentClientId, userClientId, _user) => currentClientId !== userClientId;
+  var defaultCursorBuilder = (user) => {
+    const cursor = document.createElement("span");
+    cursor.classList.add("ProseMirror-yjs-cursor");
+    cursor.setAttribute("style", `border-color: ${user.color}`);
+    const userDiv = document.createElement("div");
+    userDiv.setAttribute("style", `background-color: ${user.color}`);
+    userDiv.insertBefore(document.createTextNode(user.name), null);
+    const nonbreakingSpace1 = document.createTextNode("\u2060");
+    const nonbreakingSpace2 = document.createTextNode("\u2060");
+    cursor.insertBefore(nonbreakingSpace1, null);
+    cursor.insertBefore(userDiv, null);
+    cursor.insertBefore(nonbreakingSpace2, null);
+    return cursor;
+  };
+  var defaultSelectionBuilder = (user) => {
+    return {
+      style: `background-color: ${user.color}70`,
+      class: "ProseMirror-yjs-selection"
+    };
+  };
+  var rxValidColor = /^#[0-9a-fA-F]{6}$/;
+  var createDecorations = (state, awareness, awarenessFilter, createCursor, createSelection) => {
+    const ystate = ySyncPluginKey.getState(state);
+    const y = ystate.doc;
+    const decorations = [];
+    if (ystate.snapshot != null || ystate.prevSnapshot != null || ystate.binding.mapping.size === 0) {
+      return DecorationSet.create(state.doc, []);
+    }
+    awareness.getStates().forEach((aw, clientId) => {
+      if (!awarenessFilter(y.clientID, clientId, aw)) {
+        return;
+      }
+      if (aw.cursor != null) {
+        const user = aw.user || {};
+        if (user.color == null) {
+          user.color = "#ffa500";
+        } else if (!rxValidColor.test(user.color)) {
+          console.warn("A user uses an unsupported color format", user);
+        }
+        if (user.name == null) {
+          user.name = `User: ${clientId}`;
+        }
+        let anchor = relativePositionToAbsolutePosition(
+          y,
+          ystate.type,
+          createRelativePositionFromJSON(aw.cursor.anchor),
+          ystate.binding.mapping
+        );
+        let head = relativePositionToAbsolutePosition(
+          y,
+          ystate.type,
+          createRelativePositionFromJSON(aw.cursor.head),
+          ystate.binding.mapping
+        );
+        if (anchor !== null && head !== null) {
+          const maxsize = max(state.doc.content.size - 1, 0);
+          anchor = min(anchor, maxsize);
+          head = min(head, maxsize);
+          decorations.push(
+            Decoration.widget(head, () => createCursor(user, clientId), {
+              key: clientId + "",
+              side: 10
+            })
+          );
+          const from3 = min(anchor, head);
+          const to = max(anchor, head);
+          decorations.push(
+            Decoration.inline(from3, to, createSelection(user, clientId), {
+              inclusiveEnd: true,
+              inclusiveStart: false
+            })
+          );
+        }
+      }
+    });
+    return DecorationSet.create(state.doc, decorations);
+  };
+  var yCursorPlugin = (awareness, {
+    awarenessStateFilter = defaultAwarenessStateFilter,
+    cursorBuilder = defaultCursorBuilder,
+    selectionBuilder = defaultSelectionBuilder,
+    getSelection: getSelection2 = (state) => state.selection
+  } = {}, cursorStateField = "cursor") => new Plugin({
+    key: yCursorPluginKey,
+    state: {
+      init(_, state) {
+        return createDecorations(
+          state,
+          awareness,
+          awarenessStateFilter,
+          cursorBuilder,
+          selectionBuilder
+        );
+      },
+      apply(tr2, prevState, _oldState, newState) {
+        const ystate = ySyncPluginKey.getState(newState);
+        const yCursorState = tr2.getMeta(yCursorPluginKey);
+        if (ystate && ystate.isChangeOrigin || yCursorState && yCursorState.awarenessUpdated) {
+          return createDecorations(
+            newState,
+            awareness,
+            awarenessStateFilter,
+            cursorBuilder,
+            selectionBuilder
+          );
+        }
+        return prevState.map(tr2.mapping, tr2.doc);
+      }
+    },
+    props: {
+      decorations: (state) => {
+        return yCursorPluginKey.getState(state);
+      }
+    },
+    view: (view) => {
+      const awarenessListener = () => {
+        if (view.docView) {
+          setMeta2(view, yCursorPluginKey, { awarenessUpdated: true });
+        }
+      };
+      const updateCursorInfo = () => {
+        const ystate = ySyncPluginKey.getState(view.state);
+        const current = awareness.getLocalState() || {};
+        if (view.hasFocus()) {
+          const selection = getSelection2(view.state);
+          const anchor = absolutePositionToRelativePosition(
+            selection.anchor,
+            ystate.type,
+            ystate.binding.mapping
+          );
+          const head = absolutePositionToRelativePosition(
+            selection.head,
+            ystate.type,
+            ystate.binding.mapping
+          );
+          if (current.cursor == null || !compareRelativePositions(
+            createRelativePositionFromJSON(current.cursor.anchor),
+            anchor
+          ) || !compareRelativePositions(
+            createRelativePositionFromJSON(current.cursor.head),
+            head
+          )) {
+            awareness.setLocalStateField(cursorStateField, {
+              anchor,
+              head
+            });
+          }
+        } else if (current.cursor != null && relativePositionToAbsolutePosition(
+          ystate.doc,
+          ystate.type,
+          createRelativePositionFromJSON(current.cursor.anchor),
+          ystate.binding.mapping
+        ) !== null) {
+          awareness.setLocalStateField(cursorStateField, null);
+        }
+      };
+      awareness.on("change", awarenessListener);
+      view.dom.addEventListener("focusin", updateCursorInfo);
+      view.dom.addEventListener("focusout", updateCursorInfo);
+      return {
+        update: updateCursorInfo,
+        destroy: () => {
+          view.dom.removeEventListener("focusin", updateCursorInfo);
+          view.dom.removeEventListener("focusout", updateCursorInfo);
+          awareness.off("change", awarenessListener);
+          awareness.setLocalStateField(cursorStateField, null);
+        }
+      };
+    }
+  });
+
   // node_modules/y-prosemirror/src/plugins/undo-plugin.js
   var undo = (state) => yUndoPluginKey.getState(state)?.undoManager?.undo() != null;
   var redo = (state) => yUndoPluginKey.getState(state)?.undoManager?.redo() != null;
@@ -26896,6 +27349,88 @@ ${err.toString()}`);
           }
         })
       ].filter(Boolean);
+    }
+  });
+
+  // node_modules/@tiptap/extension-collaboration-cursor/dist/index.js
+  var awarenessStatesToArray = (states) => {
+    return Array.from(states.entries()).map(([key, value]) => {
+      return {
+        clientId: key,
+        ...value.user
+      };
+    });
+  };
+  var defaultOnUpdate = () => null;
+  var CollaborationCursor = Extension.create({
+    name: "collaborationCursor",
+    priority: 999,
+    addOptions() {
+      return {
+        provider: null,
+        user: {
+          name: null,
+          color: null
+        },
+        render: (user) => {
+          const cursor = document.createElement("span");
+          cursor.classList.add("collaboration-cursor__caret");
+          cursor.setAttribute("style", `border-color: ${user.color}`);
+          const label = document.createElement("div");
+          label.classList.add("collaboration-cursor__label");
+          label.setAttribute("style", `background-color: ${user.color}`);
+          label.insertBefore(document.createTextNode(user.name), null);
+          cursor.insertBefore(label, null);
+          return cursor;
+        },
+        selectionRender: defaultSelectionBuilder,
+        onUpdate: defaultOnUpdate
+      };
+    },
+    onCreate() {
+      if (this.options.onUpdate !== defaultOnUpdate) {
+        console.warn('[tiptap warn]: DEPRECATED: The "onUpdate" option is deprecated. Please use `editor.storage.collaborationCursor.users` instead. Read more: https://tiptap.dev/api/extensions/collaboration-cursor');
+      }
+      if (!this.options.provider) {
+        throw new Error('The "provider" option is required for the CollaborationCursor extension');
+      }
+    },
+    addStorage() {
+      return {
+        users: []
+      };
+    },
+    addCommands() {
+      return {
+        updateUser: (attributes) => () => {
+          this.options.user = attributes;
+          this.options.provider.awareness.setLocalStateField("user", this.options.user);
+          return true;
+        },
+        user: (attributes) => ({ editor }) => {
+          console.warn('[tiptap warn]: DEPRECATED: The "user" command is deprecated. Please use "updateUser" instead. Read more: https://tiptap.dev/api/extensions/collaboration-cursor');
+          return editor.commands.updateUser(attributes);
+        }
+      };
+    },
+    addProseMirrorPlugins() {
+      return [
+        yCursorPlugin(
+          (() => {
+            this.options.provider.awareness.setLocalStateField("user", this.options.user);
+            this.storage.users = awarenessStatesToArray(this.options.provider.awareness.states);
+            this.options.provider.awareness.on("update", () => {
+              this.storage.users = awarenessStatesToArray(this.options.provider.awareness.states);
+            });
+            return this.options.provider.awareness;
+          })(),
+          // @ts-ignore
+          {
+            cursorBuilder: this.options.render,
+            selectionBuilder: this.options.selectionRender
+          }
+        )
+      ];
     }
   });
 
@@ -35315,8 +35850,23 @@ ${err.toString()}`);
     const label = document.getElementById("zoom-label");
     if (label) label.textContent = `${Math.round(next * 100)}%`;
   }
+  function syncCanvasArrows(stage) {
+    for (const arrow4 of stage.querySelectorAll(".pd-el-arrow")) {
+      const from3 = stage.querySelector(`.pd-el[data-id="${CSS.escape(arrow4.dataset.from ?? "")}"]`);
+      const to = stage.querySelector(`.pd-el[data-id="${CSS.escape(arrow4.dataset.to ?? "")}"]`);
+      const line = arrow4.querySelector("line");
+      if (!from3 || !to || !line) continue;
+      const ax = Number.parseFloat(arrow4.style.left) || 0;
+      const ay = Number.parseFloat(arrow4.style.top) || 0;
+      line.setAttribute("x1", String((Number.parseFloat(from3.style.left) || 0) + from3.offsetWidth / 2 - ax));
+      line.setAttribute("y1", String((Number.parseFloat(from3.style.top) || 0) + from3.offsetHeight / 2 - ay));
+      line.setAttribute("x2", String((Number.parseFloat(to.style.left) || 0) + to.offsetWidth / 2 - ax));
+      line.setAttribute("y2", String((Number.parseFloat(to.style.top) || 0) + to.offsetHeight / 2 - ay));
+    }
+  }
   function bindVisualStage(stage, handlers2) {
     let dragging = false;
+    let connectFrom = "";
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
       const target = event.target;
@@ -35328,6 +35878,19 @@ ${err.toString()}`);
       if (tool === "sticky") {
         const box = page.getBoundingClientRect();
         handlers2.onPlaceSticky?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
+        return;
+      }
+      if (tool === "connect") {
+        const card2 = target.closest(".pd-el");
+        if (!card2 || card2.classList.contains("pd-el-arrow") || !card2.dataset.id) return;
+        if (!connectFrom || connectFrom === card2.dataset.id) {
+          connectFrom = card2.dataset.id;
+          for (const node of stage.querySelectorAll(".pd-el")) node.classList.toggle("is-connect", node === card2);
+          return;
+        }
+        handlers2.onConnect?.(connectFrom, card2.dataset.id);
+        connectFrom = "";
+        for (const node of stage.querySelectorAll(".pd-el")) node.classList.remove("is-connect");
         return;
       }
       if (tool === "pan") {
@@ -35349,6 +35912,7 @@ ${err.toString()}`);
         window.addEventListener("pointerup", onUp2);
         return;
       }
+      const resizing = target.closest(".pd-resize");
       const card = target.closest(".pd-el");
       if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) return;
       const id2 = card.dataset.id ?? "";
@@ -35357,6 +35921,8 @@ ${err.toString()}`);
       const startY = event.clientY;
       const originLeft = Number.parseFloat(card.style.left) || 0;
       const originTop = Number.parseFloat(card.style.top) || 0;
+      const originWidth = card.offsetWidth;
+      const originHeight = card.offsetHeight;
       dragging = false;
       const onMove = (move) => {
         const dx = move.clientX - startX;
@@ -35364,8 +35930,14 @@ ${err.toString()}`);
         if (!dragging && dx * dx + dy * dy < 36) return;
         dragging = true;
         card.classList.add("is-dragging");
-        card.style.left = `${originLeft + dx / scale}px`;
-        card.style.top = `${originTop + dy / scale}px`;
+        if (resizing) {
+          card.style.width = `${Math.max(80, originWidth + dx / scale)}px`;
+          card.style.height = `${Math.max(48, originHeight + dy / scale)}px`;
+        } else {
+          card.style.left = `${originLeft + dx / scale}px`;
+          card.style.top = `${originTop + dy / scale}px`;
+        }
+        syncCanvasArrows(stage);
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
@@ -35375,7 +35947,9 @@ ${err.toString()}`);
         handlers2.onMove({
           id: id2,
           x: Number.parseFloat(card.style.left) || originLeft,
-          y: Number.parseFloat(card.style.top) || originTop
+          y: Number.parseFloat(card.style.top) || originTop,
+          width: card.offsetWidth,
+          height: card.offsetHeight
         });
       };
       window.addEventListener("pointermove", onMove);
@@ -35660,8 +36234,67 @@ ${err.toString()}`);
       menu.remove();
     };
   }
+  function bindFormatBubble(editor) {
+    const bar = document.createElement("div");
+    bar.className = "ew-bubble";
+    bar.hidden = true;
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("aria-label", "Selection formatting");
+    bar.innerHTML = [
+      ["bold", "Bold", "Bold"],
+      ["italic", "Italic", "Italic"],
+      ["underline", "Underline", "Underline"],
+      ["highlight", "Highlight", "Highlighter"]
+    ].map(([cmd, label, icon]) => `<button type="button" data-bubble="${cmd}" aria-label="${label}">${iconSvg(icon)}</button>`).join("");
+    document.body.appendChild(bar);
+    const hide2 = () => {
+      bar.hidden = true;
+    };
+    const place = () => {
+      const { empty: empty2, from: from3 } = editor.state.selection;
+      if (empty2 || !editor.isFocused) {
+        hide2();
+        return;
+      }
+      bar.hidden = false;
+      const coords = editor.view.coordsAtPos(from3);
+      const anchor = document.createElement("div");
+      anchor.style.position = "fixed";
+      anchor.style.left = `${coords.left}px`;
+      anchor.style.top = `${coords.top}px`;
+      anchor.style.width = "1px";
+      anchor.style.height = "1px";
+      document.body.appendChild(anchor);
+      void computePosition2(anchor, bar, {
+        placement: "top",
+        middleware: [offset2(8), flip2(), shift3({ padding: 8 })]
+      }).then(({ x, y }) => {
+        bar.style.left = `${x}px`;
+        bar.style.top = `${y}px`;
+        anchor.remove();
+      });
+    };
+    bar.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const cmd = event.target.closest("[data-bubble]")?.dataset.bubble;
+      if (cmd === "bold") editor.chain().focus().toggleBold().run();
+      if (cmd === "italic") editor.chain().focus().toggleItalic().run();
+      if (cmd === "underline") editor.chain().focus().toggleUnderline().run();
+      if (cmd === "highlight") editor.chain().focus().toggleHighlight().run();
+      place();
+    });
+    editor.on("selectionUpdate", place);
+    editor.on("blur", hide2);
+    return () => {
+      editor.off("selectionUpdate", place);
+      editor.off("blur", hide2);
+      bar.remove();
+    };
+  }
   function mountHostedCollab(options) {
     const ydoc = new Doc();
+    const awareness = new Awareness(ydoc);
+    if (options.user) awareness.setLocalStateField("user", { name: options.user.name, color: options.user.color });
     let editor;
     let socket;
     let ready = false;
@@ -35669,6 +36302,7 @@ ${err.toString()}`);
     let reconnectTimer;
     let closed = false;
     let stopSlash;
+    let stopBubble;
     const setStatus2 = (text2) => {
       options.onStatus?.(text2);
     };
@@ -35678,6 +36312,14 @@ ${err.toString()}`);
       return btoa(binary);
     };
     const b64ToBytes = (value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+    const sendAwareness = () => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ type: "awareness", update: bytesToB64(encodeAwarenessUpdate(awareness, [awareness.clientID])) }));
+    };
+    awareness.on("update", (_changes, origin) => {
+      if (origin === "remote") return;
+      sendAwareness();
+    });
     const sendUpdate = (update) => {
       if (!socket || socket.readyState !== WebSocket.OPEN || !ready) return;
       socket.send(JSON.stringify({ type: "update", update: bytesToB64(update) }));
@@ -35705,10 +36347,16 @@ ${err.toString()}`);
           NomaPanel,
           Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
           Image.configure({ inline: false, allowBase64: false }),
-          Collaboration.configure({ document: ydoc, field: "default" })
+          Collaboration.configure({ document: ydoc, field: "default" }),
+          CollaborationCursor.configure({
+            provider: { awareness },
+            user: options.user ? { name: options.user.name, color: options.user.color } : { name: "Guest", color: "#0C66E4" }
+          })
         ]
       });
       stopSlash = bindSlashMenu(editor);
+      stopBubble = bindFormatBubble(editor);
+      editor.on("update", () => options.onUpdate?.());
     };
     const connect = () => {
       if (closed) return;
@@ -35723,12 +36371,14 @@ ${err.toString()}`);
           ready = true;
           ensureEditor();
           setStatus2(message.type === "init" ? "ready" : `acks:${acks}`);
-          if (message.type === "init" && options.user && socket?.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: "presence", user: options.user }));
+          if (message.type === "init" && socket?.readyState === WebSocket.OPEN) {
+            if (options.user) socket.send(JSON.stringify({ type: "presence", user: options.user }));
+            sendAwareness();
           }
           if (message.users) options.onPresence?.(message.users);
         }
         if (message.type === "presence" && message.users) options.onPresence?.(message.users);
+        if (message.type === "awareness" && message.update) applyAwarenessUpdate(awareness, b64ToBytes(message.update), "remote");
         if (message.type === "ack") {
           acks += 1;
           setStatus2(`acks:${acks}`);
@@ -35751,9 +36401,12 @@ ${err.toString()}`);
       destroy: () => {
         closed = true;
         stopSlash?.();
+        stopBubble?.();
+        removeAwarenessStates(awareness, [awareness.clientID], "local");
         if (reconnectTimer !== void 0) window.clearTimeout(reconnectTimer);
         socket?.close();
         editor?.destroy();
+        if (typeof awareness.destroy === "function") awareness.destroy();
         ydoc.destroy();
       }
     };
@@ -35878,6 +36531,7 @@ ${err.toString()}`);
   var boardFilter = "all";
   var boardSearch = "";
   var typeFilter = "";
+  var swimlanes = false;
   var paletteIndex = 0;
   var mentionStop;
   var $2 = (id2) => {
@@ -36067,6 +36721,7 @@ ${err.toString()}`);
     $2("rail-kicker").textContent = next === "docs" ? "Content" : next === "visuals" ? "Whiteboards" : next === "work" ? "Projects" : "Admin";
     const section = document.getElementById("rail-section");
     if (section) section.textContent = next === "docs" ? "Pages" : next === "visuals" ? "Boards" : next === "work" ? "Projects" : "Spaces";
+    if (next !== "work") document.querySelector(".ew-body")?.classList.remove("is-issue");
     if (next !== "visuals") $2("visual-outline").replaceChildren();
     renderRail();
     if (next === "docs") openDocument(selectedDocumentId || payload?.documents[0]?.id);
@@ -36171,6 +36826,7 @@ ${err.toString()}`);
       documentId: id2,
       user: payload?.actor ? { id: payload.actor.principalId, name: payload.actor.name, color: presenceColor(payload.actor.principalId) } : void 0,
       onPresence: renderPresence,
+      onUpdate: renderPageToc,
       onStatus: (text2) => {
         $2("collab-status").textContent = text2;
         setStatus(`${payload?.actor.name ?? "Session"} \xB7 ${text2}`, text2.startsWith("ack") || text2 === "ready" ? "ok" : "connecting");
@@ -36178,6 +36834,37 @@ ${err.toString()}`);
       }
     });
     void renderDocumentInspector(id2);
+  }
+  function pageHeadings() {
+    const headings = [];
+    const editor = collab?.editor();
+    editor?.state.doc.descendants((node) => {
+      if (node.type.name === "heading") {
+        const text2 = node.textContent.trim();
+        if (text2) headings.push({ text: text2, level: Number(node.attrs.level ?? 1) });
+      }
+    });
+    return headings.slice(0, 24);
+  }
+  function renderPageToc() {
+    const toc = document.getElementById("page-toc");
+    if (!toc) return;
+    const headings = pageHeadings();
+    toc.innerHTML = headings.length ? headings.map(
+      (heading) => `<button type="button" class="ew-toc-item" data-toc="${escapeHtml2(heading.text)}" data-level="${heading.level}">${escapeHtml2(heading.text)}</button>`
+    ).join("") : `<div class="ew-note">Headings on this page appear here</div>`;
+  }
+  function setPageCover(assets) {
+    const cover = document.getElementById("doc-cover");
+    if (!cover) return;
+    const image = assets.find((asset) => asset.mime.startsWith("image/"));
+    if (!image) {
+      cover.hidden = true;
+      cover.replaceChildren();
+      return;
+    }
+    cover.hidden = false;
+    cover.innerHTML = `<img src="${escapeHtml2(assetUrl(image.assetId))}" alt="${escapeHtml2(image.filename)}" />`;
   }
   async function renderDocumentInspector(id2) {
     const doc4 = payload?.documents.find((item) => item.id === id2);
@@ -36212,7 +36899,9 @@ ${err.toString()}`);
     const parents = (payload?.documents ?? []).filter((item) => item.id !== id2);
     const people = (payload?.principals ?? []).map((person) => `<option value="${person.id}">${escapeHtml2(person.name)}</option>`).join("");
     const issues = (payload?.issues ?? []).map((issue) => `<option value="${issue.id}">${escapeHtml2(issue.key)} ${escapeHtml2(issue.summary)}</option>`).join("");
+    setPageCover(assets.assets);
     inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml2(doc4?.title ?? "")}</strong><span>Hash ${escapeHtml2((doc4?.hash ?? "").slice(0, 12))}</span><span>${escapeHtml2(doc4?.classification ?? "")}</span></div>
+    <div class="ew-meta"><strong>On this page</strong><div id="page-toc" class="ew-toc"></div></div>
     <label for="rename-page">Title<input id="rename-page" value="${escapeHtml2(doc4?.title ?? "")}" /></label>
     <label for="move-page">Parent
       <select id="move-page">
@@ -36236,6 +36925,7 @@ ${err.toString()}`);
     <div class="ew-meta"><strong>History</strong>${revisions.revisions.map((rev) => `<button type="button" data-restore="${rev.revision}">v${rev.revision} \xB7 ${escapeHtml2(rev.title)}</button>`).join("") || "<span>No published revisions</span>"}</div>
     <div class="ew-meta"><strong>Attachments</strong>${assets.assets.map((asset) => `<span>${escapeHtml2(asset.filename)}</span>`).join("") || "<span>None</span>"}</div>`;
     enhanceSelects(inspector);
+    renderPageToc();
   }
   async function seedEmptyEditor(id2, title) {
     if ((collab?.getText() ?? "").trim()) return;
@@ -36274,8 +36964,9 @@ ${err.toString()}`);
       onMove: (move) => {
         void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(move.id)}`, {
           method: "PATCH",
-          body: JSON.stringify({ geometry: { x: move.x, y: move.y } })
+          body: JSON.stringify({ geometry: { x: move.x, y: move.y, width: move.width, height: move.height } })
         });
+        syncCanvasArrows($2("visual-stage"));
       },
       onEdit: (elementId, text2) => {
         void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(elementId)}`, {
@@ -36292,8 +36983,14 @@ ${err.toString()}`);
           altText: "Sticky",
           geometry: { x, y, width: 200, height: 160 }
         });
+      },
+      onConnect: (fromId, toId) => {
+        $2("visual-stage").dataset.tool = "select";
+        syncVisualTools();
+        void addCanvasElement({ type: "arrow", fromId, toId, altText: "Arrow" });
       }
     });
+    syncCanvasArrows($2("visual-stage"));
   }
   function renderSprintBar() {
     if (!payload) return;
@@ -36317,6 +37014,7 @@ ${err.toString()}`);
     renderSprintBar();
     $2("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
     $2("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
+    $2("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
     const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
     $2("type-filters").innerHTML = [
       `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
@@ -36333,33 +37031,71 @@ ${err.toString()}`);
       if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
       return true;
     });
-    $2("work-board").innerHTML = columns.map((status) => {
-      const cards = visible.filter((issue) => issue.statusId === status.id);
+    const issueCard = (issue) => {
+      const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
+      const parent = payload?.issues.find((item) => item.id === issue.parentId);
+      const due = (issue.dueAt ?? "").slice(0, 10);
+      return `<button class="ew-card${issue.id === selectedIssueId ? " is-open" : ""}" type="button" data-issue="${issue.id}" data-type="${escapeHtml2(issue.typeKey)}">
+      <span class="ew-key">${escapeHtml2(issue.key)}</span>
+      <strong>${escapeHtml2(issue.summary)}</strong>
+      <span class="ew-card-foot">
+        <span class="ew-pill">${escapeHtml2(issue.typeKey)}</span>
+        ${parent ? `<span class="ew-epic">${escapeHtml2(parent.key)}</span>` : ""}
+        ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
+        <span class="ew-priority" data-priority="${escapeHtml2(issue.priority)}">${escapeHtml2(issue.priority)}</span>
+        ${due ? `<span class="ew-due">${escapeHtml2(due)}</span>` : ""}
+        ${assignee ? avatarMarkup(assignee.name) : ""}
+      </span>
+    </button>`;
+    };
+    const columnsMarkup = (laneIssues, laneId) => columns.map((status) => {
+      const cards = laneIssues.filter((issue) => issue.statusId === status.id);
+      const createId = laneId === "board" ? `create-${status.id}` : `create-${laneId}-${status.id}`;
       return `<section class="ew-column" data-status="${escapeHtml2(status.id)}">
         <h3>${escapeHtml2(status.name)} <span class="ew-column-count">${cards.length}</span></h3>
         <div class="ew-column-list">
-        ${cards.map((issue) => {
-        const assignee = payload?.principals.find((person) => person.id === issue.assigneeId);
-        const parent = payload?.issues.find((item) => item.id === issue.parentId);
-        return `<button class="ew-card" type="button" data-issue="${issue.id}" data-type="${escapeHtml2(issue.typeKey)}">
-              <span class="ew-key">${escapeHtml2(issue.key)}</span>
-              <strong>${escapeHtml2(issue.summary)}</strong>
-              <span class="ew-card-foot">
-                <span class="ew-pill">${escapeHtml2(issue.typeKey)}</span>
-                ${parent ? `<span class="ew-epic">${escapeHtml2(parent.key)}</span>` : ""}
-                ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
-                <span class="ew-priority" data-priority="${escapeHtml2(issue.priority)}">${escapeHtml2(issue.priority)}</span>
-                ${assignee ? avatarMarkup(assignee.name) : ""}
-              </span>
-            </button>`;
-      }).join("")}
+        ${cards.map((issue) => issueCard(issue)).join("")}
         </div>
-        <label class="ew-sr" for="create-${escapeHtml2(status.id)}">Create in ${escapeHtml2(status.name)}</label>
-        <input id="create-${escapeHtml2(status.id)}" class="ew-column-add" data-status="${escapeHtml2(status.id)}" placeholder="Create" />
+        <label class="ew-sr" for="${escapeHtml2(createId)}">Create in ${escapeHtml2(status.name)}</label>
+        <input id="${escapeHtml2(createId)}" class="ew-column-add" data-status="${escapeHtml2(status.id)}" placeholder="Create" />
       </section>`;
     }).join("");
-    $2("inspector-title").textContent = "Board";
-    inspector.innerHTML = `<div class="ew-meta"><strong>${visible.length} issues</strong><span>${payload.notifications.length} notifications</span></div>
+    const board = $2("work-board");
+    board.classList.toggle("has-swimlanes", swimlanes);
+    if (swimlanes) {
+      const epicLane = (issue) => {
+        if (issue.typeKey === "epic") return { id: issue.id, title: `${issue.key} ${issue.summary}` };
+        const seen = /* @__PURE__ */ new Set();
+        let current = issue;
+        while (current?.parentId && !seen.has(current.id)) {
+          seen.add(current.id);
+          const parent = payload?.issues.find((item) => item.id === current?.parentId);
+          if (!parent) break;
+          if (parent.typeKey === "epic") return { id: parent.id, title: `${parent.key} ${parent.summary}` };
+          current = parent;
+        }
+        return { id: "none", title: "No epic" };
+      };
+      const groups = /* @__PURE__ */ new Map();
+      for (const issue of visible) {
+        const lane = epicLane(issue);
+        const existing = groups.get(lane.id);
+        if (existing) existing.issues.push(issue);
+        else groups.set(lane.id, { title: lane.title, issues: [issue] });
+      }
+      board.innerHTML = [...groups.entries()].map(
+        ([laneId, group]) => `<section class="ew-swimlane" data-epic="${escapeHtml2(laneId)}">
+          <h3>${escapeHtml2(group.title)} <span>${group.issues.length}</span></h3>
+          <div class="ew-swimlane-cols">${columnsMarkup(group.issues, laneId)}</div>
+        </section>`
+      ).join("");
+    } else {
+      board.innerHTML = columnsMarkup(visible, "board");
+    }
+    if (!selectedIssueId) {
+      document.querySelector(".ew-body")?.classList.remove("is-issue");
+      $2("inspector-title").textContent = "Board";
+      inspector.innerHTML = `<div class="ew-meta"><strong>${visible.length} issues</strong><span>${payload.notifications.length} notifications</span></div>
     <label for="new-issue-summary">Create issue
       <input id="new-issue-summary" placeholder="Summary" />
     </label>
@@ -36367,7 +37103,8 @@ ${err.toString()}`);
       <select id="new-issue-type">${payload.issueTypes.filter((type) => type.projectId === project?.id).map((type) => `<option value="${escapeHtml2(type.key)}">${escapeHtml2(type.name)}</option>`).join("")}</select>
     </label>
     <div class="ew-actions"><button type="button" id="submit-issue">${iconSvg("Plus")} Create</button></div>`;
-    enhanceSelects(inspector);
+      enhanceSelects(inspector);
+    }
     renderRail();
     boardDndStop?.();
     boardDndStop = bindIssueBoard($2("work-board"), (drop) => {
@@ -36408,6 +37145,7 @@ ${err.toString()}`);
     } finally {
       await refreshWorkspace();
       renderBoard();
+      if (selectedIssueId) await inspectIssue(selectedIssueId);
     }
   }
   async function inspectIssue(id2) {
@@ -36429,6 +37167,7 @@ ${err.toString()}`);
         <span class="ew-key">${escapeHtml2(issue.key)}</span>
         <span class="ew-pill">${escapeHtml2(detail.typeKey)}</span>
         <span class="ew-lozenge">${escapeHtml2(current?.name ?? issue.statusId)}</span>
+        <button type="button" id="close-issue">Close</button>
       </div>
       <label for="issue-summary">Summary<input id="issue-summary" value="${escapeHtml2(detail.summary)}" /></label>
       <label for="issue-description">Description<textarea id="issue-description" rows="3">${escapeHtml2(detail.description ?? "")}</textarea></label>
@@ -36436,6 +37175,7 @@ ${err.toString()}`);
         <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
         <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
         <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
+        <label for="issue-due">Due date<input id="issue-due" type="date" value="${escapeHtml2((detail.due_at ?? issue.dueAt ?? "").slice(0, 10))}" /></label>
       </div>
       <div class="ew-actions">
         <button type="button" id="save-issue">Save</button>
@@ -36474,6 +37214,8 @@ ${err.toString()}`);
     <label for="issue-doc-link">Page<select id="issue-doc-link">${docs}</select></label>
     <button type="button" id="add-issue-doc-link">Link page</button>`
     );
+    $2("inspector-title").textContent = issue.key;
+    document.querySelector(".ew-body")?.classList.add("is-issue");
     enhanceSelects(inspector);
     bindWorkspaceMentions();
   }
@@ -36638,6 +37380,17 @@ ${err.toString()}`);
     const button = event.target.closest("button");
     if (!button) return;
     try {
+      if (button.id === "close-issue") {
+        selectedIssueId = "";
+        document.querySelector(".ew-body")?.classList.remove("is-issue");
+        renderBoard();
+        return;
+      }
+      if (button.dataset.toc) {
+        const heading = [...editorMount.querySelectorAll("h1, h2, h3")].find((node) => node.textContent?.trim() === button.dataset.toc);
+        heading?.scrollIntoView({ block: "center" });
+        return;
+      }
       if (button.id === "advance-issue" || button.classList.contains("ew-transition")) {
         if (!selectedIssueId) return;
         const to = button.dataset.to ?? "";
@@ -36656,7 +37409,8 @@ ${err.toString()}`);
             summary: $2("issue-summary").value,
             description: $2("issue-description").value,
             assigneeId: $2("issue-assignee").value || null,
-            priority: $2("issue-priority").value
+            priority: $2("issue-priority").value,
+            dueAt: $2("issue-due").value || null
           })
         });
         const sprintId = $2("issue-sprint").value || null;
@@ -36891,6 +37645,7 @@ ${err.toString()}`);
     }
     $2("visual-stage").classList.toggle("is-panning", tool === "pan");
     $2("visual-stage").classList.toggle("is-sticky", tool === "sticky");
+    $2("visual-stage").classList.toggle("is-connecting", tool === "connect");
   }
   $2("visual-toolbar").addEventListener("click", (event) => {
     const button = event.target.closest("button");
@@ -37179,8 +37934,14 @@ ${err.toString()}`);
     }
   });
   $2("board-filters").addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-filter]");
-    if (!button?.dataset.filter) return;
+    const button = event.target.closest("button");
+    if (!button) return;
+    if (button.id === "swimlane-epic") {
+      swimlanes = !swimlanes;
+      renderBoard();
+      return;
+    }
+    if (!button.dataset.filter) return;
     boardFilter = button.dataset.filter === "mine" ? "mine" : "all";
     renderBoard();
   });
