@@ -84,6 +84,14 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   assert.match(await page.$eval("#editor", (element) => element.innerHTML), /ew-panel/);
   assert.match(await page.$eval("#editor", (element) => element.textContent ?? ""), /Claim|hosted workspace/);
   await page.waitForSelector("#doc-presence");
+  await page.click("#editor .ProseMirror");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/");
+  await page.waitForSelector(".ew-slash:not([hidden])");
+  assert.match(await page.$eval(".ew-slash", (element) => element.textContent ?? ""), /Info panel|Table|Action items/);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".ew-slash[hidden]");
   await page.keyboard.down("Control");
   await page.keyboard.press("KeyK");
   await page.keyboard.up("Control");

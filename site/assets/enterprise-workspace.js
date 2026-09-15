@@ -35588,7 +35588,7 @@ ${err.toString()}`);
       const item = SLASH_ITEMS.find((entry) => entry.id === id2);
       const { $from } = editor.state.selection;
       const text2 = $from.parent.textBetween(0, $from.parentOffset, void 0, "\uFFFC");
-      const match2 = text2.match(/(?:^|\s)(\/[a-z]*)$/i);
+      const match2 = text2.match(/(\/[a-z]*)$/i);
       if (match2?.[1]) {
         editor.chain().focus().deleteRange({ from: editor.state.selection.from - match2[1].length, to: editor.state.selection.from }).run();
       }
@@ -35602,7 +35602,7 @@ ${err.toString()}`);
         return;
       }
       const text2 = $from.parent.textBetween(0, $from.parentOffset, void 0, "\uFFFC");
-      const match2 = text2.match(/(?:^|\s)\/([a-z]*)$/i);
+      const match2 = text2.match(/\/([a-z]*)$/i);
       if (!match2) {
         hide2();
         return;

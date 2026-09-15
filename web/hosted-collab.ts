@@ -110,7 +110,7 @@ function bindSlashMenu(editor: Editor): () => void {
     const item = SLASH_ITEMS.find((entry) => entry.id === id);
     const { $from } = editor.state.selection;
     const text = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
-    const match = text.match(/(?:^|\s)(\/[a-z]*)$/i);
+    const match = text.match(/(\/[a-z]*)$/i);
     if (match?.[1]) {
       editor.chain().focus().deleteRange({ from: editor.state.selection.from - match[1].length, to: editor.state.selection.from }).run();
     }
@@ -125,7 +125,7 @@ function bindSlashMenu(editor: Editor): () => void {
       return;
     }
     const text = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
-    const match = text.match(/(?:^|\s)\/([a-z]*)$/i);
+    const match = text.match(/\/([a-z]*)$/i);
     if (!match) {
       hide();
       return;

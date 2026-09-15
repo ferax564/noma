@@ -168,9 +168,9 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <p class="ew-kicker">Whiteboards</p>
               <h1 id="visual-title">Untitled board</h1>
               <div id="visual-toolbar" class="ew-toolbar ew-visual-toolbar" role="toolbar" aria-label="Canvas tools">
-                <button type="button" id="tool-select" data-tool="select" aria-pressed="true" aria-label="Select"><span data-lucide="mouse-pointer-2"></span></button>
-                <button type="button" id="tool-pan" data-tool="pan" aria-pressed="false" aria-label="Pan"><span data-lucide="hand"></span></button>
-                <button type="button" id="tool-sticky" data-tool="sticky" aria-pressed="false" aria-label="Sticky note"><span data-lucide="sticky-note"></span></button>
+                <button type="button" id="tool-select" data-tool="select" aria-pressed="true">Select</button>
+                <button type="button" id="tool-pan" data-tool="pan" aria-pressed="false">Pan</button>
+                <button type="button" id="tool-sticky" data-tool="sticky" aria-pressed="false">Sticky</button>
                 <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
                 <span id="zoom-label">100%</span>
@@ -199,7 +199,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <h1 id="work-title">Work</h1>
               <div id="sprint-bar" class="ew-sprint"></div>
               <label class="ew-jql" for="jql-input">JQL
-                <input id="jql-input" type="search" placeholder="assignee = currentUser() AND status = todo" autocomplete="off" />
+                <input id="jql-input" type="search" placeholder="status = todo AND assignee = currentUser()" autocomplete="off" />
               </label>
               <label class="ew-jql" for="board-search">Search issues
                 <input id="board-search" type="search" placeholder="Search issues" autocomplete="off" />

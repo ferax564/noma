@@ -496,7 +496,9 @@ input:focus, select:focus, textarea:focus {
   margin: 0;
   position: static;
 }
-.ew-visual-toolbar input, .ew-visual-toolbar select { min-width: 120px; }
+.ew-visual-toolbar input, .ew-visual-toolbar select { min-width: 120px; max-width: 180px; }
+.ew-visual-toolbar .ew-select { max-width: 180px; }
+.ew-visual-toolbar label { font-size: 12px; font-weight: 600; color: var(--ds-text-subtle); }
 .ew-media-strip {
   display: flex;
   flex-wrap: wrap;
@@ -1213,7 +1215,7 @@ input:focus, select:focus, textarea:focus {
 }
 .ew-slash {
   position: fixed;
-  z-index: 90;
+  z-index: 200;
   min-width: 240px;
   padding: 6px;
   background: var(--ds-surface-overlay);
@@ -1272,7 +1274,7 @@ input:focus, select:focus, textarea:focus {
 }
 .ew-priority[data-priority="high"], .ew-priority[data-priority="highest"] { color: #c9372c; }
 .ew-priority[data-priority="low"], .ew-priority[data-priority="lowest"] { color: #6b778c; }
-#zoom-label { min-width: 3.2em; text-align: center; font-size: 12px; font-weight: 600; color: var(--ds-text-subtle); }
+.ew-jql input::placeholder, #board-search::placeholder { color: var(--ds-text-subtlest); font-weight: 500; }
 .ew-visual-toolbar [aria-pressed="true"] { background: var(--ds-background-selected); color: var(--ds-text-selected); }
 .ew-visual-stage.is-panning { cursor: grab; }
 .ew-visual-stage.is-sticky { cursor: crosshair; }
