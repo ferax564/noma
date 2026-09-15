@@ -146,6 +146,21 @@ export async function dispatchEnterpriseApi(
     return true;
   }
 
+  const artifactElement = path.match(/^\/v1\/artifacts\/([^/]+)\/elements\/([^/]+)$/);
+  if (artifactElement && method === "PATCH") {
+    const body = await readJson(req);
+    send(
+      res,
+      200,
+      ws.updateArtifactElement(actor, decodeURIComponent(artifactElement[1]!), decodeURIComponent(artifactElement[2]!), {
+        geometry: body.geometry as { x?: number; y?: number; width?: number; height?: number } | undefined,
+        text: body.text ? String(body.text) : undefined,
+        altText: body.altText ? String(body.altText) : undefined,
+      }),
+    );
+    return true;
+  }
+
   const artifactMatch = path.match(/^\/v1\/artifacts\/([^/]+)(?:\/(elements))?$/);
   if (artifactMatch && method === "GET" && !artifactMatch[2]) {
     const artifactId = decodeURIComponent(artifactMatch[1]!);
@@ -396,6 +411,7 @@ export async function dispatchEnterpriseApi(
         description: typeof body.description === "string" ? body.description : undefined,
         assigneeId: body.assigneeId === undefined ? undefined : body.assigneeId === null ? null : String(body.assigneeId),
         parentId: body.parentId === undefined ? undefined : body.parentId === null ? null : String(body.parentId),
+        priority: typeof body.priority === "string" ? body.priority : undefined,
       });
       send(res, 200, { ok: true });
       return true;

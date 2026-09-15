@@ -66,10 +66,10 @@ function renderDirective(name: string, attrs: string, body: string, token: strin
     const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token)}`;
     return `<p><video src="${escapeAttr(url)}" controls></video></p>`;
   }
-  if (name === "claim") {
-    const label = /confidence=([0-9.]+)/.exec(attrs)?.[1];
-    const kicker = label ? `Claim · ${label}` : "Claim";
-    return `<blockquote><p><strong>${escapeHtml(kicker)}</strong> ${inlineHtml(body)}</p></blockquote>`;
+  if (name === "claim" || name === "info" || name === "note" || name === "warning" || name === "success" || name === "decision") {
+    const confidence = /confidence=([0-9.]+)/.exec(attrs)?.[1];
+    const title = name === "claim" ? (confidence ? `Claim · ${confidence}` : "Claim") : `${name[0]!.toUpperCase()}${name.slice(1)}`;
+    return `<div data-noma-panel="${escapeAttr(name)}" data-panel-title="${escapeAttr(title)}" class="ew-panel ew-panel-${escapeAttr(name)}"><p><strong>${escapeHtml(title)}</strong> ${inlineHtml(body)}</p></div>`;
   }
   if (body) return `<blockquote><p><strong>${escapeHtml(name)}</strong> ${inlineHtml(body)}</p></blockquote>`;
   return "";

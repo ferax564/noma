@@ -81,7 +81,9 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
     { timeout: 20_000 },
   );
   assert.doesNotMatch(await page.$eval("#editor", (element) => element.textContent ?? ""), /\{#/);
+  assert.match(await page.$eval("#editor", (element) => element.innerHTML), /ew-panel/);
   assert.match(await page.$eval("#editor", (element) => element.textContent ?? ""), /Claim|hosted workspace/);
+  await page.waitForSelector("#doc-presence");
   await page.keyboard.down("Control");
   await page.keyboard.press("KeyK");
   await page.keyboard.up("Control");
@@ -102,12 +104,26 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForFunction(() => (window as unknown as { nomaWorkspace: { mode: () => string } }).nomaWorkspace.mode() === "visuals");
   await page.waitForSelector(".pd-el");
   await page.waitForSelector(".pd-el-arrow");
+  await page.waitForSelector("#tool-sticky");
   assert.match(await text(page, "#visual-title"), /Atlas architecture/);
   assert.match(await text(page, "#visual-stage"), /Atlas architecture/);
   assert.match(await text(page, "#visual-outline"), /Atlas architecture/);
+  const movedFrame = await page.evaluate(() => {
+    const card = document.querySelector<HTMLElement>(".pd-el:not(.pd-el-arrow)");
+    if (!card) return false;
+    const from = card.getBoundingClientRect();
+    const start = Number.parseFloat(card.style.left) || 0;
+    card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: from.left + 8, clientY: from.top + 8, pointerId: 2, button: 0, buttons: 1 }));
+    window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: from.left + 72, clientY: from.top + 28, pointerId: 2, buttons: 1 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: from.left + 72, clientY: from.top + 28, pointerId: 2, button: 0 }));
+    return (Number.parseFloat(card.style.left) || 0) > start;
+  });
+  assert.equal(movedFrame, true);
 
   await page.locator("#mode-work").click();
   await page.waitForSelector(".ew-card");
+  await page.waitForSelector("#board-search");
+  await page.waitForSelector("#type-filters");
   assert.match(await text(page, "#work-board"), /ATLAS-/);
   await page.waitForSelector("#board-filters");
   const movedByPointer = await page.evaluate(async () => {

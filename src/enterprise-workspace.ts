@@ -57,6 +57,7 @@ import {
   semanticOutline,
   type PaperDocument,
   type PaperElement,
+  type PaperGeometry,
   type VisualCommand,
 } from "./enterprise-paperdom.js";
 import { EnterpriseStore } from "./enterprise-store.js";
@@ -778,6 +779,33 @@ export class EnterpriseWorkspace {
     return { id, revision: applied.revision };
   }
 
+  updateArtifactElement(
+    actor: ActorContext,
+    artifactId: string,
+    elementId: string,
+    patch: { geometry?: Partial<PaperGeometry>; text?: string; altText?: string },
+  ): { revision: number; hash: string } {
+    const read = this.readArtifact(actor, artifactId, "draft");
+    const current = read.document.elements.find((element) => element.id === elementId);
+    if (!current) throw new EnterpriseError("not_found", "element not found");
+    return this.applyArtifactCommands(
+      actor,
+      artifactId,
+      [
+        {
+          op: "update_element",
+          elementId,
+          patch: {
+            text: patch.text,
+            altText: patch.altText,
+            geometry: patch.geometry ? { ...current.geometry, ...patch.geometry } : undefined,
+          },
+        },
+      ],
+      read.document.revision,
+    );
+  }
+
   markNotificationRead(actor: ActorContext, notificationId: string): void {
     this.store.db
       .prepare("UPDATE notifications SET read_at = ? WHERE id = ? AND tenant_id = ? AND user_id = ?")
@@ -849,6 +877,7 @@ export class EnterpriseWorkspace {
       parentId: string | null;
       rank: string;
       sprintId: string | null;
+      priority: string;
     }>;
     principals: Array<{ id: string; name: string; kind: PrincipalKind; email: string | null }>;
     boards: Array<{ id: string; projectId: string; name: string; kind: string }>;
@@ -904,7 +933,7 @@ export class EnterpriseWorkspace {
     const issues = (
       this.store.db
         .prepare(
-          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId
+          `SELECT i.id, i.project_id AS projectId, i.key, i.summary, i.description, i.status_id AS statusId, t.key AS typeKey, i.estimate, i.assignee_id AS assigneeId, i.reporter_id AS reporterId, i.security_level_id AS securityLevelId, i.parent_id AS parentId, i.rank, i.sprint_id AS sprintId, i.priority
            FROM issues i JOIN issue_types t ON t.id = i.type_id
            WHERE i.tenant_id = ? ORDER BY i.rank`,
         )
@@ -923,6 +952,7 @@ export class EnterpriseWorkspace {
         parentId: string | null;
         rank: string;
         sprintId: string | null;
+        priority: string;
       }>
     )
       .filter((row) =>
@@ -946,6 +976,7 @@ export class EnterpriseWorkspace {
         parentId: row.parentId,
         rank: row.rank,
         sprintId: row.sprintId,
+        priority: row.priority,
       }));
     const principals = this.store.db
       .prepare("SELECT id, name, kind, email FROM principals WHERE tenant_id = ? AND active = 1 ORDER BY name")
@@ -1347,7 +1378,7 @@ export class EnterpriseWorkspace {
   updateIssue(
     actor: ActorContext,
     issueId: string,
-    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[] },
+    patch: { summary?: string; description?: string; assigneeId?: string | null; parentId?: string | null; labels?: string[]; priority?: string },
   ): void {
     const issue = this.issueRow(issueId, actor.tenantId);
     this.requireRole(actor, "project", issue.project_id, "editor");
@@ -1357,10 +1388,13 @@ export class EnterpriseWorkspace {
       };
       this.assertHierarchy(patch.parentId, type.hierarchy);
     }
+    if (patch.priority && !["lowest", "low", "medium", "high", "highest"].includes(patch.priority)) {
+      throw new EnterpriseError("invalid", "unknown priority");
+    }
     this.store.db
       .prepare(
         `UPDATE issues SET summary = COALESCE(?, summary), description = COALESCE(?, description), assignee_id = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
-         parent_id = CASE WHEN ? = 1 THEN ? ELSE parent_id END, labels_json = COALESCE(?, labels_json), updated_at = ? WHERE id = ?`,
+         parent_id = CASE WHEN ? = 1 THEN ? ELSE parent_id END, labels_json = COALESCE(?, labels_json), priority = COALESCE(?, priority), updated_at = ? WHERE id = ?`,
       )
       .run(
         patch.summary ?? null,
@@ -1370,6 +1404,7 @@ export class EnterpriseWorkspace {
         patch.parentId === undefined ? 0 : 1,
         patch.parentId ?? null,
         patch.labels ? JSON.stringify(patch.labels) : null,
+        patch.priority ?? null,
         this.now(),
         issueId,
       );
@@ -1420,7 +1455,26 @@ export class EnterpriseWorkspace {
       comments: this.listIssueComments(actor, issueId),
       worklogs: this.listWorklogs(actor, issueId),
       transitions: this.listIssueTransitions(actor, issueId),
+      events: this.listIssueEvents(actor, issueId),
     };
+  }
+
+  listIssueEvents(actor: ActorContext, issueId: string): Array<{ action: string; detail: unknown; createdAt: string; actorName: string }> {
+    const issue = this.issueRow(issueId, actor.tenantId);
+    this.requireRole(actor, "project", issue.project_id, "viewer");
+    const rows = this.store.db
+      .prepare(
+        `SELECT e.action, e.detail_json AS detailJson, e.created_at AS createdAt, p.name AS actorName
+         FROM issue_events e JOIN principals p ON p.id = e.actor_id
+         WHERE e.issue_id = ? ORDER BY e.created_at DESC LIMIT 24`,
+      )
+      .all(issueId) as Array<{ action: string; detailJson: string; createdAt: string; actorName: string }>;
+    return rows.map((row) => ({
+      action: row.action,
+      detail: JSON.parse(row.detailJson) as unknown,
+      createdAt: row.createdAt,
+      actorName: row.actorName,
+    }));
   }
 
   listIssueTransitions(actor: ActorContext, issueId: string): Array<{ id: string; from: string; to: string; requiredFields: string[] }> {

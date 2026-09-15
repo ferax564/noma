@@ -24,8 +24,9 @@ One login should take a team from a brief to a board.
   assert.doesNotMatch(html, /\{#/);
   assert.doesNotMatch(html, /<h1>/);
   assert.match(html, /hosted workspace/);
-  assert.match(html, /<blockquote>/);
+  assert.match(html, /ew-panel/);
   assert.match(html, /Claim/);
+  assert.doesNotMatch(html, /<blockquote>/);
 });
 
 test("statusPath walks forward and reopens done work", () => {

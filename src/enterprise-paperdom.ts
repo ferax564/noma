@@ -242,7 +242,8 @@ export function paperCanvasMarkup(doc: PaperDocument): string {
         const markerId = `ah-${escapeMarkup(el.id)}`;
         inner = `<svg class="pd-arrow" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><marker id="${markerId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#0C66E4"/></marker></defs><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0C66E4" stroke-width="2.5" marker-end="url(#${markerId})"/></svg>`;
       }
-      return `<div class="pd-el pd-el-${escapeMarkup(el.type)}" data-id="${escapeMarkup(el.id)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg)">${inner}</div>`;
+      const sticky = el.altText === "Sticky" ? " pd-el-sticky" : "";
+      return `<div class="pd-el pd-el-${escapeMarkup(el.type)}${sticky}" data-id="${escapeMarkup(el.id)}" data-x="${x}" data-y="${y}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;transform:rotate(${rotation}deg)">${inner}</div>`;
     })
     .join("");
   return `<div class="pd-page" data-paper-id="${escapeMarkup(doc.id)}" style="width:${width}px;min-height:${height}px">${items}</div>`;
@@ -253,6 +254,8 @@ export function paperCanvasStyles(): string {
 .pd-el{position:absolute;box-sizing:border-box;padding:12px 14px;border-radius:8px;background:#fff;border:1px solid #091e4224;box-shadow:0 1px 1px #091e4224,0 0 1px #091e4224;overflow:hidden}
 .pd-el-text{font:500 14px/20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif;color:#172b4d;white-space:pre-wrap}
 .pd-el-shape{background:#e9f2ff;border-color:#0c66e44d}
+.pd-el-sticky{background:#fef7c8;border-color:#f5cd47;box-shadow:0 8px 16px -12px #091e428a}
+.pd-el.is-dragging{opacity:.92;box-shadow:0 12px 24px -12px #091e428a;z-index:20}
 .pd-el-chart{background:#1d2125;color:#b6c2cf;border-color:transparent}
 .pd-el-chart .pd-el-text{color:#b6c2cf}
 .pd-chart{display:flex;align-items:flex-end;gap:8px;height:100%;padding-top:8px}

@@ -256,6 +256,17 @@ test("HTTP productizes docs, work, admin, import loss report, and notifications"
     const readBoard = await fetch(`${origin}/v1/artifacts/${board.id}`, { headers: auth }).then((res) => res.json()) as {
       document: { elements: Array<{ id: string; type: string }> };
     };
+    const firstId = readBoard.document.elements[0]?.id;
+    const moved = await fetch(`${origin}/v1/artifacts/${board.id}/elements/${firstId}`, {
+      method: "PATCH",
+      headers: auth,
+      body: JSON.stringify({ geometry: { x: 120, y: 80 } }),
+    });
+    assert.equal(moved.status, 200);
+    const afterMove = await fetch(`${origin}/v1/artifacts/${board.id}`, { headers: auth }).then((res) => res.json()) as {
+      document: { elements: Array<{ id: string; geometry: { x: number; y: number } }> };
+    };
+    assert.equal(afterMove.document.elements.find((el) => el.id === firstId)?.geometry.x, 120);
     const arrow = await fetch(`${origin}/v1/artifacts/${board.id}/elements`, {
       method: "POST",
       headers: auth,

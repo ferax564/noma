@@ -1,33 +1,46 @@
 import { autoUpdate, computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import {
+  AlertTriangle,
   Bell,
   Bold,
   Bug,
   ChevronDown,
+  CircleCheck,
   Code,
   Command,
   FileText,
   Filter,
+  Hand,
   Heading1,
   Heading2,
+  Highlighter,
   Image,
   Import,
+  Info,
   Italic,
+  Lightbulb,
   Link,
   List,
+  ListChecks,
   ListOrdered,
+  Maximize2,
   Moon,
+  MousePointer2,
   Plus,
   Presentation,
   Quote,
   Search,
   Settings,
   SquareKanban,
+  StickyNote,
   Strikethrough,
   Sun,
+  Table,
   Underline,
   User,
   Video,
+  ZoomIn,
+  ZoomOut,
   createElement,
   createIcons,
   type IconNode,
@@ -35,34 +48,47 @@ import {
 import { statusPath } from "./status-path";
 
 const ICONS = {
+  AlertTriangle,
   Bell,
   Bold,
   Bug,
   ChevronDown,
+  CircleCheck,
   Code,
   Command,
   FileText,
   Filter,
+  Hand,
   Heading1,
   Heading2,
+  Highlighter,
   Image,
   Import,
+  Info,
   Italic,
+  Lightbulb,
   Link,
   List,
+  ListChecks,
   ListOrdered,
+  Maximize2,
   Moon,
+  MousePointer2,
   Plus,
   Presentation,
   Quote,
   Search,
   Settings,
   SquareKanban,
+  StickyNote,
   Strikethrough,
   Sun,
+  Table,
   Underline,
   User,
   Video,
+  ZoomIn,
+  ZoomOut,
 } as const;
 
 export type IconName = keyof typeof ICONS;
@@ -203,6 +229,149 @@ export function bindIssueBoard(board: HTMLElement, onDrop: (drop: BoardDrop) => 
   return () => {
     board.removeEventListener("pointerdown", onPointerDown);
     board.removeEventListener("click", onClick, true);
+  };
+}
+
+export interface VisualMove {
+  id: string;
+  x: number;
+  y: number;
+}
+
+export interface VisualStageHandlers {
+  onMove: (move: VisualMove) => void;
+  onEdit?: (id: string, text: string) => void;
+  onPlaceSticky?: (x: number, y: number) => void;
+}
+
+function pageScale(page: HTMLElement): number {
+  const match = /scale\(([-0-9.]+)\)/.exec(page.style.transform);
+  return match ? Number(match[1]) : 1;
+}
+
+export function setCanvasZoom(stage: HTMLElement, zoom: number): void {
+  const page = stage.querySelector<HTMLElement>(".pd-page");
+  if (!page) return;
+  const next = Math.min(2.5, Math.max(0.35, zoom));
+  stage.dataset.zoom = String(next);
+  page.style.transform = `scale(${next})`;
+  page.style.transformOrigin = "top left";
+  const label = document.getElementById("zoom-label");
+  if (label) label.textContent = `${Math.round(next * 100)}%`;
+}
+
+export function bindVisualStage(stage: HTMLElement, handlers: VisualStageHandlers): () => void {
+  let dragging = false;
+
+  const onPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("video, input, textarea, button, a, select")) return;
+    const page = stage.querySelector<HTMLElement>(".pd-page");
+    if (!page) return;
+    const tool = stage.dataset.tool ?? "select";
+    const scale = pageScale(page);
+
+    if (tool === "sticky") {
+      const box = page.getBoundingClientRect();
+      handlers.onPlaceSticky?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
+      return;
+    }
+
+    if (tool === "pan") {
+      dragging = true;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const originLeft = stage.scrollLeft;
+      const originTop = stage.scrollTop;
+      const onMove = (move: PointerEvent): void => {
+        stage.scrollLeft = originLeft - (move.clientX - startX);
+        stage.scrollTop = originTop - (move.clientY - startY);
+      };
+      const onUp = (): void => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        dragging = false;
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      return;
+    }
+
+    const card = target.closest<HTMLElement>(".pd-el");
+    if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) return;
+    const id = card.dataset.id ?? "";
+    if (!id) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const originLeft = Number.parseFloat(card.style.left) || 0;
+    const originTop = Number.parseFloat(card.style.top) || 0;
+    dragging = false;
+
+    const onMove = (move: PointerEvent): void => {
+      const dx = move.clientX - startX;
+      const dy = move.clientY - startY;
+      if (!dragging && dx * dx + dy * dy < 36) return;
+      dragging = true;
+      card.classList.add("is-dragging");
+      card.style.left = `${originLeft + dx / scale}px`;
+      card.style.top = `${originTop + dy / scale}px`;
+    };
+    const onUp = (): void => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      card.classList.remove("is-dragging");
+      if (!dragging) return;
+      handlers.onMove({
+        id,
+        x: Number.parseFloat(card.style.left) || originLeft,
+        y: Number.parseFloat(card.style.top) || originTop,
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const onDblClick = (event: MouseEvent): void => {
+    const card = (event.target as HTMLElement).closest<HTMLElement>(".pd-el");
+    if (!card || card.classList.contains("pd-el-arrow")) return;
+    const label = card.querySelector<HTMLElement>(".pd-el-text");
+    if (!label) return;
+    label.contentEditable = "true";
+    label.focus();
+    const finish = (): void => {
+      label.contentEditable = "false";
+      label.removeEventListener("blur", finish);
+      handlers.onEdit?.(card.dataset.id ?? "", label.textContent ?? "");
+    };
+    label.addEventListener("blur", finish);
+  };
+
+  const onWheel = (event: WheelEvent): void => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    const page = stage.querySelector<HTMLElement>(".pd-page");
+    if (!page) return;
+    event.preventDefault();
+    const current = Number(stage.dataset.zoom ?? String(pageScale(page)));
+    setCanvasZoom(stage, current + (event.deltaY < 0 ? 0.08 : -0.08));
+  };
+
+  const onClick = (event: MouseEvent): void => {
+    if (!dragging) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragging = false;
+  };
+
+  stage.addEventListener("pointerdown", onPointerDown);
+  stage.addEventListener("dblclick", onDblClick);
+  stage.addEventListener("wheel", onWheel, { passive: false });
+  stage.addEventListener("click", onClick, true);
+  return () => {
+    stage.removeEventListener("pointerdown", onPointerDown);
+    stage.removeEventListener("dblclick", onDblClick);
+    stage.removeEventListener("wheel", onWheel);
+    stage.removeEventListener("click", onClick, true);
   };
 }
 

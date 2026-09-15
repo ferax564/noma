@@ -1,14 +1,28 @@
 import Collaboration from "@tiptap/extension-collaboration";
+import Highlight from "@tiptap/extension-highlight";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import Table from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
+import TaskItem from "@tiptap/extension-task-item";
+import TaskList from "@tiptap/extension-task-list";
 import Typography from "@tiptap/extension-typography";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import { Editor } from "@tiptap/core";
 import * as Y from "yjs";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
-import { iconSvg } from "./ui-kit";
+import { NomaPanel } from "./noma-panel";
+import { iconSvg, type IconName } from "./ui-kit";
+
+export interface PresenceUser {
+  id: string;
+  name: string;
+  color: string;
+}
 
 export interface HostedCollab {
   getText: () => string;
@@ -18,13 +32,26 @@ export interface HostedCollab {
   destroy: () => void;
 }
 
-const SLASH_ITEMS = [
-  { id: "h1", label: "Heading 1", icon: "Heading1" as const, run: (editor: Editor) => editor.chain().focus().toggleHeading({ level: 1 }).run() },
-  { id: "h2", label: "Heading 2", icon: "Heading2" as const, run: (editor: Editor) => editor.chain().focus().toggleHeading({ level: 2 }).run() },
-  { id: "bullet", label: "Bullet list", icon: "List" as const, run: (editor: Editor) => editor.chain().focus().toggleBulletList().run() },
-  { id: "ordered", label: "Numbered list", icon: "ListOrdered" as const, run: (editor: Editor) => editor.chain().focus().toggleOrderedList().run() },
-  { id: "quote", label: "Quote", icon: "Quote" as const, run: (editor: Editor) => editor.chain().focus().toggleBlockquote().run() },
-  { id: "code", label: "Code block", icon: "Code" as const, run: (editor: Editor) => editor.chain().focus().toggleCodeBlock().run() },
+const SLASH_ITEMS: Array<{
+  id: string;
+  label: string;
+  icon: IconName;
+  run: (editor: Editor) => void;
+}> = [
+  { id: "h1", label: "Heading 1", icon: "Heading1", run: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+  { id: "h2", label: "Heading 2", icon: "Heading2", run: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+  { id: "bullet", label: "Bullet list", icon: "List", run: (editor) => editor.chain().focus().toggleBulletList().run() },
+  { id: "ordered", label: "Numbered list", icon: "ListOrdered", run: (editor) => editor.chain().focus().toggleOrderedList().run() },
+  { id: "task", label: "Action items", icon: "ListChecks", run: (editor) => editor.chain().focus().toggleTaskList().run() },
+  { id: "table", label: "Table", icon: "Table", run: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+  { id: "quote", label: "Quote", icon: "Quote", run: (editor) => editor.chain().focus().toggleBlockquote().run() },
+  { id: "code", label: "Code block", icon: "Code", run: (editor) => editor.chain().focus().toggleCodeBlock().run() },
+  { id: "info", label: "Info panel", icon: "Info", run: (editor) => editor.chain().focus().setNomaPanel("info").run() },
+  { id: "note", label: "Note panel", icon: "Lightbulb", run: (editor) => editor.chain().focus().setNomaPanel("note").run() },
+  { id: "warning", label: "Warning panel", icon: "AlertTriangle", run: (editor) => editor.chain().focus().setNomaPanel("warning").run() },
+  { id: "success", label: "Success panel", icon: "CircleCheck", run: (editor) => editor.chain().focus().setNomaPanel("success").run() },
+  { id: "claim", label: "Claim", icon: "Highlighter", run: (editor) => editor.chain().focus().setNomaPanel("claim").run() },
+  { id: "decision", label: "Decision", icon: "CircleCheck", run: (editor) => editor.chain().focus().setNomaPanel("decision").run() },
 ];
 
 function bindSlashMenu(editor: Editor): () => void {
@@ -166,7 +193,9 @@ export function mountHostedCollab(options: {
   element: HTMLElement;
   token: string;
   documentId: string;
+  user?: PresenceUser;
   onStatus?: (text: string) => void;
+  onPresence?: (users: PresenceUser[]) => void;
 }): HostedCollab {
   const ydoc = new Y.Doc();
   let editor: Editor | undefined;
@@ -205,9 +234,17 @@ export function mountHostedCollab(options: {
       element: options.element,
       extensions: [
         StarterKit.configure({ history: false }),
-        Placeholder.configure({ placeholder: "Type / for commands, or start writing…" }),
+        Placeholder.configure({ placeholder: "Type / for commands — panels, tables, and action items…" }),
         Typography,
         Underline,
+        Highlight,
+        TaskList,
+        TaskItem.configure({ nested: true }),
+        Table.configure({ resizable: true }),
+        TableRow,
+        TableHeader,
+        TableCell,
+        NomaPanel,
         Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
         Image.configure({ inline: false, allowBase64: false }),
         Collaboration.configure({ document: ydoc, field: "default" }),
@@ -223,13 +260,18 @@ export function mountHostedCollab(options: {
     socket = new WebSocket(wsUrl);
     socket.addEventListener("open", () => setStatus("connected"));
     socket.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data)) as { type: string; update?: string };
+      const message = JSON.parse(String(event.data)) as { type: string; update?: string; users?: PresenceUser[] };
       if ((message.type === "init" || message.type === "update") && message.update) {
         Y.applyUpdate(ydoc, b64ToBytes(message.update), "remote");
         ready = true;
         ensureEditor();
         setStatus(message.type === "init" ? "ready" : `acks:${acks}`);
+        if (message.type === "init" && options.user && socket?.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "presence", user: options.user }));
+        }
+        if (message.users) options.onPresence?.(message.users);
       }
+      if (message.type === "presence" && message.users) options.onPresence?.(message.users);
       if (message.type === "ack") {
         acks += 1;
         setStatus(`acks:${acks}`);

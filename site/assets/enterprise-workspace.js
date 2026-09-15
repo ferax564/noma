@@ -10614,11 +10614,11 @@
     let { focusNode, focusOffset } = view.domSelectionRange();
     for (let node of addedNodes) {
       if (((_a = node.parentNode) === null || _a === void 0 ? void 0 : _a.nodeName) == "TR") {
-        let nextCell = node.nextSibling;
-        while (nextCell && (nextCell.nodeName != "TD" && nextCell.nodeName != "TH"))
-          nextCell = nextCell.nextSibling;
-        if (nextCell) {
-          let parent = nextCell;
+        let nextCell2 = node.nextSibling;
+        while (nextCell2 && (nextCell2.nodeName != "TD" && nextCell2.nodeName != "TH"))
+          nextCell2 = nextCell2.nextSibling;
+        if (nextCell2) {
+          let parent = nextCell2;
           for (; ; ) {
             let first2 = parent.firstChild;
             if (!first2 || first2.nodeType != 1 || first2.contentEditable == "false" || /^(BR|IMG)$/.test(first2.nodeName))
@@ -15452,8 +15452,8 @@
             if (empty2 || !allWasSelected) {
               return;
             }
-            const isEmpty2 = isNodeEmpty(newState.doc);
-            if (!isEmpty2) {
+            const isEmpty3 = isNodeEmpty(newState.doc);
+            if (!isEmpty3) {
               return;
             }
             const tr2 = newState.tr;
@@ -26899,8 +26899,85 @@ ${err.toString()}`);
     }
   });
 
+  // node_modules/@tiptap/extension-highlight/dist/index.js
+  var inputRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==(?!\s+==))$/;
+  var pasteRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==(?!\s+==))/g;
+  var Highlight = Mark2.create({
+    name: "highlight",
+    addOptions() {
+      return {
+        multicolor: false,
+        HTMLAttributes: {}
+      };
+    },
+    addAttributes() {
+      if (!this.options.multicolor) {
+        return {};
+      }
+      return {
+        color: {
+          default: null,
+          parseHTML: (element2) => element2.getAttribute("data-color") || element2.style.backgroundColor,
+          renderHTML: (attributes) => {
+            if (!attributes.color) {
+              return {};
+            }
+            return {
+              "data-color": attributes.color,
+              style: `background-color: ${attributes.color}; color: inherit`
+            };
+          }
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: "mark"
+        }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["mark", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    },
+    addCommands() {
+      return {
+        setHighlight: (attributes) => ({ commands: commands2 }) => {
+          return commands2.setMark(this.name, attributes);
+        },
+        toggleHighlight: (attributes) => ({ commands: commands2 }) => {
+          return commands2.toggleMark(this.name, attributes);
+        },
+        unsetHighlight: () => ({ commands: commands2 }) => {
+          return commands2.unsetMark(this.name);
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-h": () => this.editor.commands.toggleHighlight()
+      };
+    },
+    addInputRules() {
+      return [
+        markInputRule({
+          find: inputRegex,
+          type: this.type
+        })
+      ];
+    },
+    addPasteRules() {
+      return [
+        markPasteRule({
+          find: pasteRegex,
+          type: this.type
+        })
+      ];
+    }
+  });
+
   // node_modules/@tiptap/extension-image/dist/index.js
-  var inputRegex = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/;
+  var inputRegex2 = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/;
   var Image = Node3.create({
     name: "image",
     addOptions() {
@@ -26953,7 +27030,7 @@ ${err.toString()}`);
     addInputRules() {
       return [
         nodeInputRule({
-          find: inputRegex,
+          find: inputRegex2,
           type: this.type,
           getAttributes: (match2) => {
             const [, , alt, src, title] = match2;
@@ -28493,8 +28570,8 @@ ${err.toString()}`);
               const isEmptyDoc = this.editor.isEmpty;
               doc4.descendants((node, pos) => {
                 const hasAnchor = anchor >= pos && anchor <= pos + node.nodeSize;
-                const isEmpty2 = !node.isLeaf && isNodeEmpty(node);
-                if ((hasAnchor || !this.options.showOnlyCurrent) && isEmpty2) {
+                const isEmpty3 = !node.isLeaf && isNodeEmpty(node);
+                if ((hasAnchor || !this.options.showOnlyCurrent) && isEmpty3) {
                   const classes = [this.options.emptyNodeClass];
                   if (isEmptyDoc) {
                     classes.push(this.options.emptyEditorClass);
@@ -28517,6 +28594,2346 @@ ${err.toString()}`);
           }
         })
       ];
+    }
+  });
+
+  // node_modules/prosemirror-tables/dist/index.js
+  var readFromCache;
+  var addToCache;
+  if (typeof WeakMap != "undefined") {
+    let cache = /* @__PURE__ */ new WeakMap();
+    readFromCache = (key) => cache.get(key);
+    addToCache = (key, value) => {
+      cache.set(key, value);
+      return value;
+    };
+  } else {
+    const cache = [];
+    const cacheSize = 10;
+    let cachePos = 0;
+    readFromCache = (key) => {
+      for (let i = 0; i < cache.length; i += 2) if (cache[i] == key) return cache[i + 1];
+    };
+    addToCache = (key, value) => {
+      if (cachePos == cacheSize) cachePos = 0;
+      cache[cachePos++] = key;
+      return cache[cachePos++] = value;
+    };
+  }
+  var TableMap = class {
+    constructor(width, height, map3, problems) {
+      this.width = width;
+      this.height = height;
+      this.map = map3;
+      this.problems = problems;
+    }
+    findCell(pos) {
+      for (let i = 0; i < this.map.length; i++) {
+        const curPos = this.map[i];
+        if (curPos != pos) continue;
+        const left = i % this.width;
+        const top = i / this.width | 0;
+        let right = left + 1;
+        let bottom = top + 1;
+        for (let j = 1; right < this.width && this.map[i + j] == curPos; j++) right++;
+        for (let j = 1; bottom < this.height && this.map[i + this.width * j] == curPos; j++) bottom++;
+        return {
+          left,
+          top,
+          right,
+          bottom
+        };
+      }
+      throw new RangeError(`No cell with offset ${pos} found`);
+    }
+    colCount(pos) {
+      for (let i = 0; i < this.map.length; i++) if (this.map[i] == pos) return i % this.width;
+      throw new RangeError(`No cell with offset ${pos} found`);
+    }
+    nextCell(pos, axis, dir) {
+      const { left, right, top, bottom } = this.findCell(pos);
+      if (axis == "horiz") {
+        if (dir < 0 ? left == 0 : right == this.width) return null;
+        return this.map[top * this.width + (dir < 0 ? left - 1 : right)];
+      } else {
+        if (dir < 0 ? top == 0 : bottom == this.height) return null;
+        return this.map[left + this.width * (dir < 0 ? top - 1 : bottom)];
+      }
+    }
+    rectBetween(a, b) {
+      const { left: leftA, right: rightA, top: topA, bottom: bottomA } = this.findCell(a);
+      const { left: leftB, right: rightB, top: topB, bottom: bottomB } = this.findCell(b);
+      return {
+        left: Math.min(leftA, leftB),
+        top: Math.min(topA, topB),
+        right: Math.max(rightA, rightB),
+        bottom: Math.max(bottomA, bottomB)
+      };
+    }
+    cellsInRect(rect) {
+      const result = [];
+      const seen = {};
+      for (let row = rect.top; row < rect.bottom; row++) for (let col = rect.left; col < rect.right; col++) {
+        const index = row * this.width + col;
+        const pos = this.map[index];
+        if (seen[pos]) continue;
+        seen[pos] = true;
+        if (col == rect.left && col && this.map[index - 1] == pos || row == rect.top && row && this.map[index - this.width] == pos) continue;
+        result.push(pos);
+      }
+      return result;
+    }
+    positionAt(row, col, table) {
+      for (let i = 0, rowStart = 0; ; i++) {
+        const rowEnd = rowStart + table.child(i).nodeSize;
+        if (i == row) {
+          let index = col + row * this.width;
+          const rowEndIndex = (row + 1) * this.width;
+          while (index < rowEndIndex && this.map[index] < rowStart) index++;
+          return index == rowEndIndex ? rowEnd - 1 : this.map[index];
+        }
+        rowStart = rowEnd;
+      }
+    }
+    static get(table) {
+      return readFromCache(table) || addToCache(table, computeMap(table));
+    }
+  };
+  function computeMap(table) {
+    if (table.type.spec.tableRole != "table") throw new RangeError("Not a table node: " + table.type.name);
+    const width = findWidth(table), height = table.childCount;
+    const map3 = [];
+    let mapPos = 0;
+    let problems = null;
+    const colWidths = [];
+    for (let i = 0, e = width * height; i < e; i++) map3[i] = 0;
+    for (let row = 0, pos = 0; row < height; row++) {
+      const rowNode = table.child(row);
+      pos++;
+      for (let i = 0; ; i++) {
+        while (mapPos < map3.length && map3[mapPos] != 0) mapPos++;
+        if (i == rowNode.childCount) break;
+        const cellNode = rowNode.child(i);
+        const { colspan, rowspan, colwidth } = cellNode.attrs;
+        for (let h = 0; h < rowspan; h++) {
+          if (h + row >= height) {
+            (problems || (problems = [])).push({
+              type: "overlong_rowspan",
+              pos,
+              n: rowspan - h
+            });
+            break;
+          }
+          const start = mapPos + h * width;
+          for (let w = 0; w < colspan; w++) {
+            if (map3[start + w] == 0) map3[start + w] = pos;
+            else (problems || (problems = [])).push({
+              type: "collision",
+              row,
+              pos,
+              n: colspan - w
+            });
+            const colW = colwidth && colwidth[w];
+            if (colW) {
+              const widthIndex = (start + w) % width * 2, prev = colWidths[widthIndex];
+              if (prev == null || prev != colW && colWidths[widthIndex + 1] == 1) {
+                colWidths[widthIndex] = colW;
+                colWidths[widthIndex + 1] = 1;
+              } else if (prev == colW) colWidths[widthIndex + 1]++;
+            }
+          }
+        }
+        mapPos += colspan;
+        pos += cellNode.nodeSize;
+      }
+      const expectedPos = (row + 1) * width;
+      let missing = 0;
+      while (mapPos < expectedPos) if (map3[mapPos++] == 0) missing++;
+      if (missing) (problems || (problems = [])).push({
+        type: "missing",
+        row,
+        n: missing
+      });
+      pos++;
+    }
+    if (width === 0 || height === 0) (problems || (problems = [])).push({ type: "zero_sized" });
+    const tableMap = new TableMap(width, height, map3, problems);
+    let badWidths = false;
+    for (let i = 0; !badWidths && i < colWidths.length; i += 2) if (colWidths[i] != null && colWidths[i + 1] < height) badWidths = true;
+    if (badWidths) findBadColWidths(tableMap, colWidths, table);
+    return tableMap;
+  }
+  function findWidth(table) {
+    let width = -1;
+    let hasRowSpan = false;
+    for (let row = 0; row < table.childCount; row++) {
+      const rowNode = table.child(row);
+      let rowWidth = 0;
+      if (hasRowSpan) for (let j = 0; j < row; j++) {
+        const prevRow = table.child(j);
+        for (let i = 0; i < prevRow.childCount; i++) {
+          const cell = prevRow.child(i);
+          if (j + cell.attrs.rowspan > row) rowWidth += cell.attrs.colspan;
+        }
+      }
+      for (let i = 0; i < rowNode.childCount; i++) {
+        const cell = rowNode.child(i);
+        rowWidth += cell.attrs.colspan;
+        if (cell.attrs.rowspan > 1) hasRowSpan = true;
+      }
+      if (width == -1) width = rowWidth;
+      else if (width != rowWidth) width = Math.max(width, rowWidth);
+    }
+    return width;
+  }
+  function findBadColWidths(map3, colWidths, table) {
+    if (!map3.problems) map3.problems = [];
+    const seen = {};
+    for (let i = 0; i < map3.map.length; i++) {
+      const pos = map3.map[i];
+      if (seen[pos]) continue;
+      seen[pos] = true;
+      const node = table.nodeAt(pos);
+      if (!node) throw new RangeError(`No cell with offset ${pos} found`);
+      let updated = null;
+      const attrs = node.attrs;
+      for (let j = 0; j < attrs.colspan; j++) {
+        const colWidth = colWidths[(i + j) % map3.width * 2];
+        if (colWidth != null && (!attrs.colwidth || attrs.colwidth[j] != colWidth)) (updated || (updated = freshColWidth(attrs)))[j] = colWidth;
+      }
+      if (updated) map3.problems.unshift({
+        type: "colwidth mismatch",
+        pos,
+        colwidth: updated
+      });
+    }
+  }
+  function freshColWidth(attrs) {
+    if (attrs.colwidth) return attrs.colwidth.slice();
+    const result = [];
+    for (let i = 0; i < attrs.colspan; i++) result.push(0);
+    return result;
+  }
+  function tableNodeTypes(schema) {
+    let result = schema.cached.tableNodeTypes;
+    if (!result) {
+      result = schema.cached.tableNodeTypes = {};
+      for (const name in schema.nodes) {
+        const type = schema.nodes[name], role = type.spec.tableRole;
+        if (role) result[role] = type;
+      }
+    }
+    return result;
+  }
+  var tableEditingKey = new PluginKey("selectingCells");
+  function cellAround($pos) {
+    for (let d = $pos.depth - 1; d > 0; d--) if ($pos.node(d).type.spec.tableRole == "row") return $pos.node(0).resolve($pos.before(d + 1));
+    return null;
+  }
+  function cellWrapping($pos) {
+    for (let d = $pos.depth; d > 0; d--) {
+      const role = $pos.node(d).type.spec.tableRole;
+      if (role === "cell" || role === "header_cell") return $pos.node(d);
+    }
+    return null;
+  }
+  function isInTable(state) {
+    const $head = state.selection.$head;
+    for (let d = $head.depth; d > 0; d--) if ($head.node(d).type.spec.tableRole == "row") return true;
+    return false;
+  }
+  function selectionCell(state) {
+    const sel = state.selection;
+    if ("$anchorCell" in sel && sel.$anchorCell) return sel.$anchorCell.pos > sel.$headCell.pos ? sel.$anchorCell : sel.$headCell;
+    else if ("node" in sel && sel.node && sel.node.type.spec.tableRole == "cell") return sel.$anchor;
+    const $cell = cellAround(sel.$head) || cellNear(sel.$head);
+    if ($cell) return $cell;
+    throw new RangeError(`No cell found around position ${sel.head}`);
+  }
+  function cellNear($pos) {
+    for (let after = $pos.nodeAfter, pos = $pos.pos; after; after = after.firstChild, pos++) {
+      const role = after.type.spec.tableRole;
+      if (role == "cell" || role == "header_cell") return $pos.doc.resolve(pos);
+    }
+    for (let before = $pos.nodeBefore, pos = $pos.pos; before; before = before.lastChild, pos--) {
+      const role = before.type.spec.tableRole;
+      if (role == "cell" || role == "header_cell") return $pos.doc.resolve(pos - before.nodeSize);
+    }
+  }
+  function pointsAtCell($pos) {
+    return $pos.parent.type.spec.tableRole == "row" && !!$pos.nodeAfter;
+  }
+  function moveCellForward($pos) {
+    return $pos.node(0).resolve($pos.pos + $pos.nodeAfter.nodeSize);
+  }
+  function inSameTable($cellA, $cellB) {
+    return $cellA.depth == $cellB.depth && $cellA.pos >= $cellB.start(-1) && $cellA.pos <= $cellB.end(-1);
+  }
+  function nextCell($pos, axis, dir) {
+    const table = $pos.node(-1);
+    const map3 = TableMap.get(table);
+    const tableStart = $pos.start(-1);
+    const moved = map3.nextCell($pos.pos - tableStart, axis, dir);
+    return moved == null ? null : $pos.node(0).resolve(tableStart + moved);
+  }
+  function removeColSpan(attrs, pos, n = 1) {
+    const result = {
+      ...attrs,
+      colspan: attrs.colspan - n
+    };
+    if (result.colwidth) {
+      result.colwidth = result.colwidth.slice();
+      result.colwidth.splice(pos, n);
+      if (!result.colwidth.some((w) => w > 0)) result.colwidth = null;
+    }
+    return result;
+  }
+  function addColSpan(attrs, pos, n = 1) {
+    const result = {
+      ...attrs,
+      colspan: attrs.colspan + n
+    };
+    if (result.colwidth) {
+      result.colwidth = result.colwidth.slice();
+      for (let i = 0; i < n; i++) result.colwidth.splice(pos, 0, 0);
+    }
+    return result;
+  }
+  function columnIsHeader(map3, table, col) {
+    const headerCell = tableNodeTypes(table.type.schema).header_cell;
+    for (let row = 0; row < map3.height; row++) if (table.nodeAt(map3.map[col + row * map3.width]).type != headerCell) return false;
+    return true;
+  }
+  var CellSelection = class CellSelection2 extends Selection {
+    constructor($anchorCell, $headCell = $anchorCell) {
+      const table = $anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = $anchorCell.start(-1);
+      const rect = map3.rectBetween($anchorCell.pos - tableStart, $headCell.pos - tableStart);
+      const doc4 = $anchorCell.node(0);
+      const cells = map3.cellsInRect(rect).filter((p) => p != $headCell.pos - tableStart);
+      cells.unshift($headCell.pos - tableStart);
+      const ranges = cells.map((pos) => {
+        const cell = table.nodeAt(pos);
+        if (!cell) throw new RangeError(`No cell with offset ${pos} found`);
+        const from3 = tableStart + pos + 1;
+        return new SelectionRange(doc4.resolve(from3), doc4.resolve(from3 + cell.content.size));
+      });
+      super(ranges[0].$from, ranges[0].$to, ranges);
+      this.$anchorCell = $anchorCell;
+      this.$headCell = $headCell;
+    }
+    map(doc4, mapping) {
+      const $anchorCell = doc4.resolve(mapping.map(this.$anchorCell.pos));
+      const $headCell = doc4.resolve(mapping.map(this.$headCell.pos));
+      if (pointsAtCell($anchorCell) && pointsAtCell($headCell) && inSameTable($anchorCell, $headCell)) {
+        const tableChanged = this.$anchorCell.node(-1) != $anchorCell.node(-1);
+        if (tableChanged && this.isRowSelection()) return CellSelection2.rowSelection($anchorCell, $headCell);
+        else if (tableChanged && this.isColSelection()) return CellSelection2.colSelection($anchorCell, $headCell);
+        else return new CellSelection2($anchorCell, $headCell);
+      }
+      return TextSelection.between($anchorCell, $headCell);
+    }
+    content() {
+      const table = this.$anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = this.$anchorCell.start(-1);
+      const rect = map3.rectBetween(this.$anchorCell.pos - tableStart, this.$headCell.pos - tableStart);
+      const seen = {};
+      const rows = [];
+      for (let row = rect.top; row < rect.bottom; row++) {
+        const rowContent = [];
+        for (let index = row * map3.width + rect.left, col = rect.left; col < rect.right; col++, index++) {
+          const pos = map3.map[index];
+          if (seen[pos]) continue;
+          seen[pos] = true;
+          const cellRect = map3.findCell(pos);
+          let cell = table.nodeAt(pos);
+          if (!cell) throw new RangeError(`No cell with offset ${pos} found`);
+          const extraLeft = rect.left - cellRect.left;
+          const extraRight = cellRect.right - rect.right;
+          if (extraLeft > 0 || extraRight > 0) {
+            let attrs = cell.attrs;
+            if (extraLeft > 0) attrs = removeColSpan(attrs, 0, extraLeft);
+            if (extraRight > 0) attrs = removeColSpan(attrs, attrs.colspan - extraRight, extraRight);
+            if (cellRect.left < rect.left) {
+              cell = cell.type.createAndFill(attrs);
+              if (!cell) throw new RangeError(`Could not create cell with attrs ${JSON.stringify(attrs)}`);
+            } else cell = cell.type.create(attrs, cell.content);
+          }
+          if (cellRect.top < rect.top || cellRect.bottom > rect.bottom) {
+            const attrs = {
+              ...cell.attrs,
+              rowspan: Math.min(cellRect.bottom, rect.bottom) - Math.max(cellRect.top, rect.top)
+            };
+            if (cellRect.top < rect.top) cell = cell.type.createAndFill(attrs);
+            else cell = cell.type.create(attrs, cell.content);
+          }
+          rowContent.push(cell);
+        }
+        rows.push(table.child(row).copy(Fragment.from(rowContent)));
+      }
+      const fragment = this.isColSelection() && this.isRowSelection() ? table : rows;
+      return new Slice(Fragment.from(fragment), 1, 1);
+    }
+    replace(tr2, content = Slice.empty) {
+      const mapFrom = tr2.steps.length, ranges = this.ranges;
+      for (let i = 0; i < ranges.length; i++) {
+        const { $from, $to } = ranges[i], mapping = tr2.mapping.slice(mapFrom);
+        tr2.replace(mapping.map($from.pos), mapping.map($to.pos), i ? Slice.empty : content);
+      }
+      const sel = Selection.findFrom(tr2.doc.resolve(tr2.mapping.slice(mapFrom).map(this.to)), -1);
+      if (sel) tr2.setSelection(sel);
+    }
+    replaceWith(tr2, node) {
+      this.replace(tr2, new Slice(Fragment.from(node), 0, 0));
+    }
+    forEachCell(f) {
+      const table = this.$anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = this.$anchorCell.start(-1);
+      const cells = map3.cellsInRect(map3.rectBetween(this.$anchorCell.pos - tableStart, this.$headCell.pos - tableStart));
+      for (let i = 0; i < cells.length; i++) f(table.nodeAt(cells[i]), tableStart + cells[i]);
+    }
+    isColSelection() {
+      const anchorTop = this.$anchorCell.index(-1);
+      const headTop = this.$headCell.index(-1);
+      if (Math.min(anchorTop, headTop) > 0) return false;
+      const anchorBottom = anchorTop + this.$anchorCell.nodeAfter.attrs.rowspan;
+      const headBottom = headTop + this.$headCell.nodeAfter.attrs.rowspan;
+      return Math.max(anchorBottom, headBottom) == this.$headCell.node(-1).childCount;
+    }
+    static colSelection($anchorCell, $headCell = $anchorCell) {
+      const table = $anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = $anchorCell.start(-1);
+      const anchorRect = map3.findCell($anchorCell.pos - tableStart);
+      const headRect = map3.findCell($headCell.pos - tableStart);
+      const doc4 = $anchorCell.node(0);
+      if (anchorRect.top <= headRect.top) {
+        if (anchorRect.top > 0) $anchorCell = doc4.resolve(tableStart + map3.map[anchorRect.left]);
+        if (headRect.bottom < map3.height) $headCell = doc4.resolve(tableStart + map3.map[map3.width * (map3.height - 1) + headRect.right - 1]);
+      } else {
+        if (headRect.top > 0) $headCell = doc4.resolve(tableStart + map3.map[headRect.left]);
+        if (anchorRect.bottom < map3.height) $anchorCell = doc4.resolve(tableStart + map3.map[map3.width * (map3.height - 1) + anchorRect.right - 1]);
+      }
+      return new CellSelection2($anchorCell, $headCell);
+    }
+    isRowSelection() {
+      const table = this.$anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = this.$anchorCell.start(-1);
+      const anchorLeft = map3.colCount(this.$anchorCell.pos - tableStart);
+      const headLeft = map3.colCount(this.$headCell.pos - tableStart);
+      if (Math.min(anchorLeft, headLeft) > 0) return false;
+      const anchorRight = anchorLeft + this.$anchorCell.nodeAfter.attrs.colspan;
+      const headRight = headLeft + this.$headCell.nodeAfter.attrs.colspan;
+      return Math.max(anchorRight, headRight) == map3.width;
+    }
+    eq(other) {
+      return other instanceof CellSelection2 && other.$anchorCell.pos == this.$anchorCell.pos && other.$headCell.pos == this.$headCell.pos;
+    }
+    static rowSelection($anchorCell, $headCell = $anchorCell) {
+      const table = $anchorCell.node(-1);
+      const map3 = TableMap.get(table);
+      const tableStart = $anchorCell.start(-1);
+      const anchorRect = map3.findCell($anchorCell.pos - tableStart);
+      const headRect = map3.findCell($headCell.pos - tableStart);
+      const doc4 = $anchorCell.node(0);
+      if (anchorRect.left <= headRect.left) {
+        if (anchorRect.left > 0) $anchorCell = doc4.resolve(tableStart + map3.map[anchorRect.top * map3.width]);
+        if (headRect.right < map3.width) $headCell = doc4.resolve(tableStart + map3.map[map3.width * (headRect.top + 1) - 1]);
+      } else {
+        if (headRect.left > 0) $headCell = doc4.resolve(tableStart + map3.map[headRect.top * map3.width]);
+        if (anchorRect.right < map3.width) $anchorCell = doc4.resolve(tableStart + map3.map[map3.width * (anchorRect.top + 1) - 1]);
+      }
+      return new CellSelection2($anchorCell, $headCell);
+    }
+    toJSON() {
+      return {
+        type: "cell",
+        anchor: this.$anchorCell.pos,
+        head: this.$headCell.pos
+      };
+    }
+    static fromJSON(doc4, json) {
+      return new CellSelection2(doc4.resolve(json.anchor), doc4.resolve(json.head));
+    }
+    static create(doc4, anchorCell, headCell = anchorCell) {
+      return new CellSelection2(doc4.resolve(anchorCell), doc4.resolve(headCell));
+    }
+    getBookmark() {
+      return new CellBookmark(this.$anchorCell.pos, this.$headCell.pos);
+    }
+  };
+  CellSelection.prototype.visible = false;
+  Selection.jsonID("cell", CellSelection);
+  var CellBookmark = class CellBookmark2 {
+    constructor(anchor, head) {
+      this.anchor = anchor;
+      this.head = head;
+    }
+    map(mapping) {
+      return new CellBookmark2(mapping.map(this.anchor), mapping.map(this.head));
+    }
+    resolve(doc4) {
+      const $anchorCell = doc4.resolve(this.anchor), $headCell = doc4.resolve(this.head);
+      if ($anchorCell.parent.type.spec.tableRole == "row" && $headCell.parent.type.spec.tableRole == "row" && $anchorCell.index() < $anchorCell.parent.childCount && $headCell.index() < $headCell.parent.childCount && inSameTable($anchorCell, $headCell)) return new CellSelection($anchorCell, $headCell);
+      else return Selection.near($headCell, 1);
+    }
+  };
+  function drawCellSelection(state) {
+    if (!(state.selection instanceof CellSelection)) return null;
+    const cells = [];
+    state.selection.forEachCell((node, pos) => {
+      cells.push(Decoration.node(pos, pos + node.nodeSize, { class: "selectedCell" }));
+    });
+    return DecorationSet.create(state.doc, cells);
+  }
+  function isCellBoundarySelection({ $from, $to }) {
+    if ($from.pos == $to.pos || $from.pos < $to.pos - 6) return false;
+    let afterFrom = $from.pos;
+    let beforeTo = $to.pos;
+    let depth = $from.depth;
+    for (; depth >= 0; depth--, afterFrom++) if ($from.after(depth + 1) < $from.end(depth)) break;
+    for (let d = $to.depth; d >= 0; d--, beforeTo--) if ($to.before(d + 1) > $to.start(d)) break;
+    return afterFrom == beforeTo && /row|table/.test($from.node(depth).type.spec.tableRole);
+  }
+  function isTextSelectionAcrossCells({ $from, $to }) {
+    let fromCellBoundaryNode;
+    let toCellBoundaryNode;
+    for (let i = $from.depth; i > 0; i--) {
+      const node = $from.node(i);
+      if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
+        fromCellBoundaryNode = node;
+        break;
+      }
+    }
+    for (let i = $to.depth; i > 0; i--) {
+      const node = $to.node(i);
+      if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
+        toCellBoundaryNode = node;
+        break;
+      }
+    }
+    return fromCellBoundaryNode !== toCellBoundaryNode && $to.parentOffset === 0;
+  }
+  function normalizeSelection(state, tr2, allowTableNodeSelection) {
+    const sel = (tr2 || state).selection;
+    const doc4 = (tr2 || state).doc;
+    let normalize2;
+    let role;
+    if (sel instanceof NodeSelection && (role = sel.node.type.spec.tableRole)) {
+      if (role == "cell" || role == "header_cell") normalize2 = CellSelection.create(doc4, sel.from);
+      else if (role == "row") {
+        const $cell = doc4.resolve(sel.from + 1);
+        normalize2 = CellSelection.rowSelection($cell, $cell);
+      } else if (!allowTableNodeSelection) {
+        const map3 = TableMap.get(sel.node);
+        const start = sel.from + 1;
+        const lastCell = start + map3.map[map3.width * map3.height - 1];
+        normalize2 = CellSelection.create(doc4, start + 1, lastCell);
+      }
+    } else if (sel instanceof TextSelection && isCellBoundarySelection(sel)) normalize2 = TextSelection.create(doc4, sel.from);
+    else if (sel instanceof TextSelection && isTextSelectionAcrossCells(sel)) normalize2 = TextSelection.create(doc4, sel.$from.start(), sel.$from.end());
+    if (normalize2) (tr2 || (tr2 = state.tr)).setSelection(normalize2);
+    return tr2;
+  }
+  var fixTablesKey = new PluginKey("fix-tables");
+  function changedDescendants(old, cur, offset3, f) {
+    const oldSize = old.childCount, curSize = cur.childCount;
+    outer: for (let i = 0, j = 0; i < curSize; i++) {
+      const child = cur.child(i);
+      for (let scan = j, e = Math.min(oldSize, i + 3); scan < e; scan++) if (old.child(scan) == child) {
+        j = scan + 1;
+        offset3 += child.nodeSize;
+        continue outer;
+      }
+      f(child, offset3);
+      if (j < oldSize && old.child(j).sameMarkup(child)) changedDescendants(old.child(j), child, offset3 + 1, f);
+      else child.nodesBetween(0, child.content.size, f, offset3 + 1);
+      offset3 += child.nodeSize;
+    }
+  }
+  function fixTables(state, oldState) {
+    let tr2;
+    const check = (node, pos) => {
+      if (node.type.spec.tableRole == "table") tr2 = fixTable(state, node, pos, tr2);
+    };
+    if (!oldState) state.doc.descendants(check);
+    else if (oldState.doc != state.doc) changedDescendants(oldState.doc, state.doc, 0, check);
+    return tr2;
+  }
+  function fixTable(state, table, tablePos, tr2) {
+    const map3 = TableMap.get(table);
+    if (!map3.problems) return tr2;
+    if (!tr2) tr2 = state.tr;
+    const mustAdd = [];
+    for (let i = 0; i < map3.height; i++) mustAdd.push(0);
+    for (let i = 0; i < map3.problems.length; i++) {
+      const prob = map3.problems[i];
+      if (prob.type == "collision") {
+        const cell = table.nodeAt(prob.pos);
+        if (!cell) continue;
+        const attrs = cell.attrs;
+        for (let j = 0; j < attrs.rowspan; j++) mustAdd[prob.row + j] += prob.n;
+        tr2.setNodeMarkup(tr2.mapping.map(tablePos + 1 + prob.pos), null, removeColSpan(attrs, attrs.colspan - prob.n, prob.n));
+      } else if (prob.type == "missing") mustAdd[prob.row] += prob.n;
+      else if (prob.type == "overlong_rowspan") {
+        const cell = table.nodeAt(prob.pos);
+        if (!cell) continue;
+        tr2.setNodeMarkup(tr2.mapping.map(tablePos + 1 + prob.pos), null, {
+          ...cell.attrs,
+          rowspan: cell.attrs.rowspan - prob.n
+        });
+      } else if (prob.type == "colwidth mismatch") {
+        const cell = table.nodeAt(prob.pos);
+        if (!cell) continue;
+        tr2.setNodeMarkup(tr2.mapping.map(tablePos + 1 + prob.pos), null, {
+          ...cell.attrs,
+          colwidth: prob.colwidth
+        });
+      } else if (prob.type == "zero_sized") {
+        const pos = tr2.mapping.map(tablePos);
+        tr2.delete(pos, pos + table.nodeSize);
+      }
+    }
+    let first2, last2;
+    for (let i = 0; i < mustAdd.length; i++) if (mustAdd[i]) {
+      if (first2 == null) first2 = i;
+      last2 = i;
+    }
+    for (let i = 0, pos = tablePos + 1; i < map3.height; i++) {
+      const row = table.child(i);
+      const end = pos + row.nodeSize;
+      const add = mustAdd[i];
+      if (add > 0) {
+        let role = "cell";
+        if (row.firstChild) role = row.firstChild.type.spec.tableRole;
+        const nodes = [];
+        for (let j = 0; j < add; j++) {
+          const node = tableNodeTypes(state.schema)[role].createAndFill();
+          if (node) nodes.push(node);
+        }
+        const side = (i == 0 || first2 == i - 1) && last2 == i ? pos + 1 : end - 1;
+        tr2.insert(tr2.mapping.map(side), nodes);
+      }
+      pos = end;
+    }
+    return tr2.setMeta(fixTablesKey, { fixTables: true });
+  }
+  function selectedRect(state) {
+    const sel = state.selection;
+    const $pos = selectionCell(state);
+    const table = $pos.node(-1);
+    const tableStart = $pos.start(-1);
+    const map3 = TableMap.get(table);
+    return {
+      ...sel instanceof CellSelection ? map3.rectBetween(sel.$anchorCell.pos - tableStart, sel.$headCell.pos - tableStart) : map3.findCell($pos.pos - tableStart),
+      tableStart,
+      map: map3,
+      table
+    };
+  }
+  function addColumn(tr2, { map: map3, tableStart, table }, col) {
+    let refColumn = col > 0 ? -1 : 0;
+    if (columnIsHeader(map3, table, col + refColumn)) refColumn = col == 0 || col == map3.width ? null : 0;
+    for (let row = 0; row < map3.height; row++) {
+      const index = row * map3.width + col;
+      if (col > 0 && col < map3.width && map3.map[index - 1] == map3.map[index]) {
+        const pos = map3.map[index];
+        const cell = table.nodeAt(pos);
+        tr2.setNodeMarkup(tr2.mapping.map(tableStart + pos), null, addColSpan(cell.attrs, col - map3.colCount(pos)));
+        row += cell.attrs.rowspan - 1;
+      } else {
+        const type = refColumn == null ? tableNodeTypes(table.type.schema).cell : table.nodeAt(map3.map[index + refColumn]).type;
+        const pos = map3.positionAt(row, col, table);
+        tr2.insert(tr2.mapping.map(tableStart + pos), type.createAndFill());
+      }
+    }
+    return tr2;
+  }
+  function addColumnBefore(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      dispatch(addColumn(state.tr, rect, rect.left));
+    }
+    return true;
+  }
+  function addColumnAfter(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      dispatch(addColumn(state.tr, rect, rect.right));
+    }
+    return true;
+  }
+  function removeColumn(tr2, { map: map3, table, tableStart }, col) {
+    const mapStart = tr2.mapping.maps.length;
+    for (let row = 0; row < map3.height; ) {
+      const index = row * map3.width + col;
+      const pos = map3.map[index];
+      const cell = table.nodeAt(pos);
+      const attrs = cell.attrs;
+      if (col > 0 && map3.map[index - 1] == pos || col < map3.width - 1 && map3.map[index + 1] == pos) tr2.setNodeMarkup(tr2.mapping.slice(mapStart).map(tableStart + pos), null, removeColSpan(attrs, col - map3.colCount(pos)));
+      else {
+        const start = tr2.mapping.slice(mapStart).map(tableStart + pos);
+        tr2.delete(start, start + cell.nodeSize);
+      }
+      row += attrs.rowspan;
+    }
+  }
+  function deleteColumn(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      const tr2 = state.tr;
+      if (rect.left == 0 && rect.right == rect.map.width) return false;
+      for (let i = rect.right - 1; ; i--) {
+        removeColumn(tr2, rect, i);
+        if (i == rect.left) break;
+        const table = rect.tableStart ? tr2.doc.nodeAt(rect.tableStart - 1) : tr2.doc;
+        if (!table) throw new RangeError("No table found");
+        rect.table = table;
+        rect.map = TableMap.get(table);
+      }
+      dispatch(tr2);
+    }
+    return true;
+  }
+  function rowIsHeader(map3, table, row) {
+    var _table$nodeAt;
+    const headerCell = tableNodeTypes(table.type.schema).header_cell;
+    for (let col = 0; col < map3.width; col++) if (((_table$nodeAt = table.nodeAt(map3.map[col + row * map3.width])) === null || _table$nodeAt === void 0 ? void 0 : _table$nodeAt.type) != headerCell) return false;
+    return true;
+  }
+  function addRow(tr2, { map: map3, tableStart, table }, row) {
+    let rowPos = tableStart;
+    for (let i = 0; i < row; i++) rowPos += table.child(i).nodeSize;
+    const cells = [];
+    let refRow = row > 0 ? -1 : 0;
+    if (rowIsHeader(map3, table, row + refRow)) refRow = row == 0 || row == map3.height ? null : 0;
+    for (let col = 0, index = map3.width * row; col < map3.width; col++, index++) if (row > 0 && row < map3.height && map3.map[index] == map3.map[index - map3.width]) {
+      const pos = map3.map[index];
+      const attrs = table.nodeAt(pos).attrs;
+      tr2.setNodeMarkup(tableStart + pos, null, {
+        ...attrs,
+        rowspan: attrs.rowspan + 1
+      });
+      col += attrs.colspan - 1;
+    } else {
+      var _table$nodeAt2;
+      const type = refRow == null ? tableNodeTypes(table.type.schema).cell : (_table$nodeAt2 = table.nodeAt(map3.map[index + refRow * map3.width])) === null || _table$nodeAt2 === void 0 ? void 0 : _table$nodeAt2.type;
+      const node = type === null || type === void 0 ? void 0 : type.createAndFill();
+      if (node) cells.push(node);
+    }
+    tr2.insert(rowPos, tableNodeTypes(table.type.schema).row.create(null, cells));
+    return tr2;
+  }
+  function addRowBefore(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      dispatch(addRow(state.tr, rect, rect.top));
+    }
+    return true;
+  }
+  function addRowAfter(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state);
+      dispatch(addRow(state.tr, rect, rect.bottom));
+    }
+    return true;
+  }
+  function removeRow(tr2, { map: map3, table, tableStart }, row) {
+    let rowPos = 0;
+    for (let i = 0; i < row; i++) rowPos += table.child(i).nodeSize;
+    const nextRow = rowPos + table.child(row).nodeSize;
+    const mapFrom = tr2.mapping.maps.length;
+    tr2.delete(rowPos + tableStart, nextRow + tableStart);
+    const seen = /* @__PURE__ */ new Set();
+    for (let col = 0, index = row * map3.width; col < map3.width; col++, index++) {
+      const pos = map3.map[index];
+      if (seen.has(pos)) continue;
+      seen.add(pos);
+      if (row > 0 && pos == map3.map[index - map3.width]) {
+        const attrs = table.nodeAt(pos).attrs;
+        tr2.setNodeMarkup(tr2.mapping.slice(mapFrom).map(pos + tableStart), null, {
+          ...attrs,
+          rowspan: attrs.rowspan - 1
+        });
+        col += attrs.colspan - 1;
+      } else if (row < map3.height && pos == map3.map[index + map3.width]) {
+        const cell = table.nodeAt(pos);
+        const attrs = cell.attrs;
+        const copy3 = cell.type.create({
+          ...attrs,
+          rowspan: cell.attrs.rowspan - 1
+        }, cell.content);
+        const newPos = map3.positionAt(row + 1, col, table);
+        tr2.insert(tr2.mapping.slice(mapFrom).map(tableStart + newPos), copy3);
+        col += attrs.colspan - 1;
+      }
+    }
+  }
+  function deleteRow(state, dispatch) {
+    if (!isInTable(state)) return false;
+    if (dispatch) {
+      const rect = selectedRect(state), tr2 = state.tr;
+      if (rect.top == 0 && rect.bottom == rect.map.height) return false;
+      for (let i = rect.bottom - 1; ; i--) {
+        removeRow(tr2, rect, i);
+        if (i == rect.top) break;
+        const table = rect.tableStart ? tr2.doc.nodeAt(rect.tableStart - 1) : tr2.doc;
+        if (!table) throw new RangeError("No table found");
+        rect.table = table;
+        rect.map = TableMap.get(rect.table);
+      }
+      dispatch(tr2);
+    }
+    return true;
+  }
+  function isEmpty2(cell) {
+    const c = cell.content;
+    return c.childCount == 1 && c.child(0).isTextblock && c.child(0).childCount == 0;
+  }
+  function cellsOverlapRectangle({ width, height, map: map3 }, rect) {
+    let indexTop = rect.top * width + rect.left, indexLeft = indexTop;
+    let indexBottom = (rect.bottom - 1) * width + rect.left, indexRight = indexTop + (rect.right - rect.left - 1);
+    for (let i = rect.top; i < rect.bottom; i++) {
+      if (rect.left > 0 && map3[indexLeft] == map3[indexLeft - 1] || rect.right < width && map3[indexRight] == map3[indexRight + 1]) return true;
+      indexLeft += width;
+      indexRight += width;
+    }
+    for (let i = rect.left; i < rect.right; i++) {
+      if (rect.top > 0 && map3[indexTop] == map3[indexTop - width] || rect.bottom < height && map3[indexBottom] == map3[indexBottom + width]) return true;
+      indexTop++;
+      indexBottom++;
+    }
+    return false;
+  }
+  function mergeCells(state, dispatch) {
+    const sel = state.selection;
+    if (!(sel instanceof CellSelection) || sel.$anchorCell.pos == sel.$headCell.pos) return false;
+    const rect = selectedRect(state), { map: map3 } = rect;
+    if (cellsOverlapRectangle(map3, rect)) return false;
+    if (dispatch) {
+      const tr2 = state.tr;
+      const seen = {};
+      let content = Fragment.empty;
+      let mergedPos;
+      let mergedCell;
+      for (let row = rect.top; row < rect.bottom; row++) for (let col = rect.left; col < rect.right; col++) {
+        const cellPos = map3.map[row * map3.width + col];
+        const cell = rect.table.nodeAt(cellPos);
+        if (seen[cellPos] || !cell) continue;
+        seen[cellPos] = true;
+        if (mergedPos == null) {
+          mergedPos = cellPos;
+          mergedCell = cell;
+        } else {
+          if (!isEmpty2(cell)) content = content.append(cell.content);
+          const mapped = tr2.mapping.map(cellPos + rect.tableStart);
+          tr2.delete(mapped, mapped + cell.nodeSize);
+        }
+      }
+      if (mergedPos == null || mergedCell == null) return true;
+      tr2.setNodeMarkup(mergedPos + rect.tableStart, null, {
+        ...addColSpan(mergedCell.attrs, mergedCell.attrs.colspan, rect.right - rect.left - mergedCell.attrs.colspan),
+        rowspan: rect.bottom - rect.top
+      });
+      if (content.size > 0) {
+        const end = mergedPos + 1 + mergedCell.content.size;
+        const start = isEmpty2(mergedCell) ? mergedPos + 1 : end;
+        tr2.replaceWith(start + rect.tableStart, end + rect.tableStart, content);
+      }
+      tr2.setSelection(new CellSelection(tr2.doc.resolve(mergedPos + rect.tableStart)));
+      dispatch(tr2);
+    }
+    return true;
+  }
+  function splitCell(state, dispatch) {
+    const nodeTypes = tableNodeTypes(state.schema);
+    return splitCellWithType(({ node }) => {
+      return nodeTypes[node.type.spec.tableRole];
+    })(state, dispatch);
+  }
+  function splitCellWithType(getCellType) {
+    return (state, dispatch) => {
+      const sel = state.selection;
+      let cellNode;
+      let cellPos;
+      if (!(sel instanceof CellSelection)) {
+        var _cellAround;
+        cellNode = cellWrapping(sel.$from);
+        if (!cellNode) return false;
+        cellPos = (_cellAround = cellAround(sel.$from)) === null || _cellAround === void 0 ? void 0 : _cellAround.pos;
+      } else {
+        if (sel.$anchorCell.pos != sel.$headCell.pos) return false;
+        cellNode = sel.$anchorCell.nodeAfter;
+        cellPos = sel.$anchorCell.pos;
+      }
+      if (cellNode == null || cellPos == null) return false;
+      if (cellNode.attrs.colspan == 1 && cellNode.attrs.rowspan == 1) return false;
+      if (dispatch) {
+        let baseAttrs = cellNode.attrs;
+        const attrs = [];
+        const colwidth = baseAttrs.colwidth;
+        if (baseAttrs.rowspan > 1) baseAttrs = {
+          ...baseAttrs,
+          rowspan: 1
+        };
+        if (baseAttrs.colspan > 1) baseAttrs = {
+          ...baseAttrs,
+          colspan: 1
+        };
+        const rect = selectedRect(state), tr2 = state.tr;
+        for (let i = 0; i < rect.right - rect.left; i++) attrs.push(colwidth ? {
+          ...baseAttrs,
+          colwidth: colwidth && colwidth[i] ? [colwidth[i]] : null
+        } : baseAttrs);
+        let lastCell;
+        for (let row = rect.top; row < rect.bottom; row++) {
+          let pos = rect.map.positionAt(row, rect.left, rect.table);
+          if (row == rect.top) pos += cellNode.nodeSize;
+          for (let col = rect.left, i = 0; col < rect.right; col++, i++) {
+            if (col == rect.left && row == rect.top) continue;
+            tr2.insert(lastCell = tr2.mapping.map(pos + rect.tableStart, 1), getCellType({
+              node: cellNode,
+              row,
+              col
+            }).createAndFill(attrs[i]));
+          }
+        }
+        tr2.setNodeMarkup(cellPos, getCellType({
+          node: cellNode,
+          row: rect.top,
+          col: rect.left
+        }), attrs[0]);
+        if (sel instanceof CellSelection) tr2.setSelection(new CellSelection(tr2.doc.resolve(sel.$anchorCell.pos), lastCell ? tr2.doc.resolve(lastCell) : void 0));
+        dispatch(tr2);
+      }
+      return true;
+    };
+  }
+  function setCellAttr(name, value) {
+    return function(state, dispatch) {
+      if (!isInTable(state)) return false;
+      const $cell = selectionCell(state);
+      if ($cell.nodeAfter.attrs[name] === value) return false;
+      if (dispatch) {
+        const tr2 = state.tr;
+        if (state.selection instanceof CellSelection) state.selection.forEachCell((node, pos) => {
+          if (node.attrs[name] !== value) tr2.setNodeMarkup(pos, null, {
+            ...node.attrs,
+            [name]: value
+          });
+        });
+        else tr2.setNodeMarkup($cell.pos, null, {
+          ...$cell.nodeAfter.attrs,
+          [name]: value
+        });
+        dispatch(tr2);
+      }
+      return true;
+    };
+  }
+  function deprecated_toggleHeader(type) {
+    return function(state, dispatch) {
+      if (!isInTable(state)) return false;
+      if (dispatch) {
+        const types = tableNodeTypes(state.schema);
+        const rect = selectedRect(state), tr2 = state.tr;
+        const cells = rect.map.cellsInRect(type == "column" ? {
+          left: rect.left,
+          top: 0,
+          right: rect.right,
+          bottom: rect.map.height
+        } : type == "row" ? {
+          left: 0,
+          top: rect.top,
+          right: rect.map.width,
+          bottom: rect.bottom
+        } : rect);
+        const nodes = cells.map((pos) => rect.table.nodeAt(pos));
+        for (let i = 0; i < cells.length; i++) if (nodes[i].type == types.header_cell) tr2.setNodeMarkup(rect.tableStart + cells[i], types.cell, nodes[i].attrs);
+        if (tr2.steps.length === 0) for (let i = 0; i < cells.length; i++) tr2.setNodeMarkup(rect.tableStart + cells[i], types.header_cell, nodes[i].attrs);
+        dispatch(tr2);
+      }
+      return true;
+    };
+  }
+  function isHeaderEnabledByType(type, rect, types) {
+    const cellPositions = rect.map.cellsInRect({
+      left: 0,
+      top: 0,
+      right: type == "row" ? rect.map.width : 1,
+      bottom: type == "column" ? rect.map.height : 1
+    });
+    for (let i = 0; i < cellPositions.length; i++) {
+      const cell = rect.table.nodeAt(cellPositions[i]);
+      if (cell && cell.type !== types.header_cell) return false;
+    }
+    return true;
+  }
+  function toggleHeader(type, options) {
+    options = options || { useDeprecatedLogic: false };
+    if (options.useDeprecatedLogic) return deprecated_toggleHeader(type);
+    return function(state, dispatch) {
+      if (!isInTable(state)) return false;
+      if (dispatch) {
+        const types = tableNodeTypes(state.schema);
+        const rect = selectedRect(state), tr2 = state.tr;
+        const isHeaderRowEnabled = isHeaderEnabledByType("row", rect, types);
+        const isHeaderColumnEnabled = isHeaderEnabledByType("column", rect, types);
+        const selectionStartsAt = (type === "column" ? isHeaderRowEnabled : type === "row" ? isHeaderColumnEnabled : false) ? 1 : 0;
+        const cellsRect = type == "column" ? {
+          left: 0,
+          top: selectionStartsAt,
+          right: 1,
+          bottom: rect.map.height
+        } : type == "row" ? {
+          left: selectionStartsAt,
+          top: 0,
+          right: rect.map.width,
+          bottom: 1
+        } : rect;
+        const newType = type == "column" ? isHeaderColumnEnabled ? types.cell : types.header_cell : type == "row" ? isHeaderRowEnabled ? types.cell : types.header_cell : types.cell;
+        rect.map.cellsInRect(cellsRect).forEach((relativeCellPos) => {
+          const cellPos = relativeCellPos + rect.tableStart;
+          const cell = tr2.doc.nodeAt(cellPos);
+          if (cell) tr2.setNodeMarkup(cellPos, newType, cell.attrs);
+        });
+        dispatch(tr2);
+      }
+      return true;
+    };
+  }
+  var toggleHeaderRow = toggleHeader("row", { useDeprecatedLogic: true });
+  var toggleHeaderColumn = toggleHeader("column", { useDeprecatedLogic: true });
+  var toggleHeaderCell = toggleHeader("cell", { useDeprecatedLogic: true });
+  function findNextCell($cell, dir) {
+    if (dir < 0) {
+      const before = $cell.nodeBefore;
+      if (before) return $cell.pos - before.nodeSize;
+      for (let row = $cell.index(-1) - 1, rowEnd = $cell.before(); row >= 0; row--) {
+        const rowNode = $cell.node(-1).child(row);
+        const lastChild = rowNode.lastChild;
+        if (lastChild) return rowEnd - 1 - lastChild.nodeSize;
+        rowEnd -= rowNode.nodeSize;
+      }
+    } else {
+      if ($cell.index() < $cell.parent.childCount - 1) return $cell.pos + $cell.nodeAfter.nodeSize;
+      const table = $cell.node(-1);
+      for (let row = $cell.indexAfter(-1), rowStart = $cell.after(); row < table.childCount; row++) {
+        const rowNode = table.child(row);
+        if (rowNode.childCount) return rowStart + 1;
+        rowStart += rowNode.nodeSize;
+      }
+    }
+    return null;
+  }
+  function goToNextCell(direction) {
+    return function(state, dispatch) {
+      if (!isInTable(state)) return false;
+      const cell = findNextCell(selectionCell(state), direction);
+      if (cell == null) return false;
+      if (dispatch) {
+        const $cell = state.doc.resolve(cell);
+        dispatch(state.tr.setSelection(TextSelection.between($cell, moveCellForward($cell))).scrollIntoView());
+      }
+      return true;
+    };
+  }
+  function deleteTable(state, dispatch) {
+    const $pos = state.selection.$anchor;
+    for (let d = $pos.depth; d > 0; d--) if ($pos.node(d).type.spec.tableRole == "table") {
+      if (dispatch) dispatch(state.tr.delete($pos.before(d), $pos.after(d)).scrollIntoView());
+      return true;
+    }
+    return false;
+  }
+  function deleteCellSelection(state, dispatch) {
+    const sel = state.selection;
+    if (!(sel instanceof CellSelection)) return false;
+    if (dispatch) {
+      const tr2 = state.tr;
+      const baseContent = tableNodeTypes(state.schema).cell.createAndFill().content;
+      sel.forEachCell((cell, pos) => {
+        if (!cell.content.eq(baseContent)) tr2.replace(tr2.mapping.map(pos + 1), tr2.mapping.map(pos + cell.nodeSize - 1), new Slice(baseContent, 0, 0));
+      });
+      if (tr2.docChanged) dispatch(tr2);
+    }
+    return true;
+  }
+  function pastedCells(slice2) {
+    if (slice2.size === 0) return null;
+    let { content, openStart, openEnd } = slice2;
+    while (content.childCount == 1 && (openStart > 0 && openEnd > 0 || content.child(0).type.spec.tableRole == "table")) {
+      openStart--;
+      openEnd--;
+      content = content.child(0).content;
+    }
+    const first2 = content.child(0);
+    const role = first2.type.spec.tableRole;
+    const schema = first2.type.schema, rows = [];
+    if (role == "row") for (let i = 0; i < content.childCount; i++) {
+      let cells = content.child(i).content;
+      const left = i ? 0 : Math.max(0, openStart - 1);
+      const right = i < content.childCount - 1 ? 0 : Math.max(0, openEnd - 1);
+      if (left || right) cells = fitSlice(tableNodeTypes(schema).row, new Slice(cells, left, right)).content;
+      rows.push(cells);
+    }
+    else if (role == "cell" || role == "header_cell") rows.push(openStart || openEnd ? fitSlice(tableNodeTypes(schema).row, new Slice(content, openStart, openEnd)).content : content);
+    else return null;
+    return ensureRectangular(schema, rows);
+  }
+  function ensureRectangular(schema, rows) {
+    const widths = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      for (let j = row.childCount - 1; j >= 0; j--) {
+        const { rowspan, colspan } = row.child(j).attrs;
+        for (let r = i; r < i + rowspan; r++) widths[r] = (widths[r] || 0) + colspan;
+      }
+    }
+    let width = 0;
+    for (let r = 0; r < widths.length; r++) width = Math.max(width, widths[r]);
+    for (let r = 0; r < widths.length; r++) {
+      if (r >= rows.length) rows.push(Fragment.empty);
+      if (widths[r] < width) {
+        const empty2 = tableNodeTypes(schema).cell.createAndFill();
+        const cells = [];
+        for (let i = widths[r]; i < width; i++) cells.push(empty2);
+        rows[r] = rows[r].append(Fragment.from(cells));
+      }
+    }
+    return {
+      height: rows.length,
+      width,
+      rows
+    };
+  }
+  function fitSlice(nodeType, slice2) {
+    const node = nodeType.createAndFill();
+    return new Transform(node).replace(0, node.content.size, slice2).doc;
+  }
+  function clipCells({ width, height, rows }, newWidth, newHeight) {
+    if (width != newWidth) {
+      const added = [];
+      const newRows = [];
+      for (let row = 0; row < rows.length; row++) {
+        const frag = rows[row], cells = [];
+        for (let col = added[row] || 0, i = 0; col < newWidth; i++) {
+          let cell = frag.child(i % frag.childCount);
+          if (col + cell.attrs.colspan > newWidth) cell = cell.type.createChecked(removeColSpan(cell.attrs, cell.attrs.colspan, col + cell.attrs.colspan - newWidth), cell.content);
+          cells.push(cell);
+          col += cell.attrs.colspan;
+          for (let j = 1; j < cell.attrs.rowspan; j++) added[row + j] = (added[row + j] || 0) + cell.attrs.colspan;
+        }
+        newRows.push(Fragment.from(cells));
+      }
+      rows = newRows;
+      width = newWidth;
+    }
+    if (height != newHeight) {
+      const newRows = [];
+      for (let row = 0, i = 0; row < newHeight; row++, i++) {
+        const cells = [], source = rows[i % height];
+        for (let j = 0; j < source.childCount; j++) {
+          let cell = source.child(j);
+          if (row + cell.attrs.rowspan > newHeight) cell = cell.type.create({
+            ...cell.attrs,
+            rowspan: Math.max(1, newHeight - cell.attrs.rowspan)
+          }, cell.content);
+          cells.push(cell);
+        }
+        newRows.push(Fragment.from(cells));
+      }
+      rows = newRows;
+      height = newHeight;
+    }
+    return {
+      width,
+      height,
+      rows
+    };
+  }
+  function growTable(tr2, map3, table, start, width, height, mapFrom) {
+    const schema = tr2.doc.type.schema;
+    const types = tableNodeTypes(schema);
+    let empty2;
+    let emptyHead;
+    if (width > map3.width) for (let row = 0, rowEnd = 0; row < map3.height; row++) {
+      const rowNode = table.child(row);
+      rowEnd += rowNode.nodeSize;
+      const cells = [];
+      let add;
+      if (rowNode.lastChild == null || rowNode.lastChild.type == types.cell) add = empty2 || (empty2 = types.cell.createAndFill());
+      else add = emptyHead || (emptyHead = types.header_cell.createAndFill());
+      for (let i = map3.width; i < width; i++) cells.push(add);
+      tr2.insert(tr2.mapping.slice(mapFrom).map(rowEnd - 1 + start), cells);
+    }
+    if (height > map3.height) {
+      const cells = [];
+      for (let i = 0, start$1 = (map3.height - 1) * map3.width; i < Math.max(map3.width, width); i++) {
+        const header = i >= map3.width ? false : table.nodeAt(map3.map[start$1 + i]).type == types.header_cell;
+        cells.push(header ? emptyHead || (emptyHead = types.header_cell.createAndFill()) : empty2 || (empty2 = types.cell.createAndFill()));
+      }
+      const emptyRow = types.row.create(null, Fragment.from(cells)), rows = [];
+      for (let i = map3.height; i < height; i++) rows.push(emptyRow);
+      tr2.insert(tr2.mapping.slice(mapFrom).map(start + table.nodeSize - 2), rows);
+    }
+    return !!(empty2 || emptyHead);
+  }
+  function isolateHorizontal(tr2, map3, table, start, left, right, top, mapFrom) {
+    if (top == 0 || top == map3.height) return false;
+    let found2 = false;
+    for (let col = left; col < right; col++) {
+      const index = top * map3.width + col, pos = map3.map[index];
+      if (map3.map[index - map3.width] == pos) {
+        found2 = true;
+        const cell = table.nodeAt(pos);
+        const { top: cellTop, left: cellLeft } = map3.findCell(pos);
+        tr2.setNodeMarkup(tr2.mapping.slice(mapFrom).map(pos + start), null, {
+          ...cell.attrs,
+          rowspan: top - cellTop
+        });
+        tr2.insert(tr2.mapping.slice(mapFrom).map(map3.positionAt(top, cellLeft, table)), cell.type.createAndFill({
+          ...cell.attrs,
+          rowspan: cellTop + cell.attrs.rowspan - top
+        }));
+        col += cell.attrs.colspan - 1;
+      }
+    }
+    return found2;
+  }
+  function isolateVertical(tr2, map3, table, start, top, bottom, left, mapFrom) {
+    if (left == 0 || left == map3.width) return false;
+    let found2 = false;
+    for (let row = top; row < bottom; row++) {
+      const index = row * map3.width + left, pos = map3.map[index];
+      if (map3.map[index - 1] == pos) {
+        found2 = true;
+        const cell = table.nodeAt(pos);
+        const cellLeft = map3.colCount(pos);
+        const updatePos = tr2.mapping.slice(mapFrom).map(pos + start);
+        tr2.setNodeMarkup(updatePos, null, removeColSpan(cell.attrs, left - cellLeft, cell.attrs.colspan - (left - cellLeft)));
+        tr2.insert(updatePos + cell.nodeSize, cell.type.createAndFill(removeColSpan(cell.attrs, 0, left - cellLeft)));
+        row += cell.attrs.rowspan - 1;
+      }
+    }
+    return found2;
+  }
+  function insertCells(state, dispatch, tableStart, rect, cells) {
+    let table = tableStart ? state.doc.nodeAt(tableStart - 1) : state.doc;
+    if (!table) throw new Error("No table found");
+    let map3 = TableMap.get(table);
+    const { top, left } = rect;
+    const right = left + cells.width, bottom = top + cells.height;
+    const tr2 = state.tr;
+    let mapFrom = 0;
+    function recomp() {
+      table = tableStart ? tr2.doc.nodeAt(tableStart - 1) : tr2.doc;
+      if (!table) throw new Error("No table found");
+      map3 = TableMap.get(table);
+      mapFrom = tr2.mapping.maps.length;
+    }
+    if (growTable(tr2, map3, table, tableStart, right, bottom, mapFrom)) recomp();
+    if (isolateHorizontal(tr2, map3, table, tableStart, left, right, top, mapFrom)) recomp();
+    if (isolateHorizontal(tr2, map3, table, tableStart, left, right, bottom, mapFrom)) recomp();
+    if (isolateVertical(tr2, map3, table, tableStart, top, bottom, left, mapFrom)) recomp();
+    if (isolateVertical(tr2, map3, table, tableStart, top, bottom, right, mapFrom)) recomp();
+    for (let row = top; row < bottom; row++) {
+      const from3 = map3.positionAt(row, left, table), to = map3.positionAt(row, right, table);
+      tr2.replace(tr2.mapping.slice(mapFrom).map(from3 + tableStart), tr2.mapping.slice(mapFrom).map(to + tableStart), new Slice(cells.rows[row - top], 0, 0));
+    }
+    recomp();
+    tr2.setSelection(new CellSelection(tr2.doc.resolve(tableStart + map3.positionAt(top, left, table)), tr2.doc.resolve(tableStart + map3.positionAt(bottom - 1, right - 1, table))));
+    dispatch(tr2);
+  }
+  var handleKeyDown = keydownHandler({
+    ArrowLeft: arrow("horiz", -1),
+    ArrowRight: arrow("horiz", 1),
+    ArrowUp: arrow("vert", -1),
+    ArrowDown: arrow("vert", 1),
+    "Shift-ArrowLeft": shiftArrow("horiz", -1),
+    "Shift-ArrowRight": shiftArrow("horiz", 1),
+    "Shift-ArrowUp": shiftArrow("vert", -1),
+    "Shift-ArrowDown": shiftArrow("vert", 1),
+    Backspace: deleteCellSelection,
+    "Mod-Backspace": deleteCellSelection,
+    Delete: deleteCellSelection,
+    "Mod-Delete": deleteCellSelection
+  });
+  function maybeSetSelection(state, dispatch, selection) {
+    if (selection.eq(state.selection)) return false;
+    if (dispatch) dispatch(state.tr.setSelection(selection).scrollIntoView());
+    return true;
+  }
+  function arrow(axis, dir) {
+    return (state, dispatch, view) => {
+      if (!view) return false;
+      const sel = state.selection;
+      if (sel instanceof CellSelection) return maybeSetSelection(state, dispatch, Selection.near(sel.$headCell, dir));
+      if (axis != "horiz" && !sel.empty) return false;
+      const end = atEndOfCell(view, axis, dir);
+      if (end == null) return false;
+      if (axis == "horiz") return maybeSetSelection(state, dispatch, Selection.near(state.doc.resolve(sel.head + dir), dir));
+      else {
+        const $cell = state.doc.resolve(end);
+        const $next = nextCell($cell, axis, dir);
+        let newSel;
+        if ($next) newSel = Selection.near($next, 1);
+        else if (dir < 0) newSel = Selection.near(state.doc.resolve($cell.before(-1)), -1);
+        else newSel = Selection.near(state.doc.resolve($cell.after(-1)), 1);
+        return maybeSetSelection(state, dispatch, newSel);
+      }
+    };
+  }
+  function shiftArrow(axis, dir) {
+    return (state, dispatch, view) => {
+      if (!view) return false;
+      const sel = state.selection;
+      let cellSel;
+      if (sel instanceof CellSelection) cellSel = sel;
+      else {
+        const end = atEndOfCell(view, axis, dir);
+        if (end == null) return false;
+        cellSel = new CellSelection(state.doc.resolve(end));
+      }
+      const $head = nextCell(cellSel.$headCell, axis, dir);
+      if (!$head) return false;
+      return maybeSetSelection(state, dispatch, new CellSelection(cellSel.$anchorCell, $head));
+    };
+  }
+  function handleTripleClick2(view, pos) {
+    const doc4 = view.state.doc, $cell = cellAround(doc4.resolve(pos));
+    if (!$cell) return false;
+    view.dispatch(view.state.tr.setSelection(new CellSelection($cell)));
+    return true;
+  }
+  function handlePaste(view, _, slice2) {
+    if (!isInTable(view.state)) return false;
+    let cells = pastedCells(slice2);
+    const sel = view.state.selection;
+    if (sel instanceof CellSelection) {
+      if (!cells) cells = {
+        width: 1,
+        height: 1,
+        rows: [Fragment.from(fitSlice(tableNodeTypes(view.state.schema).cell, slice2))]
+      };
+      const table = sel.$anchorCell.node(-1);
+      const start = sel.$anchorCell.start(-1);
+      const rect = TableMap.get(table).rectBetween(sel.$anchorCell.pos - start, sel.$headCell.pos - start);
+      cells = clipCells(cells, rect.right - rect.left, rect.bottom - rect.top);
+      insertCells(view.state, view.dispatch, start, rect, cells);
+      return true;
+    } else if (cells) {
+      const $cell = selectionCell(view.state);
+      const start = $cell.start(-1);
+      insertCells(view.state, view.dispatch, start, TableMap.get($cell.node(-1)).findCell($cell.pos - start), cells);
+      return true;
+    } else return false;
+  }
+  function handleMouseDown$1(view, startEvent) {
+    var _cellUnderMouse;
+    if (startEvent.button != 0) return;
+    if (startEvent.ctrlKey || startEvent.metaKey) return;
+    const startDOMCell = domInCell(view, startEvent.target);
+    let $anchor;
+    if (startEvent.shiftKey && view.state.selection instanceof CellSelection) {
+      setCellSelection(view.state.selection.$anchorCell, startEvent);
+      startEvent.preventDefault();
+    } else if (startEvent.shiftKey && startDOMCell && ($anchor = cellAround(view.state.selection.$anchor)) != null && ((_cellUnderMouse = cellUnderMouse(view, startEvent)) === null || _cellUnderMouse === void 0 ? void 0 : _cellUnderMouse.pos) != $anchor.pos) {
+      setCellSelection($anchor, startEvent);
+      startEvent.preventDefault();
+    } else if (!startDOMCell) return;
+    function setCellSelection($anchor$1, event) {
+      let $head = cellUnderMouse(view, event);
+      const starting = tableEditingKey.getState(view.state) == null;
+      if (!$head || !inSameTable($anchor$1, $head)) if (starting) $head = $anchor$1;
+      else return;
+      const selection = new CellSelection($anchor$1, $head);
+      if (starting || !view.state.selection.eq(selection)) {
+        const tr2 = view.state.tr.setSelection(selection);
+        if (starting) tr2.setMeta(tableEditingKey, $anchor$1.pos);
+        view.dispatch(tr2);
+      }
+    }
+    function stop() {
+      view.root.removeEventListener("mouseup", stop);
+      view.root.removeEventListener("dragstart", stop);
+      view.root.removeEventListener("mousemove", move);
+      if (tableEditingKey.getState(view.state) != null) view.dispatch(view.state.tr.setMeta(tableEditingKey, -1));
+    }
+    function move(_event) {
+      const event = _event;
+      const anchor = tableEditingKey.getState(view.state);
+      let $anchor$1;
+      if (anchor != null) $anchor$1 = view.state.doc.resolve(anchor);
+      else if (domInCell(view, event.target) != startDOMCell) {
+        $anchor$1 = cellUnderMouse(view, startEvent);
+        if (!$anchor$1) return stop();
+      }
+      if ($anchor$1) setCellSelection($anchor$1, event);
+    }
+    view.root.addEventListener("mouseup", stop);
+    view.root.addEventListener("dragstart", stop);
+    view.root.addEventListener("mousemove", move);
+  }
+  function atEndOfCell(view, axis, dir) {
+    if (!(view.state.selection instanceof TextSelection)) return null;
+    const { $head } = view.state.selection;
+    for (let d = $head.depth - 1; d >= 0; d--) {
+      const parent = $head.node(d);
+      if ((dir < 0 ? $head.index(d) : $head.indexAfter(d)) != (dir < 0 ? 0 : parent.childCount)) return null;
+      if (parent.type.spec.tableRole == "cell" || parent.type.spec.tableRole == "header_cell") {
+        const cellPos = $head.before(d);
+        const dirStr = axis == "vert" ? dir > 0 ? "down" : "up" : dir > 0 ? "right" : "left";
+        return view.endOfTextblock(dirStr) ? cellPos : null;
+      }
+    }
+    return null;
+  }
+  function domInCell(view, dom) {
+    for (; dom && dom != view.dom; dom = dom.parentNode) if (dom.nodeName == "TD" || dom.nodeName == "TH") return dom;
+    return null;
+  }
+  function cellUnderMouse(view, event) {
+    const mousePos = view.posAtCoords({
+      left: event.clientX,
+      top: event.clientY
+    });
+    if (!mousePos) return null;
+    let { inside, pos } = mousePos;
+    return inside >= 0 && cellAround(view.state.doc.resolve(inside)) || cellAround(view.state.doc.resolve(pos));
+  }
+  var TableView = class {
+    constructor(node, defaultCellMinWidth) {
+      this.node = node;
+      this.defaultCellMinWidth = defaultCellMinWidth;
+      this.dom = document.createElement("div");
+      this.dom.className = "tableWrapper";
+      this.table = this.dom.appendChild(document.createElement("table"));
+      this.table.style.setProperty("--default-cell-min-width", `${defaultCellMinWidth}px`);
+      this.colgroup = this.table.appendChild(document.createElement("colgroup"));
+      updateColumnsOnResize(node, this.colgroup, this.table, defaultCellMinWidth);
+      this.contentDOM = this.table.appendChild(document.createElement("tbody"));
+    }
+    update(node) {
+      if (node.type != this.node.type) return false;
+      this.node = node;
+      updateColumnsOnResize(node, this.colgroup, this.table, this.defaultCellMinWidth);
+      return true;
+    }
+    ignoreMutation(record) {
+      return record.type == "attributes" && (record.target == this.table || this.colgroup.contains(record.target));
+    }
+  };
+  function updateColumnsOnResize(node, colgroup, table, defaultCellMinWidth, overrideCol, overrideValue) {
+    let totalWidth = 0;
+    let fixedWidth = true;
+    let nextDOM = colgroup.firstChild;
+    const row = node.firstChild;
+    if (!row) return;
+    for (let i = 0, col = 0; i < row.childCount; i++) {
+      const { colspan, colwidth } = row.child(i).attrs;
+      for (let j = 0; j < colspan; j++, col++) {
+        const hasWidth = overrideCol == col ? overrideValue : colwidth && colwidth[j];
+        const cssWidth = hasWidth ? hasWidth + "px" : "";
+        totalWidth += hasWidth || defaultCellMinWidth;
+        if (!hasWidth) fixedWidth = false;
+        if (!nextDOM) {
+          const col$1 = document.createElement("col");
+          col$1.style.width = cssWidth;
+          colgroup.appendChild(col$1);
+        } else {
+          if (nextDOM.style.width != cssWidth) nextDOM.style.width = cssWidth;
+          nextDOM = nextDOM.nextSibling;
+        }
+      }
+    }
+    while (nextDOM) {
+      var _nextDOM$parentNode;
+      const after = nextDOM.nextSibling;
+      (_nextDOM$parentNode = nextDOM.parentNode) === null || _nextDOM$parentNode === void 0 || _nextDOM$parentNode.removeChild(nextDOM);
+      nextDOM = after;
+    }
+    if (fixedWidth) {
+      table.style.width = totalWidth + "px";
+      table.style.minWidth = "";
+    } else {
+      table.style.width = "";
+      table.style.minWidth = totalWidth + "px";
+    }
+  }
+  var columnResizingPluginKey = new PluginKey("tableColumnResizing");
+  function columnResizing({ handleWidth = 5, cellMinWidth = 25, defaultCellMinWidth = 100, View = TableView, lastColumnResizable = true } = {}) {
+    const plugin = new Plugin({
+      key: columnResizingPluginKey,
+      state: {
+        init(_, state) {
+          var _plugin$spec;
+          const nodeViews = (_plugin$spec = plugin.spec) === null || _plugin$spec === void 0 || (_plugin$spec = _plugin$spec.props) === null || _plugin$spec === void 0 ? void 0 : _plugin$spec.nodeViews;
+          const tableName = tableNodeTypes(state.schema).table.name;
+          if (View && nodeViews) nodeViews[tableName] = (node, view) => {
+            return new View(node, defaultCellMinWidth, view);
+          };
+          return new ResizeState(-1, false);
+        },
+        apply(tr2, prev) {
+          return prev.apply(tr2);
+        }
+      },
+      props: {
+        attributes: (state) => {
+          const pluginState = columnResizingPluginKey.getState(state);
+          return pluginState && pluginState.activeHandle > -1 ? { class: "resize-cursor" } : {};
+        },
+        handleDOMEvents: {
+          mousemove: (view, event) => {
+            handleMouseMove(view, event, handleWidth, lastColumnResizable);
+          },
+          mouseleave: (view) => {
+            handleMouseLeave(view);
+          },
+          mousedown: (view, event) => {
+            handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth);
+          }
+        },
+        decorations: (state) => {
+          const pluginState = columnResizingPluginKey.getState(state);
+          if (pluginState && pluginState.activeHandle > -1) return handleDecorations(state, pluginState.activeHandle);
+        },
+        nodeViews: {}
+      }
+    });
+    return plugin;
+  }
+  var ResizeState = class ResizeState2 {
+    constructor(activeHandle, dragging) {
+      this.activeHandle = activeHandle;
+      this.dragging = dragging;
+    }
+    apply(tr2) {
+      const state = this;
+      const action = tr2.getMeta(columnResizingPluginKey);
+      if (action && action.setHandle != null) return new ResizeState2(action.setHandle, false);
+      if (action && action.setDragging !== void 0) return new ResizeState2(state.activeHandle, action.setDragging);
+      if (state.activeHandle > -1 && tr2.docChanged) {
+        let handle = tr2.mapping.map(state.activeHandle, -1);
+        if (!pointsAtCell(tr2.doc.resolve(handle))) handle = -1;
+        return new ResizeState2(handle, state.dragging);
+      }
+      return state;
+    }
+  };
+  function handleMouseMove(view, event, handleWidth, lastColumnResizable) {
+    if (!view.editable) return;
+    const pluginState = columnResizingPluginKey.getState(view.state);
+    if (!pluginState) return;
+    if (!pluginState.dragging) {
+      const target = domCellAround(event.target);
+      let cell = -1;
+      if (target) {
+        const { left, right } = target.getBoundingClientRect();
+        if (event.clientX - left <= handleWidth) cell = edgeCell(view, event, "left", handleWidth);
+        else if (right - event.clientX <= handleWidth) cell = edgeCell(view, event, "right", handleWidth);
+      }
+      if (cell != pluginState.activeHandle) {
+        if (!lastColumnResizable && cell !== -1) {
+          const $cell = view.state.doc.resolve(cell);
+          const table = $cell.node(-1);
+          const map3 = TableMap.get(table);
+          const tableStart = $cell.start(-1);
+          if (map3.colCount($cell.pos - tableStart) + $cell.nodeAfter.attrs.colspan - 1 == map3.width - 1) return;
+        }
+        updateHandle(view, cell);
+      }
+    }
+  }
+  function handleMouseLeave(view) {
+    if (!view.editable) return;
+    const pluginState = columnResizingPluginKey.getState(view.state);
+    if (pluginState && pluginState.activeHandle > -1 && !pluginState.dragging) updateHandle(view, -1);
+  }
+  function handleMouseDown(view, event, cellMinWidth, defaultCellMinWidth) {
+    var _view$dom$ownerDocume;
+    if (!view.editable) return false;
+    const win = (_view$dom$ownerDocume = view.dom.ownerDocument.defaultView) !== null && _view$dom$ownerDocume !== void 0 ? _view$dom$ownerDocume : window;
+    const pluginState = columnResizingPluginKey.getState(view.state);
+    if (!pluginState || pluginState.activeHandle == -1 || pluginState.dragging) return false;
+    const cell = view.state.doc.nodeAt(pluginState.activeHandle);
+    const width = currentColWidth(view, pluginState.activeHandle, cell.attrs);
+    view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: {
+      startX: event.clientX,
+      startWidth: width
+    } }));
+    function finish(event$1) {
+      win.removeEventListener("mouseup", finish);
+      win.removeEventListener("mousemove", move);
+      const pluginState$1 = columnResizingPluginKey.getState(view.state);
+      if (pluginState$1 === null || pluginState$1 === void 0 ? void 0 : pluginState$1.dragging) {
+        updateColumnWidth(view, pluginState$1.activeHandle, draggedWidth(pluginState$1.dragging, event$1, cellMinWidth));
+        view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: null }));
+      }
+    }
+    function move(event$1) {
+      if (!event$1.which) return finish(event$1);
+      const pluginState$1 = columnResizingPluginKey.getState(view.state);
+      if (!pluginState$1) return;
+      if (pluginState$1.dragging) {
+        const dragged = draggedWidth(pluginState$1.dragging, event$1, cellMinWidth);
+        displayColumnWidth(view, pluginState$1.activeHandle, dragged, defaultCellMinWidth);
+      }
+    }
+    displayColumnWidth(view, pluginState.activeHandle, width, defaultCellMinWidth);
+    win.addEventListener("mouseup", finish);
+    win.addEventListener("mousemove", move);
+    event.preventDefault();
+    return true;
+  }
+  function currentColWidth(view, cellPos, { colspan, colwidth }) {
+    const width = colwidth && colwidth[colwidth.length - 1];
+    if (width) return width;
+    const dom = view.domAtPos(cellPos);
+    let domWidth = dom.node.childNodes[dom.offset].offsetWidth, parts = colspan;
+    if (colwidth) {
+      for (let i = 0; i < colspan; i++) if (colwidth[i]) {
+        domWidth -= colwidth[i];
+        parts--;
+      }
+    }
+    return domWidth / parts;
+  }
+  function domCellAround(target) {
+    while (target && target.nodeName != "TD" && target.nodeName != "TH") target = target.classList && target.classList.contains("ProseMirror") ? null : target.parentNode;
+    return target;
+  }
+  function edgeCell(view, event, side, handleWidth) {
+    const offset3 = side == "right" ? -handleWidth : handleWidth;
+    const found2 = view.posAtCoords({
+      left: event.clientX + offset3,
+      top: event.clientY
+    });
+    if (!found2) return -1;
+    const { pos } = found2;
+    const $cell = cellAround(view.state.doc.resolve(pos));
+    if (!$cell) return -1;
+    if (side == "right") return $cell.pos;
+    const map3 = TableMap.get($cell.node(-1)), start = $cell.start(-1);
+    const index = map3.map.indexOf($cell.pos - start);
+    return index % map3.width == 0 ? -1 : start + map3.map[index - 1];
+  }
+  function draggedWidth(dragging, event, resizeMinWidth) {
+    const offset3 = event.clientX - dragging.startX;
+    return Math.max(resizeMinWidth, dragging.startWidth + offset3);
+  }
+  function updateHandle(view, value) {
+    view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setHandle: value }));
+  }
+  function updateColumnWidth(view, cell, width) {
+    const $cell = view.state.doc.resolve(cell);
+    const table = $cell.node(-1), map3 = TableMap.get(table), start = $cell.start(-1);
+    const col = map3.colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+    const tr2 = view.state.tr;
+    for (let row = 0; row < map3.height; row++) {
+      const mapIndex = row * map3.width + col;
+      if (row && map3.map[mapIndex] == map3.map[mapIndex - map3.width]) continue;
+      const pos = map3.map[mapIndex];
+      const attrs = table.nodeAt(pos).attrs;
+      const index = attrs.colspan == 1 ? 0 : col - map3.colCount(pos);
+      if (attrs.colwidth && attrs.colwidth[index] == width) continue;
+      const colwidth = attrs.colwidth ? attrs.colwidth.slice() : zeroes(attrs.colspan);
+      colwidth[index] = width;
+      tr2.setNodeMarkup(start + pos, null, {
+        ...attrs,
+        colwidth
+      });
+    }
+    if (tr2.docChanged) view.dispatch(tr2);
+  }
+  function displayColumnWidth(view, cell, width, defaultCellMinWidth) {
+    const $cell = view.state.doc.resolve(cell);
+    const table = $cell.node(-1), start = $cell.start(-1);
+    const col = TableMap.get(table).colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+    let dom = view.domAtPos($cell.start(-1)).node;
+    while (dom && dom.nodeName != "TABLE") dom = dom.parentNode;
+    if (!dom) return;
+    updateColumnsOnResize(table, dom.firstChild, dom, defaultCellMinWidth, col, width);
+  }
+  function zeroes(n) {
+    return Array(n).fill(0);
+  }
+  function handleDecorations(state, cell) {
+    const decorations = [];
+    const $cell = state.doc.resolve(cell);
+    const table = $cell.node(-1);
+    if (!table) return DecorationSet.empty;
+    const map3 = TableMap.get(table);
+    const start = $cell.start(-1);
+    const col = map3.colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+    for (let row = 0; row < map3.height; row++) {
+      const index = col + row * map3.width;
+      if ((col == map3.width - 1 || map3.map[index] != map3.map[index + 1]) && (row == 0 || map3.map[index] != map3.map[index - map3.width])) {
+        var _columnResizingPlugin;
+        const cellPos = map3.map[index];
+        const pos = start + cellPos + table.nodeAt(cellPos).nodeSize - 1;
+        const dom = document.createElement("div");
+        dom.className = "column-resize-handle";
+        if ((_columnResizingPlugin = columnResizingPluginKey.getState(state)) === null || _columnResizingPlugin === void 0 ? void 0 : _columnResizingPlugin.dragging) decorations.push(Decoration.node(start + cellPos, start + cellPos + table.nodeAt(cellPos).nodeSize, { class: "column-resize-dragging" }));
+        decorations.push(Decoration.widget(pos, dom));
+      }
+    }
+    return DecorationSet.create(state.doc, decorations);
+  }
+  function tableEditing({ allowTableNodeSelection = false } = {}) {
+    return new Plugin({
+      key: tableEditingKey,
+      state: {
+        init() {
+          return null;
+        },
+        apply(tr2, cur) {
+          const set = tr2.getMeta(tableEditingKey);
+          if (set != null) return set == -1 ? null : set;
+          if (cur == null || !tr2.docChanged) return cur;
+          const { deleted, pos } = tr2.mapping.mapResult(cur);
+          return deleted ? null : pos;
+        }
+      },
+      props: {
+        decorations: drawCellSelection,
+        handleDOMEvents: { mousedown: handleMouseDown$1 },
+        createSelectionBetween(view) {
+          return tableEditingKey.getState(view.state) != null ? view.state.selection : null;
+        },
+        handleTripleClick: handleTripleClick2,
+        handleKeyDown,
+        handlePaste
+      },
+      appendTransaction(_, oldState, state) {
+        return normalizeSelection(state, fixTables(state, oldState), allowTableNodeSelection);
+      }
+    });
+  }
+
+  // node_modules/@tiptap/extension-table/dist/index.js
+  function getColStyleDeclaration(minWidth, width) {
+    if (width) {
+      return ["width", `${Math.max(width, minWidth)}px`];
+    }
+    return ["min-width", `${minWidth}px`];
+  }
+  function updateColumns(node, colgroup, table, cellMinWidth, overrideCol, overrideValue) {
+    var _a;
+    let totalWidth = 0;
+    let fixedWidth = true;
+    let nextDOM = colgroup.firstChild;
+    const row = node.firstChild;
+    if (row !== null) {
+      for (let i = 0, col = 0; i < row.childCount; i += 1) {
+        const { colspan, colwidth } = row.child(i).attrs;
+        for (let j = 0; j < colspan; j += 1, col += 1) {
+          const hasWidth = overrideCol === col ? overrideValue : colwidth && colwidth[j];
+          const cssWidth = hasWidth ? `${hasWidth}px` : "";
+          totalWidth += hasWidth || cellMinWidth;
+          if (!hasWidth) {
+            fixedWidth = false;
+          }
+          if (!nextDOM) {
+            const colElement = document.createElement("col");
+            const [propertyKey, propertyValue] = getColStyleDeclaration(cellMinWidth, hasWidth);
+            colElement.style.setProperty(propertyKey, propertyValue);
+            colgroup.appendChild(colElement);
+          } else {
+            if (nextDOM.style.width !== cssWidth) {
+              const [propertyKey, propertyValue] = getColStyleDeclaration(cellMinWidth, hasWidth);
+              nextDOM.style.setProperty(propertyKey, propertyValue);
+            }
+            nextDOM = nextDOM.nextSibling;
+          }
+        }
+      }
+    }
+    while (nextDOM) {
+      const after = nextDOM.nextSibling;
+      (_a = nextDOM.parentNode) === null || _a === void 0 ? void 0 : _a.removeChild(nextDOM);
+      nextDOM = after;
+    }
+    if (fixedWidth) {
+      table.style.width = `${totalWidth}px`;
+      table.style.minWidth = "";
+    } else {
+      table.style.width = "";
+      table.style.minWidth = `${totalWidth}px`;
+    }
+  }
+  var TableView2 = class {
+    constructor(node, cellMinWidth) {
+      this.node = node;
+      this.cellMinWidth = cellMinWidth;
+      this.dom = document.createElement("div");
+      this.dom.className = "tableWrapper";
+      this.table = this.dom.appendChild(document.createElement("table"));
+      this.colgroup = this.table.appendChild(document.createElement("colgroup"));
+      updateColumns(node, this.colgroup, this.table, cellMinWidth);
+      this.contentDOM = this.table.appendChild(document.createElement("tbody"));
+    }
+    update(node) {
+      if (node.type !== this.node.type) {
+        return false;
+      }
+      this.node = node;
+      updateColumns(node, this.colgroup, this.table, this.cellMinWidth);
+      return true;
+    }
+    ignoreMutation(mutation) {
+      return mutation.type === "attributes" && (mutation.target === this.table || this.colgroup.contains(mutation.target));
+    }
+  };
+  function createColGroup(node, cellMinWidth, overrideCol, overrideValue) {
+    let totalWidth = 0;
+    let fixedWidth = true;
+    const cols = [];
+    const row = node.firstChild;
+    if (!row) {
+      return {};
+    }
+    for (let i = 0, col = 0; i < row.childCount; i += 1) {
+      const { colspan, colwidth } = row.child(i).attrs;
+      for (let j = 0; j < colspan; j += 1, col += 1) {
+        const hasWidth = overrideCol === col ? overrideValue : colwidth && colwidth[j];
+        totalWidth += hasWidth || cellMinWidth;
+        if (!hasWidth) {
+          fixedWidth = false;
+        }
+        const [property, value] = getColStyleDeclaration(cellMinWidth, hasWidth);
+        cols.push([
+          "col",
+          { style: `${property}: ${value}` }
+        ]);
+      }
+    }
+    const tableWidth = fixedWidth ? `${totalWidth}px` : "";
+    const tableMinWidth = fixedWidth ? "" : `${totalWidth}px`;
+    const colgroup = ["colgroup", {}, ...cols];
+    return { colgroup, tableWidth, tableMinWidth };
+  }
+  function createCell(cellType, cellContent) {
+    if (cellContent) {
+      return cellType.createChecked(null, cellContent);
+    }
+    return cellType.createAndFill();
+  }
+  function getTableNodeTypes(schema) {
+    if (schema.cached.tableNodeTypes) {
+      return schema.cached.tableNodeTypes;
+    }
+    const roles = {};
+    Object.keys(schema.nodes).forEach((type) => {
+      const nodeType = schema.nodes[type];
+      if (nodeType.spec.tableRole) {
+        roles[nodeType.spec.tableRole] = nodeType;
+      }
+    });
+    schema.cached.tableNodeTypes = roles;
+    return roles;
+  }
+  function createTable(schema, rowsCount, colsCount, withHeaderRow, cellContent) {
+    const types = getTableNodeTypes(schema);
+    const headerCells = [];
+    const cells = [];
+    for (let index = 0; index < colsCount; index += 1) {
+      const cell = createCell(types.cell, cellContent);
+      if (cell) {
+        cells.push(cell);
+      }
+      if (withHeaderRow) {
+        const headerCell = createCell(types.header_cell, cellContent);
+        if (headerCell) {
+          headerCells.push(headerCell);
+        }
+      }
+    }
+    const rows = [];
+    for (let index = 0; index < rowsCount; index += 1) {
+      rows.push(types.row.createChecked(null, withHeaderRow && index === 0 ? headerCells : cells));
+    }
+    return types.table.createChecked(null, rows);
+  }
+  function isCellSelection(value) {
+    return value instanceof CellSelection;
+  }
+  var deleteTableWhenAllCellsSelected = ({ editor }) => {
+    const { selection } = editor.state;
+    if (!isCellSelection(selection)) {
+      return false;
+    }
+    let cellCount = 0;
+    const table = findParentNodeClosestToPos(selection.ranges[0].$from, (node) => {
+      return node.type.name === "table";
+    });
+    table === null || table === void 0 ? void 0 : table.node.descendants((node) => {
+      if (node.type.name === "table") {
+        return false;
+      }
+      if (["tableCell", "tableHeader"].includes(node.type.name)) {
+        cellCount += 1;
+      }
+    });
+    const allCellsSelected = cellCount === selection.ranges.length;
+    if (!allCellsSelected) {
+      return false;
+    }
+    editor.commands.deleteTable();
+    return true;
+  };
+  var Table = Node3.create({
+    name: "table",
+    // @ts-ignore
+    addOptions() {
+      return {
+        HTMLAttributes: {},
+        resizable: false,
+        renderWrapper: false,
+        handleWidth: 5,
+        cellMinWidth: 25,
+        // TODO: fix
+        View: TableView2,
+        lastColumnResizable: true,
+        allowTableNodeSelection: false
+      };
+    },
+    content: "tableRow+",
+    tableRole: "table",
+    isolating: true,
+    group: "block",
+    parseHTML() {
+      return [{ tag: "table" }];
+    },
+    renderHTML({ node, HTMLAttributes }) {
+      const { colgroup, tableWidth, tableMinWidth } = createColGroup(node, this.options.cellMinWidth);
+      const table = [
+        "table",
+        mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+          style: tableWidth ? `width: ${tableWidth}` : `min-width: ${tableMinWidth}`
+        }),
+        colgroup,
+        ["tbody", 0]
+      ];
+      return this.options.renderWrapper ? ["div", { class: "tableWrapper" }, table] : table;
+    },
+    addCommands() {
+      return {
+        insertTable: ({ rows = 3, cols = 3, withHeaderRow = true } = {}) => ({ tr: tr2, dispatch, editor }) => {
+          const node = createTable(editor.schema, rows, cols, withHeaderRow);
+          if (dispatch) {
+            const offset3 = tr2.selection.from + 1;
+            tr2.replaceSelectionWith(node).scrollIntoView().setSelection(TextSelection.near(tr2.doc.resolve(offset3)));
+          }
+          return true;
+        },
+        addColumnBefore: () => ({ state, dispatch }) => {
+          return addColumnBefore(state, dispatch);
+        },
+        addColumnAfter: () => ({ state, dispatch }) => {
+          return addColumnAfter(state, dispatch);
+        },
+        deleteColumn: () => ({ state, dispatch }) => {
+          return deleteColumn(state, dispatch);
+        },
+        addRowBefore: () => ({ state, dispatch }) => {
+          return addRowBefore(state, dispatch);
+        },
+        addRowAfter: () => ({ state, dispatch }) => {
+          return addRowAfter(state, dispatch);
+        },
+        deleteRow: () => ({ state, dispatch }) => {
+          return deleteRow(state, dispatch);
+        },
+        deleteTable: () => ({ state, dispatch }) => {
+          return deleteTable(state, dispatch);
+        },
+        mergeCells: () => ({ state, dispatch }) => {
+          return mergeCells(state, dispatch);
+        },
+        splitCell: () => ({ state, dispatch }) => {
+          return splitCell(state, dispatch);
+        },
+        toggleHeaderColumn: () => ({ state, dispatch }) => {
+          return toggleHeader("column")(state, dispatch);
+        },
+        toggleHeaderRow: () => ({ state, dispatch }) => {
+          return toggleHeader("row")(state, dispatch);
+        },
+        toggleHeaderCell: () => ({ state, dispatch }) => {
+          return toggleHeaderCell(state, dispatch);
+        },
+        mergeOrSplit: () => ({ state, dispatch }) => {
+          if (mergeCells(state, dispatch)) {
+            return true;
+          }
+          return splitCell(state, dispatch);
+        },
+        setCellAttribute: (name, value) => ({ state, dispatch }) => {
+          return setCellAttr(name, value)(state, dispatch);
+        },
+        goToNextCell: () => ({ state, dispatch }) => {
+          return goToNextCell(1)(state, dispatch);
+        },
+        goToPreviousCell: () => ({ state, dispatch }) => {
+          return goToNextCell(-1)(state, dispatch);
+        },
+        fixTables: () => ({ state, dispatch }) => {
+          if (dispatch) {
+            fixTables(state);
+          }
+          return true;
+        },
+        setCellSelection: (position) => ({ tr: tr2, dispatch }) => {
+          if (dispatch) {
+            const selection = CellSelection.create(tr2.doc, position.anchorCell, position.headCell);
+            tr2.setSelection(selection);
+          }
+          return true;
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        Tab: () => {
+          if (this.editor.commands.goToNextCell()) {
+            return true;
+          }
+          if (!this.editor.can().addRowAfter()) {
+            return false;
+          }
+          return this.editor.chain().addRowAfter().goToNextCell().run();
+        },
+        "Shift-Tab": () => this.editor.commands.goToPreviousCell(),
+        Backspace: deleteTableWhenAllCellsSelected,
+        "Mod-Backspace": deleteTableWhenAllCellsSelected,
+        Delete: deleteTableWhenAllCellsSelected,
+        "Mod-Delete": deleteTableWhenAllCellsSelected
+      };
+    },
+    addProseMirrorPlugins() {
+      const isResizable = this.options.resizable && this.editor.isEditable;
+      return [
+        ...isResizable ? [
+          columnResizing({
+            handleWidth: this.options.handleWidth,
+            cellMinWidth: this.options.cellMinWidth,
+            defaultCellMinWidth: this.options.cellMinWidth,
+            View: this.options.View,
+            lastColumnResizable: this.options.lastColumnResizable
+          })
+        ] : [],
+        tableEditing({
+          allowTableNodeSelection: this.options.allowTableNodeSelection
+        })
+      ];
+    },
+    extendNodeSchema(extension) {
+      const context = {
+        name: extension.name,
+        options: extension.options,
+        storage: extension.storage
+      };
+      return {
+        tableRole: callOrReturn(getExtensionField(extension, "tableRole", context))
+      };
+    }
+  });
+
+  // node_modules/@tiptap/extension-table-cell/dist/index.js
+  var TableCell = Node3.create({
+    name: "tableCell",
+    addOptions() {
+      return {
+        HTMLAttributes: {}
+      };
+    },
+    content: "block+",
+    addAttributes() {
+      return {
+        colspan: {
+          default: 1
+        },
+        rowspan: {
+          default: 1
+        },
+        colwidth: {
+          default: null,
+          parseHTML: (element2) => {
+            const colwidth = element2.getAttribute("colwidth");
+            const value = colwidth ? colwidth.split(",").map((width) => parseInt(width, 10)) : null;
+            return value;
+          }
+        }
+      };
+    },
+    tableRole: "cell",
+    isolating: true,
+    parseHTML() {
+      return [
+        { tag: "td" }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["td", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    }
+  });
+
+  // node_modules/@tiptap/extension-table-header/dist/index.js
+  var TableHeader = Node3.create({
+    name: "tableHeader",
+    addOptions() {
+      return {
+        HTMLAttributes: {}
+      };
+    },
+    content: "block+",
+    addAttributes() {
+      return {
+        colspan: {
+          default: 1
+        },
+        rowspan: {
+          default: 1
+        },
+        colwidth: {
+          default: null,
+          parseHTML: (element2) => {
+            const colwidth = element2.getAttribute("colwidth");
+            const value = colwidth ? colwidth.split(",").map((width) => parseInt(width, 10)) : null;
+            return value;
+          }
+        }
+      };
+    },
+    tableRole: "header_cell",
+    isolating: true,
+    parseHTML() {
+      return [
+        { tag: "th" }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["th", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    }
+  });
+
+  // node_modules/@tiptap/extension-table-row/dist/index.js
+  var TableRow = Node3.create({
+    name: "tableRow",
+    addOptions() {
+      return {
+        HTMLAttributes: {}
+      };
+    },
+    content: "(tableCell | tableHeader)*",
+    tableRole: "row",
+    parseHTML() {
+      return [
+        { tag: "tr" }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["tr", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    }
+  });
+
+  // node_modules/@tiptap/extension-task-item/dist/index.js
+  var inputRegex3 = /^\s*(\[([( |x])?\])\s$/;
+  var TaskItem = Node3.create({
+    name: "taskItem",
+    addOptions() {
+      return {
+        nested: false,
+        HTMLAttributes: {},
+        taskListTypeName: "taskList",
+        a11y: void 0
+      };
+    },
+    content() {
+      return this.options.nested ? "paragraph block*" : "paragraph+";
+    },
+    defining: true,
+    addAttributes() {
+      return {
+        checked: {
+          default: false,
+          keepOnSplit: false,
+          parseHTML: (element2) => {
+            const dataChecked = element2.getAttribute("data-checked");
+            return dataChecked === "" || dataChecked === "true";
+          },
+          renderHTML: (attributes) => ({
+            "data-checked": attributes.checked
+          })
+        }
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: `li[data-type="${this.name}"]`,
+          priority: 51
+        }
+      ];
+    },
+    renderHTML({ node, HTMLAttributes }) {
+      return [
+        "li",
+        mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+          "data-type": this.name
+        }),
+        [
+          "label",
+          [
+            "input",
+            {
+              type: "checkbox",
+              checked: node.attrs.checked ? "checked" : null
+            }
+          ],
+          ["span"]
+        ],
+        ["div", 0]
+      ];
+    },
+    addKeyboardShortcuts() {
+      const shortcuts = {
+        Enter: () => this.editor.commands.splitListItem(this.name),
+        "Shift-Tab": () => this.editor.commands.liftListItem(this.name)
+      };
+      if (!this.options.nested) {
+        return shortcuts;
+      }
+      return {
+        ...shortcuts,
+        Tab: () => this.editor.commands.sinkListItem(this.name)
+      };
+    },
+    addNodeView() {
+      return ({ node, HTMLAttributes, getPos, editor }) => {
+        const listItem = document.createElement("li");
+        const checkboxWrapper = document.createElement("label");
+        const checkboxStyler = document.createElement("span");
+        const checkbox = document.createElement("input");
+        const content = document.createElement("div");
+        const updateA11Y = () => {
+          var _a, _b;
+          checkbox.ariaLabel = ((_b = (_a = this.options.a11y) === null || _a === void 0 ? void 0 : _a.checkboxLabel) === null || _b === void 0 ? void 0 : _b.call(_a, node, checkbox.checked)) || `Task item checkbox for ${node.textContent || "empty task item"}`;
+        };
+        updateA11Y();
+        checkboxWrapper.contentEditable = "false";
+        checkbox.type = "checkbox";
+        checkbox.addEventListener("mousedown", (event) => event.preventDefault());
+        checkbox.addEventListener("change", (event) => {
+          if (!editor.isEditable && !this.options.onReadOnlyChecked) {
+            checkbox.checked = !checkbox.checked;
+            return;
+          }
+          const { checked } = event.target;
+          if (editor.isEditable && typeof getPos === "function") {
+            editor.chain().focus(void 0, { scrollIntoView: false }).command(({ tr: tr2 }) => {
+              const position = getPos();
+              if (typeof position !== "number") {
+                return false;
+              }
+              const currentNode = tr2.doc.nodeAt(position);
+              tr2.setNodeMarkup(position, void 0, {
+                ...currentNode === null || currentNode === void 0 ? void 0 : currentNode.attrs,
+                checked
+              });
+              return true;
+            }).run();
+          }
+          if (!editor.isEditable && this.options.onReadOnlyChecked) {
+            if (!this.options.onReadOnlyChecked(node, checked)) {
+              checkbox.checked = !checkbox.checked;
+            }
+          }
+        });
+        Object.entries(this.options.HTMLAttributes).forEach(([key, value]) => {
+          listItem.setAttribute(key, value);
+        });
+        listItem.dataset.checked = node.attrs.checked;
+        checkbox.checked = node.attrs.checked;
+        checkboxWrapper.append(checkbox, checkboxStyler);
+        listItem.append(checkboxWrapper, content);
+        Object.entries(HTMLAttributes).forEach(([key, value]) => {
+          listItem.setAttribute(key, value);
+        });
+        return {
+          dom: listItem,
+          contentDOM: content,
+          update: (updatedNode) => {
+            if (updatedNode.type !== this.type) {
+              return false;
+            }
+            listItem.dataset.checked = updatedNode.attrs.checked;
+            checkbox.checked = updatedNode.attrs.checked;
+            updateA11Y();
+            return true;
+          }
+        };
+      };
+    },
+    addInputRules() {
+      return [
+        wrappingInputRule({
+          find: inputRegex3,
+          type: this.type,
+          getAttributes: (match2) => ({
+            checked: match2[match2.length - 1] === "x"
+          })
+        })
+      ];
+    }
+  });
+
+  // node_modules/@tiptap/extension-task-list/dist/index.js
+  var TaskList = Node3.create({
+    name: "taskList",
+    addOptions() {
+      return {
+        itemTypeName: "taskItem",
+        HTMLAttributes: {}
+      };
+    },
+    group: "block list",
+    content() {
+      return `${this.options.itemTypeName}+`;
+    },
+    parseHTML() {
+      return [
+        {
+          tag: `ul[data-type="${this.name}"]`,
+          priority: 51
+        }
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["ul", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { "data-type": this.name }), 0];
+    },
+    addCommands() {
+      return {
+        toggleTaskList: () => ({ commands: commands2 }) => {
+          return commands2.toggleList(this.name, this.options.itemTypeName);
+        }
+      };
+    },
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-9": () => this.editor.commands.toggleTaskList()
+      };
     }
   });
 
@@ -28754,7 +31171,7 @@ ${err.toString()}`);
   });
 
   // node_modules/@tiptap/extension-blockquote/dist/index.js
-  var inputRegex2 = /^\s*>\s$/;
+  var inputRegex4 = /^\s*>\s$/;
   var Blockquote = Node3.create({
     name: "blockquote",
     addOptions() {
@@ -28794,7 +31211,7 @@ ${err.toString()}`);
     addInputRules() {
       return [
         wrappingInputRule({
-          find: inputRegex2,
+          find: inputRegex4,
           type: this.type
         })
       ];
@@ -28883,7 +31300,7 @@ ${err.toString()}`);
   // node_modules/@tiptap/extension-bullet-list/dist/index.js
   var ListItemName = "listItem";
   var TextStyleName = "textStyle";
-  var inputRegex3 = /^\s*([-+*])\s$/;
+  var inputRegex5 = /^\s*([-+*])\s$/;
   var BulletList = Node3.create({
     name: "bulletList",
     addOptions() {
@@ -28923,12 +31340,12 @@ ${err.toString()}`);
     },
     addInputRules() {
       let inputRule = wrappingInputRule({
-        find: inputRegex3,
+        find: inputRegex5,
         type: this.type
       });
       if (this.options.keepMarks || this.options.keepAttributes) {
         inputRule = wrappingInputRule({
-          find: inputRegex3,
+          find: inputRegex5,
           type: this.type,
           keepMarks: this.options.keepMarks,
           keepAttributes: this.options.keepAttributes,
@@ -28945,8 +31362,8 @@ ${err.toString()}`);
   });
 
   // node_modules/@tiptap/extension-code/dist/index.js
-  var inputRegex4 = /(^|[^`])`([^`]+)`(?!`)/;
-  var pasteRegex = /(^|[^`])`([^`]+)`(?!`)/g;
+  var inputRegex6 = /(^|[^`])`([^`]+)`(?!`)/;
+  var pasteRegex2 = /(^|[^`])`([^`]+)`(?!`)/g;
   var Code = Mark2.create({
     name: "code",
     addOptions() {
@@ -28986,7 +31403,7 @@ ${err.toString()}`);
     addInputRules() {
       return [
         markInputRule({
-          find: inputRegex4,
+          find: inputRegex6,
           type: this.type
         })
       ];
@@ -28994,7 +31411,7 @@ ${err.toString()}`);
     addPasteRules() {
       return [
         markPasteRule({
-          find: pasteRegex,
+          find: pasteRegex2,
           type: this.type
         })
       ];
@@ -29510,18 +31927,18 @@ ${err.toString()}`);
           return $anchor.pos == $head.pos && GapCursor.valid($head) ? new GapCursor($head) : null;
         },
         handleClick,
-        handleKeyDown,
+        handleKeyDown: handleKeyDown2,
         handleDOMEvents: { beforeinput }
       }
     });
   }
-  var handleKeyDown = keydownHandler({
-    "ArrowLeft": arrow("horiz", -1),
-    "ArrowRight": arrow("horiz", 1),
-    "ArrowUp": arrow("vert", -1),
-    "ArrowDown": arrow("vert", 1)
+  var handleKeyDown2 = keydownHandler({
+    "ArrowLeft": arrow2("horiz", -1),
+    "ArrowRight": arrow2("horiz", 1),
+    "ArrowUp": arrow2("vert", -1),
+    "ArrowDown": arrow2("vert", 1)
   });
-  function arrow(axis, dir) {
+  function arrow2(axis, dir) {
     const dirStr = axis == "vert" ? dir > 0 ? "down" : "up" : dir > 0 ? "right" : "left";
     return function(state, dispatch, view) {
       let sel = state.selection;
@@ -30480,7 +32897,7 @@ ${err.toString()}`);
   // node_modules/@tiptap/extension-ordered-list/dist/index.js
   var ListItemName2 = "listItem";
   var TextStyleName2 = "textStyle";
-  var inputRegex5 = /^(\d+)\.\s$/;
+  var inputRegex7 = /^(\d+)\.\s$/;
   var OrderedList = Node3.create({
     name: "orderedList",
     addOptions() {
@@ -30537,14 +32954,14 @@ ${err.toString()}`);
     },
     addInputRules() {
       let inputRule = wrappingInputRule({
-        find: inputRegex5,
+        find: inputRegex7,
         type: this.type,
         getAttributes: (match2) => ({ start: +match2[1] }),
         joinPredicate: (match2, node) => node.childCount + node.attrs.start === +match2[1]
       });
       if (this.options.keepMarks || this.options.keepAttributes) {
         inputRule = wrappingInputRule({
-          find: inputRegex5,
+          find: inputRegex7,
           type: this.type,
           keepMarks: this.options.keepMarks,
           keepAttributes: this.options.keepAttributes,
@@ -30593,8 +33010,8 @@ ${err.toString()}`);
   });
 
   // node_modules/@tiptap/extension-strike/dist/index.js
-  var inputRegex6 = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))$/;
-  var pasteRegex2 = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))/g;
+  var inputRegex8 = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))$/;
+  var pasteRegex3 = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~(?!\s+~~))/g;
   var Strike = Mark2.create({
     name: "strike",
     addOptions() {
@@ -30644,7 +33061,7 @@ ${err.toString()}`);
     addInputRules() {
       return [
         markInputRule({
-          find: inputRegex6,
+          find: inputRegex8,
           type: this.type
         })
       ];
@@ -30652,7 +33069,7 @@ ${err.toString()}`);
     addPasteRules() {
       return [
         markPasteRule({
-          find: pasteRegex2,
+          find: pasteRegex3,
           type: this.type
         })
       ];
@@ -32129,6 +34546,54 @@ ${err.toString()}`);
     });
   };
 
+  // web/noma-panel.ts
+  var TITLES = {
+    info: "Info",
+    note: "Note",
+    warning: "Warning",
+    success: "Success",
+    claim: "Claim",
+    decision: "Decision"
+  };
+  var NomaPanel = Node3.create({
+    name: "nomaPanel",
+    group: "block",
+    content: "block+",
+    defining: true,
+    addAttributes() {
+      return {
+        kind: {
+          default: "info",
+          parseHTML: (element2) => element2.getAttribute("data-noma-panel") || "info",
+          renderHTML: (attributes) => ({ "data-noma-panel": attributes.kind ?? "info" })
+        }
+      };
+    },
+    parseHTML() {
+      return [{ tag: "div[data-noma-panel]" }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      const kind = String(HTMLAttributes["data-noma-panel"] ?? HTMLAttributes.kind ?? "info");
+      return [
+        "div",
+        mergeAttributes(HTMLAttributes, {
+          class: `ew-panel ew-panel-${kind}`,
+          "data-panel-title": TITLES[kind] ?? kind
+        }),
+        0
+      ];
+    },
+    addCommands() {
+      return {
+        setNomaPanel: (kind) => ({ commands: commands2 }) => commands2.insertContent({
+          type: this.name,
+          attrs: { kind },
+          content: [{ type: "paragraph" }]
+        })
+      };
+    }
+  });
+
   // node_modules/lucide/dist/esm/defaultAttributes.mjs
   var defaultAttributes = {
     xmlns: "http://www.w3.org/2000/svg",
@@ -32291,6 +34756,12 @@ ${err.toString()}`);
   // node_modules/lucide/dist/esm/icons/chevron-down.mjs
   var ChevronDown = [["path", { d: "m6 9 6 6 6-6" }]];
 
+  // node_modules/lucide/dist/esm/icons/circle-check.mjs
+  var CircleCheck = [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "m16 9-5.5 5.5L8 12" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/code.mjs
   var Code2 = [
     ["path", { d: "m16 18 6-6-6-6" }],
@@ -32326,6 +34797,19 @@ ${err.toString()}`);
     ]
   ];
 
+  // node_modules/lucide/dist/esm/icons/hand.mjs
+  var Hand = [
+    ["path", { d: "M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2" }],
+    ["path", { d: "M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2" }],
+    ["path", { d: "M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8" }],
+    [
+      "path",
+      {
+        d: "M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"
+      }
+    ]
+  ];
+
   // node_modules/lucide/dist/esm/icons/heading-1.mjs
   var Heading1 = [
     ["path", { d: "M4 12h8" }],
@@ -32342,6 +34826,12 @@ ${err.toString()}`);
     ["path", { d: "M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/highlighter.mjs
+  var Highlighter = [
+    ["path", { d: "m9 11-6 6v3h9l3-3" }],
+    ["path", { d: "m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/image.mjs
   var Image2 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2" }],
@@ -32356,6 +34846,13 @@ ${err.toString()}`);
     ["path", { d: "M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/info.mjs
+  var Info = [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "M12 16v-4" }],
+    ["path", { d: "M12 8h.01" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/italic.mjs
   var Italic2 = [
     ["line", { x1: "19", x2: "10", y1: "4", y2: "4" }],
@@ -32363,10 +34860,31 @@ ${err.toString()}`);
     ["line", { x1: "15", x2: "9", y1: "4", y2: "20" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/lightbulb.mjs
+  var Lightbulb = [
+    [
+      "path",
+      {
+        d: "M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"
+      }
+    ],
+    ["path", { d: "M9 18h6" }],
+    ["path", { d: "M10 22h4" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/link.mjs
   var Link2 = [
     ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" }],
     ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/list-checks.mjs
+  var ListChecks = [
+    ["path", { d: "M13 5h8" }],
+    ["path", { d: "M13 12h8" }],
+    ["path", { d: "M13 19h8" }],
+    ["path", { d: "m3 17 2 2 4-4" }],
+    ["path", { d: "m3 7 2 2 4-4" }]
   ];
 
   // node_modules/lucide/dist/esm/icons/list-ordered.mjs
@@ -32389,12 +34907,30 @@ ${err.toString()}`);
     ["path", { d: "M8 19h13" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/maximize-2.mjs
+  var Maximize2 = [
+    ["path", { d: "M15 3h6v6" }],
+    ["path", { d: "m21 3-7 7" }],
+    ["path", { d: "m3 21 7-7" }],
+    ["path", { d: "M9 21H3v-6" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/moon.mjs
   var Moon = [
     [
       "path",
       {
         d: "M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"
+      }
+    ]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/mouse-pointer-2.mjs
+  var MousePointer2 = [
+    [
+      "path",
+      {
+        d: "M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"
       }
     ]
   ];
@@ -32453,6 +34989,17 @@ ${err.toString()}`);
     ["path", { d: "M16 7v9" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/sticky-note.mjs
+  var StickyNote = [
+    [
+      "path",
+      {
+        d: "M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"
+      }
+    ],
+    ["path", { d: "M15 3v5a1 1 0 0 0 1 1h5" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/strikethrough.mjs
   var Strikethrough = [
     ["path", { d: "M16 4H9a3 3 0 0 0-2.83 4" }],
@@ -32473,6 +35020,21 @@ ${err.toString()}`);
     ["path", { d: "m19.07 4.93-1.41 1.41" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/table.mjs
+  var Table2 = [
+    ["path", { d: "M12 3v18" }],
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+    ["path", { d: "M3 9h18" }],
+    ["path", { d: "M3 15h18" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/triangle-alert.mjs
+  var TriangleAlert = [
+    ["path", { d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" }],
+    ["path", { d: "M12 9v4" }],
+    ["path", { d: "M12 17h.01" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/underline.mjs
   var Underline2 = [
     ["path", { d: "M6 4v6a6 6 0 0 0 12 0V4" }],
@@ -32489,6 +35051,21 @@ ${err.toString()}`);
   var Video = [
     ["path", { d: "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" }],
     ["rect", { x: "2", y: "6", width: "14", height: "12", rx: "2" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/zoom-in.mjs
+  var ZoomIn = [
+    ["circle", { cx: "11", cy: "11", r: "8" }],
+    ["line", { x1: "21", x2: "16.65", y1: "21", y2: "16.65" }],
+    ["line", { x1: "11", x2: "11", y1: "8", y2: "14" }],
+    ["line", { x1: "8", x2: "14", y1: "11", y2: "11" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/zoom-out.mjs
+  var ZoomOut = [
+    ["circle", { cx: "11", cy: "11", r: "8" }],
+    ["line", { x1: "21", x2: "16.65", y1: "21", y2: "16.65" }],
+    ["line", { x1: "8", x2: "14", y1: "11", y2: "11" }]
   ];
 
   // node_modules/lucide/dist/esm/lucide.mjs
@@ -32562,34 +35139,47 @@ ${err.toString()}`);
 
   // web/ui-kit.ts
   var ICONS = {
+    AlertTriangle: TriangleAlert,
     Bell,
     Bold: Bold2,
     Bug,
     ChevronDown,
+    CircleCheck,
     Code: Code2,
     Command,
     FileText,
     Filter: Funnel,
+    Hand,
     Heading1,
     Heading2,
+    Highlighter,
     Image: Image2,
     Import,
+    Info,
     Italic: Italic2,
+    Lightbulb,
     Link: Link2,
     List,
+    ListChecks,
     ListOrdered,
+    Maximize2,
     Moon,
+    MousePointer2,
     Plus,
     Presentation,
     Quote,
     Search,
     Settings,
     SquareKanban,
+    StickyNote,
     Strikethrough,
     Sun,
+    Table: Table2,
     Underline: Underline2,
     User,
-    Video
+    Video,
+    ZoomIn,
+    ZoomOut
   };
   var ICON_ATTRS = {
     width: 16,
@@ -32711,6 +35301,125 @@ ${err.toString()}`);
       board.removeEventListener("click", onClick, true);
     };
   }
+  function pageScale(page) {
+    const match2 = /scale\(([-0-9.]+)\)/.exec(page.style.transform);
+    return match2 ? Number(match2[1]) : 1;
+  }
+  function setCanvasZoom(stage, zoom) {
+    const page = stage.querySelector(".pd-page");
+    if (!page) return;
+    const next = Math.min(2.5, Math.max(0.35, zoom));
+    stage.dataset.zoom = String(next);
+    page.style.transform = `scale(${next})`;
+    page.style.transformOrigin = "top left";
+    const label = document.getElementById("zoom-label");
+    if (label) label.textContent = `${Math.round(next * 100)}%`;
+  }
+  function bindVisualStage(stage, handlers2) {
+    let dragging = false;
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (target.closest("video, input, textarea, button, a, select")) return;
+      const page = stage.querySelector(".pd-page");
+      if (!page) return;
+      const tool = stage.dataset.tool ?? "select";
+      const scale = pageScale(page);
+      if (tool === "sticky") {
+        const box = page.getBoundingClientRect();
+        handlers2.onPlaceSticky?.((event.clientX - box.left) / scale, (event.clientY - box.top) / scale);
+        return;
+      }
+      if (tool === "pan") {
+        dragging = true;
+        const startX2 = event.clientX;
+        const startY2 = event.clientY;
+        const originLeft2 = stage.scrollLeft;
+        const originTop2 = stage.scrollTop;
+        const onMove2 = (move) => {
+          stage.scrollLeft = originLeft2 - (move.clientX - startX2);
+          stage.scrollTop = originTop2 - (move.clientY - startY2);
+        };
+        const onUp2 = () => {
+          window.removeEventListener("pointermove", onMove2);
+          window.removeEventListener("pointerup", onUp2);
+          dragging = false;
+        };
+        window.addEventListener("pointermove", onMove2);
+        window.addEventListener("pointerup", onUp2);
+        return;
+      }
+      const card = target.closest(".pd-el");
+      if (!card || card.classList.contains("pd-el-arrow") || !stage.contains(card)) return;
+      const id2 = card.dataset.id ?? "";
+      if (!id2) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const originLeft = Number.parseFloat(card.style.left) || 0;
+      const originTop = Number.parseFloat(card.style.top) || 0;
+      dragging = false;
+      const onMove = (move) => {
+        const dx = move.clientX - startX;
+        const dy = move.clientY - startY;
+        if (!dragging && dx * dx + dy * dy < 36) return;
+        dragging = true;
+        card.classList.add("is-dragging");
+        card.style.left = `${originLeft + dx / scale}px`;
+        card.style.top = `${originTop + dy / scale}px`;
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        card.classList.remove("is-dragging");
+        if (!dragging) return;
+        handlers2.onMove({
+          id: id2,
+          x: Number.parseFloat(card.style.left) || originLeft,
+          y: Number.parseFloat(card.style.top) || originTop
+        });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    };
+    const onDblClick = (event) => {
+      const card = event.target.closest(".pd-el");
+      if (!card || card.classList.contains("pd-el-arrow")) return;
+      const label = card.querySelector(".pd-el-text");
+      if (!label) return;
+      label.contentEditable = "true";
+      label.focus();
+      const finish = () => {
+        label.contentEditable = "false";
+        label.removeEventListener("blur", finish);
+        handlers2.onEdit?.(card.dataset.id ?? "", label.textContent ?? "");
+      };
+      label.addEventListener("blur", finish);
+    };
+    const onWheel = (event) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      const page = stage.querySelector(".pd-page");
+      if (!page) return;
+      event.preventDefault();
+      const current = Number(stage.dataset.zoom ?? String(pageScale(page)));
+      setCanvasZoom(stage, current + (event.deltaY < 0 ? 0.08 : -0.08));
+    };
+    const onClick = (event) => {
+      if (!dragging) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragging = false;
+    };
+    stage.addEventListener("pointerdown", onPointerDown);
+    stage.addEventListener("dblclick", onDblClick);
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    stage.addEventListener("click", onClick, true);
+    return () => {
+      stage.removeEventListener("pointerdown", onPointerDown);
+      stage.removeEventListener("dblclick", onDblClick);
+      stage.removeEventListener("wheel", onWheel);
+      stage.removeEventListener("click", onClick, true);
+    };
+  }
   function enhanceSelects(root) {
     for (const select of root.querySelectorAll("select")) {
       if (select.closest(".ew-select")) continue;
@@ -32821,8 +35530,16 @@ ${err.toString()}`);
     { id: "h2", label: "Heading 2", icon: "Heading2", run: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run() },
     { id: "bullet", label: "Bullet list", icon: "List", run: (editor) => editor.chain().focus().toggleBulletList().run() },
     { id: "ordered", label: "Numbered list", icon: "ListOrdered", run: (editor) => editor.chain().focus().toggleOrderedList().run() },
+    { id: "task", label: "Action items", icon: "ListChecks", run: (editor) => editor.chain().focus().toggleTaskList().run() },
+    { id: "table", label: "Table", icon: "Table", run: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
     { id: "quote", label: "Quote", icon: "Quote", run: (editor) => editor.chain().focus().toggleBlockquote().run() },
-    { id: "code", label: "Code block", icon: "Code", run: (editor) => editor.chain().focus().toggleCodeBlock().run() }
+    { id: "code", label: "Code block", icon: "Code", run: (editor) => editor.chain().focus().toggleCodeBlock().run() },
+    { id: "info", label: "Info panel", icon: "Info", run: (editor) => editor.chain().focus().setNomaPanel("info").run() },
+    { id: "note", label: "Note panel", icon: "Lightbulb", run: (editor) => editor.chain().focus().setNomaPanel("note").run() },
+    { id: "warning", label: "Warning panel", icon: "AlertTriangle", run: (editor) => editor.chain().focus().setNomaPanel("warning").run() },
+    { id: "success", label: "Success panel", icon: "CircleCheck", run: (editor) => editor.chain().focus().setNomaPanel("success").run() },
+    { id: "claim", label: "Claim", icon: "Highlighter", run: (editor) => editor.chain().focus().setNomaPanel("claim").run() },
+    { id: "decision", label: "Decision", icon: "CircleCheck", run: (editor) => editor.chain().focus().setNomaPanel("decision").run() }
   ];
   function bindSlashMenu(editor) {
     const menu = document.createElement("div");
@@ -32975,9 +35692,17 @@ ${err.toString()}`);
         element: options.element,
         extensions: [
           StarterKit.configure({ history: false }),
-          Placeholder.configure({ placeholder: "Type / for commands, or start writing\u2026" }),
+          Placeholder.configure({ placeholder: "Type / for commands \u2014 panels, tables, and action items\u2026" }),
           Typography,
           Underline,
+          Highlight,
+          TaskList,
+          TaskItem.configure({ nested: true }),
+          Table.configure({ resizable: true }),
+          TableRow,
+          TableHeader,
+          TableCell,
+          NomaPanel,
           Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
           Image.configure({ inline: false, allowBase64: false }),
           Collaboration.configure({ document: ydoc, field: "default" })
@@ -32998,7 +35723,12 @@ ${err.toString()}`);
           ready = true;
           ensureEditor();
           setStatus2(message.type === "init" ? "ready" : `acks:${acks}`);
+          if (message.type === "init" && options.user && socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "presence", user: options.user }));
+          }
+          if (message.users) options.onPresence?.(message.users);
         }
+        if (message.type === "presence" && message.users) options.onPresence?.(message.users);
         if (message.type === "ack") {
           acks += 1;
           setStatus2(`acks:${acks}`);
@@ -33097,10 +35827,10 @@ ${err.toString()}`);
       const url = src.includes("?") ? src : `${src}?token=${encodeURIComponent(token2)}`;
       return `<p><video src="${escapeAttr(url)}" controls></video></p>`;
     }
-    if (name === "claim") {
-      const label = /confidence=([0-9.]+)/.exec(attrs)?.[1];
-      const kicker = label ? `Claim \xB7 ${label}` : "Claim";
-      return `<blockquote><p><strong>${escapeHtml(kicker)}</strong> ${inlineHtml(body)}</p></blockquote>`;
+    if (name === "claim" || name === "info" || name === "note" || name === "warning" || name === "success" || name === "decision") {
+      const confidence = /confidence=([0-9.]+)/.exec(attrs)?.[1];
+      const title = name === "claim" ? confidence ? `Claim \xB7 ${confidence}` : "Claim" : `${name[0].toUpperCase()}${name.slice(1)}`;
+      return `<div data-noma-panel="${escapeAttr(name)}" data-panel-title="${escapeAttr(title)}" class="ew-panel ew-panel-${escapeAttr(name)}"><p><strong>${escapeHtml(title)}</strong> ${inlineHtml(body)}</p></div>`;
     }
     if (body) return `<blockquote><p><strong>${escapeHtml(name)}</strong> ${inlineHtml(body)}</p></blockquote>`;
     return "";
@@ -33144,7 +35874,10 @@ ${err.toString()}`);
   var jqlFilterIds;
   var searchPopupStop;
   var boardDndStop;
+  var canvasStop;
   var boardFilter = "all";
+  var boardSearch = "";
+  var typeFilter = "";
   var paletteIndex = 0;
   var mentionStop;
   var $2 = (id2) => {
@@ -33257,6 +35990,20 @@ ${err.toString()}`);
         (item, index) => index === chain.length - 1 ? `<span>${escapeHtml2(item.title)}</span>` : `<button type="button" data-kind="document" data-id="${item.id}">${escapeHtml2(item.title)}</button>`
       )
     ].join("");
+  }
+  function presenceColor(id2) {
+    const palette = ["#0C66E4", "#1F845A", "#B38600", "#C9372C", "#6E5DC6", "#E56910"];
+    let hash = 0;
+    for (let index = 0; index < id2.length; index += 1) hash = hash * 33 + id2.charCodeAt(index) >>> 0;
+    return palette[hash % palette.length] ?? "#0C66E4";
+  }
+  function renderPresence(users) {
+    const node = document.getElementById("doc-presence");
+    if (!node) return;
+    const unique = [...new Map(users.map((user) => [user.id, user])).values()];
+    node.innerHTML = unique.map(
+      (user) => `<span class="ew-avatar" title="${escapeHtml2(user.name)}" style="background:${escapeHtml2(user.color)}">${escapeHtml2(initials(user.name))}</span>`
+    ).join("");
   }
   function renderByline(doc4) {
     const actorName = payload?.actor.name ?? "Unknown";
@@ -33422,6 +36169,8 @@ ${err.toString()}`);
       element: editorMount,
       token,
       documentId: id2,
+      user: payload?.actor ? { id: payload.actor.principalId, name: payload.actor.name, color: presenceColor(payload.actor.principalId) } : void 0,
+      onPresence: renderPresence,
       onStatus: (text2) => {
         $2("collab-status").textContent = text2;
         setStatus(`${payload?.actor.name ?? "Session"} \xB7 ${text2}`, text2.startsWith("ack") || text2 === "ready" ? "ok" : "connecting");
@@ -33510,16 +36259,41 @@ ${err.toString()}`);
     const page = $2("visual-stage").querySelector(".pd-page");
     if (page instanceof HTMLElement) {
       const width = Math.max(page.offsetWidth, 960);
-      const scale = Math.min(1, ($2("visual-stage").clientWidth - 32) / width);
-      page.style.transform = `scale(${scale})`;
-      page.style.transformOrigin = "top left";
-      page.style.marginBottom = `${Math.max(0, page.offsetHeight * (scale - 1))}px`;
+      const fit = Math.min(1, ($2("visual-stage").clientWidth - 32) / width);
+      const zoom = Number($2("visual-stage").dataset.zoom || String(fit));
+      setCanvasZoom($2("visual-stage"), zoom);
+      page.style.marginBottom = `${Math.max(0, page.offsetHeight * (zoom - 1))}px`;
     }
     $2("visual-outline").innerHTML = data.outline.map((entry) => `<button type="button" data-frame="${escapeHtml2(entry.id)}"><strong>${escapeHtml2(entry.label)}</strong><small>${escapeHtml2(entry.type)}</small></button>`).join("");
     inspector.innerHTML = `<div class="ew-meta"><strong>${escapeHtml2(data.document.title)}</strong><span>Revision ${data.document.revision}</span><span>${data.outline.length} frames</span></div>`;
     $2("inspector-title").textContent = "Canvas";
     renderRail();
     enhanceSelects($2("canvas-visuals"));
+    canvasStop?.();
+    canvasStop = bindVisualStage($2("visual-stage"), {
+      onMove: (move) => {
+        void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(move.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ geometry: { x: move.x, y: move.y } })
+        });
+      },
+      onEdit: (elementId, text2) => {
+        void api(`/v1/artifacts/${encodeURIComponent(id2)}/elements/${encodeURIComponent(elementId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ text: text2, altText: text2 })
+        });
+      },
+      onPlaceSticky: (x, y) => {
+        $2("visual-stage").dataset.tool = "select";
+        syncVisualTools();
+        void addCanvasElement({
+          type: "shape",
+          text: "New note",
+          altText: "Sticky",
+          geometry: { x, y, width: 200, height: 160 }
+        });
+      }
+    });
   }
   function renderSprintBar() {
     if (!payload) return;
@@ -33543,11 +36317,20 @@ ${err.toString()}`);
     renderSprintBar();
     $2("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
     $2("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
+    const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
+    $2("type-filters").innerHTML = [
+      `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
+      ...projectTypes.map(
+        (type) => `<button type="button" data-type="${escapeHtml2(type.key)}" aria-pressed="${String(typeFilter === type.key)}">${escapeHtml2(type.name)}</button>`
+      )
+    ].join("");
     const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
     const visible = payload.issues.filter((issue) => {
       if (project && issue.projectId !== project.id) return false;
       if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
       if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
+      if (typeFilter && issue.typeKey !== typeFilter) return false;
+      if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
       return true;
     });
     $2("work-board").innerHTML = columns.map((status) => {
@@ -33565,6 +36348,7 @@ ${err.toString()}`);
                 <span class="ew-pill">${escapeHtml2(issue.typeKey)}</span>
                 ${parent ? `<span class="ew-epic">${escapeHtml2(parent.key)}</span>` : ""}
                 ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
+                <span class="ew-priority" data-priority="${escapeHtml2(issue.priority)}">${escapeHtml2(issue.priority)}</span>
                 ${assignee ? avatarMarkup(assignee.name) : ""}
               </span>
             </button>`;
@@ -33651,6 +36435,7 @@ ${err.toString()}`);
       <div class="ew-issue-grid">
         <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
         <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
+        <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
       </div>
       <div class="ew-actions">
         <button type="button" id="save-issue">Save</button>
@@ -33669,6 +36454,12 @@ ${err.toString()}`);
         <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
         <label for="worklog-note">Note<input id="worklog-note" /></label>
         <button type="button" id="worklog-submit">Log work</button>
+      </div>
+      <div class="ew-activity">
+        <strong>Activity</strong>
+        ${(detail.events ?? []).map(
+      (event) => `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml2(event.actorName)}</strong><span>${escapeHtml2(event.action.replaceAll("_", " "))}</span></div></div></article>`
+    ).join("") || `<div class="ew-note">No activity yet</div>`}
       </div>
     </div>`;
     const links = await api(
@@ -33864,7 +36655,8 @@ ${err.toString()}`);
           body: JSON.stringify({
             summary: $2("issue-summary").value,
             description: $2("issue-description").value,
-            assigneeId: $2("issue-assignee").value || null
+            assigneeId: $2("issue-assignee").value || null,
+            priority: $2("issue-priority").value
           })
         });
         const sprintId = $2("issue-sprint").value || null;
@@ -34092,6 +36884,29 @@ ${err.toString()}`);
   $2("add-frame").addEventListener("click", async () => {
     await addCanvasElement({ type: "shape", text: "Frame", altText: "Frame" });
   });
+  function syncVisualTools() {
+    const tool = $2("visual-stage").dataset.tool ?? "select";
+    for (const button of document.querySelectorAll("#visual-toolbar [data-tool]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
+    }
+    $2("visual-stage").classList.toggle("is-panning", tool === "pan");
+    $2("visual-stage").classList.toggle("is-sticky", tool === "sticky");
+  }
+  $2("visual-toolbar").addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    if (button.dataset.tool) {
+      $2("visual-stage").dataset.tool = button.dataset.tool;
+      syncVisualTools();
+    }
+    const current = Number($2("visual-stage").dataset.zoom ?? "1");
+    if (button.id === "zoom-in") setCanvasZoom($2("visual-stage"), current + 0.1);
+    if (button.id === "zoom-out") setCanvasZoom($2("visual-stage"), current - 0.1);
+    if (button.id === "zoom-fit") {
+      const page = $2("visual-stage").querySelector(".pd-page");
+      if (page) setCanvasZoom($2("visual-stage"), Math.min(1, ($2("visual-stage").clientWidth - 32) / Math.max(page.offsetWidth, 960)));
+    }
+  });
   $2("add-arrow").addEventListener("click", async () => {
     await addCanvasElement({
       type: "arrow",
@@ -34263,6 +37078,9 @@ ${err.toString()}`);
       if (cmd === "ordered") chain.toggleOrderedList().run();
       if (cmd === "quote") chain.toggleBlockquote().run();
       if (cmd === "code") chain.toggleCodeBlock().run();
+      if (cmd === "task") chain.toggleTaskList().run();
+      if (cmd === "table") chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+      if (cmd === "panel") chain.setNomaPanel(button.dataset.kind === "warning" ? "warning" : "info").run();
     });
   });
   function paletteItems(query) {
@@ -34366,6 +37184,16 @@ ${err.toString()}`);
     boardFilter = button.dataset.filter === "mine" ? "mine" : "all";
     renderBoard();
   });
+  $2("type-filters").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-type]");
+    if (button?.dataset.type === void 0) return;
+    typeFilter = button.dataset.type;
+    renderBoard();
+  });
+  $2("board-search").addEventListener("input", (event) => {
+    boardSearch = event.target.value.trim().toLowerCase();
+    renderBoard();
+  });
   $2("work-board").addEventListener("keydown", (event) => {
     const target = event.target;
     if ((event.key === "Enter" || event.key === " ") && target.closest(".ew-card") && !target.classList.contains("ew-column-add")) {
@@ -34452,30 +37280,43 @@ lucide/dist/esm/icons/bell.mjs:
 lucide/dist/esm/icons/bold.mjs:
 lucide/dist/esm/icons/bug.mjs:
 lucide/dist/esm/icons/chevron-down.mjs:
+lucide/dist/esm/icons/circle-check.mjs:
 lucide/dist/esm/icons/code.mjs:
 lucide/dist/esm/icons/command.mjs:
 lucide/dist/esm/icons/file-text.mjs:
 lucide/dist/esm/icons/funnel.mjs:
+lucide/dist/esm/icons/hand.mjs:
 lucide/dist/esm/icons/heading-1.mjs:
 lucide/dist/esm/icons/heading-2.mjs:
+lucide/dist/esm/icons/highlighter.mjs:
 lucide/dist/esm/icons/image.mjs:
 lucide/dist/esm/icons/import.mjs:
+lucide/dist/esm/icons/info.mjs:
 lucide/dist/esm/icons/italic.mjs:
+lucide/dist/esm/icons/lightbulb.mjs:
 lucide/dist/esm/icons/link.mjs:
+lucide/dist/esm/icons/list-checks.mjs:
 lucide/dist/esm/icons/list-ordered.mjs:
 lucide/dist/esm/icons/list.mjs:
+lucide/dist/esm/icons/maximize-2.mjs:
 lucide/dist/esm/icons/moon.mjs:
+lucide/dist/esm/icons/mouse-pointer-2.mjs:
 lucide/dist/esm/icons/plus.mjs:
 lucide/dist/esm/icons/presentation.mjs:
 lucide/dist/esm/icons/quote.mjs:
 lucide/dist/esm/icons/search.mjs:
 lucide/dist/esm/icons/settings.mjs:
 lucide/dist/esm/icons/square-kanban.mjs:
+lucide/dist/esm/icons/sticky-note.mjs:
 lucide/dist/esm/icons/strikethrough.mjs:
 lucide/dist/esm/icons/sun.mjs:
+lucide/dist/esm/icons/table.mjs:
+lucide/dist/esm/icons/triangle-alert.mjs:
 lucide/dist/esm/icons/underline.mjs:
 lucide/dist/esm/icons/user.mjs:
 lucide/dist/esm/icons/video.mjs:
+lucide/dist/esm/icons/zoom-in.mjs:
+lucide/dist/esm/icons/zoom-out.mjs:
 lucide/dist/esm/lucide.mjs:
   (**
    * @license lucide v1.46.0 - ISC

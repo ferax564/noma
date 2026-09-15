@@ -125,6 +125,10 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <button type="button" data-cmd="ordered" aria-label="Ordered list"><span data-lucide="list-ordered"></span></button>
               <button type="button" data-cmd="quote" aria-label="Quote"><span data-lucide="quote"></span></button>
               <button type="button" data-cmd="code" aria-label="Code block"><span data-lucide="code"></span></button>
+              <button type="button" data-cmd="task" aria-label="Action items"><span data-lucide="list-checks"></span></button>
+              <button type="button" data-cmd="table" aria-label="Insert table"><span data-lucide="table"></span></button>
+              <button type="button" data-cmd="panel" data-kind="info" aria-label="Info panel"><span data-lucide="info"></span></button>
+              <button type="button" data-cmd="panel" data-kind="warning" aria-label="Warning panel"><span data-lucide="alert-triangle"></span></button>
               <span class="ew-toolbar-sep" aria-hidden="true"></span>
               <span id="collab-status" class="ew-chip">idle</span>
               <label class="ew-file" for="insert-image"><span data-lucide="image"></span> Image<input id="insert-image" type="file" accept="image/*" /></label>
@@ -140,6 +144,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <div class="ew-byline">
                 <span id="doc-kicker" class="ew-lozenge">Draft</span>
                 <div id="doc-byline"></div>
+                <div id="doc-presence" class="ew-presence" aria-label="People on this page"></div>
               </div>
               <div id="editor" class="ew-editor"></div>
               <div id="doc-media" class="ew-media-strip" aria-label="Page media"></div>
@@ -163,6 +168,15 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <p class="ew-kicker">Whiteboards</p>
               <h1 id="visual-title">Untitled board</h1>
               <div id="visual-toolbar" class="ew-toolbar ew-visual-toolbar" role="toolbar" aria-label="Canvas tools">
+                <button type="button" id="tool-select" data-tool="select" aria-pressed="true" aria-label="Select"><span data-lucide="mouse-pointer-2"></span></button>
+                <button type="button" id="tool-pan" data-tool="pan" aria-pressed="false" aria-label="Pan"><span data-lucide="hand"></span></button>
+                <button type="button" id="tool-sticky" data-tool="sticky" aria-pressed="false" aria-label="Sticky note"><span data-lucide="sticky-note"></span></button>
+                <span class="ew-toolbar-sep" aria-hidden="true"></span>
+                <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
+                <span id="zoom-label">100%</span>
+                <button type="button" id="zoom-in" aria-label="Zoom in"><span data-lucide="zoom-in"></span></button>
+                <button type="button" id="zoom-fit" aria-label="Fit canvas"><span data-lucide="maximize-2"></span></button>
+                <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <label for="new-board-title">Board title<input id="new-board-title" placeholder="Q3 review" /></label>
                 <button type="button" id="create-board">New presentation</button>
                 <button type="button" id="add-frame">Add frame</button>
@@ -185,12 +199,16 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <h1 id="work-title">Work</h1>
               <div id="sprint-bar" class="ew-sprint"></div>
               <label class="ew-jql" for="jql-input">JQL
-                <input id="jql-input" type="search" placeholder="Filter with JQL" autocomplete="off" />
+                <input id="jql-input" type="search" placeholder="assignee = currentUser() AND status = todo" autocomplete="off" />
+              </label>
+              <label class="ew-jql" for="board-search">Search issues
+                <input id="board-search" type="search" placeholder="Search issues" autocomplete="off" />
               </label>
               <div id="board-filters" class="ew-filters" role="group" aria-label="Board filters">
                 <button type="button" id="filter-all" data-filter="all" aria-pressed="true">All issues</button>
                 <button type="button" id="filter-mine" data-filter="mine" aria-pressed="false">Assigned to me</button>
               </div>
+              <div id="type-filters" class="ew-filters" role="group" aria-label="Issue types"></div>
               <p id="jql-error" class="ew-error" role="alert"></p>
             </div>
             <div id="work-board" class="ew-board"></div>

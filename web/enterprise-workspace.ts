@@ -1,6 +1,8 @@
 import { mountHostedCollab, type HostedCollab } from "./hosted-collab";
 import { nomaToEditorHtml } from "./noma-html";
-import { bindIssueBoard, bindMentionBox, enhanceSelects, hydrateIcons, iconSvg, positionPopup, statusPath, type BoardDrop } from "./ui-kit";
+import "@tiptap/extension-table";
+import "@tiptap/extension-task-list";
+import { bindIssueBoard, bindMentionBox, bindVisualStage, enhanceSelects, hydrateIcons, iconSvg, positionPopup, setCanvasZoom, statusPath, type BoardDrop } from "./ui-kit";
 
 type Mode = "docs" | "visuals" | "work" | "admin";
 
@@ -50,6 +52,7 @@ interface ShellIssue {
   parentId: string | null;
   rank: string;
   sprintId: string | null;
+  priority: string;
 }
 
 interface WorkspacePayload {
@@ -99,7 +102,10 @@ let collab: HostedCollab | undefined;
 let jqlFilterIds: string[] | undefined;
 let searchPopupStop: (() => void) | undefined;
 let boardDndStop: (() => void) | undefined;
+let canvasStop: (() => void) | undefined;
 let boardFilter: "all" | "mine" = "all";
+let boardSearch = "";
+let typeFilter = "";
 let paletteIndex = 0;
 let mentionStop: (() => void) | undefined;
 
@@ -236,6 +242,25 @@ function renderCrumbs(doc: ShellDocument | undefined): void {
         : `<button type="button" data-kind="document" data-id="${item.id}">${escapeHtml(item.title)}</button>`,
     ),
   ].join("");
+}
+
+function presenceColor(id: string): string {
+  const palette = ["#0C66E4", "#1F845A", "#B38600", "#C9372C", "#6E5DC6", "#E56910"];
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) hash = (hash * 33 + id.charCodeAt(index)) >>> 0;
+  return palette[hash % palette.length] ?? "#0C66E4";
+}
+
+function renderPresence(users: Array<{ id: string; name: string; color: string }>): void {
+  const node = document.getElementById("doc-presence");
+  if (!node) return;
+  const unique = [...new Map(users.map((user) => [user.id, user])).values()];
+  node.innerHTML = unique
+    .map(
+      (user) =>
+        `<span class="ew-avatar" title="${escapeHtml(user.name)}" style="background:${escapeHtml(user.color)}">${escapeHtml(initials(user.name))}</span>`,
+    )
+    .join("");
 }
 
 function renderByline(doc: ShellDocument | undefined): void {
@@ -428,6 +453,10 @@ function openDocument(id: string | undefined): void {
     element: editorMount,
     token,
     documentId: id,
+    user: payload?.actor
+      ? { id: payload.actor.principalId, name: payload.actor.name, color: presenceColor(payload.actor.principalId) }
+      : undefined,
+    onPresence: renderPresence,
     onStatus: (text) => {
       $("collab-status").textContent = text;
       setStatus(`${payload?.actor.name ?? "Session"} · ${text}`, text.startsWith("ack") || text === "ready" ? "ok" : "connecting");
@@ -532,10 +561,10 @@ async function openArtifact(id: string | undefined): Promise<void> {
   const page = $("visual-stage").querySelector(".pd-page");
   if (page instanceof HTMLElement) {
     const width = Math.max(page.offsetWidth, 960);
-    const scale = Math.min(1, ($("visual-stage").clientWidth - 32) / width);
-    page.style.transform = `scale(${scale})`;
-    page.style.transformOrigin = "top left";
-    page.style.marginBottom = `${Math.max(0, page.offsetHeight * (scale - 1))}px`;
+    const fit = Math.min(1, ($("visual-stage").clientWidth - 32) / width);
+    const zoom = Number($("visual-stage").dataset.zoom || String(fit));
+    setCanvasZoom($("visual-stage"), zoom);
+    page.style.marginBottom = `${Math.max(0, page.offsetHeight * (zoom - 1))}px`;
   }
   $("visual-outline").innerHTML = data.outline
     .map((entry) => `<button type="button" data-frame="${escapeHtml(entry.id)}"><strong>${escapeHtml(entry.label)}</strong><small>${escapeHtml(entry.type)}</small></button>`)
@@ -544,6 +573,31 @@ async function openArtifact(id: string | undefined): Promise<void> {
   $("inspector-title").textContent = "Canvas";
   renderRail();
   enhanceSelects($("canvas-visuals"));
+  canvasStop?.();
+  canvasStop = bindVisualStage($("visual-stage"), {
+    onMove: (move) => {
+      void api(`/v1/artifacts/${encodeURIComponent(id)}/elements/${encodeURIComponent(move.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ geometry: { x: move.x, y: move.y } }),
+      });
+    },
+    onEdit: (elementId, text) => {
+      void api(`/v1/artifacts/${encodeURIComponent(id)}/elements/${encodeURIComponent(elementId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ text, altText: text }),
+      });
+    },
+    onPlaceSticky: (x, y) => {
+      $("visual-stage").dataset.tool = "select";
+      syncVisualTools();
+      void addCanvasElement({
+        type: "shape",
+        text: "New note",
+        altText: "Sticky",
+        geometry: { x, y, width: 200, height: 160 },
+      });
+    },
+  });
 }
 
 function renderSprintBar(): void {
@@ -569,11 +623,21 @@ function renderBoard(): void {
   renderSprintBar();
   $("filter-all")?.setAttribute("aria-pressed", String(boardFilter === "all"));
   $("filter-mine")?.setAttribute("aria-pressed", String(boardFilter === "mine"));
+  const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
+  $("type-filters").innerHTML = [
+    `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
+    ...projectTypes.map(
+      (type) =>
+        `<button type="button" data-type="${escapeHtml(type.key)}" aria-pressed="${String(typeFilter === type.key)}">${escapeHtml(type.name)}</button>`,
+    ),
+  ].join("");
   const columns = (project?.statuses ?? []).filter((status) => status.id !== "cancelled");
   const visible = payload.issues.filter((issue) => {
     if (project && issue.projectId !== project.id) return false;
     if (jqlFilterIds && !jqlFilterIds.includes(issue.id)) return false;
     if (boardFilter === "mine" && issue.assigneeId !== payload?.actor.principalId) return false;
+    if (typeFilter && issue.typeKey !== typeFilter) return false;
+    if (boardSearch && !`${issue.key} ${issue.summary}`.toLowerCase().includes(boardSearch)) return false;
     return true;
   });
   $("work-board").innerHTML = columns
@@ -593,6 +657,7 @@ function renderBoard(): void {
                 <span class="ew-pill">${escapeHtml(issue.typeKey)}</span>
                 ${parent ? `<span class="ew-epic">${escapeHtml(parent.key)}</span>` : ""}
                 ${issue.estimate != null ? `<span class="ew-points">${issue.estimate}</span>` : ""}
+                <span class="ew-priority" data-priority="${escapeHtml(issue.priority)}">${escapeHtml(issue.priority)}</span>
                 ${assignee ? avatarMarkup(assignee.name) : ""}
               </span>
             </button>`;
@@ -676,6 +741,8 @@ async function inspectIssue(id: string): Promise<void> {
     typeKey: string;
     key?: string;
     status_id: string;
+    priority?: string;
+    events?: Array<{ action: string; actorName: string; createdAt: string }>;
   }>(`/v1/issues/${encodeURIComponent(id)}`);
   const project = payload.projects.find((item) => item.id === issue.projectId);
   const current = project?.statuses.find((status) => status.id === issue.statusId);
@@ -696,6 +763,7 @@ async function inspectIssue(id: string): Promise<void> {
       <div class="ew-issue-grid">
         <label for="issue-assignee">Assignee<select id="issue-assignee"><option value="">Unassigned</option>${people}</select></label>
         <label for="issue-sprint">Sprint<select id="issue-sprint"><option value="">Backlog</option>${sprints}</select></label>
+        <label for="issue-priority">Priority<select id="issue-priority">${["lowest", "low", "medium", "high", "highest"].map((item) => `<option value="${item}" ${(detail.priority ?? issue.priority) === item ? "selected" : ""}>${item}</option>`).join("")}</select></label>
       </div>
       <div class="ew-actions">
         <button type="button" id="save-issue">Save</button>
@@ -717,6 +785,15 @@ async function inspectIssue(id: string): Promise<void> {
         <label for="worklog-minutes">Minutes<input id="worklog-minutes" type="number" min="1" value="30" /></label>
         <label for="worklog-note">Note<input id="worklog-note" /></label>
         <button type="button" id="worklog-submit">Log work</button>
+      </div>
+      <div class="ew-activity">
+        <strong>Activity</strong>
+        ${(detail.events ?? [])
+          .map(
+            (event) =>
+              `<article class="ew-comment"><div><div class="ew-comment-meta"><strong>${escapeHtml(event.actorName)}</strong><span>${escapeHtml(event.action.replaceAll("_", " "))}</span></div></div></article>`,
+          )
+          .join("") || `<div class="ew-note">No activity yet</div>`}
       </div>
     </div>`;
   const links = await api<{ links: Array<{ id: string; provider: string; url?: string | null; label?: string; targetKind?: string | null; targetId?: string | null }> }>(
@@ -927,6 +1004,7 @@ inspector.addEventListener("click", async (event) => {
           summary: $<HTMLInputElement>("issue-summary").value,
           description: $<HTMLTextAreaElement>("issue-description").value,
           assigneeId: $<HTMLSelectElement>("issue-assignee").value || null,
+          priority: $<HTMLSelectElement>("issue-priority").value,
         }),
       });
       const sprintId = $<HTMLSelectElement>("issue-sprint").value || null;
@@ -1162,6 +1240,31 @@ $("create-board").addEventListener("click", async () => {
 $("add-frame").addEventListener("click", async () => {
   await addCanvasElement({ type: "shape", text: "Frame", altText: "Frame" });
 });
+
+function syncVisualTools(): void {
+  const tool = $("visual-stage").dataset.tool ?? "select";
+  for (const button of document.querySelectorAll<HTMLButtonElement>("#visual-toolbar [data-tool]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
+  }
+  $("visual-stage").classList.toggle("is-panning", tool === "pan");
+  $("visual-stage").classList.toggle("is-sticky", tool === "sticky");
+}
+
+$("visual-toolbar").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+  if (!button) return;
+  if (button.dataset.tool) {
+    $("visual-stage").dataset.tool = button.dataset.tool;
+    syncVisualTools();
+  }
+  const current = Number($("visual-stage").dataset.zoom ?? "1");
+  if (button.id === "zoom-in") setCanvasZoom($("visual-stage"), current + 0.1);
+  if (button.id === "zoom-out") setCanvasZoom($("visual-stage"), current - 0.1);
+  if (button.id === "zoom-fit") {
+    const page = $("visual-stage").querySelector<HTMLElement>(".pd-page");
+    if (page) setCanvasZoom($("visual-stage"), Math.min(1, ($("visual-stage").clientWidth - 32) / Math.max(page.offsetWidth, 960)));
+  }
+});
 $("add-arrow").addEventListener("click", async () => {
   await addCanvasElement({
     type: "arrow",
@@ -1347,6 +1450,9 @@ document.querySelectorAll<HTMLButtonElement>("#doc-toolbar [data-cmd]").forEach(
     if (cmd === "ordered") chain.toggleOrderedList().run();
     if (cmd === "quote") chain.toggleBlockquote().run();
     if (cmd === "code") chain.toggleCodeBlock().run();
+    if (cmd === "task") chain.toggleTaskList().run();
+    if (cmd === "table") chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+    if (cmd === "panel") chain.setNomaPanel(button.dataset.kind === "warning" ? "warning" : "info").run();
   });
 });
 
@@ -1468,6 +1574,16 @@ $("board-filters").addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-filter]");
   if (!button?.dataset.filter) return;
   boardFilter = button.dataset.filter === "mine" ? "mine" : "all";
+  renderBoard();
+});
+$("type-filters").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-type]");
+  if (button?.dataset.type === undefined) return;
+  typeFilter = button.dataset.type;
+  renderBoard();
+});
+$("board-search").addEventListener("input", (event) => {
+  boardSearch = (event.target as HTMLInputElement).value.trim().toLowerCase();
   renderBoard();
 });
 
