@@ -1610,6 +1610,9 @@ button.ew-comment-quote {
   color: #fff;
   box-shadow: var(--ds-shadow-overlay);
 }
+.ew-shell.is-presenting {
+  grid-template-rows: minmax(0, 1fr);
+}
 .ew-shell.is-presenting .ew-topbar,
 .ew-shell.is-presenting .ew-rail,
 .ew-shell.is-presenting .ew-inspector,
@@ -1622,12 +1625,23 @@ button.ew-comment-quote {
 }
 .ew-shell.is-presenting .ew-body {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+.ew-shell.is-presenting .ew-main {
+  overflow: auto;
+  height: 100%;
+}
+.ew-shell.is-presenting .ew-canvas {
+  min-height: 100%;
 }
 .ew-shell.is-presenting .ew-paper {
   width: min(960px, calc(100% - 80px));
   max-width: none;
+  padding-top: 48px;
 }
 .ew-shell.is-presenting .ew-visual-stage {
+  min-height: 100vh;
   height: 100%;
 }
 .ew-export { display: grid; gap: 8px; }
