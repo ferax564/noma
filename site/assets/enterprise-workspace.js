@@ -35976,6 +35976,23 @@ ${err.toString()}`);
     ["path", { d: "M9 7.13V6a3 3 0 1 1 6 0v1.13" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/chart-column-stacked.mjs
+  var ChartColumnStacked = [
+    ["path", { d: "M11 13H7" }],
+    ["path", { d: "M19 9h-4" }],
+    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16" }],
+    ["rect", { x: "15", y: "5", width: "4", height: "12", rx: "1" }],
+    ["rect", { x: "7", y: "8", width: "4", height: "9", rx: "1" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/chart-column.mjs
+  var ChartColumn = [
+    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16" }],
+    ["path", { d: "M18 17V9" }],
+    ["path", { d: "M13 17V5" }],
+    ["path", { d: "M8 17v-3" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/chevron-down.mjs
   var ChevronDown = [["path", { d: "m6 9 6 6 6-6" }]];
 
@@ -35994,6 +36011,13 @@ ${err.toString()}`);
   // node_modules/lucide/dist/esm/icons/command.mjs
   var Command = [
     ["path", { d: "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/download.mjs
+  var Download = [
+    ["path", { d: "M12 15V3" }],
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }],
+    ["path", { d: "m7 10 5 5 5-5" }]
   ];
 
   // node_modules/lucide/dist/esm/icons/file-text.mjs
@@ -36425,10 +36449,13 @@ ${err.toString()}`);
     Bell,
     Bold: Bold2,
     Bug,
+    ChartColumn,
+    ChartColumnStacked,
     ChevronDown,
     CircleCheck,
     Code: Code2,
     Command,
+    Download,
     FileText,
     Filter: Funnel,
     Flag,
@@ -37337,6 +37364,8 @@ ${err.toString()}`);
   var stickyColor = "yellow";
   var findMatches = [];
   var findIndex = 0;
+  var reportsToken = 0;
+  var exportTarget = "svg";
   var $2 = (id2) => {
     const node = document.getElementById(id2);
     if (!node) throw new Error(`missing #${id2}`);
@@ -37466,6 +37495,160 @@ ${err.toString()}`);
     const today = /* @__PURE__ */ new Date();
     const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     return due < iso;
+  }
+  function formatHours(hours) {
+    if (!Number.isFinite(hours) || hours < 1 / 60) return "< 1m";
+    if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+    if (hours < 24) return `${hours.toFixed(1)}h`;
+    return `${(hours / 24).toFixed(1)}d`;
+  }
+  function median(values) {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const left = sorted[mid - 1] ?? sorted[mid] ?? 0;
+    const right = sorted[mid] ?? left;
+    return sorted.length % 2 === 0 ? (left + right) / 2 : right;
+  }
+  function sampleSeries(points, max3 = 36) {
+    if (points.length <= max3) return points;
+    const step = (points.length - 1) / (max3 - 1);
+    return Array.from({ length: max3 }, (_, index) => points[Math.round(index * step)]).filter(Boolean);
+  }
+  function barChartSvg(points, ariaLabel) {
+    const width = 640;
+    const height = 220;
+    const pad = { l: 40, r: 12, t: 16, b: 40 };
+    const innerW = width - pad.l - pad.r;
+    const innerH = height - pad.t - pad.b;
+    const max3 = Math.max(1, ...points.map((point) => point.value));
+    const ticks = [0, 0.5, 1].map((frac) => {
+      const value = Math.round(max3 * frac);
+      const y = pad.t + innerH - value / max3 * innerH;
+      return `<line class="ew-chart-axis" x1="${pad.l}" x2="${width - pad.r}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" />
+      <text class="ew-chart-label" x="${pad.l - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${value}</text>`;
+    });
+    const bars = points.length === 0 ? `<text class="ew-chart-label" x="${width / 2}" y="${pad.t + innerH / 2}" text-anchor="middle">No completions yet</text>` : points.map((point, index) => {
+      const slot = innerW / points.length;
+      const barW = slot * 0.62;
+      const x = pad.l + index * slot + (slot - barW) / 2;
+      const h = Math.max(2, point.value / max3 * innerH);
+      const y = pad.t + innerH - h;
+      const caption = point.label.length > 10 ? point.label.slice(5) : point.label;
+      return `<rect class="ew-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3">
+              <title>${escapeHtml3(point.label)}: ${point.value} completed</title>
+            </rect>
+            <text class="ew-chart-label" x="${(x + barW / 2).toFixed(1)}" y="${height - 14}" text-anchor="middle">${escapeHtml3(caption)}</text>`;
+    }).join("");
+    return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">${ticks.join("")}${bars}</svg>`;
+  }
+  function stackedAreaSvg(points, ariaLabel) {
+    const sampled = sampleSeries(points, 40);
+    const width = 640;
+    const height = 240;
+    const pad = { l: 40, r: 12, t: 16, b: 36 };
+    const innerW = width - pad.l - pad.r;
+    const innerH = height - pad.t - pad.b;
+    if (sampled.length === 0) {
+      return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+      <text class="ew-chart-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No workflow events yet</text>
+    </svg>`;
+    }
+    const max3 = Math.max(1, ...sampled.map((point) => point.todo + point.in_progress + point.done));
+    const last2 = sampled.length - 1;
+    const xAt = (index) => pad.l + (last2 === 0 ? innerW / 2 : index / last2 * innerW);
+    const yAt = (value) => pad.t + innerH - value / max3 * innerH;
+    const area = (values, className) => {
+      const top = values.map((value, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(value).toFixed(1)}`).join(" ");
+      return `<path class="${className}" d="${top} L${xAt(last2).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z" />`;
+    };
+    const totals = sampled.map((point) => point.todo + point.in_progress + point.done);
+    const progress = sampled.map((point) => point.done + point.in_progress);
+    const done = sampled.map((point) => point.done);
+    const firstLabel = sampled[0]?.at.slice(0, 10) ?? "";
+    const lastLabel = sampled[last2]?.at.slice(0, 10) ?? "";
+    return `<svg role="img" aria-label="${escapeHtml3(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+    ${area(totals, "ew-area-todo")}
+    ${area(progress, "ew-area-progress")}
+    ${area(done, "ew-area-done")}
+    <text class="ew-chart-label" x="${pad.l}" y="${height - 12}">${escapeHtml3(firstLabel)}</text>
+    <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml3(lastLabel)}</text>
+  </svg>`;
+  }
+  function reportKpis(reports) {
+    const completed = reports.throughput.reduce((sum, point) => sum + point.completed, 0);
+    const last2 = reports.cumulativeFlow[reports.cumulativeFlow.length - 1];
+    return {
+      completed,
+      medianCycle: reports.cycleTime.length ? formatHours(median(reports.cycleTime.map((row) => row.hours))) : "\u2014",
+      inProgress: last2?.in_progress ?? 0
+    };
+  }
+  function renderReportsMarkup(reports) {
+    const kpis = reportKpis(reports);
+    const cycleRows = reports.cycleTime.length === 0 ? `<p class="ew-meta">No completed issues yet.</p>` : reports.cycleTime.slice().sort((a, b) => b.hours - a.hours).map(
+      (row) => `<button type="button" class="ew-cycle-row" data-issue="${escapeHtml3(row.issueId)}">
+                <span class="ew-key">${escapeHtml3(row.key)}</span>
+                <strong>${escapeHtml3(row.summary)}</strong>
+                <span class="ew-cycle-hours">${escapeHtml3(formatHours(row.hours))}</span>
+              </button>`
+    ).join("");
+    return `<div id="work-reports" class="ew-reports">
+    <div id="report-kpis" class="ew-report-kpis">
+      <div class="ew-kpi"><strong>${kpis.completed}</strong><span>Completed</span></div>
+      <div class="ew-kpi"><strong>${escapeHtml3(kpis.medianCycle)}</strong><span>Median cycle</span></div>
+      <div class="ew-kpi"><strong>${kpis.inProgress}</strong><span>In progress</span></div>
+    </div>
+    <article id="report-throughput" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Throughput</h2>
+      <p class="ew-report-lead">Issues moved to Done each day.</p>
+      ${barChartSvg(
+      reports.throughput.map((point) => ({ label: point.day, value: point.completed })),
+      "Throughput completed per day"
+    )}
+    </article>
+    <article id="report-cycle" class="ew-report">
+      <h2>${iconSvg("ChartColumnStacked")} Cycle time</h2>
+      <p class="ew-report-lead">Created to Done for each completed issue.</p>
+      <div class="ew-cycle-list">${cycleRows}</div>
+    </article>
+    <article id="report-cfd" class="ew-report">
+      <h2>${iconSvg("ChartColumnStacked")} Cumulative flow</h2>
+      <p class="ew-report-lead">To do, in progress, and done over the project timeline.</p>
+      ${stackedAreaSvg(reports.cumulativeFlow, "Cumulative flow of to do, in progress, and done issues")}
+      <ul class="ew-legend" aria-hidden="true">
+        <li><span class="ew-swatch-todo"></span> To do</li>
+        <li><span class="ew-swatch-progress"></span> In progress</li>
+        <li><span class="ew-swatch-done"></span> Done</li>
+      </ul>
+    </article>
+  </div>`;
+  }
+  async function loadProjectReports() {
+    const project = currentProject();
+    if (!project || boardView !== "reports") return;
+    const token2 = ++reportsToken;
+    const board = $2("work-board");
+    board.innerHTML = `<p class="ew-meta">Loading reports\u2026</p>`;
+    try {
+      const reports = await api(`/v1/projects/${encodeURIComponent(project.id)}/reports`);
+      if (token2 !== reportsToken || boardView !== "reports") return;
+      board.innerHTML = renderReportsMarkup(reports);
+      hydrateIcons(board);
+      document.querySelector(".ew-body")?.classList.remove("is-issue");
+      $2("inspector-title").textContent = "Reports";
+      const kpis = reportKpis(reports);
+      inspector.innerHTML = `<div class="ew-meta">
+        <strong>${escapeHtml3(project.key)} reports</strong>
+        <span>${kpis.completed} completed</span>
+        <span>Median cycle ${escapeHtml3(kpis.medianCycle)}</span>
+        <span>${kpis.inProgress} in progress</span>
+      </div>
+      <p class="ew-report-lead">Throughput, cycle time, and cumulative flow come from issue events. Filters on the board do not change these charts.</p>`;
+    } catch (error) {
+      if (token2 !== reportsToken || boardView !== "reports") return;
+      board.innerHTML = `<p class="ew-error" role="alert">${escapeHtml3(error instanceof Error ? error.message : "Could not load reports")}</p>`;
+    }
   }
   function stickyAlt(color) {
     return color === "yellow" ? "Sticky" : `Sticky:${color}`;
@@ -37954,6 +38137,7 @@ ${err.toString()}`);
     $2("swimlane-epic")?.setAttribute("aria-pressed", String(swimlanes));
     $2("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
     $2("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
+    $2("view-reports")?.setAttribute("aria-pressed", String(boardView === "reports"));
     const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
     $2("type-filters").innerHTML = [
       `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
@@ -38027,6 +38211,14 @@ ${err.toString()}`);
     const board = $2("work-board");
     board.classList.toggle("has-swimlanes", swimlanes && boardView === "board");
     board.classList.toggle("is-list", boardView === "list");
+    board.classList.toggle("is-reports", boardView === "reports");
+    if (boardView === "reports") {
+      boardDndStop?.();
+      boardDndStop = void 0;
+      void loadProjectReports();
+      renderRail();
+      return;
+    }
     if (boardView === "list") {
       const statusName = (id2) => columns.find((status) => status.id === id2)?.name ?? id2;
       board.innerHTML = `<div class="ew-issue-table" role="table" aria-label="Issue list">
@@ -38398,6 +38590,18 @@ ${err.toString()}`);
         renderBoard();
         return;
       }
+      if (button.id === "export-svg") {
+        await showCanvasExport("svg");
+        return;
+      }
+      if (button.id === "export-png") {
+        await showCanvasExport("png");
+        return;
+      }
+      if (button.id === "export-pptx") {
+        await showCanvasExport("pptx");
+        return;
+      }
       if (button.dataset.toc) {
         const heading = [...editorMount.querySelectorAll("h1, h2, h3")].find((node) => node.textContent?.trim() === button.dataset.toc);
         heading?.scrollIntoView({ block: "center" });
@@ -38677,6 +38881,25 @@ ${err.toString()}`);
     if (file) await embedPageMedia("video", file);
     event.target.value = "";
   });
+  async function showCanvasExport(target = exportTarget) {
+    if (!selectedArtifactId) return;
+    exportTarget = target;
+    const report = await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/export?target=${encodeURIComponent(target)}`);
+    $2("inspector-title").textContent = "Export";
+    inspector.innerHTML = `<div id="canvas-export-report" class="ew-export">
+    <p class="ew-kicker">${escapeHtml3(target.toUpperCase())} fidelity</p>
+    <strong>Supported frames</strong>
+    <ul class="ew-export-list">${report.supported.map((item) => `<li>${escapeHtml3(item)}</li>`).join("") || "<li>None</li>"}</ul>
+    <strong>Gaps</strong>
+    <ul class="ew-export-list">${report.unsupported.map((item) => `<li>${escapeHtml3(item)}</li>`).join("") || "<li>No extra gaps for this target</li>"}</ul>
+    <p class="ew-export-note">${report.completeOfficeFidelity ? "Complete Office fidelity" : "Office theme mapping is not complete. SVG and PNG keep PaperDOM geometry."}</p>
+    <div class="ew-actions">
+      <button type="button" id="export-svg" aria-pressed="${String(target === "svg")}">SVG</button>
+      <button type="button" id="export-png" aria-pressed="${String(target === "png")}">PNG</button>
+      <button type="button" id="export-pptx" aria-pressed="${String(target === "pptx")}">PPTX</button>
+    </div>
+  </div>`;
+  }
   async function restackCanvas(direction) {
     if (!selectedArtifactId || !selectedCanvasId) return;
     const data = await api(`/v1/artifacts/${encodeURIComponent(selectedArtifactId)}`);
@@ -38773,6 +38996,10 @@ ${err.toString()}`);
     }
     if (button.id === "canvas-back") {
       void restackCanvas("back");
+      return;
+    }
+    if (button.id === "canvas-export") {
+      void showCanvasExport(exportTarget);
       return;
     }
     if (button.dataset.tool) {
@@ -39005,6 +39232,7 @@ ${err.toString()}`);
       { kind: "command", id: "mode:docs", title: "Open Docs", subtitle: "Pages" },
       { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
       { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
+      { kind: "command", id: "mode:reports", title: "Open reports", subtitle: "Work" },
       { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
       { kind: "command", id: "find", title: "Find in page", subtitle: "Docs" }
     ];
@@ -39043,6 +39271,11 @@ ${err.toString()}`);
     if (id2 === "mode:docs") setMode("docs");
     if (id2 === "mode:visuals") setMode("visuals");
     if (id2 === "mode:work") setMode("work");
+    if (id2 === "mode:reports") {
+      setMode("work");
+      boardView = "reports";
+      renderBoard();
+    }
     if (id2 === "create-page") void createPage();
     if (id2 === "find") {
       setMode("docs");
@@ -39136,10 +39369,17 @@ ${err.toString()}`);
     if (button.id === "view-list") {
       boardView = "list";
       renderBoard();
+      if (selectedIssueId) void inspectIssue(selectedIssueId);
       return;
     }
     if (button.id === "view-board") {
       boardView = "board";
+      renderBoard();
+      if (selectedIssueId) void inspectIssue(selectedIssueId);
+      return;
+    }
+    if (button.id === "view-reports") {
+      boardView = "reports";
       renderBoard();
       return;
     }
@@ -39209,6 +39449,7 @@ ${err.toString()}`);
       selectAll: () => Boolean(collab?.editor()?.chain().focus().selectAll().run()),
       findInPage: (query) => runPageFind(query),
       counts: () => collab?.counts() ?? { words: 0, characters: 0 },
+      boardView: () => boardView,
       undoCanvas,
       deleteCanvas: deleteCanvasSelection,
       openPalette,
@@ -39252,10 +39493,13 @@ lucide/dist/esm/replaceElement.mjs:
 lucide/dist/esm/icons/bell.mjs:
 lucide/dist/esm/icons/bold.mjs:
 lucide/dist/esm/icons/bug.mjs:
+lucide/dist/esm/icons/chart-column-stacked.mjs:
+lucide/dist/esm/icons/chart-column.mjs:
 lucide/dist/esm/icons/chevron-down.mjs:
 lucide/dist/esm/icons/circle-check.mjs:
 lucide/dist/esm/icons/code.mjs:
 lucide/dist/esm/icons/command.mjs:
+lucide/dist/esm/icons/download.mjs:
 lucide/dist/esm/icons/file-text.mjs:
 lucide/dist/esm/icons/flag.mjs:
 lucide/dist/esm/icons/funnel.mjs:

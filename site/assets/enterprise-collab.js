@@ -35657,6 +35657,23 @@ ${err.toString()}`);
     ["path", { d: "M9 7.13V6a3 3 0 1 1 6 0v1.13" }]
   ];
 
+  // node_modules/lucide/dist/esm/icons/chart-column-stacked.mjs
+  var ChartColumnStacked = [
+    ["path", { d: "M11 13H7" }],
+    ["path", { d: "M19 9h-4" }],
+    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16" }],
+    ["rect", { x: "15", y: "5", width: "4", height: "12", rx: "1" }],
+    ["rect", { x: "7", y: "8", width: "4", height: "9", rx: "1" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/chart-column.mjs
+  var ChartColumn = [
+    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16" }],
+    ["path", { d: "M18 17V9" }],
+    ["path", { d: "M13 17V5" }],
+    ["path", { d: "M8 17v-3" }]
+  ];
+
   // node_modules/lucide/dist/esm/icons/chevron-down.mjs
   var ChevronDown = [["path", { d: "m6 9 6 6 6-6" }]];
 
@@ -35675,6 +35692,13 @@ ${err.toString()}`);
   // node_modules/lucide/dist/esm/icons/command.mjs
   var Command = [
     ["path", { d: "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" }]
+  ];
+
+  // node_modules/lucide/dist/esm/icons/download.mjs
+  var Download = [
+    ["path", { d: "M12 15V3" }],
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }],
+    ["path", { d: "m7 10 5 5 5-5" }]
   ];
 
   // node_modules/lucide/dist/esm/icons/file-text.mjs
@@ -36037,10 +36061,13 @@ ${err.toString()}`);
     Bell,
     Bold: Bold2,
     Bug,
+    ChartColumn,
+    ChartColumnStacked,
     ChevronDown,
     CircleCheck,
     Code: Code2,
     Command,
+    Download,
     FileText,
     Filter: Funnel,
     Flag,
@@ -36482,10 +36509,13 @@ lucide/dist/esm/createElement.mjs:
 lucide/dist/esm/icons/bell.mjs:
 lucide/dist/esm/icons/bold.mjs:
 lucide/dist/esm/icons/bug.mjs:
+lucide/dist/esm/icons/chart-column-stacked.mjs:
+lucide/dist/esm/icons/chart-column.mjs:
 lucide/dist/esm/icons/chevron-down.mjs:
 lucide/dist/esm/icons/circle-check.mjs:
 lucide/dist/esm/icons/code.mjs:
 lucide/dist/esm/icons/command.mjs:
+lucide/dist/esm/icons/download.mjs:
 lucide/dist/esm/icons/file-text.mjs:
 lucide/dist/esm/icons/flag.mjs:
 lucide/dist/esm/icons/funnel.mjs:
