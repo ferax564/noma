@@ -58,6 +58,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
         <p id="login-error" class="ew-error" role="alert"></p>
       </div>
     </div>
+    <button type="button" id="present-exit" hidden>Exit present</button>
     <div id="workspace-shell" class="ew-shell">
       <header class="ew-topbar">
         <button type="button" class="ew-app-switcher" aria-label="Switch applications" disabled>
@@ -138,6 +139,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
               <label class="ew-file" for="insert-video"><span data-lucide="video"></span> Video<input id="insert-video" type="file" accept="video/*" /></label>
               <button id="doc-publish" type="button">Publish</button>
               <button type="button" id="page-find-open" aria-label="Find in page"><span data-lucide="search"></span> Find</button>
+              <button type="button" id="page-present" aria-label="Present page"><span data-lucide="monitor-play"></span> Present</button>
             </div>
             <div id="page-find" class="ew-find" hidden>
               <label class="ew-sr" for="page-find-input">Find in page</label>
@@ -199,6 +201,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="canvas-front" aria-label="Bring selected frame to front">Front</button>
                 <button type="button" id="canvas-back" aria-label="Send selected frame to back">Back</button>
                 <button type="button" id="canvas-export" aria-label="Export fidelity report"><span data-lucide="download"></span> Export</button>
+                <button type="button" id="canvas-present" aria-label="Present board"><span data-lucide="monitor-play"></span> Present</button>
                 <span class="ew-toolbar-sep" aria-hidden="true"></span>
                 <button type="button" id="zoom-out" aria-label="Zoom out"><span data-lucide="zoom-out"></span></button>
                 <span id="zoom-label">100%</span>
@@ -247,6 +250,7 @@ export function enterpriseWorkspaceHtml(options: EnterpriseShellHtmlOptions = {}
                 <button type="button" id="view-board" aria-pressed="true">Board</button>
                 <button type="button" id="view-list" aria-pressed="false">List</button>
                 <button type="button" id="view-reports" aria-pressed="false"><span data-lucide="chart-column"></span> Reports</button>
+                <button type="button" id="view-backlog" aria-pressed="false"><span data-lucide="list-todo"></span> Backlog</button>
               </div>
               <div id="type-filters" class="ew-filters" role="group" aria-label="Issue types"></div>
               <p id="jql-error" class="ew-error" role="alert"></p>

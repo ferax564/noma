@@ -1633,8 +1633,10 @@ export class EnterpriseWorkspace {
   }
 
   burndown(actor: ActorContext, sprintId: string): Array<{ at: string; remaining: number }> {
-    const sprint = this.store.db.prepare("SELECT * FROM sprints WHERE id = ?").get(sprintId) as { board_id: string; start_at: string | null };
-    const board = this.store.db.prepare("SELECT project_id FROM boards WHERE id = ?").get(sprint.board_id) as { project_id: string };
+    const sprint = this.store.db.prepare("SELECT * FROM sprints WHERE id = ?").get(sprintId) as { board_id: string; start_at: string | null } | undefined;
+    if (!sprint) throw new EnterpriseError("not_found", "sprint not found");
+    const board = this.store.db.prepare("SELECT project_id FROM boards WHERE id = ?").get(sprint.board_id) as { project_id: string } | undefined;
+    if (!board) throw new EnterpriseError("not_found", "board not found");
     this.requireRole(actor, "project", board.project_id, "viewer");
     const events = this.store.db
       .prepare(

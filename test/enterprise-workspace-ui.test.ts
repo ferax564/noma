@@ -140,6 +140,11 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   assert.match(await text(page, "#page-find-count"), /1 of /);
   await page.locator("#page-find-close").click();
   await page.waitForSelector("#page-find[hidden]");
+  await page.waitForSelector("#page-present");
+  await page.locator("#page-present").click();
+  await page.waitForSelector("#workspace-shell.is-presenting");
+  await page.locator("#present-exit").click();
+  await page.waitForFunction(() => !document.querySelector("#workspace-shell")?.classList.contains("is-presenting"));
   assert.deepEqual(await auditAccessibility(page), { ambiguousControls: [], duplicateIds: [], unnamedControls: [] });
 
   await page.locator("#mode-visuals").click();
@@ -155,6 +160,7 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#canvas-front");
   await page.waitForSelector("#canvas-back");
   await page.waitForSelector("#canvas-export");
+  await page.waitForSelector("#canvas-present");
   await page.waitForSelector(".pd-el-sticky");
   await page.waitForSelector(".pd-el-comment");
   await page.waitForSelector(".pd-resize");
@@ -187,6 +193,7 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   await page.waitForSelector("#swimlane-epic");
   await page.waitForSelector("#view-list");
   await page.waitForSelector("#view-reports");
+  await page.waitForSelector("#view-backlog");
   assert.match(await text(page, "#work-board"), /ATLAS-/);
   assert.match(await text(page, "#work-board"), /2026-09-22/);
   assert.match(await text(page, "#work-board"), /urgent|canvas/);
@@ -247,6 +254,17 @@ test("enterprise workspace UI covers Docs, Visuals, and Work", { timeout: 60_000
   assert.match(await text(page, "#report-throughput"), /Throughput/);
   assert.match(await text(page, "#report-cycle"), /ATLAS-/);
   assert.match(await text(page, "#report-cfd"), /Cumulative flow|To do|Done/);
+  await page.waitForSelector("#report-burndown");
+  assert.match(await text(page, "#report-burndown"), /Burn/);
+  await page.locator("#view-backlog").click();
+  await page.waitForSelector("#work-backlog");
+  await page.waitForSelector("#sprint-plan");
+  await page.waitForSelector("#backlog-list");
+  assert.match(await text(page, "#sprint-plan"), /ATLAS-/);
+  assert.match(await text(page, "#backlog-list"), /ATLAS-/);
+  const sprintBefore = await page.$$eval("#sprint-plan [data-issue]", (nodes) => nodes.length);
+  await page.locator("#backlog-list [data-sprint-action='add']").click();
+  await page.waitForFunction((previous) => (document.querySelectorAll("#sprint-plan [data-issue]").length) > previous, undefined, sprintBefore);
   await page.locator("#view-board").click();
   await page.waitForSelector(".ew-card");
   await page.waitForSelector("#advance-issue");

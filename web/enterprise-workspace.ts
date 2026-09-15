@@ -119,7 +119,7 @@ let epicFilter = "";
 let boardSearch = "";
 let typeFilter = "";
 let swimlanes = false;
-let boardView: "board" | "list" | "reports" = "board";
+let boardView: "board" | "list" | "reports" | "backlog" = "board";
 let paletteIndex = 0;
 let mentionStop: (() => void) | undefined;
 let canvasHistory: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
@@ -129,6 +129,7 @@ let findMatches: Array<{ from: number; to: number }> = [];
 let findIndex = 0;
 let reportsToken = 0;
 let exportTarget: "svg" | "png" | "pptx" = "svg";
+let presenting = false;
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -179,6 +180,14 @@ function escapeHtml(value: string): string {
 
 function currentProject(): ShellProject | undefined {
   return payload?.projects.find((project) => project.id === selectedProjectId) ?? payload?.projects[0];
+}
+
+function activeSprint(): { id: string; boardId: string; name: string; goal: string | null; state: string } | undefined {
+  if (!payload) return undefined;
+  const project = currentProject();
+  const boards = payload.boards.filter((board) => !project || board.projectId === project.id);
+  const board = boards[0];
+  return payload.sprints.find((sprint) => sprint.state === "active" && (!board || sprint.boardId === board.id));
 }
 
 function currentSpaceId(): string {
@@ -327,8 +336,9 @@ function barChartSvg(points: Array<{ label: string; value: number }>, ariaLabel:
       ? `<text class="ew-chart-label" x="${width / 2}" y="${pad.t + innerH / 2}" text-anchor="middle">No completions yet</text>`
       : points
           .map((point, index) => {
-            const slot = innerW / points.length;
-            const barW = slot * 0.62;
+            const slots = Math.max(points.length, 6);
+            const slot = innerW / slots;
+            const barW = Math.min(48, slot * 0.62);
             const x = pad.l + index * slot + (slot - barW) / 2;
             const h = Math.max(2, (point.value / max) * innerH);
             const y = pad.t + innerH - h;
@@ -379,6 +389,32 @@ function stackedAreaSvg(
   </svg>`;
 }
 
+function lineChartSvg(points: Array<{ label: string; value: number }>, ariaLabel: string): string {
+  const width = 640;
+  const height = 220;
+  const pad = { l: 40, r: 12, t: 16, b: 36 };
+  const innerW = width - pad.l - pad.r;
+  const innerH = height - pad.t - pad.b;
+  const sampled = sampleSeries(points, 48);
+  if (sampled.length === 0) {
+    return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+      <text class="ew-chart-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No sprint remaining yet</text>
+    </svg>`;
+  }
+  const max = Math.max(1, ...sampled.map((point) => point.value));
+  const last = sampled.length - 1;
+  const xAt = (index: number) => pad.l + (last === 0 ? innerW / 2 : (index / last) * innerW);
+  const yAt = (value: number) => pad.t + innerH - (value / max) * innerH;
+  const line = sampled.map((point, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(point.value).toFixed(1)}`).join(" ");
+  const area = `${line} L${xAt(last).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z`;
+  return `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" class="ew-chart">
+    <path class="ew-area-progress" d="${area}" />
+    <path class="ew-line" d="${line}" fill="none" />
+    <text class="ew-chart-label" x="${pad.l}" y="${height - 12}">${escapeHtml(sampled[0]?.label ?? "")}</text>
+    <text class="ew-chart-label" x="${width - pad.r}" y="${height - 12}" text-anchor="end">${escapeHtml(sampled[last]?.label ?? "")}</text>
+  </svg>`;
+}
+
 function reportKpis(reports: ProjectReports): { completed: number; medianCycle: string; inProgress: number } {
   const completed = reports.throughput.reduce((sum, point) => sum + point.completed, 0);
   const last = reports.cumulativeFlow[reports.cumulativeFlow.length - 1];
@@ -389,7 +425,10 @@ function reportKpis(reports: ProjectReports): { completed: number; medianCycle: 
   };
 }
 
-function renderReportsMarkup(reports: ProjectReports): string {
+function renderReportsMarkup(
+  reports: ProjectReports,
+  burndown: { name: string; points: Array<{ at: string; remaining: number }> } | undefined,
+): string {
   const kpis = reportKpis(reports);
   const cycleRows =
     reports.cycleTime.length === 0
@@ -406,12 +445,27 @@ function renderReportsMarkup(reports: ProjectReports): string {
               </button>`,
           )
           .join("");
+  const burn =
+    burndown && burndown.points.length
+      ? `<article id="report-burndown" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Burndown</h2>
+      <p class="ew-report-lead">${escapeHtml(burndown.name)} remaining estimate.</p>
+      ${lineChartSvg(
+        burndown.points.map((point) => ({ label: point.at.slice(0, 10), value: point.remaining })),
+        `${burndown.name} sprint burndown`,
+      )}
+    </article>`
+      : `<article id="report-burndown" class="ew-report">
+      <h2>${iconSvg("ChartColumn")} Burndown</h2>
+      <p class="ew-report-lead">Start a sprint to plot remaining estimate.</p>
+    </article>`;
   return `<div id="work-reports" class="ew-reports">
     <div id="report-kpis" class="ew-report-kpis">
       <div class="ew-kpi"><strong>${kpis.completed}</strong><span>Completed</span></div>
       <div class="ew-kpi"><strong>${escapeHtml(kpis.medianCycle)}</strong><span>Median cycle</span></div>
       <div class="ew-kpi"><strong>${kpis.inProgress}</strong><span>In progress</span></div>
     </div>
+    ${burn}
     <article id="report-throughput" class="ew-report">
       <h2>${iconSvg("ChartColumn")} Throughput</h2>
       <p class="ew-report-lead">Issues moved to Done each day.</p>
@@ -447,7 +501,15 @@ async function loadProjectReports(): Promise<void> {
   try {
     const reports = await api<ProjectReports>(`/v1/projects/${encodeURIComponent(project.id)}/reports`);
     if (token !== reportsToken || boardView !== "reports") return;
-    board.innerHTML = renderReportsMarkup(reports);
+    const sprint = activeSprint();
+    const burndown = sprint
+      ? {
+          name: sprint.name,
+          points: (await api<{ points: Array<{ at: string; remaining: number }> }>(`/v1/sprints/${encodeURIComponent(sprint.id)}/burndown`)).points,
+        }
+      : undefined;
+    if (token !== reportsToken || boardView !== "reports") return;
+    board.innerHTML = renderReportsMarkup(reports, burndown);
     hydrateIcons(board);
     document.querySelector(".ew-body")?.classList.remove("is-issue");
     $("inspector-title").textContent = "Reports";
@@ -624,7 +686,18 @@ function orderedDocuments(): ShellDocument[] {
   return walk("");
 }
 
+function setPresenting(on: boolean): void {
+  presenting = on;
+  const shell = document.getElementById("workspace-shell");
+  shell?.classList.toggle("is-presenting", on);
+  const exit = document.getElementById("present-exit");
+  if (exit) exit.hidden = !on;
+  $("page-present")?.setAttribute("aria-pressed", String(on && mode === "docs"));
+  $("canvas-present")?.setAttribute("aria-pressed", String(on && mode === "visuals"));
+}
+
 function setMode(next: Mode): void {
+  if (presenting) setPresenting(false);
   mode = next;
   for (const button of document.querySelectorAll<HTMLButtonElement>(".ew-modes button")) {
     button.setAttribute("aria-selected", String(button.dataset.mode === next));
@@ -1020,6 +1093,7 @@ function renderBoard(): void {
   $("view-board")?.setAttribute("aria-pressed", String(boardView === "board"));
   $("view-list")?.setAttribute("aria-pressed", String(boardView === "list"));
   $("view-reports")?.setAttribute("aria-pressed", String(boardView === "reports"));
+  $("view-backlog")?.setAttribute("aria-pressed", String(boardView === "backlog"));
   const projectTypes = payload.issueTypes.filter((type) => type.projectId === project?.id);
   $("type-filters").innerHTML = [
     `<button type="button" data-type="" aria-pressed="${String(!typeFilter)}">All types</button>`,
@@ -1100,10 +1174,46 @@ function renderBoard(): void {
   board.classList.toggle("has-swimlanes", swimlanes && boardView === "board");
   board.classList.toggle("is-list", boardView === "list");
   board.classList.toggle("is-reports", boardView === "reports");
+  board.classList.toggle("is-backlog", boardView === "backlog");
   if (boardView === "reports") {
     boardDndStop?.();
     boardDndStop = undefined;
     void loadProjectReports();
+    renderRail();
+    return;
+  }
+  if (boardView === "backlog") {
+    boardDndStop?.();
+    boardDndStop = undefined;
+    const sprint = activeSprint();
+    const inSprint = visible.filter((issue) => sprint && issue.sprintId === sprint.id);
+    const queued = visible.filter((issue) => !sprint || issue.sprintId !== sprint.id);
+    const points = inSprint.reduce((sum, issue) => sum + (issue.estimate ?? 0), 0);
+    const row = (issue: ShellIssue, action: "add" | "remove"): string =>
+      `<div class="ew-backlog-row${issue.id === selectedIssueId ? " is-open" : ""}">
+        ${issueCard(issue)}
+        ${
+          sprint
+            ? `<button type="button" class="ew-sprint-action" data-sprint-action="${action}" data-issue="${escapeHtml(issue.id)}" data-sprint="${escapeHtml(sprint.id)}">${action === "add" ? "Add to sprint" : "Remove"}</button>`
+            : ""
+        }
+      </div>`;
+    board.innerHTML = `<div id="work-backlog" class="ew-backlog">
+      <section id="sprint-plan" class="ew-backlog-pane">
+        <h2>${escapeHtml(sprint ? sprint.name : "No active sprint")} <span id="sprint-points">${points} pts · ${inSprint.length}</span></h2>
+        ${inSprint.map((issue) => row(issue, "remove")).join("") || `<p class="ew-meta">Pull issues from the backlog into this sprint.</p>`}
+      </section>
+      <section id="backlog-list" class="ew-backlog-pane">
+        <h2>Backlog <span>${queued.length}</span></h2>
+        ${queued.map((issue) => row(issue, "add")).join("") || `<p class="ew-meta">Backlog is empty.</p>`}
+      </section>
+    </div>`;
+    if (!selectedIssueId) {
+      document.querySelector(".ew-body")?.classList.remove("is-issue");
+      $("inspector-title").textContent = "Backlog";
+      inspector.innerHTML = `<div class="ew-meta"><strong>${queued.length} in backlog</strong><span>${inSprint.length} in sprint</span><span>${points} points committed</span></div>
+        <p class="ew-report-lead">${sprint ? "Add work to the active sprint, then run the board." : "Plan a sprint from the sprint bar to start committing work."}</p>`;
+    }
     renderRail();
     return;
   }
@@ -1509,6 +1619,22 @@ $("rail-actions").addEventListener("change", (event) => {
 });
 
 $("work-board").addEventListener("click", (event) => {
+  const action = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-sprint-action]");
+  if (action?.dataset.issue) {
+    event.preventDefault();
+    event.stopPropagation();
+    const sprintId = action.dataset.sprintAction === "add" ? action.dataset.sprint ?? null : null;
+    void (async () => {
+      await api(`/v1/issues/${encodeURIComponent(action.dataset.issue!)}/sprint`, {
+        method: "POST",
+        body: JSON.stringify({ sprintId }),
+      });
+      await refreshWorkspace();
+      renderBoard();
+      if (selectedIssueId) await inspectIssue(selectedIssueId);
+    })();
+    return;
+  }
   const card = (event.target as HTMLElement).closest<HTMLElement>("[data-issue]");
   if (card?.dataset.issue && !$("work-board").classList.contains("is-sorting")) void inspectIssue(card.dataset.issue);
 });
@@ -1969,6 +2095,10 @@ $("visual-toolbar").addEventListener("click", (event) => {
     void showCanvasExport(exportTarget);
     return;
   }
+  if (button.id === "canvas-present") {
+    setPresenting(!presenting);
+    return;
+  }
   if (button.dataset.tool) {
     $("visual-stage").dataset.tool = button.dataset.tool;
     syncVisualTools();
@@ -2033,6 +2163,8 @@ $("doc-comment-submit").addEventListener("click", async () => {
 });
 
 $("page-find-open").addEventListener("click", () => openPageFind());
+$("page-present").addEventListener("click", () => setPresenting(!presenting));
+$("present-exit").addEventListener("click", () => setPresenting(false));
 $("page-find-close").addEventListener("click", () => closePageFind());
 $("page-find-next").addEventListener("click", () => jumpFind(1));
 $("page-find-prev").addEventListener("click", () => jumpFind(-1));
@@ -2223,6 +2355,8 @@ function paletteItems(query: string): PaletteItem[] {
     { kind: "command", id: "mode:visuals", title: "Open Visuals", subtitle: "Whiteboards" },
     { kind: "command", id: "mode:work", title: "Open Work", subtitle: "Board" },
     { kind: "command", id: "mode:reports", title: "Open reports", subtitle: "Work" },
+    { kind: "command", id: "mode:backlog", title: "Open backlog", subtitle: "Work" },
+    { kind: "command", id: "present", title: "Present", subtitle: "Docs and Visuals" },
     { kind: "command", id: "create-page", title: "Create page", subtitle: "Docs" },
     { kind: "command", id: "find", title: "Find in page", subtitle: "Docs" },
   ];
@@ -2275,6 +2409,12 @@ function runPalette(kind: string, id: string): void {
     boardView = "reports";
     renderBoard();
   }
+  if (id === "mode:backlog") {
+    setMode("work");
+    boardView = "backlog";
+    renderBoard();
+  }
+  if (id === "present") setPresenting(true);
   if (id === "create-page") void createPage();
   if (id === "find") {
     setMode("docs");
@@ -2348,6 +2488,11 @@ document.addEventListener("keydown", (event) => {
     openPageFind();
     return;
   }
+  if (presenting && event.key === "Escape") {
+    event.preventDefault();
+    setPresenting(false);
+    return;
+  }
   const findBar = document.getElementById("page-find");
   if (findBar && !findBar.hidden && event.key === "Escape") {
     event.preventDefault();
@@ -2383,6 +2528,12 @@ $("board-filters").addEventListener("click", (event) => {
   if (button.id === "view-reports") {
     boardView = "reports";
     renderBoard();
+    return;
+  }
+  if (button.id === "view-backlog") {
+    boardView = "backlog";
+    renderBoard();
+    if (selectedIssueId) void inspectIssue(selectedIssueId);
     return;
   }
   if (!button.dataset.filter) return;
@@ -2456,6 +2607,7 @@ Object.assign(window, {
     findInPage: (query: string) => runPageFind(query),
     counts: () => collab?.counts() ?? { words: 0, characters: 0 },
     boardView: () => boardView,
+    presenting: () => presenting,
     undoCanvas,
     deleteCanvas: deleteCanvasSelection,
     openPalette,

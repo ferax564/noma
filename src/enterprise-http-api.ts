@@ -403,6 +403,11 @@ export async function dispatchEnterpriseApi(
     send(res, 200, { id });
     return true;
   }
+  const sprintBurndown = path.match(/^\/v1\/sprints\/([^/]+)\/burndown$/);
+  if (sprintBurndown && method === "GET") {
+    send(res, 200, { points: ws.burndown(actor, decodeURIComponent(sprintBurndown[1]!)) });
+    return true;
+  }
   const sprintAction = path.match(/^\/v1\/sprints\/([^/]+)\/(start|close)$/);
   if (sprintAction && method === "POST") {
     const sprintId = decodeURIComponent(sprintAction[1]!);

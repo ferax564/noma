@@ -1560,6 +1560,76 @@ button.ew-comment-quote {
 .ew-cycle-row:hover, .ew-cycle-row.is-open { background: var(--ds-surface-sunken); border-color: var(--ds-border); }
 .ew-cycle-row strong { font-size: 13px; font-weight: 500; }
 .ew-cycle-hours { font-family: var(--ds-mono); font-size: 12px; color: var(--ds-text-subtle); text-align: right; }
+.ew-line { stroke: var(--ds-accent); stroke-width: 2.5; }
+.ew-board.is-backlog {
+  display: block;
+  padding: 8px 16px 32px;
+}
+.ew-backlog {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.ew-backlog-pane {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-200);
+  background: var(--ds-surface);
+  min-height: 280px;
+}
+.ew-backlog-pane h2 {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+.ew-backlog-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+.ew-backlog-row .ew-card { margin: 0; }
+.ew-sprint-action {
+  white-space: nowrap;
+  font-size: 12px;
+}
+#present-exit {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 90;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #1d2125;
+  color: #fff;
+  box-shadow: var(--ds-shadow-overlay);
+}
+.ew-shell.is-presenting .ew-topbar,
+.ew-shell.is-presenting .ew-rail,
+.ew-shell.is-presenting .ew-inspector,
+.ew-shell.is-presenting .ew-discussion,
+.ew-shell.is-presenting #doc-toolbar,
+.ew-shell.is-presenting #page-find,
+.ew-shell.is-presenting .ew-visual-chrome,
+.ew-shell.is-presenting .ew-work-chrome {
+  display: none !important;
+}
+.ew-shell.is-presenting .ew-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+.ew-shell.is-presenting .ew-paper {
+  width: min(960px, calc(100% - 80px));
+  max-width: none;
+}
+.ew-shell.is-presenting .ew-visual-stage {
+  height: 100%;
+}
 .ew-export { display: grid; gap: 8px; }
 .ew-export-list { margin: 0; padding-left: 18px; font-size: 13px; }
 .ew-export-note { margin: 0; font-size: 12px; color: var(--ds-text-subtle); }

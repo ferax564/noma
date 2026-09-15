@@ -295,6 +295,10 @@ test("HTTP productizes docs, work, admin, import loss report, and notifications"
     assert.ok(reports.throughput.some((point) => point.completed >= 1));
     assert.ok(reports.cycleTime.some((row) => row.key.startsWith("ATLAS-")));
     assert.ok(reports.cumulativeFlow.length >= 1);
+    const burn = await fetch(`${origin}/v1/sprints/${fixture.sprintId}/burndown`, { headers: auth }).then((res) => res.json()) as {
+      points: Array<{ remaining: number }>;
+    };
+    assert.ok(burn.points.length >= 1);
   } finally {
     await server.close();
     ws.close();
