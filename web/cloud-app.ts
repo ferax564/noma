@@ -3434,7 +3434,7 @@ function renderHistory(): void {
     });
     const actions = document.createElement("div");
     actions.className = "history-actions";
-    actions.append(diff, restore);
+    actions.append(restore, diff);
     row.append(copy, actions);
     historyList.append(row);
   }

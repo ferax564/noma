@@ -2180,6 +2180,13 @@ Closes the remaining enterprise gates that §24.41 documented as external.
 - **Paid-pilot usability.** Three paid partners with champion and budget
   owner; go/no-go requires ≥30% median improvement and ≥50% completion.
 
+### §24.43 — Application review, Cloud hardening, wiki essentials (2026-09-22)
+
+A whole-repo review lives in `docs/review-2026-09.md`. It covers security, code health, Confluence parity, and a phased roadmap.
+
+- **Security.** Adds `safeHref` for rendered URLs. Workspace admin comes from an explicit allowlist or the first registered user. SCIM bindings are immutable. Adding a page to a space requires page owner. Agent grants are capped by the owner's current access. Hosted proofs no longer inline files. Artifacts get a CSP `sandbox`.
+- **Wiki essentials.** Pages form a tree per space, with breadcrumbs, a move API that rejects cycles, and create-as-child. Pages carry labels. Page and space watchers get `page_updated` notifications. A revision diff API has a block-level summary. Owners can purge the trash, subject to legal holds. The Cloud UI covers all of these, and the database schema is now v8.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can
