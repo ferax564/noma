@@ -69,7 +69,7 @@ import { convertMarkdownToNoma } from "./ingest-markdown.js";
 import { extractWikilinks } from "./inline.js";
 import type { PatchOp } from "./patch.js";
 import { slugify, parse } from "./parser.js";
-import { createAgentSafetyProof, type AgentSafetyProof } from "./proof.js";
+import { createAgentSafetyProof, lineDiff, type AgentSafetyProof } from "./proof.js";
 import { renderHtml } from "./renderer-html.js";
 import { renderJson } from "./renderer-json.js";
 import { renderLlm } from "./renderer-llm.js";
@@ -763,6 +763,11 @@ async function routeApi(
 
   if (resource === "trash") {
     await routeTrash(req, res, parts, config, principal);
+    return;
+  }
+
+  if (resource === "labels") {
+    routeLabels(req, res, url, parts, config, principal);
     return;
   }
 
@@ -1743,6 +1748,17 @@ async function routeTrash(
     sendJson(res, 200, { ok: true, resourceType, resourceId });
     return;
   }
+  if (method === "DELETE" && !action) {
+    await requireResourceAccess(config, principal, resourceType, resourceId, "owner", true);
+    if (!config.store.isTrashed(resourceType, resourceId)) throw new HttpError(409, "Only trashed resources can be permanently deleted");
+    const held = config.platform
+      .listLegalHolds()
+      .some((hold) => !hold.releasedAt && hold.resourceType === resourceType && hold.resourceId === resourceId);
+    if (held) throw new HttpError(409, "Resource is under legal hold", { code: "legal_hold" });
+    config.store.purgeResource(resourceType, resourceId);
+    sendJson(res, 200, { ok: true, purged: true, resourceType, resourceId });
+    return;
+  }
   throw new HttpError(404, "Unknown trash route");
 }
 
@@ -2263,6 +2279,16 @@ async function routeDocuments(
     return;
   }
 
+  if (suffix === "labels") {
+    await routeDocumentLabels(req, res, parts[4], config, principal, record);
+    return;
+  }
+
+  if (suffix === "watch") {
+    routeWatch(req, res, config, principal, record, "document");
+    return;
+  }
+
   if (suffix === "comments") {
     await routeDocumentComments(req, res, parts[4], parts[5], config, principal, record);
     return;
@@ -2370,6 +2396,18 @@ async function routeSites(
 
   if (suffix === "wiki") {
     await routeSiteWiki(req, res, config, principal, site);
+    return;
+  }
+
+  if (suffix === "tree") {
+    if (method !== "GET") throw new HttpError(405, "Method not allowed");
+    const access = requireRecordAccess(config, site, principal, "viewer");
+    sendJson(res, 200, { siteId: site.id, title: site.title, pages: sitePageTree(config, site), access: accessResponse(access) });
+    return;
+  }
+
+  if (suffix === "watch") {
+    routeWatch(req, res, config, principal, site, "site");
     return;
   }
 
@@ -2487,11 +2525,15 @@ async function routeSiteDocuments(
     const pageFolders = pageFolderMap(site.pageFolders, documentIds);
     const folder = optionalFolderName(input.folder);
     if (folder) pageFolders[document.id] = folder;
+    const parentId = optionalCloudId(input.parentId, "Parent document");
+    if (parentId && !site.documentIds.includes(parentId)) throw new HttpError(400, "parentId must be a page in this site");
+    const pageParents = { ...pageParentMap(site.pageParents, documentIds), ...(parentId ? { [document.id]: parentId } : {}) };
     const nextSite: CloudSiteRecord = {
       ...site,
-      documentIds,
+      documentIds: parentId ? placeAfterSubtree(documentIds, pageParents, document.id, parentId) : documentIds,
       folders: normalizeSiteFolders(site.folders ?? [], pageFolders),
       pageFolders,
+      pageParents,
       updatedAt: now,
       updatedBy: access.user?.id ?? site.updatedBy,
     };
@@ -2508,6 +2550,22 @@ async function routeSiteDocuments(
   if (parts[5] === "revisions") {
     const access = requireRecordAccess(config, site, principal, "viewer");
     await routeDocumentRevisions(req, res, parts[6], parts[7], config, await readDocument(config, docId), access);
+    return;
+  }
+
+  if (parts[5] === "breadcrumbs") {
+    if (method !== "GET") throw new HttpError(405, "Method not allowed");
+    requireRecordAccess(config, site, principal, "viewer");
+    sendJson(res, 200, { breadcrumbs: pageBreadcrumbs(config, site, docId) });
+    return;
+  }
+
+  if (parts[5] === "parent") {
+    if (method !== "PUT") throw new HttpError(405, "Method not allowed");
+    const access = requireRecordAccess(config, site, principal, "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const updated = await movePage(config, site, docId, input, access);
+    sendJson(res, 200, { site: siteResponse(updated, access), pages: sitePageTree(config, updated) });
     return;
   }
 
@@ -2576,6 +2634,15 @@ async function routeDocumentRevisions(
 
   if (!action && method === "GET") {
     sendJson(res, 200, revision);
+    return;
+  }
+
+  if (action === "diff" && method === "GET") {
+    const againstText = new URL(req.url ?? "/", "http://noma.local").searchParams.get("against");
+    const againstNumber = againstText === null ? revisionNumber - 1 : parseRevisionNumber(againstText);
+    const base = againstNumber > 0 ? config.store.readDocumentRevision(document.id, againstNumber) : undefined;
+    if (againstNumber > 0 && !base) throw new HttpError(404, "Comparison revision not found");
+    sendJson(res, 200, revisionDiffResponse(document.id, base, revision));
     return;
   }
 
@@ -3118,6 +3185,7 @@ async function createDocument(
     shareLinks: [],
   };
   await writeDocument(config, record);
+  config.store.setWatch(user.id, "document", record.id, now);
   recordActivity(config, user, "document.created", "document", record.id, { title: record.title });
   return record;
 }
@@ -3140,6 +3208,8 @@ async function updateDocument(
   };
   await writeDocument(config, record, existing.hash);
   if (access.user) recordActivity(config, access.user, "document.updated", "document", record.id, { hash: record.hash });
+  if (record.hash !== existing.hash || record.title !== existing.title) notifyPageWatchers(config, record, access);
+  if (access.user) config.store.setWatch(access.user.id, "document", record.id, record.updatedAt);
   return record;
 }
 
@@ -3163,6 +3233,7 @@ async function createSite(
     documentIds,
     folders: normalizeSiteFolders(folderList(input.folders), pageFolders),
     pageFolders,
+    pageParents: pageParentMap(input.pageParents, documentIds),
     createdAt: now,
     updatedAt: now,
     createdBy: user.id,
@@ -3198,6 +3269,7 @@ async function updateSite(
     documentIds,
     folders: normalizedFolders,
     pageFolders: pageFolderMap(pageFolders, documentIds),
+    pageParents: pageParentMap(input.pageParents === undefined ? existing.pageParents : input.pageParents, documentIds),
     updatedAt: config.now().toISOString(),
     updatedBy: access.user?.id ?? `share:${access.share?.id ?? "unknown"}`,
   };
@@ -3240,6 +3312,7 @@ async function listSites(config: CloudServerConfig, user: CloudUserRecord): Prom
     documentIds: record.documentIds,
     folders: record.folders,
     pageFolders: record.pageFolders,
+    pageParents: record.pageParents ?? {},
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     createdBy: record.createdBy,
@@ -3426,6 +3499,7 @@ function siteResponse(record: CloudSiteRecord, access: AccessContext): Record<st
     documentIds: record.documentIds,
     folders: normalizeSiteFolders(record.folders ?? [], pageFolders),
     pageFolders,
+    pageParents: pageParentMap(record.pageParents, record.documentIds),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     createdBy: record.createdBy,
@@ -4516,6 +4590,302 @@ async function resolveStaticPath(publicDir: string, pathname: string): Promise<s
     }
   }
   return null;
+}
+
+interface CloudPageTreeNode {
+  id: string;
+  title: string;
+  updatedAt: string;
+  folder?: string;
+  children: CloudPageTreeNode[];
+}
+
+interface CloudBreadcrumb {
+  type: "site" | "document";
+  id: string;
+  title: string;
+}
+
+/**
+ * Validates a child → parent page map against the site's pages. Unknown IDs are
+ * dropped (pages leave spaces), self-parents and cycles are rejected.
+ */
+function pageParentMap(value: unknown, documentIds: string[]): Record<string, string> {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) throw new HttpError(400, "pageParents must be an object");
+  const allowed = new Set(documentIds);
+  const next: Record<string, string> = {};
+  for (const [child, parent] of Object.entries(value as Record<string, unknown>)) {
+    assertCloudId(child, "Document");
+    if (typeof parent !== "string") throw new HttpError(400, "pageParents values must be document IDs");
+    assertCloudId(parent, "Parent document");
+    if (child === parent) throw new HttpError(400, "A page cannot be its own parent");
+    if (allowed.has(child) && allowed.has(parent)) next[child] = parent;
+  }
+  for (const start of Object.keys(next)) {
+    const seen = new Set<string>([start]);
+    let cursor = next[start];
+    while (cursor) {
+      if (seen.has(cursor)) throw new HttpError(400, "pageParents must not contain cycles");
+      seen.add(cursor);
+      cursor = next[cursor];
+    }
+  }
+  return next;
+}
+
+/** Nearest ancestor that is still visible; trashed parents hand their children up. */
+function effectivePageParent(config: CloudServerConfig, parents: Record<string, string>, documentId: string): string | undefined {
+  let parent = parents[documentId];
+  const seen = new Set<string>();
+  while (parent && config.store.isTrashed("document", parent) && !seen.has(parent)) {
+    seen.add(parent);
+    parent = parents[parent];
+  }
+  return parent;
+}
+
+function sitePageTree(config: CloudServerConfig, site: CloudSiteRecord): CloudPageTreeNode[] {
+  const parents = pageParentMap(site.pageParents, site.documentIds);
+  const folders = site.pageFolders ?? {};
+  const nodes = new Map<string, CloudPageTreeNode>();
+  for (const id of site.documentIds) {
+    if (config.store.isTrashed("document", id)) continue;
+    const document = config.store.readDocument(id);
+    if (!document) continue;
+    nodes.set(id, { id, title: document.title, updatedAt: document.updatedAt, ...(folders[id] ? { folder: folders[id] } : {}), children: [] });
+  }
+  const roots: CloudPageTreeNode[] = [];
+  for (const [id, node] of nodes) {
+    const parent = effectivePageParent(config, parents, id);
+    const parentNode = parent ? nodes.get(parent) : undefined;
+    if (parentNode) parentNode.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+function pageBreadcrumbs(config: CloudServerConfig, site: CloudSiteRecord, documentId: string): CloudBreadcrumb[] {
+  const parents = pageParentMap(site.pageParents, site.documentIds);
+  const chain: CloudBreadcrumb[] = [];
+  let cursor: string | undefined = documentId;
+  while (cursor) {
+    const document = config.store.readDocument(cursor);
+    if (document) chain.unshift({ type: "document", id: document.id, title: document.title });
+    cursor = effectivePageParent(config, parents, cursor);
+  }
+  return [{ type: "site", id: site.id, title: site.title }, ...chain];
+}
+
+function pageDescendants(parents: Record<string, string>, documentId: string): Set<string> {
+  const descendants = new Set<string>();
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [child, parent] of Object.entries(parents)) {
+      if ((parent === documentId || descendants.has(parent)) && !descendants.has(child)) {
+        descendants.add(child);
+        grew = true;
+      }
+    }
+  }
+  return descendants;
+}
+
+/** Moves `documentId` to sit directly after its parent's existing subtree in page order. */
+function placeAfterSubtree(documentIds: string[], parents: Record<string, string>, documentId: string, parentId: string): string[] {
+  const rest = documentIds.filter((id) => id !== documentId);
+  const subtree = pageDescendants(parents, parentId);
+  subtree.delete(documentId);
+  let insertAt = rest.indexOf(parentId) + 1;
+  for (let index = 0; index < rest.length; index++) {
+    if (subtree.has(rest[index]!)) insertAt = Math.max(insertAt, index + 1);
+  }
+  return [...rest.slice(0, insertAt), documentId, ...rest.slice(insertAt)];
+}
+
+async function movePage(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  documentId: string,
+  input: Record<string, unknown>,
+  access: AccessContext,
+): Promise<CloudSiteRecord> {
+  const parents = pageParentMap(site.pageParents, site.documentIds);
+  const parentId = input.parentId === null ? undefined : optionalCloudId(input.parentId, "Parent document");
+  if (parentId !== undefined) {
+    if (!site.documentIds.includes(parentId)) throw new HttpError(400, "parentId must be a page in this site");
+    if (parentId === documentId || pageDescendants(parents, documentId).has(parentId)) {
+      throw new HttpError(400, "A page cannot be moved under itself or its descendants");
+    }
+    parents[documentId] = parentId;
+  } else {
+    delete parents[documentId];
+  }
+  let documentIds = parentId ? placeAfterSubtree(site.documentIds, parents, documentId, parentId) : site.documentIds;
+  if (input.position !== undefined) {
+    if (typeof input.position !== "number" || !Number.isInteger(input.position) || input.position < 0) {
+      throw new HttpError(400, "position must be a non-negative integer");
+    }
+    const rest = documentIds.filter((id) => id !== documentId);
+    const siblings = rest.filter((id) => parents[id] === parents[documentId] && !config.store.isTrashed("document", id));
+    const before = siblings[input.position];
+    const insertAt = before === undefined ? documentIds.indexOf(documentId) : rest.indexOf(before);
+    documentIds = before === undefined ? documentIds : [...rest.slice(0, insertAt), documentId, ...rest.slice(insertAt)];
+  }
+  const record: CloudSiteRecord = {
+    ...site,
+    documentIds,
+    pageParents: parents,
+    updatedAt: config.now().toISOString(),
+    updatedBy: access.user?.id ?? `share:${access.share?.id ?? "unknown"}`,
+  };
+  await writeSite(config, record);
+  if (access.user) recordActivity(config, access.user, "document.moved", "site", site.id, { documentId, parentId: parentId ?? null });
+  return record;
+}
+
+function revisionDiffResponse(
+  documentId: string,
+  base: CloudDocumentRevision | undefined,
+  target: CloudDocumentRevision,
+): Record<string, unknown> {
+  const before = base?.source ?? "";
+  const diff = lineDiff(before, target.source);
+  const diffLines = diff.split("\n");
+  const beforeBlocks = blockFingerprints(before, documentId);
+  const afterBlocks = blockFingerprints(target.source, documentId);
+  const added = [...afterBlocks.keys()].filter((id) => !beforeBlocks.has(id));
+  const removed = [...beforeBlocks.keys()].filter((id) => !afterBlocks.has(id));
+  const changed = [...afterBlocks.keys()].filter((id) => beforeBlocks.has(id) && beforeBlocks.get(id) !== afterBlocks.get(id));
+  const summary = (revision: CloudDocumentRevision) => ({
+    revision: revision.revision,
+    title: revision.title,
+    hash: revision.hash,
+    createdAt: revision.createdAt,
+    createdBy: revision.createdBy,
+  });
+  return {
+    documentId,
+    from: base ? summary(base) : null,
+    to: summary(target),
+    titleChanged: (base?.title ?? "") !== target.title,
+    stats: {
+      added: diffLines.filter((line) => line.startsWith("+")).length,
+      removed: diffLines.filter((line) => line.startsWith("-")).length,
+    },
+    blocks: { added, removed, changed },
+    diff,
+  };
+}
+
+function blockFingerprints(source: string, documentId: string): Map<string, string> {
+  const fingerprints = new Map<string, string>();
+  if (!source) return fingerprints;
+  const doc = parse(source, { filename: `${documentId}.noma` });
+  for (const node of walk(doc)) {
+    if (!node.id || node.type === "document" || fingerprints.has(node.id)) continue;
+    fingerprints.set(node.id, JSON.stringify(node, (key, value: unknown) => (key === "pos" || key === "endLine" ? undefined : value)));
+  }
+  return fingerprints;
+}
+
+const LABEL_RE = /^[\p{L}\p{N}][\p{L}\p{N}_.:-]{0,49}$/u;
+
+/** Confluence-style label: lowercase, whitespace becomes `-`, 1–50 word characters. */
+function labelInput(value: unknown): string {
+  if (typeof value !== "string") throw new HttpError(400, "label must be a string");
+  const label = value.trim().toLowerCase().replace(/\s+/g, "-");
+  if (!LABEL_RE.test(label)) throw new HttpError(400, "label must be 1-50 letters, digits, '-', '_', '.', or ':'");
+  return label;
+}
+
+function labelListInput(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new HttpError(400, "labels must be an array");
+  if (value.length > 50) throw new HttpError(400, "A page can carry at most 50 labels");
+  return [...new Set(value.map(labelInput))].sort();
+}
+
+async function routeDocumentLabels(
+  req: IncomingMessage,
+  res: ServerResponse,
+  labelText: string | undefined,
+  config: CloudServerConfig,
+  principal: Principal,
+  document: CloudDocumentRecord,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  if (!labelText && method === "GET") {
+    requireRecordAccess(config, document, principal, "viewer");
+    sendJson(res, 200, { documentId: document.id, labels: config.store.listDocumentLabels(document.id) });
+    return;
+  }
+  const access = requireRecordAccess(config, document, principal, "editor");
+  const actor = access.user?.id ?? `share:${access.share?.id ?? "unknown"}`;
+  const now = config.now().toISOString();
+  const current = config.store.listDocumentLabels(document.id);
+  let next: string[];
+  if (!labelText && method === "PUT") {
+    next = labelListInput((await readJsonBody(req, config.maxBodyBytes)).labels);
+  } else if (!labelText && method === "POST") {
+    const label = labelInput((await readJsonBody(req, config.maxBodyBytes)).label);
+    next = [...new Set([...current, label])].sort();
+    if (next.length > 50) throw new HttpError(400, "A page can carry at most 50 labels");
+  } else if (labelText && method === "DELETE") {
+    const label = labelInput(decodePathSegment(labelText));
+    next = current.filter((existing) => existing !== label);
+  } else {
+    throw new HttpError(405, "Method not allowed");
+  }
+  const labels = config.store.replaceDocumentLabels(document.id, next, actor, now);
+  if (access.user) recordActivity(config, access.user, "document.labeled", "document", document.id, { labels });
+  sendJson(res, 200, { documentId: document.id, labels });
+}
+
+function routeLabels(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  parts: string[],
+  config: CloudServerConfig,
+  principal: Principal,
+): void {
+  if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
+  const user = requireUser(principal);
+  const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
+  const labelText = parts[2];
+  if (!labelText) {
+    sendJson(res, 200, { labels: config.store.listLabels(user, siteId) });
+    return;
+  }
+  const label = labelInput(decodePathSegment(labelText));
+  sendJson(res, 200, { label, documents: config.store.listDocumentsByLabel(user, label, siteId) });
+}
+
+function routeWatch(
+  req: IncomingMessage,
+  res: ServerResponse,
+  config: CloudServerConfig,
+  principal: Principal,
+  record: CloudDocumentRecord | CloudSiteRecord,
+  resourceType: CloudResourceType,
+): void {
+  const method = req.method ?? "GET";
+  const user = requireUser(principal);
+  requireRecordAccess(config, record, principal, "viewer");
+  if (method === "PUT") config.store.setWatch(user.id, resourceType, record.id, config.now().toISOString());
+  else if (method === "DELETE") config.store.removeWatch(user.id, resourceType, record.id);
+  else if (method !== "GET") throw new HttpError(405, "Method not allowed");
+  sendJson(res, 200, { resourceType, resourceId: record.id, watching: config.store.isWatching(user.id, resourceType, record.id) });
+}
+
+function notifyPageWatchers(config: CloudServerConfig, document: CloudDocumentRecord, access: AccessContext): void {
+  const actorId = access.user?.id;
+  const actorName = access.user?.name ?? "A share-link editor";
+  for (const userId of config.store.documentWatchers(document.id)) {
+    if (userId === actorId || !config.store.documentAccessRole(userId, document.id)) continue;
+    writeNotification(config, userId, "page_updated", `${document.title} was updated`, `${actorName} edited ${document.title}.`, "document", document.id);
+  }
 }
 
 function decodePathSegment(value: string): string {

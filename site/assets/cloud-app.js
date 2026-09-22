@@ -3087,6 +3087,13 @@
   function isBlockReferenceWikilinkTarget(target) {
     return BLOCK_REFERENCE_WIKILINK_RE.test(target);
   }
+  var SAFE_URL_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:", "mailto:", "tel:"]);
+  function safeHref(href) {
+    const normalized = href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
+    const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized)?.[1];
+    if (!scheme) return href;
+    return SAFE_URL_SCHEMES.has(`${scheme}:`) ? href : "#";
+  }
   function inlineToHtml(src) {
     let text = escapeHtml(src);
     const codeSpans = [];
@@ -3102,7 +3109,7 @@
     text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
     text = text.replace(
       MARKDOWN_LINK_RE,
-      (_m, label, href) => `<a href="${escapeAttr(href)}">${unescapeMarkdownLinkLabel(label)}</a>`
+      (_m, label, href) => `<a href="${escapeAttr(safeHref(href))}">${unescapeMarkdownLinkLabel(label)}</a>`
     );
     text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
     text = text.replace(/(?:  +|\\)\n/g, "<br />");
@@ -3248,6 +3255,29 @@
     return `"${cell.replace(/"/g, '""')}"`;
   }
 
+  // src/stable-identity.ts
+  var STABLE_ID_LINE_RE = /^\{#([A-Za-z][\w:./-]*)((?:\s+[a-zA-Z_][\w-]*="[^"]*")*)\}\s*$/;
+  var INLINE_STABLE_ID_RE = /^\{#([A-Za-z][\w:./-]*)\}\s*/;
+  function parseInlineStableId(raw) {
+    const match = INLINE_STABLE_ID_RE.exec(raw);
+    if (!match) return { content: raw };
+    return { id: match[1], content: raw.slice(match[0].length) };
+  }
+  function parseListItemIdentity(raw) {
+    const parsed = parseInlineStableId(raw);
+    return parsed.id ? { id: parsed.id, content: parsed.content } : { content: raw };
+  }
+  function collectTableIdentityStrings(table) {
+    const ids = [];
+    for (const id of table.columnIds ?? []) if (id) ids.push(id);
+    for (const id of table.headerIds ?? []) if (id) ids.push(id);
+    for (const id of table.rowIds ?? []) if (id) ids.push(id);
+    for (const row of table.cellIds ?? []) {
+      for (const id of row) if (id) ids.push(id);
+    }
+    return ids;
+  }
+
   // src/parser.ts
   var FRONTMATTER_RE = /^---\s*$/;
   var HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
@@ -3320,12 +3350,54 @@
     }
     return { meta: {}, raw: "", startLine: 0, endLine: 0 };
   }
+  function splitIdList(raw) {
+    if (!raw) return void 0;
+    const list = raw.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean);
+    return list.length > 0 ? list : void 0;
+  }
+  function applyPendingId(node, pending) {
+    const pendingId = pending.id;
+    const cols = pending.cols;
+    const rows = pending.rows;
+    pending.id = void 0;
+    pending.cols = void 0;
+    pending.rows = void 0;
+    if (pendingId) {
+      if (!node.id) node.id = pendingId;
+      else if (node.id !== pendingId) {
+        const aliases = new Set(node.aliases ?? []);
+        aliases.add(pendingId);
+        node.aliases = [...aliases];
+      }
+      if (node.type === "directive" && node.attrs.id === void 0) {
+        node.attrs = { ...node.attrs, id: pendingId };
+      }
+    }
+    if (node.type === "table") {
+      if (cols) node.columnIds = cols;
+      if (rows) node.rowIds = rows;
+    }
+    return node;
+  }
   function parseBlocks(lines, from, to, parentColons) {
     const out = [];
     let i = from;
+    const pending = {};
     while (i < to) {
       const line = lines[i] ?? "";
       if (line.trim() === "") {
+        i++;
+        continue;
+      }
+      const stableId = matchOnce(STABLE_ID_LINE_RE, line);
+      if (stableId) {
+        pending.id = stableId[1];
+        const extra = stableId[2]?.trim();
+        if (extra) {
+          const attrs = parseAttrs(`{${extra}}`);
+          pending.cols = splitIdList(typeof attrs.cols === "string" ? attrs.cols : void 0);
+          pending.rows = splitIdList(typeof attrs.rows === "string" ? attrs.rows : void 0);
+        }
         i++;
         continue;
       }
@@ -3339,7 +3411,7 @@
         }
         if (colons > parentColons || parentColons === 0) {
           const result = parseDirective(lines, i, to, colons);
-          out.push(result.node);
+          out.push(applyPendingId(result.node, pending));
           i = result.next;
           continue;
         }
@@ -3373,7 +3445,7 @@
           const list = aliasesAttr.split(/[,\s]+/).map((a) => a.trim()).filter(Boolean);
           if (list.length > 0) section.aliases = list;
         }
-        out.push(section);
+        out.push(applyPendingId(section, pending));
         i++;
         continue;
       }
@@ -3385,13 +3457,18 @@
         while (end < to && !FENCE_RE.test(lines[end] ?? "")) end++;
         const content = lines.slice(start, end).join("\n");
         const closed = end < to;
-        out.push({
-          type: "code",
-          lang,
-          content,
-          pos: { line: i + 1, column: 1 },
-          endLine: closed ? end + 1 : end
-        });
+        out.push(
+          applyPendingId(
+            {
+              type: "code",
+              lang,
+              content,
+              pos: { line: i + 1, column: 1 },
+              endLine: closed ? end + 1 : end
+            },
+            pending
+          )
+        );
         i = closed ? end + 1 : end;
         continue;
       }
@@ -3399,17 +3476,22 @@
         const result = parseTable(lines, i, to);
         if (result) {
           result.node.endLine = result.next;
-          out.push(result.node);
+          out.push(applyPendingId(result.node, pending));
           i = result.next;
           continue;
         }
       }
       if (THEMATIC_BREAK_RE.test(line)) {
-        out.push({
-          type: "thematic_break",
-          pos: { line: i + 1, column: 1 },
-          endLine: i + 1
-        });
+        out.push(
+          applyPendingId(
+            {
+              type: "thematic_break",
+              pos: { line: i + 1, column: 1 },
+              endLine: i + 1
+            },
+            pending
+          )
+        );
         i++;
         continue;
       }
@@ -3422,12 +3504,17 @@
           buf2.push(m[1] ?? "");
           i++;
         }
-        out.push({
-          type: "quote",
-          content: buf2.join("\n"),
-          pos: { line: startLine2 + 1, column: 1 },
-          endLine: i
-        });
+        out.push(
+          applyPendingId(
+            {
+              type: "quote",
+              content: buf2.join("\n"),
+              pos: { line: startLine2 + 1, column: 1 },
+              endLine: i
+            },
+            pending
+          )
+        );
         continue;
       }
       if (LIST_RE.test(line) || ORDERED_LIST_RE.test(line)) {
@@ -3438,21 +3525,28 @@
         while (i < to) {
           const m = matchOnce(re, lines[i] ?? "");
           if (!m) break;
+          const parsedItem = parseListItemIdentity(m[2] ?? "");
           items.push({
             type: "list_item",
-            content: m[2] ?? "",
+            content: parsedItem.content,
+            ...parsedItem.id ? { id: parsedItem.id } : {},
             pos: { line: i + 1, column: 1 },
             endLine: i + 1
           });
           i++;
         }
-        out.push({
-          type: "list",
-          ordered,
-          items,
-          pos: { line: startLine2 + 1, column: 1 },
-          endLine: i
-        });
+        out.push(
+          applyPendingId(
+            {
+              type: "list",
+              ordered,
+              items,
+              pos: { line: startLine2 + 1, column: 1 },
+              endLine: i
+            },
+            pending
+          )
+        );
         continue;
       }
       const buf = [];
@@ -3460,13 +3554,13 @@
       while (i < to) {
         const cur = lines[i] ?? "";
         const next = lines[i + 1] ?? "";
-        if (cur.trim() === "" || HEADING_RE.test(cur) || FENCE_RE.test(cur) || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
+        if (cur.trim() === "" || HEADING_RE.test(cur) || FENCE_RE.test(cur) || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || STABLE_ID_LINE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
           break;
         }
         buf.push(cur);
         i++;
       }
-      if (buf.length > 0) out.push(paragraph(buf.join("\n"), startLine, i));
+      if (buf.length > 0) out.push(applyPendingId(paragraph(buf.join("\n"), startLine, i), pending));
     }
     return out;
   }
@@ -3508,9 +3602,12 @@
   function parseTable(lines, i, to) {
     const headerLine = lines[i] ?? "";
     const sepLine = lines[i + 1] ?? "";
-    const header = splitRow(headerLine);
+    const rawHeader = splitRow(headerLine);
     const sepCells = splitRow(sepLine);
-    if (sepCells.length !== header.length) return null;
+    if (sepCells.length !== rawHeader.length) return null;
+    const parsedHeader = rawHeader.map(parseInlineStableId);
+    const header = parsedHeader.map((cell) => cell.content);
+    const headerIds = parsedHeader.map((cell) => cell.id ?? "");
     const align = sepCells.map((c) => {
       const left = c.startsWith(":");
       const right = c.endsWith(":");
@@ -3520,24 +3617,27 @@
       return null;
     });
     const rows = [];
+    const cellIds = [];
     let j = i + 2;
     while (j < to && TABLE_ROW_RE.test(lines[j] ?? "")) {
       const cells = splitRow(lines[j] ?? "");
       while (cells.length < header.length) cells.push("");
       if (cells.length > header.length) cells.length = header.length;
-      rows.push(cells);
+      const parsed = cells.map(parseInlineStableId);
+      rows.push(parsed.map((cell) => cell.content));
+      cellIds.push(parsed.map((cell) => cell.id ?? ""));
       j++;
     }
-    return {
-      node: {
-        type: "table",
-        header,
-        align,
-        rows,
-        pos: { line: i + 1, column: 1 }
-      },
-      next: j
+    const node = {
+      type: "table",
+      header,
+      align,
+      rows,
+      pos: { line: i + 1, column: 1 }
     };
+    if (headerIds.some(Boolean)) node.headerIds = headerIds;
+    if (cellIds.some((row) => row.some(Boolean))) node.cellIds = cellIds;
+    return { node, next: j };
   }
   function parseAttrs(raw) {
     const attrs = {};
@@ -3766,8 +3866,6 @@
       this.op = op;
       this.name = "PatchError";
     }
-    code;
-    op;
   };
   var OP_REQUIRED_FIELDS = {
     replace_block: [["id", "string"], ["content", "string"]],
@@ -6975,17 +7073,34 @@ ${items}
         const head = node.header.map((cell, idx) => {
           const align = node.align[idx];
           const styleAttr = align ? ` style="text-align: ${align}"` : "";
-          return `<th${styleAttr}>${inlineToHtml(cell)}</th>`;
+          const cellId = node.headerIds?.[idx];
+          const colId = node.columnIds?.[idx];
+          const idAttr = cellId ? ` id="${escapeAttr(cellId)}"` : "";
+          const data = [
+            cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
+            colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
+          ].join("");
+          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</th>`;
         }).join("");
-        const body = node.rows.map((row) => {
+        const body = node.rows.map((row, rowIndex) => {
+          const rowId = node.rowIds?.[rowIndex];
+          const trAttr = rowId ? ` data-noma-row-id="${escapeAttr(rowId)}"` : "";
           const cells = row.map((cell, idx) => {
             const align = node.align[idx];
             const styleAttr = align ? ` style="text-align: ${align}"` : "";
-            return `<td${styleAttr}>${inlineToHtml(cell)}</td>`;
+            const cellId = node.cellIds?.[rowIndex]?.[idx];
+            const colId = node.columnIds?.[idx];
+            const idAttr = cellId ? ` id="${escapeAttr(cellId)}"` : "";
+            const data = [
+              cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
+              colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
+            ].join("");
+            return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</td>`;
           }).join("");
-          return `<tr>${cells}</tr>`;
+          return `<tr${trAttr}>${cells}</tr>`;
         }).join("\n");
-        return `<table class="noma-table">
+        const tableId = node.id ? ` id="${escapeAttr(node.id)}"` : "";
+        return `<table class="noma-table"${tableId}>
 <thead><tr>${head}</tr></thead>
 <tbody>
 ${body}
@@ -7111,7 +7226,7 @@ ${inner}
       case "pagebreak":
         return `<div class="noma-pagebreak"${idAttr} role="separator" aria-label="Page break"></div>`;
       case "button": {
-        const href = node.attrs.href ? String(node.attrs.href) : "#";
+        const href = node.attrs.href ? safeHref(String(node.attrs.href)) : "#";
         return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</a>`;
       }
       case "figure": {
@@ -7131,7 +7246,7 @@ ${inner}
         const summary = `Dataset: ${escapeHtml(String(node.attrs.id ?? "dataset"))}`;
         const src = typeof node.attrs.src === "string" ? node.attrs.src : "";
         const inline = node.body ?? "";
-        const body = inline.trim() ? escapeHtml(inline) : src ? `<a class="noma-dataset-src" href="${escapeAttr(src)}">${escapeHtml(src)}</a>` : "";
+        const body = inline.trim() ? escapeHtml(inline) : src ? `<a class="noma-dataset-src" href="${escapeAttr(safeHref(src))}">${escapeHtml(src)}</a>` : "";
         return `<details class="noma-dataset"${idAttr}${src ? ` data-src="${escapeAttr(src)}"` : ""}><summary>${summary}</summary><pre>${body}</pre></details>`;
       }
       case "metric":
@@ -7451,7 +7566,7 @@ ${items}
   }
   function renderCitationEntry(entry) {
     const links = [];
-    if (entry.url) links.push(`<a href="${escapeAttr(entry.url)}">URL</a>`);
+    if (entry.url) links.push(`<a href="${escapeAttr(safeHref(entry.url))}">URL</a>`);
     if (entry.doi) links.push(`<a href="https://doi.org/${escapeAttr(entry.doi)}">DOI: ${escapeHtml(entry.doi)}</a>`);
     if (entry.accessed) links.push(`<span>Accessed: ${escapeHtml(entry.accessed)}</span>`);
     const meta = links.length > 0 ? ` <span class="noma-citation-meta">${links.join(" \xB7 ")}</span>` : "";
@@ -8955,6 +9070,21 @@ ${bodyRows}
           ids.set(node.id, node);
         }
       }
+      if (node.type === "table") {
+        for (const tableId of collectTableIdentityStrings(node)) {
+          if (ids.has(tableId)) {
+            diagnostics.push({
+              severity: "error",
+              code: "duplicate-id",
+              message: `Duplicate block ID "${tableId}".`,
+              pos: node.pos,
+              nodeId: tableId
+            });
+          } else {
+            ids.set(tableId, node);
+          }
+        }
+      }
       if (node.aliases) {
         for (const a of node.aliases) {
           aliasIds.add(a);
@@ -9800,8 +9930,6 @@ ${bodyRows}
       this.payload = payload;
       this.name = "CloudRequestError";
     }
-    status;
-    payload;
   };
   var userStorageKey = "noma.cloud.user.v1";
   var activeSiteStorageKey = "noma.cloud.activeSite.v1";
@@ -9853,6 +9981,11 @@ ${bodyRows}
   var savePageButton = requireElement("savePageButton");
   var reloadPageButton = requireElement("reloadPageButton");
   var favoritePageButton = requireElement("favoritePageButton");
+  var watchPageButton = requireElement("watchPageButton");
+  var pageBreadcrumbs = requireElement("pageBreadcrumbs");
+  var pageLabels = requireElement("pageLabels");
+  var addLabelButton = requireElement("addLabelButton");
+  var revisionDiffOutput = requireElement("revisionDiffOutput");
   var copyPageLinkButton = requireElement("copyPageLinkButton");
   var copyArtifactLinkButton = requireElement("copyArtifactLinkButton");
   var copySiteLinkButton = requireElement("copySiteLinkButton");
@@ -9965,6 +10098,8 @@ ${bodyRows}
   var cloudSearchResults = [];
   var recentItems = [];
   var favoriteItems = [];
+  var currentLabels = [];
+  var currentWatching = false;
   var trashItems = [];
   var notifications = [];
   var comments = [];
@@ -10074,6 +10209,12 @@ ${bodyRows}
     });
     favoritePageButton.addEventListener("click", () => {
       if (currentPage) void toggleFavorite("document", currentPage.id);
+    });
+    watchPageButton.addEventListener("click", () => {
+      void toggleWatch();
+    });
+    addLabelButton.addEventListener("click", () => {
+      void addLabel();
     });
     refreshTrashButton.addEventListener("click", () => {
       void refreshTrash();
@@ -10734,7 +10875,7 @@ ${bodyRows}
       renderChrome();
     }
   }
-  async function createPage(folder = activeFolder) {
+  async function createPage(folder = activeFolder, parentId) {
     if (!currentSite) {
       await createStarterWorkspace(promptName("Space name", "Research Workspace"));
       return;
@@ -10755,10 +10896,16 @@ ${bodyRows}
         body: JSON.stringify({
           title,
           templateId: template?.id ?? "blank",
-          folder: normalizedFolder
+          folder: normalizedFolder,
+          ...parentId ? { parentId } : {}
         })
       });
       pages = [...pages, page];
+      if (parentId) {
+        const refreshed = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}`);
+        currentSite = { ...currentSite, documentIds: refreshed.documentIds, pageParents: refreshed.pageParents ?? {} };
+        pages = refreshed.documentIds.map((id) => pages.find((candidate) => candidate.id === id)).filter((candidate) => Boolean(candidate));
+      }
       const documentIds = [...currentSite.documentIds, page.id];
       const pageFolders = normalizedPageFolders({ ...currentSite.pageFolders, ...normalizedFolder ? { [page.id]: normalizedFolder } : {} }, documentIds);
       currentSite = {
@@ -10947,6 +11094,32 @@ ${bodyRows}
     };
     if (sameFolder(activeFolder, currentFolder)) activeFolder = "";
     await saveSiteStructure("Deleted folder");
+  }
+  async function movePageUnder(pageId) {
+    if (!currentSite || !canEditSite()) return;
+    const page = pages.find((item) => item.id === pageId);
+    const answer = window.prompt(`Parent page title for "${page?.title ?? "page"}" (leave empty for top level)`, "");
+    if (answer === null) return;
+    const parent = answer.trim() ? pages.find((item) => item.title.toLowerCase() === answer.trim().toLowerCase()) : void 0;
+    if (answer.trim() && !parent) {
+      setCloudStatus(`No page titled "${answer.trim()}" in this space`, "error");
+      return;
+    }
+    setBusy(true, "Moving page", "warning");
+    try {
+      const response = await fetchCloudJson(
+        `/api/sites/${encodeURIComponent(currentSite.id)}/documents/${encodeURIComponent(pageId)}/parent`,
+        { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentId: parent?.id ?? null }) }
+      );
+      currentSite = { ...currentSite, documentIds: response.site.documentIds, pageParents: response.site.pageParents ?? {} };
+      pages = response.site.documentIds.map((id) => pages.find((candidate) => candidate.id === id)).filter((candidate) => Boolean(candidate));
+      setCloudStatus(parent ? `Moved under ${parent.title}` : "Moved to top level", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
   }
   async function movePage(pageId) {
     if (!currentSite || !canEditSite()) return;
@@ -12245,7 +12418,151 @@ ${bodyRows}
     renderChrome();
     void refreshHistory({ silent: true });
     void refreshPageCollaboration();
+    void refreshPageMeta();
     void recordRecent("document", page.id);
+  }
+  async function refreshPageMeta() {
+    currentLabels = [];
+    currentWatching = false;
+    revisionDiffOutput.hidden = true;
+    const page = currentPage;
+    if (!page || !cloudUser) {
+      renderChrome();
+      return;
+    }
+    try {
+      const [labels, watch] = await Promise.all([
+        fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/labels`),
+        fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/watch`)
+      ]);
+      if (currentPage?.id !== page.id) return;
+      currentLabels = labels.labels;
+      currentWatching = watch.watching;
+    } catch {
+      return;
+    } finally {
+      renderChrome();
+    }
+  }
+  async function toggleWatch() {
+    if (!currentPage || !cloudUser) return;
+    try {
+      const response = await fetchCloudJson(`/api/documents/${encodeURIComponent(currentPage.id)}/watch`, {
+        method: currentWatching ? "DELETE" : "PUT"
+      });
+      currentWatching = response.watching;
+      setCloudStatus(currentWatching ? "Watching page: you will be notified of edits" : "Stopped watching page", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      renderChrome();
+    }
+  }
+  async function addLabel() {
+    if (!currentPage || !canEditPage()) return;
+    const label = window.prompt("Add label", "")?.trim();
+    if (!label) return;
+    await updateLabels({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label }) });
+  }
+  async function removeLabel(label) {
+    if (!currentPage || !canEditPage()) return;
+    await updateLabels({ method: "DELETE" }, `/${encodeURIComponent(label)}`);
+  }
+  async function updateLabels(init, suffix = "") {
+    if (!currentPage) return;
+    try {
+      const response = await fetchCloudJson(`/api/documents/${encodeURIComponent(currentPage.id)}/labels${suffix}`, init);
+      currentLabels = response.labels;
+      setCloudStatus("Updated labels", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      renderChrome();
+    }
+  }
+  function renderPageMeta() {
+    pageLabels.textContent = "";
+    for (const label of currentLabels) {
+      const chip = document.createElement("span");
+      chip.className = "label-chip";
+      chip.textContent = label;
+      if (canEditPage()) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "\xD7";
+        remove.setAttribute("aria-label", `Remove label ${label}`);
+        remove.addEventListener("click", () => void removeLabel(label));
+        chip.append(remove);
+      }
+      pageLabels.append(chip);
+    }
+    addLabelButton.hidden = !currentPage || !canEditPage();
+    addLabelButton.disabled = busy;
+    watchPageButton.disabled = busy || !cloudUser || !currentPage;
+    watchPageButton.textContent = currentWatching ? "Unwatch" : "Watch";
+    watchPageButton.setAttribute("aria-pressed", String(currentWatching));
+    pageBreadcrumbs.textContent = "";
+    if (!currentSite || !currentPage) return;
+    const siteCrumb = document.createElement("span");
+    siteCrumb.className = "crumb crumb-site";
+    siteCrumb.textContent = currentSite.title;
+    pageBreadcrumbs.append(siteCrumb);
+    for (const ancestorId of pageAncestors(currentPage.id).reverse()) {
+      const ancestor = pages.find((page) => page.id === ancestorId);
+      if (!ancestor) continue;
+      const crumb = document.createElement("button");
+      crumb.type = "button";
+      crumb.className = "crumb";
+      crumb.textContent = ancestor.title;
+      crumb.addEventListener("click", () => selectPage(ancestor.id));
+      pageBreadcrumbs.append(crumb);
+    }
+  }
+  function pageParentId(pageId) {
+    const parent = currentSite?.pageParents?.[pageId];
+    return parent && pages.some((page) => page.id === parent) ? parent : void 0;
+  }
+  function pageAncestors(pageId) {
+    const ancestors = [];
+    let cursor = pageParentId(pageId);
+    while (cursor && !ancestors.includes(cursor) && cursor !== pageId) {
+      ancestors.push(cursor);
+      cursor = pageParentId(cursor);
+    }
+    return ancestors;
+  }
+  async function showRevisionDiff(revision) {
+    if (!currentPage) return;
+    try {
+      const response = await fetchCloudJson(`${currentPageEndpoint()}/revisions/${revision.revision}/diff`);
+      revisionDiffOutput.textContent = "";
+      const heading = document.createElement("strong");
+      heading.textContent = `Version ${revision.revision} vs ${response.from ? `version ${response.from.revision}` : "empty page"}: +${response.stats.added} \u2212${response.stats.removed}`;
+      revisionDiffOutput.append(heading);
+      const changedBlocks = [
+        ...response.blocks.added.map((id) => `+${id}`),
+        ...response.blocks.removed.map((id) => `\u2212${id}`),
+        ...response.blocks.changed.map((id) => `~${id}`)
+      ];
+      if (changedBlocks.length > 0) {
+        const blocks = document.createElement("div");
+        blocks.className = "revision-diff-blocks";
+        blocks.textContent = `Blocks: ${changedBlocks.join(", ")}`;
+        revisionDiffOutput.append(blocks);
+      }
+      const pre = document.createElement("pre");
+      for (const line of response.diff.split("\n")) {
+        const row = document.createElement("span");
+        row.className = line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del" : "diff-ctx";
+        row.textContent = `${line}
+`;
+        pre.append(row);
+      }
+      revisionDiffOutput.append(pre);
+      revisionDiffOutput.hidden = false;
+    } catch (error) {
+      setPanelStatus(historyStatus, errorMessage(error), "error");
+    }
   }
   function persistLocalDraft() {
     if (!cloudUser || !currentPage || !dirty) return;
@@ -12460,7 +12777,18 @@ ${draftLine}
       restore.addEventListener("click", () => {
         void restoreRevision(revision);
       });
-      row.append(copy, restore);
+      const diff = document.createElement("button");
+      diff.type = "button";
+      diff.textContent = "Diff";
+      diff.disabled = busy;
+      diff.setAttribute("aria-label", `Compare version ${revision.revision} with the previous version`);
+      diff.addEventListener("click", () => {
+        void showRevisionDiff(revision);
+      });
+      const actions = document.createElement("div");
+      actions.className = "history-actions";
+      actions.append(diff, restore);
+      row.append(copy, actions);
       historyList.append(row);
     }
   }
@@ -12618,6 +12946,7 @@ ${draftLine}
     dirtyBadge.textContent = dirty ? "unsaved" : "saved";
     dirtyBadge.dataset.state = dirty ? "dirty" : "ok";
     updatedText.textContent = currentPage ? `Updated ${formatDate(currentPage.updatedAt)}` : "";
+    renderPageMeta();
     renderNavigation();
     renderHistory();
     renderWorkspaceTools();
@@ -12657,10 +12986,28 @@ ${draftLine}
     const groups2 = groupedPages();
     for (const group of groups2) {
       pageList.append(folderRow(group.folder, group.pages.length));
-      for (const page of group.pages) {
-        pageList.append(pageRow(page));
+      for (const { page, depth } of pageTreeOrder(group.pages)) {
+        pageList.append(pageRow(page, depth));
       }
     }
+  }
+  function pageTreeOrder(groupPages) {
+    const inGroup = new Set(groupPages.map((page) => page.id));
+    const children = /* @__PURE__ */ new Map();
+    const roots = [];
+    for (const page of groupPages) {
+      const parent = pageParentId(page.id);
+      if (parent && inGroup.has(parent)) children.set(parent, [...children.get(parent) ?? [], page]);
+      else roots.push(page);
+    }
+    const ordered = [];
+    const visit = (page, depth) => {
+      if (ordered.some((entry) => entry.page.id === page.id)) return;
+      ordered.push({ page, depth });
+      for (const child of children.get(page.id) ?? []) visit(child, depth + 1);
+    };
+    for (const root of roots) visit(root, 0);
+    return ordered;
   }
   function folderRow(folder, pageCount) {
     const row = document.createElement("div");
@@ -12696,9 +13043,11 @@ ${draftLine}
     row.append(label, actions);
     return row;
   }
-  function pageRow(page) {
+  function pageRow(page, depth = 0) {
     const row = document.createElement("div");
     row.className = "page-entry";
+    row.style.setProperty("--page-depth", String(Math.min(depth, 8)));
+    if (depth > 0) row.dataset.child = "true";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "page-row";
@@ -12717,10 +13066,11 @@ ${draftLine}
   }
   function groupedPages() {
     const folders = siteFolders(currentSite);
-    const rootPages = pages.filter((page) => !pageFolder(page.id));
+    const groupFolder = (page) => pageFolder(pageAncestors(page.id).at(-1) ?? page.id);
+    const rootPages = pages.filter((page) => !groupFolder(page));
     return [
       { folder: "", pages: rootPages },
-      ...folders.map((folder) => ({ folder, pages: pages.filter((page) => sameFolder(pageFolder(page.id), folder)) }))
+      ...folders.map((folder) => ({ folder, pages: pages.filter((page) => sameFolder(groupFolder(page), folder)) }))
     ];
   }
   function siteFolders(site) {
@@ -12732,7 +13082,8 @@ ${draftLine}
     return {
       ...site,
       folders: normalizeFolders([...site.folders ?? [], ...Object.values(pageFolders)]),
-      pageFolders
+      pageFolders,
+      pageParents: site.pageParents ?? {}
     };
   }
   function normalizedPageFolders(value, documentIds) {
@@ -12936,6 +13287,16 @@ ${draftLine}
         action: () => {
           if (selectPage(page.id)) setViewMode("preview");
         }
+      },
+      {
+        label: "Add child page",
+        disabled: !canEditSite(),
+        action: () => void createPage(pageFolder(pageAncestors(page.id).at(-1) ?? page.id), page.id)
+      },
+      {
+        label: "Move under page...",
+        disabled: !canEditSite(),
+        action: () => void movePageUnder(page.id)
       },
       {
         label: "Move to folder...",
@@ -14033,6 +14394,15 @@ Start writing here.`;
   function sourceSectionTitleAtLine(line) {
     const currentLine = sourceInput.value.split("\n")[line - 1] ?? "";
     return currentLine.replace(/^#{1,6}\s+/, "").replace(/\s+\{[^}]*\}\s*$/, "").trim() || "Untitled";
+  }
+  function focusBlock(blockId) {
+    const doc = parse(sourceInput.value, { filename: `${currentPage?.id ?? "draft"}.noma` });
+    for (const node of walk(doc)) {
+      if ((node.id === blockId || node.aliases?.includes(blockId)) && node.pos) {
+        focusSourceLine(node.pos.line);
+        return;
+      }
+    }
   }
   function focusSourceLine(line) {
     const lines = sourceInput.value.split("\n");

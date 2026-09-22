@@ -304,6 +304,7 @@ interface CloudSiteResponse {
   documentIds: string[];
   folders?: string[];
   pageFolders?: Record<string, string>;
+  pageParents?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   currentRole?: CloudRole;
@@ -412,6 +413,11 @@ const togglePanelsButton = requireElement<HTMLButtonElement>("togglePanelsButton
 const savePageButton = requireElement<HTMLButtonElement>("savePageButton");
 const reloadPageButton = requireElement<HTMLButtonElement>("reloadPageButton");
 const favoritePageButton = requireElement<HTMLButtonElement>("favoritePageButton");
+const watchPageButton = requireElement<HTMLButtonElement>("watchPageButton");
+const pageBreadcrumbs = requireElement<HTMLElement>("pageBreadcrumbs");
+const pageLabels = requireElement<HTMLElement>("pageLabels");
+const addLabelButton = requireElement<HTMLButtonElement>("addLabelButton");
+const revisionDiffOutput = requireElement<HTMLElement>("revisionDiffOutput");
 const copyPageLinkButton = requireElement<HTMLButtonElement>("copyPageLinkButton");
 const copyArtifactLinkButton = requireElement<HTMLButtonElement>("copyArtifactLinkButton");
 const copySiteLinkButton = requireElement<HTMLButtonElement>("copySiteLinkButton");
@@ -525,6 +531,8 @@ let pageTemplates: CloudPageTemplate[] = [];
 let cloudSearchResults: CloudSearchResult[] = [];
 let recentItems: CloudNavigationItem[] = [];
 let favoriteItems: CloudNavigationItem[] = [];
+let currentLabels: string[] = [];
+let currentWatching = false;
 let trashItems: CloudTrashItem[] = [];
 let notifications: CloudNotification[] = [];
 let comments: CloudComment[] = [];
@@ -650,6 +658,14 @@ function bindEvents(): void {
 
   favoritePageButton.addEventListener("click", () => {
     if (currentPage) void toggleFavorite("document", currentPage.id);
+  });
+
+  watchPageButton.addEventListener("click", () => {
+    void toggleWatch();
+  });
+
+  addLabelButton.addEventListener("click", () => {
+    void addLabel();
   });
 
   refreshTrashButton.addEventListener("click", () => {
@@ -1371,7 +1387,7 @@ async function createStarterWorkspace(name: string): Promise<void> {
   }
 }
 
-async function createPage(folder = activeFolder): Promise<void> {
+async function createPage(folder = activeFolder, parentId?: string): Promise<void> {
   if (!currentSite) {
     await createStarterWorkspace(promptName("Space name", "Research Workspace"));
     return;
@@ -1394,9 +1410,15 @@ async function createPage(folder = activeFolder): Promise<void> {
         title,
         templateId: template?.id ?? "blank",
         folder: normalizedFolder,
+        ...(parentId ? { parentId } : {}),
       }),
     });
     pages = [...pages, page];
+    if (parentId) {
+      const refreshed = await fetchCloudJson<CloudSiteResponse>(`/api/sites/${encodeURIComponent(currentSite.id)}`);
+      currentSite = { ...currentSite, documentIds: refreshed.documentIds, pageParents: refreshed.pageParents ?? {} };
+      pages = refreshed.documentIds.map((id) => pages.find((candidate) => candidate.id === id)).filter((candidate): candidate is CloudDocumentResponse => Boolean(candidate));
+    }
     const documentIds = [...currentSite.documentIds, page.id];
     const pageFolders = normalizedPageFolders({ ...currentSite.pageFolders, ...(normalizedFolder ? { [page.id]: normalizedFolder } : {}) }, documentIds);
     currentSite = {
@@ -1598,6 +1620,33 @@ async function deleteFolder(folder: string): Promise<void> {
   };
   if (sameFolder(activeFolder, currentFolder)) activeFolder = "";
   await saveSiteStructure("Deleted folder");
+}
+
+async function movePageUnder(pageId: string): Promise<void> {
+  if (!currentSite || !canEditSite()) return;
+  const page = pages.find((item) => item.id === pageId);
+  const answer = window.prompt(`Parent page title for "${page?.title ?? "page"}" (leave empty for top level)`, "");
+  if (answer === null) return;
+  const parent = answer.trim() ? pages.find((item) => item.title.toLowerCase() === answer.trim().toLowerCase()) : undefined;
+  if (answer.trim() && !parent) {
+    setCloudStatus(`No page titled "${answer.trim()}" in this space`, "error");
+    return;
+  }
+  setBusy(true, "Moving page", "warning");
+  try {
+    const response = await fetchCloudJson<{ site: CloudSiteResponse }>(
+      `/api/sites/${encodeURIComponent(currentSite.id)}/documents/${encodeURIComponent(pageId)}/parent`,
+      { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentId: parent?.id ?? null }) },
+    );
+    currentSite = { ...currentSite, documentIds: response.site.documentIds, pageParents: response.site.pageParents ?? {} };
+    pages = response.site.documentIds.map((id) => pages.find((candidate) => candidate.id === id)).filter((candidate): candidate is CloudDocumentResponse => Boolean(candidate));
+    setCloudStatus(parent ? `Moved under ${parent.title}` : "Moved to top level", "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
 }
 
 async function movePage(pageId: string): Promise<void> {
@@ -2993,7 +3042,165 @@ function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   renderChrome();
   void refreshHistory({ silent: true });
   void refreshPageCollaboration();
+  void refreshPageMeta();
   void recordRecent("document", page.id);
+}
+
+async function refreshPageMeta(): Promise<void> {
+  currentLabels = [];
+  currentWatching = false;
+  revisionDiffOutput.hidden = true;
+  const page = currentPage;
+  if (!page || !cloudUser) {
+    renderChrome();
+    return;
+  }
+  try {
+    const [labels, watch] = await Promise.all([
+      fetchCloudJson<{ labels: string[] }>(`/api/documents/${encodeURIComponent(page.id)}/labels`),
+      fetchCloudJson<{ watching: boolean }>(`/api/documents/${encodeURIComponent(page.id)}/watch`),
+    ]);
+    if (currentPage?.id !== page.id) return;
+    currentLabels = labels.labels;
+    currentWatching = watch.watching;
+  } catch {
+    return;
+  } finally {
+    renderChrome();
+  }
+}
+
+async function toggleWatch(): Promise<void> {
+  if (!currentPage || !cloudUser) return;
+  try {
+    const response = await fetchCloudJson<{ watching: boolean }>(`/api/documents/${encodeURIComponent(currentPage.id)}/watch`, {
+      method: currentWatching ? "DELETE" : "PUT",
+    });
+    currentWatching = response.watching;
+    setCloudStatus(currentWatching ? "Watching page: you will be notified of edits" : "Stopped watching page", "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    renderChrome();
+  }
+}
+
+async function addLabel(): Promise<void> {
+  if (!currentPage || !canEditPage()) return;
+  const label = window.prompt("Add label", "")?.trim();
+  if (!label) return;
+  await updateLabels({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label }) });
+}
+
+async function removeLabel(label: string): Promise<void> {
+  if (!currentPage || !canEditPage()) return;
+  await updateLabels({ method: "DELETE" }, `/${encodeURIComponent(label)}`);
+}
+
+async function updateLabels(init: RequestInit, suffix = ""): Promise<void> {
+  if (!currentPage) return;
+  try {
+    const response = await fetchCloudJson<{ labels: string[] }>(`/api/documents/${encodeURIComponent(currentPage.id)}/labels${suffix}`, init);
+    currentLabels = response.labels;
+    setCloudStatus("Updated labels", "ok");
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    renderChrome();
+  }
+}
+
+function renderPageMeta(): void {
+  pageLabels.textContent = "";
+  for (const label of currentLabels) {
+    const chip = document.createElement("span");
+    chip.className = "label-chip";
+    chip.textContent = label;
+    if (canEditPage()) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", `Remove label ${label}`);
+      remove.addEventListener("click", () => void removeLabel(label));
+      chip.append(remove);
+    }
+    pageLabels.append(chip);
+  }
+  addLabelButton.hidden = !currentPage || !canEditPage();
+  addLabelButton.disabled = busy;
+  watchPageButton.disabled = busy || !cloudUser || !currentPage;
+  watchPageButton.textContent = currentWatching ? "Unwatch" : "Watch";
+  watchPageButton.setAttribute("aria-pressed", String(currentWatching));
+
+  pageBreadcrumbs.textContent = "";
+  if (!currentSite || !currentPage) return;
+  const siteCrumb = document.createElement("span");
+  siteCrumb.className = "crumb crumb-site";
+  siteCrumb.textContent = currentSite.title;
+  pageBreadcrumbs.append(siteCrumb);
+  for (const ancestorId of pageAncestors(currentPage.id).reverse()) {
+    const ancestor = pages.find((page) => page.id === ancestorId);
+    if (!ancestor) continue;
+    const crumb = document.createElement("button");
+    crumb.type = "button";
+    crumb.className = "crumb";
+    crumb.textContent = ancestor.title;
+    crumb.addEventListener("click", () => selectPage(ancestor.id));
+    pageBreadcrumbs.append(crumb);
+  }
+}
+
+function pageParentId(pageId: string): string | undefined {
+  const parent = currentSite?.pageParents?.[pageId];
+  return parent && pages.some((page) => page.id === parent) ? parent : undefined;
+}
+
+function pageAncestors(pageId: string): string[] {
+  const ancestors: string[] = [];
+  let cursor = pageParentId(pageId);
+  while (cursor && !ancestors.includes(cursor) && cursor !== pageId) {
+    ancestors.push(cursor);
+    cursor = pageParentId(cursor);
+  }
+  return ancestors;
+}
+
+async function showRevisionDiff(revision: CloudDocumentRevisionSummary): Promise<void> {
+  if (!currentPage) return;
+  try {
+    const response = await fetchCloudJson<{
+      from: { revision: number } | null;
+      stats: { added: number; removed: number };
+      blocks: { added: string[]; removed: string[]; changed: string[] };
+      diff: string;
+    }>(`${currentPageEndpoint()}/revisions/${revision.revision}/diff`);
+    revisionDiffOutput.textContent = "";
+    const heading = document.createElement("strong");
+    heading.textContent = `Version ${revision.revision} vs ${response.from ? `version ${response.from.revision}` : "empty page"}: +${response.stats.added} −${response.stats.removed}`;
+    revisionDiffOutput.append(heading);
+    const changedBlocks = [
+      ...response.blocks.added.map((id) => `+${id}`),
+      ...response.blocks.removed.map((id) => `−${id}`),
+      ...response.blocks.changed.map((id) => `~${id}`),
+    ];
+    if (changedBlocks.length > 0) {
+      const blocks = document.createElement("div");
+      blocks.className = "revision-diff-blocks";
+      blocks.textContent = `Blocks: ${changedBlocks.join(", ")}`;
+      revisionDiffOutput.append(blocks);
+    }
+    const pre = document.createElement("pre");
+    for (const line of response.diff.split("\n")) {
+      const row = document.createElement("span");
+      row.className = line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del" : "diff-ctx";
+      row.textContent = `${line}\n`;
+      pre.append(row);
+    }
+    revisionDiffOutput.append(pre);
+    revisionDiffOutput.hidden = false;
+  } catch (error) {
+    setPanelStatus(historyStatus, errorMessage(error), "error");
+  }
 }
 
 function persistLocalDraft(): void {
@@ -3217,7 +3424,18 @@ function renderHistory(): void {
     restore.addEventListener("click", () => {
       void restoreRevision(revision);
     });
-    row.append(copy, restore);
+    const diff = document.createElement("button");
+    diff.type = "button";
+    diff.textContent = "Diff";
+    diff.disabled = busy;
+    diff.setAttribute("aria-label", `Compare version ${revision.revision} with the previous version`);
+    diff.addEventListener("click", () => {
+      void showRevisionDiff(revision);
+    });
+    const actions = document.createElement("div");
+    actions.className = "history-actions";
+    actions.append(diff, restore);
+    row.append(copy, actions);
     historyList.append(row);
   }
 }
@@ -3384,6 +3602,7 @@ function renderChrome(): void {
   dirtyBadge.textContent = dirty ? "unsaved" : "saved";
   dirtyBadge.dataset.state = dirty ? "dirty" : "ok";
   updatedText.textContent = currentPage ? `Updated ${formatDate(currentPage.updatedAt)}` : "";
+  renderPageMeta();
 
   renderNavigation();
   renderHistory();
@@ -3427,10 +3646,30 @@ function renderNavigation(): void {
   const groups = groupedPages();
   for (const group of groups) {
     pageList.append(folderRow(group.folder, group.pages.length));
-    for (const page of group.pages) {
-      pageList.append(pageRow(page));
+    for (const { page, depth } of pageTreeOrder(group.pages)) {
+      pageList.append(pageRow(page, depth));
     }
   }
+}
+
+/** Depth-first page order so children render indented directly under their parent. */
+function pageTreeOrder(groupPages: CloudDocumentResponse[]): Array<{ page: CloudDocumentResponse; depth: number }> {
+  const inGroup = new Set(groupPages.map((page) => page.id));
+  const children = new Map<string, CloudDocumentResponse[]>();
+  const roots: CloudDocumentResponse[] = [];
+  for (const page of groupPages) {
+    const parent = pageParentId(page.id);
+    if (parent && inGroup.has(parent)) children.set(parent, [...(children.get(parent) ?? []), page]);
+    else roots.push(page);
+  }
+  const ordered: Array<{ page: CloudDocumentResponse; depth: number }> = [];
+  const visit = (page: CloudDocumentResponse, depth: number) => {
+    if (ordered.some((entry) => entry.page.id === page.id)) return;
+    ordered.push({ page, depth });
+    for (const child of children.get(page.id) ?? []) visit(child, depth + 1);
+  };
+  for (const root of roots) visit(root, 0);
+  return ordered;
 }
 
 function folderRow(folder: string, pageCount: number): HTMLElement {
@@ -3472,9 +3711,11 @@ function folderRow(folder: string, pageCount: number): HTMLElement {
   return row;
 }
 
-function pageRow(page: CloudDocumentResponse): HTMLElement {
+function pageRow(page: CloudDocumentResponse, depth = 0): HTMLElement {
   const row = document.createElement("div");
   row.className = "page-entry";
+  row.style.setProperty("--page-depth", String(Math.min(depth, 8)));
+  if (depth > 0) row.dataset.child = "true";
 
   const button = document.createElement("button");
   button.type = "button";
@@ -3496,10 +3737,11 @@ function pageRow(page: CloudDocumentResponse): HTMLElement {
 
 function groupedPages(): Array<{ folder: string; pages: CloudDocumentResponse[] }> {
   const folders = siteFolders(currentSite);
-  const rootPages = pages.filter((page) => !pageFolder(page.id));
+  const groupFolder = (page: CloudDocumentResponse) => pageFolder(pageAncestors(page.id).at(-1) ?? page.id);
+  const rootPages = pages.filter((page) => !groupFolder(page));
   return [
     { folder: "", pages: rootPages },
-    ...folders.map((folder) => ({ folder, pages: pages.filter((page) => sameFolder(pageFolder(page.id), folder)) })),
+    ...folders.map((folder) => ({ folder, pages: pages.filter((page) => sameFolder(groupFolder(page), folder)) })),
   ];
 }
 
@@ -3514,6 +3756,7 @@ function normalizeSite(site: CloudSiteResponse): CloudSiteResponse {
     ...site,
     folders: normalizeFolders([...(site.folders ?? []), ...Object.values(pageFolders)]),
     pageFolders,
+    pageParents: site.pageParents ?? {},
   };
 }
 
@@ -3740,6 +3983,16 @@ function showPageContextMenu(event: MouseEvent, page: CloudDocumentResponse): vo
       action: () => {
         if (selectPage(page.id)) setViewMode("preview");
       },
+    },
+    {
+      label: "Add child page",
+      disabled: !canEditSite(),
+      action: () => void createPage(pageFolder(pageAncestors(page.id).at(-1) ?? page.id), page.id),
+    },
+    {
+      label: "Move under page...",
+      disabled: !canEditSite(),
+      action: () => void movePageUnder(page.id),
     },
     {
       label: "Move to folder...",
@@ -4983,6 +5236,16 @@ function collapseBlankAt(lines: string[], index: number): void {
 function sourceSectionTitleAtLine(line: number): string {
   const currentLine = sourceInput.value.split("\n")[line - 1] ?? "";
   return currentLine.replace(/^#{1,6}\s+/, "").replace(/\s+\{[^}]*\}\s*$/, "").trim() || "Untitled";
+}
+
+function focusBlock(blockId: string): void {
+  const doc = parse(sourceInput.value, { filename: `${currentPage?.id ?? "draft"}.noma` });
+  for (const node of walk(doc)) {
+    if ((node.id === blockId || node.aliases?.includes(blockId)) && node.pos) {
+      focusSourceLine(node.pos.line);
+      return;
+    }
+  }
 }
 
 function focusSourceLine(line: number): void {

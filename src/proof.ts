@@ -462,7 +462,8 @@ function lcsCount(a: string[], b: string[]): number {
   return prev[b.length]!;
 }
 
-function lineDiff(before: string, after: string): string {
+/** Line-level diff with context compaction; `+`/`-`/` ` prefixes, bounded output. */
+export function lineDiff(before: string, after: string): string {
   if (before === after) return "(no source changes)";
   const a = sourceLines(before);
   const b = sourceLines(after);

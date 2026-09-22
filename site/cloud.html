@@ -92,11 +92,14 @@
   <main class="editor-shell">
     <section class="page-header" aria-label="Current page">
       <div class="page-title-group">
+        <nav id="pageBreadcrumbs" class="page-breadcrumbs" aria-label="Page location"></nav>
         <input id="pageTitleInput" class="page-title-input" type="text" aria-label="Page title" />
         <div class="page-meta">
           <span id="roleBadge" class="meta-badge">viewer</span>
           <span id="dirtyBadge" class="meta-badge">saved</span>
           <span id="updatedText" class="updated-text"></span>
+          <span id="pageLabels" class="page-labels" aria-label="Page labels"></span>
+          <button id="addLabelButton" class="label-add" type="button" aria-label="Add label">+ Label</button>
         </div>
       </div>
       <div class="page-actions">
@@ -110,6 +113,7 @@
           <button id="savePageButton" type="button">Save</button>
           <button id="reloadPageButton" type="button">Reload</button>
           <button id="favoritePageButton" type="button" aria-pressed="false">Favorite</button>
+          <button id="watchPageButton" type="button" aria-pressed="false">Watch</button>
           <button id="copyPageLinkButton" type="button" aria-label="Copy page link">Page</button>
           <button id="copyArtifactLinkButton" type="button" aria-label="Copy rendered artifact link">Artifact</button>
           <button id="copySiteLinkButton" type="button" aria-label="Copy space link">Space</button>
@@ -284,6 +288,7 @@
       </div>
       <div id="historyList" class="history-list"></div>
       <div id="historyStatus" class="panel-status"></div>
+      <div id="revisionDiffOutput" class="revision-diff" aria-live="polite" hidden></div>
     </section>
 
     <section class="inspector-section">

@@ -8,6 +8,20 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Noma Cloud wiki essentials:** a nested page tree per space (`pageParents`, `GET /api/sites/<id>/tree`, breadcrumbs, `PUT …/documents/<id>/parent` with cycle checks and sibling ordering, create-as-child), page labels with label counts and label listings, page and space watching with `page_updated` notifications for other people's edits, a version diff API (`GET …/revisions/<n>/diff`) with block-level added/removed/changed IDs, and permanent delete from trash that respects legal holds. The Cloud UI shows the indented tree, breadcrumbs, label chips, a Watch toggle, and a per-version Diff view. SQLite schema moves to v8 and migrates the notifications constraint in place.
+- **Application review:** `docs/review-2026-09.md` records a full security, code-health, and Confluence-parity review with a phased roadmap.
+
+### Security
+
+- Rendered HTML (inline links, `::button`, `::dataset`, citation URLs) now neutralises `javascript:`, `data:`, and other script-capable URL schemes via `safeHref`.
+- Noma Cloud workspace admin is an explicit `NOMA_CLOUD_ADMIN_USER_IDS` allowlist, or the first registered user. Previously any user who owned a site, or registered with a name that sorted first, could change enterprise policy and run retention.
+- SCIM identities can no longer be rebound to another `externalId` or user, which closed an SSO account-takeover path.
+- Adding a page to a space requires page owner; agent grants are capped by the agent owner's current access; hosted patch proofs no longer inline server files; trust `verifiedBy` is always the caller; artifacts are served with a CSP `sandbox`; malformed `/d/` and `/s/` paths return 400.
+
+### Fixed
+
+- Cloud UI: opening a knowledge-health or agent-inbox item no longer throws `focusBlock is not defined`.
+
 - **Enterprise workspace kernel (Docs / Visuals / Work):** a modular in-process enterprise server covering shared identity and policy, persistent block/table identity, a lossless visual-document adapter, an embedded PaperDOM command kernel, native issues with configurable workflows, governed changesets, permission-aware search and relations, connector inventory/import dispositions, digest-checked backup/restore, and the section-17 end-to-end demonstration as an executable test. SQLite is the verified kernel datastore; PostgreSQL DDL is generated for the planned enterprise migration. Follow-on coverage in this branch adds CRDT persist-before-ack with reconnect/lost-ack tests, Work reports/bulk preview/issue security/recipes, Confluence storage and Jira JSON fixture adapters plus cutover stages, RAG eval and knowledge-health queues, HTTP/worker/workspace entry points, extraction-boundary packages, an SBOM/health/support-bundle ops surface, and a 40-task scripted agent benchmark with a performance profile.
 - **Hosted Tiptap/Yjs collaboration:** a persist-before-ack Yjs WebSocket (`/yjs`) plus Tiptap `Collaboration` in two real Puppeteer browsers. Acknowledged updates are on disk; reconnect replays them.
 - **Pinned PaperDOM packages:** MIT kernel extracted from `ferax564/paperDOM` at a pinned commit into `src/paperdom-*.ts`, hosted through `applyHostedPaperDomTransaction` (client actors stripped). `@ferax564/noma-paperdom-{core,react,io}` re-export the CLI.

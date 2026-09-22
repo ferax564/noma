@@ -103,10 +103,20 @@ export interface CloudComment {
   resolvedBy?: string;
 }
 
+export type CloudNotificationType = "mention" | "comment" | "approval_requested" | "approval_updated" | "page_updated";
+
+export const cloudNotificationTypes: readonly CloudNotificationType[] = [
+  "mention",
+  "comment",
+  "approval_requested",
+  "approval_updated",
+  "page_updated",
+];
+
 export interface CloudNotification {
   id: string;
   userId: string;
-  type: "mention" | "comment" | "approval_requested" | "approval_updated";
+  type: CloudNotificationType;
   title: string;
   body: string;
   resourceType?: CloudResourceType;
@@ -286,12 +296,35 @@ export interface CloudSiteRecord {
   documentIds: string[];
   folders?: string[];
   pageFolders?: Record<string, string>;
+  /** Page tree: child document ID → parent document ID, both members of `documentIds`. */
+  pageParents?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
   updatedBy: string;
   permissions: Record<string, CloudPermission>;
   shareLinks: CloudShareLink[];
+}
+
+export interface CloudLabelCount {
+  label: string;
+  count: number;
+}
+
+export interface CloudLabeledDocument {
+  documentId: string;
+  siteId?: string;
+  title: string;
+  updatedAt: string;
+  labels: string[];
+  access: { role: CloudRole };
+}
+
+export interface CloudWatch {
+  userId: string;
+  resourceType: CloudResourceType;
+  resourceId: string;
+  watchedAt: string;
 }
 
 export type CloudDbQueryResource = "documents" | "sites" | "blocks" | "users";
@@ -589,7 +622,7 @@ interface BlockIndexRow {
   ordinal: number;
 }
 
-const schemaVersion = "7";
+const schemaVersion = "8";
 
 const roleRank: Record<CloudRole, number> = {
   viewer: 1,
@@ -1046,6 +1079,144 @@ export class NomaCloudDatabase {
   listTrash(user: CloudUserRecord, limit = 100): CloudTrashItem[] {
     const rows = this.navigationRows("trashed_resources", "trashed_at", user, limit, "trashed_by");
     return rows.map((row) => ({ ...navigationItem(row), trashedBy: row.actor_id ?? "unknown" }));
+  }
+
+  /**
+   * Permanently deletes a trashed document or site and every row that hangs off it.
+   * Revisions, comments, approvals, and permissions for a purged document are gone;
+   * callers must check legal holds before calling.
+   */
+  purgeResource(resourceType: CloudResourceType, resourceId: string): boolean {
+    const purge = this.db.transaction((type: CloudResourceType, id: string): boolean => {
+      if (!this.isTrashed(type, id)) return false;
+      const table = type === "document" ? "documents" : "sites";
+      const removed = this.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id).changes > 0;
+      for (const shared of ["permissions", "share_links", "group_permissions", "recent_items", "favorites", "watchers", "trashed_resources", "activity_events"]) {
+        this.db.prepare(`DELETE FROM ${shared} WHERE resource_type = ? AND resource_id = ?`).run(type, id);
+      }
+      this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
+      if (type === "document") {
+        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels"]) {
+          this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
+        }
+        this.db.prepare("DELETE FROM search_index WHERE document_id = ?").run(id);
+        this.db.prepare("DELETE FROM site_documents WHERE document_id = ?").run(id);
+        for (const row of this.db.prepare("SELECT id FROM sites").all() as Array<{ id: string }>) {
+          const site = this.readSite(row.id);
+          if (!site?.documentIds.includes(id)) continue;
+          this.writeSite(withoutSitePage(site, id));
+        }
+      } else {
+        this.db.prepare("DELETE FROM site_documents WHERE site_id = ?").run(id);
+      }
+      return removed;
+    });
+    return purge(resourceType, resourceId);
+  }
+
+  listDocumentLabels(documentId: string): string[] {
+    return (this.db.prepare("SELECT label FROM document_labels WHERE document_id = ? ORDER BY label").all(documentId) as Array<{ label: string }>).map(
+      (row) => row.label,
+    );
+  }
+
+  replaceDocumentLabels(documentId: string, labels: string[], addedBy: string, addedAt: string): string[] {
+    const replace = this.db.transaction((id: string, next: string[]) => {
+      this.db.prepare("DELETE FROM document_labels WHERE document_id = ?").run(id);
+      const insert = this.db.prepare("INSERT INTO document_labels (document_id, label, added_by, added_at) VALUES (?, ?, ?, ?)");
+      for (const label of next) insert.run(id, label, addedBy, addedAt);
+    });
+    replace(documentId, labels);
+    return this.listDocumentLabels(documentId);
+  }
+
+  /** Labels on documents the user can see, with how many visible, non-trashed pages carry each. */
+  listLabels(user: CloudUserRecord, siteId?: string): CloudLabelCount[] {
+    const params: unknown[] = [user.id];
+    const siteFilter = siteId ? "AND EXISTS (SELECT 1 FROM site_documents sd WHERE sd.site_id = ? AND sd.document_id = dl.document_id)" : "";
+    if (siteId) params.push(siteId);
+    return this.db
+      .prepare(
+        `WITH ${visibleResourcesCtes}
+         SELECT dl.label, COUNT(*) AS count
+         FROM document_labels dl
+         JOIN visible_docs ON visible_docs.id = dl.document_id
+         WHERE NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'document' AND t.resource_id = dl.document_id)
+           ${siteFilter}
+         GROUP BY dl.label
+         ORDER BY count DESC, dl.label
+         LIMIT 500`,
+      )
+      .all(...params) as CloudLabelCount[];
+  }
+
+  listDocumentsByLabel(user: CloudUserRecord, label: string, siteId?: string, limit = 200): CloudLabeledDocument[] {
+    const params: unknown[] = [user.id, label];
+    const siteFilter = siteId ? "AND EXISTS (SELECT 1 FROM site_documents sd WHERE sd.site_id = ? AND sd.document_id = d.id)" : "";
+    if (siteId) params.push(siteId);
+    params.push(limit);
+    const rows = this.db
+      .prepare(
+        `WITH ${visibleResourcesCtes}
+         SELECT d.id, d.title, d.updated_at, visible_docs.rank,
+           (SELECT sd.site_id FROM site_documents sd WHERE sd.document_id = d.id ORDER BY sd.position LIMIT 1) AS site_id,
+           (SELECT json_group_array(label) FROM (SELECT label FROM document_labels WHERE document_id = d.id ORDER BY label)) AS labels_json
+         FROM document_labels dl
+         JOIN documents d ON d.id = dl.document_id
+         JOIN visible_docs ON visible_docs.id = d.id
+         WHERE dl.label = ?
+           AND NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'document' AND t.resource_id = d.id)
+           ${siteFilter}
+         ORDER BY d.updated_at DESC, d.id
+         LIMIT ?`,
+      )
+      .all(...params) as Array<{ id: string; title: string; updated_at: string; rank: number; site_id: string | null; labels_json: string }>;
+    return rows.map((row) => ({
+      documentId: row.id,
+      ...(row.site_id ? { siteId: row.site_id } : {}),
+      title: row.title,
+      updatedAt: row.updated_at,
+      labels: JSON.parse(row.labels_json) as string[],
+      access: { role: rankToRole(row.rank) },
+    }));
+  }
+
+  setWatch(userId: string, resourceType: CloudResourceType, resourceId: string, watchedAt: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO watchers (user_id, resource_type, resource_id, watched_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, resource_type, resource_id) DO NOTHING`,
+      )
+      .run(userId, resourceType, resourceId, watchedAt);
+  }
+
+  removeWatch(userId: string, resourceType: CloudResourceType, resourceId: string): void {
+    this.db.prepare("DELETE FROM watchers WHERE user_id = ? AND resource_type = ? AND resource_id = ?").run(userId, resourceType, resourceId);
+  }
+
+  isWatching(userId: string, resourceType: CloudResourceType, resourceId: string): boolean {
+    return Boolean(
+      this.db.prepare("SELECT 1 AS found FROM watchers WHERE user_id = ? AND resource_type = ? AND resource_id = ?").get(userId, resourceType, resourceId),
+    );
+  }
+
+  /** Users watching the document directly or through any space that contains it. */
+  documentWatchers(documentId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT user_id FROM (
+             SELECT user_id FROM watchers WHERE resource_type = 'document' AND resource_id = ?
+             UNION ALL
+             SELECT w.user_id FROM watchers w
+             JOIN site_documents sd ON sd.site_id = w.resource_id
+             WHERE w.resource_type = 'site' AND sd.document_id = ?
+           )
+           ORDER BY user_id`,
+        )
+        .all(documentId, documentId) as Array<{ user_id: string }>
+    ).map((row) => row.user_id);
   }
 
   writeComment(comment: Omit<CloudComment, "createdByName">): void {
@@ -1793,7 +1964,7 @@ export class NomaCloudDatabase {
       CREATE TABLE IF NOT EXISTS notifications (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
-        type TEXT NOT NULL CHECK (type IN ('mention', 'comment', 'approval_requested', 'approval_updated')),
+        type TEXT NOT NULL CHECK (type IN ('mention', 'comment', 'approval_requested', 'approval_updated', 'page_updated')),
         title TEXT NOT NULL,
         body TEXT NOT NULL,
         resource_type TEXT CHECK (resource_type IN ('document', 'site')),
@@ -1940,6 +2111,22 @@ export class NomaCloudDatabase {
         updated_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS document_labels (
+        document_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (document_id, label)
+      );
+
+      CREATE TABLE IF NOT EXISTS watchers (
+        user_id TEXT NOT NULL,
+        resource_type TEXT NOT NULL CHECK (resource_type IN ('document', 'site')),
+        resource_id TEXT NOT NULL,
+        watched_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, resource_type, resource_id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_permissions_user ON permissions(user_id, resource_type, resource_id);
       CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token_hash);
       CREATE INDEX IF NOT EXISTS idx_site_documents_document ON site_documents(document_id, site_id);
@@ -1972,7 +2159,10 @@ export class NomaCloudDatabase {
       CREATE INDEX IF NOT EXISTS idx_issue_events_issue ON issue_events(issue_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_patch_proposals_document ON patch_proposals(document_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_patch_proposals_issue ON patch_proposals(issue_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_document_labels_label ON document_labels(label, document_id);
+      CREATE INDEX IF NOT EXISTS idx_watchers_resource ON watchers(resource_type, resource_id, user_id);
     `);
+    this.migrateNotificationTypes();
     this.db.exec(`
       INSERT OR IGNORE INTO document_revisions
         (document_id, revision, title, source, hash, created_at, created_by)
@@ -1983,6 +2173,32 @@ export class NomaCloudDatabase {
     this.db
       .prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .run(schemaVersion);
+  }
+
+  /** SQLite cannot alter a CHECK constraint, so older databases rebuild the notifications table once. */
+  private migrateNotificationTypes(): void {
+    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'notifications'").get() as { sql: string } | undefined;
+    if (!row || row.sql.includes("'page_updated'")) return;
+    const allowed = cloudNotificationTypes.map((type) => `'${type}'`).join(", ");
+    this.db.transaction(() => {
+      this.db.exec(`
+        ALTER TABLE notifications RENAME TO notifications_v7;
+        CREATE TABLE notifications (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          type TEXT NOT NULL CHECK (type IN (${allowed})),
+          title TEXT NOT NULL,
+          body TEXT NOT NULL,
+          resource_type TEXT CHECK (resource_type IN ('document', 'site')),
+          resource_id TEXT,
+          created_at TEXT NOT NULL,
+          read_at TEXT
+        );
+        INSERT INTO notifications SELECT id, user_id, type, title, body, resource_type, resource_id, created_at, read_at FROM notifications_v7;
+        DROP TABLE notifications_v7;
+        CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at, created_at DESC);
+      `);
+    })();
   }
 
   private importLegacyJsonOnce(): void {
@@ -2315,6 +2531,19 @@ function cloudComment(row: CommentRow): CloudComment {
     ...(row.resolved_at ? { resolvedAt: row.resolved_at } : {}),
     ...(row.resolved_by ? { resolvedBy: row.resolved_by } : {}),
   };
+}
+
+function withoutSitePage(site: CloudSiteRecord, documentId: string): CloudSiteRecord {
+  const documentIds = site.documentIds.filter((id) => id !== documentId);
+  const pageFolders = Object.fromEntries(Object.entries(site.pageFolders ?? {}).filter(([id]) => id !== documentId));
+  const removedParent = site.pageParents?.[documentId];
+  const pageParents: Record<string, string> = {};
+  for (const [child, parent] of Object.entries(site.pageParents ?? {})) {
+    if (child === documentId) continue;
+    if (parent !== documentId) pageParents[child] = parent;
+    else if (removedParent) pageParents[child] = removedParent;
+  }
+  return { ...site, documentIds, pageFolders, pageParents };
 }
 
 function cloudNotification(row: NotificationRow): CloudNotification {

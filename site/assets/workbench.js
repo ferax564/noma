@@ -29,6 +29,13 @@
   function isBlockReferenceWikilinkTarget(target) {
     return BLOCK_REFERENCE_WIKILINK_RE.test(target);
   }
+  var SAFE_URL_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:", "mailto:", "tel:"]);
+  function safeHref(href) {
+    const normalized = href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
+    const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized)?.[1];
+    if (!scheme) return href;
+    return SAFE_URL_SCHEMES.has(`${scheme}:`) ? href : "#";
+  }
   function inlineToHtml(src) {
     let text = escapeHtml(src);
     const codeSpans = [];
@@ -44,7 +51,7 @@
     text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
     text = text.replace(
       MARKDOWN_LINK_RE,
-      (_m, label, href) => `<a href="${escapeAttr(href)}">${unescapeMarkdownLinkLabel(label)}</a>`
+      (_m, label, href) => `<a href="${escapeAttr(safeHref(href))}">${unescapeMarkdownLinkLabel(label)}</a>`
     );
     text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
     text = text.replace(/(?:  +|\\)\n/g, "<br />");
@@ -3248,6 +3255,29 @@
     safeDump
   } = yaml;
 
+  // src/stable-identity.ts
+  var STABLE_ID_LINE_RE = /^\{#([A-Za-z][\w:./-]*)((?:\s+[a-zA-Z_][\w-]*="[^"]*")*)\}\s*$/;
+  var INLINE_STABLE_ID_RE = /^\{#([A-Za-z][\w:./-]*)\}\s*/;
+  function parseInlineStableId(raw) {
+    const match = INLINE_STABLE_ID_RE.exec(raw);
+    if (!match) return { content: raw };
+    return { id: match[1], content: raw.slice(match[0].length) };
+  }
+  function parseListItemIdentity(raw) {
+    const parsed = parseInlineStableId(raw);
+    return parsed.id ? { id: parsed.id, content: parsed.content } : { content: raw };
+  }
+  function collectTableIdentityStrings(table) {
+    const ids = [];
+    for (const id of table.columnIds ?? []) if (id) ids.push(id);
+    for (const id of table.headerIds ?? []) if (id) ids.push(id);
+    for (const id of table.rowIds ?? []) if (id) ids.push(id);
+    for (const row of table.cellIds ?? []) {
+      for (const id of row) if (id) ids.push(id);
+    }
+    return ids;
+  }
+
   // src/parser.ts
   var FRONTMATTER_RE = /^---\s*$/;
   var HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
@@ -3320,12 +3350,54 @@
     }
     return { meta: {}, raw: "", startLine: 0, endLine: 0 };
   }
+  function splitIdList(raw) {
+    if (!raw) return void 0;
+    const list = raw.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean);
+    return list.length > 0 ? list : void 0;
+  }
+  function applyPendingId(node, pending) {
+    const pendingId = pending.id;
+    const cols = pending.cols;
+    const rows = pending.rows;
+    pending.id = void 0;
+    pending.cols = void 0;
+    pending.rows = void 0;
+    if (pendingId) {
+      if (!node.id) node.id = pendingId;
+      else if (node.id !== pendingId) {
+        const aliases = new Set(node.aliases ?? []);
+        aliases.add(pendingId);
+        node.aliases = [...aliases];
+      }
+      if (node.type === "directive" && node.attrs.id === void 0) {
+        node.attrs = { ...node.attrs, id: pendingId };
+      }
+    }
+    if (node.type === "table") {
+      if (cols) node.columnIds = cols;
+      if (rows) node.rowIds = rows;
+    }
+    return node;
+  }
   function parseBlocks(lines, from, to, parentColons) {
     const out = [];
     let i = from;
+    const pending = {};
     while (i < to) {
       const line = lines[i] ?? "";
       if (line.trim() === "") {
+        i++;
+        continue;
+      }
+      const stableId = matchOnce(STABLE_ID_LINE_RE, line);
+      if (stableId) {
+        pending.id = stableId[1];
+        const extra = stableId[2]?.trim();
+        if (extra) {
+          const attrs = parseAttrs(`{${extra}}`);
+          pending.cols = splitIdList(typeof attrs.cols === "string" ? attrs.cols : void 0);
+          pending.rows = splitIdList(typeof attrs.rows === "string" ? attrs.rows : void 0);
+        }
         i++;
         continue;
       }
@@ -3339,7 +3411,7 @@
         }
         if (colons > parentColons || parentColons === 0) {
           const result = parseDirective(lines, i, to, colons);
-          out.push(result.node);
+          out.push(applyPendingId(result.node, pending));
           i = result.next;
           continue;
         }
@@ -3373,7 +3445,7 @@
           const list = aliasesAttr.split(/[,\s]+/).map((a) => a.trim()).filter(Boolean);
           if (list.length > 0) section.aliases = list;
         }
-        out.push(section);
+        out.push(applyPendingId(section, pending));
         i++;
         continue;
       }
@@ -3385,13 +3457,18 @@
         while (end < to && !FENCE_RE.test(lines[end] ?? "")) end++;
         const content = lines.slice(start, end).join("\n");
         const closed = end < to;
-        out.push({
-          type: "code",
-          lang,
-          content,
-          pos: { line: i + 1, column: 1 },
-          endLine: closed ? end + 1 : end
-        });
+        out.push(
+          applyPendingId(
+            {
+              type: "code",
+              lang,
+              content,
+              pos: { line: i + 1, column: 1 },
+              endLine: closed ? end + 1 : end
+            },
+            pending
+          )
+        );
         i = closed ? end + 1 : end;
         continue;
       }
@@ -3399,17 +3476,22 @@
         const result = parseTable(lines, i, to);
         if (result) {
           result.node.endLine = result.next;
-          out.push(result.node);
+          out.push(applyPendingId(result.node, pending));
           i = result.next;
           continue;
         }
       }
       if (THEMATIC_BREAK_RE.test(line)) {
-        out.push({
-          type: "thematic_break",
-          pos: { line: i + 1, column: 1 },
-          endLine: i + 1
-        });
+        out.push(
+          applyPendingId(
+            {
+              type: "thematic_break",
+              pos: { line: i + 1, column: 1 },
+              endLine: i + 1
+            },
+            pending
+          )
+        );
         i++;
         continue;
       }
@@ -3422,12 +3504,17 @@
           buf2.push(m[1] ?? "");
           i++;
         }
-        out.push({
-          type: "quote",
-          content: buf2.join("\n"),
-          pos: { line: startLine2 + 1, column: 1 },
-          endLine: i
-        });
+        out.push(
+          applyPendingId(
+            {
+              type: "quote",
+              content: buf2.join("\n"),
+              pos: { line: startLine2 + 1, column: 1 },
+              endLine: i
+            },
+            pending
+          )
+        );
         continue;
       }
       if (LIST_RE.test(line) || ORDERED_LIST_RE.test(line)) {
@@ -3438,21 +3525,28 @@
         while (i < to) {
           const m = matchOnce(re, lines[i] ?? "");
           if (!m) break;
+          const parsedItem = parseListItemIdentity(m[2] ?? "");
           items.push({
             type: "list_item",
-            content: m[2] ?? "",
+            content: parsedItem.content,
+            ...parsedItem.id ? { id: parsedItem.id } : {},
             pos: { line: i + 1, column: 1 },
             endLine: i + 1
           });
           i++;
         }
-        out.push({
-          type: "list",
-          ordered,
-          items,
-          pos: { line: startLine2 + 1, column: 1 },
-          endLine: i
-        });
+        out.push(
+          applyPendingId(
+            {
+              type: "list",
+              ordered,
+              items,
+              pos: { line: startLine2 + 1, column: 1 },
+              endLine: i
+            },
+            pending
+          )
+        );
         continue;
       }
       const buf = [];
@@ -3460,13 +3554,13 @@
       while (i < to) {
         const cur = lines[i] ?? "";
         const next = lines[i + 1] ?? "";
-        if (cur.trim() === "" || HEADING_RE.test(cur) || FENCE_RE.test(cur) || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
+        if (cur.trim() === "" || HEADING_RE.test(cur) || FENCE_RE.test(cur) || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || STABLE_ID_LINE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
           break;
         }
         buf.push(cur);
         i++;
       }
-      if (buf.length > 0) out.push(paragraph(buf.join("\n"), startLine, i));
+      if (buf.length > 0) out.push(applyPendingId(paragraph(buf.join("\n"), startLine, i), pending));
     }
     return out;
   }
@@ -3508,9 +3602,12 @@
   function parseTable(lines, i, to) {
     const headerLine = lines[i] ?? "";
     const sepLine = lines[i + 1] ?? "";
-    const header = splitRow(headerLine);
+    const rawHeader = splitRow(headerLine);
     const sepCells = splitRow(sepLine);
-    if (sepCells.length !== header.length) return null;
+    if (sepCells.length !== rawHeader.length) return null;
+    const parsedHeader = rawHeader.map(parseInlineStableId);
+    const header = parsedHeader.map((cell) => cell.content);
+    const headerIds = parsedHeader.map((cell) => cell.id ?? "");
     const align = sepCells.map((c) => {
       const left = c.startsWith(":");
       const right = c.endsWith(":");
@@ -3520,24 +3617,27 @@
       return null;
     });
     const rows = [];
+    const cellIds = [];
     let j = i + 2;
     while (j < to && TABLE_ROW_RE.test(lines[j] ?? "")) {
       const cells = splitRow(lines[j] ?? "");
       while (cells.length < header.length) cells.push("");
       if (cells.length > header.length) cells.length = header.length;
-      rows.push(cells);
+      const parsed = cells.map(parseInlineStableId);
+      rows.push(parsed.map((cell) => cell.content));
+      cellIds.push(parsed.map((cell) => cell.id ?? ""));
       j++;
     }
-    return {
-      node: {
-        type: "table",
-        header,
-        align,
-        rows,
-        pos: { line: i + 1, column: 1 }
-      },
-      next: j
+    const node = {
+      type: "table",
+      header,
+      align,
+      rows,
+      pos: { line: i + 1, column: 1 }
     };
+    if (headerIds.some(Boolean)) node.headerIds = headerIds;
+    if (cellIds.some((row) => row.some(Boolean))) node.cellIds = cellIds;
+    return { node, next: j };
   }
   function parseAttrs(raw) {
     const attrs = {};
@@ -3766,8 +3866,6 @@
       this.op = op;
       this.name = "PatchError";
     }
-    code;
-    op;
   };
   var OP_REQUIRED_FIELDS = {
     replace_block: [["id", "string"], ["content", "string"]],
@@ -6975,17 +7073,34 @@ ${items}
         const head = node.header.map((cell, idx) => {
           const align = node.align[idx];
           const styleAttr = align ? ` style="text-align: ${align}"` : "";
-          return `<th${styleAttr}>${inlineToHtml(cell)}</th>`;
+          const cellId = node.headerIds?.[idx];
+          const colId = node.columnIds?.[idx];
+          const idAttr = cellId ? ` id="${escapeAttr(cellId)}"` : "";
+          const data = [
+            cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
+            colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
+          ].join("");
+          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</th>`;
         }).join("");
-        const body = node.rows.map((row) => {
+        const body = node.rows.map((row, rowIndex) => {
+          const rowId = node.rowIds?.[rowIndex];
+          const trAttr = rowId ? ` data-noma-row-id="${escapeAttr(rowId)}"` : "";
           const cells = row.map((cell, idx) => {
             const align = node.align[idx];
             const styleAttr = align ? ` style="text-align: ${align}"` : "";
-            return `<td${styleAttr}>${inlineToHtml(cell)}</td>`;
+            const cellId = node.cellIds?.[rowIndex]?.[idx];
+            const colId = node.columnIds?.[idx];
+            const idAttr = cellId ? ` id="${escapeAttr(cellId)}"` : "";
+            const data = [
+              cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
+              colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
+            ].join("");
+            return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</td>`;
           }).join("");
-          return `<tr>${cells}</tr>`;
+          return `<tr${trAttr}>${cells}</tr>`;
         }).join("\n");
-        return `<table class="noma-table">
+        const tableId = node.id ? ` id="${escapeAttr(node.id)}"` : "";
+        return `<table class="noma-table"${tableId}>
 <thead><tr>${head}</tr></thead>
 <tbody>
 ${body}
@@ -7111,7 +7226,7 @@ ${inner}
       case "pagebreak":
         return `<div class="noma-pagebreak"${idAttr} role="separator" aria-label="Page break"></div>`;
       case "button": {
-        const href = node.attrs.href ? String(node.attrs.href) : "#";
+        const href = node.attrs.href ? safeHref(String(node.attrs.href)) : "#";
         return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</a>`;
       }
       case "figure": {
@@ -7131,7 +7246,7 @@ ${inner}
         const summary = `Dataset: ${escapeHtml(String(node.attrs.id ?? "dataset"))}`;
         const src = typeof node.attrs.src === "string" ? node.attrs.src : "";
         const inline = node.body ?? "";
-        const body = inline.trim() ? escapeHtml(inline) : src ? `<a class="noma-dataset-src" href="${escapeAttr(src)}">${escapeHtml(src)}</a>` : "";
+        const body = inline.trim() ? escapeHtml(inline) : src ? `<a class="noma-dataset-src" href="${escapeAttr(safeHref(src))}">${escapeHtml(src)}</a>` : "";
         return `<details class="noma-dataset"${idAttr}${src ? ` data-src="${escapeAttr(src)}"` : ""}><summary>${summary}</summary><pre>${body}</pre></details>`;
       }
       case "metric":
@@ -7451,7 +7566,7 @@ ${items}
   }
   function renderCitationEntry(entry) {
     const links = [];
-    if (entry.url) links.push(`<a href="${escapeAttr(entry.url)}">URL</a>`);
+    if (entry.url) links.push(`<a href="${escapeAttr(safeHref(entry.url))}">URL</a>`);
     if (entry.doi) links.push(`<a href="https://doi.org/${escapeAttr(entry.doi)}">DOI: ${escapeHtml(entry.doi)}</a>`);
     if (entry.accessed) links.push(`<span>Accessed: ${escapeHtml(entry.accessed)}</span>`);
     const meta = links.length > 0 ? ` <span class="noma-citation-meta">${links.join(" \xB7 ")}</span>` : "";
@@ -9315,6 +9430,21 @@ ${fence}`;
           });
         } else {
           ids.set(node.id, node);
+        }
+      }
+      if (node.type === "table") {
+        for (const tableId of collectTableIdentityStrings(node)) {
+          if (ids.has(tableId)) {
+            diagnostics.push({
+              severity: "error",
+              code: "duplicate-id",
+              message: `Duplicate block ID "${tableId}".`,
+              pos: node.pos,
+              nodeId: tableId
+            });
+          } else {
+            ids.set(tableId, node);
+          }
         }
       }
       if (node.aliases) {

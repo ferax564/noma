@@ -1433,3 +1433,119 @@ button.wiki-row {
     grid-template-rows: minmax(620px, 80vh);
   }
 }
+
+.page-entry[data-child="true"] {
+  padding-left: calc(var(--page-depth, 0) * 12px);
+}
+
+.page-entry[data-child="true"] .page-row {
+  border-left: 2px solid var(--rule);
+}
+
+.page-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  min-height: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.page-breadcrumbs:empty {
+  display: none;
+}
+
+.page-breadcrumbs .crumb {
+  min-height: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.page-breadcrumbs .crumb-site {
+  cursor: default;
+  font-weight: 620;
+}
+
+.page-breadcrumbs .crumb + .crumb::before {
+  content: "/";
+  margin-right: 4px;
+  color: var(--faint);
+}
+
+.page-labels {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--selected-border);
+  border-radius: 999px;
+  background: var(--selected-bg);
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 620;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.label-chip button,
+.label-add {
+  min-height: 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 0.66rem;
+  cursor: pointer;
+}
+
+.history-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.revision-diff {
+  margin-top: 6px;
+  display: grid;
+  gap: 4px;
+  font-size: 0.68rem;
+}
+
+.revision-diff pre {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--panel-2);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.revision-diff .diff-add {
+  color: var(--ok);
+  background: var(--success-bg);
+}
+
+.revision-diff .diff-del {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.revision-diff-blocks {
+  color: var(--muted);
+}

@@ -204,6 +204,42 @@ When creating a page through `/api/documents` or
 `/api/sites/<site-id>/documents`, send `templateId` instead of `source`, or
 send `format: "markdown"` with Markdown source for server-side intake.
 
+## Page tree, labels, watching, and version diffs
+
+Spaces organise pages as a tree, the way wiki users expect:
+
+| Control | Behavior |
+|---|---|
+| Page tree | Pages nest under parent pages. The rail indents children beneath their parent; the page header shows breadcrumbs back to the space. Right-click a page for **Add child page** or **Move under page...**. |
+| Labels | Lowercase, hyphenated tags on a page (`how-to`, `onboarding`). Editors add and remove them from the page header; everyone with access can list pages by label. |
+| Watch | Creators and editors automatically watch the pages they touch. Watchers of a page, or of its whole space, get a `page_updated` notification whenever someone else changes it. |
+| Diff | Each saved version in History has a **Diff** button that shows the line diff against the previous version plus the stable block IDs that were added, removed, or changed. |
+| Delete forever | Owners can permanently purge a page or space that is already in the trash, unless a legal hold covers it. |
+
+The tree is stored per space as a `pageParents` map (child page → parent
+page). Parents must be pages in the same space and cycles are rejected. When a
+parent page is trashed its children move up to the nearest visible ancestor;
+restoring the parent puts them back.
+
+```text
+GET    /api/sites/<site-id>/tree
+GET    /api/sites/<site-id>/documents/<page-id>/breadcrumbs
+PUT    /api/sites/<site-id>/documents/<page-id>/parent     {"parentId": "<id>|null", "position": 0}
+POST   /api/sites/<site-id>/documents                      {"title": "...", "parentId": "<id>"}
+GET    /api/documents/<id>/labels
+PUT    /api/documents/<id>/labels                          {"labels": ["how-to", "onboarding"]}
+POST   /api/documents/<id>/labels                          {"label": "how-to"}
+DELETE /api/documents/<id>/labels/<label>
+GET    /api/labels?site=<optional-site-id>
+GET    /api/labels/<label>?site=<optional-site-id>
+GET    /api/documents/<id>/watch
+PUT    /api/documents/<id>/watch
+DELETE /api/documents/<id>/watch
+PUT    /api/sites/<site-id>/watch
+GET    /api/documents/<id>/revisions/<n>/diff?against=<m>
+DELETE /api/trash/<document|site>/<id>
+```
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.
@@ -744,6 +780,12 @@ Noma Cloud follows the same safety posture as the workbench:
 - DB queries are resource-bounded and permission-aware, not arbitrary SQL
 - request bodies have size limits
 - server-side render paths escape user source before artifact output
+- rendered links, buttons, datasets, and citations drop `javascript:`, `data:`, and other script-capable URL schemes
+- published artifacts are served with a CSP `sandbox`, so page scripts run on an opaque origin and cannot read the app's stored token
+- workspace-wide enterprise settings require a workspace admin: the IDs in `NOMA_CLOUD_ADMIN_USER_IDS`, or the first user ever registered when that is unset
+- adding an existing page to a space requires owner access on the page
+- agent grants never exceed the agent owner's current access
+- hosted patch proofs never read `::dataset{src=...}` files from the server
 
 For repository changes, run:
 

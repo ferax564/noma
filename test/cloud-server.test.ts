@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { openNomaCloudDatabase, type CloudDocumentRecord } from "../src/cloud-db.js";
 import { createNomaCloudServer, type NomaCloudServerOptions } from "../src/cloud-server.js";
 
@@ -2297,6 +2298,41 @@ test("cloud launch boundaries isolate connectors and recipes, validate agent run
   }
 });
 
+test("cloud database upgrades v7 notification constraints to accept page_updated", async () => {
+  const root = await mkdtemp(join(tmpdir(), "noma-cloud-migrate-"));
+  const dbPath = join(root, "noma-cloud.sqlite");
+  const legacy = new Database(dbPath);
+  legacy.exec(`CREATE TABLE notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('mention', 'comment', 'approval_requested', 'approval_updated')),
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    resource_type TEXT CHECK (resource_type IN ('document', 'site')),
+    resource_id TEXT,
+    created_at TEXT NOT NULL,
+    read_at TEXT
+  );
+  INSERT INTO notifications VALUES ('n1', 'user_legacy_1', 'mention', 'Old', 'Body', NULL, NULL, '2026-01-01T00:00:00.000Z', NULL);`);
+  legacy.close();
+  const store = openNomaCloudDatabase({
+    dataDir: join(root, "documents"),
+    usersDir: join(root, "users"),
+    sitesDir: join(root, "sites"),
+    dbPath,
+  });
+  try {
+    store.writeNotification({ id: "n2", userId: "user_legacy_1", type: "page_updated", title: "New", body: "Body", createdAt: "2026-01-02T00:00:00.000Z" });
+    assert.deepEqual(
+      store.listNotifications("user_legacy_1").map((item) => item.type),
+      ["page_updated", "mention"],
+    );
+  } finally {
+    store.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("cloud database compare-and-swap rejects a second writer with a stale hash", async () => {
   const root = await mkdtemp(join(tmpdir(), "noma-cloud-cas-"));
   const store = openNomaCloudDatabase({
@@ -2429,6 +2465,150 @@ test("cloud workspace admin allowlist overrides the bootstrap user", async () =>
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cloud spaces support a Confluence-style page tree, labels, watchers, revision diffs, and trash purge", async () => {
+  const harness = await startCloudServer("noma-cloud-confluence-");
+  try {
+    const alice = await createCloudUser(harness.base, "Tree Alice");
+    const bob = await createCloudUser(harness.base, "Tree Bob");
+    const carol = await createCloudUser(harness.base, "Tree Carol");
+    const site = await json<CloudSiteResponse>(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: alice.token,
+      body: { title: "Engineering", documentIds: [] },
+    });
+    await json(`${harness.base}/api/sites/${site.id}/collaborators`, {
+      method: "POST",
+      token: alice.token,
+      body: { userId: bob.id, role: "editor" },
+    });
+    const createPage = (title: string, parentId?: string) =>
+      json<CloudDocumentResponse>(`${harness.base}/api/sites/${site.id}/documents`, {
+        method: "POST",
+        token: alice.token,
+        body: { title, source: `# ${title}\n\nPage body.\n`, ...(parentId ? { parentId } : {}) },
+      });
+    const handbook = await createPage("Handbook");
+    const onboarding = await createPage("Onboarding", handbook.id);
+    const laptops = await createPage("Laptops", onboarding.id);
+    const runbooks = await createPage("Runbooks");
+    const policies = await createPage("Policies", handbook.id);
+
+    interface TreeNode { id: string; title: string; children: TreeNode[] }
+    const tree = await json<{ pages: TreeNode[] }>(`${harness.base}/api/sites/${site.id}/tree`, { token: bob.token });
+    assert.deepEqual(tree.pages.map((page) => page.title), ["Handbook", "Runbooks"]);
+    assert.deepEqual(tree.pages[0]!.children.map((page) => page.title), ["Onboarding", "Policies"]);
+    assert.deepEqual(tree.pages[0]!.children[0]!.children.map((page) => page.title), ["Laptops"]);
+
+    const crumbs = await json<{ breadcrumbs: Array<{ type: string; title: string }> }>(
+      `${harness.base}/api/sites/${site.id}/documents/${laptops.id}/breadcrumbs`,
+      { token: bob.token },
+    );
+    assert.deepEqual(crumbs.breadcrumbs.map((crumb) => crumb.title), ["Engineering", "Handbook", "Onboarding", "Laptops"]);
+
+    await json(`${harness.base}/api/sites/${site.id}/documents/${handbook.id}/parent`, {
+      method: "PUT",
+      token: bob.token,
+      body: { parentId: laptops.id },
+      expectedStatus: 400,
+    });
+    await json(`${harness.base}/api/sites/${site.id}/documents/${laptops.id}/parent`, {
+      method: "PUT",
+      token: carol.token,
+      body: { parentId: null },
+      expectedStatus: 403,
+    });
+    const moved = await json<{ pages: TreeNode[] }>(`${harness.base}/api/sites/${site.id}/documents/${policies.id}/parent`, {
+      method: "PUT",
+      token: bob.token,
+      body: { parentId: handbook.id, position: 0 },
+    });
+    assert.deepEqual(moved.pages[0]!.children.map((page) => page.title), ["Policies", "Onboarding"]);
+    const promoted = await json<{ pages: TreeNode[] }>(`${harness.base}/api/sites/${site.id}/documents/${laptops.id}/parent`, {
+      method: "PUT",
+      token: bob.token,
+      body: { parentId: runbooks.id },
+    });
+    assert.deepEqual(promoted.pages[1]!.children.map((page) => page.title), ["Laptops"]);
+    await json(`${harness.base}/api/sites/${site.id}`, {
+      method: "PATCH",
+      token: alice.token,
+      body: { pageParents: { [handbook.id]: runbooks.id, [runbooks.id]: handbook.id } },
+      expectedStatus: 400,
+    });
+
+    const labeled = await json<{ labels: string[] }>(`${harness.base}/api/documents/${onboarding.id}/labels`, {
+      method: "PUT",
+      token: bob.token,
+      body: { labels: ["How To", "onboarding", "onboarding"] },
+    });
+    assert.deepEqual(labeled.labels, ["how-to", "onboarding"]);
+    await json(`${harness.base}/api/documents/${runbooks.id}/labels`, { method: "POST", token: alice.token, body: { label: "how-to" } });
+    await json(`${harness.base}/api/documents/${runbooks.id}/labels`, { method: "POST", token: alice.token, body: { label: "<script>" }, expectedStatus: 400 });
+    await json(`${harness.base}/api/documents/${runbooks.id}/labels`, { method: "PUT", token: carol.token, body: { labels: ["x"] }, expectedStatus: 403 });
+    const labelCounts = await json<{ labels: Array<{ label: string; count: number }> }>(`${harness.base}/api/labels?site=${site.id}`, { token: bob.token });
+    assert.deepEqual(labelCounts.labels, [
+      { label: "how-to", count: 2 },
+      { label: "onboarding", count: 1 },
+    ]);
+    const howTo = await json<{ documents: Array<{ documentId: string }> }>(`${harness.base}/api/labels/how-to`, { token: bob.token });
+    assert.deepEqual(new Set(howTo.documents.map((document) => document.documentId)), new Set([onboarding.id, runbooks.id]));
+    const carolLabels = await json<{ labels: unknown[] }>(`${harness.base}/api/labels`, { token: carol.token });
+    assert.equal(carolLabels.labels.length, 0);
+    const unlabeled = await json<{ labels: string[] }>(`${harness.base}/api/documents/${onboarding.id}/labels/onboarding`, { method: "DELETE", token: bob.token });
+    assert.deepEqual(unlabeled.labels, ["how-to"]);
+
+    const watch = await json<{ watching: boolean }>(`${harness.base}/api/documents/${onboarding.id}/watch`, { token: alice.token });
+    assert.equal(watch.watching, true, "creators watch their pages");
+    await json(`${harness.base}/api/documents/${onboarding.id}/watch`, { method: "PUT", token: carol.token, expectedStatus: 403 });
+    const current = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${onboarding.id}`, { token: bob.token });
+    await json(`${harness.base}/api/documents/${onboarding.id}`, {
+      method: "PUT",
+      token: bob.token,
+      body: { source: `${current.source}\n## Accounts {id="accounts"}\n\nRequest SSO access on day one.\n`, expectedHash: current.hash },
+    });
+    const aliceNotifications = await json<{ notifications: Array<{ type: string; resourceId?: string }> }>(`${harness.base}/api/notifications`, {
+      token: alice.token,
+    });
+    assert.ok(aliceNotifications.notifications.some((item) => item.type === "page_updated" && item.resourceId === onboarding.id));
+    const bobNotifications = await json<{ notifications: Array<{ type: string }> }>(`${harness.base}/api/notifications`, { token: bob.token });
+    assert.equal(bobNotifications.notifications.some((item) => item.type === "page_updated"), false, "actors are not notified of their own edits");
+    await json(`${harness.base}/api/documents/${onboarding.id}/watch`, { method: "DELETE", token: alice.token });
+    await json(`${harness.base}/api/sites/${site.id}/watch`, { method: "PUT", token: alice.token });
+    const siteWatch = await json<{ watching: boolean }>(`${harness.base}/api/sites/${site.id}/watch`, { token: alice.token });
+    assert.equal(siteWatch.watching, true);
+
+    const diff = await json<{
+      from: { revision: number } | null;
+      to: { revision: number };
+      stats: { added: number; removed: number };
+      blocks: { added: string[]; removed: string[]; changed: string[] };
+      diff: string;
+    }>(`${harness.base}/api/documents/${onboarding.id}/revisions/2/diff`, { token: bob.token });
+    assert.equal(diff.from?.revision, 1);
+    assert.equal(diff.to.revision, 2);
+    assert.ok(diff.stats.added >= 2);
+    assert.ok(diff.blocks.added.includes("accounts"));
+    assert.match(diff.diff, /^\+## Accounts/m);
+    const firstDiff = await json<{ from: unknown }>(`${harness.base}/api/documents/${onboarding.id}/revisions/1/diff`, { token: bob.token });
+    assert.equal(firstDiff.from, null);
+    await json(`${harness.base}/api/documents/${onboarding.id}/revisions/2/diff?against=9`, { token: bob.token, expectedStatus: 404 });
+
+    await json(`${harness.base}/api/trash/document/${onboarding.id}`, { method: "DELETE", token: alice.token, expectedStatus: 409 });
+    await json(`${harness.base}/api/trash/document/${onboarding.id}`, { method: "POST", token: alice.token });
+    const treeAfterTrash = await json<{ pages: TreeNode[] }>(`${harness.base}/api/sites/${site.id}/tree`, { token: alice.token });
+    assert.deepEqual(treeAfterTrash.pages[0]!.children.map((page) => page.title), ["Policies"]);
+    await json(`${harness.base}/api/trash/document/${onboarding.id}`, { method: "DELETE", token: bob.token, expectedStatus: 403 });
+    await json(`${harness.base}/api/trash/document/${onboarding.id}`, { method: "DELETE", token: alice.token });
+    await json(`${harness.base}/api/documents/${onboarding.id}`, { token: alice.token, expectedStatus: 404 });
+    const siteAfterPurge = await json<CloudSiteResponse & { pageParents: Record<string, string> }>(`${harness.base}/api/sites/${site.id}`, { token: alice.token });
+    assert.equal(siteAfterPurge.documentIds.includes(onboarding.id), false);
+    const labelsAfterPurge = await json<{ labels: Array<{ label: string; count: number }> }>(`${harness.base}/api/labels`, { token: alice.token });
+    assert.deepEqual(labelsAfterPurge.labels, [{ label: "how-to", count: 1 }]);
+  } finally {
+    await harness.close();
   }
 });
 
