@@ -10,3 +10,4 @@ coverage/
 *.tsbuildinfo
 .gstack/
 *.vsix
+site/assets/enterprise-collab.js
