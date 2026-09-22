@@ -23,6 +23,12 @@ export interface ProofOptions {
   validateOptions?: ValidateOptions;
   llmOptions?: RenderLlmOptions;
   artifactOptions?: HtmlRenderOptions;
+  /**
+   * Inline `::dataset{src=...}` files relative to `filePath` before validating and
+   * previewing. Defaults to true for local CLI use; hosted callers must pass false so
+   * an untrusted document cannot read server-side files into the proof output.
+   */
+  inlineSources?: boolean;
 }
 
 export interface ProofSourceMetrics {
@@ -68,7 +74,7 @@ export interface AgentSafetyProof {
 }
 
 export function createAgentSafetyProof(options: ProofOptions): AgentSafetyProof {
-  const preDoc = parseProofDoc(options.source, options.filePath);
+  const preDoc = parseProofDoc(options.source, options.filePath, options.inlineSources !== false);
   const preDiagnostics = validate(preDoc, options.validateOptions);
   const idRegistry = collectIdRegistry(preDoc);
   const llmContext = renderLlm(preDoc, options.llmOptions ?? {});
@@ -105,7 +111,7 @@ export function createAgentSafetyProof(options: ProofOptions): AgentSafetyProof 
     }
   }
 
-  const postDoc = parseProofDoc(postSource, options.filePath);
+  const postDoc = parseProofDoc(postSource, options.filePath, options.inlineSources !== false);
   const postDiagnostics = validate(postDoc, options.validateOptions);
   const postValidation = summarizeValidation(postDiagnostics);
   const postvalidateBlocked =
@@ -369,9 +375,9 @@ export function renderProofHtml(proof: AgentSafetyProof): string {
 </html>`;
 }
 
-function parseProofDoc(source: string, filename: string): DocumentNode {
+function parseProofDoc(source: string, filename: string, inlineSources: boolean): DocumentNode {
   const doc = parse(source, { filename });
-  inlineDatasetSources(doc);
+  if (inlineSources) inlineDatasetSources(doc);
   return doc;
 }
 

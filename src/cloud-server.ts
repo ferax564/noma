@@ -130,6 +130,11 @@ export interface NomaCloudServerOptions {
   rateLimitMaxRequests?: number;
   authRateLimitMaxRequests?: number;
   trustProxy?: boolean;
+  /**
+   * User IDs allowed to administer workspace-wide enterprise settings. When empty,
+   * only the first user ever registered on this database is the workspace admin.
+   */
+  adminUserIds?: string[];
   now?: () => Date;
 }
 
@@ -145,6 +150,7 @@ interface CloudServerConfig {
   ssoTrustedHeaderHash?: string;
   rateLimiter: CloudRateLimiter;
   trustProxy: boolean;
+  adminUserIds: string[];
   now: () => Date;
   store: NomaCloudDatabase;
   platform: CloudKnowledgePlatform;
@@ -288,6 +294,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
       positiveInteger(options.authRateLimitMaxRequests ?? Number(process.env.NOMA_CLOUD_AUTH_RATE_LIMIT_MAX ?? 20), "authRateLimitMaxRequests"),
     ),
     trustProxy: options.trustProxy ?? enabledEnvironmentFlag("NOMA_CLOUD_TRUST_PROXY"),
+    adminUserIds: options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean),
     now,
     store,
     platform,
@@ -663,7 +670,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
   }
 
   if (method === "GET" && url.pathname.startsWith("/d/")) {
-    const id = decodeURIComponent(url.pathname.slice(3));
+    const id = decodePathSegment(url.pathname.slice(3));
     const record = await readDocument(config, id);
     requireNotTrashed(config, "document", id);
     const access = requireRecordAccess(config, record, principal, "viewer");
@@ -672,7 +679,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
   }
 
   if (method === "GET" && url.pathname.startsWith("/s/")) {
-    const id = decodeURIComponent(url.pathname.slice(3));
+    const id = decodePathSegment(url.pathname.slice(3));
     const site = await readSite(config, id);
     requireNotTrashed(config, "site", id);
     const access = requireRecordAccess(config, site, principal, "viewer");
@@ -928,7 +935,7 @@ async function routeKnowledge(
         documentId,
         blockId,
         ownerId: optionalString(input.ownerId),
-        verifiedBy: optionalString(input.verifiedBy),
+        verifiedBy: optionalString(input.verifiedBy) === undefined ? undefined : user.id,
         verifiedAt: optionalIsoDate(input.verifiedAt, "verifiedAt"),
         reviewBy: optionalIsoDate(input.reviewBy, "reviewBy"),
         supersedes: optionalStringArray(input.supersedes, "supersedes", 100),
@@ -1610,10 +1617,22 @@ async function routeEnterprise(req: IncomingMessage, res: ServerResponse, parts:
   }
   if (action === "scim" && method === "POST") {
     const input = await readJsonBody(req, config.maxBodyBytes);
+    const id = stringInput(input, "id");
+    const externalId = stringInput(input, "externalId");
+    const userId = stringInput(input, "userId");
+    const conflicting = config.platform
+      .listScimIdentities()
+      .find((existing) => existing.id !== id && (existing.externalId === externalId || existing.userId === userId));
+    if (conflicting) throw new HttpError(409, "externalId and userId are already bound to another SCIM identity");
+    const bound = config.platform.listScimIdentities().find((existing) => existing.id === id);
+    if (bound && (bound.externalId !== externalId || bound.userId !== userId)) {
+      throw new HttpError(409, "A SCIM identity cannot be rebound to a different externalId or user");
+    }
+    if (!config.store.readUser(userId)) throw new HttpError(404, "userId must reference an existing Noma user");
     const identity: ScimIdentity = {
-      id: stringInput(input, "id"),
-      externalId: stringInput(input, "externalId"),
-      userId: stringInput(input, "userId"),
+      id,
+      externalId,
+      userId,
       userName: stringInput(input, "userName"),
       active: input.active !== false,
       groups: optionalStringArray(input.groups, "groups", 500) ?? [],
@@ -3187,9 +3206,14 @@ async function updateSite(
   return record;
 }
 
+/**
+ * Adding a page to a space grants the space's members inherited access to it,
+ * so only the page's owner may do that — an editor could otherwise create a
+ * space they own and inherit ownership of someone else's page.
+ */
 async function requireDocumentEditAccess(config: CloudServerConfig, ids: string[], principal: Principal): Promise<void> {
   for (const id of ids) {
-    requireRecordAccess(config, await readDocument(config, id), principal, "editor");
+    requireRecordAccess(config, await readDocument(config, id), principal, "owner");
   }
 }
 
@@ -3968,6 +3992,7 @@ function createCloudPatchProof(config: CloudServerConfig, document: CloudDocumen
     prevalidate: true,
     postvalidate: true,
     artifactOptions: { allowEscapeHatches: false, externalAssets: false, interactive: false },
+    inlineSources: false,
   });
 }
 
@@ -4223,6 +4248,9 @@ function requireGatewayAgentDocumentAccess(config: CloudServerConfig, agentId: s
   const inherited = grants.find((grant) => grant.resourceType === "site" && config.store.readSite(grant.resourceId)?.documentIds.includes(documentId));
   const grant = direct ?? inherited;
   if (!grant) throw new HttpError(403, "Agent has no explicit page or space grant for this document");
+  const ownerRole = config.store.documentAccessRole(agent.createdBy, documentId);
+  if (!ownerRole) throw new HttpError(403, "The agent's owner no longer has access to this document");
+  if (ownerRole !== "owner" && roleRank[ownerRole] < roleRank[grant.role]) return { ...grant, role: ownerRole };
   return grant;
 }
 
@@ -4367,9 +4395,12 @@ function operationTargetIds(operation: PatchOp): string[] {
 }
 
 function requireWorkspaceOwner(config: CloudServerConfig, user: CloudUserRecord): void {
-  const ownsSite = config.store.listSites(user).some((site) => site.currentRole === "owner");
-  const bootstrapAdmin = config.store.listUsers()[0]?.id === user.id;
-  if (!ownsSite && !bootstrapAdmin) throw new HttpError(403, "Workspace owner access is required");
+  if (!isWorkspaceAdmin(config, user)) throw new HttpError(403, "Workspace owner access is required");
+}
+
+function isWorkspaceAdmin(config: CloudServerConfig, user: CloudUserRecord): boolean {
+  if (config.adminUserIds.length > 0) return config.adminUserIds.includes(user.id);
+  return config.store.firstRegisteredUserId() === user.id;
 }
 
 function stringInput(input: Record<string, unknown>, key: string, fallback?: string): string {
@@ -4487,6 +4518,14 @@ async function resolveStaticPath(publicDir: string, pathname: string): Promise<s
   return null;
 }
 
+function decodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new HttpError(400, "Malformed URL path");
+  }
+}
+
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   sendText(res, status, `${JSON.stringify(payload)}\n`, "application/json; charset=utf-8");
 }
@@ -4523,6 +4562,7 @@ const artifactContentSecurityPolicy = [
   "base-uri 'none'",
   "form-action 'none'",
   "frame-ancestors 'none'",
+  "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
 ].join("; ");
 
 function setSecurityHeaders(res: ServerResponse, contentSecurityPolicy?: string): void {

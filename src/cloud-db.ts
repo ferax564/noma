@@ -697,6 +697,12 @@ export class NomaCloudDatabase {
     return row ? parseRecord<CloudUserRecord>(row.record_json) : undefined;
   }
 
+  /** The earliest-inserted user; the bootstrap workspace admin when no admin allowlist is configured. */
+  firstRegisteredUserId(): string | undefined {
+    const row = this.db.prepare("SELECT id FROM users ORDER BY created_at, rowid LIMIT 1").get() as { id: string } | undefined;
+    return row?.id;
+  }
+
   listUsers(): CloudUserRecord[] {
     return this.db
       .prepare("SELECT record_json FROM users ORDER BY lower(name), id")

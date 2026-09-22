@@ -2346,6 +2346,92 @@ interface CloudTestHarness {
   close(): Promise<void>;
 }
 
+test("cloud security boundaries: workspace admin, page ownership via spaces, SCIM binding, malformed paths", async () => {
+  const harness = await startCloudServer("noma-cloud-security-");
+  try {
+    const admin = await createCloudUser(harness.base, "Zed Admin");
+    const mallory = await createCloudUser(harness.base, "! Mallory");
+    await json(`${harness.base}/api/sites`, { method: "POST", token: mallory.token, body: { title: "Mallory Space", documentIds: [] } });
+    await json(`${harness.base}/api/enterprise`, { token: mallory.token, expectedStatus: 403 });
+    await json(`${harness.base}/api/enterprise/retention`, { method: "POST", token: mallory.token, body: {}, expectedStatus: 403 });
+    await json(`${harness.base}/api/enterprise`, {
+      method: "PUT",
+      token: admin.token,
+      body: { scim: { enabled: true, baseUrl: "https://noma.example/scim/v2" }, connectorAllowlist: ["github"], modelAllowlist: ["secure-model"] },
+    });
+
+    const page = await json<CloudDocumentResponse>(`${harness.base}/api/documents`, {
+      method: "POST",
+      token: admin.token,
+      body: { title: "Private Plan", source: "# Private Plan\n\nSecret body.\n" },
+    });
+    await json(`${harness.base}/api/documents/${page.id}/collaborators`, {
+      method: "POST",
+      token: admin.token,
+      body: { userId: mallory.id, role: "editor" },
+    });
+    await json(`${harness.base}/api/sites`, {
+      method: "POST",
+      token: mallory.token,
+      body: { title: "Escalation Space", documentIds: [page.id] },
+      expectedStatus: 403,
+    });
+    const ownSite = await json<CloudSiteResponse>(`${harness.base}/api/sites`, { method: "POST", token: mallory.token, body: { title: "Second Space", documentIds: [] } });
+    await json(`${harness.base}/api/sites/${ownSite.id}`, {
+      method: "PATCH",
+      token: mallory.token,
+      body: { documentIds: [page.id] },
+      expectedStatus: 403,
+    });
+
+    await json(`${harness.base}/api/enterprise/scim`, {
+      method: "POST",
+      token: admin.token,
+      body: { id: "scim-admin", externalId: "idp-admin", userId: admin.id, userName: "Admin" },
+    });
+    await json(`${harness.base}/api/enterprise/scim`, {
+      method: "POST",
+      token: admin.token,
+      body: { id: "scim-other", externalId: "idp-mallory", userId: admin.id, userName: "Mallory" },
+      expectedStatus: 409,
+    });
+    await json(`${harness.base}/api/enterprise/scim`, {
+      method: "POST",
+      token: admin.token,
+      body: { id: "scim-admin", externalId: "idp-mallory", userId: admin.id, userName: "Admin" },
+      expectedStatus: 409,
+    });
+
+    await fetchExpect(`${harness.base}/d/%E0`, 400);
+    const artifact = await fetch(`${harness.base}/d/${page.id}`, { headers: { authorization: `Bearer ${admin.token}` } });
+    assert.match(artifact.headers.get("content-security-policy") ?? "", /sandbox allow-scripts/);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("cloud workspace admin allowlist overrides the bootstrap user", async () => {
+  const root = await mkdtemp(join(tmpdir(), "noma-cloud-admins-"));
+  const server = createNomaCloudServer({
+    dataDir: join(root, "data", "documents"),
+    dbPath: join(root, "data", "noma-cloud.sqlite"),
+    publicDir: root,
+    adminUserIds: ["not-a-real-user"],
+    now: () => new Date("2026-06-06T12:00:00.000Z"),
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const first = await createCloudUser(base, "First User");
+    await json(`${base}/api/enterprise`, { token: first.token, expectedStatus: 403 });
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 async function startCloudServer(
   prefix: string,
   options: Pick<NomaCloudServerOptions, "rateLimitWindowMs" | "rateLimitMaxRequests" | "authRateLimitMaxRequests"> = {},
