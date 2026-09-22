@@ -15,7 +15,7 @@ import {
   type ComputedEvalContext,
 } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
-import { escapeAttr, escapeHtml, inlineToHtml, splitDelimitedRow, splitPipeRow } from "./inline.js";
+import { escapeAttr, escapeHtml, inlineToHtml, safeHref, splitDelimitedRow, splitPipeRow } from "./inline.js";
 
 export interface HtmlRenderOptions {
   /** When true, wrap output in a full HTML document with the default theme. */
@@ -1024,7 +1024,7 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
       return `<div class="noma-pagebreak"${idAttr} role="separator" aria-label="Page break"></div>`;
 
     case "button": {
-      const href = node.attrs.href ? String(node.attrs.href) : "#";
+      const href = node.attrs.href ? safeHref(String(node.attrs.href)) : "#";
       return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</a>`;
     }
 
@@ -1055,7 +1055,7 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
         inline.trim()
           ? escapeHtml(inline)
           : src
-            ? `<a class="noma-dataset-src" href="${escapeAttr(src)}">${escapeHtml(src)}</a>`
+            ? `<a class="noma-dataset-src" href="${escapeAttr(safeHref(src))}">${escapeHtml(src)}</a>`
             : "";
       return `<details class="noma-dataset"${idAttr}${src ? ` data-src="${escapeAttr(src)}"` : ""}><summary>${summary}</summary><pre>${body}</pre></details>`;
     }
@@ -1474,7 +1474,7 @@ ${items}
 
 function renderCitationEntry(entry: CitationEntry): string {
   const links: string[] = [];
-  if (entry.url) links.push(`<a href="${escapeAttr(entry.url)}">URL</a>`);
+  if (entry.url) links.push(`<a href="${escapeAttr(safeHref(entry.url))}">URL</a>`);
   if (entry.doi) links.push(`<a href="https://doi.org/${escapeAttr(entry.doi)}">DOI: ${escapeHtml(entry.doi)}</a>`);
   if (entry.accessed) links.push(`<span>Accessed: ${escapeHtml(entry.accessed)}</span>`);
   const meta = links.length > 0 ? ` <span class="noma-citation-meta">${links.join(" · ")}</span>` : "";

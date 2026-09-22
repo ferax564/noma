@@ -29,6 +29,20 @@ export function isBlockReferenceWikilinkTarget(target: string): boolean {
   return BLOCK_REFERENCE_WIKILINK_RE.test(target);
 }
 
+const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:", "tel:"]);
+
+/**
+ * Neutralises script-capable URLs (`javascript:`, `vbscript:`, `data:`, …) before
+ * they reach an `href`. Relative paths, fragments, and http(s)/mailto/tel pass
+ * through unchanged; anything else becomes `#`.
+ */
+export function safeHref(href: string): string {
+  const normalized = href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
+  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized)?.[1];
+  if (!scheme) return href;
+  return SAFE_URL_SCHEMES.has(`${scheme}:`) ? href : "#";
+}
+
 export function inlineToHtml(src: string): string {
   let text = escapeHtml(src);
 
@@ -49,7 +63,7 @@ export function inlineToHtml(src: string): string {
   text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
   text = text.replace(
     MARKDOWN_LINK_RE,
-    (_m, label, href) => `<a href="${escapeAttr(href)}">${unescapeMarkdownLinkLabel(label)}</a>`,
+    (_m, label, href) => `<a href="${escapeAttr(safeHref(href))}">${unescapeMarkdownLinkLabel(label)}</a>`,
   );
   text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
   // CommonMark: a single newline inside a paragraph is a soft line break
