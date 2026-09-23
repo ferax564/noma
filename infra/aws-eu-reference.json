@@ -1,20 +1,103 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "Noma enterprise AWS/EU reference: KMS, encrypted RDS, private S3, Secrets Manager",
+  "Description": "Noma enterprise AWS/EU reference: KMS, encrypted Multi-AZ RDS PostgreSQL, private S3, Secrets Manager",
   "Parameters": {
-    "Region": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "VPC that hosts the database"
+    },
+    "PrivateSubnetIds": {
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Description": "At least two private subnets in different AZs for the DB subnet group"
+    },
+    "AppSecurityGroupId": {
+      "Type": "AWS::EC2::SecurityGroup::Id",
+      "Description": "Security group of the app/realtime/worker tasks allowed to reach PostgreSQL"
+    },
+    "KmsKeyAliasName": {
       "Type": "String",
-      "Default": "eu-central-1",
-      "AllowedValues": [
-        "eu-central-1",
-        "eu-west-1",
-        "eu-south-1"
+      "Default": "alias/noma-enterprise-eu",
+      "AllowedPattern": "^alias/[a-zA-Z0-9/_-]+$"
+    },
+    "DbInstanceClass": {
+      "Type": "String",
+      "Default": "db.m7g.large",
+      "AllowedPattern": "^db\\.[a-z0-9]+\\.[a-z0-9]+$"
+    },
+    "DbAllocatedStorage": {
+      "Type": "Number",
+      "Default": "100",
+      "MinValue": 20,
+      "MaxValue": 65536
+    },
+    "DbEngineVersion": {
+      "Type": "String",
+      "Default": "16.6",
+      "AllowedPattern": "^[0-9]+(\\.[0-9]+)?$"
+    },
+    "DbName": {
+      "Type": "String",
+      "Default": "noma",
+      "AllowedPattern": "^[a-zA-Z][a-zA-Z0-9_]{0,62}$"
+    },
+    "DbMasterUsername": {
+      "Type": "String",
+      "Default": "noma_admin",
+      "AllowedPattern": "^[a-zA-Z][a-zA-Z0-9_]{0,62}$"
+    },
+    "DbBackupRetentionDays": {
+      "Type": "Number",
+      "Default": "14",
+      "MinValue": 1,
+      "MaxValue": 35
+    },
+    "BedrockInferenceProfileId": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Optional Bedrock inference profile ID (e.g. an eu.* profile). Empty disables the Bedrock policy.",
+      "AllowedPattern": "^[a-zA-Z0-9._:-]*$"
+    }
+  },
+  "Rules": {
+    "EuRegionOnly": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Contains": [
+              [
+                "eu-central-1",
+                "eu-west-1",
+                "eu-south-1"
+              ],
+              {
+                "Ref": "AWS::Region"
+              }
+            ]
+          },
+          "AssertDescription": "Deploy only to eu-central-1, eu-west-1, eu-south-1"
+        }
+      ]
+    }
+  },
+  "Conditions": {
+    "HasBedrockProfile": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "BedrockInferenceProfileId"
+            },
+            ""
+          ]
+        }
       ]
     }
   },
   "Resources": {
     "EnterpriseKey": {
       "Type": "AWS::KMS::Key",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
       "Properties": {
         "Description": "Noma enterprise CMK",
         "EnableKeyRotation": true,
@@ -22,10 +105,11 @@
           "Version": "2012-10-17",
           "Statement": [
             {
+              "Sid": "AccountAdministration",
               "Effect": "Allow",
               "Principal": {
                 "AWS": {
-                  "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:root"
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
                 }
               },
               "Action": "kms:*",
@@ -38,7 +122,9 @@
     "EnterpriseKeyAlias": {
       "Type": "AWS::KMS::Alias",
       "Properties": {
-        "AliasName": "alias/noma-enterprise-eu",
+        "AliasName": {
+          "Ref": "KmsKeyAliasName"
+        },
         "TargetKeyId": {
           "Ref": "EnterpriseKey"
         }
@@ -46,6 +132,8 @@
     },
     "AssetsBucket": {
       "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
       "Properties": {
         "BucketEncryption": {
           "ServerSideEncryptionConfiguration": [
@@ -53,9 +141,13 @@
               "ServerSideEncryptionByDefault": {
                 "SSEAlgorithm": "aws:kms",
                 "KMSMasterKeyID": {
-                  "Ref": "EnterpriseKey"
+                  "Fn::GetAtt": [
+                    "EnterpriseKey",
+                    "Arn"
+                  ]
                 }
-              }
+              },
+              "BucketKeyEnabled": true
             }
           ]
         },
@@ -64,27 +156,189 @@
           "BlockPublicPolicy": true,
           "IgnorePublicAcls": true,
           "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
         }
+      }
+    },
+    "AssetsBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "AssetsBucket"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyInsecureTransport",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "AssetsBucket",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${AssetsBucket.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DatabaseSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Noma enterprise private database subnets",
+        "SubnetIds": {
+          "Ref": "PrivateSubnetIds"
+        }
+      }
+    },
+    "DatabaseSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Noma enterprise PostgreSQL: app tasks only",
+        "VpcId": {
+          "Ref": "VpcId"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 5432,
+            "ToPort": 5432,
+            "SourceSecurityGroupId": {
+              "Ref": "AppSecurityGroupId"
+            }
+          }
+        ]
       }
     },
     "Database": {
       "Type": "AWS::RDS::DBInstance",
+      "DeletionPolicy": "Snapshot",
+      "UpdateReplacePolicy": "Snapshot",
       "Properties": {
         "Engine": "postgres",
+        "EngineVersion": {
+          "Ref": "DbEngineVersion"
+        },
+        "DBInstanceClass": {
+          "Ref": "DbInstanceClass"
+        },
+        "AllocatedStorage": {
+          "Ref": "DbAllocatedStorage"
+        },
+        "StorageType": "gp3",
+        "DBName": {
+          "Ref": "DbName"
+        },
+        "MasterUsername": {
+          "Ref": "DbMasterUsername"
+        },
+        "ManageMasterUserPassword": true,
+        "MasterUserSecret": {
+          "KmsKeyId": {
+            "Ref": "EnterpriseKey"
+          }
+        },
+        "DBSubnetGroupName": {
+          "Ref": "DatabaseSubnetGroup"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Ref": "DatabaseSecurityGroup"
+          }
+        ],
         "StorageEncrypted": true,
         "KmsKeyId": {
           "Ref": "EnterpriseKey"
         },
         "MultiAZ": true,
-        "PubliclyAccessible": false
+        "PubliclyAccessible": false,
+        "BackupRetentionPeriod": {
+          "Ref": "DbBackupRetentionDays"
+        },
+        "DeletionProtection": true,
+        "CopyTagsToSnapshot": true,
+        "AutoMinorVersionUpgrade": true,
+        "EnableIAMDatabaseAuthentication": true
       }
     },
     "AppSecret": {
       "Type": "AWS::SecretsManager::Secret",
       "Properties": {
-        "Name": "noma/enterprise/app",
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}/noma/enterprise/app"
+        },
+        "Description": "Noma enterprise application signing material",
         "KmsKeyId": {
           "Ref": "EnterpriseKey"
+        },
+        "GenerateSecretString": {
+          "SecretStringTemplate": "{}",
+          "GenerateStringKey": "sessionSigningKey",
+          "PasswordLength": 64,
+          "ExcludePunctuation": true
+        }
+      }
+    },
+    "BedrockInvokePolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Condition": "HasBedrockProfile",
+      "Properties": {
+        "Description": "Invoke only the configured EU Bedrock inference profile",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "InvokeInferenceProfile",
+              "Effect": "Allow",
+              "Action": [
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockInferenceProfileId}"
+              }
+            },
+            {
+              "Sid": "InvokeModelsBehindProfile",
+              "Effect": "Allow",
+              "Action": [
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:bedrock:eu-*::foundation-model/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "bedrock:InferenceProfileArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockInferenceProfileId}"
+                  }
+                }
+              }
+            }
+          ]
         }
       }
     }
@@ -92,7 +346,47 @@
   "Outputs": {
     "Region": {
       "Value": {
-        "Ref": "Region"
+        "Ref": "AWS::Region"
+      }
+    },
+    "KmsKeyArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "EnterpriseKey",
+          "Arn"
+        ]
+      }
+    },
+    "AssetsBucketName": {
+      "Value": {
+        "Ref": "AssetsBucket"
+      }
+    },
+    "DatabaseEndpoint": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Database",
+          "Endpoint.Address"
+        ]
+      }
+    },
+    "DatabaseMasterSecretArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Database",
+          "MasterUserSecret.SecretArn"
+        ]
+      }
+    },
+    "AppSecretArn": {
+      "Value": {
+        "Ref": "AppSecret"
+      }
+    },
+    "BedrockInvokePolicyArn": {
+      "Condition": "HasBedrockProfile",
+      "Value": {
+        "Ref": "BedrockInvokePolicy"
       }
     }
   }

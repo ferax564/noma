@@ -93,6 +93,7 @@ export type {
 export {
   AWS_EU_ALLOWED_REGIONS,
   AWS_EU_REGION,
+  AWS_REQUIRED_PROPERTIES,
   assertAwsEuStack,
   awsEuCloudFormation,
   awsEuReferenceStack,
