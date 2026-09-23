@@ -4,6 +4,7 @@ import { walk } from "./ast.js";
 import { computedDomainVars, controlDefaultNumber, formulaText, numericAttr as computedNumericAttr } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
 import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } from "./inline.js";
+import { loadFrontmatterYaml } from "./parser.js";
 import { collectTableIdentityStrings } from "./stable-identity.js";
 
 export interface ValidateOptions {
@@ -248,6 +249,20 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     return any ? union : undefined;
   })();
   const profileLabel = declaredProfiles.join("+");
+
+  const frontmatter = doc.children[0];
+  if (frontmatter?.type === "frontmatter") {
+    const loaded = loadFrontmatterYaml(frontmatter.raw);
+    if (!loaded.ok) {
+      diagnostics.push({
+        severity: "error",
+        code: "invalid-frontmatter",
+        message: `Frontmatter is not valid YAML (${loaded.error}); its keys are ignored.`,
+        pos: frontmatter.pos,
+        ...(frontmatter.endLine !== undefined ? { endLine: frontmatter.endLine } : {}),
+      });
+    }
+  }
 
   const wikilinkRefs = new Set<string>();
   const collectWikilinks = (text: string, node: Node): void => {
@@ -881,6 +896,7 @@ function readDeclaredProfiles(meta: Record<string, unknown>, optionProfiles: str
 }
 
 const KNOWN_RULES = [
+  "invalid-frontmatter",
   "duplicate-id",
   "out-of-profile-directive",
   "unknown-profile",
@@ -932,7 +948,7 @@ function collectRuleCodes(): Set<string> {
 }
 
 function suppressed(node: DirectiveNode): boolean {
-  return node.attrs.noverify === true;
+  return node.attrs.noverify === true || node.attrs.noverify === "true";
 }
 
 function readFirstStringAttr(node: DirectiveNode, keys: string[]): string | undefined {

@@ -31,6 +31,22 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Cloud UI: opening a knowledge-health or agent-inbox item no longer throws `focusBlock is not defined`.
+- **Parser:** quoted attribute values are no longer coerced to numbers or booleans (`id="2024"` keeps its ID, `version="1.10"` stays `1.10`); `id` is never coerced. Double-quoted values accept `\"` and `\\` escapes.
+- **Parser:** invalid YAML frontmatter no longer throws. The tree is still built and the validator reports `invalid-frontmatter`.
+- **Parser:** a document that starts with a `---` thematic break keeps its content. A leading `---` pair is frontmatter only when it holds blank text or a YAML mapping.
+- **Parser:** heading slugs keep letters and numbers of every script (`# 日本語` → `日本語`, `## Привет` → `привет`). Existing ASCII and Latin-script slugs are unchanged. Titles with no letters or digits get `section`, `section-2`, ….
+- **Parser:** a trailing `{...}` on a heading is read as attributes only when it is a valid attribute list with a `key=value` pair, so `# Set {a, b}` keeps its braces.
+- **Parser:** code fences with symbols in the info string (```` ```c++ ````), `~~~` fences, and fences of four or more backticks now suppress structure parsing. A fence closes only on the same character with at least the opening length.
+- **renderNoma:** blank lines inside code blocks are no longer collapsed, code containing ```` ``` ```` lines gets a longer fence, and a leading thematic break is written as `***` so it is not re-read as frontmatter.
+- **Patch:** attribute values that contain both `'` and `"` are written with escapes the parser can read.
+- **Patch:** line breaks in attribute values (`invalid_attribute_value`), malformed attribute keys (`invalid_attribute_key`), line breaks in heading titles, and `replace_body` content that would close its block early or leave a code fence open (`unbalanced_fence_content`) are rejected, so a patch can no longer create or close blocks outside its target.
+- **Patch:** `replace_body` on an unclosed directive replaces the old body, and on a list item keeps the `{#id}` marker.
+- **Patch:** files with CRLF line endings keep CRLF on patched lines.
+
+### Tests
+
+- `test/property-roundtrip.test.ts` adds a seeded generator of random valid documents (Unicode headings, nested directives, tricky attribute quoting, code fences) and checks parse → `renderNoma` → parse equality, that random `update_attribute` patches leave other blocks untouched, and that random `replace_body` edits either stay inside the target or are rejected. Set `NOMA_PROPERTY_SEEDS` for longer runs.
+- New conformance fixtures cover quoted attribute strings, attribute escapes, Unicode headings, literal heading braces, leading thematic breaks, code fence variants, invalid frontmatter, the `replace_body` fixes, and the three new patch error codes.
 
 - **Enterprise workspace kernel (Docs / Visuals / Work):** a modular in-process enterprise server covering shared identity and policy, persistent block/table identity, a lossless visual-document adapter, an embedded PaperDOM command kernel, native issues with configurable workflows, governed changesets, permission-aware search and relations, connector inventory/import dispositions, digest-checked backup/restore, and the section-17 end-to-end demonstration as an executable test. SQLite is the verified kernel datastore; PostgreSQL DDL is generated for the planned enterprise migration. Follow-on coverage in this branch adds CRDT persist-before-ack with reconnect/lost-ack tests, Work reports/bulk preview/issue security/recipes, Confluence storage and Jira JSON fixture adapters plus cutover stages, RAG eval and knowledge-health queues, HTTP/worker/workspace entry points, extraction-boundary packages, an SBOM/health/support-bundle ops surface, and a 40-task scripted agent benchmark with a performance profile.
 - **Hosted Tiptap/Yjs collaboration:** a persist-before-ack Yjs WebSocket (`/yjs`) plus Tiptap `Collaboration` in two real Puppeteer browsers. Acknowledged updates are on disk; reconnect replays them.

@@ -584,6 +584,9 @@ errors as machine-readable `code` values in the `diagnostics` array of the trans
 | `sha_mismatch` | The caller-supplied `expected_sha` (8-char, Phase 0 field) did not match the document's pre-state hash. Also emitted when strict-mode `base_sha256` is checked and does not match, and when an op's `baseHash` block precondition does not match the target block's current source hash. |
 | `pre_validation_blocked` | Strict mode is active and pre-validation returned `"error"`. The op-list was not applied. |
 | `op_list_aborted` | This op was virtually applied in memory before a later op in the same list failed. The list was rolled back; no bytes were written. Emitted in the transcript record for each preceding op in the failed list. |
+| `invalid_attribute_key` | `update_attribute.key` or `remove_attribute.key` is not a valid attribute name (`[a-zA-Z_][\w-]*`). |
+| `invalid_attribute_value` | A value the op writes into an attribute list (`update_attribute.value`, comment/note/change-request attributes, `rename_id.to`) contains a line break. |
+| `unbalanced_fence_content` | `replace_body.content` would change blocks outside the target — for example a `::` line that closes the target early, or an unterminated code fence. Balanced child blocks and fenced code are allowed. |
 | `unsupported_op` | The `op` value is not in the v1.0 op catalog (the §3.1 core ops or the §1.5 extended ops), or the operation targets a book manifest (`.noma.yml`). Book manifests are not valid patch targets in v1.0. |
 
 New codes MAY be added in a minor version without breaking conforming implementations (the

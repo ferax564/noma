@@ -5,9 +5,19 @@ import type {
   Node,
   ParagraphNode,
 } from "./ast.js";
-import { isDirective } from "./ast.js";
+import { isDirective, walk } from "./ast.js";
 import { escapePipeTableCell, serializeDelimitedRow, splitDelimitedRow, splitPipeRow } from "./inline.js";
-import { parse, slugify } from "./parser.js";
+import {
+  ATTR_NAME_RE,
+  headingSlug,
+  isCodeFenceClose,
+  matchCodeFenceOpen,
+  parse,
+  serializeAttr,
+  splitHeadingAttrs,
+  type CodeFence,
+} from "./parser.js";
+import { INLINE_STABLE_ID_RE } from "./stable-identity.js";
 import { sha256Hex } from "./hash.js";
 import yaml from "js-yaml";
 
@@ -83,7 +93,10 @@ export type PatchErrorCode =
   | "sha_mismatch"
   | "pre_validation_blocked"
   | "op_list_aborted"
-  | "unsupported_op";
+  | "unsupported_op"
+  | "invalid_attribute_key"
+  | "invalid_attribute_value"
+  | "unbalanced_fence_content";
 
 export class PatchError extends Error {
   constructor(
@@ -148,6 +161,49 @@ function fieldMatches(value: unknown, kind: FieldKind): boolean {
 }
 
 /**
+ * Op fields that are serialised into a directive's `{...}` attribute list (or
+ * a heading's). A line break in any of them would end the open line early and
+ * let the rest of the value inject blocks outside the target.
+ */
+const OP_ATTR_VALUE_FIELDS: Partial<Record<PatchOp["op"], string[]>> = {
+  update_attribute: ["value"],
+  add_comment: ["id", "target", "author", "initials", "date", "reply_to"],
+  resolve_comment: ["resolved_by", "resolved_at"],
+  add_footnote: ["id", "target", "label"],
+  add_endnote: ["id", "target", "label"],
+  add_change_request: ["id", "target", "action", "from", "to", "text", "author", "date"],
+  rename_id: ["to"],
+};
+
+const LINE_BREAK_RE = /[\r\n\u2028\u2029]/;
+
+function validateOpSafety(op: PatchOp): void {
+  const record = op as unknown as Record<string, unknown>;
+  if (op.op === "update_attribute" || op.op === "remove_attribute") {
+    if (!ATTR_NAME_RE.test(op.key)) {
+      throw new PatchError(
+        "invalid_attribute_key",
+        `attribute key ${JSON.stringify(op.key)} must match ${ATTR_NAME_RE.source}`,
+        op,
+      );
+    }
+  }
+  for (const field of OP_ATTR_VALUE_FIELDS[op.op] ?? []) {
+    const value = record[field];
+    if (typeof value === "string" && LINE_BREAK_RE.test(value)) {
+      throw new PatchError(
+        "invalid_attribute_value",
+        `op "${op.op}" field "${field}" is written into an attribute list and must not contain line breaks`,
+        op,
+      );
+    }
+  }
+  if (op.op === "update_heading" && LINE_BREAK_RE.test(op.title)) {
+    throw new PatchError("invalid_content", `heading title must be a single line`, op);
+  }
+}
+
+/**
  * Rejects malformed ops with a precise message before they reach an op
  * handler — a missing required field must produce a clean PatchError, never
  * a TypeError from deep inside the patch engine.
@@ -171,6 +227,7 @@ function validateOpShape(op: PatchOp): void {
       op,
     );
   }
+  validateOpSafety(op);
 }
 
 export function patch(doc: DocumentNode, op: PatchOp): DocumentNode {
@@ -1801,6 +1858,18 @@ function verifyBaseHash(source: string, op: PatchOp): void {
 function applyToSource(source: string, op: PatchOp): string {
   validateOpShape(op);
   verifyBaseHash(source, op);
+  if (!usesCrlf(source)) return dispatchSourceOp(source, op);
+  const patched = dispatchSourceOp(source.replace(/\r\n/g, "\n"), op);
+  return patched.replace(/\r?\n/g, "\r\n");
+}
+
+/** True when every line break in `source` is CRLF, so patched lines must be too. */
+function usesCrlf(source: string): boolean {
+  const lf = source.split("\n").length - 1;
+  return lf > 0 && source.split("\r\n").length - 1 === lf;
+}
+
+function dispatchSourceOp(source: string, op: PatchOp): string {
   switch (op.op) {
     case "update_attribute":
       return applySrcUpdateAttr(source, op);
@@ -1878,32 +1947,103 @@ function applySrcReplaceBody(
   const { node, start, end } = locate(source, op.id, op);
   const lines = source.split("\n");
   const bodyLines = op.content.replace(/\n+$/, "").split("\n");
+  if (node.type === "list_item") {
+    const line = lines[start - 1] ?? "";
+    const marker = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
+    const hasIdMarker = node.id !== undefined && INLINE_STABLE_ID_RE.test(line.slice(marker.length));
+    const idPrefix = hasIdMarker ? `{#${node.id}} ` : "";
+    lines[start - 1] = `${marker}${idPrefix}${op.content.replace(/\n/g, " ")}`;
+    return lines.join("\n");
+  }
+
+  let from: number;
+  let count: number;
+  let replacement = bodyLines;
   if (isDirective(node)) {
     if (!isBodyOnlyDirective(node)) {
       throw new PatchError("invalid_content", `block "${op.id}" has child blocks; use replace_block`, op);
     }
-    lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-    return lines.join("\n");
+    from = start;
+    count = fencedBodyLineCount(lines, start, end, isDirectiveCloserFor(lines[start - 1] ?? ""));
+  } else if (node.type === "code") {
+    const fence = matchCodeFenceOpen(lines[start - 1] ?? "");
+    from = start;
+    count = fencedBodyLineCount(lines, start, end, (line) => fence !== null && isCodeFenceClose(line, fence));
+  } else if (node.type === "paragraph") {
+    from = start - 1;
+    count = end - start + 1;
+  } else if (node.type === "quote") {
+    from = start - 1;
+    count = end - start + 1;
+    replacement = bodyLines.map((line) => (line ? `> ${line}` : ">"));
+  } else {
+    throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
   }
-  if (node.type === "paragraph") {
-    lines.splice(start - 1, end - start + 1, ...bodyLines);
-    return lines.join("\n");
+  lines.splice(from, count, ...replacement);
+  const patched = lines.join("\n");
+  assertContainedEdit(source, patched, from + 1, from + count, from + replacement.length, op);
+  return patched;
+}
+
+function isDirectiveCloserFor(openLine: string): (line: string) => boolean {
+  const colons = openLine.match(/^\s*(:{2,})/)?.[1]?.length ?? 2;
+  return (line) => line.match(/^(:{2,})\s*$/)?.[1]?.length === colons;
+}
+
+/**
+ * Number of body lines between a fenced block's opener (1-based `start`) and
+ * its closer. An unclosed block's body runs to its last non-blank line.
+ */
+function fencedBodyLineCount(
+  lines: string[],
+  start: number,
+  end: number,
+  isCloser: (line: string) => boolean,
+): number {
+  if (end > start && isCloser(lines[end - 1] ?? "")) return end - start - 1;
+  let last = end - 1;
+  while (last >= start && (lines[last] ?? "").trim() === "") last--;
+  return Math.max(0, last - start + 1);
+}
+
+/**
+ * Guards a body rewrite: every block outside the rewritten line range
+ * (1-based, inclusive) must keep its type, id and span — shifted by the
+ * change in line count — so the new content cannot close its container early,
+ * open an unterminated fence, or otherwise restructure the rest of the file.
+ */
+function assertContainedEdit(
+  before: string,
+  after: string,
+  start: number,
+  oldEnd: number,
+  newEnd: number,
+  op: PatchOp,
+): void {
+  const delta = newEnd - oldEnd;
+  const expected = outsideStructure(parse(before), start, oldEnd, delta);
+  const actual = outsideStructure(parse(after), start, newEnd, 0);
+  if (expected.length === actual.length && expected.every((sig, i) => sig === actual[i])) return;
+  throw new PatchError(
+    "unbalanced_fence_content",
+    `content for "${patchTargetId(op)}" changes document structure outside the target (unbalanced \`::\` or code fence?)`,
+    op,
+  );
+}
+
+function outsideStructure(doc: DocumentNode, start: number, end: number, delta: number): string[] {
+  const out: string[] = [];
+  for (const node of walk(doc)) {
+    const line = node.pos?.line;
+    if (line === undefined) continue;
+    const endLine = node.endLine ?? line;
+    if (line >= start && endLine <= end) continue;
+    const from = line > end ? line + delta : line;
+    const to = endLine >= end ? endLine + delta : endLine;
+    const name = isDirective(node) ? node.name : "";
+    out.push(`${node.type}:${name}:${node.id ?? ""}:${from}:${to}`);
   }
-  if (node.type === "quote") {
-    const quoted = bodyLines.map((line) => (line ? `> ${line}` : ">"));
-    lines.splice(start - 1, end - start + 1, ...quoted);
-    return lines.join("\n");
-  }
-  if (node.type === "code") {
-    lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-    return lines.join("\n");
-  }
-  if (node.type === "list_item") {
-    const marker = (lines[start - 1] ?? "").match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
-    lines[start - 1] = `${marker}${op.content.replace(/\n/g, " ")}`;
-    return lines.join("\n");
-  }
-  throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
+  return out;
 }
 
 function applySrcUpdateHeading(
@@ -3202,15 +3342,16 @@ function directiveFenceDepth(node: DirectiveNode, lines: string[]): number {
 function normalizeDirectiveFenceDepth(content: string, from: number, to: number): string {
   if (from === to) return content;
   const delta = to - from;
-  let inFence = false;
+  let fence: CodeFence | null = null;
   return content
     .split("\n")
     .map((line) => {
-      if (/^\s*```/.test(line)) {
-        inFence = !inFence;
+      if (fence) {
+        if (isCodeFenceClose(line, fence)) fence = null;
         return line;
       }
-      if (inFence) return line;
+      fence = matchCodeFenceOpen(line);
+      if (fence) return line;
       const match = line.match(/^(\s*)(:{2,})(.*)$/);
       if (!match) return line;
       const rest = match[3] ?? "";
@@ -3285,7 +3426,7 @@ function escapeRegex(s: string): string {
 }
 
 const ATTR_TOKEN_RE =
-  /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s}]+)))?/g;
+  /([a-zA-Z_][\w-]*)(?:=("((?:[^"\\]|\\.)*)"|'([^']*)'|([^\s}]+)))?/g;
 
 function rewriteOpenLineAttr(
   line: string,
@@ -3362,42 +3503,48 @@ function rewriteCommentResolutionAttrs(
   return next;
 }
 
+const HEADING_LINE_RE = /^(#{1,6})(\s+)(.+?)\s*$/;
+
 function rewriteHeadingId(line: string, newId: string): string {
-  const m = line.match(/^(#+\s+.+?)(?:\s+\{([^}]*)\})?\s*$/);
+  const m = line.match(HEADING_LINE_RE);
   if (!m) return line;
-  const head = m[1] ?? "";
-  const attrsInner = (m[2] ?? "").trim();
-  if (!attrsInner) return `${head} {id="${newId}"}`;
+  const head = `${m[1]}${m[2]}`;
+  const split = splitHeadingAttrs(m[3] ?? "");
+  const idAttr = serializeAttr("id", newId);
+  const attrsInner = (split.rawAttrs ?? "").trim();
+  if (!attrsInner) return `${head}${split.title} {${idAttr}}`;
   let replaced = false;
   const updated = attrsInner.replace(ATTR_TOKEN_RE, (full, k) => {
     if (k !== "id") return full;
     replaced = true;
-    return `id="${newId}"`;
+    return idAttr;
   });
-  if (!replaced) return `${head} {${attrsInner} id="${newId}"}`;
-  return `${head} {${updated.trim()}}`;
+  if (!replaced) return `${head}${split.title} {${attrsInner} ${idAttr}}`;
+  return `${head}${split.title} {${updated.trim()}}`;
 }
 
 function rewriteHeadingTitle(line: string, newTitle: string, stableId?: string): string {
-  const m = line.match(/^(#+)(\s+)(.*?)(?:\s+\{([^}]*)\})?\s*$/);
+  const m = line.match(HEADING_LINE_RE);
   if (!m) return line;
   const hashes = m[1] ?? "#";
   const space = m[2] ?? " ";
-  const attrsInner = (m[4] ?? "").trim();
+  const attrsInner = (splitHeadingAttrs(m[3] ?? "").rawAttrs ?? "").trim();
+  const title = newTitle.trim();
   const needsExplicitId =
-    stableId && stableId.length > 0 && slugify(newTitle) !== stableId;
+    stableId !== undefined &&
+    stableId.length > 0 &&
+    (headingSlug(title) !== stableId || splitHeadingAttrs(title).attrs !== undefined);
+  const idAttr = stableId ? serializeAttr("id", stableId) : "";
   if (!attrsInner) {
-    return needsExplicitId
-      ? `${hashes}${space}${newTitle} {id="${stableId}"}`
-      : `${hashes}${space}${newTitle}`;
+    return needsExplicitId ? `${hashes}${space}${title} {${idAttr}}` : `${hashes}${space}${title}`;
   }
   let hasId = false;
   attrsInner.replace(ATTR_TOKEN_RE, (_full, k) => {
     if (k === "id") hasId = true;
     return _full;
   });
-  const attrs = needsExplicitId && !hasId ? `${attrsInner} id="${stableId}"` : attrsInner;
-  return `${hashes}${space}${newTitle} {${attrs.trim()}}`;
+  const attrs = needsExplicitId && !hasId ? `${attrsInner} ${idAttr}` : attrsInner;
+  return `${hashes}${space}${title} {${attrs.trim()}}`;
 }
 
 function serializeCommentBlock(op: Extract<PatchOp, { op: "add_comment" }>): string {
@@ -3438,13 +3585,5 @@ function serializeChangeRequestBlock(op: Extract<PatchOp, { op: "add_change_requ
 }
 
 function serializeOneAttr(key: string, value: AttrValue): string {
-  if (value === true) return key;
-  if (value === false) return `${key}=false`;
-  if (typeof value === "number") return `${key}=${value}`;
-  const s = String(value);
-  if (s.includes('"')) {
-    if (s.includes("'")) return `${key}="${s.replace(/"/g, '\\"')}"`;
-    return `${key}='${s}'`;
-  }
-  return `${key}="${s}"`;
+  return serializeAttr(key, value);
 }

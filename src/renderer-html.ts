@@ -915,9 +915,9 @@ function gridLayoutAttrs(
       node.attrs["min-width"],
   );
   const gap = cssLength(node.attrs.gap);
-  if (node.attrs.wide === true || width === "wide") classes.push(`${baseClass}-wide`);
-  if (node.attrs.full === true || width === "full") classes.push(`${baseClass}-full`);
-  if (node.attrs.compact === true || node.attrs.dense === true) classes.push(`${baseClass}-compact`);
+  if (attrBool(node.attrs.wide) || width === "wide") classes.push(`${baseClass}-wide`);
+  if (attrBool(node.attrs.full) || width === "full") classes.push(`${baseClass}-full`);
+  if (attrBool(node.attrs.compact) || attrBool(node.attrs.dense)) classes.push(`${baseClass}-compact`);
   if (min) classes.push(`${baseClass}-auto`);
   const safeColumns = Number.isFinite(columns)
     ? Math.max(1, Math.min(12, Math.floor(columns)))
@@ -1237,7 +1237,7 @@ function renderResearchBlock(node: DirectiveNode, ctx: RenderCtx): string {
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
   const variant = variantAttr(node);
   const confidence =
-    typeof node.attrs.confidence === "number" ? node.attrs.confidence : undefined;
+    numericAttr(node.attrs, "confidence");
   const meta = researchMetaHtml(node);
   const confidenceBar =
     confidence !== undefined
@@ -1588,7 +1588,7 @@ function renderStateChange(
 }
 
 function renderAgentTask(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {
-  const checked = node.attrs.done === true ? " checked" : "";
+  const checked = attrBool(node.attrs.done) ? " checked" : "";
   return `<div class="noma-agent-task"${idAttr}>
   <label><input type="checkbox" disabled${checked} /> <span class="noma-tag">${escapeHtml(node.name)}</span></label>
   <div class="noma-agent-body">${renderChildren(node, ctx)}</div>

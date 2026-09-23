@@ -1,0 +1,3 @@
+::card{id="c" title='He said "hi"' note="it's \"quoted\" C:\dir\\"}
+Body.
+::
