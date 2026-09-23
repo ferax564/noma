@@ -146,10 +146,14 @@ The parser is a hand-written recursive descent over a line-based tokenizer. It i
 Block fence depth is tracked by counting leading colons. A `:::card` inside a `::grid` is valid; a stray `:::` at top level is a parse error.
 
 Attribute parsing supports:
-- `key="quoted value"`
+- `key="quoted value"` / `key='quoted value'` — always a string, never coerced (`version="1.10"` stays `"1.10"`)
 - `key=bareword`
-- `key=0.82` (numeric coerced)
+- `key=0.82`, `key=true` — only **unquoted** values are coerced to numbers/booleans
 - `flag` (boolean true)
+- `id` is never coerced (`id=2024` and `id="2024"` are both the string `"2024"`)
+- inside double quotes, `\"` is a literal `"` and `\\` a literal `\`; any other backslash is kept as written. Writers use `serializeAttr` (in `src/parser.ts`) so values round-trip.
+
+Code fences are three or more backticks or tildes with any info string (first word = `lang`); a fence closes only on the same character with at least the opening length (`matchCodeFenceOpen` / `isCodeFenceClose`, shared by parser, patch, and fmt).
 
 Inline content is **not** fully parsed at parser time — it is stored as a string and parsed lazily by renderers. This keeps the AST small and lets different renderers handle inline markup their own way (HTML escapes, LLM strips formatting).
 

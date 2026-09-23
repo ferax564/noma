@@ -27,6 +27,9 @@ PatchErrorCode = Literal[
     "pre_validation_blocked",
     "op_list_aborted",
     "unsupported_op",
+    "invalid_attribute_key",
+    "invalid_attribute_value",
+    "unbalanced_fence_content",
 ]
 
 PatchOpName = Literal[

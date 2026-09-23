@@ -7,10 +7,10 @@
  * blocks; unrelated lines are byte-identical to the input.
  */
 import { splitPipeRow } from "./inline.js";
+import { isCodeFenceClose, matchCodeFenceOpen, type CodeFence } from "./parser.js";
 
 const TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
 const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/;
-const FENCE_RE = /^```(\w*)\s*$/;
 
 interface Alignment {
   left: boolean;
@@ -72,17 +72,18 @@ export function formatSource(source: string): string {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const out: string[] = [];
   let i = 0;
-  let inFence = false;
+  let fence: CodeFence | null = null;
 
   while (i < lines.length) {
     const line = lines[i] ?? "";
-    if (FENCE_RE.test(line)) {
-      inFence = !inFence;
+    if (fence) {
+      if (isCodeFenceClose(line, fence)) fence = null;
       out.push(line);
       i++;
       continue;
     }
-    if (inFence) {
+    fence = matchCodeFenceOpen(line);
+    if (fence) {
       out.push(line);
       i++;
       continue;
