@@ -16,14 +16,14 @@ The `EnterpriseWorkspace` kernel (`src/enterprise.ts` and `src/enterprise-*.ts`)
 | Area | What is implemented | Evidence |
 | --- | --- | --- |
 | Identity | OIDC adapter interface, SCIM upsert/deprovision, short-lived sessions, revocation | `test/enterprise-workspace.test.ts` |
-| Docs | Persistent block/table IDs, lossless adapter, draft/publish coordinator, CRDT persist-before-ack, reconnect replay, lost-ack idempotency, independent concurrent edits | `test/stable-identity.test.ts`, `test/enterprise-crdt.test.ts` |
-| Hosted collab | Tiptap + Yjs over a persist-before-ack WebSocket; two real browsers; reconnect keeps acknowledged text | `test/enterprise-yjs.test.ts` |
+| Docs | Persistent block/table IDs, lossless adapter, draft/publish coordinator, block-level three-way merge (not a CRDT) with persist-before-ack, reconnect replay, lost-ack idempotency; disjoint blocks merge, identical edits collapse, divergent edits to one block conflict; edits go through source-preserving `patchSource` | `test/stable-identity.test.ts`, `test/enterprise-merge.test.ts` |
+| Hosted collab | Tiptap + Yjs over a persist-before-ack WebSocket; token via `Authorization` or `noma.bearer.*` subprotocol (query token only behind `allowQueryToken`); idle-room eviction; transactional snapshot compaction; cross-process-safe sequence allocation; server-asserted presence; read-only viewers; two real browsers; reconnect keeps acknowledged text | `test/enterprise-yjs.test.ts` |
 | Visuals | Pinned PaperDOM kernel from `ferax564/paperDOM`; host strips client actors; stale revisions fail; HTML export and fidelity report | `test/enterprise-paperdom-upstream.test.ts` |
 | Work | Configurable types/workflows, hierarchy, boards, sprints, worklogs, custom fields, JQL subset with unsupported-field reporting, bulk-edit preview, issue security, throughput/cycle-time/CFD reports, automation dry-run | `test/enterprise-work-depth.test.ts` |
 | Agents | Changeset lifecycle, no self-approval, untrusted payload policy, kill switch, outbox, six recipes that emit changesets, 40-task scripted agent benchmark | changeset tests, `test/enterprise-http.test.ts` |
 | Knowledge | Permission-aware search and relations; citations carry resource/block/hash; RAG eval harness; stale/contradiction queues | `test/enterprise-knowledge.test.ts` |
-| Migration | Inventory dispositions; live Confluence/Jira Cloud and Data Center HTTP with 429 Retry-After; SSRF denylist; cutover state machine | `test/enterprise-atlassian.test.ts`, `test/enterprise-connectors.test.ts` |
-| AWS / EU | `eu-central-1` CloudFormation: rotating KMS CMK, encrypted Multi-AZ RDS, SSE-KMS private S3, Secrets Manager | `test/enterprise-aws.test.ts`, `infra/aws-eu-reference.json` |
+| Migration | Inventory dispositions; live Confluence (Cloud `/wiki/rest/api`, Data Center `/rest/api`) and Jira (Cloud v3, Data Center v2) HTTP with pagination (`start`/`limit`/`_links.next`, `nextPageToken`, `startAt`/`total`) and a max-pages guard; 429 Retry-After; SSRF denylist with explicit `trustedPrivateHosts`; origin pinning; cutover state machine | `test/enterprise-atlassian.test.ts`, `test/enterprise-connectors.test.ts` |
+| AWS / EU | Deployable CloudFormation (EU-region rule): rotating KMS CMK, Multi-AZ encrypted RDS PostgreSQL in caller-supplied private subnets with an RDS-managed master password, TLS-only SSE-KMS S3, Secrets Manager, optional Bedrock policy from a parameter; self-check enforces required properties per resource type | `test/enterprise-aws.test.ts`, `infra/aws-eu-reference.json` |
 | Security review | Independent probe pack: unauthenticated search, search leakage, self-approval, grant injection, SVG quarantine | `test/enterprise-security-review.test.ts`, `docs/security-review.noma` |
 | Paid pilots | Three paid partners with champion and budget owner; timed usability go/no-go (≥30% median faster, ≥50% completion) | `test/enterprise-pilot.test.ts` |
 | Operations | SQLite enterprise store, PostgreSQL DDL generator, digest-checked backup/restore, legal hold, tamper-evident audit chain, health/readiness, SBOM, redacted support bundles | backup, hold, and ops tests |
@@ -31,11 +31,22 @@ The `EnterpriseWorkspace` kernel (`src/enterprise.ts` and `src/enterprise-*.ts`)
 | Packages | Extraction boundaries under `packages/{document-core,document-ui,platform,work,knowledge,connectors,contracts,paperdom-core,paperdom-react,paperdom-io}` re-export the CLI kernel (no dual-write copies) | package `src/index.ts` files |
 | E2E | Section 17 demonstration: two humans, one agent, connector, pin, stale apply, revocation, restore | `test/enterprise-e2e.test.ts` |
 
+## Hardening notes
+
+What the collaboration, merge, connector, and infrastructure modules do today, and where their limits are:
+
+- **Yjs relay (`src/enterprise-yjs.ts`).** Updates are validated, then appended in a `BEGIN IMMEDIATE` transaction before the ack, so writers in several processes sharing one SQLite file serialize instead of racing. After `compactAfter` updates (default 200), the stored updates are replaced by one `Y.encodeStateAsUpdate` snapshot in a single transaction. Rooms are dropped from memory `roomIdleMs` (default 30 s) after the last client leaves. Presence is a small JSON channel: the server adds the principal ID and name, and caps the size of each state. Open sockets re-check their session every few seconds. **Limit:** live fan-out stays inside one process. Route every client of a document to the same realtime process; other processes only see its updates after a reload from disk.
+- **Block merge (`src/enterprise-merge.ts`).** This is not a CRDT. Client edits are block-addressed ops (`replace_paragraph`, `update_table_cell`) against the last sequence number the client saw. Paragraph edits go through `patchSource`; a table-cell edit rewrites only that row's line. `src/enterprise-crdt.ts` remains as deprecated aliases.
+- **Atlassian (`src/enterprise-atlassian.ts`).** Requests stay on the configured origin, redirects are not followed, and a hostile `_links.next` cannot move the crawl to another host. Paged walks stop at `maxPages` and report `truncated`.
+- **AWS/EU (`infra/aws-eu-reference.json`).** The template deploys into an existing VPC. It does not create the VPC, the compute tasks, or their IAM roles. Attach `BedrockInvokePolicyArn` to the app role when a profile is configured.
+
 ## Not claimed as production-ready
 
 These remain operational or partner-environment concerns even though the in-repo contracts pass:
 
 - A live corporate IdP (the kernel still uses the OIDC adapter plus fixture identities)
+- Multi-process realtime fan-out (the Yjs relay has no pub/sub between processes; use sticky routing per document)
+- A CloudFormation stack that has actually been deployed. The template passes `cfn-lint` and the in-repo self-check, but it has not been applied to a live account.
 - An applied AWS account, RDS snapshots, Bedrock quotas, or a malware-scanning appliance
 - A third-party firm's signed pentest report (the independent review pack is executable in CI)
 - Blinded human studies on partner laptops (the paid-pilot harness measures kernel tasks)
