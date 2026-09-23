@@ -724,6 +724,216 @@ interface BlockIndexRow {
   ordinal: number;
 }
 
+// cloud-ai record types
+export interface CloudAiUsageRecord {
+  id: string;
+  userId: string;
+  agentId: string;
+  feature: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  siteId?: string;
+  documentId?: string;
+  createdAt: string;
+}
+
+export interface CloudAiPageProposal {
+  id: string;
+  siteId: string;
+  parentId?: string;
+  title: string;
+  source: string;
+  sourceHash: string;
+  instruction: string;
+  proposedBy: string;
+  agentId: string;
+  model: string;
+  citations: Array<{ documentId: string; blockId: string; versionHash: string }>;
+  diagnostics: unknown[];
+  status: CloudPatchProposalStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  documentId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CloudSiteMaintenanceSettings {
+  siteId: string;
+  enabled: boolean;
+  aiRefresh: boolean;
+  intervalHours: number;
+  maxProposalsPerRun: number;
+  /** User whose access scopes the sweep and whose AI budget pays for refresh drafts. */
+  runAs: string;
+  updatedBy: string;
+  updatedAt: string;
+  lastRunAt?: string;
+}
+
+export interface CloudHealthItemRecord {
+  id: string;
+  siteId: string;
+  kind: string;
+  severity: "info" | "warning" | "error";
+  documentId?: string;
+  blockId?: string;
+  message: string;
+  evidence: Record<string, unknown>;
+  status: "open" | "resolved";
+  proposalId?: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt?: string;
+}
+
+export interface CloudMaintenanceRun {
+  id: string;
+  siteId: string;
+  trigger: "manual" | "scheduled";
+  status: "running" | "completed" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  itemsOpen: number;
+  itemsResolved: number;
+  proposalsCreated: number;
+  detail: Record<string, unknown>;
+}
+
+interface AiUsageRow {
+  id: string;
+  user_id: string;
+  agent_id: string;
+  feature: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  site_id: string | null;
+  document_id: string | null;
+  created_at: string;
+}
+
+interface AiPageProposalRow {
+  id: string;
+  site_id: string;
+  parent_id: string | null;
+  title: string;
+  source: string;
+  source_hash: string;
+  instruction: string;
+  proposed_by: string;
+  agent_id: string;
+  model: string;
+  citations_json: string;
+  diagnostics_json: string;
+  status: CloudPatchProposalStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  document_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SiteMaintenanceRow {
+  site_id: string;
+  enabled: number;
+  ai_refresh: number;
+  interval_hours: number;
+  max_proposals_per_run: number;
+  run_as: string;
+  updated_by: string;
+  updated_at: string;
+  last_run_at: string | null;
+}
+
+interface HealthItemRow {
+  id: string;
+  site_id: string;
+  kind: string;
+  severity: string;
+  document_id: string | null;
+  block_id: string | null;
+  message: string;
+  evidence_json: string;
+  status: string;
+  proposal_id: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+}
+
+interface MaintenanceRunRow {
+  id: string;
+  site_id: string;
+  trigger: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  items_open: number;
+  items_resolved: number;
+  proposals_created: number;
+  detail_json: string;
+}
+
+function cloudAiPageProposal(row: AiPageProposalRow): CloudAiPageProposal {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    ...(row.parent_id ? { parentId: row.parent_id } : {}),
+    title: row.title,
+    source: row.source,
+    sourceHash: row.source_hash,
+    instruction: row.instruction,
+    proposedBy: row.proposed_by,
+    agentId: row.agent_id,
+    model: row.model,
+    citations: parseRecord<CloudAiPageProposal["citations"]>(row.citations_json),
+    diagnostics: parseRecord<unknown[]>(row.diagnostics_json),
+    status: row.status,
+    ...(row.reviewed_by ? { reviewedBy: row.reviewed_by } : {}),
+    ...(row.reviewed_at ? { reviewedAt: row.reviewed_at } : {}),
+    ...(row.document_id ? { documentId: row.document_id } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function cloudSiteMaintenance(row: SiteMaintenanceRow): CloudSiteMaintenanceSettings {
+  return {
+    siteId: row.site_id,
+    enabled: row.enabled === 1,
+    aiRefresh: row.ai_refresh === 1,
+    intervalHours: row.interval_hours,
+    maxProposalsPerRun: row.max_proposals_per_run,
+    runAs: row.run_as,
+    updatedBy: row.updated_by,
+    updatedAt: row.updated_at,
+    ...(row.last_run_at ? { lastRunAt: row.last_run_at } : {}),
+  };
+}
+
+function cloudHealthItem(row: HealthItemRow): CloudHealthItemRecord {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    kind: row.kind,
+    severity: row.severity === "error" || row.severity === "warning" ? row.severity : "info",
+    ...(row.document_id ? { documentId: row.document_id } : {}),
+    ...(row.block_id ? { blockId: row.block_id } : {}),
+    message: row.message,
+    evidence: parseRecord<Record<string, unknown>>(row.evidence_json),
+    status: row.status === "resolved" ? "resolved" : "open",
+    ...(row.proposal_id ? { proposalId: row.proposal_id } : {}),
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    ...(row.resolved_at ? { resolvedAt: row.resolved_at } : {}),
+  };
+}
+// end cloud-ai record types
+
 const schemaVersion = "8";
 
 const roleRank: Record<CloudRole, number> = {
@@ -1267,6 +1477,7 @@ export class NomaCloudDatabase {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
         this.db.prepare("DELETE FROM search_index WHERE document_id = ?").run(id);
+        this.db.prepare("DELETE FROM knowledge_health_items WHERE document_id = ?").run(id);
         this.db.prepare("DELETE FROM site_documents WHERE document_id = ?").run(id);
         for (const row of this.db.prepare("SELECT id FROM sites").all() as Array<{ id: string }>) {
           const site = this.readSite(row.id);
@@ -1276,6 +1487,9 @@ export class NomaCloudDatabase {
       } else {
         this.db.prepare("DELETE FROM site_documents WHERE site_id = ?").run(id);
         this.db.prepare("DELETE FROM page_parents WHERE site_id = ?").run(id);
+        for (const owned of ["ai_page_proposals", "site_maintenance", "knowledge_health_items", "maintenance_runs"]) {
+          this.db.prepare(`DELETE FROM ${owned} WHERE site_id = ?`).run(id);
+        }
       }
       return removed;
     });
@@ -2237,6 +2451,219 @@ export class NomaCloudDatabase {
       }
     })();
   }
+  // cloud-ai: AI usage, drafted pages, and maintenance
+
+  writeAiUsage(usage: CloudAiUsageRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO ai_usage (id, user_id, agent_id, feature, model, input_tokens, output_tokens, cost_usd, site_id, document_id, created_at)
+         VALUES (@id, @userId, @agentId, @feature, @model, @inputTokens, @outputTokens, @costUsd, @siteId, @documentId, @createdAt)`,
+      )
+      .run({ ...usage, siteId: usage.siteId ?? null, documentId: usage.documentId ?? null });
+  }
+
+  /** Total AI spend by one user since `since` (ISO timestamp). */
+  aiSpendSince(userId: string, since: string): number {
+    const row = this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS total FROM ai_usage WHERE user_id = ? AND created_at >= ?").get(userId, since) as { total: number };
+    return row.total;
+  }
+
+  listAiUsage(userId: string, limit = 50): CloudAiUsageRecord[] {
+    const rows = this.db.prepare("SELECT * FROM ai_usage WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?").all(userId, limit) as AiUsageRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      agentId: row.agent_id,
+      feature: row.feature,
+      model: row.model,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      costUsd: row.cost_usd,
+      ...(row.site_id ? { siteId: row.site_id } : {}),
+      ...(row.document_id ? { documentId: row.document_id } : {}),
+      createdAt: row.created_at,
+    }));
+  }
+
+  writeAiPageProposal(proposal: CloudAiPageProposal): void {
+    this.db
+      .prepare(
+        `INSERT INTO ai_page_proposals
+          (id, site_id, parent_id, title, source, source_hash, instruction, proposed_by, agent_id, model, citations_json,
+           diagnostics_json, status, reviewed_by, reviewed_at, document_id, created_at, updated_at)
+         VALUES
+          (@id, @siteId, @parentId, @title, @source, @sourceHash, @instruction, @proposedBy, @agentId, @model, @citationsJson,
+           @diagnosticsJson, @status, @reviewedBy, @reviewedAt, @documentId, @createdAt, @updatedAt)
+         ON CONFLICT(id) DO UPDATE SET
+           status = excluded.status,
+           reviewed_by = excluded.reviewed_by,
+           reviewed_at = excluded.reviewed_at,
+           document_id = excluded.document_id,
+           updated_at = excluded.updated_at`,
+      )
+      .run({
+        id: proposal.id,
+        siteId: proposal.siteId,
+        parentId: proposal.parentId ?? null,
+        title: proposal.title,
+        source: proposal.source,
+        sourceHash: proposal.sourceHash,
+        instruction: proposal.instruction,
+        proposedBy: proposal.proposedBy,
+        agentId: proposal.agentId,
+        model: proposal.model,
+        citationsJson: JSON.stringify(proposal.citations),
+        diagnosticsJson: JSON.stringify(proposal.diagnostics),
+        status: proposal.status,
+        reviewedBy: proposal.reviewedBy ?? null,
+        reviewedAt: proposal.reviewedAt ?? null,
+        documentId: proposal.documentId ?? null,
+        createdAt: proposal.createdAt,
+        updatedAt: proposal.updatedAt,
+      });
+  }
+
+  readAiPageProposal(id: string): CloudAiPageProposal | undefined {
+    const row = this.db.prepare("SELECT * FROM ai_page_proposals WHERE id = ?").get(id) as AiPageProposalRow | undefined;
+    return row ? cloudAiPageProposal(row) : undefined;
+  }
+
+  listAiPageProposals(siteId: string, limit = 100): CloudAiPageProposal[] {
+    const rows = this.db.prepare("SELECT * FROM ai_page_proposals WHERE site_id = ? ORDER BY created_at DESC, id DESC LIMIT ?").all(siteId, limit) as AiPageProposalRow[];
+    return rows.map(cloudAiPageProposal);
+  }
+
+  readSiteMaintenance(siteId: string): CloudSiteMaintenanceSettings | undefined {
+    const row = this.db.prepare("SELECT * FROM site_maintenance WHERE site_id = ?").get(siteId) as SiteMaintenanceRow | undefined;
+    return row ? cloudSiteMaintenance(row) : undefined;
+  }
+
+  writeSiteMaintenance(settings: CloudSiteMaintenanceSettings): void {
+    this.db
+      .prepare(
+        `INSERT INTO site_maintenance (site_id, enabled, ai_refresh, interval_hours, max_proposals_per_run, run_as, updated_by, updated_at, last_run_at)
+         VALUES (@siteId, @enabled, @aiRefresh, @intervalHours, @maxProposalsPerRun, @runAs, @updatedBy, @updatedAt, @lastRunAt)
+         ON CONFLICT(site_id) DO UPDATE SET
+           enabled = excluded.enabled,
+           ai_refresh = excluded.ai_refresh,
+           interval_hours = excluded.interval_hours,
+           max_proposals_per_run = excluded.max_proposals_per_run,
+           run_as = excluded.run_as,
+           updated_by = excluded.updated_by,
+           updated_at = excluded.updated_at,
+           last_run_at = excluded.last_run_at`,
+      )
+      .run({
+        siteId: settings.siteId,
+        enabled: settings.enabled ? 1 : 0,
+        aiRefresh: settings.aiRefresh ? 1 : 0,
+        intervalHours: settings.intervalHours,
+        maxProposalsPerRun: settings.maxProposalsPerRun,
+        runAs: settings.runAs,
+        updatedBy: settings.updatedBy,
+        updatedAt: settings.updatedAt,
+        lastRunAt: settings.lastRunAt ?? null,
+      });
+  }
+
+  /** Enabled, non-trashed spaces whose last sweep is older than their interval, oldest first. */
+  listDueSiteMaintenance(now: string, limit: number): CloudSiteMaintenanceSettings[] {
+    const rows = this.db
+      .prepare(
+        `SELECT m.* FROM site_maintenance m
+         WHERE m.enabled = 1
+           AND NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'site' AND t.resource_id = m.site_id)
+           AND (m.last_run_at IS NULL OR datetime(m.last_run_at, '+' || m.interval_hours || ' hours') <= datetime(?))
+         ORDER BY COALESCE(m.last_run_at, '') ASC LIMIT ?`,
+      )
+      .all(now, limit) as SiteMaintenanceRow[];
+    return rows.map(cloudSiteMaintenance);
+  }
+
+  listHealthItems(siteId: string, status?: CloudHealthItemRecord["status"], limit = 500): CloudHealthItemRecord[] {
+    const rows = (status
+      ? this.db.prepare("SELECT * FROM knowledge_health_items WHERE site_id = ? AND status = ? ORDER BY last_seen_at DESC, id LIMIT ?").all(siteId, status, limit)
+      : this.db.prepare("SELECT * FROM knowledge_health_items WHERE site_id = ? ORDER BY last_seen_at DESC, id LIMIT ?").all(siteId, limit)) as HealthItemRow[];
+    return rows.map(cloudHealthItem);
+  }
+
+  writeHealthItem(item: CloudHealthItemRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO knowledge_health_items
+          (id, site_id, kind, severity, document_id, block_id, message, evidence_json, status, proposal_id, first_seen_at, last_seen_at, resolved_at)
+         VALUES
+          (@id, @siteId, @kind, @severity, @documentId, @blockId, @message, @evidenceJson, @status, @proposalId, @firstSeenAt, @lastSeenAt, @resolvedAt)
+         ON CONFLICT(id) DO UPDATE SET
+           severity = excluded.severity,
+           message = excluded.message,
+           evidence_json = excluded.evidence_json,
+           status = excluded.status,
+           proposal_id = excluded.proposal_id,
+           last_seen_at = excluded.last_seen_at,
+           resolved_at = excluded.resolved_at`,
+      )
+      .run({
+        id: item.id,
+        siteId: item.siteId,
+        kind: item.kind,
+        severity: item.severity,
+        documentId: item.documentId ?? null,
+        blockId: item.blockId ?? null,
+        message: item.message,
+        evidenceJson: JSON.stringify(item.evidence),
+        status: item.status,
+        proposalId: item.proposalId ?? null,
+        firstSeenAt: item.firstSeenAt,
+        lastSeenAt: item.lastSeenAt,
+        resolvedAt: item.resolvedAt ?? null,
+      });
+  }
+
+  writeMaintenanceRun(run: CloudMaintenanceRun): void {
+    this.db
+      .prepare(
+        `INSERT INTO maintenance_runs (id, site_id, trigger, status, started_at, finished_at, items_open, items_resolved, proposals_created, detail_json)
+         VALUES (@id, @siteId, @trigger, @status, @startedAt, @finishedAt, @itemsOpen, @itemsResolved, @proposalsCreated, @detailJson)
+         ON CONFLICT(id) DO UPDATE SET
+           status = excluded.status,
+           finished_at = excluded.finished_at,
+           items_open = excluded.items_open,
+           items_resolved = excluded.items_resolved,
+           proposals_created = excluded.proposals_created,
+           detail_json = excluded.detail_json`,
+      )
+      .run({
+        id: run.id,
+        siteId: run.siteId,
+        trigger: run.trigger,
+        status: run.status,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt ?? null,
+        itemsOpen: run.itemsOpen,
+        itemsResolved: run.itemsResolved,
+        proposalsCreated: run.proposalsCreated,
+        detailJson: JSON.stringify(run.detail),
+      });
+  }
+
+  listMaintenanceRuns(siteId: string, limit = 20): CloudMaintenanceRun[] {
+    const rows = this.db.prepare("SELECT * FROM maintenance_runs WHERE site_id = ? ORDER BY started_at DESC, id DESC LIMIT ?").all(siteId, limit) as MaintenanceRunRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      siteId: row.site_id,
+      trigger: row.trigger === "scheduled" ? "scheduled" : "manual",
+      status: row.status === "completed" || row.status === "failed" ? row.status : "running",
+      startedAt: row.started_at,
+      ...(row.finished_at ? { finishedAt: row.finished_at } : {}),
+      itemsOpen: row.items_open,
+      itemsResolved: row.items_resolved,
+      proposalsCreated: row.proposals_created,
+      detail: parseRecord<Record<string, unknown>>(row.detail_json),
+    }));
+  }
+
+  // end cloud-ai
 
   query(user: CloudUserRecord, query: CloudDbQuery): CloudDbQueryResult {
     switch (query.resource) {
@@ -2762,6 +3189,83 @@ export class NomaCloudDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_page_parents_parent ON page_parents(parent_id, document_id);
       CREATE INDEX IF NOT EXISTS idx_page_parents_document ON page_parents(document_id, parent_id);
+      -- cloud-ai: AI usage accounting, drafted-page proposals, and stale-knowledge maintenance
+      CREATE TABLE IF NOT EXISTS ai_usage (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        feature TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        cost_usd REAL NOT NULL,
+        site_id TEXT,
+        document_id TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS ai_page_proposals (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        parent_id TEXT,
+        title TEXT NOT NULL,
+        source TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        instruction TEXT NOT NULL,
+        proposed_by TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        citations_json TEXT NOT NULL,
+        diagnostics_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'applied')),
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        document_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS site_maintenance (
+        site_id TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL,
+        ai_refresh INTEGER NOT NULL,
+        interval_hours INTEGER NOT NULL,
+        max_proposals_per_run INTEGER NOT NULL,
+        run_as TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_run_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS knowledge_health_items (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        document_id TEXT,
+        block_id TEXT,
+        message TEXT NOT NULL,
+        evidence_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
+        proposal_id TEXT,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        resolved_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS maintenance_runs (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        items_open INTEGER NOT NULL DEFAULT 0,
+        items_resolved INTEGER NOT NULL DEFAULT 0,
+        proposals_created INTEGER NOT NULL DEFAULT 0,
+        detail_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_ai_page_proposals_site ON ai_page_proposals(site_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_knowledge_health_items_site ON knowledge_health_items(site_id, status, last_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_maintenance_runs_site ON maintenance_runs(site_id, started_at DESC);
+      -- end cloud-ai
     `);
     this.rebuildPageParents();
     this.migrateNotificationTypes();

@@ -17,6 +17,7 @@ import type {
   NomaCloudDatabase,
 } from "../cloud-db.js";
 import type { BlobStore } from "../cloud-blobs.js";
+import type { LlmProvider } from "../cloud-llm.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
 import { assertCloudId } from "./input.js";
@@ -45,6 +46,20 @@ export interface CloudServerConfig {
   maxAttachmentBytes: number;
   /** Live attachment bytes allowed per space (or per user for pages outside any space). */
   attachmentQuotaBytes: number;
+  ai: CloudAiConfig;
+}
+
+/** Generative AI settings. Without a provider every AI feature degrades to extractive behaviour. */
+export interface CloudAiConfig {
+  provider?: LlmProvider;
+  /** Per-user spend cap over a rolling 30-day window, in USD. */
+  userBudgetUsd: number;
+  /** Lifetime budget of each user's system AI agent, in USD. */
+  agentBudgetUsd: number;
+  /** Lets AI refresh fetch sources on private/loopback hosts (tests and on-prem only). */
+  allowPrivateSourceHosts: boolean;
+  /** In-process maintenance scheduler tick; 0 disables the timer. */
+  maintenanceTickMs: number;
 }
 
 export interface Principal {

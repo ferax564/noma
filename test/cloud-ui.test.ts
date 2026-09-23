@@ -57,7 +57,7 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
   await appendSource(page, "\n\n## Browser History {id=\"browser-history\"}\nSaved as version two.\n");
   await page.locator("#savePageButton").click();
   await waitForText(page, "#cloudStatus", "Saved page");
-  assert.match(await text(page, "#historyList"), /Version 2 · current/);
+  await waitForText(page, "#historyList", "Version 2 · current");
 
   await page.locator("#globalSearchInput").fill("Browser History");
   await page.locator("#searchButton").click();

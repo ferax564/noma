@@ -598,7 +598,7 @@ interface CloudBreadcrumb {
  * Validates a child → parent page map against the site's pages. Unknown IDs are
  * dropped (pages leave spaces), self-parents and cycles are rejected.
  */
-function pageParentMap(value: unknown, documentIds: string[]): Record<string, string> {
+export function pageParentMap(value: unknown, documentIds: string[]): Record<string, string> {
   if (value === undefined || value === null) return {};
   if (typeof value !== "object" || Array.isArray(value)) throw new HttpError(400, "pageParents must be an object");
   const allowed = new Set(documentIds);
@@ -623,7 +623,7 @@ function pageParentMap(value: unknown, documentIds: string[]): Record<string, st
 }
 
 /** Nearest ancestor that is still visible; trashed parents hand their children up. */
-function effectivePageParent(config: CloudServerConfig, parents: Record<string, string>, documentId: string): string | undefined {
+export function effectivePageParent(config: CloudServerConfig, parents: Record<string, string>, documentId: string): string | undefined {
   let parent = parents[documentId];
   const seen = new Set<string>();
   while (parent && config.store.isTrashed("document", parent) && !seen.has(parent)) {
@@ -743,4 +743,29 @@ async function movePage(
   await writeSite(config, record);
   if (access.user) recordActivity(config, access.user, "document.moved", "site", site.id, { documentId, parentId: parentId ?? null });
   return record;
+}
+
+/** Adds an existing page to a space, optionally under `parentId`, keeping folders and the page tree consistent. */
+export async function attachPageToSite(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  documentId: string,
+  parentId: string | undefined,
+  access: AccessContext,
+): Promise<CloudSiteRecord> {
+  const documentIds = site.documentIds.includes(documentId) ? site.documentIds : [...site.documentIds, documentId];
+  const parent = parentId && site.documentIds.includes(parentId) && !config.store.isTrashed("document", parentId) ? parentId : undefined;
+  const pageParents = { ...pageParentMap(site.pageParents, documentIds), ...(parent ? { [documentId]: parent } : {}) };
+  const pageFolders = pageFolderMap(site.pageFolders, documentIds);
+  const next: CloudSiteRecord = {
+    ...site,
+    documentIds: parent ? placeAfterSubtree(documentIds, pageParents, documentId, parent) : documentIds,
+    folders: normalizeSiteFolders(site.folders ?? [], pageFolders),
+    pageFolders,
+    pageParents,
+    updatedAt: config.now().toISOString(),
+    updatedBy: access.user?.id ?? site.updatedBy,
+  };
+  await writeSite(config, next);
+  return next;
 }

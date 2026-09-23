@@ -55,6 +55,8 @@ Usage:
   noma fmt   <file.noma> [--inplace|--out p] Re-align pipe tables in source
   noma verify <fixture-dir>                  Run conformance suite against fixtures
   noma diff <before.noma> <after.noma> --at <date>  Emit ::state_change for attribute add/change/remove
+  noma cloud export-space|sync [opts]        Mirror a Noma Cloud space as .noma files
+                                             (see noma cloud --help)
   noma --help                                Show this help
   noma --version                             Print the CLI version
 
@@ -565,6 +567,11 @@ function validateOptionsFromArgs(args: CliArgs): ValidateOptions {
 
 async function main(): Promise<void> {
   const rawArgv = process.argv.slice(2);
+  if (rawArgv[0] === "cloud") {
+    const { runCloudCommand } = await import("./cloud-git-sync.js");
+    process.exitCode = await runCloudCommand(rawArgv.slice(1));
+    return;
+  }
   const argv =
     rawArgv[0] === "agent" && rawArgv[1] === "review"
       ? ["proof", ...rawArgv.slice(2)]

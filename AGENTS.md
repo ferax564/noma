@@ -45,6 +45,8 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render
   cloud-db.ts              SQLite persistence for Noma Cloud
   cloud-blobs.ts           Content-addressed attachment blob store (local disk; S3-ready interface)
+  cloud-llm.ts             LLM provider layer for Cloud AI (Claude Messages API over fetch, fake provider, pricing)
+  cloud-git-sync.ts        `noma cloud export-space|sync` — two-way space ↔ .noma directory sync
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
   cloud.ts                 Noma Cloud public barrel (`@ferax564/noma-cli/cloud` subpath; loads better-sqlite3)

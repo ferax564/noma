@@ -9,6 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type BlobStore, LocalDiskBlobStore } from "./cloud-blobs.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
+import { createLlmProviderFromEnv, type LlmProvider } from "./cloud-llm.js";
 import { CloudKnowledgePlatform } from "./cloud-platform.js";
 import {
   CloudRateLimiter,
@@ -23,6 +24,7 @@ import { decodePathSegment, headerValue, HttpError, sendJson, sendText, sha256He
 import { selfUser } from "./cloud/records.js";
 import { attachmentResolver } from "./cloud/attachments.js";
 import { renderDocumentHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
+import { runDueMaintenance, startMaintenanceScheduler } from "./cloud/routes-maintenance.js";
 import { routeApi } from "./cloud/router.js";
 import {
   isCloudAppShell,
@@ -101,9 +103,63 @@ export interface NomaCloudServerOptions {
   /** Attachment blob storage; defaults to content-addressed files under `<storage root>/blobs`. */
   blobStore?: BlobStore;
   now?: () => Date;
+  /** Generative AI settings; environment variables fill anything left unset. */
+  ai?: NomaCloudAiOptions;
+}
+
+export interface NomaCloudAiOptions {
+  /** `null` disables AI even when `ANTHROPIC_API_KEY` is set. */
+  provider?: LlmProvider | null;
+  userBudgetUsd?: number;
+  agentBudgetUsd?: number;
+  allowPrivateSourceHosts?: boolean;
+  /** Maintenance scheduler tick in ms; 0 disables the in-process timer. */
+  maintenanceTickMs?: number;
 }
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
+  const config = createCloudServerConfig(options);
+  const { store, platform } = config;
+  const stopMaintenance = startMaintenanceScheduler(config);
+  if (config.production && config.adminUserIds.length === 0) {
+    console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
+  }
+
+  const server = createServer((req, res) => {
+    void routeRequest(req, res, config).catch((error: unknown) => {
+      if (res.headersSent) {
+        res.destroy(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+      const status = error instanceof HttpError ? error.status : 500;
+      const message = error instanceof Error ? error.message : "Internal server error";
+      sendJson(res, status, { error: message, ...(error instanceof HttpError ? error.details : {}) });
+    });
+  });
+  server.on("close", () => {
+    stopMaintenance();
+    platform.close();
+    store.close();
+  });
+  return server;
+}
+
+/**
+ * Runs one maintenance pass over every space whose stale-knowledge sweep is due, then closes the
+ * databases. Backs the `apps/worker/cloud-maintenance.ts` entry for deployments that prefer a cron job
+ * over the in-process scheduler.
+ */
+export async function runNomaCloudMaintenanceOnce(options: NomaCloudServerOptions = {}): Promise<Awaited<ReturnType<typeof runDueMaintenance>>> {
+  const config = createCloudServerConfig({ ...options, ai: { ...options.ai, maintenanceTickMs: 0 } });
+  try {
+    return await runDueMaintenance(config);
+  } finally {
+    config.platform.close();
+    config.store.close();
+  }
+}
+
+function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerConfig {
   const dataDir = resolve(options.dataDir ?? process.env.NOMA_CLOUD_DATA_DIR ?? ".noma-cloud/documents");
   const storageRoot = dirname(dataDir);
   const usersDir = resolve(options.usersDir ?? process.env.NOMA_CLOUD_USERS_DIR ?? join(storageRoot, "users"));
@@ -118,7 +174,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
   const adminUserIds = options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean);
   const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir, adminUserIds, bootstrapFirstUserAdmin: !production });
   const platform = new CloudKnowledgePlatform(dbPath);
-  const config: CloudServerConfig = {
+  return {
     dataDir,
     usersDir,
     sitesDir,
@@ -148,28 +204,24 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
       options.attachmentQuotaBytes ?? Number(process.env.NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES ?? 1024 * 1024 * 1024),
       "attachmentQuotaBytes",
     ),
+    ai: cloudAiConfig(options.ai ?? {}),
   };
+}
 
-  if (production && config.adminUserIds.length === 0) {
-    console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
-  }
+function cloudAiConfig(options: NomaCloudAiOptions): CloudServerConfig["ai"] {
+  const provider = options.provider === null ? undefined : options.provider ?? createLlmProviderFromEnv();
+  return {
+    ...(provider ? { provider } : {}),
+    userBudgetUsd: nonNegativeNumber(options.userBudgetUsd ?? Number(process.env.NOMA_CLOUD_AI_USER_BUDGET_USD ?? 10), "userBudgetUsd"),
+    agentBudgetUsd: nonNegativeNumber(options.agentBudgetUsd ?? Number(process.env.NOMA_CLOUD_AI_AGENT_BUDGET_USD ?? 25), "agentBudgetUsd"),
+    allowPrivateSourceHosts: options.allowPrivateSourceHosts ?? enabledEnvironmentFlag("NOMA_CLOUD_AI_ALLOW_PRIVATE_SOURCES"),
+    maintenanceTickMs: nonNegativeNumber(options.maintenanceTickMs ?? Number(process.env.NOMA_CLOUD_MAINTENANCE_TICK_MS ?? 900_000), "maintenanceTickMs"),
+  };
+}
 
-  const server = createServer((req, res) => {
-    void routeRequest(req, res, config).catch((error: unknown) => {
-      if (res.headersSent) {
-        res.destroy(error instanceof Error ? error : new Error(String(error)));
-        return;
-      }
-      const status = error instanceof HttpError ? error.status : 500;
-      const message = error instanceof Error ? error.message : "Internal server error";
-      sendJson(res, status, { error: message, ...(error instanceof HttpError ? error.details : {}) });
-    });
-  });
-  server.on("close", () => {
-    platform.close();
-    store.close();
-  });
-  return server;
+function nonNegativeNumber(value: number, label: string): number {
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${label} must be a non-negative number`);
+  return value;
 }
 
 function validateProductionSecurity(
@@ -316,6 +368,9 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
           "scim",
           "legal-hold",
           "audit-export",
+          "ai",
+          "space-maintenance",
+          "sync-manifest",
         ],
       },
       maxBodyBytes: config.maxBodyBytes,

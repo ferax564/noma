@@ -1,4 +1,5 @@
 /** View mode, chrome state, theme and split/paper resizing. */
+import { renderAiChrome } from "./ai.js";
 import { renderAccessManagement, renderCollaborationPanels, selectedGroupManagedByCurrentUser } from "./collaboration.js";
 import { panelsOpenStorageKey, previewPaperWidthStorageKey, splitSourceRatioStorageKey, viewModeStorageKey } from "./constants.js";
 import { addCommentButton, addGroupMemberButton, applyPatchButton, approvalNoteInput, approvalReviewerInput, cloudInvitationCodeInput, cloudUserNameInput, cloudUserTokenInput, commentBlockIdInput, commentBodyInput, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, dirtyBadge, documentGrid, favoritePageButton, globalSearchInput, groupMemberIdInput, groupMemberRoleSelect, importPageButton, inviteGroupButton, inviteGroupSelect, inviteUserButton, loginUserButton, logoutUserButton, manageGroupSelect, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTemplateSelect, pageTitleInput, previewViewButton, proposePatchButton, readAllNotificationsButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, reloadPageButton, requestApprovalButton, roleBadge, savePageButton, saveSpaceButton, searchButton, searchScopeSelect, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, themeToggleButton, togglePanelsButton, updatedText } from "./dom.js";
@@ -26,6 +27,7 @@ export function setViewMode(mode: ViewMode): void {
 }
 
 export function renderChrome(): void {
+  renderAiChrome();
   const shell = document.querySelector<HTMLElement>(".cloud-shell");
   if (shell) {
     shell.dataset.viewMode = state.viewMode;

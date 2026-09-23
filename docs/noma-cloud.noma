@@ -488,6 +488,169 @@ GET      /api/collections
 GET|POST /api/analytics
 ```
 
+## Generative AI on the trust loop
+
+Noma Cloud can call a language model, but model output never edits a page
+directly. Generated answers are checked against the retrieved blocks, and
+generated edits become proofed patch proposals that need a different
+collaborator to approve before a hash-checked apply.
+
+Configure a provider with environment variables. Without one, every AI
+feature falls back to the extractive behaviour above and reports
+`ai_unavailable` with a reason (`not_configured`, `model_not_allowed`,
+`zero_retention_required`, `user_budget_exhausted`, `agent_budget_exhausted`,
+`provider_error`, or `refused`).
+
+| Variable | Meaning |
+|---|---|
+| `ANTHROPIC_API_KEY` | Enables the Claude Messages API provider |
+| `NOMA_CLOUD_LLM_MODEL` | Model ID (default `claude-opus-5`) |
+| `NOMA_CLOUD_LLM_PROVIDER` | `anthropic`, `fake` (deterministic offline model), or `none` |
+| `NOMA_CLOUD_LLM_TIMEOUT_MS`, `NOMA_CLOUD_LLM_MAX_RETRIES` | Per-attempt timeout and retries on 408/409/429/5xx and network errors |
+| `NOMA_CLOUD_LLM_ZERO_RETENTION` | Operator attestation that the provider account has zero data retention |
+| `NOMA_CLOUD_LLM_FALLBACKS` | `off` disables server-side refusal fallbacks (on by default) |
+| `NOMA_CLOUD_LLM_EFFORT` | Optional `output_config.effort` (`low` to `max`) |
+| `NOMA_CLOUD_AI_USER_BUDGET_USD` | Per-user spend cap over a rolling 30 days (default 10) |
+| `NOMA_CLOUD_AI_AGENT_BUDGET_USD` | Budget of each user's system AI agent (default 25) |
+| `NOMA_CLOUD_AI_ALLOW_PRIVATE_SOURCES` | Lets refresh fetch private or loopback URLs (on-premises only) |
+
+Every call is charged to an agent identity: the caller's system agent
+`noma-ai-<user-id>` (listed under Scoped agents) or a user-owned agent passed
+as `agentId`. The call is refused before it is sent when the worst-case cost
+would exceed the user's or the agent's remaining budget. Each call is recorded
+as an agent run and in `GET /api/ai/usage`. Enterprise policy is checked on
+every call: once a workspace admin saves a policy, `modelAllowlist` must list
+the model (including a model that served a fallback), and
+`requireZeroRetentionModels` requires the zero-retention attestation. An
+untouched default policy allows the operator-configured model.
+
+- **Generative Ask.** `POST /api/ask` with `mode: "generative"` runs the same
+  permission-scoped retrieval, sends only the retrieved blocks to the model
+  as quoted data with their `doc:block@hash` references, and keeps only
+  citations that match a retrieved block and version. The answer abstains
+  when retrieval is weak, when the model abstains, or when citations fail
+  validation. Unverifiable citations are removed and listed in
+  `generation.invalidCitations`. Conflict detection is unchanged, and the UI
+  renders the answer as escaped text.
+- **Summarize.** `POST /api/documents/<id>/ai/summarize` returns a summary.
+  With `insert: true` it creates a proposal that adds or replaces an
+  `ai-summary` block.
+- **Draft changes.** `POST /api/documents/<id>/ai/draft` with an
+  `instruction`. The model returns patch operations. Each operation is
+  validated against `schemas/patch-op.schema.json` (`rename_id` is never
+  allowed, at most 30 operations) and proofed before a proposal is stored.
+- **Refresh from sources.** `POST /api/documents/<id>/ai/refresh` with
+  `sourceUrls`, `sourceDocumentIds`, or `connectorSourceIds` (up to five).
+  URLs are fetched with DNS-pinned private-address blocking, a size limit, and
+  a timeout. The proposal summary names the cited sources, and the proof
+  record keeps each source's content hash.
+- **Draft a page.** `POST /api/sites/<id>/ai/draft-page` with `title`,
+  `instruction`, and an optional `parentId` stores a page proposal. The page
+  is created only after another editor approves it and someone applies it.
+
+```text
+GET  /api/ai/status
+GET  /api/ai/usage
+POST /api/ask                                   {"mode": "generative"}
+POST /api/documents/<id>/ai/summarize           {"insert": true}
+POST /api/documents/<id>/ai/draft               {"instruction": "..."}
+POST /api/documents/<id>/ai/refresh             {"sourceUrls": ["https://..."]}
+POST /api/sites/<id>/ai/draft-page              {"title": "...", "instruction": "..."}
+GET  /api/sites/<id>/ai/page-proposals[/<proposal-id>]
+POST /api/sites/<id>/ai/page-proposals/<proposal-id>/review   {"decision": "approved"}
+POST /api/sites/<id>/ai/page-proposals/<proposal-id>/apply
+```
+
+The requesting user is recorded as the proposer, so they cannot approve their
+own AI draft. The proof record carries the system agent, model, instruction,
+and sources. In the app, the page header **AI** menu offers Summarize, Draft
+changes, and Refresh from sources. Results open in the Agent Review panel.
+The Ask panel's **Generate answer** toggle turns citations into links to the
+cited blocks.
+
+## Stale-knowledge maintenance
+
+Each space can run a maintenance sweep. The sweep turns knowledge-health
+findings into tracked items: blocks past `reviewBy` or with low freshness,
+conflicting claims, and broken wiki links. Items resolve when the finding
+disappears. When the space opts into AI refresh, the sweep also drafts refresh
+proposals for stale pages that record sources. Sources are trust `sourceOf`
+URLs and connector sources linked to the page. Drafts are limited by
+`maxProposalsPerRun`, and a page that already has a pending draft is skipped.
+
+Scheduled sweeps run as the editor who saved the settings, so they see only
+what that person can see and spend that person's AI budget. Manual runs use
+the caller and are limited to one per minute per space. An in-process timer
+(`NOMA_CLOUD_MAINTENANCE_TICK_MS`, default 15 minutes, `0` disables it) sweeps
+up to five due spaces per tick. Deployments that prefer cron can run
+`npx tsx apps/worker/cloud-maintenance.ts` with the same `NOMA_CLOUD_*`
+storage variables.
+
+```text
+GET|PUT /api/sites/<id>/maintenance      {"enabled", "aiRefresh", "intervalHours", "maxProposalsPerRun"}
+POST    /api/sites/<id>/maintenance/run
+GET     /api/sites/<id>/maintenance/items?status=open|resolved
+```
+
+## Git-native spaces
+
+A space can live in a Git repository as a directory of `.noma` files. The
+server publishes a manifest with page IDs, tree-derived paths, labels, and
+revision hashes:
+
+```text
+GET /api/sites/<id>/sync-manifest
+```
+
+The CLI uses a personal user token (`NOMA_CLOUD_TOKEN`) against a server
+(`NOMA_CLOUD_URL`):
+
+```bash
+noma cloud export-space --site <space-id> --out docs/space
+noma cloud sync --site <space-id> --dir docs/space [--pull-only|--push-only] [--dry-run] [--json]
+```
+
+Paths follow the page tree: a page is `<slug>.noma`, and its children sit in
+the `<slug>/` directory. The sync keys `cloudId`, `cloudHash` (the revision the
+file was last synced with), `cloudParent`, and `cloudLabels` are added to the
+file's frontmatter. They are removed again before upload, so the server source
+is byte-identical.
+
+The sync compares each file with `cloudHash`. Server-only changes are pulled.
+Local-only changes are pushed with `expectedHash`. New files without
+`cloudId` become pages under the page their directory maps to. When a page
+changed on both sides, the local file is kept, the server version is written
+next to it as `<file>.noma.conflict`, and the command exits with status 1.
+Resolve the conflict, set `cloudHash` to the server hash, and sync again.
+
+A scheduled GitHub Action keeps a repository and a space in step:
+
+```yaml
+name: Sync Noma space
+on:
+  schedule: [{ cron: "*/30 * * * *" }]
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npx -y @ferax564/noma-cli cloud sync --site "$SPACE_ID" --dir docs/space
+        env:
+          NOMA_CLOUD_URL: ${{ vars.NOMA_CLOUD_URL }}
+          NOMA_CLOUD_TOKEN: ${{ secrets.NOMA_CLOUD_TOKEN }}
+          SPACE_ID: ${{ vars.NOMA_SPACE_ID }}
+      - run: |
+          git config user.name "noma-sync"
+          git config user.email "noma-sync@users.noreply.github.com"
+          git add docs/space
+          git diff --cached --quiet || git commit -m "docs: sync Noma space"
+          git push
+```
+
 ## Portable backup, offline recovery, and realtime humans
 
 `POST /api/backup/export` produces a deterministic `.noma` bundle sorted by

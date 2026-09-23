@@ -57,6 +57,7 @@ import {
   updateDocument,
 } from "./records.js";
 import { backupAttachments, restoreBackupAttachments, validateBackupAttachments } from "./attachments.js";
+import { generativeAsk } from "./routes-ai.js";
 import { cloudProofRecord, createCloudPatchProof, patchOpsInput } from "./routes-patch.js";
 import { pageQuery, requestUrl } from "./security.js";
 
@@ -78,6 +79,8 @@ export async function routeAskNoma(req: IncomingMessage, res: ServerResponse, co
   const agentId = optionalString(input.agentId);
   const documents = knowledgeDocuments(config, user, siteId, agentId);
   const contentTypes = optionalStringArray(input.contentTypes, "contentTypes", 30);
+  const mode = input.mode === undefined ? "extractive" : input.mode;
+  if (mode !== "extractive" && mode !== "generative") throw new HttpError(400, "mode must be extractive or generative");
   const answer = config.platform.ask({
     principalId: agentId ?? user.id,
     query,
@@ -86,6 +89,10 @@ export async function routeAskNoma(req: IncomingMessage, res: ServerResponse, co
     limit: boundedInteger(input.limit, 8, 1, 25, "limit"),
     ...(contentTypes ? { contentTypes } : {}),
   });
+  if (mode === "generative") {
+    sendJson(res, 200, await generativeAsk(config, user, { query, extractive: answer, ...(siteId ? { siteId } : {}), ...(agentId ? { agentId } : {}) }));
+    return;
+  }
   sendJson(res, 200, answer);
 }
 
