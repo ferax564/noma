@@ -1549,3 +1549,161 @@ button.wiki-row {
 .revision-diff-blocks {
   color: var(--muted);
 }
+
+/* cloud-ai */
+.ai-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.ai-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid var(--selected-border);
+  border-radius: 5px;
+  background: var(--selected-bg);
+  color: var(--accent);
+  font-weight: 650;
+  padding: 5px 10px;
+  user-select: none;
+}
+
+.ai-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-menu > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.ai-menu[data-disabled="true"] > summary {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ai-menu-items {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 4px;
+  min-width: 210px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 6px;
+}
+
+.ai-menu-items button {
+  width: 100%;
+  text-align: left;
+}
+
+.ai-menu-status {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  padding: 2px 4px;
+}
+
+.ai-menu-status:empty {
+  display: none;
+}
+
+.ai-ask-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.ai-answer-text {
+  white-space: pre-wrap;
+}
+
+.ai-cite {
+  display: inline;
+  border: 0;
+  border-radius: 4px;
+  background: var(--selected-bg);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  margin: 0 1px;
+  padding: 1px 4px;
+  vertical-align: super;
+  cursor: pointer;
+}
+
+.ai-answer-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.ai-assistant-output {
+  display: grid;
+  gap: 8px;
+}
+
+.ai-assistant-output:empty {
+  display: none;
+}
+
+.ai-maintenance-help {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+
+.ai-maintenance .ai-toggle {
+  display: flex;
+  margin-bottom: 4px;
+}
+
+.ai-maintenance-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.ai-maintenance > details > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ai-maintenance > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-maintenance > details > summary::before {
+  content: "\25B8";
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.ai-maintenance > details[open] > summary::before {
+  content: "\25BE";
+}
+
+.ai-maintenance > details > summary h2 {
+  margin: 0;
+}
+
+.ai-maintenance > details[open] > summary {
+  margin-bottom: 8px;
+}

@@ -119,6 +119,15 @@
           <button id="copySiteLinkButton" type="button" aria-label="Copy space link">Space</button>
           <button id="openPublishedSiteButton" type="button" aria-label="Open published space">Published</button>
         </div>
+        <details id="aiMenu" class="ai-menu">
+          <summary id="aiMenuButton" aria-label="AI actions for this page">AI</summary>
+          <div id="aiMenuItems" class="ai-menu-items" role="menu">
+            <button id="aiSummarizeButton" type="button" role="menuitem">Summarize</button>
+            <button id="aiDraftButton" type="button" role="menuitem">Draft changes…</button>
+            <button id="aiRefreshButton" type="button" role="menuitem">Refresh from sources…</button>
+            <div id="aiMenuStatus" class="ai-menu-status"></div>
+          </div>
+        </details>
       </div>
     </section>
 
@@ -144,7 +153,10 @@
       <label class="stack-field" for="askNomaInput">Question across permitted knowledge
         <textarea id="askNomaInput" class="compact-textarea" placeholder="What is our current deployment policy?"></textarea>
       </label>
-      <button id="askNomaButton" type="button">Ask with citations</button>
+      <div class="ai-ask-row">
+        <button id="askNomaButton" type="button">Ask with citations</button>
+        <label class="ai-toggle" for="aiGenerateToggle"><input id="aiGenerateToggle" type="checkbox" /> Generate answer</label>
+      </div>
       <div id="askNomaStatus" class="panel-status"></div>
       <div id="askNomaResult" class="knowledge-answer"></div>
       <div class="knowledge-columns">
@@ -399,6 +411,35 @@
         <div id="issueDetailList" class="collaboration-list"></div>
       </div>
       <div id="workStatus" class="panel-status"></div>
+    </section>
+
+    <section id="aiAssistantSection" class="inspector-section ai-assistant">
+      <h2>AI assistant</h2>
+      <div id="aiAssistantStatus" class="panel-status"></div>
+      <div id="aiAssistantOutput" class="ai-assistant-output"></div>
+    </section>
+
+    <section id="aiMaintenanceSection" class="inspector-section ai-maintenance">
+      <details id="aiMaintenanceDetails">
+      <summary><h2>Space maintenance</h2></summary>
+      <p class="ai-maintenance-help">Sweeps this space for pages past their review date, conflicting claims, and broken links. AI drafts are proposals that still need another collaborator's approval.</p>
+      <label class="ai-toggle" for="aiMaintenanceEnabled"><input id="aiMaintenanceEnabled" type="checkbox" /> Scheduled sweeps</label>
+      <label class="ai-toggle" for="aiMaintenanceRefresh"><input id="aiMaintenanceRefresh" type="checkbox" /> Draft AI refresh proposals</label>
+      <div class="ai-maintenance-fields">
+        <label class="stack-field" for="aiMaintenanceInterval">Every (hours)
+          <input id="aiMaintenanceInterval" type="number" min="1" max="720" value="24" />
+        </label>
+        <label class="stack-field" for="aiMaintenanceLimit">Drafts per sweep
+          <input id="aiMaintenanceLimit" type="number" min="0" max="20" value="3" />
+        </label>
+      </div>
+      <div class="button-row">
+        <button id="aiMaintenanceSaveButton" type="button">Save settings</button>
+        <button id="aiMaintenanceRunButton" type="button">Run sweep now</button>
+      </div>
+      <div id="aiMaintenanceStatus" class="panel-status"></div>
+      <div id="aiMaintenanceItems" class="collaboration-list"></div>
+      </details>
     </section>
 
     <section class="inspector-section">

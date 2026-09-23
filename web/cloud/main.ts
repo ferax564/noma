@@ -1,4 +1,5 @@
 /** Noma Cloud browser app entry: wires event listeners and boots the app. */
+import { installCloudAi } from "./ai.js";
 import { addComment, addGroupMember, createGroup, inviteCollaborator, inviteGroup, readAllNotifications, refreshAccessManagement, refreshActivity, refreshApprovals, refreshComments, refreshGroups, refreshNotifications, requestApproval } from "./collaboration.js";
 import { panelsOpenStorageKey, themeStorageKey } from "./constants.js";
 import { closeContextMenu, showSourceContextMenu } from "./context-menu.js";
@@ -24,6 +25,7 @@ registerCloudPwa();
 void initializeCloud();
 
 function bindEvents(): void {
+  installCloudAi();
   document.addEventListener("click", () => closeContextMenu());
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeContextMenu();

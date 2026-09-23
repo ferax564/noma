@@ -236,6 +236,9 @@ export interface AskNomaResponse {
   confidence: { score: number; label: "low" | "medium" | "high" };
   citations: KnowledgeCitation[];
   conflicts: Array<{ concept: string; reason: string }>;
+  mode?: "extractive" | "generative";
+  ai?: { available: boolean; reason?: string };
+  generation?: { model?: string; abstainedReason?: string; invalidCitations?: string[] };
 }
 
 export interface KnowledgeHealthItem {
