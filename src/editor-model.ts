@@ -13,7 +13,7 @@
  */
 import type { Node as NomaNode, SectionNode } from "./ast.js";
 import { escapePipeTableCell, splitPipeRow } from "./inline.js";
-import { parse, slugify } from "./parser.js";
+import { ATTR_NAME_RE, headingSlug, isCodeFenceClose, matchCodeFenceOpen, parse, parseAttrs, serializeAttr, slugify, splitHeadingAttrs } from "./parser.js";
 import { STABLE_ID_LINE_RE } from "./stable-identity.js";
 
 export type EditorAttrValue = string | number | boolean | null;
@@ -69,7 +69,7 @@ export const EDITOR_NODE_SPECS: Record<string, EditorNodeSpec> = {
   bullet_list: { attrs: { marker: null, bullet: "-" }, content: "list_item+", group: "block" },
   ordered_list: { attrs: { marker: null }, content: "list_item+", group: "block" },
   list_item: { attrs: { id: null, checked: null, num: null }, content: "inline*", defining: true },
-  code_block: { attrs: { lang: "", marker: null }, content: "text*", group: "block", code: true, marks: "", defining: true },
+  code_block: { attrs: { lang: "", fence: "```", marker: null }, content: "text*", group: "block", code: true, marks: "", defining: true },
   horizontal_rule: { attrs: { raw: "---", marker: null }, group: "block", atom: true },
   table: { attrs: { align: "", marker: null }, content: "table_row+", group: "block", isolating: true, tableRole: "table" },
   table_row: { attrs: {}, content: "(table_header | table_cell)+", tableRole: "row" },
@@ -113,8 +113,6 @@ export const ID_REQUIRED_DIRECTIVES = new Set([
   "agent_task", "change_request", "memory", "assumption",
 ]);
 
-const HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
-const FENCE_RE = /^```(\w*)\s*$/;
 const DIRECTIVE_OPEN_RE = /^(:{2,})\s*([a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)\s*(\{.*\})?\s*$/;
 const DIRECTIVE_CLOSE_RE = /^(:{2,})\s*$/;
 const LIST_RE = /^([-*])\s+(.+)$/;
@@ -398,40 +396,16 @@ export function editorPlainText(node: EditorNode): string {
 // ---------------------------------------------------------------------------
 // Directive attribute strings
 
-/** Parse a directive attribute body (`key="v" flag n=2`) into ordered pairs. */
+/** Parse a directive attribute body (`key="v" flag n=2`) into ordered pairs, using the parser's attribute grammar. */
 export function parseDirectiveAttrs(raw: string): Array<[string, string | number | boolean]> {
-  const out: Array<[string, string | number | boolean]> = [];
-  const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
-  if (!inner) return out;
-  const re = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s]+)))?/g;
-  for (const m of inner.matchAll(re)) {
-    const key = m[1]!;
-    if (m[2] === undefined) {
-      out.push([key, true]);
-      continue;
-    }
-    const quoted = m[3] ?? m[4];
-    out.push([key, quoted !== undefined ? quoted : coerceAttr(m[5] ?? "")]);
-  }
-  return out;
-}
-
-function coerceAttr(value: string): string | number | boolean {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
-  return value;
+  return Object.entries(parseAttrs(raw));
 }
 
 /** Serialize ordered attribute pairs back to a directive attribute body (without braces). */
 export function serializeDirectiveAttrs(pairs: Array<[string, string | number | boolean]>): string {
   return pairs
-    .filter(([key]) => /^[a-zA-Z_][\w-]*$/.test(key))
-    .map(([key, value]) => {
-      if (value === true) return key;
-      if (typeof value === "number" || value === false) return `${key}=${String(value)}`;
-      return `${key}="${String(value).replace(/"/g, "'")}"`;
-    })
+    .filter(([key]) => ATTR_NAME_RE.test(key))
+    .map(([key, value]) => serializeAttr(key, value))
     .join(" ");
 }
 
@@ -511,8 +485,9 @@ function buildChunks(nodes: NomaNode[], lines: string[], from: number, to: numbe
   let cursor = from;
   for (const node of flattenBlocks(nodes)) {
     const start = (node.pos?.line ?? 1) - 1;
-    const end = node.type === "section" ? start + 1 : Math.min(to, node.endLine ?? start + 1);
+    let end = node.type === "section" ? start + 1 : Math.min(to, node.endLine ?? start + 1);
     if (start < cursor || start >= to) continue;
+    while (end > start + 1 && (lines[end - 1] ?? "").trim() === "") end--;
     const prefix = lines.slice(cursor, start);
     let markerIndex = -1;
     for (let i = prefix.length - 1; i >= 0; i--) {
@@ -581,10 +556,12 @@ function convertBlock(node: NomaNode, lines: string[], start: number, end: numbe
     case "thematic_break":
       return { node: { type: "horizontal_rule", attrs: { raw: (lines[start] ?? "---").trim(), marker: null } } };
     case "code": {
-      const closed = end - start >= 2 && FENCE_RE.test(lines[end - 1] ?? "");
-      if (!closed) return { node: rawNode(text, "code") };
+      const open = matchCodeFenceOpen(lines[start] ?? "");
+      const closed = open !== null && end - start >= 2 && isCodeFenceClose(lines[end - 1] ?? "", open);
+      if (!open || !closed) return { node: rawNode(text, "code") };
       const content = node.content ? [{ type: "text", text: node.content }] : undefined;
-      return { node: { type: "code_block", attrs: { lang: node.lang ?? "", marker: null }, ...(content ? { content } : {}) } };
+      const fence = open.char.repeat(open.length);
+      return { node: { type: "code_block", attrs: { lang: node.lang ?? "", fence, marker: null }, ...(content ? { content } : {}) } };
     }
     case "list":
       return { node: convertList(node.ordered, lines.slice(start, end)) ?? rawNode(text, "list") };
@@ -598,8 +575,8 @@ function convertBlock(node: NomaNode, lines: string[], start: number, end: numbe
 }
 
 function convertHeading(section: SectionNode, line: string): EditorNode {
-  const match = HEADING_RE.exec(line);
-  const rawAttrs = match?.[3] ?? null;
+  const text = /^#{1,6}\s+(.*)$/.exec(line)?.[1] ?? "";
+  const rawAttrs = splitHeadingAttrs(text).rawAttrs ?? null;
   return {
     type: "heading",
     attrs: { level: section.level, id: section.id ?? null, attrs: rawAttrs, marker: null },
@@ -901,8 +878,12 @@ function serializeBlock(
       return [/^(?:-{3,}|\*{3,}|_{3,})$/.test(String(node.attrs?.raw ?? "")) ? String(node.attrs?.raw) : "---"];
     case "code_block": {
       const text = editorPlainText(node);
-      const lang = String(node.attrs?.lang ?? "").replace(/\W/g, "");
-      return ["```" + lang, ...(text ? text.split("\n").map((line) => (FENCE_RE.test(line) ? ` ${line}` : line)) : []), "```"];
+      const stored = String(node.attrs?.fence ?? "```");
+      const char = stored.startsWith("~") ? "~" : "`";
+      const longestRun = Math.max(0, ...(text.match(new RegExp(`^${char === "~" ? "~" : "`"}{3,}`, "gm")) ?? []).map((run) => run.length));
+      const fence = char.repeat(Math.max(3, stored.length, longestRun + 1));
+      const lang = String(node.attrs?.lang ?? "").replace(char === "`" ? /[`\s]/g : /\s/g, "");
+      return [fence + lang, ...(text ? text.split("\n") : []), fence];
     }
     case "bullet_list":
     case "ordered_list":
@@ -928,7 +909,6 @@ function serializeHeading(node: EditorNode, ctx: SerializeContext, blockStart: n
   let nextPairs = pairs;
   if (wanted) {
     if (explicit) nextPairs = pairs.map(([key, value]) => [key, key === "id" ? wanted : value]);
-    else if (slugify(title) !== wanted) nextPairs = [["id", wanted], ...pairs];
   } else if (explicit && typeof explicit[1] === "string") {
     if (ctx.usedIds.has(explicit[1])) nextPairs = pairs.filter(([key]) => key !== "id");
     else ctx.usedIds.add(explicit[1]);
@@ -1119,7 +1099,7 @@ function enforceHeadingIds(lines: string[], headings: SerializeContext["headings
         continue;
       }
       if (seen.has(actual) || intended.has(actual)) {
-        const base = slugify(heading.title) || "section";
+        const base = headingSlug(heading.title);
         let n = 2;
         while (taken.has(`${base}-${n}`) || knownIds.has(`${base}-${n}`)) n++;
         const id = `${base}-${n}`;
