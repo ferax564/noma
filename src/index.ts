@@ -1,3 +1,9 @@
+/**
+ * Core Noma format API: AST, parser, renderers, validator, patch engine,
+ * proof, ids, diff and formatter. This entry is kept free of native and
+ * server dependencies. Hosted wiki modules live at `@ferax564/noma-cli/cloud`
+ * and the enterprise workspace at `@ferax564/noma-cli/enterprise`.
+ */
 export * from "./ast.js";
 export { parse, slugify } from "./parser.js";
 export type { ParseOptions } from "./parser.js";
@@ -35,97 +41,9 @@ export { collectIdRegistry } from "./ids.js";
 export type { IdRecord, IdRegistry } from "./ids.js";
 export { createAgentSafetyProof, renderProofHtml, renderProofMarkdownSummary } from "./proof.js";
 export type { AgentSafetyProof, ProofOptions } from "./proof.js";
+export { formatSource } from "./fmt.js";
 export { convertMarkdownToNoma } from "./ingest-markdown.js";
 export type { MarkdownIngestOptions } from "./ingest-markdown.js";
-export { CloudKnowledgePlatform } from "./cloud-platform.js";
-export type {
-  AgentAccessGrant,
-  AgentChangeInboxItem,
-  AgentGatewayCapability,
-  AgentRecipe,
-  AgentRun,
-  AgentRunStatus,
-  AnalyticsEvent,
-  AnalyticsSummary,
-  AskNomaResult,
-  AuditExport,
-  BackupConflict,
-  BackupImportPlan,
-  CloudAgentIdentity,
-  ConnectorKind,
-  ConnectorSourceRecord,
-  EnterprisePolicy,
-  KnowledgeConnector,
-  KnowledgeDocumentAccess,
-  KnowledgeHealthItem,
-  KnowledgeHealthKind,
-  KnowledgeRelation,
-  KnowledgeRetrievalRecord,
-  KnowledgeSearchRequest,
-  KnowledgeSourceSpan,
-  KnowledgeTrust,
-  LegalHold,
-  LlmWikiResult,
-  NomaBackupBundle,
-  NomaBackupFile,
-  OfflineDraft,
-  OfflineMergeConflict,
-  OfflineMergeResult,
-  RagEvaluationFixture,
-  RagEvaluationResult,
-  RealtimeOperation,
-  RecipeRun,
-  RecipeTriggerMode,
-  ScimIdentity,
-  SemanticCollection,
-  SemanticCollectionId,
-} from "./cloud-platform.js";
-export {
-  ENTERPRISE_SCHEMA_VERSION,
-  EnterpriseError,
-  EnterpriseWorkspace,
-  createTestOidc,
-  enterpriseSchema,
-  runEnterpriseReleaseDemonstration,
-  nomaToEditor,
-  editorToNoma,
-  applyVisualCommands,
-  createPaperDocument,
-  listenEnterpriseHttp,
-  runAgentBenchmark,
-  runPerformanceProfile,
-  parseConfluenceStorage,
-  parseJiraIssue,
-  assertSafeImportUrl,
-  evaluateRagFixture,
-  summarizeRagEvals,
-  AGENT_RECIPES,
-  CUTOVER_STAGES,
-  semanticOutline,
-  applyDocumentTransaction,
-  parsePaperDOMDocument,
-  applyHostedPaperDomTransaction,
-  createUpstreamPaperDocument,
-  paperDomFidelityReport,
-  paperDomHtmlExport,
-  paperDomOutline,
-  mountPaperDomHost,
-  PAPERDOM_UPSTREAM_COMMIT,
-  PAPERDOM_UPSTREAM_LICENSE,
-  PAPERDOM_UPSTREAM_REPO,
-  listenEnterpriseCollab,
-  persistYjsUpdate,
-  loadYjsDocument,
-  atlassianFetch,
-  fetchConfluencePage,
-  fetchJiraIssue,
-  searchJira,
-  awsEuCloudFormation,
-  assertAwsEuStack,
-  runIndependentSecurityReview,
-  runPaidPilotUsability,
-  PILOT_PARTNERS,
-} from "./enterprise.js";
 export {
   assignPersistentIdentities,
   locateTableCell,
@@ -134,12 +52,3 @@ export {
   IDENTITY_FORMAT_VERSION,
 } from "./stable-identity.js";
 export type { IdentityFactory } from "./stable-identity.js";
-export type {
-  ActorContext,
-  ChangesetRecord,
-  Classification,
-  GrantRole,
-  QueryAst,
-  RelationType,
-  ResourceKind,
-} from "./enterprise.js";

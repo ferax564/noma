@@ -1,1 +1,1 @@
-export { nomaToEditor, editorToNoma } from "@ferax564/noma-cli";
+export { nomaToEditor, editorToNoma } from "@ferax564/noma-cli/enterprise";

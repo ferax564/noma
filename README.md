@@ -133,6 +133,24 @@ npm install @ferax564/noma-mcp-server@latest
 npm install @ferax564/noma-agent-sdk@latest
 ```
 
+`--to pdf` prints through Chromium via Puppeteer, which is an optional peer
+dependency. Install it next to the CLI when you need PDFs:
+
+```bash
+npm install -g puppeteer   # or `npm i puppeteer` in a local project
+```
+
+Use the library from code. The root entry is the lean core format API
+(parser, AST, renderers, validator, patch, proof, ids, diff, fmt) and does not
+load native or server modules. Noma Cloud and the enterprise workspace live on
+subpath exports:
+
+```ts
+import { parse, validate, patchSource, renderHtml } from "@ferax564/noma-cli";
+import { createNomaCloudServer, CloudKnowledgePlatform } from "@ferax564/noma-cli/cloud"; // loads better-sqlite3
+import { EnterpriseWorkspace, createTestOidc } from "@ferax564/noma-cli/enterprise";    // loads better-sqlite3, ws, yjs
+```
+
 From a checkout:
 
 ```bash
@@ -317,7 +335,7 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 
 ## What ships today
 
-- `@ferax564/noma-cli` (this package) — hand-written parser with no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown. The parser, renderers, and DOCX return-path helpers are exported alongside the CLI; `import { parse, renderMarkdown, extractDocxControlData, syncControlDefaultsFromDocx, extractDocxReviewData, syncReviewCommentsFromDocx } from "@ferax564/noma-cli"` works in any Node 20+ project.
+- `@ferax564/noma-cli` (this package) — hand-written parser with no parser-combinator dependency. Supports directive blocks, frontmatter, headings, lists, code, quotes, GitHub-style tables, and inline markdown. The parser, renderers, and DOCX return-path helpers are exported alongside the CLI; `import { parse, renderMarkdown, extractDocxControlData, syncControlDefaultsFromDocx, extractDocxReviewData, syncReviewCommentsFromDocx } from "@ferax564/noma-cli"` works in any Node 20+ project without loading native modules. Cloud and enterprise APIs are on the `@ferax564/noma-cli/cloud` and `@ferax564/noma-cli/enterprise` subpaths.
 - Typed AST in `src/ast.ts` — discriminated union, exhaustively switched everywhere.
 - HTML renderer with a default CSS theme + a `dark` alternate (`--theme dark`), a print stylesheet, and per-block `{variant="..."}` styling. Native rendering for grids, cards, tabs, callouts, claims/evidence/risks, decisions, open questions, semantic research metadata, technical API/reference panels, metric KPI blocks, addressable code snippets, code-cell/output computation panels, memory profile panels, review comments/collaboration metadata, readable custom directive fallbacks, datasets, real inline-data plots (line + bar SVG, no JS) with x-axis label controls, agent tasks, change-request deltas, export buttons, controls, interactive computed metrics/plots, tables, the new `::table` directive, and `::state_change` deltas. `::html` / `::svg` / `::script` escape hatches can be blocked with `--no-unsafe`; `--strict` also omits external CDN runtimes for math, diagrams, and Plotly, and freezes computed controls as disabled static defaults with no inline runtime. Book manifests with `trusted_publishing: true` apply that strict static posture to manifest-driven HTML/site/PDF renders.
 - Noma Space renderer (`noma render book.noma.yml --to site --out dist/space`) — multi-file books and documentation sets become a static, Confluence-like knowledge space with a sidebar, depth-aware links, page breadcrumbs, search UI, `_assets/search-index.json` for agents, page status/owner/updated/tag metadata, related-page suggestions, and cross-chapter backlinks from `[[id]]` references.

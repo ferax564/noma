@@ -45,12 +45,13 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud-db.ts              SQLite persistence for Noma Cloud
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
-  enterprise.ts            Enterprise public barrel (Docs / Visuals / Work kernel)
+  cloud.ts                 Noma Cloud public barrel (`@ferax564/noma-cli/cloud` subpath; loads better-sqlite3)
+  enterprise.ts            Enterprise public barrel (`@ferax564/noma-cli/enterprise` subpath; Docs / Visuals / Work kernel)
   enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM host, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops, Yjs, Atlassian, AWS, security review, paid-pilot
   paperdom-*.ts            Vendored PaperDOM kernel from github.com/ferax564/paperDOM (pinned MIT extract)
   paperdom-pin.ts          PaperDOM source commit pin
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
-  index.ts                 Public library exports (npm package surface)
+  index.ts                 Lean core library exports (root npm entry; no cloud/enterprise/native deps)
 bin/noma.mjs               Node CLI shim
 apps/                      Enterprise HTTP, worker, and Docs/Visuals/Work shell entry points
 packages/
