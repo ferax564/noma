@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { EnterpriseError, type ActorContext } from "./enterprise-contracts.js";
 import { healthProbe } from "./enterprise-ops.js";
-import type { CrdtOp } from "./enterprise-crdt.js";
-import { attachEnterpriseYjs } from "./enterprise-yjs.js";
+import type { BlockOp } from "./enterprise-merge.js";
+import { attachEnterpriseYjs, type EnterpriseYjsOptions } from "./enterprise-yjs.js";
 import { EnterpriseWorkspace } from "./enterprise-workspace.js";
 
 export interface EnterpriseHttpOptions {
@@ -10,6 +10,7 @@ export interface EnterpriseHttpOptions {
   host?: string;
   port?: number;
   collabHtml?: string;
+  yjs?: EnterpriseYjsOptions;
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -78,7 +79,7 @@ export function createEnterpriseHttpServer(options: EnterpriseHttpOptions) {
             clientId: string;
             clientSeq: number;
             lastAckedSeq?: number;
-            ops: CrdtOp[];
+            ops: BlockOp[];
           };
           send(res, 200, ws.persistCollaborativeUpdate(actor, { documentId: decodeURIComponent(docMatch[1]!), ...body }));
           return;
@@ -99,7 +100,7 @@ export function createEnterpriseHttpServer(options: EnterpriseHttpOptions) {
 
 export function listenEnterpriseHttp(options: EnterpriseHttpOptions): Promise<{ port: number; close: () => Promise<void> }> {
   const server = createEnterpriseHttpServer(options);
-  const wss = attachEnterpriseYjs(server, options.workspace);
+  const relay = attachEnterpriseYjs(server, options.workspace, options.yjs);
   const host = options.host ?? "127.0.0.1";
   return new Promise((resolve, reject) => {
     server.listen(options.port ?? 0, host, () => {
@@ -111,10 +112,9 @@ export function listenEnterpriseHttp(options: EnterpriseHttpOptions): Promise<{ 
       resolve({
         port: address.port,
         close: () =>
-          new Promise((done, fail) => {
-            wss.close();
-            server.close((err) => (err ? fail(err) : done()));
-          }),
+          relay.close().then(
+            () => new Promise<void>((done, fail) => server.close((err) => (err ? fail(err) : done()))),
+          ),
       });
     });
   });
