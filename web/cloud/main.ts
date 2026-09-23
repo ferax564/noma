@@ -283,4 +283,20 @@ function bindEvents(): void {
   attachMentionPicker(sourceInput);
   installAttachments();
   installRestrictions();
+  installPageMoreMenu();
+}
+
+/** "Share & export" closes after an action or an outside click, like the AI menu. */
+function installPageMoreMenu(): void {
+  const menu = document.getElementById("pageMoreMenu");
+  if (!(menu instanceof HTMLDetailsElement)) return;
+  menu.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest("button")) menu.open = false;
+  });
+  menu.addEventListener("change", () => {
+    menu.open = false;
+  });
+  document.addEventListener("click", (event) => {
+    if (menu.open && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+  });
 }

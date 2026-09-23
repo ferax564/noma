@@ -115,6 +115,20 @@ export function formatDate(value: string): string {
   });
 }
 
+/** "just now", "5 min ago", "3 h ago", "2 d ago", else a short date. */
+export function relativeTime(value: string, now = Date.now()): string {
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return value;
+  const minutes = Math.round((now - time) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 14) return `${days} d ago`;
+  return new Date(time).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function shortId(value: string): string {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }

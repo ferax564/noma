@@ -81,6 +81,7 @@ export const EDITOR_NODE_SPECS: Record<string, EditorNodeSpec> = {
   text: { attrs: {}, group: "inline", inline: true },
   hard_break: { attrs: {}, group: "inline", inline: true, atom: true },
   wikilink: { attrs: { raw: "" }, group: "inline", inline: true, atom: true },
+  mention: { attrs: { userId: "" }, group: "inline", inline: true, atom: true },
   math_inline: { attrs: { tex: "", delim: "$" }, group: "inline", inline: true, atom: true },
 };
 
@@ -198,6 +199,7 @@ export function canonicalEditorDoc(doc: EditorNode): EditorDoc {
 // Inline markdown <-> editor inline nodes
 
 const MARKDOWN_LINK_AT_RE = /^\[((?:\\.|[^\]\\])+)\]\(([^)\s]+)\)/;
+const MENTION_AT_RE = /^@\{([A-Za-z0-9_-]{8,80})\}/;
 
 /** Parse Noma inline markdown into editor inline nodes (text with marks, breaks, wikilinks, math). */
 export function parseInline(src: string, marks: EditorMark[] = []): EditorNode[] {
@@ -255,6 +257,14 @@ export function parseInline(src: string, marks: EditorMark[] = []): EditorNode[]
       if (raw && !/[[\]\n]/.test(raw)) {
         push([inlineAtom({ type: "wikilink", attrs: { raw } }, marks)]);
         i = close + 2;
+        continue;
+      }
+    }
+    if (ch === "@" && src[i + 1] === "{") {
+      const mention = MENTION_AT_RE.exec(rest);
+      if (mention) {
+        push([inlineAtom({ type: "mention", attrs: { userId: mention[1]! } }, marks)]);
+        i += mention[0].length;
         continue;
       }
     }
@@ -372,6 +382,8 @@ function inlineNodeText(node: EditorNode, breaks: string): string {
       return breaks;
     case "wikilink":
       return `[[${String(node.attrs?.raw ?? "")}]]`;
+    case "mention":
+      return `@{${String(node.attrs?.userId ?? "")}}`;
     case "math_inline": {
       const delim = String(node.attrs?.delim ?? "$");
       const tex = String(node.attrs?.tex ?? "");
@@ -389,6 +401,7 @@ export function editorPlainText(node: EditorNode): string {
   if (node.type === "text") return node.text ?? "";
   if (node.type === "hard_break") return " ";
   if (node.type === "wikilink") return String(node.attrs?.raw ?? "");
+  if (node.type === "mention") return `@${String(node.attrs?.userId ?? "")}`;
   if (node.type === "math_inline") return String(node.attrs?.tex ?? "");
   return (node.content ?? []).map(editorPlainText).join(node.type === "doc" ? "\n" : "");
 }

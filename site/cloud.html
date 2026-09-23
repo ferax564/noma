@@ -16,20 +16,25 @@
 <div class="cloud-shell">
   <header class="cloud-topbar">
     <a class="cloud-brand" href="cloud.html"><span class="cloud-brand-mark"></span>Noma Cloud</a>
-    <label class="top-field" for="cloudUserName">User
-      <input id="cloudUserName" type="text" autocomplete="name" />
-    </label>
-    <label class="top-field top-secret-field" for="cloudInvitationCode">Invitation
-      <input id="cloudInvitationCode" type="password" autocomplete="one-time-code" placeholder="Invitation code" />
-    </label>
-    <button id="newUserButton" type="button">Register</button>
-    <label class="top-field top-secret-field" for="cloudUserToken">Token
-      <input id="cloudUserToken" type="password" autocomplete="off" placeholder="Existing user token" />
-    </label>
-    <button id="loginUserButton" type="button">Log In</button>
-    <button id="logoutUserButton" type="button" disabled>Sign Out</button>
-    <button id="copyUserIdButton" type="button" disabled>Copy User ID</button>
-    <button id="copyUserTokenButton" type="button" disabled title="Create a personal access token for scripts and agents">Create API Token</button>
+    <div id="authControls" class="topbar-group auth-controls">
+      <label class="top-field" for="cloudUserName">User
+        <input id="cloudUserName" type="text" autocomplete="name" />
+      </label>
+      <label class="top-field top-secret-field" for="cloudInvitationCode">Invitation
+        <input id="cloudInvitationCode" type="password" autocomplete="one-time-code" placeholder="Invitation code" />
+      </label>
+      <button id="newUserButton" type="button">Register</button>
+      <label class="top-field top-secret-field" for="cloudUserToken">Token
+        <input id="cloudUserToken" type="password" autocomplete="off" placeholder="Existing user token" />
+      </label>
+      <button id="loginUserButton" type="button">Log In</button>
+    </div>
+    <div id="accountControls" class="topbar-group account-controls" hidden>
+      <span id="accountChip" class="account-chip"><span id="accountAvatar" class="account-avatar" aria-hidden="true"></span><span id="accountName"></span></span>
+      <button id="copyUserIdButton" type="button" disabled>Copy User ID</button>
+      <button id="copyUserTokenButton" type="button" disabled title="Create a personal access token for scripts and agents">Create API Token</button>
+      <button id="logoutUserButton" type="button" disabled>Sign Out</button>
+    </div>
     <button id="themeToggleButton" type="button" aria-pressed="false">Dark</button>
     <span id="cloudStatus" class="cloud-status" aria-live="polite">Starting</span>
   </header>
@@ -163,10 +168,14 @@
           <button id="reloadPageButton" type="button">Reload</button>
           <button id="favoritePageButton" type="button" aria-pressed="false">Favorite</button>
           <button id="watchPageButton" type="button" aria-pressed="false">Watch</button>
-          <button id="copyPageLinkButton" type="button" aria-label="Copy page link">Page</button>
-          <button id="copyArtifactLinkButton" type="button" aria-label="Copy rendered artifact link">Artifact</button>
-          <button id="copySiteLinkButton" type="button" aria-label="Copy space link">Space</button>
-          <button id="openPublishedSiteButton" type="button" aria-label="Open published space">Published</button>
+        </div>
+        <details id="pageMoreMenu" class="page-more-menu">
+          <summary aria-label="Share and export this page">Share &amp; export</summary>
+          <div class="page-more-items">
+          <button id="copyPageLinkButton" type="button" aria-label="Copy page link">Copy page link</button>
+          <button id="copyArtifactLinkButton" type="button" aria-label="Copy rendered artifact link">Copy artifact link</button>
+          <button id="copySiteLinkButton" type="button" aria-label="Copy space link">Copy space link</button>
+          <button id="openPublishedSiteButton" type="button" aria-label="Open published space">Open published space</button>
           <button id="templateSaveButton" type="button" aria-label="Save page as template">Save as template</button>
           <select id="exportFormatSelect" class="export-format-select" aria-label="Export">
             <option value="">Export…</option>
@@ -182,7 +191,8 @@
               <option value="site:noma-zip" data-export-scope="site">Noma sources (.zip)</option>
             </optgroup>
           </select>
-        </div>
+          </div>
+        </details>
         <details id="aiMenu" class="ai-menu">
           <summary id="aiMenuButton" aria-label="AI actions for this page">AI</summary>
           <div id="aiMenuItems" class="ai-menu-items" role="menu">

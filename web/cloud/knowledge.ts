@@ -196,11 +196,35 @@ function renderKnowledgeHealth(): void {
     knowledgeHealthList.append(emptyState("No active health issues"));
     return;
   }
-  for (const item of state.knowledgeHealth.slice(0, 12)) {
-    const row = knowledgePanelRow(item.kind.replaceAll("_", " "), item.message, item.severity);
-    if (item.documentId) row.addEventListener("click", () => void openHealthItem(item));
-    knowledgeHealthList.append(row);
+  const severityRank = { error: 0, warning: 1, info: 2 } as const;
+  const groups = new Map<string, KnowledgeHealthItem[]>();
+  for (const item of state.knowledgeHealth) groups.set(item.kind, [...(groups.get(item.kind) ?? []), item]);
+  const ordered = [...groups.entries()].sort(
+    ([, a], [, b]) => severityRank[worstSeverity(a)] - severityRank[worstSeverity(b)] || b.length - a.length,
+  );
+  const pageId = state.currentPage?.id;
+  for (const [kind, items] of ordered) {
+    const group = document.createElement("details");
+    group.className = "health-group";
+    group.dataset.state = worstSeverity(items);
+    const summary = document.createElement("summary");
+    const onPage = pageId ? items.filter((item) => item.documentId === pageId).length : 0;
+    summary.textContent = `${kind.replaceAll("_", " ")} · ${items.length}${onPage ? ` (${onPage} on this page)` : ""}`;
+    group.append(summary);
+    const sorted = [...items].sort((a, b) => Number(b.documentId === pageId) - Number(a.documentId === pageId));
+    for (const item of sorted.slice(0, 8)) {
+      const row = knowledgePanelRow(item.blockId ? `#${item.blockId}` : kind.replaceAll("_", " "), item.message, item.severity);
+      if (item.documentId) row.addEventListener("click", () => void openHealthItem(item));
+      group.append(row);
+    }
+    if (items.length > 8) group.append(emptyState(`+${items.length - 8} more`));
+    knowledgeHealthList.append(group);
   }
+}
+
+function worstSeverity(items: KnowledgeHealthItem[]): KnowledgeHealthItem["severity"] {
+  if (items.some((item) => item.severity === "error")) return "error";
+  return items.some((item) => item.severity === "warning") ? "warning" : "info";
 }
 
 async function openHealthItem(item: KnowledgeHealthItem): Promise<void> {

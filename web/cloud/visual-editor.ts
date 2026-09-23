@@ -19,6 +19,7 @@ import {
 } from "../../src/editor-model.js";
 import { convertMarkdownToNoma } from "../../src/ingest-markdown.js";
 import { safeHref } from "../../src/inline.js";
+import { knownMentionName, resolveMentionNames } from "./mentions.js";
 import { visualSchema, wikilinkLabel } from "./visual-schema.js";
 
 const schema = visualSchema;
@@ -1033,6 +1034,33 @@ class InlineAtomView implements NodeView {
   }
 }
 
+/** `@{userId}` shown as an `@Name` chip; the source keeps the stable user ID. */
+class MentionView implements NodeView {
+  dom: HTMLElement;
+
+  constructor(private node: PMNode) {
+    this.dom = document.createElement("span");
+    this.dom.className = "nv-mention";
+    this.dom.contentEditable = "false";
+    this.render();
+    const userId = String(node.attrs.userId ?? "");
+    if (!knownMentionName(userId)) void resolveMentionNames([userId]).then(() => this.render());
+  }
+
+  private render(): void {
+    const userId = String(this.node.attrs.userId ?? "");
+    this.dom.textContent = `@${knownMentionName(userId) ?? "…"}`;
+    this.dom.title = `@{${userId}}`;
+  }
+
+  update(node: PMNode): boolean {
+    if (node.type !== this.node.type) return false;
+    this.node = node;
+    this.render();
+    return true;
+  }
+}
+
 export function nomaNodeViews(hooks: VisualEditorHooks): Record<string, NodeViewConstructor> {
   return {
     directive: (node, view, getPos) => new DirectiveView(node, view, getPos, hooks),
@@ -1042,6 +1070,7 @@ export function nomaNodeViews(hooks: VisualEditorHooks): Record<string, NodeView
     list_item: (node, view, getPos) => new ListItemView(node, view, getPos, hooks),
     wikilink: (node, view, getPos) => new InlineAtomView(node, view, getPos, hooks),
     math_inline: (node, view, getPos) => new InlineAtomView(node, view, getPos, hooks),
+    mention: (node) => new MentionView(node),
   };
 }
 

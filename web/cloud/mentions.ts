@@ -107,6 +107,16 @@ export function decoratePreviewMentions(previewDoc: Document | null): void {
   }
 }
 
+/** Cached display name for a user ID, if already known. */
+export function knownMentionName(id: string): string | undefined {
+  return nameCache.get(id);
+}
+
+/** Resolves names for `ids` (people who share a space with you) into the shared cache. */
+export async function resolveMentionNames(ids: string[]): Promise<void> {
+  await lookupNames(ids.filter((id) => !nameCache.has(id)));
+}
+
 async function lookupNames(ids: string[]): Promise<void> {
   const fresh = ids.filter((id) => !pendingLookups.has(id)).slice(0, 100);
   if (fresh.length === 0 || !state.cloudUser) return;

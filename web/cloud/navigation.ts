@@ -14,7 +14,7 @@ import { clearWorkspaceState, refreshWorkspaceTools, renderWorkspaceTools } from
 import { shareToken, state } from "./state.js";
 import { promptTemplateVariables } from "./templates.js";
 import type { CloudDocumentResponse, CloudNavigationItem, CloudPageTemplate, CloudSiteResponse, CloudTrashItem } from "./types.js";
-import { absoluteUrl, copyText, emptyState, errorMessage, formatDate, iconButton, promptName, setBusy, setCloudStatus, shortId, slug } from "./util.js";
+import { absoluteUrl, copyText, emptyState, errorMessage, formatDate, iconButton, promptName, relativeTime, setBusy, setCloudStatus, shortId, slug } from "./util.js";
 import { installPageRowReordering } from "./page-tree.js";
 import { spaceLabel, spaceListArchivedParam } from "./spaces.js";
 import { refreshWorkManagement } from "./work.js";
@@ -729,7 +729,8 @@ function pageRow(page: CloudDocumentResponse, depth = 0): HTMLElement {
   const title = button.querySelector<HTMLElement>(".row-title");
   const meta = button.querySelector<HTMLElement>(".row-meta");
   if (title) title.textContent = page.title;
-  if (meta) meta.textContent = `${shortId(page.id)} / ${page.access?.role ?? state.currentSite?.access?.role ?? "viewer"}`;
+  if (meta) meta.textContent = `Updated ${relativeTime(page.updatedAt)}`;
+  button.title = `${page.title} · ${page.access?.role ?? state.currentSite?.access?.role ?? "viewer"} access`;
   const lock = restrictionIndicator(page.id);
   if (lock) title?.append(lock);
   button.addEventListener("click", () => selectPage(page.id));

@@ -73,6 +73,8 @@ function toDom(name: string, node: PMNode): DOMOutputSpec {
       return ["span", { ...data, class: "nv-wikilink" }, wikilinkLabel(String(node.attrs.raw ?? ""))];
     case "math_inline":
       return ["span", { ...data, class: "nv-math-inline" }, String(node.attrs.tex ?? "")];
+    case "mention":
+      return ["span", { ...data, class: "nv-mention" }, `@${String(node.attrs.userId ?? "")}`];
     default:
       return ["div", data, 0];
   }
@@ -125,6 +127,8 @@ function parseRules(name: string): NodeSpec["parseDOM"] {
       return [{ tag: "span.nv-wikilink", getAttrs }];
     case "math_inline":
       return [{ tag: "span.nv-math-inline", getAttrs }];
+    case "mention":
+      return [{ tag: "span.nv-mention", getAttrs }];
     default:
       return [];
   }

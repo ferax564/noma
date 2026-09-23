@@ -328,3 +328,13 @@ test("three-way block merge keeps live edits and applies external ones", () => {
   const same = planBlockMerge(["x"], ["y"], ["y"]).map((step) => step.kind);
   assert.deepEqual(same, ["keep"]);
 });
+
+test("@{userId} mentions become atom nodes and serialize back to the exact source", () => {
+  const source = "# Mentions\n\nAsk @{user_abc12345} or **@{user_def67890}** about `@{not_a_mention}`.\n";
+  const json = nomaToEditorDoc(source);
+  const paragraph = json.content?.find((node) => node.type === "paragraph");
+  const mentions = (paragraph?.content ?? []).filter((node) => node.type === "mention").map((node) => node.attrs?.userId);
+  assert.deepEqual(mentions, ["user_abc12345", "user_def67890"]);
+  assert.equal(editorDocToNoma(json, source), source);
+  assert.equal(editorDocToNoma(json), source);
+});

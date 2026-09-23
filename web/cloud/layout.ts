@@ -51,6 +51,7 @@ export function renderChrome(): void {
   logoutUserButton.disabled = state.busy || !state.cloudUser;
   copyUserIdButton.disabled = state.busy || !state.cloudUser;
   copyUserTokenButton.disabled = state.busy || !state.cloudUser;
+  renderAccountChrome();
   themeToggleButton.textContent = state.themeMode === "dark" ? "Light" : "Dark";
   themeToggleButton.setAttribute("aria-pressed", String(state.themeMode === "dark"));
   newSpaceButton.disabled = state.busy || !state.cloudAvailable || !state.cloudUser;
@@ -222,4 +223,23 @@ function setPreviewPaperWidth(value: number, paper?: HTMLElement): void {
 export function applyThemeMode(): void {
   document.documentElement.dataset.theme = state.themeMode;
   document.documentElement.style.colorScheme = state.themeMode;
+}
+
+function renderAccountChrome(): void {
+  const signedIn = Boolean(state.cloudUser);
+  const auth = document.getElementById("authControls");
+  const account = document.getElementById("accountControls");
+  if (auth) auth.hidden = signedIn;
+  if (account) account.hidden = !signedIn;
+  const name = document.getElementById("accountName");
+  const avatar = document.getElementById("accountAvatar");
+  if (name) name.textContent = state.cloudUser?.name ?? "";
+  if (avatar) {
+    avatar.textContent = (state.cloudUser?.name ?? "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("");
+  }
 }

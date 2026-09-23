@@ -1,4 +1,5 @@
 /** Comments, approvals, notifications, activity, shares, collaborators and groups. */
+import { knownMentionName, mentionDisplay, resolveMentionNames } from "./mentions.js";
 import { fetchCloudJson } from "./api.js";
 import { accessList, activityList, approvalList, approvalNoteInput, approvalReviewerInput, approvalStatus, commentBlockIdInput, commentBodyInput, commentList, commentStatus, groupList, groupMemberIdInput, groupMemberRoleSelect, groupNameInput, groupStatus, inviteGroupSelect, inviteUserIdInput, manageGroupSelect, notificationList, shareStatus } from "./dom.js";
 import { currentPageEndpoint, saveCurrentPage } from "./editor.js";
@@ -116,8 +117,13 @@ export function renderAccessManagement(): void {
     accessList.append(emptyState(canManagePermissions() || canEditPage() ? "No additional access" : "Owner/editor access required"));
     return;
   }
+  const unknown = state.collaboratorGrants.map((grant) => grant.userId).filter((id) => !knownMentionName(id));
+  if (unknown.length) void resolveMentionNames(unknown).then(() => {
+    if (unknown.some((id) => knownMentionName(id))) renderAccessManagement();
+  });
   for (const grant of state.collaboratorGrants) {
-    const row = collaborationRow(`User ${shortId(grant.userId)}`, grant.role, formatDate(grant.addedAt));
+    const name = knownMentionName(grant.userId) ?? `User ${shortId(grant.userId)}`;
+    const row = collaborationRow(grant.userId === state.cloudUser?.id ? `${name} (you)` : name, grant.role, formatDate(grant.addedAt));
     if (grant.role !== "owner") row.append(collaborationActionsWith(actionButton("Remove", () => void removeCollaboratorGrant(grant.userId))));
     accessList.append(row);
   }
@@ -217,8 +223,13 @@ function renderNotifications(): void {
     notificationList.append(emptyState("No notifications"));
     return;
   }
+  const mentioned = [...new Set(state.notifications.slice(0, 30).flatMap((notification) => [...notification.body.matchAll(/@\{([A-Za-z0-9_-]{8,80})\}/g)].map((match) => match[1]!)))];
+  const unresolved = mentioned.filter((id) => !knownMentionName(id));
+  if (unresolved.length) void resolveMentionNames(unresolved).then(() => {
+    if (unresolved.some((id) => knownMentionName(id))) renderNotifications();
+  });
   for (const notification of state.notifications.slice(0, 30)) {
-    const row = collaborationRow(notification.title, notification.body, `${notification.type.replaceAll("_", " ")} · ${formatDate(notification.createdAt)}`);
+    const row = collaborationRow(notification.title, mentionDisplay(notification.body), `${notification.type.replaceAll("_", " ")} · ${formatDate(notification.createdAt)}`);
     row.dataset.unread = String(!notification.readAt);
     const actions = collaborationActions();
     actions.append(actionButton(notification.readAt ? "Open" : "Read", () => void markNotificationRead(notification)));

@@ -1766,6 +1766,7 @@ button.wiki-row {
   border-color: rgba(18, 98, 104, 0.9);
   background: var(--primary-bg);
   color: #ffffff;
+}
 
 /* cloud-ai */
 .ai-menu {
@@ -1923,6 +1924,7 @@ button.wiki-row {
 
 .ai-maintenance > details[open] > summary {
   margin-bottom: 8px;
+}
 
 /* wiki macros, templates, Confluence import, export */
 .export-format-select {
@@ -1988,6 +1990,7 @@ button.wiki-row {
 #templateVariablesFields {
   display: grid;
   gap: 0.75rem;
+}
 
 /* visual-editor */
 .visual-pane {
@@ -2361,4 +2364,184 @@ button.wiki-row {
   .cloud-shell[data-view-mode="visual"] .document-grid {
     grid-template-rows: minmax(620px, 80vh);
   }
+}
+
+/* ui polish: account chrome, page header, share menu */
+.topbar-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.topbar-group[hidden] {
+  display: none;
+}
+
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+  margin-right: 4px;
+}
+
+.account-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--primary-bg);
+  color: #ffffff;
+  font-size: 0.64rem;
+  font-weight: 760;
+  letter-spacing: 0.02em;
+}
+
+.page-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.page-title-group {
+  flex: 1 1 360px;
+}
+
+.page-meta {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.updated-text {
+  white-space: nowrap;
+}
+
+.page-actions {
+  max-width: none;
+  overflow: visible;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 6px;
+}
+
+.page-more-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.page-more-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 650;
+  padding: 5px 10px;
+  user-select: none;
+}
+
+.page-more-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.page-more-menu > summary::after {
+  content: " \25BE";
+  color: var(--muted);
+}
+
+.page-more-menu > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.page-more-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  display: grid;
+  gap: 4px;
+  min-width: 210px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--context-shadow);
+  padding: 6px;
+}
+
+.page-more-items button,
+.page-more-items select {
+  width: 100%;
+  max-width: none;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.health-group {
+  grid-column: 1 / -1;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.health-group > summary {
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.health-group > summary::first-letter {
+  text-transform: uppercase;
+}
+
+.health-group[data-state="error"] > summary {
+  color: var(--error);
+}
+
+.health-group[data-state="warning"] > summary {
+  color: var(--warn);
+}
+
+.health-group[open] {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 6px;
+}
+
+.health-group > .collaboration-row {
+  margin: 0 6px;
+  width: auto;
+}
+
+.visual-editor-surface .nv-mention {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 0 4px;
+  background: var(--selected-bg);
+  color: var(--accent);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+}
+
+.search-results > .search-result {
+  flex: 0 0 auto;
+}
+
+.search-result .row-meta {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

@@ -74,12 +74,13 @@ export async function renderSiteHtml(
 <style>
 body{margin:0;background:#f2f4f1;color:#20242a;font:15px/1.52 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .shell{display:grid;grid-template-columns:minmax(180px,260px) minmax(0,1fr);min-height:100vh}
-nav{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid #d9ded8;background:linear-gradient(180deg,#fffdf8,#f7f8f4);padding:18px}
-nav h1{font-size:1rem;margin:0 0 14px}nav a{display:block;color:#0f666b;text-decoration:none;margin:8px 0;font-weight:650}
+.shell>nav{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid #d9ded8;background:linear-gradient(180deg,#fffdf8,#f7f8f4);padding:18px}
+.shell>nav h1{font-size:1rem;margin:0 0 14px}.shell>nav a{display:block;color:#0f666b;text-decoration:none;margin:8px 0;font-weight:650}
 main{padding:30px;max-width:980px}.meta{color:#5c6670;font-size:.85rem;margin-bottom:18px}
 .site-doc{background:#fffefa;border:1px solid #d9ded8;border-radius:8px;padding:26px;margin:0 0 18px;box-shadow:0 22px 58px -48px rgba(32,36,42,.54)}
 .site-doc>header{display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid #e6dfd2;margin:-4px 0 18px;padding-bottom:12px}
 .site-doc>header h2{margin:0;font-size:1rem}.site-doc>header a{color:#5c6670;font-size:.82rem}
+.site-doc a{color:#0f666b}.noma-children ul{margin:6px 0;padding-left:20px}.noma-children-summary{color:#5c6670}
 .site-doc h1{font-size:2.1rem;line-height:1.08;margin:18px 0 18px}.site-doc h2{font-size:1.45rem;margin:28px 0 12px;border-bottom:1px solid #e6dfd2;padding-bottom:8px}.site-doc p{max-width:76ch}
 .site-doc table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:.94rem}.site-doc th,.site-doc td{border-bottom:1px solid #e6dfd2;padding:9px 10px;text-align:left;vertical-align:top}.site-doc th{background:#f2eee6;color:#20242a;font-weight:750}
 .noma-research,.noma-block,.noma-custom-directive{border:1px solid #e0ded7;border-radius:8px;background:#fffefa;margin:16px 0;padding:16px 18px;box-shadow:0 14px 32px -30px rgba(32,36,42,.55)}
@@ -89,7 +90,7 @@ main{padding:30px;max-width:980px}.meta{color:#5c6670;font-size:.85rem;margin-bo
 .noma-meta{color:#5c6670;font-size:.85rem;margin-top:10px}.noma-meta-key{color:#20242a;font-weight:720}.noma-block-body>*:first-child{margin-top:0}.noma-block-body>*:last-child{margin-bottom:0}
 .space-description{font-size:1.02rem;color:#3a434c;max-width:76ch;margin:0 0 22px}
 .noma-task{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;margin:12px 0}.noma-task input{margin-top:.28em}
-@media(max-width:760px){.shell{display:block}nav{position:static;height:auto}.site-doc{padding:16px}main{padding:18px}}
+@media(max-width:760px){.shell{display:block}.shell>nav{position:static;height:auto}.site-doc{padding:16px}main{padding:18px}}
 </style>
 </head>
 <body>
