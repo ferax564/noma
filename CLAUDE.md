@@ -61,7 +61,8 @@ packages/
   lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
   document-core/, document-ui/, platform/, work/, knowledge/, connectors/, contracts/, paperdom-core/, paperdom-react/, paperdom-io/  Enterprise extraction boundaries re-exporting the CLI kernel
 schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript, changeset, enterprise-resource (`noma schema <name>`)
-web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts, enterprise-collab.ts (esbuild via build:web-ui)
+web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts, enterprise-collab.ts (esbuild via build:web-ui; typecheck:web)
+  cloud/                   Noma Cloud app modules — main (listeners + boot), state (shared `state` object), dom, api, navigation, editor, preview, drafts, history, collaboration, work, knowledge, page-meta, wiki, layout, context-menu, …
 themes/                    default.css + dark.css HTML themes
 examples/                  Demo .noma files — agent-plan, tech-doc, research-thesis, word-review-loop, interactive-projection, …
   conformance/             Golden-file conformance suite (valid/invalid/patch/patch-error fixtures) — `npm run verify:conformance` gates CI
@@ -90,6 +91,7 @@ test/                      node:test suites — parser, patch, validator, roundt
 action.yml                 Reusable GitHub Action — validate/render/proof .noma artifacts in CI (strict by default)
 infra/                     AWS/EU CloudFormation reference (eu-central-1, KMS, RDS, S3, Secrets Manager)
 Dockerfile, ezkeel.yaml    Noma Cloud container build + deployment config
+tsconfig.web.json          Browser typecheck config for web/ (DOM libs, bundler resolution) — `npm run typecheck:web`
 dist/                      Build output (gitignored). GH Pages deploys this.
 PLAN.md                    Full product vision (do NOT delete). §23 = direction. §24 = shipped tracker per release.
 CHANGELOG.md               Keep-a-Changelog format. Add to [Unreleased] as you ship.

@@ -1,14 +1,166 @@
 "use strict";
 (() => {
-  // src/ast.ts
-  var isDirective = (n) => n.type === "directive";
-  function* walk(node) {
-    yield node;
-    if (node.type === "document" || node.type === "section" || node.type === "directive") {
-      for (const child of node.children) yield* walk(child);
-    } else if (node.type === "list") {
-      for (const item of node.items) yield* walk(item);
-    }
+  // web/cloud/constants.ts
+  var userStorageKey = "noma.cloud.user.v1";
+  var activeSiteStorageKey = "noma.cloud.activeSite.v1";
+  var activeDocumentStorageKey = "noma.cloud.activeDocument.v1";
+  var viewModeStorageKey = "noma.cloud.viewMode.v1";
+  var panelsOpenStorageKey = "noma.cloud.panelsOpen.v1";
+  var splitSourceRatioStorageKey = "noma.cloud.splitSourceRatio.v1";
+  var previewPaperWidthStorageKey = "noma.cloud.previewPaperWidth.v1";
+  var themeStorageKey = "noma.cloud.theme.v1";
+  var offlineDraftStorageKey = "noma.cloud.offlineDrafts.v1";
+  var query = new URLSearchParams(window.location.search);
+  var workIssueStatuses = ["backlog", "todo", "in_progress", "in_review", "done"];
+
+  // web/cloud/dom.ts
+  var cloudUserNameInput = requireElement("cloudUserName");
+  var cloudInvitationCodeInput = requireElement("cloudInvitationCode");
+  var cloudUserTokenInput = requireElement("cloudUserToken");
+  var newUserButton = requireElement("newUserButton");
+  var loginUserButton = requireElement("loginUserButton");
+  var logoutUserButton = requireElement("logoutUserButton");
+  var copyUserIdButton = requireElement("copyUserIdButton");
+  var copyUserTokenButton = requireElement("copyUserTokenButton");
+  var themeToggleButton = requireElement("themeToggleButton");
+  var cloudStatus = requireElement("cloudStatus");
+  var globalSearchInput = requireElement("globalSearchInput");
+  var searchButton = requireElement("searchButton");
+  var searchScopeSelect = requireElement("searchScopeSelect");
+  var searchResults = requireElement("searchResults");
+  var siteTitleInput = requireElement("siteTitleInput");
+  var newSpaceButton = requireElement("newSpaceButton");
+  var saveSpaceButton = requireElement("saveSpaceButton");
+  var siteList = requireElement("siteList");
+  var newPageButton = requireElement("newPageButton");
+  var newFolderButton = requireElement("newFolderButton");
+  var importPageButton = requireElement("importPageButton");
+  var importPageInput = requireElement("importPageInput");
+  var pageTemplateSelect = requireElement("pageTemplateSelect");
+  var pageList = requireElement("pageList");
+  var favoriteList = requireElement("favoriteList");
+  var recentList = requireElement("recentList");
+  var trashList = requireElement("trashList");
+  var refreshTrashButton = requireElement("refreshTrashButton");
+  var pageTitleInput = requireElement("pageTitleInput");
+  var roleBadge = requireElement("roleBadge");
+  var dirtyBadge = requireElement("dirtyBadge");
+  var updatedText = requireElement("updatedText");
+  var sourceViewButton = requireElement("sourceViewButton");
+  var splitViewButton = requireElement("splitViewButton");
+  var previewViewButton = requireElement("previewViewButton");
+  var togglePanelsButton = requireElement("togglePanelsButton");
+  var savePageButton = requireElement("savePageButton");
+  var reloadPageButton = requireElement("reloadPageButton");
+  var favoritePageButton = requireElement("favoritePageButton");
+  var watchPageButton = requireElement("watchPageButton");
+  var pageBreadcrumbs = requireElement("pageBreadcrumbs");
+  var pageLabels = requireElement("pageLabels");
+  var addLabelButton = requireElement("addLabelButton");
+  var revisionDiffOutput = requireElement("revisionDiffOutput");
+  var copyPageLinkButton = requireElement("copyPageLinkButton");
+  var copyArtifactLinkButton = requireElement("copyArtifactLinkButton");
+  var copySiteLinkButton = requireElement("copySiteLinkButton");
+  var openPublishedSiteButton = requireElement("openPublishedSiteButton");
+  var documentGrid = requireElement("documentGrid");
+  var splitResizeHandle = requireElement("splitResizeHandle");
+  var sourceInput = requireElement("sourceInput");
+  var previewFrame = requireElement("previewFrame");
+  var shareRoleSelect = requireElement("shareRoleSelect");
+  var inviteUserIdInput = requireElement("inviteUserIdInput");
+  var inviteRoleSelect = requireElement("inviteRoleSelect");
+  var inviteUserButton = requireElement("inviteUserButton");
+  var inviteGroupSelect = requireElement("inviteGroupSelect");
+  var inviteGroupButton = requireElement("inviteGroupButton");
+  var shareStatus = requireElement("shareStatus");
+  var refreshAccessButton = requireElement("refreshAccessButton");
+  var accessList = requireElement("accessList");
+  var refreshNotificationsButton = requireElement("refreshNotificationsButton");
+  var readAllNotificationsButton = requireElement("readAllNotificationsButton");
+  var notificationList = requireElement("notificationList");
+  var refreshCommentsButton = requireElement("refreshCommentsButton");
+  var commentBlockIdInput = requireElement("commentBlockIdInput");
+  var commentBodyInput = requireElement("commentBodyInput");
+  var addCommentButton = requireElement("addCommentButton");
+  var commentList = requireElement("commentList");
+  var commentStatus = requireElement("commentStatus");
+  var refreshApprovalsButton = requireElement("refreshApprovalsButton");
+  var approvalReviewerInput = requireElement("approvalReviewerInput");
+  var approvalNoteInput = requireElement("approvalNoteInput");
+  var requestApprovalButton = requireElement("requestApprovalButton");
+  var approvalList = requireElement("approvalList");
+  var approvalStatus = requireElement("approvalStatus");
+  var refreshActivityButton = requireElement("refreshActivityButton");
+  var activityList = requireElement("activityList");
+  var refreshGroupsButton = requireElement("refreshGroupsButton");
+  var groupNameInput = requireElement("groupNameInput");
+  var createGroupButton = requireElement("createGroupButton");
+  var manageGroupSelect = requireElement("manageGroupSelect");
+  var groupMemberIdInput = requireElement("groupMemberIdInput");
+  var groupMemberRoleSelect = requireElement("groupMemberRoleSelect");
+  var addGroupMemberButton = requireElement("addGroupMemberButton");
+  var groupList = requireElement("groupList");
+  var groupStatus = requireElement("groupStatus");
+  var refreshHistoryButton = requireElement("refreshHistoryButton");
+  var historyList = requireElement("historyList");
+  var historyStatus = requireElement("historyStatus");
+  var refreshWorkButton = requireElement("refreshWorkButton");
+  var workProjectSelect = requireElement("workProjectSelect");
+  var projectKeyInput = requireElement("projectKeyInput");
+  var projectNameInput = requireElement("projectNameInput");
+  var createProjectButton = requireElement("createProjectButton");
+  var issueSummaryInput = requireElement("issueSummaryInput");
+  var issueTypeSelect = requireElement("issueTypeSelect");
+  var issuePrioritySelect = requireElement("issuePrioritySelect");
+  var issueAssigneeInput = requireElement("issueAssigneeInput");
+  var issueLabelsInput = requireElement("issueLabelsInput");
+  var issueSprintSelect = requireElement("issueSprintSelect");
+  var createIssueButton = requireElement("createIssueButton");
+  var sprintNameInput = requireElement("sprintNameInput");
+  var createSprintButton = requireElement("createSprintButton");
+  var manageSprintSelect = requireElement("manageSprintSelect");
+  var startSprintButton = requireElement("startSprintButton");
+  var completeSprintButton = requireElement("completeSprintButton");
+  var issueFilterSelect = requireElement("issueFilterSelect");
+  var issueSearchInput = requireElement("issueSearchInput");
+  var workBoard = requireElement("workBoard");
+  var selectedIssueSummary = requireElement("selectedIssueSummary");
+  var issueCommentInput = requireElement("issueCommentInput");
+  var addIssueCommentButton = requireElement("addIssueCommentButton");
+  var issueLinkTargetInput = requireElement("issueLinkTargetInput");
+  var issueLinkTypeSelect = requireElement("issueLinkTypeSelect");
+  var addIssueLinkButton = requireElement("addIssueLinkButton");
+  var issueDetailList = requireElement("issueDetailList");
+  var workStatus = requireElement("workStatus");
+  var patchInput = requireElement("patchInput");
+  var applyPatchButton = requireElement("applyPatchButton");
+  var proposePatchButton = requireElement("proposePatchButton");
+  var copyLlmButton = requireElement("copyLlmButton");
+  var refreshPatchProposalsButton = requireElement("refreshPatchProposalsButton");
+  var agentStatus = requireElement("agentStatus");
+  var patchProposalList = requireElement("patchProposalList");
+  var diagnosticsSummary = requireElement("diagnosticsSummary");
+  var diagnosticsList = requireElement("diagnosticsList");
+  var outlineList = requireElement("outlineList");
+  var wikiSummary = requireElement("wikiSummary");
+  var wikiLinksList = requireElement("wikiLinksList");
+  var askNomaInput = requireElement("askNomaInput");
+  var askNomaButton = requireElement("askNomaButton");
+  var refreshKnowledgeButton = requireElement("refreshKnowledgeButton");
+  var askNomaStatus = requireElement("askNomaStatus");
+  var askNomaResult = requireElement("askNomaResult");
+  var knowledgeHealthList = requireElement("knowledgeHealthList");
+  var agentChangeInboxList = requireElement("agentChangeInboxList");
+  var agentDirectoryList = requireElement("agentDirectoryList");
+  var offlineStatus = requireElement("offlineStatus");
+  var draftRecoveryStatus = requireElement("draftRecoveryStatus");
+  var recoverDraftButton = requireElement("recoverDraftButton");
+  var mergeDraftButton = requireElement("mergeDraftButton");
+  var discardDraftButton = requireElement("discardDraftButton");
+  function requireElement(id) {
+    const element = document.getElementById(id);
+    if (!element) throw new Error(`Missing #${id}`);
+    return element;
   }
 
   // ../../../node_modules/js-yaml/dist/js-yaml.mjs
@@ -1141,45 +1293,45 @@
       this.documents = [];
       this.anchorMapTransactions = [];
     }
-    function generateError(state, message) {
+    function generateError(state2, message) {
       const mark = {
-        name: state.filename,
-        buffer: state.input.slice(0, -1),
+        name: state2.filename,
+        buffer: state2.input.slice(0, -1),
         // omit trailing \0
-        position: state.position,
-        line: state.line,
-        column: state.position - state.lineStart
+        position: state2.position,
+        line: state2.line,
+        column: state2.position - state2.lineStart
       };
       mark.snippet = makeSnippet(mark);
       return new YAMLException2(message, mark);
     }
-    function throwError(state, message) {
-      throw generateError(state, message);
+    function throwError(state2, message) {
+      throw generateError(state2, message);
     }
-    function throwWarning(state, message) {
-      if (state.onWarning) {
-        state.onWarning.call(null, generateError(state, message));
+    function throwWarning(state2, message) {
+      if (state2.onWarning) {
+        state2.onWarning.call(null, generateError(state2, message));
       }
     }
-    function storeAnchor(state, name, value) {
-      const transactions = state.anchorMapTransactions;
+    function storeAnchor(state2, name, value) {
+      const transactions = state2.anchorMapTransactions;
       if (transactions.length !== 0) {
         const transaction = transactions[transactions.length - 1];
         if (!_hasOwnProperty.call(transaction, name)) {
           transaction[name] = {
-            existed: _hasOwnProperty.call(state.anchorMap, name),
-            value: state.anchorMap[name]
+            existed: _hasOwnProperty.call(state2.anchorMap, name),
+            value: state2.anchorMap[name]
           };
         }
       }
-      state.anchorMap[name] = value;
+      state2.anchorMap[name] = value;
     }
-    function beginAnchorTransaction(state) {
-      state.anchorMapTransactions.push(/* @__PURE__ */ Object.create(null));
+    function beginAnchorTransaction(state2) {
+      state2.anchorMapTransactions.push(/* @__PURE__ */ Object.create(null));
     }
-    function commitAnchorTransaction(state) {
-      const transaction = state.anchorMapTransactions.pop();
-      const transactions = state.anchorMapTransactions;
+    function commitAnchorTransaction(state2) {
+      const transaction = state2.anchorMapTransactions.pop();
+      const transactions = state2.anchorMapTransactions;
       if (transactions.length === 0) return;
       const parent = transactions[transactions.length - 1];
       const names = Object.keys(transaction);
@@ -1190,114 +1342,114 @@
         }
       }
     }
-    function rollbackAnchorTransaction(state) {
-      const transaction = state.anchorMapTransactions.pop();
+    function rollbackAnchorTransaction(state2) {
+      const transaction = state2.anchorMapTransactions.pop();
       const names = Object.keys(transaction);
       for (let index = names.length - 1; index >= 0; index -= 1) {
         const entry = transaction[names[index]];
         if (entry.existed) {
-          state.anchorMap[names[index]] = entry.value;
+          state2.anchorMap[names[index]] = entry.value;
         } else {
-          delete state.anchorMap[names[index]];
+          delete state2.anchorMap[names[index]];
         }
       }
     }
-    function snapshotState(state) {
+    function snapshotState(state2) {
       return {
-        position: state.position,
-        line: state.line,
-        lineStart: state.lineStart,
-        lineIndent: state.lineIndent,
-        firstTabInLine: state.firstTabInLine,
-        tag: state.tag,
-        anchor: state.anchor,
-        kind: state.kind,
-        result: state.result
+        position: state2.position,
+        line: state2.line,
+        lineStart: state2.lineStart,
+        lineIndent: state2.lineIndent,
+        firstTabInLine: state2.firstTabInLine,
+        tag: state2.tag,
+        anchor: state2.anchor,
+        kind: state2.kind,
+        result: state2.result
       };
     }
-    function restoreState(state, snapshot) {
-      state.position = snapshot.position;
-      state.line = snapshot.line;
-      state.lineStart = snapshot.lineStart;
-      state.lineIndent = snapshot.lineIndent;
-      state.firstTabInLine = snapshot.firstTabInLine;
-      state.tag = snapshot.tag;
-      state.anchor = snapshot.anchor;
-      state.kind = snapshot.kind;
-      state.result = snapshot.result;
+    function restoreState(state2, snapshot) {
+      state2.position = snapshot.position;
+      state2.line = snapshot.line;
+      state2.lineStart = snapshot.lineStart;
+      state2.lineIndent = snapshot.lineIndent;
+      state2.firstTabInLine = snapshot.firstTabInLine;
+      state2.tag = snapshot.tag;
+      state2.anchor = snapshot.anchor;
+      state2.kind = snapshot.kind;
+      state2.result = snapshot.result;
     }
     const directiveHandlers = {
-      YAML: function handleYamlDirective(state, name, args) {
-        if (state.version !== null) {
-          throwError(state, "duplication of %YAML directive");
+      YAML: function handleYamlDirective(state2, name, args) {
+        if (state2.version !== null) {
+          throwError(state2, "duplication of %YAML directive");
         }
         if (args.length !== 1) {
-          throwError(state, "YAML directive accepts exactly one argument");
+          throwError(state2, "YAML directive accepts exactly one argument");
         }
         const match = /^([0-9]+)\.([0-9]+)$/.exec(args[0]);
         if (match === null) {
-          throwError(state, "ill-formed argument of the YAML directive");
+          throwError(state2, "ill-formed argument of the YAML directive");
         }
         const major = parseInt(match[1], 10);
         const minor = parseInt(match[2], 10);
         if (major !== 1) {
-          throwError(state, "unacceptable YAML version of the document");
+          throwError(state2, "unacceptable YAML version of the document");
         }
-        state.version = args[0];
-        state.checkLineBreaks = minor < 2;
+        state2.version = args[0];
+        state2.checkLineBreaks = minor < 2;
         if (minor !== 1 && minor !== 2) {
-          throwWarning(state, "unsupported YAML version of the document");
+          throwWarning(state2, "unsupported YAML version of the document");
         }
       },
-      TAG: function handleTagDirective(state, name, args) {
+      TAG: function handleTagDirective(state2, name, args) {
         let prefix;
         if (args.length !== 2) {
-          throwError(state, "TAG directive accepts exactly two arguments");
+          throwError(state2, "TAG directive accepts exactly two arguments");
         }
         const handle = args[0];
         prefix = args[1];
         if (!PATTERN_TAG_HANDLE.test(handle)) {
-          throwError(state, "ill-formed tag handle (first argument) of the TAG directive");
+          throwError(state2, "ill-formed tag handle (first argument) of the TAG directive");
         }
-        if (_hasOwnProperty.call(state.tagMap, handle)) {
-          throwError(state, 'there is a previously declared suffix for "' + handle + '" tag handle');
+        if (_hasOwnProperty.call(state2.tagMap, handle)) {
+          throwError(state2, 'there is a previously declared suffix for "' + handle + '" tag handle');
         }
         if (!PATTERN_TAG_URI.test(prefix)) {
-          throwError(state, "ill-formed tag prefix (second argument) of the TAG directive");
+          throwError(state2, "ill-formed tag prefix (second argument) of the TAG directive");
         }
         try {
           prefix = decodeURIComponent(prefix);
         } catch (err) {
-          throwError(state, "tag prefix is malformed: " + prefix);
+          throwError(state2, "tag prefix is malformed: " + prefix);
         }
-        state.tagMap[handle] = prefix;
+        state2.tagMap[handle] = prefix;
       }
     };
-    function captureSegment(state, start, end, checkJson) {
+    function captureSegment(state2, start, end, checkJson) {
       if (start < end) {
-        const _result = state.input.slice(start, end);
+        const _result = state2.input.slice(start, end);
         if (checkJson) {
           for (let _position = 0, _length = _result.length; _position < _length; _position += 1) {
             const _character = _result.charCodeAt(_position);
             if (!(_character === 9 || _character >= 32 && _character <= 1114111)) {
-              throwError(state, "expected valid JSON character");
+              throwError(state2, "expected valid JSON character");
             }
           }
         } else if (PATTERN_NON_PRINTABLE.test(_result)) {
-          throwError(state, "the stream contains non-printable characters");
+          throwError(state2, "the stream contains non-printable characters");
         }
-        state.result += _result;
+        state2.result += _result;
       }
     }
-    function mergeMappings(state, destination, source, overridableKeys) {
+    function mergeMappings(state2, destination, source, overridableKeys) {
       if (!common2.isObject(source)) {
-        throwError(state, "cannot merge mappings; the provided source object is unacceptable");
+        throwError(state2, "cannot merge mappings; the provided source object is unacceptable");
       }
       const sourceKeys = Object.keys(source);
       for (let index = 0, quantity = sourceKeys.length; index < quantity; index += 1) {
         const key = sourceKeys[index];
-        if (state.maxTotalMergeKeys !== -1 && ++state.totalMergeKeys > state.maxTotalMergeKeys) {
-          throwError(state, "merge keys exceeded maxTotalMergeKeys (" + state.maxTotalMergeKeys + ")");
+        if (state2.maxTotalMergeKeys !== -1 && ++state2.totalMergeKeys > state2.maxTotalMergeKeys) {
+          throwError(state2, "merge keys exceeded maxTotalMergeKeys (" + state2.maxTotalMergeKeys + ")");
         }
         if (!_hasOwnProperty.call(destination, key)) {
           setProperty(destination, key, source[key]);
@@ -1305,12 +1457,12 @@
         }
       }
     }
-    function storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, valueNode, startLine, startLineStart, startPos) {
+    function storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, valueNode, startLine, startLineStart, startPos) {
       if (Array.isArray(keyNode)) {
         keyNode = Array.prototype.slice.call(keyNode);
         for (let index = 0, quantity = keyNode.length; index < quantity; index += 1) {
           if (Array.isArray(keyNode[index])) {
-            throwError(state, "nested arrays are not supported inside keys");
+            throwError(state2, "nested arrays are not supported inside keys");
           }
           if (typeof keyNode === "object" && _class(keyNode[index]) === "[object Object]") {
             keyNode[index] = "[object Object]";
@@ -1327,265 +1479,265 @@
       if (keyTag === "tag:yaml.org,2002:merge") {
         if (Array.isArray(valueNode)) {
           for (let index = 0, quantity = valueNode.length; index < quantity; index += 1) {
-            mergeMappings(state, _result, valueNode[index], overridableKeys);
+            mergeMappings(state2, _result, valueNode[index], overridableKeys);
           }
         } else {
-          mergeMappings(state, _result, valueNode, overridableKeys);
+          mergeMappings(state2, _result, valueNode, overridableKeys);
         }
       } else {
-        if (!state.json && !_hasOwnProperty.call(overridableKeys, keyNode) && _hasOwnProperty.call(_result, keyNode)) {
-          state.line = startLine || state.line;
-          state.lineStart = startLineStart || state.lineStart;
-          state.position = startPos || state.position;
-          throwError(state, "duplicated mapping key");
+        if (!state2.json && !_hasOwnProperty.call(overridableKeys, keyNode) && _hasOwnProperty.call(_result, keyNode)) {
+          state2.line = startLine || state2.line;
+          state2.lineStart = startLineStart || state2.lineStart;
+          state2.position = startPos || state2.position;
+          throwError(state2, "duplicated mapping key");
         }
         setProperty(_result, keyNode, valueNode);
         delete overridableKeys[keyNode];
       }
       return _result;
     }
-    function readLineBreak(state) {
-      const ch = state.input.charCodeAt(state.position);
+    function readLineBreak(state2) {
+      const ch = state2.input.charCodeAt(state2.position);
       if (ch === 10) {
-        state.position++;
+        state2.position++;
       } else if (ch === 13) {
-        state.position++;
-        if (state.input.charCodeAt(state.position) === 10) {
-          state.position++;
+        state2.position++;
+        if (state2.input.charCodeAt(state2.position) === 10) {
+          state2.position++;
         }
       } else {
-        throwError(state, "a line break is expected");
+        throwError(state2, "a line break is expected");
       }
-      state.line += 1;
-      state.lineStart = state.position;
-      state.firstTabInLine = -1;
+      state2.line += 1;
+      state2.lineStart = state2.position;
+      state2.firstTabInLine = -1;
     }
-    function skipSeparationSpace(state, allowComments, checkIndent) {
+    function skipSeparationSpace(state2, allowComments, checkIndent) {
       let lineBreaks = 0;
-      let ch = state.input.charCodeAt(state.position);
+      let ch = state2.input.charCodeAt(state2.position);
       while (ch !== 0) {
         while (isWhiteSpace(ch)) {
-          if (ch === 9 && state.firstTabInLine === -1) {
-            state.firstTabInLine = state.position;
+          if (ch === 9 && state2.firstTabInLine === -1) {
+            state2.firstTabInLine = state2.position;
           }
-          ch = state.input.charCodeAt(++state.position);
+          ch = state2.input.charCodeAt(++state2.position);
         }
         if (allowComments && ch === 35) {
           do {
-            ch = state.input.charCodeAt(++state.position);
+            ch = state2.input.charCodeAt(++state2.position);
           } while (ch !== 10 && ch !== 13 && ch !== 0);
         }
         if (isEol(ch)) {
-          readLineBreak(state);
-          ch = state.input.charCodeAt(state.position);
+          readLineBreak(state2);
+          ch = state2.input.charCodeAt(state2.position);
           lineBreaks++;
-          state.lineIndent = 0;
+          state2.lineIndent = 0;
           while (ch === 32) {
-            state.lineIndent++;
-            ch = state.input.charCodeAt(++state.position);
+            state2.lineIndent++;
+            ch = state2.input.charCodeAt(++state2.position);
           }
         } else {
           break;
         }
       }
-      if (checkIndent !== -1 && lineBreaks !== 0 && state.lineIndent < checkIndent) {
-        throwWarning(state, "deficient indentation");
+      if (checkIndent !== -1 && lineBreaks !== 0 && state2.lineIndent < checkIndent) {
+        throwWarning(state2, "deficient indentation");
       }
       return lineBreaks;
     }
-    function testDocumentSeparator(state) {
-      let _position = state.position;
-      let ch = state.input.charCodeAt(_position);
-      if ((ch === 45 || ch === 46) && ch === state.input.charCodeAt(_position + 1) && ch === state.input.charCodeAt(_position + 2)) {
+    function testDocumentSeparator(state2) {
+      let _position = state2.position;
+      let ch = state2.input.charCodeAt(_position);
+      if ((ch === 45 || ch === 46) && ch === state2.input.charCodeAt(_position + 1) && ch === state2.input.charCodeAt(_position + 2)) {
         _position += 3;
-        ch = state.input.charCodeAt(_position);
+        ch = state2.input.charCodeAt(_position);
         if (ch === 0 || isWsOrEol(ch)) {
           return true;
         }
       }
       return false;
     }
-    function writeFoldedLines(state, count) {
+    function writeFoldedLines(state2, count) {
       if (count === 1) {
-        state.result += " ";
+        state2.result += " ";
       } else if (count > 1) {
-        state.result += common2.repeat("\n", count - 1);
+        state2.result += common2.repeat("\n", count - 1);
       }
     }
-    function readPlainScalar(state, nodeIndent, withinFlowCollection) {
+    function readPlainScalar(state2, nodeIndent, withinFlowCollection) {
       let captureStart;
       let captureEnd;
       let hasPendingContent;
       let _line;
       let _lineStart;
       let _lineIndent;
-      const _kind = state.kind;
-      const _result = state.result;
-      let ch = state.input.charCodeAt(state.position);
+      const _kind = state2.kind;
+      const _result = state2.result;
+      let ch = state2.input.charCodeAt(state2.position);
       if (isWsOrEol(ch) || isFlowIndicator(ch) || ch === 35 || ch === 38 || ch === 42 || ch === 33 || ch === 124 || ch === 62 || ch === 39 || ch === 34 || ch === 37 || ch === 64 || ch === 96) {
         return false;
       }
       if (ch === 63 || ch === 45) {
-        const following = state.input.charCodeAt(state.position + 1);
+        const following = state2.input.charCodeAt(state2.position + 1);
         if (isWsOrEol(following) || withinFlowCollection && isFlowIndicator(following)) {
           return false;
         }
       }
-      state.kind = "scalar";
-      state.result = "";
-      captureStart = captureEnd = state.position;
+      state2.kind = "scalar";
+      state2.result = "";
+      captureStart = captureEnd = state2.position;
       hasPendingContent = false;
       while (ch !== 0) {
         if (ch === 58) {
-          const following = state.input.charCodeAt(state.position + 1);
+          const following = state2.input.charCodeAt(state2.position + 1);
           if (isWsOrEol(following) || withinFlowCollection && isFlowIndicator(following)) {
             break;
           }
         } else if (ch === 35) {
-          const preceding = state.input.charCodeAt(state.position - 1);
+          const preceding = state2.input.charCodeAt(state2.position - 1);
           if (isWsOrEol(preceding)) {
             break;
           }
-        } else if (state.position === state.lineStart && testDocumentSeparator(state) || withinFlowCollection && isFlowIndicator(ch)) {
+        } else if (state2.position === state2.lineStart && testDocumentSeparator(state2) || withinFlowCollection && isFlowIndicator(ch)) {
           break;
         } else if (isEol(ch)) {
-          _line = state.line;
-          _lineStart = state.lineStart;
-          _lineIndent = state.lineIndent;
-          skipSeparationSpace(state, false, -1);
-          if (state.lineIndent >= nodeIndent) {
+          _line = state2.line;
+          _lineStart = state2.lineStart;
+          _lineIndent = state2.lineIndent;
+          skipSeparationSpace(state2, false, -1);
+          if (state2.lineIndent >= nodeIndent) {
             hasPendingContent = true;
-            ch = state.input.charCodeAt(state.position);
+            ch = state2.input.charCodeAt(state2.position);
             continue;
           } else {
-            state.position = captureEnd;
-            state.line = _line;
-            state.lineStart = _lineStart;
-            state.lineIndent = _lineIndent;
+            state2.position = captureEnd;
+            state2.line = _line;
+            state2.lineStart = _lineStart;
+            state2.lineIndent = _lineIndent;
             break;
           }
         }
         if (hasPendingContent) {
-          captureSegment(state, captureStart, captureEnd, false);
-          writeFoldedLines(state, state.line - _line);
-          captureStart = captureEnd = state.position;
+          captureSegment(state2, captureStart, captureEnd, false);
+          writeFoldedLines(state2, state2.line - _line);
+          captureStart = captureEnd = state2.position;
           hasPendingContent = false;
         }
         if (!isWhiteSpace(ch)) {
-          captureEnd = state.position + 1;
+          captureEnd = state2.position + 1;
         }
-        ch = state.input.charCodeAt(++state.position);
+        ch = state2.input.charCodeAt(++state2.position);
       }
-      captureSegment(state, captureStart, captureEnd, false);
-      if (state.result) {
+      captureSegment(state2, captureStart, captureEnd, false);
+      if (state2.result) {
         return true;
       }
-      state.kind = _kind;
-      state.result = _result;
+      state2.kind = _kind;
+      state2.result = _result;
       return false;
     }
-    function readSingleQuotedScalar(state, nodeIndent) {
+    function readSingleQuotedScalar(state2, nodeIndent) {
       let captureStart;
       let captureEnd;
-      let ch = state.input.charCodeAt(state.position);
+      let ch = state2.input.charCodeAt(state2.position);
       if (ch !== 39) {
         return false;
       }
-      state.kind = "scalar";
-      state.result = "";
-      state.position++;
-      captureStart = captureEnd = state.position;
-      while ((ch = state.input.charCodeAt(state.position)) !== 0) {
+      state2.kind = "scalar";
+      state2.result = "";
+      state2.position++;
+      captureStart = captureEnd = state2.position;
+      while ((ch = state2.input.charCodeAt(state2.position)) !== 0) {
         if (ch === 39) {
-          captureSegment(state, captureStart, state.position, true);
-          ch = state.input.charCodeAt(++state.position);
+          captureSegment(state2, captureStart, state2.position, true);
+          ch = state2.input.charCodeAt(++state2.position);
           if (ch === 39) {
-            captureStart = state.position;
-            state.position++;
-            captureEnd = state.position;
+            captureStart = state2.position;
+            state2.position++;
+            captureEnd = state2.position;
           } else {
             return true;
           }
         } else if (isEol(ch)) {
-          captureSegment(state, captureStart, captureEnd, true);
-          writeFoldedLines(state, skipSeparationSpace(state, false, nodeIndent));
-          captureStart = captureEnd = state.position;
-        } else if (state.position === state.lineStart && testDocumentSeparator(state)) {
-          throwError(state, "unexpected end of the document within a single quoted scalar");
+          captureSegment(state2, captureStart, captureEnd, true);
+          writeFoldedLines(state2, skipSeparationSpace(state2, false, nodeIndent));
+          captureStart = captureEnd = state2.position;
+        } else if (state2.position === state2.lineStart && testDocumentSeparator(state2)) {
+          throwError(state2, "unexpected end of the document within a single quoted scalar");
         } else {
-          state.position++;
+          state2.position++;
           if (!isWhiteSpace(ch)) {
-            captureEnd = state.position;
+            captureEnd = state2.position;
           }
         }
       }
-      throwError(state, "unexpected end of the stream within a single quoted scalar");
+      throwError(state2, "unexpected end of the stream within a single quoted scalar");
     }
-    function readDoubleQuotedScalar(state, nodeIndent) {
+    function readDoubleQuotedScalar(state2, nodeIndent) {
       let captureStart;
       let captureEnd;
       let tmp;
-      let ch = state.input.charCodeAt(state.position);
+      let ch = state2.input.charCodeAt(state2.position);
       if (ch !== 34) {
         return false;
       }
-      state.kind = "scalar";
-      state.result = "";
-      state.position++;
-      captureStart = captureEnd = state.position;
-      while ((ch = state.input.charCodeAt(state.position)) !== 0) {
+      state2.kind = "scalar";
+      state2.result = "";
+      state2.position++;
+      captureStart = captureEnd = state2.position;
+      while ((ch = state2.input.charCodeAt(state2.position)) !== 0) {
         if (ch === 34) {
-          captureSegment(state, captureStart, state.position, true);
-          state.position++;
+          captureSegment(state2, captureStart, state2.position, true);
+          state2.position++;
           return true;
         } else if (ch === 92) {
-          captureSegment(state, captureStart, state.position, true);
-          ch = state.input.charCodeAt(++state.position);
+          captureSegment(state2, captureStart, state2.position, true);
+          ch = state2.input.charCodeAt(++state2.position);
           if (isEol(ch)) {
-            skipSeparationSpace(state, false, nodeIndent);
+            skipSeparationSpace(state2, false, nodeIndent);
           } else if (ch < 256 && simpleEscapeCheck[ch]) {
-            state.result += simpleEscapeMap[ch];
-            state.position++;
+            state2.result += simpleEscapeMap[ch];
+            state2.position++;
           } else if ((tmp = escapedHexLen(ch)) > 0) {
             let hexLength = tmp;
             let hexResult = 0;
             for (; hexLength > 0; hexLength--) {
-              ch = state.input.charCodeAt(++state.position);
+              ch = state2.input.charCodeAt(++state2.position);
               if ((tmp = fromHexCode(ch)) >= 0) {
                 hexResult = (hexResult << 4) + tmp;
               } else {
-                throwError(state, "expected hexadecimal character");
+                throwError(state2, "expected hexadecimal character");
               }
             }
-            state.result += charFromCodepoint(hexResult);
-            state.position++;
+            state2.result += charFromCodepoint(hexResult);
+            state2.position++;
           } else {
-            throwError(state, "unknown escape sequence");
+            throwError(state2, "unknown escape sequence");
           }
-          captureStart = captureEnd = state.position;
+          captureStart = captureEnd = state2.position;
         } else if (isEol(ch)) {
-          captureSegment(state, captureStart, captureEnd, true);
-          writeFoldedLines(state, skipSeparationSpace(state, false, nodeIndent));
-          captureStart = captureEnd = state.position;
-        } else if (state.position === state.lineStart && testDocumentSeparator(state)) {
-          throwError(state, "unexpected end of the document within a double quoted scalar");
+          captureSegment(state2, captureStart, captureEnd, true);
+          writeFoldedLines(state2, skipSeparationSpace(state2, false, nodeIndent));
+          captureStart = captureEnd = state2.position;
+        } else if (state2.position === state2.lineStart && testDocumentSeparator(state2)) {
+          throwError(state2, "unexpected end of the document within a double quoted scalar");
         } else {
-          state.position++;
+          state2.position++;
           if (!isWhiteSpace(ch)) {
-            captureEnd = state.position;
+            captureEnd = state2.position;
           }
         }
       }
-      throwError(state, "unexpected end of the stream within a double quoted scalar");
+      throwError(state2, "unexpected end of the stream within a double quoted scalar");
     }
-    function readFlowCollection(state, nodeIndent) {
+    function readFlowCollection(state2, nodeIndent) {
       let readNext = true;
       let _line;
       let _lineStart;
       let _pos;
-      const _tag = state.tag;
+      const _tag = state2.tag;
       let _result;
-      const _anchor = state.anchor;
+      const _anchor = state2.anchor;
       let terminator;
       let isPair;
       let isExplicitPair;
@@ -1594,7 +1746,7 @@
       let keyNode;
       let keyTag;
       let valueNode;
-      let ch = state.input.charCodeAt(state.position);
+      let ch = state2.input.charCodeAt(state2.position);
       if (ch === 91) {
         terminator = 93;
         isMapping = false;
@@ -1606,69 +1758,69 @@
       } else {
         return false;
       }
-      if (state.anchor !== null) {
-        storeAnchor(state, state.anchor, _result);
+      if (state2.anchor !== null) {
+        storeAnchor(state2, state2.anchor, _result);
       }
-      ch = state.input.charCodeAt(++state.position);
+      ch = state2.input.charCodeAt(++state2.position);
       while (ch !== 0) {
-        skipSeparationSpace(state, true, nodeIndent);
-        ch = state.input.charCodeAt(state.position);
+        skipSeparationSpace(state2, true, nodeIndent);
+        ch = state2.input.charCodeAt(state2.position);
         if (ch === terminator) {
-          state.position++;
-          state.tag = _tag;
-          state.anchor = _anchor;
-          state.kind = isMapping ? "mapping" : "sequence";
-          state.result = _result;
+          state2.position++;
+          state2.tag = _tag;
+          state2.anchor = _anchor;
+          state2.kind = isMapping ? "mapping" : "sequence";
+          state2.result = _result;
           return true;
         } else if (!readNext) {
-          throwError(state, "missed comma between flow collection entries");
+          throwError(state2, "missed comma between flow collection entries");
         } else if (ch === 44) {
-          throwError(state, "expected the node content, but found ','");
+          throwError(state2, "expected the node content, but found ','");
         }
         keyTag = keyNode = valueNode = null;
         isPair = isExplicitPair = false;
         if (ch === 63) {
-          const following = state.input.charCodeAt(state.position + 1);
+          const following = state2.input.charCodeAt(state2.position + 1);
           if (isWsOrEol(following)) {
             isPair = isExplicitPair = true;
-            state.position++;
-            skipSeparationSpace(state, true, nodeIndent);
+            state2.position++;
+            skipSeparationSpace(state2, true, nodeIndent);
           }
         }
-        _line = state.line;
-        _lineStart = state.lineStart;
-        _pos = state.position;
-        composeNode(state, nodeIndent, CONTEXT_FLOW_IN, false, true);
-        keyTag = state.tag;
-        keyNode = state.result;
-        skipSeparationSpace(state, true, nodeIndent);
-        ch = state.input.charCodeAt(state.position);
-        if ((isExplicitPair || state.line === _line) && ch === 58) {
+        _line = state2.line;
+        _lineStart = state2.lineStart;
+        _pos = state2.position;
+        composeNode(state2, nodeIndent, CONTEXT_FLOW_IN, false, true);
+        keyTag = state2.tag;
+        keyNode = state2.result;
+        skipSeparationSpace(state2, true, nodeIndent);
+        ch = state2.input.charCodeAt(state2.position);
+        if ((isExplicitPair || state2.line === _line) && ch === 58) {
           isPair = true;
-          ch = state.input.charCodeAt(++state.position);
-          skipSeparationSpace(state, true, nodeIndent);
-          composeNode(state, nodeIndent, CONTEXT_FLOW_IN, false, true);
-          valueNode = state.result;
+          ch = state2.input.charCodeAt(++state2.position);
+          skipSeparationSpace(state2, true, nodeIndent);
+          composeNode(state2, nodeIndent, CONTEXT_FLOW_IN, false, true);
+          valueNode = state2.result;
         }
         if (isMapping) {
-          storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, valueNode, _line, _lineStart, _pos);
+          storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, valueNode, _line, _lineStart, _pos);
         } else if (isPair) {
-          _result.push(storeMappingPair(state, null, overridableKeys, keyTag, keyNode, valueNode, _line, _lineStart, _pos));
+          _result.push(storeMappingPair(state2, null, overridableKeys, keyTag, keyNode, valueNode, _line, _lineStart, _pos));
         } else {
           _result.push(keyNode);
         }
-        skipSeparationSpace(state, true, nodeIndent);
-        ch = state.input.charCodeAt(state.position);
+        skipSeparationSpace(state2, true, nodeIndent);
+        ch = state2.input.charCodeAt(state2.position);
         if (ch === 44) {
           readNext = true;
-          ch = state.input.charCodeAt(++state.position);
+          ch = state2.input.charCodeAt(++state2.position);
         } else {
           readNext = false;
         }
       }
-      throwError(state, "unexpected end of the stream within a flow collection");
+      throwError(state2, "unexpected end of the stream within a flow collection");
     }
-    function readBlockScalar(state, nodeIndent) {
+    function readBlockScalar(state2, nodeIndent) {
       let folding;
       let chomping = CHOMPING_CLIP;
       let didReadContent = false;
@@ -1677,7 +1829,7 @@
       let emptyLines = 0;
       let atMoreIndented = false;
       let tmp;
-      let ch = state.input.charCodeAt(state.position);
+      let ch = state2.input.charCodeAt(state2.position);
       if (ch === 124) {
         folding = false;
       } else if (ch === 62) {
@@ -1685,24 +1837,24 @@
       } else {
         return false;
       }
-      state.kind = "scalar";
-      state.result = "";
+      state2.kind = "scalar";
+      state2.result = "";
       while (ch !== 0) {
-        ch = state.input.charCodeAt(++state.position);
+        ch = state2.input.charCodeAt(++state2.position);
         if (ch === 43 || ch === 45) {
           if (CHOMPING_CLIP === chomping) {
             chomping = ch === 43 ? CHOMPING_KEEP : CHOMPING_STRIP;
           } else {
-            throwError(state, "repeat of a chomping mode identifier");
+            throwError(state2, "repeat of a chomping mode identifier");
           }
         } else if ((tmp = fromDecimalCode(ch)) >= 0) {
           if (tmp === 0) {
-            throwError(state, "bad explicit indentation width of a block scalar; it cannot be less than one");
+            throwError(state2, "bad explicit indentation width of a block scalar; it cannot be less than one");
           } else if (!detectedIndent) {
             textIndent = nodeIndent + tmp - 1;
             detectedIndent = true;
           } else {
-            throwError(state, "repeat of an indentation width identifier");
+            throwError(state2, "repeat of an indentation width identifier");
           }
         } else {
           break;
@@ -1710,38 +1862,38 @@
       }
       if (isWhiteSpace(ch)) {
         do {
-          ch = state.input.charCodeAt(++state.position);
+          ch = state2.input.charCodeAt(++state2.position);
         } while (isWhiteSpace(ch));
         if (ch === 35) {
           do {
-            ch = state.input.charCodeAt(++state.position);
+            ch = state2.input.charCodeAt(++state2.position);
           } while (!isEol(ch) && ch !== 0);
         }
       }
       while (ch !== 0) {
-        readLineBreak(state);
-        state.lineIndent = 0;
-        ch = state.input.charCodeAt(state.position);
-        while ((!detectedIndent || state.lineIndent < textIndent) && ch === 32) {
-          state.lineIndent++;
-          ch = state.input.charCodeAt(++state.position);
+        readLineBreak(state2);
+        state2.lineIndent = 0;
+        ch = state2.input.charCodeAt(state2.position);
+        while ((!detectedIndent || state2.lineIndent < textIndent) && ch === 32) {
+          state2.lineIndent++;
+          ch = state2.input.charCodeAt(++state2.position);
         }
-        if (!detectedIndent && state.lineIndent > textIndent) {
-          textIndent = state.lineIndent;
+        if (!detectedIndent && state2.lineIndent > textIndent) {
+          textIndent = state2.lineIndent;
         }
         if (isEol(ch)) {
           emptyLines++;
           continue;
         }
         if (!detectedIndent && textIndent === 0) {
-          throwError(state, "missing indentation for block scalar");
+          throwError(state2, "missing indentation for block scalar");
         }
-        if (state.lineIndent < textIndent) {
+        if (state2.lineIndent < textIndent) {
           if (chomping === CHOMPING_KEEP) {
-            state.result += common2.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
+            state2.result += common2.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
           } else if (chomping === CHOMPING_CLIP) {
             if (didReadContent) {
-              state.result += "\n";
+              state2.result += "\n";
             }
           }
           break;
@@ -1749,89 +1901,89 @@
         if (folding) {
           if (isWhiteSpace(ch)) {
             atMoreIndented = true;
-            state.result += common2.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
+            state2.result += common2.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
           } else if (atMoreIndented) {
             atMoreIndented = false;
-            state.result += common2.repeat("\n", emptyLines + 1);
+            state2.result += common2.repeat("\n", emptyLines + 1);
           } else if (emptyLines === 0) {
             if (didReadContent) {
-              state.result += " ";
+              state2.result += " ";
             }
           } else {
-            state.result += common2.repeat("\n", emptyLines);
+            state2.result += common2.repeat("\n", emptyLines);
           }
         } else {
-          state.result += common2.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
+          state2.result += common2.repeat("\n", didReadContent ? 1 + emptyLines : emptyLines);
         }
         didReadContent = true;
         detectedIndent = true;
         emptyLines = 0;
-        const captureStart = state.position;
+        const captureStart = state2.position;
         while (!isEol(ch) && ch !== 0) {
-          ch = state.input.charCodeAt(++state.position);
+          ch = state2.input.charCodeAt(++state2.position);
         }
-        captureSegment(state, captureStart, state.position, false);
+        captureSegment(state2, captureStart, state2.position, false);
       }
       return true;
     }
-    function readBlockSequence(state, nodeIndent) {
-      const _tag = state.tag;
-      const _anchor = state.anchor;
+    function readBlockSequence(state2, nodeIndent) {
+      const _tag = state2.tag;
+      const _anchor = state2.anchor;
       const _result = [];
       let detected = false;
-      if (state.firstTabInLine !== -1) return false;
-      if (state.anchor !== null) {
-        storeAnchor(state, state.anchor, _result);
+      if (state2.firstTabInLine !== -1) return false;
+      if (state2.anchor !== null) {
+        storeAnchor(state2, state2.anchor, _result);
       }
-      let ch = state.input.charCodeAt(state.position);
+      let ch = state2.input.charCodeAt(state2.position);
       while (ch !== 0) {
-        if (state.firstTabInLine !== -1) {
-          state.position = state.firstTabInLine;
-          throwError(state, "tab characters must not be used in indentation");
+        if (state2.firstTabInLine !== -1) {
+          state2.position = state2.firstTabInLine;
+          throwError(state2, "tab characters must not be used in indentation");
         }
         if (ch !== 45) {
           break;
         }
-        const following = state.input.charCodeAt(state.position + 1);
+        const following = state2.input.charCodeAt(state2.position + 1);
         if (!isWsOrEol(following)) {
           break;
         }
         detected = true;
-        state.position++;
-        if (skipSeparationSpace(state, true, -1)) {
-          if (state.lineIndent <= nodeIndent) {
+        state2.position++;
+        if (skipSeparationSpace(state2, true, -1)) {
+          if (state2.lineIndent <= nodeIndent) {
             _result.push(null);
-            ch = state.input.charCodeAt(state.position);
+            ch = state2.input.charCodeAt(state2.position);
             continue;
           }
         }
-        const _line = state.line;
-        composeNode(state, nodeIndent, CONTEXT_BLOCK_IN, false, true);
-        _result.push(state.result);
-        skipSeparationSpace(state, true, -1);
-        ch = state.input.charCodeAt(state.position);
-        if ((state.line === _line || state.lineIndent > nodeIndent) && ch !== 0) {
-          throwError(state, "bad indentation of a sequence entry");
-        } else if (state.lineIndent < nodeIndent) {
+        const _line = state2.line;
+        composeNode(state2, nodeIndent, CONTEXT_BLOCK_IN, false, true);
+        _result.push(state2.result);
+        skipSeparationSpace(state2, true, -1);
+        ch = state2.input.charCodeAt(state2.position);
+        if ((state2.line === _line || state2.lineIndent > nodeIndent) && ch !== 0) {
+          throwError(state2, "bad indentation of a sequence entry");
+        } else if (state2.lineIndent < nodeIndent) {
           break;
         }
       }
       if (detected) {
-        state.tag = _tag;
-        state.anchor = _anchor;
-        state.kind = "sequence";
-        state.result = _result;
+        state2.tag = _tag;
+        state2.anchor = _anchor;
+        state2.kind = "sequence";
+        state2.result = _result;
         return true;
       }
       return false;
     }
-    function readBlockMapping(state, nodeIndent, flowIndent) {
+    function readBlockMapping(state2, nodeIndent, flowIndent) {
       let allowCompact;
       let _keyLine;
       let _keyLineStart;
       let _keyPos;
-      const _tag = state.tag;
-      const _anchor = state.anchor;
+      const _tag = state2.tag;
+      const _anchor = state2.anchor;
       const _result = {};
       const overridableKeys = /* @__PURE__ */ Object.create(null);
       let keyTag = null;
@@ -1839,22 +1991,22 @@
       let valueNode = null;
       let atExplicitKey = false;
       let detected = false;
-      if (state.firstTabInLine !== -1) return false;
-      if (state.anchor !== null) {
-        storeAnchor(state, state.anchor, _result);
+      if (state2.firstTabInLine !== -1) return false;
+      if (state2.anchor !== null) {
+        storeAnchor(state2, state2.anchor, _result);
       }
-      let ch = state.input.charCodeAt(state.position);
+      let ch = state2.input.charCodeAt(state2.position);
       while (ch !== 0) {
-        if (!atExplicitKey && state.firstTabInLine !== -1) {
-          state.position = state.firstTabInLine;
-          throwError(state, "tab characters must not be used in indentation");
+        if (!atExplicitKey && state2.firstTabInLine !== -1) {
+          state2.position = state2.firstTabInLine;
+          throwError(state2, "tab characters must not be used in indentation");
         }
-        const following = state.input.charCodeAt(state.position + 1);
-        const _line = state.line;
+        const following = state2.input.charCodeAt(state2.position + 1);
+        const _line = state2.line;
         if ((ch === 63 || ch === 58) && isWsOrEol(following)) {
           if (ch === 63) {
             if (atExplicitKey) {
-              storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
+              storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
               keyTag = keyNode = valueNode = null;
             }
             detected = true;
@@ -1864,215 +2016,215 @@
             atExplicitKey = false;
             allowCompact = true;
           } else {
-            throwError(state, "incomplete explicit mapping pair; a key node is missed; or followed by a non-tabulated empty line");
+            throwError(state2, "incomplete explicit mapping pair; a key node is missed; or followed by a non-tabulated empty line");
           }
-          state.position += 1;
+          state2.position += 1;
           ch = following;
         } else {
-          _keyLine = state.line;
-          _keyLineStart = state.lineStart;
-          _keyPos = state.position;
-          if (!composeNode(state, flowIndent, CONTEXT_FLOW_OUT, false, true)) {
+          _keyLine = state2.line;
+          _keyLineStart = state2.lineStart;
+          _keyPos = state2.position;
+          if (!composeNode(state2, flowIndent, CONTEXT_FLOW_OUT, false, true)) {
             break;
           }
-          if (state.line === _line) {
-            ch = state.input.charCodeAt(state.position);
+          if (state2.line === _line) {
+            ch = state2.input.charCodeAt(state2.position);
             while (isWhiteSpace(ch)) {
-              ch = state.input.charCodeAt(++state.position);
+              ch = state2.input.charCodeAt(++state2.position);
             }
             if (ch === 58) {
-              ch = state.input.charCodeAt(++state.position);
+              ch = state2.input.charCodeAt(++state2.position);
               if (!isWsOrEol(ch)) {
-                throwError(state, "a whitespace character is expected after the key-value separator within a block mapping");
+                throwError(state2, "a whitespace character is expected after the key-value separator within a block mapping");
               }
               if (atExplicitKey) {
-                storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
+                storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
                 keyTag = keyNode = valueNode = null;
               }
               detected = true;
               atExplicitKey = false;
               allowCompact = false;
-              keyTag = state.tag;
-              keyNode = state.result;
+              keyTag = state2.tag;
+              keyNode = state2.result;
             } else if (detected) {
-              throwError(state, "can not read an implicit mapping pair; a colon is missed");
+              throwError(state2, "can not read an implicit mapping pair; a colon is missed");
             } else {
-              state.tag = _tag;
-              state.anchor = _anchor;
+              state2.tag = _tag;
+              state2.anchor = _anchor;
               return true;
             }
           } else if (detected) {
-            throwError(state, "can not read a block mapping entry; a multiline key may not be an implicit key");
+            throwError(state2, "can not read a block mapping entry; a multiline key may not be an implicit key");
           } else {
-            state.tag = _tag;
-            state.anchor = _anchor;
+            state2.tag = _tag;
+            state2.anchor = _anchor;
             return true;
           }
         }
-        if (state.line === _line || state.lineIndent > nodeIndent) {
+        if (state2.line === _line || state2.lineIndent > nodeIndent) {
           if (atExplicitKey) {
-            _keyLine = state.line;
-            _keyLineStart = state.lineStart;
-            _keyPos = state.position;
+            _keyLine = state2.line;
+            _keyLineStart = state2.lineStart;
+            _keyPos = state2.position;
           }
-          if (composeNode(state, nodeIndent, CONTEXT_BLOCK_OUT, true, allowCompact)) {
+          if (composeNode(state2, nodeIndent, CONTEXT_BLOCK_OUT, true, allowCompact)) {
             if (atExplicitKey) {
-              keyNode = state.result;
+              keyNode = state2.result;
             } else {
-              valueNode = state.result;
+              valueNode = state2.result;
             }
           }
           if (!atExplicitKey) {
-            storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, valueNode, _keyLine, _keyLineStart, _keyPos);
+            storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, valueNode, _keyLine, _keyLineStart, _keyPos);
             keyTag = keyNode = valueNode = null;
           }
-          skipSeparationSpace(state, true, -1);
-          ch = state.input.charCodeAt(state.position);
+          skipSeparationSpace(state2, true, -1);
+          ch = state2.input.charCodeAt(state2.position);
         }
-        if ((state.line === _line || state.lineIndent > nodeIndent) && ch !== 0) {
-          throwError(state, "bad indentation of a mapping entry");
-        } else if (state.lineIndent < nodeIndent) {
+        if ((state2.line === _line || state2.lineIndent > nodeIndent) && ch !== 0) {
+          throwError(state2, "bad indentation of a mapping entry");
+        } else if (state2.lineIndent < nodeIndent) {
           break;
         }
       }
       if (atExplicitKey) {
-        storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
+        storeMappingPair(state2, _result, overridableKeys, keyTag, keyNode, null, _keyLine, _keyLineStart, _keyPos);
       }
       if (detected) {
-        state.tag = _tag;
-        state.anchor = _anchor;
-        state.kind = "mapping";
-        state.result = _result;
+        state2.tag = _tag;
+        state2.anchor = _anchor;
+        state2.kind = "mapping";
+        state2.result = _result;
       }
       return detected;
     }
-    function readTagProperty(state) {
+    function readTagProperty(state2) {
       let isVerbatim = false;
       let isNamed = false;
       let tagHandle;
       let tagName;
-      let ch = state.input.charCodeAt(state.position);
+      let ch = state2.input.charCodeAt(state2.position);
       if (ch !== 33) return false;
-      if (state.tag !== null) {
-        throwError(state, "duplication of a tag property");
+      if (state2.tag !== null) {
+        throwError(state2, "duplication of a tag property");
       }
-      ch = state.input.charCodeAt(++state.position);
+      ch = state2.input.charCodeAt(++state2.position);
       if (ch === 60) {
         isVerbatim = true;
-        ch = state.input.charCodeAt(++state.position);
+        ch = state2.input.charCodeAt(++state2.position);
       } else if (ch === 33) {
         isNamed = true;
         tagHandle = "!!";
-        ch = state.input.charCodeAt(++state.position);
+        ch = state2.input.charCodeAt(++state2.position);
       } else {
         tagHandle = "!";
       }
-      let _position = state.position;
+      let _position = state2.position;
       if (isVerbatim) {
         do {
-          ch = state.input.charCodeAt(++state.position);
+          ch = state2.input.charCodeAt(++state2.position);
         } while (ch !== 0 && ch !== 62);
-        if (state.position < state.length) {
-          tagName = state.input.slice(_position, state.position);
-          ch = state.input.charCodeAt(++state.position);
+        if (state2.position < state2.length) {
+          tagName = state2.input.slice(_position, state2.position);
+          ch = state2.input.charCodeAt(++state2.position);
         } else {
-          throwError(state, "unexpected end of the stream within a verbatim tag");
+          throwError(state2, "unexpected end of the stream within a verbatim tag");
         }
       } else {
         while (ch !== 0 && !isWsOrEol(ch)) {
           if (ch === 33) {
             if (!isNamed) {
-              tagHandle = state.input.slice(_position - 1, state.position + 1);
+              tagHandle = state2.input.slice(_position - 1, state2.position + 1);
               if (!PATTERN_TAG_HANDLE.test(tagHandle)) {
-                throwError(state, "named tag handle cannot contain such characters");
+                throwError(state2, "named tag handle cannot contain such characters");
               }
               isNamed = true;
-              _position = state.position + 1;
+              _position = state2.position + 1;
             } else {
-              throwError(state, "tag suffix cannot contain exclamation marks");
+              throwError(state2, "tag suffix cannot contain exclamation marks");
             }
           }
-          ch = state.input.charCodeAt(++state.position);
+          ch = state2.input.charCodeAt(++state2.position);
         }
-        tagName = state.input.slice(_position, state.position);
+        tagName = state2.input.slice(_position, state2.position);
         if (PATTERN_FLOW_INDICATORS.test(tagName)) {
-          throwError(state, "tag suffix cannot contain flow indicator characters");
+          throwError(state2, "tag suffix cannot contain flow indicator characters");
         }
       }
       if (tagName && !PATTERN_TAG_URI.test(tagName)) {
-        throwError(state, "tag name cannot contain such characters: " + tagName);
+        throwError(state2, "tag name cannot contain such characters: " + tagName);
       }
       try {
         tagName = decodeURIComponent(tagName);
       } catch (err) {
-        throwError(state, "tag name is malformed: " + tagName);
+        throwError(state2, "tag name is malformed: " + tagName);
       }
       if (isVerbatim) {
-        state.tag = tagName;
-      } else if (_hasOwnProperty.call(state.tagMap, tagHandle)) {
-        state.tag = state.tagMap[tagHandle] + tagName;
+        state2.tag = tagName;
+      } else if (_hasOwnProperty.call(state2.tagMap, tagHandle)) {
+        state2.tag = state2.tagMap[tagHandle] + tagName;
       } else if (tagHandle === "!") {
-        state.tag = "!" + tagName;
+        state2.tag = "!" + tagName;
       } else if (tagHandle === "!!") {
-        state.tag = "tag:yaml.org,2002:" + tagName;
+        state2.tag = "tag:yaml.org,2002:" + tagName;
       } else {
-        throwError(state, 'undeclared tag handle "' + tagHandle + '"');
+        throwError(state2, 'undeclared tag handle "' + tagHandle + '"');
       }
       return true;
     }
-    function readAnchorProperty(state) {
-      let ch = state.input.charCodeAt(state.position);
+    function readAnchorProperty(state2) {
+      let ch = state2.input.charCodeAt(state2.position);
       if (ch !== 38) return false;
-      if (state.anchor !== null) {
-        throwError(state, "duplication of an anchor property");
+      if (state2.anchor !== null) {
+        throwError(state2, "duplication of an anchor property");
       }
-      ch = state.input.charCodeAt(++state.position);
-      const _position = state.position;
+      ch = state2.input.charCodeAt(++state2.position);
+      const _position = state2.position;
       while (ch !== 0 && !isWsOrEol(ch) && !isFlowIndicator(ch)) {
-        ch = state.input.charCodeAt(++state.position);
+        ch = state2.input.charCodeAt(++state2.position);
       }
-      if (state.position === _position) {
-        throwError(state, "name of an anchor node must contain at least one character");
+      if (state2.position === _position) {
+        throwError(state2, "name of an anchor node must contain at least one character");
       }
-      state.anchor = state.input.slice(_position, state.position);
+      state2.anchor = state2.input.slice(_position, state2.position);
       return true;
     }
-    function readAlias(state) {
-      let ch = state.input.charCodeAt(state.position);
+    function readAlias(state2) {
+      let ch = state2.input.charCodeAt(state2.position);
       if (ch !== 42) return false;
-      ch = state.input.charCodeAt(++state.position);
-      const _position = state.position;
+      ch = state2.input.charCodeAt(++state2.position);
+      const _position = state2.position;
       while (ch !== 0 && !isWsOrEol(ch) && !isFlowIndicator(ch)) {
-        ch = state.input.charCodeAt(++state.position);
+        ch = state2.input.charCodeAt(++state2.position);
       }
-      if (state.position === _position) {
-        throwError(state, "name of an alias node must contain at least one character");
+      if (state2.position === _position) {
+        throwError(state2, "name of an alias node must contain at least one character");
       }
-      const alias = state.input.slice(_position, state.position);
-      if (!_hasOwnProperty.call(state.anchorMap, alias)) {
-        throwError(state, 'unidentified alias "' + alias + '"');
+      const alias = state2.input.slice(_position, state2.position);
+      if (!_hasOwnProperty.call(state2.anchorMap, alias)) {
+        throwError(state2, 'unidentified alias "' + alias + '"');
       }
-      state.result = state.anchorMap[alias];
-      skipSeparationSpace(state, true, -1);
+      state2.result = state2.anchorMap[alias];
+      skipSeparationSpace(state2, true, -1);
       return true;
     }
-    function tryReadBlockMappingFromProperty(state, propertyStart, nodeIndent, flowIndent) {
-      const fallbackState = snapshotState(state);
-      beginAnchorTransaction(state);
-      restoreState(state, propertyStart);
-      state.tag = null;
-      state.anchor = null;
-      state.kind = null;
-      state.result = null;
-      if (readBlockMapping(state, nodeIndent, flowIndent) && state.kind === "mapping") {
-        commitAnchorTransaction(state);
+    function tryReadBlockMappingFromProperty(state2, propertyStart, nodeIndent, flowIndent) {
+      const fallbackState = snapshotState(state2);
+      beginAnchorTransaction(state2);
+      restoreState(state2, propertyStart);
+      state2.tag = null;
+      state2.anchor = null;
+      state2.kind = null;
+      state2.result = null;
+      if (readBlockMapping(state2, nodeIndent, flowIndent) && state2.kind === "mapping") {
+        commitAnchorTransaction(state2);
         return true;
       }
-      rollbackAnchorTransaction(state);
-      restoreState(state, fallbackState);
+      rollbackAnchorTransaction(state2);
+      restoreState(state2, fallbackState);
       return false;
     }
-    function composeNode(state, parentIndent, nodeContext, allowToSeek, allowCompact) {
+    function composeNode(state2, parentIndent, nodeContext, allowToSeek, allowCompact) {
       let allowBlockScalars;
       let allowBlockCollections;
       let indentStatus = 1;
@@ -2082,51 +2234,51 @@
       let type2;
       let flowIndent;
       let blockIndent;
-      if (state.depth >= state.maxDepth) {
-        throwError(state, "nesting exceeded maxDepth (" + state.maxDepth + ")");
+      if (state2.depth >= state2.maxDepth) {
+        throwError(state2, "nesting exceeded maxDepth (" + state2.maxDepth + ")");
       }
-      state.depth += 1;
-      if (state.listener !== null) {
-        state.listener("open", state);
+      state2.depth += 1;
+      if (state2.listener !== null) {
+        state2.listener("open", state2);
       }
-      state.tag = null;
-      state.anchor = null;
-      state.kind = null;
-      state.result = null;
+      state2.tag = null;
+      state2.anchor = null;
+      state2.kind = null;
+      state2.result = null;
       const allowBlockStyles = allowBlockScalars = allowBlockCollections = CONTEXT_BLOCK_OUT === nodeContext || CONTEXT_BLOCK_IN === nodeContext;
       if (allowToSeek) {
-        if (skipSeparationSpace(state, true, -1)) {
+        if (skipSeparationSpace(state2, true, -1)) {
           atNewLine = true;
-          if (state.lineIndent > parentIndent) {
+          if (state2.lineIndent > parentIndent) {
             indentStatus = 1;
-          } else if (state.lineIndent === parentIndent) {
+          } else if (state2.lineIndent === parentIndent) {
             indentStatus = 0;
-          } else if (state.lineIndent < parentIndent) {
+          } else if (state2.lineIndent < parentIndent) {
             indentStatus = -1;
           }
         }
       }
       if (indentStatus === 1) {
         while (true) {
-          const ch = state.input.charCodeAt(state.position);
-          const propertyState = snapshotState(state);
-          if (atNewLine && (ch === 33 && state.tag !== null || ch === 38 && state.anchor !== null)) {
+          const ch = state2.input.charCodeAt(state2.position);
+          const propertyState = snapshotState(state2);
+          if (atNewLine && (ch === 33 && state2.tag !== null || ch === 38 && state2.anchor !== null)) {
             break;
           }
-          if (!readTagProperty(state) && !readAnchorProperty(state)) {
+          if (!readTagProperty(state2) && !readAnchorProperty(state2)) {
             break;
           }
           if (propertyStart === null) {
             propertyStart = propertyState;
           }
-          if (skipSeparationSpace(state, true, -1)) {
+          if (skipSeparationSpace(state2, true, -1)) {
             atNewLine = true;
             allowBlockCollections = allowBlockStyles;
-            if (state.lineIndent > parentIndent) {
+            if (state2.lineIndent > parentIndent) {
               indentStatus = 1;
-            } else if (state.lineIndent === parentIndent) {
+            } else if (state2.lineIndent === parentIndent) {
               indentStatus = 0;
-            } else if (state.lineIndent < parentIndent) {
+            } else if (state2.lineIndent < parentIndent) {
               indentStatus = -1;
             }
           } else {
@@ -2143,164 +2295,164 @@
         } else {
           flowIndent = parentIndent + 1;
         }
-        blockIndent = state.position - state.lineStart;
+        blockIndent = state2.position - state2.lineStart;
         if (indentStatus === 1) {
-          if (allowBlockCollections && (readBlockSequence(state, blockIndent) || readBlockMapping(state, blockIndent, flowIndent)) || readFlowCollection(state, flowIndent)) {
+          if (allowBlockCollections && (readBlockSequence(state2, blockIndent) || readBlockMapping(state2, blockIndent, flowIndent)) || readFlowCollection(state2, flowIndent)) {
             hasContent = true;
           } else {
-            const ch = state.input.charCodeAt(state.position);
+            const ch = state2.input.charCodeAt(state2.position);
             if (propertyStart !== null && allowBlockStyles && !allowBlockCollections && ch !== 124 && ch !== 62 && tryReadBlockMappingFromProperty(
-              state,
+              state2,
               propertyStart,
               propertyStart.position - propertyStart.lineStart,
               flowIndent
             )) {
               hasContent = true;
-            } else if (allowBlockScalars && readBlockScalar(state, flowIndent) || readSingleQuotedScalar(state, flowIndent) || readDoubleQuotedScalar(state, flowIndent)) {
+            } else if (allowBlockScalars && readBlockScalar(state2, flowIndent) || readSingleQuotedScalar(state2, flowIndent) || readDoubleQuotedScalar(state2, flowIndent)) {
               hasContent = true;
-            } else if (readAlias(state)) {
+            } else if (readAlias(state2)) {
               hasContent = true;
-              if (state.tag !== null || state.anchor !== null) {
-                throwError(state, "alias node should not have any properties");
+              if (state2.tag !== null || state2.anchor !== null) {
+                throwError(state2, "alias node should not have any properties");
               }
-            } else if (readPlainScalar(state, flowIndent, CONTEXT_FLOW_IN === nodeContext)) {
+            } else if (readPlainScalar(state2, flowIndent, CONTEXT_FLOW_IN === nodeContext)) {
               hasContent = true;
-              if (state.tag === null) {
-                state.tag = "?";
+              if (state2.tag === null) {
+                state2.tag = "?";
               }
             }
-            if (state.anchor !== null) {
-              storeAnchor(state, state.anchor, state.result);
+            if (state2.anchor !== null) {
+              storeAnchor(state2, state2.anchor, state2.result);
             }
           }
         } else if (indentStatus === 0) {
-          hasContent = allowBlockCollections && readBlockSequence(state, blockIndent);
+          hasContent = allowBlockCollections && readBlockSequence(state2, blockIndent);
         }
       }
-      if (state.tag === null) {
-        if (state.anchor !== null) {
-          storeAnchor(state, state.anchor, state.result);
+      if (state2.tag === null) {
+        if (state2.anchor !== null) {
+          storeAnchor(state2, state2.anchor, state2.result);
         }
-      } else if (state.tag === "?") {
-        if (state.result !== null && state.kind !== "scalar") {
-          throwError(state, 'unacceptable node kind for !<?> tag; it should be "scalar", not "' + state.kind + '"');
+      } else if (state2.tag === "?") {
+        if (state2.result !== null && state2.kind !== "scalar") {
+          throwError(state2, 'unacceptable node kind for !<?> tag; it should be "scalar", not "' + state2.kind + '"');
         }
-        for (let typeIndex = 0, typeQuantity = state.implicitTypes.length; typeIndex < typeQuantity; typeIndex += 1) {
-          type2 = state.implicitTypes[typeIndex];
-          if (type2.resolve(state.result)) {
-            state.result = type2.construct(state.result);
-            state.tag = type2.tag;
-            if (state.anchor !== null) {
-              storeAnchor(state, state.anchor, state.result);
+        for (let typeIndex = 0, typeQuantity = state2.implicitTypes.length; typeIndex < typeQuantity; typeIndex += 1) {
+          type2 = state2.implicitTypes[typeIndex];
+          if (type2.resolve(state2.result)) {
+            state2.result = type2.construct(state2.result);
+            state2.tag = type2.tag;
+            if (state2.anchor !== null) {
+              storeAnchor(state2, state2.anchor, state2.result);
             }
             break;
           }
         }
-      } else if (state.tag !== "!") {
-        if (_hasOwnProperty.call(state.typeMap[state.kind || "fallback"], state.tag)) {
-          type2 = state.typeMap[state.kind || "fallback"][state.tag];
+      } else if (state2.tag !== "!") {
+        if (_hasOwnProperty.call(state2.typeMap[state2.kind || "fallback"], state2.tag)) {
+          type2 = state2.typeMap[state2.kind || "fallback"][state2.tag];
         } else {
           type2 = null;
-          const typeList = state.typeMap.multi[state.kind || "fallback"];
+          const typeList = state2.typeMap.multi[state2.kind || "fallback"];
           for (let typeIndex = 0, typeQuantity = typeList.length; typeIndex < typeQuantity; typeIndex += 1) {
-            if (state.tag.slice(0, typeList[typeIndex].tag.length) === typeList[typeIndex].tag) {
+            if (state2.tag.slice(0, typeList[typeIndex].tag.length) === typeList[typeIndex].tag) {
               type2 = typeList[typeIndex];
               break;
             }
           }
         }
         if (!type2) {
-          throwError(state, "unknown tag !<" + state.tag + ">");
+          throwError(state2, "unknown tag !<" + state2.tag + ">");
         }
-        if (state.result !== null && type2.kind !== state.kind) {
-          throwError(state, "unacceptable node kind for !<" + state.tag + '> tag; it should be "' + type2.kind + '", not "' + state.kind + '"');
+        if (state2.result !== null && type2.kind !== state2.kind) {
+          throwError(state2, "unacceptable node kind for !<" + state2.tag + '> tag; it should be "' + type2.kind + '", not "' + state2.kind + '"');
         }
-        if (!type2.resolve(state.result, state.tag)) {
-          throwError(state, "cannot resolve a node with !<" + state.tag + "> explicit tag");
+        if (!type2.resolve(state2.result, state2.tag)) {
+          throwError(state2, "cannot resolve a node with !<" + state2.tag + "> explicit tag");
         } else {
-          state.result = type2.construct(state.result, state.tag);
-          if (state.anchor !== null) {
-            storeAnchor(state, state.anchor, state.result);
+          state2.result = type2.construct(state2.result, state2.tag);
+          if (state2.anchor !== null) {
+            storeAnchor(state2, state2.anchor, state2.result);
           }
         }
       }
-      if (state.listener !== null) {
-        state.listener("close", state);
+      if (state2.listener !== null) {
+        state2.listener("close", state2);
       }
-      state.depth -= 1;
-      return state.tag !== null || state.anchor !== null || hasContent;
+      state2.depth -= 1;
+      return state2.tag !== null || state2.anchor !== null || hasContent;
     }
-    function readDocument(state) {
-      const documentStart = state.position;
+    function readDocument(state2) {
+      const documentStart = state2.position;
       let hasDirectives = false;
       let ch;
-      state.version = null;
-      state.checkLineBreaks = state.legacy;
-      state.tagMap = /* @__PURE__ */ Object.create(null);
-      state.anchorMap = /* @__PURE__ */ Object.create(null);
-      while ((ch = state.input.charCodeAt(state.position)) !== 0) {
-        skipSeparationSpace(state, true, -1);
-        ch = state.input.charCodeAt(state.position);
-        if (state.lineIndent > 0 || ch !== 37) {
+      state2.version = null;
+      state2.checkLineBreaks = state2.legacy;
+      state2.tagMap = /* @__PURE__ */ Object.create(null);
+      state2.anchorMap = /* @__PURE__ */ Object.create(null);
+      while ((ch = state2.input.charCodeAt(state2.position)) !== 0) {
+        skipSeparationSpace(state2, true, -1);
+        ch = state2.input.charCodeAt(state2.position);
+        if (state2.lineIndent > 0 || ch !== 37) {
           break;
         }
         hasDirectives = true;
-        ch = state.input.charCodeAt(++state.position);
-        let _position = state.position;
+        ch = state2.input.charCodeAt(++state2.position);
+        let _position = state2.position;
         while (ch !== 0 && !isWsOrEol(ch)) {
-          ch = state.input.charCodeAt(++state.position);
+          ch = state2.input.charCodeAt(++state2.position);
         }
-        const directiveName = state.input.slice(_position, state.position);
+        const directiveName = state2.input.slice(_position, state2.position);
         const directiveArgs = [];
         if (directiveName.length < 1) {
-          throwError(state, "directive name must not be less than one character in length");
+          throwError(state2, "directive name must not be less than one character in length");
         }
         while (ch !== 0) {
           while (isWhiteSpace(ch)) {
-            ch = state.input.charCodeAt(++state.position);
+            ch = state2.input.charCodeAt(++state2.position);
           }
           if (ch === 35) {
             do {
-              ch = state.input.charCodeAt(++state.position);
+              ch = state2.input.charCodeAt(++state2.position);
             } while (ch !== 0 && !isEol(ch));
             break;
           }
           if (isEol(ch)) break;
-          _position = state.position;
+          _position = state2.position;
           while (ch !== 0 && !isWsOrEol(ch)) {
-            ch = state.input.charCodeAt(++state.position);
+            ch = state2.input.charCodeAt(++state2.position);
           }
-          directiveArgs.push(state.input.slice(_position, state.position));
+          directiveArgs.push(state2.input.slice(_position, state2.position));
         }
-        if (ch !== 0) readLineBreak(state);
+        if (ch !== 0) readLineBreak(state2);
         if (_hasOwnProperty.call(directiveHandlers, directiveName)) {
-          directiveHandlers[directiveName](state, directiveName, directiveArgs);
+          directiveHandlers[directiveName](state2, directiveName, directiveArgs);
         } else {
-          throwWarning(state, 'unknown document directive "' + directiveName + '"');
+          throwWarning(state2, 'unknown document directive "' + directiveName + '"');
         }
       }
-      skipSeparationSpace(state, true, -1);
-      if (state.lineIndent === 0 && state.input.charCodeAt(state.position) === 45 && state.input.charCodeAt(state.position + 1) === 45 && state.input.charCodeAt(state.position + 2) === 45) {
-        state.position += 3;
-        skipSeparationSpace(state, true, -1);
+      skipSeparationSpace(state2, true, -1);
+      if (state2.lineIndent === 0 && state2.input.charCodeAt(state2.position) === 45 && state2.input.charCodeAt(state2.position + 1) === 45 && state2.input.charCodeAt(state2.position + 2) === 45) {
+        state2.position += 3;
+        skipSeparationSpace(state2, true, -1);
       } else if (hasDirectives) {
-        throwError(state, "directives end mark is expected");
+        throwError(state2, "directives end mark is expected");
       }
-      composeNode(state, state.lineIndent - 1, CONTEXT_BLOCK_OUT, false, true);
-      skipSeparationSpace(state, true, -1);
-      if (state.checkLineBreaks && PATTERN_NON_ASCII_LINE_BREAKS.test(state.input.slice(documentStart, state.position))) {
-        throwWarning(state, "non-ASCII line breaks are interpreted as content");
+      composeNode(state2, state2.lineIndent - 1, CONTEXT_BLOCK_OUT, false, true);
+      skipSeparationSpace(state2, true, -1);
+      if (state2.checkLineBreaks && PATTERN_NON_ASCII_LINE_BREAKS.test(state2.input.slice(documentStart, state2.position))) {
+        throwWarning(state2, "non-ASCII line breaks are interpreted as content");
       }
-      state.documents.push(state.result);
-      if (state.position === state.lineStart && testDocumentSeparator(state)) {
-        if (state.input.charCodeAt(state.position) === 46) {
-          state.position += 3;
-          skipSeparationSpace(state, true, -1);
+      state2.documents.push(state2.result);
+      if (state2.position === state2.lineStart && testDocumentSeparator(state2)) {
+        if (state2.input.charCodeAt(state2.position) === 46) {
+          state2.position += 3;
+          skipSeparationSpace(state2, true, -1);
         }
         return;
       }
-      if (state.position < state.length - 1) {
-        throwError(state, "end of the stream or a document separator is expected");
+      if (state2.position < state2.length - 1) {
+        throwError(state2, "end of the stream or a document separator is expected");
       }
     }
     function loadDocuments(input, options) {
@@ -2314,21 +2466,21 @@
           input = input.slice(1);
         }
       }
-      const state = new State(input, options);
+      const state2 = new State(input, options);
       const nullpos = input.indexOf("\0");
       if (nullpos !== -1) {
-        state.position = nullpos;
-        throwError(state, "null byte is not allowed in input");
+        state2.position = nullpos;
+        throwError(state2, "null byte is not allowed in input");
       }
-      state.input += "\0";
-      while (state.input.charCodeAt(state.position) === 32) {
-        state.lineIndent += 1;
-        state.position += 1;
+      state2.input += "\0";
+      while (state2.input.charCodeAt(state2.position) === 32) {
+        state2.lineIndent += 1;
+        state2.position += 1;
       }
-      while (state.position < state.length - 1) {
-        readDocument(state);
+      while (state2.position < state2.length - 1) {
+        readDocument(state2);
       }
-      return state.documents;
+      return state2.documents;
     }
     function loadAll2(input, iterator, options) {
       if (iterator !== null && typeof iterator === "object" && typeof options === "undefined") {
@@ -2506,12 +2658,12 @@
       }
       return result;
     }
-    function generateNextLine(state, level) {
-      return "\n" + common2.repeat(" ", state.indent * level);
+    function generateNextLine(state2, level) {
+      return "\n" + common2.repeat(" ", state2.indent * level);
     }
-    function testImplicitResolving(state, str2) {
-      for (let index = 0, length = state.implicitTypes.length; index < length; index += 1) {
-        const type2 = state.implicitTypes[index];
+    function testImplicitResolving(state2, str2) {
+      for (let index = 0, length = state2.implicitTypes.length; index < length; index += 1) {
+        const type2 = state2.implicitTypes[index];
         if (type2.resolve(str2)) {
           return true;
         }
@@ -2622,31 +2774,31 @@
       }
       return quotingType === QUOTING_TYPE_DOUBLE ? STYLE_DOUBLE : STYLE_SINGLE;
     }
-    function writeScalar(state, string, level, iskey, inblock) {
-      state.dump = (function() {
+    function writeScalar(state2, string, level, iskey, inblock) {
+      state2.dump = (function() {
         if (string.length === 0) {
-          return state.quotingType === QUOTING_TYPE_DOUBLE ? '""' : "''";
+          return state2.quotingType === QUOTING_TYPE_DOUBLE ? '""' : "''";
         }
-        if (!state.noCompatMode) {
+        if (!state2.noCompatMode) {
           if (DEPRECATED_BOOLEANS_SYNTAX.indexOf(string) !== -1 || DEPRECATED_BASE60_SYNTAX.test(string)) {
-            return state.quotingType === QUOTING_TYPE_DOUBLE ? '"' + string + '"' : "'" + string + "'";
+            return state2.quotingType === QUOTING_TYPE_DOUBLE ? '"' + string + '"' : "'" + string + "'";
           }
         }
-        const indent = state.indent * Math.max(1, level);
-        const lineWidth = state.lineWidth === -1 ? -1 : Math.max(Math.min(state.lineWidth, 40), state.lineWidth - indent);
+        const indent = state2.indent * Math.max(1, level);
+        const lineWidth = state2.lineWidth === -1 ? -1 : Math.max(Math.min(state2.lineWidth, 40), state2.lineWidth - indent);
         const singleLineOnly = iskey || // No block styles in flow mode.
-        state.flowLevel > -1 && level >= state.flowLevel;
+        state2.flowLevel > -1 && level >= state2.flowLevel;
         function testAmbiguity(string2) {
-          return testImplicitResolving(state, string2);
+          return testImplicitResolving(state2, string2);
         }
         switch (chooseScalarStyle(
           string,
           singleLineOnly,
-          state.indent,
+          state2.indent,
           lineWidth,
           testAmbiguity,
-          state.quotingType,
-          state.forceQuotes && !iskey,
+          state2.quotingType,
+          state2.forceQuotes && !iskey,
           inblock
         )) {
           case STYLE_PLAIN:
@@ -2654,9 +2806,9 @@
           case STYLE_SINGLE:
             return "'" + string.replace(/'/g, "''") + "'";
           case STYLE_LITERAL:
-            return "|" + blockHeader(string, state.indent) + dropEndingNewline(indentString(string, indent));
+            return "|" + blockHeader(string, state2.indent) + dropEndingNewline(indentString(string, indent));
           case STYLE_FOLDED:
-            return ">" + blockHeader(string, state.indent) + dropEndingNewline(indentString(foldString(string, lineWidth), indent));
+            return ">" + blockHeader(string, state2.indent) + dropEndingNewline(indentString(foldString(string, lineWidth), indent));
           case STYLE_DOUBLE:
             return '"' + escapeString(string) + '"';
           default:
@@ -2735,138 +2887,138 @@
       }
       return result;
     }
-    function writeFlowSequence(state, level, object) {
+    function writeFlowSequence(state2, level, object) {
       let _result = "";
-      const _tag = state.tag;
+      const _tag = state2.tag;
       for (let index = 0, length = object.length; index < length; index += 1) {
         let value = object[index];
-        if (state.replacer) {
-          value = state.replacer.call(object, String(index), value);
+        if (state2.replacer) {
+          value = state2.replacer.call(object, String(index), value);
         }
-        if (writeNode(state, level, value, false, false) || typeof value === "undefined" && writeNode(state, level, null, false, false)) {
-          if (_result !== "") _result += "," + (!state.condenseFlow ? " " : "");
-          _result += state.dump;
+        if (writeNode(state2, level, value, false, false) || typeof value === "undefined" && writeNode(state2, level, null, false, false)) {
+          if (_result !== "") _result += "," + (!state2.condenseFlow ? " " : "");
+          _result += state2.dump;
         }
       }
-      state.tag = _tag;
-      state.dump = "[" + _result + "]";
+      state2.tag = _tag;
+      state2.dump = "[" + _result + "]";
     }
-    function writeBlockSequence(state, level, object, compact) {
+    function writeBlockSequence(state2, level, object, compact) {
       let _result = "";
-      const _tag = state.tag;
+      const _tag = state2.tag;
       for (let index = 0, length = object.length; index < length; index += 1) {
         let value = object[index];
-        if (state.replacer) {
-          value = state.replacer.call(object, String(index), value);
+        if (state2.replacer) {
+          value = state2.replacer.call(object, String(index), value);
         }
-        if (writeNode(state, level + 1, value, true, true, false, true) || typeof value === "undefined" && writeNode(state, level + 1, null, true, true, false, true)) {
+        if (writeNode(state2, level + 1, value, true, true, false, true) || typeof value === "undefined" && writeNode(state2, level + 1, null, true, true, false, true)) {
           if (!compact || _result !== "") {
-            _result += generateNextLine(state, level);
+            _result += generateNextLine(state2, level);
           }
-          if (state.dump && CHAR_LINE_FEED === state.dump.charCodeAt(0)) {
+          if (state2.dump && CHAR_LINE_FEED === state2.dump.charCodeAt(0)) {
             _result += "-";
           } else {
             _result += "- ";
           }
-          _result += state.dump;
+          _result += state2.dump;
         }
       }
-      state.tag = _tag;
-      state.dump = _result || "[]";
+      state2.tag = _tag;
+      state2.dump = _result || "[]";
     }
-    function writeFlowMapping(state, level, object) {
+    function writeFlowMapping(state2, level, object) {
       let _result = "";
-      const _tag = state.tag;
+      const _tag = state2.tag;
       const objectKeyList = Object.keys(object);
       for (let index = 0, length = objectKeyList.length; index < length; index += 1) {
         let pairBuffer = "";
         if (_result !== "") pairBuffer += ", ";
-        if (state.condenseFlow) pairBuffer += '"';
+        if (state2.condenseFlow) pairBuffer += '"';
         const objectKey = objectKeyList[index];
         let objectValue = object[objectKey];
-        if (state.replacer) {
-          objectValue = state.replacer.call(object, objectKey, objectValue);
+        if (state2.replacer) {
+          objectValue = state2.replacer.call(object, objectKey, objectValue);
         }
-        if (!writeNode(state, level, objectKey, false, false)) {
+        if (!writeNode(state2, level, objectKey, false, false)) {
           continue;
         }
-        if (state.dump.length > 1024) pairBuffer += "? ";
-        pairBuffer += state.dump + (state.condenseFlow ? '"' : "") + ":" + (state.condenseFlow ? "" : " ");
-        if (!writeNode(state, level, objectValue, false, false)) {
+        if (state2.dump.length > 1024) pairBuffer += "? ";
+        pairBuffer += state2.dump + (state2.condenseFlow ? '"' : "") + ":" + (state2.condenseFlow ? "" : " ");
+        if (!writeNode(state2, level, objectValue, false, false)) {
           continue;
         }
-        pairBuffer += state.dump;
+        pairBuffer += state2.dump;
         _result += pairBuffer;
       }
-      state.tag = _tag;
-      state.dump = "{" + _result + "}";
+      state2.tag = _tag;
+      state2.dump = "{" + _result + "}";
     }
-    function writeBlockMapping(state, level, object, compact) {
+    function writeBlockMapping(state2, level, object, compact) {
       let _result = "";
-      const _tag = state.tag;
+      const _tag = state2.tag;
       const objectKeyList = Object.keys(object);
-      if (state.sortKeys === true) {
+      if (state2.sortKeys === true) {
         objectKeyList.sort();
-      } else if (typeof state.sortKeys === "function") {
-        objectKeyList.sort(state.sortKeys);
-      } else if (state.sortKeys) {
+      } else if (typeof state2.sortKeys === "function") {
+        objectKeyList.sort(state2.sortKeys);
+      } else if (state2.sortKeys) {
         throw new YAMLException2("sortKeys must be a boolean or a function");
       }
       for (let index = 0, length = objectKeyList.length; index < length; index += 1) {
         let pairBuffer = "";
         if (!compact || _result !== "") {
-          pairBuffer += generateNextLine(state, level);
+          pairBuffer += generateNextLine(state2, level);
         }
         const objectKey = objectKeyList[index];
         let objectValue = object[objectKey];
-        if (state.replacer) {
-          objectValue = state.replacer.call(object, objectKey, objectValue);
+        if (state2.replacer) {
+          objectValue = state2.replacer.call(object, objectKey, objectValue);
         }
-        if (!writeNode(state, level + 1, objectKey, true, true, true)) {
+        if (!writeNode(state2, level + 1, objectKey, true, true, true)) {
           continue;
         }
-        const explicitPair = state.tag !== null && state.tag !== "?" || state.dump && state.dump.length > 1024;
+        const explicitPair = state2.tag !== null && state2.tag !== "?" || state2.dump && state2.dump.length > 1024;
         if (explicitPair) {
-          if (state.dump && CHAR_LINE_FEED === state.dump.charCodeAt(0)) {
+          if (state2.dump && CHAR_LINE_FEED === state2.dump.charCodeAt(0)) {
             pairBuffer += "?";
           } else {
             pairBuffer += "? ";
           }
         }
-        pairBuffer += state.dump;
+        pairBuffer += state2.dump;
         if (explicitPair) {
-          pairBuffer += generateNextLine(state, level);
+          pairBuffer += generateNextLine(state2, level);
         }
-        if (!writeNode(state, level + 1, objectValue, true, explicitPair)) {
+        if (!writeNode(state2, level + 1, objectValue, true, explicitPair)) {
           continue;
         }
-        if (state.dump && CHAR_LINE_FEED === state.dump.charCodeAt(0)) {
+        if (state2.dump && CHAR_LINE_FEED === state2.dump.charCodeAt(0)) {
           pairBuffer += ":";
         } else {
           pairBuffer += ": ";
         }
-        pairBuffer += state.dump;
+        pairBuffer += state2.dump;
         _result += pairBuffer;
       }
-      state.tag = _tag;
-      state.dump = _result || "{}";
+      state2.tag = _tag;
+      state2.dump = _result || "{}";
     }
-    function detectType(state, object, explicit) {
-      const typeList = explicit ? state.explicitTypes : state.implicitTypes;
+    function detectType(state2, object, explicit) {
+      const typeList = explicit ? state2.explicitTypes : state2.implicitTypes;
       for (let index = 0, length = typeList.length; index < length; index += 1) {
         const type2 = typeList[index];
         if ((type2.instanceOf || type2.predicate) && (!type2.instanceOf || typeof object === "object" && object instanceof type2.instanceOf) && (!type2.predicate || type2.predicate(object))) {
           if (explicit) {
             if (type2.multi && type2.representName) {
-              state.tag = type2.representName(object);
+              state2.tag = type2.representName(object);
             } else {
-              state.tag = type2.tag;
+              state2.tag = type2.tag;
             }
           } else {
-            state.tag = "?";
+            state2.tag = "?";
           }
           if (type2.represent) {
-            const style = state.styleMap[type2.tag] || type2.defaultStyle;
+            const style = state2.styleMap[type2.tag] || type2.defaultStyle;
             let _result;
             if (_toString.call(type2.represent) === "[object Function]") {
               _result = type2.represent(object, style);
@@ -2875,103 +3027,103 @@
             } else {
               throw new YAMLException2("!<" + type2.tag + '> tag resolver accepts not "' + style + '" style');
             }
-            state.dump = _result;
+            state2.dump = _result;
           }
           return true;
         }
       }
       return false;
     }
-    function writeNode(state, level, object, block, compact, iskey, isblockseq) {
-      state.tag = null;
-      state.dump = object;
-      if (!detectType(state, object, false)) {
-        detectType(state, object, true);
+    function writeNode(state2, level, object, block, compact, iskey, isblockseq) {
+      state2.tag = null;
+      state2.dump = object;
+      if (!detectType(state2, object, false)) {
+        detectType(state2, object, true);
       }
-      const type2 = _toString.call(state.dump);
+      const type2 = _toString.call(state2.dump);
       const inblock = block;
       if (block) {
-        block = state.flowLevel < 0 || state.flowLevel > level;
+        block = state2.flowLevel < 0 || state2.flowLevel > level;
       }
       const objectOrArray = type2 === "[object Object]" || type2 === "[object Array]";
       let duplicateIndex;
       let duplicate;
       if (objectOrArray) {
-        duplicateIndex = state.duplicates.indexOf(object);
+        duplicateIndex = state2.duplicates.indexOf(object);
         duplicate = duplicateIndex !== -1;
       }
-      if (state.tag !== null && state.tag !== "?" || duplicate || state.indent !== 2 && level > 0) {
+      if (state2.tag !== null && state2.tag !== "?" || duplicate || state2.indent !== 2 && level > 0) {
         compact = false;
       }
-      if (duplicate && state.usedDuplicates[duplicateIndex]) {
-        state.dump = "*ref_" + duplicateIndex;
+      if (duplicate && state2.usedDuplicates[duplicateIndex]) {
+        state2.dump = "*ref_" + duplicateIndex;
       } else {
-        if (objectOrArray && duplicate && !state.usedDuplicates[duplicateIndex]) {
-          state.usedDuplicates[duplicateIndex] = true;
+        if (objectOrArray && duplicate && !state2.usedDuplicates[duplicateIndex]) {
+          state2.usedDuplicates[duplicateIndex] = true;
         }
         if (type2 === "[object Object]") {
-          if (block && Object.keys(state.dump).length !== 0) {
-            writeBlockMapping(state, level, state.dump, compact);
+          if (block && Object.keys(state2.dump).length !== 0) {
+            writeBlockMapping(state2, level, state2.dump, compact);
             if (duplicate) {
-              state.dump = "&ref_" + duplicateIndex + state.dump;
+              state2.dump = "&ref_" + duplicateIndex + state2.dump;
             }
           } else {
-            writeFlowMapping(state, level, state.dump);
+            writeFlowMapping(state2, level, state2.dump);
             if (duplicate) {
-              state.dump = "&ref_" + duplicateIndex + " " + state.dump;
+              state2.dump = "&ref_" + duplicateIndex + " " + state2.dump;
             }
           }
         } else if (type2 === "[object Array]") {
-          if (block && state.dump.length !== 0) {
-            if (state.noArrayIndent && !isblockseq && level > 0) {
-              writeBlockSequence(state, level - 1, state.dump, compact);
+          if (block && state2.dump.length !== 0) {
+            if (state2.noArrayIndent && !isblockseq && level > 0) {
+              writeBlockSequence(state2, level - 1, state2.dump, compact);
             } else {
-              writeBlockSequence(state, level, state.dump, compact);
+              writeBlockSequence(state2, level, state2.dump, compact);
             }
             if (duplicate) {
-              state.dump = "&ref_" + duplicateIndex + state.dump;
+              state2.dump = "&ref_" + duplicateIndex + state2.dump;
             }
           } else {
-            writeFlowSequence(state, level, state.dump);
+            writeFlowSequence(state2, level, state2.dump);
             if (duplicate) {
-              state.dump = "&ref_" + duplicateIndex + " " + state.dump;
+              state2.dump = "&ref_" + duplicateIndex + " " + state2.dump;
             }
           }
         } else if (type2 === "[object String]") {
-          if (state.tag !== "?") {
-            writeScalar(state, state.dump, level, iskey, inblock);
+          if (state2.tag !== "?") {
+            writeScalar(state2, state2.dump, level, iskey, inblock);
           }
         } else if (type2 === "[object Undefined]") {
           return false;
         } else {
-          if (state.skipInvalid) return false;
+          if (state2.skipInvalid) return false;
           throw new YAMLException2("unacceptable kind of an object to dump " + type2);
         }
-        if (state.tag !== null && state.tag !== "?") {
+        if (state2.tag !== null && state2.tag !== "?") {
           let tagStr = encodeURI(
-            state.tag[0] === "!" ? state.tag.slice(1) : state.tag
+            state2.tag[0] === "!" ? state2.tag.slice(1) : state2.tag
           ).replace(/!/g, "%21");
-          if (state.tag[0] === "!") {
+          if (state2.tag[0] === "!") {
             tagStr = "!" + tagStr;
           } else if (tagStr.slice(0, 18) === "tag:yaml.org,2002:") {
             tagStr = "!!" + tagStr.slice(18);
           } else {
             tagStr = "!<" + tagStr + ">";
           }
-          state.dump = tagStr + " " + state.dump;
+          state2.dump = tagStr + " " + state2.dump;
         }
       }
       return true;
     }
-    function getDuplicateReferences(object, state) {
+    function getDuplicateReferences(object, state2) {
       const objects = [];
       const duplicatesIndexes = [];
       inspectNode(object, objects, duplicatesIndexes);
       const length = duplicatesIndexes.length;
       for (let index = 0; index < length; index += 1) {
-        state.duplicates.push(objects[duplicatesIndexes[index]]);
+        state2.duplicates.push(objects[duplicatesIndexes[index]]);
       }
-      state.usedDuplicates = new Array(length);
+      state2.usedDuplicates = new Array(length);
     }
     function inspectNode(object, objects, duplicatesIndexes) {
       if (object !== null && typeof object === "object") {
@@ -2997,13 +3149,13 @@
     }
     function dump2(input, options) {
       options = options || {};
-      const state = new State(options);
-      if (!state.noRefs) getDuplicateReferences(input, state);
+      const state2 = new State(options);
+      if (!state2.noRefs) getDuplicateReferences(input, state2);
       let value = input;
-      if (state.replacer) {
-        value = state.replacer.call({ "": value }, "", value);
+      if (state2.replacer) {
+        value = state2.replacer.call({ "": value }, "", value);
       }
-      if (writeNode(state, 0, value, true, true)) return state.dump + "\n";
+      if (writeNode(state2, 0, value, true, true)) return state2.dump + "\n";
       return "";
     }
     dumper.dump = dump2;
@@ -3253,6 +3405,17 @@
   function serializeDelimitedCell(cell, delimiter) {
     if (!cell.includes(delimiter) && !cell.includes('"') && !/^\s|\s$/.test(cell)) return cell;
     return `"${cell.replace(/"/g, '""')}"`;
+  }
+
+  // src/ast.ts
+  var isDirective = (n) => n.type === "directive";
+  function* walk(node) {
+    yield node;
+    if (node.type === "document" || node.type === "section" || node.type === "directive") {
+      for (const child of node.children) yield* walk(child);
+    } else if (node.type === "list") {
+      for (const item of node.items) yield* walk(item);
+    }
   }
 
   // src/stable-identity.ts
@@ -3729,2199 +3892,6 @@
     return input.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
   }
 
-  // src/hash.ts
-  var K = new Uint32Array([
-    1116352408,
-    1899447441,
-    3049323471,
-    3921009573,
-    961987163,
-    1508970993,
-    2453635748,
-    2870763221,
-    3624381080,
-    310598401,
-    607225278,
-    1426881987,
-    1925078388,
-    2162078206,
-    2614888103,
-    3248222580,
-    3835390401,
-    4022224774,
-    264347078,
-    604807628,
-    770255983,
-    1249150122,
-    1555081692,
-    1996064986,
-    2554220882,
-    2821834349,
-    2952996808,
-    3210313671,
-    3336571891,
-    3584528711,
-    113926993,
-    338241895,
-    666307205,
-    773529912,
-    1294757372,
-    1396182291,
-    1695183700,
-    1986661051,
-    2177026350,
-    2456956037,
-    2730485921,
-    2820302411,
-    3259730800,
-    3345764771,
-    3516065817,
-    3600352804,
-    4094571909,
-    275423344,
-    430227734,
-    506948616,
-    659060556,
-    883997877,
-    958139571,
-    1322822218,
-    1537002063,
-    1747873779,
-    1955562222,
-    2024104815,
-    2227730452,
-    2361852424,
-    2428436474,
-    2756734187,
-    3204031479,
-    3329325298
-  ]);
-  var rotr = (x, n) => x >>> n | x << 32 - n;
-  function sha256Hex(input) {
-    const bytes = new TextEncoder().encode(input);
-    const bitLen = bytes.length * 8;
-    const paddedLen = (bytes.length + 8 >> 6) + 1 << 6;
-    const data = new Uint8Array(paddedLen);
-    data.set(bytes);
-    data[bytes.length] = 128;
-    const view = new DataView(data.buffer);
-    view.setUint32(paddedLen - 8, Math.floor(bitLen / 4294967296));
-    view.setUint32(paddedLen - 4, bitLen >>> 0);
-    const h = new Uint32Array([
-      1779033703,
-      3144134277,
-      1013904242,
-      2773480762,
-      1359893119,
-      2600822924,
-      528734635,
-      1541459225
-    ]);
-    const w = new Uint32Array(64);
-    for (let offset = 0; offset < paddedLen; offset += 64) {
-      for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4);
-      for (let i = 16; i < 64; i++) {
-        const w15 = w[i - 15];
-        const w2 = w[i - 2];
-        const s0 = rotr(w15, 7) ^ rotr(w15, 18) ^ w15 >>> 3;
-        const s1 = rotr(w2, 17) ^ rotr(w2, 19) ^ w2 >>> 10;
-        w[i] = w[i - 16] + s0 + w[i - 7] + s1 >>> 0;
-      }
-      let [a, b, c, d, e, f, g, hh] = h;
-      for (let i = 0; i < 64; i++) {
-        const s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-        const ch = e & f ^ ~e & g;
-        const t1 = hh + s1 + ch + K[i] + w[i] >>> 0;
-        const s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-        const maj = a & b ^ a & c ^ b & c;
-        const t2 = s0 + maj >>> 0;
-        hh = g;
-        g = f;
-        f = e;
-        e = d + t1 >>> 0;
-        d = c;
-        c = b;
-        b = a;
-        a = t1 + t2 >>> 0;
-      }
-      h[0] = h[0] + a >>> 0;
-      h[1] = h[1] + b >>> 0;
-      h[2] = h[2] + c >>> 0;
-      h[3] = h[3] + d >>> 0;
-      h[4] = h[4] + e >>> 0;
-      h[5] = h[5] + f >>> 0;
-      h[6] = h[6] + g >>> 0;
-      h[7] = h[7] + hh >>> 0;
-    }
-    let out = "";
-    for (let i = 0; i < 8; i++) out += h[i].toString(16).padStart(8, "0");
-    return out;
-  }
-
-  // src/patch.ts
-  var PatchError = class extends Error {
-    constructor(code, message, op) {
-      super(message);
-      this.code = code;
-      this.op = op;
-      this.name = "PatchError";
-    }
-  };
-  var OP_REQUIRED_FIELDS = {
-    replace_block: [["id", "string"], ["content", "string"]],
-    replace_body: [["id", "string"], ["content", "string"]],
-    update_heading: [["id", "string"], ["title", "string"]],
-    add_comment: [["id", "string"], ["target", "string"], ["content", "string"]],
-    resolve_comment: [["id", "string"]],
-    add_footnote: [["id", "string"], ["target", "string"], ["content", "string"]],
-    add_endnote: [["id", "string"], ["target", "string"], ["content", "string"]],
-    add_change_request: [["id", "string"], ["target", "string"], ["action", "string"]],
-    update_table_cell: [["id", "string"], ["row", "number"], ["column", "number|string"], ["value", "string"]],
-    update_table_header_cell: [["id", "string"], ["column", "number|string"], ["value", "string"]],
-    insert_table_row: [["id", "string"], ["row", "number"], ["cells", "string[]"]],
-    delete_table_row: [["id", "string"], ["row", "number"]],
-    insert_table_column: [["id", "string"], ["column", "number"], ["cells", "string[]"]],
-    delete_table_column: [["id", "string"], ["column", "number|string"]],
-    update_dataset_cell: [["id", "string"], ["row", "number"], ["column", "number|string"], ["value", "string"]],
-    insert_dataset_row: [["id", "string"], ["row", "number"], ["cells", "string[]"]],
-    delete_dataset_row: [["id", "string"], ["row", "number"]],
-    insert_dataset_column: [["id", "string"], ["column", "number"], ["header", "string"], ["cells", "string[]"]],
-    delete_dataset_column: [["id", "string"], ["column", "number|string"]],
-    move_block: [["id", "string"], ["parent", "string"]],
-    add_block: [["parent", "string"], ["content", "string"]],
-    delete_block: [["id", "string"]],
-    update_attribute: [["id", "string"], ["key", "string"], ["value", "attr"]],
-    remove_attribute: [["id", "string"], ["key", "string"]],
-    rename_id: [["from", "string"], ["to", "string"]]
-  };
-  var FIELD_ALIASES = {
-    content: ["body", "text", "value"],
-    title: ["heading", "text"],
-    value: ["content"]
-  };
-  function fieldMatches(value, kind) {
-    switch (kind) {
-      case "string":
-        return typeof value === "string";
-      case "number":
-        return typeof value === "number" && Number.isFinite(value);
-      case "number|string":
-        return typeof value === "string" || typeof value === "number" && Number.isFinite(value);
-      case "string[]":
-        return Array.isArray(value) && value.every((cell) => typeof cell === "string");
-      case "attr":
-        return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
-    }
-  }
-  function validateOpShape(op) {
-    const requirements = OP_REQUIRED_FIELDS[op.op];
-    if (!requirements) {
-      throw new PatchError("unsupported_op", `unknown patch op "${op.op}"`, op);
-    }
-    const record = op;
-    for (const [field, kind] of requirements) {
-      if (fieldMatches(record[field], kind)) continue;
-      let hint = "";
-      if (record[field] === void 0) {
-        const alias = (FIELD_ALIASES[field] ?? []).find((candidate) => record[candidate] !== void 0);
-        if (alias) hint = ` \u2014 found "${alias}"; did you mean "${field}"?`;
-      }
-      throw new PatchError(
-        "invalid_content",
-        `op "${op.op}" requires ${kind} field "${field}"${hint} (received fields: ${Object.keys(record).join(", ")})`,
-        op
-      );
-    }
-  }
-  function findById(node, id) {
-    if (node.id === id) return node;
-    for (const arr of childArrays(node)) {
-      for (const child of arr.list) {
-        const found = findById(child, id);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-  function containsId(node, id) {
-    return findById(node, id) !== null;
-  }
-  function childArrays(node) {
-    if (node.type === "document" || node.type === "section" || node.type === "directive") {
-      return [{ key: "children", list: node.children }];
-    }
-    if (node.type === "list") {
-      return [{ key: "items", list: node.items }];
-    }
-    return [];
-  }
-  function hasChildren(node) {
-    return node.type === "document" || node.type === "section" || node.type === "directive";
-  }
-  function isBodyOnlyDirective(node) {
-    return isDirective(node) && (node.children.length === 0 || node.children.length === 1 && node.children[0]?.type === "paragraph" && node.body !== void 0);
-  }
-  function commentAttrs(op) {
-    return {
-      id: op.id,
-      ...op.reply_to ? { reply_to: op.reply_to } : { parent: op.target },
-      ...op.author ? { author: op.author } : {},
-      ...op.initials ? { initials: op.initials } : {},
-      ...op.date ? { date: op.date } : {}
-    };
-  }
-  function isCommentDirective(node) {
-    return isDirective(node) && node.name === "comment";
-  }
-  function noteAttrs(op) {
-    return {
-      id: op.id,
-      for: op.target,
-      ...op.label ? { label: op.label } : {}
-    };
-  }
-  function changeRequestAttrs(op) {
-    return {
-      id: op.id,
-      target: op.target,
-      action: op.action,
-      ...op.from !== void 0 ? { from: op.from } : {},
-      ...op.to !== void 0 ? { to: op.to } : {},
-      ...op.text !== void 0 ? { text: op.text } : {},
-      ...op.author ? { author: op.author } : {},
-      ...op.date ? { date: op.date } : {}
-    };
-  }
-  function isTableDirective(node) {
-    return isDirective(node) && node.name === "table";
-  }
-  function isDatasetDirective(node) {
-    return isDirective(node) && node.name === "dataset";
-  }
-  function sourceTableDirectiveRows(sourceLines, start, end, node, op) {
-    const lines = [];
-    for (let i = start; i < end - 1; i++) {
-      const line = sourceLines[i] ?? "";
-      if (!line.trim()) continue;
-      lines.push({
-        index: i,
-        indent: line.match(/^\s*/)?.[0] ?? "",
-        cells: tableLineCells(line.trim(), op)
-      });
-    }
-    return tableRowsFromCells(lines, node, op);
-  }
-  function tableRowsFromCells(parsed, node, op) {
-    if (parsed.length === 0) {
-      throw new PatchError("invalid_content", `table "${node.id ?? "?"}" has no rows`, op);
-    }
-    const wantsHeader = node.attrs.header === true || node.attrs.header === "true";
-    const lines = parsed.map((entry, index) => {
-      if (Array.isArray(entry)) return { index, indent: "", cells: entry };
-      return entry;
-    });
-    const header = wantsHeader ? lines[0]?.cells : void 0;
-    const rows = wantsHeader ? lines.slice(1).map((line) => line.cells) : lines.map((line) => line.cells);
-    return {
-      ...header ? { header } : {},
-      rows,
-      lines
-    };
-  }
-  function updateTableRows(table, op) {
-    if (!Number.isInteger(op.row) || op.row < 0) {
-      throw new PatchError("invalid_content", `table row must be a non-negative integer`, op);
-    }
-    if (op.value.includes("\n") || op.value.includes("\r")) {
-      throw new PatchError("invalid_content", `table cell value must be a single line`, op);
-    }
-    if (op.row >= table.rows.length) {
-      throw new PatchError("invalid_content", `table row ${op.row} is out of range`, op);
-    }
-    const column = tableColumnIndex(table, op);
-    const columnCount = tableColumnCount(table);
-    if (column >= columnCount) {
-      throw new PatchError("invalid_content", `table column ${String(op.column)} is out of range`, op);
-    }
-    for (const row2 of table.rows) {
-      while (row2.length < columnCount) row2.push("");
-    }
-    const row = table.rows[op.row];
-    row[column] = op.value;
-    const lineOffset = table.header ? op.row + 1 : op.row;
-    return { lineOffset, cells: row };
-  }
-  function updateTableHeaderCell(table, op) {
-    if (!table.header) {
-      throw new PatchError("invalid_content", `table header cell update requires header=true`, op);
-    }
-    if (op.value.includes("\n") || op.value.includes("\r")) {
-      throw new PatchError("invalid_content", `table header cell value must be a single line`, op);
-    }
-    const column = tableColumnIndex(table, op);
-    const columnCount = tableColumnCount(table);
-    if (column >= columnCount) {
-      throw new PatchError("invalid_content", `table column ${String(op.column)} is out of range`, op);
-    }
-    while (table.header.length < columnCount) table.header.push("");
-    table.header[column] = op.value;
-    return { lineOffset: 0, cells: table.header };
-  }
-  function insertTableRow(table, op) {
-    const row = validateTableRowIndex(op.row, table.rows.length, true, op);
-    const cells = normalizeInsertedTableCells(table, op);
-    table.rows.splice(row, 0, cells);
-    const lineOffset = table.header ? row + 1 : row;
-    return { lineOffset, cells };
-  }
-  function deleteTableRow(table, op) {
-    const row = validateTableRowIndex(op.row, table.rows.length, false, op);
-    table.rows.splice(row, 1);
-    return { lineOffset: table.header ? row + 1 : row };
-  }
-  function insertTableColumn(table, op) {
-    const columnCount = tableColumnCount(table);
-    const column = validateTableColumnInsertIndex(op.column, columnCount, op);
-    const cells = normalizeInsertedTableColumnCells(table, op);
-    normalizeTableRows(table, columnCount);
-    if (table.header) table.header.splice(column, 0, op.header ?? "");
-    for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
-      table.rows[rowIndex].splice(column, 0, cells[rowIndex] ?? "");
-    }
-  }
-  function deleteTableColumn(table, op) {
-    const columnCount = tableColumnCount(table);
-    if (columnCount <= 1) {
-      throw new PatchError("invalid_content", `cannot delete the last table column`, op);
-    }
-    const column = tableColumnIndex(table, op);
-    if (column >= columnCount) {
-      throw new PatchError("invalid_content", `table column ${String(op.column)} is out of range`, op);
-    }
-    normalizeTableRows(table, columnCount);
-    if (table.header) table.header.splice(column, 1);
-    for (const row of table.rows) row.splice(column, 1);
-  }
-  function validateTableRowIndex(row, length, allowEnd, op) {
-    if (!Number.isInteger(row) || row < 0) {
-      throw new PatchError("invalid_content", `table row must be a non-negative integer`, op);
-    }
-    const max = allowEnd ? length : length - 1;
-    if (row > max) {
-      throw new PatchError("invalid_content", `table row ${row} is out of range`, op);
-    }
-    return row;
-  }
-  function normalizeInsertedTableCells(table, op) {
-    if (!Array.isArray(op.cells)) {
-      throw new PatchError("invalid_content", `table row cells must be an array`, op);
-    }
-    const cells = op.cells.map((cell) => String(cell));
-    for (const cell of cells) {
-      if (cell.includes("\n") || cell.includes("\r")) {
-        throw new PatchError("invalid_content", `table row cells must be single-line strings`, op);
-      }
-    }
-    const columnCount = tableColumnCount(table);
-    while (cells.length < columnCount) cells.push("");
-    return cells;
-  }
-  function validateTableColumnInsertIndex(column, length, op) {
-    if (!Number.isInteger(column) || column < 0) {
-      throw new PatchError("invalid_content", `table column must be a non-negative integer`, op);
-    }
-    if (column > length) {
-      throw new PatchError("invalid_content", `table column ${column} is out of range`, op);
-    }
-    return column;
-  }
-  function normalizeInsertedTableColumnCells(table, op) {
-    if (!Array.isArray(op.cells)) {
-      throw new PatchError("invalid_content", `table column cells must be an array`, op);
-    }
-    if (!table.header && op.header !== void 0) {
-      throw new PatchError("invalid_content", `table column header requires header=true`, op);
-    }
-    if (op.header !== void 0 && (op.header.includes("\n") || op.header.includes("\r"))) {
-      throw new PatchError("invalid_content", `table column header must be a single-line string`, op);
-    }
-    if (op.cells.length > table.rows.length) {
-      throw new PatchError("invalid_content", `table column cells exceed row count`, op);
-    }
-    const cells = op.cells.map((cell) => String(cell));
-    for (const cell of cells) {
-      if (cell.includes("\n") || cell.includes("\r")) {
-        throw new PatchError("invalid_content", `table column cells must be single-line strings`, op);
-      }
-    }
-    while (cells.length < table.rows.length) cells.push("");
-    return cells;
-  }
-  function normalizeTableRows(table, columnCount) {
-    if (table.header) {
-      while (table.header.length < columnCount) table.header.push("");
-    }
-    for (const row of table.rows) {
-      while (row.length < columnCount) row.push("");
-    }
-  }
-  function validateChangeRequestOp(op) {
-    const attrValues = [op.from, op.to, op.text, op.author, op.date];
-    for (const value of attrValues) {
-      if (value !== void 0 && (value.includes("\n") || value.includes("\r"))) {
-        throw new PatchError("invalid_content", `change_request attributes must be single-line strings`, op);
-      }
-    }
-    if (op.action === "replace") {
-      if (!op.from || !op.to) {
-        throw new PatchError("invalid_content", `replace change_request requires from and to`, op);
-      }
-      return;
-    }
-    if (op.action === "insert") {
-      if (!op.to && !op.text) {
-        throw new PatchError("invalid_content", `insert change_request requires to or text`, op);
-      }
-      return;
-    }
-    if (op.action === "delete") {
-      if (!op.from && !op.text) {
-        throw new PatchError("invalid_content", `delete change_request requires from or text`, op);
-      }
-      return;
-    }
-    throw new PatchError("invalid_content", `change_request action must be insert, delete, or replace`, op);
-  }
-  function validateNoteOp(op) {
-    if (!op.content.trim()) {
-      throw new PatchError("invalid_content", `${op.op === "add_footnote" ? "footnote" : "endnote"} content must not be empty`, op);
-    }
-    if (op.label !== void 0 && (op.label.includes("\n") || op.label.includes("\r"))) {
-      throw new PatchError("invalid_content", `note label must be a single-line string`, op);
-    }
-  }
-  function tableColumnIndex(table, op) {
-    if (typeof op.column === "number") {
-      if (!Number.isInteger(op.column) || op.column < 0) {
-        throw new PatchError("invalid_content", `table column must be a non-negative integer`, op);
-      }
-      return op.column;
-    }
-    if (!table.header) {
-      throw new PatchError("invalid_content", `table column labels require header=true`, op);
-    }
-    const index = table.header.indexOf(op.column);
-    if (index === -1) {
-      throw new PatchError("invalid_content", `table column "${op.column}" not found`, op);
-    }
-    return index;
-  }
-  function tableColumnCount(table) {
-    return Math.max(
-      table.header?.length ?? 0,
-      ...table.rows.map((row) => row.length)
-    );
-  }
-  function tableLineCells(line, op) {
-    if (!line.includes("|")) {
-      throw new PatchError("invalid_content", `table rows must use pipe syntax`, op);
-    }
-    return splitPipeRow(line);
-  }
-  function datasetFormat(node) {
-    const format = node.attrs.format;
-    return typeof format === "string" && format.trim() ? format.trim().toLowerCase() : "yaml";
-  }
-  function parseJsonDatasetText(body, node, op) {
-    let parsed;
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      throw new PatchError("invalid_content", `dataset "${node.id ?? "?"}" is not valid JSON`, op);
-    }
-    if (Array.isArray(parsed)) {
-      if (parsed.length > 0 && firstJsonRowIsRecord(parsed)) {
-        const columns2 = Object.keys(parsed[0]);
-        return {
-          columns: columns2,
-          rows: parsed.map((row) => columns2.map((column) => row[column] ?? null)),
-          sourceShape: "records"
-        };
-      }
-      return {
-        columns: columnsAttr(node),
-        rows: parsed.filter(Array.isArray).map((row) => [...row]),
-        sourceShape: "arrays"
-      };
-    }
-    const record = recordValue(parsed);
-    if (!record || !Array.isArray(record.rows)) {
-      throw new PatchError("invalid_content", `dataset "${node.id ?? "?"}" has no JSON rows array`, op);
-    }
-    const columns = Array.isArray(record.columns) ? record.columns.map(String) : columnsAttr(node);
-    return {
-      columns,
-      rows: record.rows.filter(Array.isArray).map((row) => [...row]),
-      sourceShape: "object"
-    };
-  }
-  function loadYamlDatasetText(body, id, op) {
-    let parsed;
-    try {
-      parsed = yaml.load(body);
-    } catch {
-      throw new PatchError("invalid_content", `dataset "${id ?? "?"}" is not valid YAML`, op);
-    }
-    const record = recordValue(parsed);
-    if (!record) throw new PatchError("invalid_content", `dataset "${id ?? "?"}" must be a YAML object`, op);
-    return record;
-  }
-  function datasetColumnsFromYaml(node, parsed, rows) {
-    const schema2 = recordValue(parsed.schema);
-    if (schema2) return Object.keys(schema2);
-    const attrColumns = columnsAttr(node);
-    if (attrColumns.length > 0) return attrColumns;
-    return inferredDatasetColumns(rows);
-  }
-  function columnsAttr(node) {
-    const columns = node.attrs.columns;
-    return typeof columns === "string" ? columns.split(/[,\s]+/).filter(Boolean) : [];
-  }
-  function inferredDatasetColumns(rows) {
-    const width = Math.max(0, ...rows.filter(Array.isArray).map((row) => row.length));
-    return Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
-  }
-  function updateDatasetRows(table, op) {
-    if (!Number.isInteger(op.row) || op.row < 0) {
-      throw new PatchError("invalid_content", `dataset row must be a non-negative integer`, op);
-    }
-    if (op.value.includes("\n") || op.value.includes("\r")) {
-      throw new PatchError("invalid_content", `dataset cell value must be a single line`, op);
-    }
-    if (op.row >= table.rows.length) {
-      throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
-    }
-    const column = datasetColumnIndex(table, op);
-    const columnCount = datasetColumnCount(table);
-    if (column >= columnCount) {
-      throw new PatchError("invalid_content", `dataset column ${String(op.column)} is out of range`, op);
-    }
-    for (const row2 of table.rows) {
-      while (row2.length < columnCount) row2.push(null);
-    }
-    const row = table.rows[op.row];
-    const columnName = table.columns[column];
-    row[column] = coerceDatasetPatchValue(op.value, columnName ? table.schema?.[columnName] : void 0);
-    return { lineOffset: op.row, column, cells: row };
-  }
-  function insertDatasetRow(table, op) {
-    const row = validateDatasetRowIndex(op.row, table.rows.length, true, op);
-    const cells = normalizeInsertedDatasetCells(table, op);
-    table.rows.splice(row, 0, cells);
-    return { lineOffset: row, cells };
-  }
-  function deleteDatasetRow(table, op) {
-    const row = validateDatasetRowIndex(op.row, table.rows.length, false, op);
-    table.rows.splice(row, 1);
-    return { lineOffset: row };
-  }
-  function insertDatasetColumn(table, op) {
-    const column = validateDatasetColumnInsertIndex(op.column, datasetColumnCount(table), op);
-    if (op.header.includes("\n") || op.header.includes("\r") || op.header.trim().length === 0) {
-      throw new PatchError("invalid_content", `dataset column header must be a non-empty single-line string`, op);
-    }
-    if (table.columns.includes(op.header)) {
-      throw new PatchError("invalid_content", `dataset column "${op.header}" already exists`, op);
-    }
-    const values = normalizeInsertedDatasetColumnCells(table, op);
-    const schemaValue = inferDatasetType(values.map(datasetScalarText));
-    normalizeDatasetRows(table, datasetColumnCount(table));
-    table.columns.splice(column, 0, op.header);
-    for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
-      table.rows[rowIndex].splice(column, 0, values[rowIndex] ?? "");
-    }
-    if (table.schema) {
-      table.schema = insertRecordEntry(table.schema, op.header, schemaValue, column);
-    }
-    return { column, values };
-  }
-  function deleteDatasetColumn(table, op) {
-    const columnCount = datasetColumnCount(table);
-    if (columnCount <= 1) {
-      throw new PatchError("invalid_content", `cannot delete the last dataset column`, op);
-    }
-    const column = datasetColumnIndex(table, op);
-    if (column >= columnCount) {
-      throw new PatchError("invalid_content", `dataset column ${String(op.column)} is out of range`, op);
-    }
-    normalizeDatasetRows(table, columnCount);
-    const header = table.columns[column] ?? `Column ${column + 1}`;
-    table.columns.splice(column, 1);
-    for (const row of table.rows) row.splice(column, 1);
-    if (table.schema) {
-      const nextSchema = {};
-      for (const [key, value] of Object.entries(table.schema)) {
-        if (key !== header) nextSchema[key] = value;
-      }
-      table.schema = nextSchema;
-    }
-    return { column, header };
-  }
-  function validateDatasetRowIndex(row, length, allowEnd, op) {
-    if (!Number.isInteger(row) || row < 0) {
-      throw new PatchError("invalid_content", `dataset row must be a non-negative integer`, op);
-    }
-    const max = allowEnd ? length : length - 1;
-    if (row > max) {
-      throw new PatchError("invalid_content", `dataset row ${row} is out of range`, op);
-    }
-    return row;
-  }
-  function normalizeInsertedDatasetCells(table, op) {
-    if (!Array.isArray(op.cells)) {
-      throw new PatchError("invalid_content", `dataset row cells must be an array`, op);
-    }
-    const rawCells = op.cells.map((cell) => String(cell));
-    for (const cell of rawCells) {
-      if (cell.includes("\n") || cell.includes("\r")) {
-        throw new PatchError("invalid_content", `dataset row cells must be single-line strings`, op);
-      }
-    }
-    let columnCount = datasetColumnCount(table);
-    if (columnCount === 0) {
-      columnCount = rawCells.length;
-      table.columns = inferredDatasetColumns([rawCells]);
-    }
-    if (rawCells.length > columnCount) {
-      throw new PatchError("invalid_content", `dataset row cells exceed column count`, op);
-    }
-    while (rawCells.length < columnCount) rawCells.push("");
-    return rawCells.map((cell, column) => {
-      const columnName = table.columns[column];
-      return coerceDatasetPatchValue(cell, columnName ? table.schema?.[columnName] : void 0);
-    });
-  }
-  function validateDatasetColumnInsertIndex(column, length, op) {
-    if (!Number.isInteger(column) || column < 0) {
-      throw new PatchError("invalid_content", `dataset column must be a non-negative integer`, op);
-    }
-    if (column > length) {
-      throw new PatchError("invalid_content", `dataset column ${column} is out of range`, op);
-    }
-    return column;
-  }
-  function normalizeInsertedDatasetColumnCells(table, op) {
-    if (!Array.isArray(op.cells)) {
-      throw new PatchError("invalid_content", `dataset column cells must be an array`, op);
-    }
-    if (op.cells.length > table.rows.length) {
-      throw new PatchError("invalid_content", `dataset column cells exceed row count`, op);
-    }
-    const cells = op.cells.map((cell) => String(cell));
-    for (const cell of cells) {
-      if (cell.includes("\n") || cell.includes("\r")) {
-        throw new PatchError("invalid_content", `dataset column cells must be single-line strings`, op);
-      }
-    }
-    while (cells.length < table.rows.length) cells.push("");
-    const schemaValue = inferDatasetType(cells);
-    return cells.map((cell) => coerceDatasetPatchValue(cell, schemaValue));
-  }
-  function normalizeDatasetRows(table, columnCount) {
-    while (table.columns.length < columnCount) table.columns.push(`Column ${table.columns.length + 1}`);
-    for (const row of table.rows) {
-      while (row.length < columnCount) row.push(null);
-    }
-  }
-  function insertRecordEntry(record, key, value, index) {
-    const out = {};
-    const entries = Object.entries(record);
-    for (let i = 0; i <= entries.length; i++) {
-      if (i === index) out[key] = value;
-      const entry = entries[i];
-      if (entry) out[entry[0]] = entry[1];
-    }
-    return out;
-  }
-  function datasetColumnIndex(table, op) {
-    if (typeof op.column === "number") {
-      if (!Number.isInteger(op.column) || op.column < 0) {
-        throw new PatchError("invalid_content", `dataset column must be a non-negative integer`, op);
-      }
-      return op.column;
-    }
-    const index = table.columns.indexOf(op.column);
-    if (index === -1) throw new PatchError("invalid_content", `dataset column "${op.column}" not found`, op);
-    return index;
-  }
-  function datasetColumnCount(table) {
-    return Math.max(table.columns.length, ...table.rows.map((row) => row.length), 0);
-  }
-  function coerceDatasetPatchValue(value, schemaValue) {
-    const type2 = schemaType(schemaValue);
-    if (type2 === "number" || type2 === "integer") {
-      if (!value.trim()) return null;
-      const number = Number(value);
-      return Number.isFinite(number) ? number : value;
-    }
-    if (type2 === "boolean") {
-      if (!value.trim()) return null;
-      return booleanText(value) ?? value;
-    }
-    return type2 ? value : coerceDatasetScalar(value);
-  }
-  function coerceDatasetScalar(value) {
-    const trimmed = value.trim();
-    if (!trimmed) return value;
-    const boolean = booleanText(trimmed);
-    if (boolean !== void 0) return boolean;
-    const number = Number(trimmed);
-    if (Number.isFinite(number) && /^-?\d/.test(trimmed)) return number;
-    return value;
-  }
-  function inferDatasetType(values) {
-    const present = values.map((value) => value.trim()).filter(Boolean);
-    if (present.length === 0) return "string";
-    if (present.every((value) => Number.isFinite(Number(value)))) return "number";
-    if (present.every((value) => booleanText(value) !== void 0)) return "boolean";
-    return "string";
-  }
-  function schemaType(schemaValue) {
-    if (typeof schemaValue === "string") return schemaValue.toLowerCase();
-    const record = recordValue(schemaValue);
-    const type2 = record?.type;
-    return typeof type2 === "string" ? type2.toLowerCase() : void 0;
-  }
-  function booleanText(value) {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true" || normalized === "yes" || normalized === "1") return true;
-    if (normalized === "false" || normalized === "no" || normalized === "0") return false;
-    return void 0;
-  }
-  function datasetScalarText(value) {
-    if (value === null || value === void 0) return "";
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
-    return JSON.stringify(value);
-  }
-  function firstJsonRowIsRecord(rows) {
-    const first = rows[0];
-    return Boolean(first && typeof first === "object" && !Array.isArray(first));
-  }
-  function recordValue(value) {
-    return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
-  }
-  function allTableRows(table) {
-    return table.header ? [table.header, ...table.rows] : table.rows;
-  }
-  function serializePipeRow(cells, indent = "") {
-    return `${indent}| ${cells.map(escapePipeTableCell).join(" | ")} |`;
-  }
-  function parseFragment(content, op) {
-    const doc = parse(content);
-    if (doc.children.length === 0) {
-      throw new PatchError("invalid_content", `fragment parsed to no blocks`, op);
-    }
-    if (doc.children.length > 1) {
-      throw new PatchError(
-        "invalid_content",
-        `fragment must contain exactly one top-level block (got ${doc.children.length})`,
-        op
-      );
-    }
-    const node = doc.children[0];
-    if (!isDirective(node)) {
-      throw new PatchError("invalid_content", `fragment must be a directive block (got ${node.type})`, op);
-    }
-    return node;
-  }
-  function patchSource(source, ops) {
-    const list = Array.isArray(ops) ? ops : [ops];
-    let cur = source;
-    for (const op of list) cur = applyToSource(cur, op);
-    return cur;
-  }
-  function blockSourceHash(source, id) {
-    const doc = parse(source);
-    const node = findById(doc, id);
-    if (!node) throw new Error(`block "${id}" not found`);
-    const start = node.pos?.line;
-    const end = node.endLine;
-    if (!start || !end) throw new Error(`block "${id}" has no source span`);
-    return sha256Hex(source.split("\n").slice(start - 1, end).join("\n"));
-  }
-  function patchTargetId(op) {
-    switch (op.op) {
-      case "rename_id":
-        return op.from;
-      case "add_block":
-        return op.parent;
-      case "add_comment":
-      case "add_footnote":
-      case "add_endnote":
-      case "add_change_request":
-        return op.target;
-      default:
-        return op.id;
-    }
-  }
-  function verifyBaseHash(source, op) {
-    const expected = op.baseHash?.trim().toLowerCase();
-    if (!expected) return;
-    if (!/^[0-9a-f]{8,64}$/.test(expected)) {
-      throw new PatchError(
-        "invalid_content",
-        `baseHash must be 8\u201364 hex chars of the block's sha256 (got "${op.baseHash}")`,
-        op
-      );
-    }
-    const targetId = patchTargetId(op);
-    let actual;
-    try {
-      actual = blockSourceHash(source, targetId);
-    } catch {
-      throw new PatchError("target_missing", `block "${targetId}" not found`, op);
-    }
-    if (!actual.startsWith(expected)) {
-      throw new PatchError(
-        "sha_mismatch",
-        `block "${targetId}" changed since it was read: baseHash ${expected.slice(0, 12)} does not match current ${actual.slice(0, 12)}`,
-        op
-      );
-    }
-  }
-  function applyToSource(source, op) {
-    validateOpShape(op);
-    verifyBaseHash(source, op);
-    switch (op.op) {
-      case "update_attribute":
-        return applySrcUpdateAttr(source, op);
-      case "remove_attribute":
-        return applySrcRemoveAttr(source, op);
-      case "replace_block":
-        return applySrcReplace(source, op);
-      case "replace_body":
-        return applySrcReplaceBody(source, op);
-      case "update_heading":
-        return applySrcUpdateHeading(source, op);
-      case "add_comment":
-        return applySrcAddComment(source, op);
-      case "resolve_comment":
-        return applySrcResolveComment(source, op);
-      case "add_footnote":
-      case "add_endnote":
-        return applySrcAddNote(source, op);
-      case "add_change_request":
-        return applySrcAddChangeRequest(source, op);
-      case "update_table_cell":
-        return applySrcUpdateTableCell(source, op);
-      case "update_table_header_cell":
-        return applySrcUpdateTableHeaderCell(source, op);
-      case "insert_table_row":
-        return applySrcInsertTableRow(source, op);
-      case "delete_table_row":
-        return applySrcDeleteTableRow(source, op);
-      case "insert_table_column":
-        return applySrcInsertTableColumn(source, op);
-      case "delete_table_column":
-        return applySrcDeleteTableColumn(source, op);
-      case "update_dataset_cell":
-        return applySrcUpdateDatasetCell(source, op);
-      case "insert_dataset_row":
-        return applySrcInsertDatasetRow(source, op);
-      case "delete_dataset_row":
-        return applySrcDeleteDatasetRow(source, op);
-      case "insert_dataset_column":
-        return applySrcInsertDatasetColumn(source, op);
-      case "delete_dataset_column":
-        return applySrcDeleteDatasetColumn(source, op);
-      case "move_block":
-        return applySrcMove(source, op);
-      case "delete_block":
-        return applySrcDelete(source, op);
-      case "add_block":
-        return applySrcAdd(source, op);
-      case "rename_id":
-        return applySrcRenameId(source, op);
-      default: {
-        const _exhaustive = op;
-        void _exhaustive;
-        throw new Error("unknown patch op");
-      }
-    }
-  }
-  function locate(source, id, op) {
-    const doc = parse(source);
-    const node = findById(doc, id);
-    if (!node) throw new PatchError("target_missing", `block "${id}" not found`, op);
-    const start = node.pos?.line;
-    const end = node.endLine;
-    if (!start || !end) {
-      throw new Error(`block "${id}" has no source span`);
-    }
-    return { node, start, end };
-  }
-  function applySrcReplaceBody(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    const lines = source.split("\n");
-    const bodyLines = op.content.replace(/\n+$/, "").split("\n");
-    if (isDirective(node)) {
-      if (!isBodyOnlyDirective(node)) {
-        throw new PatchError("invalid_content", `block "${op.id}" has child blocks; use replace_block`, op);
-      }
-      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-      return lines.join("\n");
-    }
-    if (node.type === "paragraph") {
-      lines.splice(start - 1, end - start + 1, ...bodyLines);
-      return lines.join("\n");
-    }
-    if (node.type === "quote") {
-      const quoted = bodyLines.map((line) => line ? `> ${line}` : ">");
-      lines.splice(start - 1, end - start + 1, ...quoted);
-      return lines.join("\n");
-    }
-    if (node.type === "code") {
-      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-      return lines.join("\n");
-    }
-    if (node.type === "list_item") {
-      const marker = (lines[start - 1] ?? "").match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
-      lines[start - 1] = `${marker}${op.content.replace(/\n/g, " ")}`;
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
-  }
-  function applySrcUpdateHeading(source, op) {
-    const { node, start } = locate(source, op.id, op);
-    if (node.type !== "section") {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a section heading`, op);
-    }
-    const lines = source.split("\n");
-    lines[start - 1] = rewriteHeadingTitle(lines[start - 1] ?? "", op.title, node.id);
-    return lines.join("\n");
-  }
-  function applySrcUpdateAttr(source, op) {
-    if (op.key === "id") {
-      throw new PatchError("id_attribute_protected", `use rename_id to change a block's id`, op);
-    }
-    const { node, start } = locate(source, op.id, op);
-    if (!isDirective(node)) {
-      throw new PatchError("target_missing", `block "${op.id}" is not a directive`, op);
-    }
-    const lines = source.split("\n");
-    const lineIdx = start - 1;
-    const open = lines[lineIdx] ?? "";
-    lines[lineIdx] = rewriteOpenLineAttr(open, op.key, op.value, op);
-    return lines.join("\n");
-  }
-  function applySrcRemoveAttr(source, op) {
-    if (op.key === "id") {
-      throw new PatchError("id_attribute_protected", `use rename_id to change a block's id`, op);
-    }
-    const { node, start } = locate(source, op.id, op);
-    if (!isDirective(node)) {
-      throw new PatchError("target_missing", `block "${op.id}" is not a directive`, op);
-    }
-    const lines = source.split("\n");
-    const lineIdx = start - 1;
-    const open = lines[lineIdx] ?? "";
-    lines[lineIdx] = rewriteOpenLineRemoveAttr(open, op.key, op);
-    return lines.join("\n");
-  }
-  function applySrcReplace(source, op) {
-    parseFragment(op.content, op);
-    const { start, end } = locate(source, op.id, op);
-    const lines = source.split("\n");
-    const replacement = op.content.replace(/\n+$/, "").split("\n");
-    lines.splice(start - 1, end - start + 1, ...replacement);
-    return lines.join("\n");
-  }
-  function applySrcDelete(source, op) {
-    const { start, end } = locate(source, op.id, op);
-    const lines = source.split("\n");
-    let removeCount = end - start + 1;
-    if (lines[start - 1 + removeCount] === "" && lines[start - 2] === "") {
-      removeCount += 1;
-    }
-    lines.splice(start - 1, removeCount);
-    return lines.join("\n");
-  }
-  function applySrcAdd(source, op) {
-    parseFragment(op.content, op);
-    const doc = parse(source);
-    const parent = findById(doc, op.parent);
-    if (!parent) throw new PatchError("parent_missing", `parent "${op.parent}" not found`, op);
-    if (!hasChildren(parent)) {
-      throw new PatchError("parent_missing", `parent "${op.parent}" cannot have children`, op);
-    }
-    const children = parent.children;
-    const pos = Math.max(0, Math.min(op.position ?? children.length, children.length));
-    const lines = source.split("\n");
-    const fragmentLines = op.content.replace(/\n+$/, "").split("\n");
-    let insertAt;
-    if (pos < children.length) {
-      const next = children[pos];
-      const nextStart = next.pos?.line;
-      if (!nextStart) throw new Error(`sibling has no source span`);
-      insertAt = nextStart - 1;
-      fragmentLines.push("");
-    } else if (children.length > 0) {
-      const last = children[children.length - 1];
-      const lastEnd = last.endLine;
-      if (!lastEnd) throw new Error(`sibling has no source span`);
-      insertAt = lastEnd;
-      fragmentLines.unshift("");
-    } else {
-      if (parent.type === "directive" && parent.endLine) {
-        insertAt = parent.endLine - 1;
-      } else if (parent.type === "section" && parent.endLine) {
-        insertAt = parent.endLine;
-      } else {
-        insertAt = lines.length;
-      }
-    }
-    lines.splice(insertAt, 0, ...fragmentLines);
-    return lines.join("\n");
-  }
-  function applySrcAddComment(source, op) {
-    const doc = parse(source);
-    if (findById(doc, op.id)) {
-      throw new PatchError("id_conflict", `target id "${op.id}" already exists`, op);
-    }
-    const target = findById(doc, op.target);
-    if (!target) throw new PatchError("target_missing", `block "${op.target}" not found`, op);
-    const start = target.pos?.line;
-    const end = target.endLine;
-    if (!start || !end) throw new Error(`block "${op.target}" has no source span`);
-    const lines = source.split("\n");
-    const fragmentLines = siblingDirectiveFragmentLines(target, lines, serializeCommentBlock(op));
-    let insertAt;
-    if (target.type === "section") {
-      insertAt = start;
-      if (lines[insertAt] === "") insertAt += 1;
-      fragmentLines.push("");
-    } else {
-      insertAt = end;
-      fragmentLines.unshift("");
-    }
-    lines.splice(insertAt, 0, ...fragmentLines);
-    return lines.join("\n");
-  }
-  function applySrcResolveComment(source, op) {
-    const { node, start } = locate(source, op.id, op);
-    if (!isCommentDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a comment`, op);
-    }
-    const lines = source.split("\n");
-    const lineIdx = start - 1;
-    lines[lineIdx] = rewriteCommentResolutionAttrs(lines[lineIdx] ?? "", op);
-    return lines.join("\n");
-  }
-  function applySrcAddNote(source, op) {
-    validateNoteOp(op);
-    const doc = parse(source);
-    if (findById(doc, op.id)) {
-      throw new PatchError("id_conflict", `target id "${op.id}" already exists`, op);
-    }
-    const target = findById(doc, op.target);
-    if (!target) throw new PatchError("target_missing", `block "${op.target}" not found`, op);
-    const start = target.pos?.line;
-    const end = target.endLine;
-    if (!start || !end) throw new Error(`block "${op.target}" has no source span`);
-    const lines = source.split("\n");
-    const fragmentLines = siblingDirectiveFragmentLines(target, lines, serializeNoteBlock(op));
-    let insertAt;
-    if (target.type === "section") {
-      insertAt = start;
-      if (lines[insertAt] === "") insertAt += 1;
-      fragmentLines.push("");
-    } else {
-      insertAt = end;
-      fragmentLines.unshift("");
-    }
-    lines.splice(insertAt, 0, ...fragmentLines);
-    return lines.join("\n");
-  }
-  function applySrcAddChangeRequest(source, op) {
-    validateChangeRequestOp(op);
-    const doc = parse(source);
-    if (findById(doc, op.id)) {
-      throw new PatchError("id_conflict", `target id "${op.id}" already exists`, op);
-    }
-    const target = findById(doc, op.target);
-    if (!target) throw new PatchError("target_missing", `block "${op.target}" not found`, op);
-    const start = target.pos?.line;
-    const end = target.endLine;
-    if (!start || !end) throw new Error(`block "${op.target}" has no source span`);
-    const lines = source.split("\n");
-    const fragmentLines = siblingDirectiveFragmentLines(target, lines, serializeChangeRequestBlock(op));
-    let insertAt;
-    if (target.type === "section") {
-      insertAt = start;
-      if (lines[insertAt] === "") insertAt += 1;
-      fragmentLines.push("");
-    } else {
-      insertAt = end;
-      fragmentLines.unshift("");
-    }
-    lines.splice(insertAt, 0, ...fragmentLines);
-    return lines.join("\n");
-  }
-  function siblingDirectiveFragmentLines(target, lines, source) {
-    const targetDepth = isDirective(target) ? directiveFenceDepth(target, lines) : 2;
-    return normalizeDirectiveFenceDepth(source, 2, targetDepth).split("\n");
-  }
-  function applySrcUpdateTableCell(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isTableDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
-    }
-    const lines = source.split("\n");
-    const table = sourceTableDirectiveRows(lines, start, end, node, op);
-    const target = updateTableRows(table, op);
-    const sourceLine = table.lines[target.lineOffset];
-    lines[sourceLine.index] = serializePipeRow(target.cells, sourceLine.indent);
-    return lines.join("\n");
-  }
-  function applySrcUpdateTableHeaderCell(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isTableDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
-    }
-    const lines = source.split("\n");
-    const table = sourceTableDirectiveRows(lines, start, end, node, op);
-    const target = updateTableHeaderCell(table, op);
-    const sourceLine = table.lines[target.lineOffset];
-    lines[sourceLine.index] = serializePipeRow(target.cells, sourceLine.indent);
-    return lines.join("\n");
-  }
-  function applySrcInsertTableRow(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isTableDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
-    }
-    const lines = source.split("\n");
-    const table = sourceTableDirectiveRows(lines, start, end, node, op);
-    const target = insertTableRow(table, op);
-    const indent = tableRowIndent(table, target.lineOffset);
-    const insertAt = tableInsertLineIndex(table, target.lineOffset, end);
-    lines.splice(insertAt, 0, serializePipeRow(target.cells, indent));
-    return lines.join("\n");
-  }
-  function applySrcDeleteTableRow(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isTableDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
-    }
-    const lines = source.split("\n");
-    const table = sourceTableDirectiveRows(lines, start, end, node, op);
-    const target = deleteTableRow(table, op);
-    const sourceLine = table.lines[target.lineOffset];
-    if (!sourceLine) throw new PatchError("invalid_content", `table row ${op.row} is out of range`, op);
-    lines.splice(sourceLine.index, 1);
-    return lines.join("\n");
-  }
-  function applySrcInsertTableColumn(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isTableDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
-    }
-    const lines = source.split("\n");
-    const table = sourceTableDirectiveRows(lines, start, end, node, op);
-    insertTableColumn(table, op);
-    rewriteSourceTableRows(lines, table);
-    return lines.join("\n");
-  }
-  function applySrcDeleteTableColumn(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isTableDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
-    }
-    const lines = source.split("\n");
-    const table = sourceTableDirectiveRows(lines, start, end, node, op);
-    deleteTableColumn(table, op);
-    rewriteSourceTableRows(lines, table);
-    return lines.join("\n");
-  }
-  function applySrcUpdateDatasetCell(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isDatasetDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
-    }
-    const lines = source.split("\n");
-    const format = datasetFormat(node);
-    if (format === "csv" || format === "tsv") {
-      const delimiter = format === "tsv" ? "	" : ",";
-      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
-      const target = updateDatasetRows(table, op);
-      const sourceLine = table.lines[target.lineOffset + 1];
-      const cells = target.cells.map(datasetScalarText);
-      if (cells.some((cell) => /[\r\n]/.test(cell))) {
-        throw new PatchError("invalid_content", `dataset cell value must be a single line`, op);
-      }
-      lines[sourceLine.index] = `${sourceLine.indent}${serializeDelimitedRow(cells, delimiter)}`;
-      return lines.join("\n");
-    }
-    if (format === "yaml") {
-      const table = sourceYamlDatasetRows(lines, start, end, node, op);
-      const target = updateDatasetRows(table, op);
-      const sourceLine = table.lines[target.lineOffset];
-      lines[sourceLine.index] = `${sourceLine.indent}- ${serializeYamlFlowRow(target.cells)}${sourceLine.trailing}`;
-      return lines.join("\n");
-    }
-    if (format === "json") {
-      const table = sourceJsonDatasetRows(lines, start, end, node, op);
-      const target = updateDatasetRows(table, op);
-      if (table.sourceShape === "records") {
-        const sourceRow = table.lines[target.lineOffset];
-        if (!sourceRow) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
-        const column = target.column;
-        const key = table.columns[column];
-        if (!key) throw new PatchError("invalid_content", `dataset column ${String(op.column)} is out of range`, op);
-        const sourceLine2 = sourceRow.propertyLines.get(key);
-        if (sourceLine2 === void 0) {
-          throw new PatchError("invalid_content", `source-preserving update_dataset_cell could not map JSON property "${key}"`, op);
-        }
-        lines[sourceLine2] = rewriteJsonPropertyLine(lines[sourceLine2] ?? "", key, target.cells[column], op);
-        return lines.join("\n");
-      }
-      const sourceLine = table.lines[target.lineOffset];
-      if (!sourceLine) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
-      lines[sourceLine.index] = `${sourceLine.indent}${JSON.stringify(target.cells)}${sourceLine.trailing}`;
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `source-preserving update_dataset_cell does not support ${format} datasets`, op);
-  }
-  function applySrcInsertDatasetRow(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isDatasetDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
-    }
-    const lines = source.split("\n");
-    const format = datasetFormat(node);
-    if (format === "csv" || format === "tsv") {
-      const delimiter = format === "tsv" ? "	" : ",";
-      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
-      const target = insertDatasetRow(table, op);
-      const cells = target.cells.map(datasetScalarText);
-      if (cells.some((cell) => /[\r\n]/.test(cell))) {
-        throw new PatchError("invalid_content", `dataset cell value must be a single line`, op);
-      }
-      const indent = delimitedDatasetRowIndent(table, target.lineOffset);
-      const insertAt = delimitedDatasetInsertLineIndex(table, target.lineOffset, end);
-      lines.splice(insertAt, 0, `${indent}${serializeDelimitedRow(cells, delimiter)}`);
-      return lines.join("\n");
-    }
-    if (format === "yaml") {
-      const table = sourceYamlDatasetRows(lines, start, end, node, op);
-      const target = insertDatasetRow(table, op);
-      const indent = yamlDatasetRowIndent(table, target.lineOffset);
-      const insertAt = yamlDatasetInsertLineIndex(table, target.lineOffset, end);
-      if (table.lines.length === 0) {
-        lines[table.rowsLineIndex] = rewriteYamlRowsLineAsBlock(lines[table.rowsLineIndex] ?? "", op);
-      }
-      lines.splice(insertAt, 0, `${indent}- ${serializeYamlFlowRow(target.cells)}`);
-      return lines.join("\n");
-    }
-    if (format === "json") {
-      const table = sourceJsonDatasetRows(lines, start, end, node, op);
-      if (table.sourceShape === "records") {
-        const target2 = insertDatasetRow(table, op);
-        const insertAt2 = jsonRecordDatasetInsertLineIndex(table, target2.lineOffset);
-        if (target2.lineOffset >= table.lines.length && table.lines.length > 0) {
-          const previous = table.lines[table.lines.length - 1];
-          lines[previous.end] = ensureJsonTrailingComma(lines[previous.end] ?? "");
-        }
-        const reference = jsonRecordReferenceRow(table, target2.lineOffset);
-        const trailing2 = target2.lineOffset < table.lines.length ? "," : "";
-        lines.splice(insertAt2, 0, ...serializeJsonRecordRow(table.columns, target2.cells, reference, trailing2));
-        return lines.join("\n");
-      }
-      const target = insertDatasetRow(table, op);
-      const literal = JSON.stringify(target.cells);
-      if (table.inlineEmptyRowsLine) {
-        lines.splice(
-          table.inlineEmptyRowsLine.index,
-          1,
-          `${table.inlineEmptyRowsLine.indent}${table.inlineEmptyRowsLine.prefix}[`,
-          `${table.rowIndent}${literal}`,
-          `${table.inlineEmptyRowsLine.indent}]${table.inlineEmptyRowsLine.trailing}`
-        );
-        return lines.join("\n");
-      }
-      const insertAt = jsonDatasetInsertLineIndex(table, target.lineOffset);
-      if (target.lineOffset >= table.lines.length && table.lines.length > 0) {
-        const previous = table.lines[table.lines.length - 1];
-        lines[previous.index] = ensureJsonTrailingComma(lines[previous.index] ?? "");
-      }
-      const trailing = target.lineOffset < table.lines.length ? "," : "";
-      lines.splice(insertAt, 0, `${table.rowIndent}${literal}${trailing}`);
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `source-preserving insert_dataset_row does not support ${format} datasets`, op);
-  }
-  function applySrcDeleteDatasetRow(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isDatasetDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
-    }
-    const lines = source.split("\n");
-    const format = datasetFormat(node);
-    if (format === "csv" || format === "tsv") {
-      const delimiter = format === "tsv" ? "	" : ",";
-      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
-      const target = deleteDatasetRow(table, op);
-      const sourceLine = table.lines[target.lineOffset + 1];
-      if (!sourceLine) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
-      lines.splice(sourceLine.index, 1);
-      return lines.join("\n");
-    }
-    if (format === "yaml") {
-      const table = sourceYamlDatasetRows(lines, start, end, node, op);
-      const deletingLast = table.rows.length === 1;
-      const target = deleteDatasetRow(table, op);
-      const sourceLine = table.lines[target.lineOffset];
-      if (!sourceLine) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
-      if (deletingLast) {
-        lines[table.rowsLineIndex] = rewriteYamlRowsLineAsEmpty(lines[table.rowsLineIndex] ?? "", op);
-      }
-      lines.splice(sourceLine.index, 1);
-      return lines.join("\n");
-    }
-    if (format === "json") {
-      const table = sourceJsonDatasetRows(lines, start, end, node, op);
-      if (table.sourceShape === "records") {
-        const deletingLast2 = op.row === table.rows.length - 1;
-        const target2 = deleteDatasetRow(table, op);
-        const sourceRow = table.lines[target2.lineOffset];
-        if (!sourceRow) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
-        lines.splice(sourceRow.start, sourceRow.end - sourceRow.start + 1);
-        if (deletingLast2 && table.lines.length > 1) {
-          const previous = table.lines[target2.lineOffset - 1];
-          if (previous) lines[previous.end] = removeJsonTrailingComma(lines[previous.end] ?? "");
-        }
-        return lines.join("\n");
-      }
-      const deletingLast = op.row === table.rows.length - 1;
-      const target = deleteDatasetRow(table, op);
-      const sourceLine = table.lines[target.lineOffset];
-      if (!sourceLine) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
-      lines.splice(sourceLine.index, 1);
-      if (deletingLast && table.lines.length > 1) {
-        const previous = table.lines[target.lineOffset - 1];
-        if (previous) {
-          const previousIndex = previous.index > sourceLine.index ? previous.index - 1 : previous.index;
-          lines[previousIndex] = removeJsonTrailingComma(lines[previousIndex] ?? "");
-        }
-      }
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `source-preserving delete_dataset_row does not support ${format} datasets`, op);
-  }
-  function applySrcInsertDatasetColumn(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isDatasetDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
-    }
-    const lines = source.split("\n");
-    const format = datasetFormat(node);
-    if (format === "csv" || format === "tsv") {
-      const delimiter = format === "tsv" ? "	" : ",";
-      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
-      insertDatasetColumn(table, op);
-      rewriteSourceDelimitedDatasetRows(lines, table, delimiter, op);
-      return lines.join("\n");
-    }
-    if (format === "yaml") {
-      const table = sourceYamlDatasetRows(lines, start, end, node, op);
-      const target = insertDatasetColumn(table, op);
-      rewriteSourceYamlDatasetRows(lines, table);
-      insertSourceYamlSchemaLine(lines, table, target.column, op.header, inferDatasetType(target.values.map(datasetScalarText)), op);
-      return lines.join("\n");
-    }
-    if (format === "json") {
-      const table = sourceJsonDatasetRows(lines, start, end, node, op);
-      if (table.sourceShape === "records") {
-        insertDatasetColumn(table, op);
-        rewriteSourceJsonRecordDatasetRows(lines, table);
-        return lines.join("\n");
-      }
-      if (table.sourceShape !== "object") {
-        throw new PatchError("invalid_content", `source-preserving insert_dataset_column requires JSON columns in the dataset body`, op);
-      }
-      insertDatasetColumn(table, op);
-      rewriteSourceJsonColumnsLine(lines, table, op);
-      rewriteSourceJsonArrayDatasetRows(lines, table);
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `source-preserving insert_dataset_column does not support ${format} datasets`, op);
-  }
-  function applySrcDeleteDatasetColumn(source, op) {
-    const { node, start, end } = locate(source, op.id, op);
-    if (!isDatasetDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
-    }
-    const lines = source.split("\n");
-    const format = datasetFormat(node);
-    if (format === "csv" || format === "tsv") {
-      const delimiter = format === "tsv" ? "	" : ",";
-      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
-      deleteDatasetColumn(table, op);
-      rewriteSourceDelimitedDatasetRows(lines, table, delimiter, op);
-      return lines.join("\n");
-    }
-    if (format === "yaml") {
-      const table = sourceYamlDatasetRows(lines, start, end, node, op);
-      const target = deleteDatasetColumn(table, op);
-      rewriteSourceYamlDatasetRows(lines, table);
-      deleteSourceYamlSchemaLine(lines, table, target.header, op);
-      return lines.join("\n");
-    }
-    if (format === "json") {
-      const table = sourceJsonDatasetRows(lines, start, end, node, op);
-      if (table.sourceShape === "records") {
-        deleteDatasetColumn(table, op);
-        rewriteSourceJsonRecordDatasetRows(lines, table);
-        return lines.join("\n");
-      }
-      if (table.sourceShape !== "object") {
-        throw new PatchError("invalid_content", `source-preserving delete_dataset_column requires JSON columns in the dataset body`, op);
-      }
-      deleteDatasetColumn(table, op);
-      rewriteSourceJsonColumnsLine(lines, table, op);
-      rewriteSourceJsonArrayDatasetRows(lines, table);
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `source-preserving delete_dataset_column does not support ${format} datasets`, op);
-  }
-  function rewriteSourceTableRows(lines, table) {
-    const rows = allTableRows(table);
-    for (let i = 0; i < table.lines.length; i++) {
-      const sourceLine = table.lines[i];
-      const row = rows[i];
-      if (row) lines[sourceLine.index] = serializePipeRow(row, sourceLine.indent);
-    }
-  }
-  function rewriteSourceDelimitedDatasetRows(lines, table, delimiter, op) {
-    const rows = [table.columns, ...table.rows.map((row) => row.map(datasetScalarText))];
-    if (rows.some((row) => row.some((cell) => /[\r\n]/.test(cell)))) {
-      throw new PatchError("invalid_content", `dataset cell value must be a single line`, op);
-    }
-    for (let i = 0; i < table.lines.length; i++) {
-      const sourceLine = table.lines[i];
-      const row = rows[i];
-      if (row) lines[sourceLine.index] = `${sourceLine.indent}${serializeDelimitedRow(row, delimiter)}`;
-    }
-  }
-  function rewriteSourceYamlDatasetRows(lines, table) {
-    for (let i = 0; i < table.lines.length; i++) {
-      const sourceLine = table.lines[i];
-      const row = table.rows[i];
-      if (row) lines[sourceLine.index] = `${sourceLine.indent}- ${serializeYamlFlowRow(row)}${sourceLine.trailing}`;
-    }
-  }
-  function insertSourceYamlSchemaLine(lines, table, column, header, schemaValue, op) {
-    if (table.schemaLineIndex === void 0) {
-      throw new PatchError("invalid_content", `source-preserving insert_dataset_column requires a YAML schema block`, op);
-    }
-    const indent = yamlSchemaIndent(table);
-    const insertAt = yamlSchemaInsertLineIndex(table, column);
-    lines.splice(insertAt, 0, `${indent}${header}: ${schemaValue}`);
-  }
-  function deleteSourceYamlSchemaLine(lines, table, header, op) {
-    const sourceLine = table.schemaLines.get(header);
-    if (!sourceLine) {
-      throw new PatchError("invalid_content", `source-preserving delete_dataset_column could not map YAML schema column "${header}"`, op);
-    }
-    lines.splice(sourceLine.index, 1);
-  }
-  function yamlSchemaIndent(table) {
-    const sourceLine = table.schemaOrder[0];
-    return sourceLine?.indent ?? `${table.schemaKeyIndent}  `;
-  }
-  function yamlSchemaInsertLineIndex(table, column) {
-    const existingColumn = table.columns[column];
-    const existing = existingColumn ? table.schemaLines.get(existingColumn) : void 0;
-    if (existing) return existing.index;
-    const previousColumn = table.columns[column - 1];
-    const previous = previousColumn ? table.schemaLines.get(previousColumn) : void 0;
-    if (previous) return previous.index + 1;
-    return (table.schemaLineIndex ?? table.rowsLineIndex) + 1;
-  }
-  function rewriteSourceJsonColumnsLine(lines, table, op) {
-    if (!table.columnsLine) {
-      throw new PatchError("invalid_content", `source-preserving dataset column edits require a one-line JSON columns array`, op);
-    }
-    lines[table.columnsLine.index] = `${table.columnsLine.indent}${table.columnsLine.prefix}${JSON.stringify(table.columns)}${table.columnsLine.trailing}`;
-  }
-  function rewriteSourceJsonArrayDatasetRows(lines, table) {
-    for (let i = 0; i < table.lines.length; i++) {
-      const sourceLine = table.lines[i];
-      const row = table.rows[i];
-      if (row) lines[sourceLine.index] = `${sourceLine.indent}${JSON.stringify(row)}${sourceLine.trailing}`;
-    }
-  }
-  function rewriteSourceJsonRecordDatasetRows(lines, table) {
-    for (let i = table.lines.length - 1; i >= 0; i--) {
-      const sourceRow = table.lines[i];
-      const row = table.rows[i];
-      if (!row) continue;
-      const trailing = /\},?\s*$/.test(lines[sourceRow.end] ?? "") && (lines[sourceRow.end] ?? "").trim().endsWith(",") ? "," : "";
-      lines.splice(sourceRow.start, sourceRow.end - sourceRow.start + 1, ...serializeJsonRecordRow(table.columns, row, sourceRow, trailing));
-    }
-  }
-  function tableRowIndent(table, lineOffset) {
-    const sourceLine = table.lines[lineOffset] ?? table.lines[Math.max(0, lineOffset - 1)] ?? table.lines[0];
-    return sourceLine?.indent ?? "";
-  }
-  function tableInsertLineIndex(table, lineOffset, end) {
-    const existing = table.lines[lineOffset];
-    if (existing) return existing.index;
-    const previous = table.lines[Math.max(0, lineOffset - 1)];
-    return previous ? previous.index + 1 : end - 1;
-  }
-  function delimitedDatasetRowIndent(table, row) {
-    const sourceLine = table.lines[row + 1] ?? table.lines[row] ?? table.lines[0];
-    return sourceLine?.indent ?? "";
-  }
-  function delimitedDatasetInsertLineIndex(table, row, end) {
-    const existing = table.lines[row + 1];
-    if (existing) return existing.index;
-    const previous = table.lines[row] ?? table.lines[0];
-    return previous ? previous.index + 1 : end - 1;
-  }
-  function yamlDatasetRowIndent(table, row) {
-    const sourceLine = table.lines[row] ?? table.lines[Math.max(0, row - 1)] ?? table.lines[0];
-    return sourceLine?.indent ?? `${table.rowsKeyIndent}  `;
-  }
-  function yamlDatasetInsertLineIndex(table, row, end) {
-    const existing = table.lines[row];
-    if (existing) return existing.index;
-    const previous = table.lines[Math.max(0, row - 1)];
-    if (previous) return previous.index + 1;
-    return table.rowsLineIndex >= 0 ? table.rowsLineIndex + 1 : end - 1;
-  }
-  function rewriteYamlRowsLineAsBlock(line, op) {
-    const next = line.replace(
-      /^(\s*rows\s*:)\s*\[\]\s*(#.*)?\s*$/,
-      (_match, prefix, comment) => `${prefix}${comment ? ` ${comment}` : ""}`
-    );
-    if (next === line && /\[\]/.test(line)) return next;
-    if (next === line && !/^\s*rows\s*:\s*(?:#.*)?$/.test(line)) {
-      throw new PatchError("invalid_content", `source-preserving insert_dataset_row requires a block YAML rows array`, op);
-    }
-    return next;
-  }
-  function rewriteYamlRowsLineAsEmpty(line, op) {
-    const next = line.replace(
-      /^(\s*rows\s*:)(?:\s*(#.*))?\s*$/,
-      (_match, prefix, comment) => `${prefix} []${comment ? ` ${comment}` : ""}`
-    );
-    if (next === line) {
-      throw new PatchError("invalid_content", `source-preserving delete_dataset_row could not rewrite YAML rows as empty`, op);
-    }
-    return next;
-  }
-  function sourceDelimitedDatasetRows(sourceLines, start, end, delimiter, op) {
-    const lines = [];
-    const rows = [];
-    for (let i = start; i < end - 1; i++) {
-      const line = sourceLines[i] ?? "";
-      if (!line.trim()) continue;
-      lines.push({ index: i, indent: line.match(/^\s*/)?.[0] ?? "" });
-      rows.push(splitDelimitedRow(line.trim(), delimiter));
-    }
-    if (rows.length < 1) throw new PatchError("invalid_content", `dataset must have a header row`, op);
-    return { columns: rows[0], rows: rows.slice(1), lines };
-  }
-  function sourceYamlDatasetRows(sourceLines, start, end, node, op) {
-    const body = sourceLines.slice(start, end - 1).join("\n");
-    const parsed = loadYamlDatasetText(body, node.id, op);
-    const rows = parsed.rows;
-    if (!Array.isArray(rows)) throw new PatchError("invalid_content", `dataset "${node.id ?? "?"}" has no rows array`, op);
-    const lines = [];
-    const parsedRows = [];
-    let insideRows = false;
-    let rowsIndent = -1;
-    let rowsLineIndex = -1;
-    let rowsKeyIndent = "";
-    for (let i = start; i < end - 1; i++) {
-      const line = sourceLines[i] ?? "";
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const indent = line.match(/^\s*/)?.[0] ?? "";
-      if (!insideRows) {
-        const rowsMatch = line.match(/^(\s*)rows\s*:/);
-        if (rowsMatch) {
-          insideRows = true;
-          rowsIndent = indent.length;
-          rowsLineIndex = i;
-          rowsKeyIndent = rowsMatch[1] ?? "";
-        }
-        continue;
-      }
-      if (indent.length <= rowsIndent && !trimmed.startsWith("-")) break;
-      const match = line.match(/^(\s*)-\s*(\[.*\])(\s+#.*)?\s*$/);
-      if (!match) {
-        if (trimmed.startsWith("-")) {
-          throw new PatchError("invalid_content", `source-preserving dataset row edits require inline YAML row arrays`, op);
-        }
-        continue;
-      }
-      let row;
-      try {
-        row = yaml.load(match[2] ?? "");
-      } catch {
-        throw new PatchError("invalid_content", `dataset row is not valid YAML`, op);
-      }
-      if (!Array.isArray(row)) {
-        throw new PatchError("invalid_content", `source-preserving dataset row edits require inline YAML row arrays`, op);
-      }
-      lines.push({ index: i, indent: match[1] ?? "", trailing: match[3] ?? "" });
-      parsedRows.push([...row]);
-    }
-    if (parsedRows.length !== rows.filter(Array.isArray).length) {
-      throw new PatchError("invalid_content", `source-preserving dataset row edits could not map every YAML row`, op);
-    }
-    if (rowsLineIndex === -1) {
-      throw new PatchError("invalid_content", `source-preserving dataset row edits could not locate YAML rows`, op);
-    }
-    const schemaSource = sourceYamlSchemaLines(sourceLines, start, end);
-    return {
-      columns: datasetColumnsFromYaml(node, parsed, rows),
-      rows: parsedRows,
-      schema: recordValue(parsed.schema),
-      lines,
-      rowsLineIndex,
-      rowsKeyIndent,
-      ...schemaSource
-    };
-  }
-  function sourceYamlSchemaLines(sourceLines, start, end) {
-    const schemaLines = /* @__PURE__ */ new Map();
-    const schemaOrder = [];
-    let schemaLineIndex;
-    let schemaIndent = -1;
-    let schemaKeyIndent = "";
-    for (let i = start; i < end - 1; i++) {
-      const line = sourceLines[i] ?? "";
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const indent = line.match(/^\s*/)?.[0] ?? "";
-      if (schemaLineIndex === void 0) {
-        const schemaMatch = line.match(/^(\s*)schema\s*:/);
-        if (schemaMatch) {
-          schemaLineIndex = i;
-          schemaIndent = indent.length;
-          schemaKeyIndent = schemaMatch[1] ?? "";
-        }
-        continue;
-      }
-      if (indent.length <= schemaIndent && /^[A-Za-z_][\w-]*\s*:/.test(trimmed)) break;
-      const propertyMatch = line.match(/^(\s*)([A-Za-z_][\w-]*)\s*:/);
-      if (!propertyMatch || indent.length <= schemaIndent) continue;
-      const key = propertyMatch[2] ?? "";
-      const sourceLine = { key, index: i, indent: propertyMatch[1] ?? "" };
-      schemaLines.set(key, { index: i, indent: sourceLine.indent });
-      schemaOrder.push(sourceLine);
-    }
-    return { schemaLineIndex, schemaKeyIndent, schemaLines, schemaOrder };
-  }
-  function serializeYamlFlowRow(cells) {
-    return yaml.dump(cells, { flowLevel: 0, lineWidth: -1, noRefs: true }).trim();
-  }
-  function sourceJsonDatasetRows(sourceLines, start, end, node, op) {
-    const body = sourceLines.slice(start, end - 1).join("\n");
-    const table = parseJsonDatasetText(body, node, op);
-    if (table.sourceShape === "records") {
-      const sourceRows2 = sourceJsonRecordRows(sourceLines, start, end, table.columns, op);
-      if (sourceRows2.lines.length !== table.rows.length) {
-        throw new PatchError("invalid_content", `source-preserving update_dataset_cell could not map every JSON record row`, op);
-      }
-      return { ...table, sourceShape: "records", ...sourceRows2 };
-    }
-    const sourceRows = sourceJsonArrayRows(sourceLines, start, end, table.sourceShape === "object", op);
-    if (sourceRows.lines.length !== table.rows.length) {
-      throw new PatchError("invalid_content", `source-preserving update_dataset_cell could not map every JSON row array`, op);
-    }
-    return { ...table, sourceShape: table.sourceShape === "object" ? "object" : "arrays", ...sourceRows };
-  }
-  function sourceJsonArrayRows(sourceLines, start, end, objectRows, op) {
-    const bounds = sourceJsonArrayBounds(sourceLines, start, end, objectRows, op);
-    const out = [];
-    for (let i = bounds.rowsStartIndex + 1; i < bounds.rowsEndIndex; i++) {
-      const line = sourceLines[i] ?? "";
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("[") || trimmed === "[" || trimmed === "],") continue;
-      const trailing = trimmed.endsWith(",") ? "," : "";
-      const candidate = trailing ? trimmed.slice(0, -1).trimEnd() : trimmed;
-      let parsed;
-      try {
-        parsed = JSON.parse(candidate);
-      } catch {
-        continue;
-      }
-      if (!Array.isArray(parsed)) continue;
-      out.push({ index: i, indent: line.match(/^\s*/)?.[0] ?? "", trailing });
-    }
-    const rowIndent = out[0]?.indent ?? bounds.rowIndent;
-    return { lines: out, rowsStartIndex: bounds.rowsStartIndex, rowsEndIndex: bounds.rowsEndIndex, rowIndent, inlineEmptyRowsLine: bounds.inlineEmptyRowsLine, columnsLine: bounds.columnsLine };
-  }
-  function sourceJsonArrayBounds(sourceLines, start, end, objectRows, op) {
-    let columnsLine;
-    for (let i = start; i < end - 1; i++) {
-      const line = sourceLines[i] ?? "";
-      const trimmed = line.trim();
-      const indent = line.match(/^\s*/)?.[0] ?? "";
-      if (objectRows) {
-        const columnsMatch = line.match(/^(\s*)("columns"\s*:\s*)(\[.*\])(\s*,?)\s*$/);
-        if (columnsMatch) {
-          try {
-            if (Array.isArray(JSON.parse(columnsMatch[3] ?? ""))) {
-              columnsLine = {
-                index: i,
-                indent: columnsMatch[1] ?? "",
-                prefix: columnsMatch[2] ?? '"columns": ',
-                trailing: columnsMatch[4] ?? ""
-              };
-            }
-          } catch {
-          }
-        }
-        const inlineEmpty = line.match(/^(\s*)("rows"\s*:\s*)\[\]\s*(,?)\s*$/);
-        if (inlineEmpty) {
-          return {
-            rowsStartIndex: i,
-            rowsEndIndex: i,
-            rowIndent: `${indent}  `,
-            columnsLine,
-            inlineEmptyRowsLine: {
-              index: i,
-              indent: inlineEmpty[1] ?? "",
-              prefix: inlineEmpty[2] ?? '"rows": ',
-              trailing: inlineEmpty[3] ?? ""
-            }
-          };
-        }
-        if (!/^"rows"\s*:\s*\[\s*$/.test(trimmed)) continue;
-      } else if (trimmed !== "[") {
-        continue;
-      }
-      for (let close = i + 1; close < end - 1; close++) {
-        const closeLine = sourceLines[close] ?? "";
-        if (/^\s*\]\s*,?\s*$/.test(closeLine)) {
-          return {
-            rowsStartIndex: i,
-            rowsEndIndex: close,
-            rowIndent: `${indent}  `,
-            columnsLine
-          };
-        }
-      }
-      break;
-    }
-    throw new PatchError("invalid_content", `source-preserving dataset row edits require a mappable JSON row array`, op);
-  }
-  function jsonDatasetInsertLineIndex(table, row) {
-    const existing = table.lines[row];
-    if (existing) return existing.index;
-    const previous = table.lines[Math.max(0, row - 1)];
-    if (previous) return previous.index + 1;
-    return table.rowsEndIndex;
-  }
-  function ensureJsonTrailingComma(line) {
-    return /,\s*$/.test(line) ? line : line.replace(/\s*$/, ",");
-  }
-  function removeJsonTrailingComma(line) {
-    return line.replace(/,\s*$/, "");
-  }
-  function sourceJsonRecordRows(sourceLines, start, end, columns, op) {
-    const bounds = sourceJsonRecordArrayBounds(sourceLines, start, end, op);
-    const out = [];
-    for (let i = bounds.rowsStartIndex + 1; i < bounds.rowsEndIndex; i++) {
-      const line = sourceLines[i] ?? "";
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("{")) continue;
-      const block = jsonObjectBlock(sourceLines, i, bounds.rowsEndIndex + 1);
-      if (!block) continue;
-      const candidate = stripJsonTrailingComma(block.lines.join("\n"));
-      let parsed;
-      try {
-        parsed = JSON.parse(candidate);
-      } catch {
-        continue;
-      }
-      if (!recordValue(parsed)) continue;
-      const propertyLines = /* @__PURE__ */ new Map();
-      if (block.lines.length === 1) {
-        for (const column of columns) {
-          if (jsonLineHasProperty(block.lines[0] ?? "", column)) propertyLines.set(column, i);
-        }
-      } else {
-        for (let offset = 0; offset < block.lines.length; offset++) {
-          const sourceLine = block.lines[offset] ?? "";
-          for (const column of columns) {
-            if (jsonLineHasProperty(sourceLine, column)) propertyLines.set(column, i + offset);
-          }
-        }
-      }
-      const indent = line.match(/^\s*/)?.[0] ?? "";
-      const propertyIndent = jsonRecordPropertyIndent(block.lines, indent);
-      if (propertyLines.size > 0) {
-        out.push({
-          propertyLines,
-          start: i,
-          end: block.end,
-          indent,
-          propertyIndent,
-          multiline: block.lines.length > 1
-        });
-      }
-      i = block.end;
-    }
-    if (out.length === 0) {
-      throw new PatchError("invalid_content", `source-preserving update_dataset_cell requires mappable JSON record rows`, op);
-    }
-    return {
-      lines: out,
-      rowsStartIndex: bounds.rowsStartIndex,
-      rowsEndIndex: bounds.rowsEndIndex,
-      rowIndent: out[0]?.indent ?? bounds.rowIndent,
-      propertyIndent: out[0]?.propertyIndent ?? `${bounds.rowIndent}  `
-    };
-  }
-  function sourceJsonRecordArrayBounds(sourceLines, start, end, op) {
-    for (let i = start; i < end - 1; i++) {
-      const line = sourceLines[i] ?? "";
-      const trimmed = line.trim();
-      if (trimmed !== "[") continue;
-      const indent = line.match(/^\s*/)?.[0] ?? "";
-      for (let close = i + 1; close < end - 1; close++) {
-        const closeLine = sourceLines[close] ?? "";
-        if (/^\s*\]\s*$/.test(closeLine)) {
-          return { rowsStartIndex: i, rowsEndIndex: close, rowIndent: `${indent}  ` };
-        }
-      }
-      break;
-    }
-    throw new PatchError("invalid_content", `source-preserving dataset row edits require a mappable JSON record array`, op);
-  }
-  function jsonRecordPropertyIndent(lines, rowIndent) {
-    for (const line of lines.slice(1, -1)) {
-      if (jsonLineHasAnyProperty(line)) return line.match(/^\s*/)?.[0] ?? `${rowIndent}  `;
-    }
-    return `${rowIndent}  `;
-  }
-  function jsonLineHasAnyProperty(line) {
-    return /"(?:(?:\\.)|[^"\\])*"\s*:/.test(line);
-  }
-  function jsonRecordDatasetInsertLineIndex(table, row) {
-    const existing = table.lines[row];
-    if (existing) return existing.start;
-    const previous = table.lines[Math.max(0, row - 1)];
-    if (previous) return previous.end + 1;
-    return table.rowsEndIndex;
-  }
-  function jsonRecordReferenceRow(table, row) {
-    const sourceRow = table.lines[row] ?? table.lines[Math.max(0, row - 1)] ?? table.lines[0];
-    if (!sourceRow) {
-      return {
-        propertyLines: /* @__PURE__ */ new Map(),
-        start: table.rowsStartIndex,
-        end: table.rowsStartIndex,
-        indent: table.rowIndent,
-        propertyIndent: table.propertyIndent,
-        multiline: false
-      };
-    }
-    return sourceRow;
-  }
-  function serializeJsonRecordRow(columns, cells, reference, trailing) {
-    const pairs2 = columns.map((column, index) => [column, cells[index] ?? null]);
-    if (!reference.multiline) {
-      const fields = pairs2.map(([key, value]) => `${JSON.stringify(key)}: ${JSON.stringify(value)}`).join(", ");
-      return [`${reference.indent}{ ${fields} }${trailing}`];
-    }
-    const lines = [`${reference.indent}{`];
-    pairs2.forEach(([key, value], index) => {
-      const comma = index === pairs2.length - 1 ? "" : ",";
-      lines.push(`${reference.propertyIndent}${JSON.stringify(key)}: ${JSON.stringify(value)}${comma}`);
-    });
-    lines.push(`${reference.indent}}${trailing}`);
-    return lines;
-  }
-  function jsonObjectBlock(sourceLines, startIndex, end) {
-    const first = sourceLines[startIndex] ?? "";
-    const firstTrimmed = first.trim();
-    if (firstTrimmed.includes("}") && stripJsonTrailingComma(firstTrimmed).endsWith("}")) {
-      return { end: startIndex, lines: [first] };
-    }
-    const lines = [];
-    for (let i = startIndex; i < end - 1; i++) {
-      const line = sourceLines[i] ?? "";
-      lines.push(line);
-      if (line.trim().startsWith("}")) return { end: i, lines };
-    }
-    return void 0;
-  }
-  function stripJsonTrailingComma(text) {
-    return text.replace(/,\s*$/, "");
-  }
-  function jsonLineHasProperty(line, key) {
-    return new RegExp(`${escapeRegExp(JSON.stringify(key))}\\s*:`).test(line);
-  }
-  function rewriteJsonPropertyLine(line, key, value, op) {
-    const literal = JSON.stringify(value ?? null);
-    const valuePattern = `"(?:(?:\\\\.)|[^"\\\\])*"|true|false|null|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?`;
-    const pattern = new RegExp(`(${escapeRegExp(JSON.stringify(key))}\\s*:\\s*)(?:${valuePattern})(\\s*(?:,|}|$))`);
-    const next = line.replace(pattern, (_match, prefix, suffix) => `${prefix}${literal}${suffix}`);
-    if (next === line) {
-      throw new PatchError("invalid_content", `source-preserving update_dataset_cell could not rewrite JSON property "${key}"`, op);
-    }
-    return next;
-  }
-  function escapeRegExp(value) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-  function applySrcMove(source, op) {
-    const doc = parse(source);
-    const node = findById(doc, op.id);
-    if (!node) throw new PatchError("target_missing", `block "${op.id}" not found`, op);
-    if (!isDirective(node)) {
-      throw new PatchError("invalid_content", `block "${op.id}" is not a directive block`, op);
-    }
-    const parent = findById(doc, op.parent);
-    if (!parent) throw new PatchError("parent_missing", `parent "${op.parent}" not found`, op);
-    if (!hasChildren(parent)) {
-      throw new PatchError("parent_missing", `parent "${op.parent}" cannot have children`, op);
-    }
-    if (containsId(node, op.parent)) {
-      throw new PatchError("invalid_content", `cannot move "${op.id}" into itself or its descendants`, op);
-    }
-    const start = node.pos?.line;
-    const end = node.endLine;
-    if (!start || !end) throw new Error(`block "${op.id}" has no source span`);
-    const lines = source.split("\n");
-    const sourceDepth = directiveFenceDepth(node, lines);
-    const targetDepth = parent.type === "directive" ? directiveFenceDepth(parent, lines) + 1 : 2;
-    const content = normalizeDirectiveFenceDepth(
-      lines.slice(start - 1, end).join("\n"),
-      sourceDepth,
-      targetDepth
-    );
-    let deleted = applySrcDelete(source, { op: "delete_block", id: op.id });
-    if (start === 1 && deleted.startsWith("\n")) deleted = deleted.slice(1);
-    return applySrcAdd(deleted, {
-      op: "add_block",
-      parent: op.parent,
-      content,
-      ...op.position !== void 0 ? { position: op.position } : {}
-    });
-  }
-  function directiveFenceDepth(node, lines) {
-    const start = node.pos?.line;
-    const line = start ? lines[start - 1] : void 0;
-    return line?.match(/^\s*(:{2,})/)?.[1]?.length ?? 2;
-  }
-  function normalizeDirectiveFenceDepth(content, from, to) {
-    if (from === to) return content;
-    const delta = to - from;
-    let inFence = false;
-    return content.split("\n").map((line) => {
-      if (/^\s*```/.test(line)) {
-        inFence = !inFence;
-        return line;
-      }
-      if (inFence) return line;
-      const match = line.match(/^(\s*)(:{2,})(.*)$/);
-      if (!match) return line;
-      const rest = match[3] ?? "";
-      if (!/^\s*(?:[a-zA-Z_]|$)/.test(rest)) return line;
-      const depth = match[2].length;
-      if (depth < from) return line;
-      return `${match[1] ?? ""}${":".repeat(Math.max(2, depth + delta))}${rest}`;
-    }).join("\n");
-  }
-  function applySrcRenameId(source, op) {
-    const doc = parse(source);
-    const node = findById(doc, op.from);
-    if (!node) throw new PatchError("target_missing", `block "${op.from}" not found`, op);
-    if (findById(doc, op.to)) {
-      throw new PatchError("id_conflict", `target id "${op.to}" already exists`, op);
-    }
-    const lines = source.split("\n");
-    const startLine = node.pos?.line;
-    if (!startLine) throw new Error(`block has no source span`);
-    const lineIdx = startLine - 1;
-    const open = lines[lineIdx] ?? "";
-    if (isDirective(node)) {
-      lines[lineIdx] = rewriteOpenLineAttr(open, "id", op.to, op);
-    } else if (node.type === "section") {
-      lines[lineIdx] = rewriteHeadingId(open, op.to);
-    }
-    let result = lines.join("\n");
-    result = rewriteWikilinksInSource(result, op.from, op.to);
-    result = rewriteAttrReferences(result, op.from, op.to);
-    return result;
-  }
-  var REF_ATTRS = /* @__PURE__ */ new Set(["for", "parent", "dataset", "block", "ref"]);
-  function rewriteAttrReferences(source, from, to) {
-    const escFrom = escapeRegex(from);
-    return source.split("\n").map((line) => {
-      if (!/^:{2,}\w/.test(line.trim())) return line;
-      let out = line;
-      for (const k of REF_ATTRS) {
-        const quoted = new RegExp(`(\\b${k}=)("|')${escFrom}\\2`, "g");
-        out = out.replace(quoted, `$1$2${to}$2`);
-        const bare = new RegExp(`(\\b${k}=)${escFrom}(?=[\\s}])`, "g");
-        out = out.replace(bare, `$1"${to}"`);
-      }
-      return out;
-    }).join("\n");
-  }
-  function rewriteWikilinksInSource(source, from, to) {
-    return source.replace(
-      new RegExp(`\\[\\[${escapeRegex(from)}\\]\\]`, "g"),
-      `[[${to}]]`
-    );
-  }
-  function escapeRegex(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-  var ATTR_TOKEN_RE = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s}]+)))?/g;
-  function rewriteOpenLineAttr(line, key, value, op) {
-    const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)(\s*\{)?(.*?)(\}\s*)?$/);
-    if (!openMatch) {
-      throw new PatchError("invalid_content", `malformed open line for "${op.id}"`, op);
-    }
-    const head = openMatch[1] ?? "";
-    const inner = openMatch[3] ?? "";
-    const trailing = (line.match(/\s*$/) ?? [""])[0];
-    const serialized = serializeOneAttr(key, value);
-    let replaced = false;
-    const rewrittenInner = inner.replace(ATTR_TOKEN_RE, (m, k) => {
-      if (k !== key) return m;
-      replaced = true;
-      return value === false && typeof value === "boolean" ? `${key}=false` : serialized;
-    });
-    let next;
-    if (replaced) {
-      next = rewrittenInner;
-    } else {
-      const trimmed = inner.trim();
-      next = trimmed ? `${trimmed} ${serialized}` : serialized;
-    }
-    return `${head}{${next.trim()}}${trailing}`.replace(/\s+$/, "") + (line.endsWith("\n") ? "\n" : "");
-  }
-  function rewriteOpenLineRemoveAttr(line, key, op) {
-    const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)(\s*\{)?(.*?)(\}\s*)?$/);
-    if (!openMatch) {
-      throw new PatchError("invalid_content", `malformed open line for "${op.id}"`, op);
-    }
-    const head = openMatch[1] ?? "";
-    const inner = openMatch[3] ?? "";
-    const trailing = (line.match(/\s*$/) ?? [""])[0];
-    let removed = false;
-    const kept = [];
-    inner.replace(ATTR_TOKEN_RE, (m, k) => {
-      if (k !== key) {
-        kept.push(m);
-        return m;
-      }
-      removed = true;
-      return "";
-    });
-    const rewrittenInner = kept.join(" ").trim();
-    if (!removed) return line;
-    if (!rewrittenInner) {
-      return `${head}${trailing}`.replace(/\s+$/, "") + (line.endsWith("\n") ? "\n" : "");
-    }
-    return `${head}{${rewrittenInner}}${trailing}`.replace(/\s+$/, "") + (line.endsWith("\n") ? "\n" : "");
-  }
-  function rewriteCommentResolutionAttrs(line, op) {
-    let next = rewriteOpenLineAttr(line, "status", "resolved", op);
-    if (op.resolved_by) next = rewriteOpenLineAttr(next, "resolved_by", op.resolved_by, op);
-    if (op.resolved_at) next = rewriteOpenLineAttr(next, "resolved_at", op.resolved_at, op);
-    return next;
-  }
-  function rewriteHeadingId(line, newId) {
-    const m = line.match(/^(#+\s+.+?)(?:\s+\{([^}]*)\})?\s*$/);
-    if (!m) return line;
-    const head = m[1] ?? "";
-    const attrsInner = (m[2] ?? "").trim();
-    if (!attrsInner) return `${head} {id="${newId}"}`;
-    let replaced = false;
-    const updated = attrsInner.replace(ATTR_TOKEN_RE, (full, k) => {
-      if (k !== "id") return full;
-      replaced = true;
-      return `id="${newId}"`;
-    });
-    if (!replaced) return `${head} {${attrsInner} id="${newId}"}`;
-    return `${head} {${updated.trim()}}`;
-  }
-  function rewriteHeadingTitle(line, newTitle, stableId) {
-    const m = line.match(/^(#+)(\s+)(.*?)(?:\s+\{([^}]*)\})?\s*$/);
-    if (!m) return line;
-    const hashes = m[1] ?? "#";
-    const space = m[2] ?? " ";
-    const attrsInner = (m[4] ?? "").trim();
-    const needsExplicitId = stableId && stableId.length > 0 && slugify(newTitle) !== stableId;
-    if (!attrsInner) {
-      return needsExplicitId ? `${hashes}${space}${newTitle} {id="${stableId}"}` : `${hashes}${space}${newTitle}`;
-    }
-    let hasId = false;
-    attrsInner.replace(ATTR_TOKEN_RE, (_full, k) => {
-      if (k === "id") hasId = true;
-      return _full;
-    });
-    const attrs = needsExplicitId && !hasId ? `${attrsInner} id="${stableId}"` : attrsInner;
-    return `${hashes}${space}${newTitle} {${attrs.trim()}}`;
-  }
-  function serializeCommentBlock(op) {
-    if (!op.content.trim()) {
-      throw new PatchError("invalid_content", `comment content must not be empty`, op);
-    }
-    const attrs = Object.entries(commentAttrs(op)).map(([key, value]) => serializeOneAttr(key, value)).join(" ");
-    const content = op.content.replace(/\n+$/, "");
-    const source = `::comment{${attrs}}
-${content}
-::`;
-    parseFragment(source, op);
-    return source;
-  }
-  function serializeNoteBlock(op) {
-    validateNoteOp(op);
-    const attrs = Object.entries(noteAttrs(op)).map(([key, value]) => serializeOneAttr(key, value)).join(" ");
-    const content = op.content.replace(/\n+$/, "");
-    const source = `::${op.op === "add_footnote" ? "footnote" : "endnote"}{${attrs}}
-${content}
-::`;
-    parseFragment(source, op);
-    return source;
-  }
-  function serializeChangeRequestBlock(op) {
-    validateChangeRequestOp(op);
-    const attrs = Object.entries(changeRequestAttrs(op)).map(([key, value]) => serializeOneAttr(key, value)).join(" ");
-    const content = op.content?.replace(/\n+$/, "") ?? "";
-    const source = content ? `::change_request{${attrs}}
-${content}
-::` : `::change_request{${attrs}}
-::`;
-    parseFragment(source, op);
-    return source;
-  }
-  function serializeOneAttr(key, value) {
-    if (value === true) return key;
-    if (value === false) return `${key}=false`;
-    if (typeof value === "number") return `${key}=${value}`;
-    const s = String(value);
-    if (s.includes('"')) {
-      if (s.includes("'")) return `${key}="${s.replace(/"/g, '\\"')}"`;
-      return `${key}='${s}'`;
-    }
-    return `${key}="${s}"`;
-  }
-
   // src/formula.ts
   var FUNCTIONS = /* @__PURE__ */ new Set(["pow", "min", "max", "clamp", "round", "abs", "if"]);
   function parseFormula(source) {
@@ -6351,7 +4321,7 @@ ${content}
   }
   function bodyFieldText(node, key) {
     const body = node.body ?? "";
-    const pattern = new RegExp(`^\\s*${escapeRegExp2(key)}\\s*:`, "i");
+    const pattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*:`, "i");
     const line = body.split(/\r?\n/).find((candidate) => pattern.test(candidate));
     return line?.replace(pattern, "").trim() || void 0;
   }
@@ -6392,8 +4362,1089 @@ ${content}
     if (trackedId) seen.delete(trackedId);
     return value;
   }
-  function escapeRegExp2(value) {
+  function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  // src/validator.ts
+  var DEFAULT_STALE_DAYS = 365;
+  var PROFILES = {
+    minimal: /* @__PURE__ */ new Set([
+      "summary",
+      "abstract",
+      "callout",
+      "note",
+      "warning",
+      "tip",
+      "header",
+      "footer",
+      "page_setup",
+      "doc_protection",
+      "toc",
+      "figure",
+      "citation",
+      "footnote",
+      "endnote",
+      "bibliography",
+      "math",
+      "code",
+      "table",
+      "pagebreak"
+    ]),
+    technical: /* @__PURE__ */ new Set([
+      "summary",
+      "abstract",
+      "callout",
+      "note",
+      "warning",
+      "tip",
+      "hero",
+      "grid",
+      "card",
+      "columns",
+      "tabs",
+      "accordion",
+      "sidebar",
+      "button",
+      "api",
+      "endpoint",
+      "parameter",
+      "example",
+      "changelog",
+      "instruction",
+      "header",
+      "footer",
+      "page_setup",
+      "doc_protection",
+      "toc",
+      "pagebreak",
+      "figure",
+      "plot",
+      "plotly",
+      "diagram",
+      "dataset",
+      "query",
+      "code",
+      "code_cell",
+      "output",
+      "control",
+      "computed_metric",
+      "computed_plot",
+      "computed_table",
+      "export_button",
+      "agent_task",
+      "todo",
+      "citation",
+      "footnote",
+      "endnote",
+      "bibliography",
+      "math",
+      "table",
+      "html",
+      "svg",
+      "script"
+    ]),
+    research: /* @__PURE__ */ new Set([
+      "summary",
+      "abstract",
+      "callout",
+      "note",
+      "warning",
+      "tip",
+      "header",
+      "footer",
+      "page_setup",
+      "doc_protection",
+      "toc",
+      "claim",
+      "evidence",
+      "counterevidence",
+      "assumption",
+      "risk",
+      "hypothesis",
+      "result",
+      "limitation",
+      "open_question",
+      "decision",
+      "adr",
+      "dataset",
+      "query",
+      "plot",
+      "plotly",
+      "diagram",
+      "metric",
+      "control",
+      "computed_metric",
+      "computed_plot",
+      "computed_table",
+      "code",
+      "figure",
+      "agent_task",
+      "todo",
+      "instruction",
+      "review",
+      "comment",
+      "change_request",
+      "provenance",
+      "confidence",
+      "citation",
+      "footnote",
+      "endnote",
+      "bibliography",
+      "state_change",
+      "math",
+      "table",
+      "pagebreak"
+    ]),
+    memory: /* @__PURE__ */ new Set(["memory", "memory_index"])
+  };
+  var technicalProfile = PROFILES.technical;
+  var researchProfile = PROFILES.research;
+  var memoryProfile = PROFILES.memory;
+  var minimalProfile = PROFILES.minimal;
+  PROFILES["technical-docs"] = technicalProfile;
+  PROFILES["research-memo"] = researchProfile;
+  PROFILES["investment-thesis"] = researchProfile;
+  PROFILES["agent-memory"] = memoryProfile;
+  PROFILES.adr = /* @__PURE__ */ new Set([
+    ...minimalProfile,
+    "decision",
+    "adr",
+    "risk",
+    "open_question",
+    "assumption",
+    "evidence",
+    "counterevidence",
+    "comment",
+    "change_request",
+    "agent_task",
+    "todo",
+    "citation",
+    "state_change"
+  ]);
+  PROFILES.spec = /* @__PURE__ */ new Set([...technicalProfile, ...researchProfile]);
+  var MEMORY_TYPES = /* @__PURE__ */ new Set(["user", "feedback", "project", "reference"]);
+  var ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+  var KNOWN_PROFILES = Object.keys(PROFILES);
+  function validate(doc, options = {}) {
+    const requireEvidence = options.requireEvidenceForClaims !== false;
+    const metaStale = readPositiveNumber(doc.meta.stale_citation_days);
+    const staleDays = options.staleCitationDays ?? metaStale ?? DEFAULT_STALE_DAYS;
+    const now = options.now ?? /* @__PURE__ */ new Date();
+    const diagnostics = [];
+    const ids = /* @__PURE__ */ new Map();
+    const aliasIds = /* @__PURE__ */ new Set();
+    const claims = [];
+    const evidenceTargets = /* @__PURE__ */ new Set();
+    const referenced = /* @__PURE__ */ new Set();
+    const refSites = [];
+    const datasetIds = /* @__PURE__ */ new Map();
+    const datasetColumns = /* @__PURE__ */ new Map();
+    const controls = /* @__PURE__ */ new Map();
+    const computed = /* @__PURE__ */ new Map();
+    const computedNodes = [];
+    const adrNodes = [];
+    const aliasToNode = /* @__PURE__ */ new Map();
+    const declaredProfiles = readDeclaredProfiles(doc.meta, options.profiles);
+    const activeProfiles = new Set(declaredProfiles);
+    const profileSet = (() => {
+      if (declaredProfiles.length === 0) return void 0;
+      const union = /* @__PURE__ */ new Set();
+      let any = false;
+      for (const name of declaredProfiles) {
+        const set2 = PROFILES[name];
+        if (!set2) {
+          diagnostics.push({
+            severity: "warning",
+            code: "unknown-profile",
+            message: `Document declares unknown profile "${name}". Known: ${KNOWN_PROFILES.join(", ")}.`
+          });
+          continue;
+        }
+        any = true;
+        for (const directive of set2) union.add(directive);
+      }
+      return any ? union : void 0;
+    })();
+    const profileLabel = declaredProfiles.join("+");
+    const wikilinkRefs = /* @__PURE__ */ new Set();
+    const collectWikilinks = (text, node) => {
+      for (const link of extractWikilinks(text)) {
+        if (!isBlockReferenceWikilinkTarget(link.target)) continue;
+        referenced.add(link.target);
+        wikilinkRefs.add(link.target);
+        refSites.push({ target: link.target, node });
+      }
+    };
+    for (const node of walk(doc)) {
+      if (node.type === "paragraph" || node.type === "quote") collectWikilinks(node.content, node);
+      else if (node.type === "list_item") collectWikilinks(node.content, node);
+      else if (node.type === "section") collectWikilinks(node.title, node);
+      else if (node.type === "directive" && node.body) collectWikilinks(node.body, node);
+      else if (node.type === "table") {
+        for (const cell of node.header) collectWikilinks(cell, node);
+        for (const row of node.rows) for (const cell of row) collectWikilinks(cell, node);
+      }
+      if (node.id) {
+        if (ids.has(node.id)) {
+          diagnostics.push({
+            severity: "error",
+            code: "duplicate-id",
+            message: `Duplicate block ID "${node.id}".`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        } else {
+          ids.set(node.id, node);
+        }
+      }
+      if (node.type === "table") {
+        for (const tableId of collectTableIdentityStrings(node)) {
+          if (ids.has(tableId)) {
+            diagnostics.push({
+              severity: "error",
+              code: "duplicate-id",
+              message: `Duplicate block ID "${tableId}".`,
+              pos: node.pos,
+              nodeId: tableId
+            });
+          } else {
+            ids.set(tableId, node);
+          }
+        }
+      }
+      if (node.aliases) {
+        for (const a of node.aliases) {
+          aliasIds.add(a);
+          if (!aliasToNode.has(a)) aliasToNode.set(a, node);
+        }
+      }
+      if (node.type !== "directive") continue;
+      if (profileSet && !suppressed(node) && !profileSet.has(node.name)) {
+        diagnostics.push({
+          severity: "warning",
+          code: "out-of-profile-directive",
+          message: `Directive "${node.name}" is not part of the declared "${profileLabel}" profile.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+      if (node.name === "dataset") {
+        if (node.id) {
+          datasetIds.set(node.id, node);
+          datasetColumns.set(node.id, readDatasetColumns(node));
+        }
+        if (!suppressed(node) && typeof node.attrs.src === "string" && (!(node.body && node.body.trim()) || node.attrs.format === "error")) {
+          diagnostics.push({
+            severity: "warning",
+            code: "dataset-src-missing",
+            message: `Dataset "${node.id ?? "?"}" src="${node.attrs.src}" failed to load (file missing or unreadable).`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+      }
+      if (node.name === "control") {
+        if (node.id) controls.set(node.id, node);
+        if (!suppressed(node)) {
+          validateControl(node, diagnostics);
+          validateControlLock(node, diagnostics);
+        }
+      }
+      if (node.name === "computed_metric" || node.name === "computed_plot" || node.name === "computed_table") {
+        if (node.id) computed.set(node.id, node);
+        computedNodes.push(node);
+      }
+      if (node.name === "claim" && node.id) claims.push(node);
+      if (node.name === "decision" || node.name === "adr") adrNodes.push(node);
+      if (node.name === "claim" && !suppressed(node) && "confidence" in node.attrs) {
+        const c = node.attrs.confidence;
+        let num = null;
+        if (typeof c === "number" && Number.isFinite(c)) num = c;
+        else if (typeof c === "string" && c.trim() !== "") {
+          const n = Number(c);
+          if (Number.isFinite(n)) num = n;
+        }
+        if (num === null || num < 0 || num > 1) {
+          diagnostics.push({
+            severity: "warning",
+            code: "claim-invalid-confidence",
+            message: `Claim "${node.id ?? "?"}" confidence="${c}" must be a number in [0, 1].`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+      }
+      if (node.name === "claim" && !suppressed(node) && (activeProfiles.has("research-memo") || activeProfiles.has("investment-thesis")) && !("confidence" in node.attrs)) {
+        diagnostics.push({
+          severity: "warning",
+          code: "claim-missing-confidence",
+          message: `Claim "${node.id ?? "?"}" has no \`confidence=\` attribute required by the research-style profile.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+      if (node.name === "state_change" && !suppressed(node)) {
+        const block = node.attrs.block;
+        if (typeof block === "string") {
+          referenced.add(block);
+          refSites.push({ target: block, node, attrKey: "block" });
+        } else {
+          diagnostics.push({
+            severity: "warning",
+            code: "state-change-missing-block",
+            message: `state_change has no \`block=\` attribute pointing at the changed block.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+        const hasFrom = "from" in node.attrs;
+        const hasTo = "to" in node.attrs;
+        if (!hasFrom || !hasTo) {
+          diagnostics.push({
+            severity: "warning",
+            code: "state-change-missing-from-to",
+            message: `state_change "${node.id ?? "?"}" needs both \`from=\` and \`to=\` attributes.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+      }
+      if (node.name === "comment" && !suppressed(node)) {
+        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block", "ref"]);
+        if (target) {
+          referenced.add(target.value);
+          refSites.push({ target: target.value, node, attrKey: target.key });
+        }
+        const replyTo = readFirstStringAttrEntry(node, ["reply_to", "replyTo", "reply"]);
+        if (replyTo) {
+          referenced.add(replyTo.value);
+          refSites.push({ target: replyTo.value, node, attrKey: replyTo.key });
+        }
+      }
+      if (node.name === "change_request" && !suppressed(node)) {
+        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block"]);
+        if (target) {
+          referenced.add(target.value);
+          refSites.push({ target: target.value, node, attrKey: target.key });
+        }
+        const action = readFirstStringAttr(node, ["action", "type"])?.toLowerCase();
+        if (action) {
+          if (action !== "insert" && action !== "delete" && action !== "replace") {
+            diagnostics.push({
+              severity: "warning",
+              code: "change-request-invalid-action",
+              message: `change_request "${node.id ?? "?"}" action="${action}" must be insert, delete, or replace.`,
+              pos: node.pos,
+              nodeId: node.id
+            });
+          } else if (!hasChangeRequestRevisionText(node, action)) {
+            diagnostics.push({
+              severity: "warning",
+              code: "change-request-missing-revision-text",
+              message: `change_request "${node.id ?? "?"}" action="${action}" is missing the text needed for a tracked revision.`,
+              pos: node.pos,
+              nodeId: node.id
+            });
+          }
+        }
+      }
+      if ((node.name === "footnote" || node.name === "endnote") && !suppressed(node)) {
+        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block", "ref"]);
+        if (target) {
+          referenced.add(target.value);
+          refSites.push({ target: target.value, node, attrKey: target.key });
+        }
+      }
+      if (node.name === "evidence" || node.name === "counterevidence") {
+        const target = node.attrs.for;
+        if (typeof target === "string") {
+          referenced.add(target);
+          evidenceTargets.add(target);
+          refSites.push({ target, node, attrKey: "for" });
+        } else {
+          diagnostics.push({
+            severity: "warning",
+            code: "evidence-missing-for",
+            message: `${node.name} block has no \`for=\` attribute.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+      }
+      if (node.name === "diagram" && !suppressed(node)) {
+        const kind = String(node.attrs.kind ?? "");
+        if (!kind) {
+          diagnostics.push({
+            severity: "warning",
+            code: "diagram-missing-kind",
+            message: `Diagram "${node.id ?? "?"}" has no \`kind=\` (mermaid|graphviz|drawio).`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+        if (!(node.body && node.body.trim())) {
+          diagnostics.push({
+            severity: "warning",
+            code: "diagram-missing-source",
+            message: `Diagram "${node.id ?? "?"}" has no source body.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+      }
+      if (node.name === "plotly" && !suppressed(node)) {
+        const body = (node.body ?? "").trim();
+        if (!body) {
+          diagnostics.push({
+            severity: "warning",
+            code: "plotly-missing-spec",
+            message: `Plotly "${node.id ?? "?"}" has no JSON spec body.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        } else {
+          try {
+            JSON.parse(body);
+          } catch (e) {
+            diagnostics.push({
+              severity: "error",
+              code: "plotly-invalid-json",
+              message: `Plotly "${node.id ?? "?"}" body is not valid JSON: ${e.message}`,
+              pos: node.pos,
+              nodeId: node.id
+            });
+          }
+        }
+      }
+      if (node.name === "figure" && !suppressed(node) && !node.attrs.alt && !node.attrs.caption) {
+        diagnostics.push({
+          severity: "warning",
+          code: "figure-missing-alt",
+          message: `Figure block has no alt or caption text.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+      if (node.name === "plot") {
+        const hasData = "data" in node.attrs || "dataset" in node.attrs;
+        if (typeof node.attrs.dataset === "string") {
+          const ref = node.attrs.dataset;
+          if (!datasetIds.has(ref)) {
+            diagnostics.push({
+              severity: "error",
+              code: "plot-unknown-dataset",
+              message: `Plot "${node.id ?? "?"}" references unknown dataset "${ref}".`,
+              pos: node.pos,
+              nodeId: node.id
+            });
+          } else if (typeof node.attrs.column === "string") {
+            const cols = datasetColumns.get(ref) ?? /* @__PURE__ */ new Set();
+            if (cols.size > 0 && !cols.has(node.attrs.column)) {
+              diagnostics.push({
+                severity: "error",
+                code: "plot-unknown-column",
+                message: `Plot "${node.id ?? "?"}" references unknown column "${node.attrs.column}" in dataset "${ref}".`,
+                pos: node.pos,
+                nodeId: node.id
+              });
+            }
+          }
+        }
+        if (!hasData) {
+          diagnostics.push({
+            severity: "error",
+            code: "plot-missing-data",
+            message: `Plot has no data or dataset attribute.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+        if (!suppressed(node)) {
+          const data = typeof node.attrs.data === "string" ? node.attrs.data : "";
+          const labels = typeof node.attrs.xlabels === "string" ? node.attrs.xlabels : "";
+          const delim = (s) => {
+            const hasComma = /,/.test(s);
+            const hasSpace = /\s/.test(s.trim());
+            if (hasComma && !hasSpace) return "comma";
+            if (hasSpace && !hasComma) return "space";
+            return null;
+          };
+          const a = delim(data);
+          const b = delim(labels);
+          if (a && b && a !== b) {
+            diagnostics.push({
+              severity: "warning",
+              code: "plot-mixed-delimiters",
+              message: `Plot "${node.id ?? "?"}" mixes ${a}-separated data with ${b}-separated xlabels. Use commas for both (preferred).`,
+              pos: node.pos,
+              nodeId: node.id
+            });
+          }
+        }
+      }
+      if (node.name === "risk" && !suppressed(node) && !node.attrs.owner) {
+        diagnostics.push({
+          severity: "warning",
+          code: "risk-without-owner",
+          message: `Risk "${node.id ?? "?"}" has no \`owner=\` attribute.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+      if ((node.name === "decision" || node.name === "adr") && !suppressed(node) && !node.attrs.status) {
+        diagnostics.push({
+          severity: "warning",
+          code: "decision-without-status",
+          message: `${node.name} "${node.id ?? "?"}" has no \`status=\` attribute.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+      if ((node.name === "decision" || node.name === "adr") && activeProfiles.has("adr") && !suppressed(node)) {
+        if (!node.attrs.owner) {
+          diagnostics.push({
+            severity: "warning",
+            code: "adr-missing-owner",
+            message: `${node.name} "${node.id ?? "?"}" has no \`owner=\` attribute required by the adr profile.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+        if (!node.attrs.date && !node.attrs.decided_at && !node.attrs.decidedAt) {
+          diagnostics.push({
+            severity: "warning",
+            code: "adr-missing-date",
+            message: `${node.name} "${node.id ?? "?"}" has no \`date=\` or \`decided_at=\` attribute required by the adr profile.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+      }
+      if ((node.name === "agent_task" || node.name === "todo") && !suppressed(node) && !node.attrs.scope && !(node.body && node.body.trim().length > 0) && node.children.length === 0) {
+        diagnostics.push({
+          severity: "warning",
+          code: "agent-task-without-scope",
+          message: `Agent task "${node.id ?? "?"}" has no scope or body.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+      if ((node.name === "html" || node.name === "svg" || node.name === "script") && !suppressed(node) && node.attrs.trusted !== true) {
+        diagnostics.push({
+          severity: "warning",
+          code: "escape-hatch-untrusted",
+          message: `${node.name} escape-hatch block has no \`trusted\` attribute. Add \`trusted\` to silence this warning, or \`noverify\` to suppress all checks on this block.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+      if (node.name === "memory" && !suppressed(node)) {
+        const t = node.attrs.type;
+        if (typeof t !== "string" || !t) {
+          diagnostics.push({
+            severity: "error",
+            code: "memory-missing-type",
+            message: `Memory "${node.id ?? "?"}" has no \`type=\` attribute.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        } else if (!MEMORY_TYPES.has(t)) {
+          diagnostics.push({
+            severity: "error",
+            code: "memory-invalid-type",
+            message: `Memory "${node.id ?? "?"}" has type="${t}". Must be one of: ${[...MEMORY_TYPES].join(", ")}.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+        if ("confidence" in node.attrs) {
+          const c = node.attrs.confidence;
+          let num = null;
+          if (typeof c === "number" && Number.isFinite(c)) {
+            num = c;
+          } else if (typeof c === "string" && c.trim() !== "") {
+            const n = Number(c);
+            if (Number.isFinite(n)) num = n;
+          }
+          if (num === null || num < 0 || num > 1) {
+            diagnostics.push({
+              severity: "error",
+              code: "memory-invalid-confidence",
+              message: `Memory "${node.id ?? "?"}" confidence="${c}" must be a number in [0, 1].`,
+              pos: node.pos,
+              nodeId: node.id
+            });
+          }
+        }
+        if ("last_seen" in node.attrs) {
+          const ls = node.attrs.last_seen;
+          const s = typeof ls === "string" ? ls : "";
+          if (!s || !ISO_DATE_RE.test(s) || !isValidIsoDate(s)) {
+            diagnostics.push({
+              severity: "error",
+              code: "memory-invalid-last-seen",
+              message: `Memory "${node.id ?? "?"}" last_seen="${ls}" must be ISO date (YYYY-MM-DD or full ISO 8601).`,
+              pos: node.pos,
+              nodeId: node.id
+            });
+          }
+        }
+        if (!node.id) {
+          diagnostics.push({
+            severity: "error",
+            code: "memory-missing-id",
+            message: `Memory block has no \`id=\` attribute.`,
+            pos: node.pos
+          });
+        }
+      }
+      if (node.name === "citation" && !suppressed(node)) {
+        if (!node.attrs.url && !node.attrs.source && !node.attrs.doi) {
+          diagnostics.push({
+            severity: "warning",
+            code: "citation-missing-source",
+            message: `Citation "${node.id ?? "?"}" has no \`url=\`, \`source=\`, or \`doi=\` attribute.`,
+            pos: node.pos,
+            nodeId: node.id
+          });
+        }
+        if (node.attrs.accessed) {
+          const perBlock = readPositiveNumber(node.attrs.stale_after_days);
+          const window2 = perBlock ?? staleDays;
+          const stale = isStale(String(node.attrs.accessed), now, window2);
+          if (stale) {
+            diagnostics.push({
+              severity: "warning",
+              code: "stale-citation",
+              message: `Citation "${node.id ?? "?"}" was last accessed ${node.attrs.accessed} (>${window2} days ago).`,
+              pos: node.pos,
+              nodeId: node.id
+            });
+          }
+        }
+      }
+    }
+    for (const target of referenced) {
+      if (ids.has(target) || aliasIds.has(target)) continue;
+      const suggestion = nearestId(target, [...ids.keys(), ...aliasIds]);
+      const hint = suggestion ? ` Did you mean "${suggestion}"?` : "";
+      const sites = refSites.filter((site) => site.target === target);
+      if (sites.length === 0) {
+        diagnostics.push({
+          severity: "error",
+          code: "broken-reference",
+          message: `Reference to unknown block ID "${target}".${hint}`
+        });
+        continue;
+      }
+      for (const site of sites) {
+        diagnostics.push({
+          severity: "error",
+          code: "broken-reference",
+          message: `Reference to unknown block ID "${target}".${hint}`,
+          pos: site.node.pos,
+          nodeId: site.node.id,
+          ...suggestion && site.attrKey && site.node.id ? {
+            fix: {
+              op: "update_attribute",
+              id: site.node.id,
+              key: site.attrKey,
+              value: suggestion
+            }
+          } : {}
+        });
+      }
+    }
+    if (activeProfiles.has("memory") || activeProfiles.has("agent-memory")) {
+      for (const target of wikilinkRefs) {
+        const node = ids.get(target) ?? aliasToNode.get(target);
+        if (!node) continue;
+        const isMemory = node.type === "directive" && node.name === "memory";
+        if (!isMemory) {
+          diagnostics.push({
+            severity: "warning",
+            code: "memory-wikilink-non-memory-target",
+            message: `Wikilink [[${target}]] points at a non-::memory block. Memory profile expects wikilinks to resolve to ::memory directives.`
+          });
+        }
+      }
+    }
+    if (activeProfiles.has("adr") && adrNodes.length === 0) {
+      diagnostics.push({
+        severity: "warning",
+        code: "adr-missing-decision",
+        message: `ADR profile expects at least one ::decision or ::adr block.`
+      });
+    }
+    if (requireEvidence) {
+      for (const claim of claims) {
+        if (suppressed(claim)) continue;
+        if (claim.id && !evidenceTargets.has(claim.id)) {
+          diagnostics.push({
+            severity: "warning",
+            code: "claim-without-evidence",
+            message: `Claim "${claim.id}" has no evidence backing it.`,
+            pos: claim.pos,
+            nodeId: claim.id
+          });
+        }
+      }
+    }
+    validateComputedNodes(computedNodes, controls, computed, diagnostics);
+    for (const diagnostic of diagnostics) {
+      if (diagnostic.endLine !== void 0 || !diagnostic.nodeId) continue;
+      const node = ids.get(diagnostic.nodeId) ?? aliasToNode.get(diagnostic.nodeId);
+      if (node?.endLine !== void 0) diagnostic.endLine = node.endLine;
+    }
+    const ignore = options.ignoreRules;
+    if (ignore && ignore.length > 0) {
+      const known = collectRuleCodes();
+      for (const rule of ignore) {
+        if (!known.has(rule)) {
+          diagnostics.push({
+            severity: "info",
+            code: "unknown-ignore-rule",
+            message: `--ignore-rule "${rule}" matches no known validator rule (ignored).`
+          });
+        }
+      }
+      const set2 = new Set(ignore);
+      return diagnostics.filter((d) => !set2.has(d.code));
+    }
+    return diagnostics;
+  }
+  function readDeclaredProfiles(meta, optionProfiles = []) {
+    const out = [];
+    const add = (value) => {
+      if (typeof value !== "string") return;
+      for (const p of value.split(/[,\s]+/)) {
+        const trimmed = p.trim();
+        if (trimmed && !out.includes(trimmed)) out.push(trimmed);
+      }
+    };
+    if (Array.isArray(meta.profiles)) {
+      for (const p of meta.profiles) add(p);
+    }
+    if (typeof meta.profile === "string" && meta.profile.trim()) {
+      add(meta.profile);
+    }
+    for (const profile of optionProfiles) add(profile);
+    return out;
+  }
+  var KNOWN_RULES = [
+    "duplicate-id",
+    "out-of-profile-directive",
+    "unknown-profile",
+    "broken-reference",
+    "evidence-missing-for",
+    "figure-missing-alt",
+    "plot-unknown-dataset",
+    "plot-unknown-column",
+    "plot-missing-data",
+    "plot-mixed-delimiters",
+    "risk-without-owner",
+    "decision-without-status",
+    "agent-task-without-scope",
+    "escape-hatch-untrusted",
+    "stale-citation",
+    "claim-without-evidence",
+    "state-change-missing-block",
+    "state-change-missing-from-to",
+    "change-request-invalid-action",
+    "change-request-missing-revision-text",
+    "diagram-missing-kind",
+    "diagram-missing-source",
+    "plotly-missing-spec",
+    "plotly-invalid-json",
+    "dataset-src-missing",
+    "memory-missing-type",
+    "memory-invalid-type",
+    "memory-invalid-confidence",
+    "memory-invalid-last-seen",
+    "memory-missing-id",
+    "memory-wikilink-non-memory-target",
+    "claim-invalid-confidence",
+    "claim-missing-confidence",
+    "adr-missing-owner",
+    "adr-missing-date",
+    "adr-missing-decision",
+    "citation-missing-source",
+    "control-missing-default",
+    "control-out-of-range-default",
+    "control-invalid-lock",
+    "computed-missing-formula",
+    "computed-unknown-dependency",
+    "formula-parse-error",
+    "computed-chain-too-deep"
+  ];
+  function collectRuleCodes() {
+    return new Set(KNOWN_RULES);
+  }
+  function suppressed(node) {
+    return node.attrs.noverify === true;
+  }
+  function readFirstStringAttr(node, keys) {
+    return readFirstStringAttrEntry(node, keys)?.value;
+  }
+  function readFirstStringAttrEntry(node, keys) {
+    for (const key of keys) {
+      const value = node.attrs[key];
+      if (typeof value === "string" && value.trim()) return { key, value: value.trim() };
+    }
+    return void 0;
+  }
+  function levenshtein(a, b) {
+    if (Math.abs(a.length - b.length) > 2) return 3;
+    const prev = new Array(b.length + 1);
+    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      let diag = prev[0];
+      prev[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cur = prev[j];
+        prev[j] = Math.min(cur + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+        diag = cur;
+      }
+    }
+    return prev[b.length];
+  }
+  function nearestId(target, candidates) {
+    let best;
+    let bestDistance = 3;
+    for (const candidate of candidates) {
+      const distance = levenshtein(target, candidate);
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      } else if (distance === bestDistance && best !== void 0) {
+        best = void 0;
+        bestDistance = distance;
+      }
+    }
+    return bestDistance <= 2 && target.length > 3 ? best : void 0;
+  }
+  function hasChangeRequestRevisionText(node, action) {
+    const from = readFirstStringAttr(node, ["from"]);
+    const to = readFirstStringAttr(node, ["to"]);
+    const text = readFirstStringAttr(node, ["text"]);
+    const body = Boolean((node.body ?? "").trim() || node.children.length > 0);
+    if (action === "replace") return Boolean(from && to);
+    if (action === "insert") return Boolean(to || text || body);
+    return Boolean(from || text || body);
+  }
+  function validateControl(node, diagnostics) {
+    if (!controlNeedsNumericDefault(node)) return;
+    const def = controlDefaultNumber(node);
+    if (def === void 0) {
+      diagnostics.push({
+        severity: "warning",
+        code: "control-missing-default",
+        message: `Numeric control "${node.id ?? "?"}" has no numeric \`default=\` value for static rendering and LLM context.`,
+        pos: node.pos,
+        nodeId: node.id
+      });
+      return;
+    }
+    const min = numericAttr(node.attrs, "min");
+    const max = numericAttr(node.attrs, "max");
+    if (min !== void 0 && def < min || max !== void 0 && def > max) {
+      diagnostics.push({
+        severity: "warning",
+        code: "control-out-of-range-default",
+        message: `Numeric control "${node.id ?? "?"}" default=${def} is outside its declared range.`,
+        pos: node.pos,
+        nodeId: node.id
+      });
+    }
+  }
+  function validateControlLock(node, diagnostics) {
+    const value = node.attrs.lock ?? node.attrs.content_control_lock ?? node.attrs.sdt_lock;
+    if (value === void 0 || typeof value === "boolean") return;
+    const normalized = String(value).trim().toLowerCase().replace(/[\s_-]+/g, "");
+    if (CONTROL_LOCK_VALUES.has(normalized)) return;
+    diagnostics.push({
+      severity: "warning",
+      code: "control-invalid-lock",
+      message: `Control "${node.id ?? "?"}" lock="${value}" must be control, content, all, unlocked, or none.`,
+      pos: node.pos,
+      nodeId: node.id
+    });
+  }
+  var CONTROL_LOCK_VALUES = /* @__PURE__ */ new Set([
+    "control",
+    "field",
+    "container",
+    "sdt",
+    "sdtlocked",
+    "content",
+    "value",
+    "contentlocked",
+    "all",
+    "both",
+    "full",
+    "sdtcontentlocked",
+    "controlandcontent",
+    "fieldandcontent",
+    "unlocked",
+    "none",
+    "off",
+    "false",
+    "0",
+    "no",
+    ""
+  ]);
+  function controlNeedsNumericDefault(node) {
+    const type2 = typeof node.attrs.type === "string" ? node.attrs.type.trim().toLowerCase() : void 0;
+    if (!type2) return true;
+    return type2 === "slider" || type2 === "range" || type2 === "number" || type2 === "checkbox" || type2 === "toggle";
+  }
+  function validateComputedNodes(nodes, controls, computed, diagnostics) {
+    const depMap = /* @__PURE__ */ new Map();
+    for (const node of nodes) {
+      if (suppressed(node)) continue;
+      const formula = formulaText(node);
+      if (!formula) {
+        diagnostics.push({
+          severity: "warning",
+          code: "computed-missing-formula",
+          message: `${node.name} "${node.id ?? "?"}" has no \`formula=\` attribute or \`formula:\` body line.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+        continue;
+      }
+      const parsed = parseFormula(formula);
+      if (!parsed.ok) {
+        diagnostics.push({
+          severity: "error",
+          code: "formula-parse-error",
+          message: `${node.name} "${node.id ?? "?"}" formula could not be parsed: ${parsed.error.message}`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+        continue;
+      }
+      const domainVars = computedDomainVars(node);
+      const deps = extractFormulaIdentifiers(parsed.ast);
+      depMap.set(node.id ?? `@${node.pos?.line ?? depMap.size}`, deps);
+      for (const dep of deps) {
+        if (domainVars.has(dep) || controls.has(dep) || computed.has(dep)) continue;
+        diagnostics.push({
+          severity: "error",
+          code: "computed-unknown-dependency",
+          message: `${node.name} "${node.id ?? "?"}" formula references unknown control or computed block "${dep}".`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+    }
+    const depthMemo = /* @__PURE__ */ new Map();
+    const visiting = /* @__PURE__ */ new Set();
+    const depthOf = (id) => {
+      if (controls.has(id)) return 0;
+      const memo = depthMemo.get(id);
+      if (memo !== void 0) return memo;
+      if (visiting.has(id)) return Infinity;
+      const node = computed.get(id);
+      if (!node) return 0;
+      visiting.add(id);
+      const deps = depMap.get(id) ?? [];
+      let depth = 1;
+      for (const dep of deps) {
+        if (computed.has(dep)) depth = Math.max(depth, depthOf(dep) + 1);
+      }
+      visiting.delete(id);
+      depthMemo.set(id, depth);
+      return depth;
+    };
+    for (const node of nodes) {
+      if (suppressed(node) || !node.id) continue;
+      const depth = depthOf(node.id);
+      if (depth > 2) {
+        diagnostics.push({
+          severity: "warning",
+          code: "computed-chain-too-deep",
+          message: `${node.name} "${node.id}" has computed dependency depth ${depth === Infinity ? "cycle" : depth}; keep computed chains at depth <= 2.`,
+          pos: node.pos,
+          nodeId: node.id
+        });
+      }
+    }
+  }
+  function readDatasetColumns(node) {
+    const cols = /* @__PURE__ */ new Set();
+    if (typeof node.attrs.columns === "string") {
+      for (const c of node.attrs.columns.split(/[,\s]+/).filter(Boolean)) cols.add(c);
+    }
+    const body = node.body ?? "";
+    const format = String(node.attrs.format ?? "").toLowerCase();
+    if (!body.trim()) return cols;
+    if (format === "csv" || format === "tsv") {
+      const delim = format === "tsv" ? "	" : ",";
+      const firstLine = body.replace(/\r\n?/g, "\n").split("\n").find((l) => l.length > 0);
+      if (firstLine) {
+        for (const c of splitDelimitedRow(firstLine, delim).filter(Boolean)) {
+          cols.add(c);
+        }
+      }
+      return cols;
+    }
+    if (format === "json") {
+      try {
+        const parsed2 = JSON.parse(body);
+        if (Array.isArray(parsed2) && parsed2.length > 0) {
+          const head = parsed2[0];
+          if (head && typeof head === "object" && !Array.isArray(head)) {
+            for (const k of Object.keys(head)) cols.add(k);
+          }
+        } else if (parsed2 && typeof parsed2 === "object" && Array.isArray(parsed2.columns)) {
+          for (const c of parsed2.columns) {
+            if (typeof c === "string") cols.add(c);
+          }
+        }
+      } catch {
+      }
+      return cols;
+    }
+    let parsed;
+    try {
+      parsed = yaml.load(body);
+    } catch {
+      parsed = null;
+    }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const schema2 = parsed.schema;
+      if (schema2 && typeof schema2 === "object" && !Array.isArray(schema2)) {
+        for (const k of Object.keys(schema2)) cols.add(k);
+      }
+    }
+    return cols;
+  }
+  function readPositiveNumber(v) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return void 0;
+  }
+  function isValidIsoDate(s) {
+    const t = Date.parse(s);
+    if (Number.isNaN(t)) return false;
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return true;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+  }
+  function isStale(accessed, now, days) {
+    const t = Date.parse(accessed);
+    if (Number.isNaN(t)) return false;
+    const ageMs = now.getTime() - t;
+    return ageMs > days * 24 * 60 * 60 * 1e3;
   }
 
   // src/renderer-html.ts
@@ -8632,7 +7683,7 @@ ${bodyRows}
       if (node.type !== "directive") continue;
       if (node.name !== "memory") continue;
       if (!node.id) continue;
-      if (isStale(node, options.excludeStale)) excluded.add(node.id);
+      if (isStale2(node, options.excludeStale)) excluded.add(node.id);
     }
     return excluded;
   }
@@ -8724,7 +7775,7 @@ ${bodyRows}
       out.push("");
       return;
     }
-    if (node.name === "memory" && opts.excludeStale && isStale(node, opts.excludeStale)) {
+    if (node.name === "memory" && opts.excludeStale && isStale2(node, opts.excludeStale)) {
       return;
     }
     const tag = node.name.toUpperCase();
@@ -8827,7 +7878,7 @@ ${bodyRows}
     }
     emit(node, out, depth, opts, false);
   }
-  function isStale(node, cfg) {
+  function isStale2(node, cfg) {
     const ls = node.attrs.last_seen;
     if (typeof ls !== "string" || !ls) return false;
     const t = Date.parse(ls);
@@ -8838,3005 +7889,2220 @@ ${bodyRows}
     return cfg.now.getTime() - t > cfg.days * 24 * 60 * 60 * 1e3;
   }
 
-  // src/validator.ts
-  var DEFAULT_STALE_DAYS = 365;
-  var PROFILES = {
-    minimal: /* @__PURE__ */ new Set([
-      "summary",
-      "abstract",
-      "callout",
-      "note",
-      "warning",
-      "tip",
-      "header",
-      "footer",
-      "page_setup",
-      "doc_protection",
-      "toc",
-      "figure",
-      "citation",
-      "footnote",
-      "endnote",
-      "bibliography",
-      "math",
-      "code",
-      "table",
-      "pagebreak"
-    ]),
-    technical: /* @__PURE__ */ new Set([
-      "summary",
-      "abstract",
-      "callout",
-      "note",
-      "warning",
-      "tip",
-      "hero",
-      "grid",
-      "card",
-      "columns",
-      "tabs",
-      "accordion",
-      "sidebar",
-      "button",
-      "api",
-      "endpoint",
-      "parameter",
-      "example",
-      "changelog",
-      "instruction",
-      "header",
-      "footer",
-      "page_setup",
-      "doc_protection",
-      "toc",
-      "pagebreak",
-      "figure",
-      "plot",
-      "plotly",
-      "diagram",
-      "dataset",
-      "query",
-      "code",
-      "code_cell",
-      "output",
-      "control",
-      "computed_metric",
-      "computed_plot",
-      "computed_table",
-      "export_button",
-      "agent_task",
-      "todo",
-      "citation",
-      "footnote",
-      "endnote",
-      "bibliography",
-      "math",
-      "table",
-      "html",
-      "svg",
-      "script"
-    ]),
-    research: /* @__PURE__ */ new Set([
-      "summary",
-      "abstract",
-      "callout",
-      "note",
-      "warning",
-      "tip",
-      "header",
-      "footer",
-      "page_setup",
-      "doc_protection",
-      "toc",
-      "claim",
-      "evidence",
-      "counterevidence",
-      "assumption",
-      "risk",
-      "hypothesis",
-      "result",
-      "limitation",
-      "open_question",
-      "decision",
-      "adr",
-      "dataset",
-      "query",
-      "plot",
-      "plotly",
-      "diagram",
-      "metric",
-      "control",
-      "computed_metric",
-      "computed_plot",
-      "computed_table",
-      "code",
-      "figure",
-      "agent_task",
-      "todo",
-      "instruction",
-      "review",
-      "comment",
-      "change_request",
-      "provenance",
-      "confidence",
-      "citation",
-      "footnote",
-      "endnote",
-      "bibliography",
-      "state_change",
-      "math",
-      "table",
-      "pagebreak"
-    ]),
-    memory: /* @__PURE__ */ new Set(["memory", "memory_index"])
-  };
-  var technicalProfile = PROFILES.technical;
-  var researchProfile = PROFILES.research;
-  var memoryProfile = PROFILES.memory;
-  var minimalProfile = PROFILES.minimal;
-  PROFILES["technical-docs"] = technicalProfile;
-  PROFILES["research-memo"] = researchProfile;
-  PROFILES["investment-thesis"] = researchProfile;
-  PROFILES["agent-memory"] = memoryProfile;
-  PROFILES.adr = /* @__PURE__ */ new Set([
-    ...minimalProfile,
-    "decision",
-    "adr",
-    "risk",
-    "open_question",
-    "assumption",
-    "evidence",
-    "counterevidence",
-    "comment",
-    "change_request",
-    "agent_task",
-    "todo",
-    "citation",
-    "state_change"
+  // src/hash.ts
+  var K = new Uint32Array([
+    1116352408,
+    1899447441,
+    3049323471,
+    3921009573,
+    961987163,
+    1508970993,
+    2453635748,
+    2870763221,
+    3624381080,
+    310598401,
+    607225278,
+    1426881987,
+    1925078388,
+    2162078206,
+    2614888103,
+    3248222580,
+    3835390401,
+    4022224774,
+    264347078,
+    604807628,
+    770255983,
+    1249150122,
+    1555081692,
+    1996064986,
+    2554220882,
+    2821834349,
+    2952996808,
+    3210313671,
+    3336571891,
+    3584528711,
+    113926993,
+    338241895,
+    666307205,
+    773529912,
+    1294757372,
+    1396182291,
+    1695183700,
+    1986661051,
+    2177026350,
+    2456956037,
+    2730485921,
+    2820302411,
+    3259730800,
+    3345764771,
+    3516065817,
+    3600352804,
+    4094571909,
+    275423344,
+    430227734,
+    506948616,
+    659060556,
+    883997877,
+    958139571,
+    1322822218,
+    1537002063,
+    1747873779,
+    1955562222,
+    2024104815,
+    2227730452,
+    2361852424,
+    2428436474,
+    2756734187,
+    3204031479,
+    3329325298
   ]);
-  PROFILES.spec = /* @__PURE__ */ new Set([...technicalProfile, ...researchProfile]);
-  var MEMORY_TYPES = /* @__PURE__ */ new Set(["user", "feedback", "project", "reference"]);
-  var ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
-  var KNOWN_PROFILES = Object.keys(PROFILES);
-  function validate(doc, options = {}) {
-    const requireEvidence = options.requireEvidenceForClaims !== false;
-    const metaStale = readPositiveNumber(doc.meta.stale_citation_days);
-    const staleDays = options.staleCitationDays ?? metaStale ?? DEFAULT_STALE_DAYS;
-    const now = options.now ?? /* @__PURE__ */ new Date();
-    const diagnostics = [];
-    const ids = /* @__PURE__ */ new Map();
-    const aliasIds = /* @__PURE__ */ new Set();
-    const claims = [];
-    const evidenceTargets = /* @__PURE__ */ new Set();
-    const referenced = /* @__PURE__ */ new Set();
-    const refSites = [];
-    const datasetIds = /* @__PURE__ */ new Map();
-    const datasetColumns = /* @__PURE__ */ new Map();
-    const controls = /* @__PURE__ */ new Map();
-    const computed = /* @__PURE__ */ new Map();
-    const computedNodes = [];
-    const adrNodes = [];
-    const aliasToNode = /* @__PURE__ */ new Map();
-    const declaredProfiles = readDeclaredProfiles(doc.meta, options.profiles);
-    const activeProfiles = new Set(declaredProfiles);
-    const profileSet = (() => {
-      if (declaredProfiles.length === 0) return void 0;
-      const union = /* @__PURE__ */ new Set();
-      let any = false;
-      for (const name of declaredProfiles) {
-        const set2 = PROFILES[name];
-        if (!set2) {
-          diagnostics.push({
-            severity: "warning",
-            code: "unknown-profile",
-            message: `Document declares unknown profile "${name}". Known: ${KNOWN_PROFILES.join(", ")}.`
-          });
-          continue;
-        }
-        any = true;
-        for (const directive of set2) union.add(directive);
+  var rotr = (x, n) => x >>> n | x << 32 - n;
+  function sha256Hex(input) {
+    const bytes = new TextEncoder().encode(input);
+    const bitLen = bytes.length * 8;
+    const paddedLen = (bytes.length + 8 >> 6) + 1 << 6;
+    const data = new Uint8Array(paddedLen);
+    data.set(bytes);
+    data[bytes.length] = 128;
+    const view = new DataView(data.buffer);
+    view.setUint32(paddedLen - 8, Math.floor(bitLen / 4294967296));
+    view.setUint32(paddedLen - 4, bitLen >>> 0);
+    const h = new Uint32Array([
+      1779033703,
+      3144134277,
+      1013904242,
+      2773480762,
+      1359893119,
+      2600822924,
+      528734635,
+      1541459225
+    ]);
+    const w = new Uint32Array(64);
+    for (let offset = 0; offset < paddedLen; offset += 64) {
+      for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4);
+      for (let i = 16; i < 64; i++) {
+        const w15 = w[i - 15];
+        const w2 = w[i - 2];
+        const s0 = rotr(w15, 7) ^ rotr(w15, 18) ^ w15 >>> 3;
+        const s1 = rotr(w2, 17) ^ rotr(w2, 19) ^ w2 >>> 10;
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1 >>> 0;
       }
-      return any ? union : void 0;
-    })();
-    const profileLabel = declaredProfiles.join("+");
-    const wikilinkRefs = /* @__PURE__ */ new Set();
-    const collectWikilinks = (text, node) => {
-      for (const link of extractWikilinks(text)) {
-        if (!isBlockReferenceWikilinkTarget(link.target)) continue;
-        referenced.add(link.target);
-        wikilinkRefs.add(link.target);
-        refSites.push({ target: link.target, node });
+      let [a, b, c, d, e, f, g, hh] = h;
+      for (let i = 0; i < 64; i++) {
+        const s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        const ch = e & f ^ ~e & g;
+        const t1 = hh + s1 + ch + K[i] + w[i] >>> 0;
+        const s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        const maj = a & b ^ a & c ^ b & c;
+        const t2 = s0 + maj >>> 0;
+        hh = g;
+        g = f;
+        f = e;
+        e = d + t1 >>> 0;
+        d = c;
+        c = b;
+        b = a;
+        a = t1 + t2 >>> 0;
       }
-    };
-    for (const node of walk(doc)) {
-      if (node.type === "paragraph" || node.type === "quote") collectWikilinks(node.content, node);
-      else if (node.type === "list_item") collectWikilinks(node.content, node);
-      else if (node.type === "section") collectWikilinks(node.title, node);
-      else if (node.type === "directive" && node.body) collectWikilinks(node.body, node);
-      else if (node.type === "table") {
-        for (const cell of node.header) collectWikilinks(cell, node);
-        for (const row of node.rows) for (const cell of row) collectWikilinks(cell, node);
-      }
-      if (node.id) {
-        if (ids.has(node.id)) {
-          diagnostics.push({
-            severity: "error",
-            code: "duplicate-id",
-            message: `Duplicate block ID "${node.id}".`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        } else {
-          ids.set(node.id, node);
-        }
-      }
-      if (node.type === "table") {
-        for (const tableId of collectTableIdentityStrings(node)) {
-          if (ids.has(tableId)) {
-            diagnostics.push({
-              severity: "error",
-              code: "duplicate-id",
-              message: `Duplicate block ID "${tableId}".`,
-              pos: node.pos,
-              nodeId: tableId
-            });
-          } else {
-            ids.set(tableId, node);
-          }
-        }
-      }
-      if (node.aliases) {
-        for (const a of node.aliases) {
-          aliasIds.add(a);
-          if (!aliasToNode.has(a)) aliasToNode.set(a, node);
-        }
-      }
-      if (node.type !== "directive") continue;
-      if (profileSet && !suppressed(node) && !profileSet.has(node.name)) {
-        diagnostics.push({
-          severity: "warning",
-          code: "out-of-profile-directive",
-          message: `Directive "${node.name}" is not part of the declared "${profileLabel}" profile.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
-      if (node.name === "dataset") {
-        if (node.id) {
-          datasetIds.set(node.id, node);
-          datasetColumns.set(node.id, readDatasetColumns(node));
-        }
-        if (!suppressed(node) && typeof node.attrs.src === "string" && (!(node.body && node.body.trim()) || node.attrs.format === "error")) {
-          diagnostics.push({
-            severity: "warning",
-            code: "dataset-src-missing",
-            message: `Dataset "${node.id ?? "?"}" src="${node.attrs.src}" failed to load (file missing or unreadable).`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-      }
-      if (node.name === "control") {
-        if (node.id) controls.set(node.id, node);
-        if (!suppressed(node)) {
-          validateControl(node, diagnostics);
-          validateControlLock(node, diagnostics);
-        }
-      }
-      if (node.name === "computed_metric" || node.name === "computed_plot" || node.name === "computed_table") {
-        if (node.id) computed.set(node.id, node);
-        computedNodes.push(node);
-      }
-      if (node.name === "claim" && node.id) claims.push(node);
-      if (node.name === "decision" || node.name === "adr") adrNodes.push(node);
-      if (node.name === "claim" && !suppressed(node) && "confidence" in node.attrs) {
-        const c = node.attrs.confidence;
-        let num = null;
-        if (typeof c === "number" && Number.isFinite(c)) num = c;
-        else if (typeof c === "string" && c.trim() !== "") {
-          const n = Number(c);
-          if (Number.isFinite(n)) num = n;
-        }
-        if (num === null || num < 0 || num > 1) {
-          diagnostics.push({
-            severity: "warning",
-            code: "claim-invalid-confidence",
-            message: `Claim "${node.id ?? "?"}" confidence="${c}" must be a number in [0, 1].`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-      }
-      if (node.name === "claim" && !suppressed(node) && (activeProfiles.has("research-memo") || activeProfiles.has("investment-thesis")) && !("confidence" in node.attrs)) {
-        diagnostics.push({
-          severity: "warning",
-          code: "claim-missing-confidence",
-          message: `Claim "${node.id ?? "?"}" has no \`confidence=\` attribute required by the research-style profile.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
-      if (node.name === "state_change" && !suppressed(node)) {
-        const block = node.attrs.block;
-        if (typeof block === "string") {
-          referenced.add(block);
-          refSites.push({ target: block, node, attrKey: "block" });
-        } else {
-          diagnostics.push({
-            severity: "warning",
-            code: "state-change-missing-block",
-            message: `state_change has no \`block=\` attribute pointing at the changed block.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-        const hasFrom = "from" in node.attrs;
-        const hasTo = "to" in node.attrs;
-        if (!hasFrom || !hasTo) {
-          diagnostics.push({
-            severity: "warning",
-            code: "state-change-missing-from-to",
-            message: `state_change "${node.id ?? "?"}" needs both \`from=\` and \`to=\` attributes.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-      }
-      if (node.name === "comment" && !suppressed(node)) {
-        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block", "ref"]);
-        if (target) {
-          referenced.add(target.value);
-          refSites.push({ target: target.value, node, attrKey: target.key });
-        }
-        const replyTo = readFirstStringAttrEntry(node, ["reply_to", "replyTo", "reply"]);
-        if (replyTo) {
-          referenced.add(replyTo.value);
-          refSites.push({ target: replyTo.value, node, attrKey: replyTo.key });
-        }
-      }
-      if (node.name === "change_request" && !suppressed(node)) {
-        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block"]);
-        if (target) {
-          referenced.add(target.value);
-          refSites.push({ target: target.value, node, attrKey: target.key });
-        }
-        const action = readFirstStringAttr(node, ["action", "type"])?.toLowerCase();
-        if (action) {
-          if (action !== "insert" && action !== "delete" && action !== "replace") {
-            diagnostics.push({
-              severity: "warning",
-              code: "change-request-invalid-action",
-              message: `change_request "${node.id ?? "?"}" action="${action}" must be insert, delete, or replace.`,
-              pos: node.pos,
-              nodeId: node.id
-            });
-          } else if (!hasChangeRequestRevisionText(node, action)) {
-            diagnostics.push({
-              severity: "warning",
-              code: "change-request-missing-revision-text",
-              message: `change_request "${node.id ?? "?"}" action="${action}" is missing the text needed for a tracked revision.`,
-              pos: node.pos,
-              nodeId: node.id
-            });
-          }
-        }
-      }
-      if ((node.name === "footnote" || node.name === "endnote") && !suppressed(node)) {
-        const target = readFirstStringAttrEntry(node, ["target", "for", "parent", "block", "ref"]);
-        if (target) {
-          referenced.add(target.value);
-          refSites.push({ target: target.value, node, attrKey: target.key });
-        }
-      }
-      if (node.name === "evidence" || node.name === "counterevidence") {
-        const target = node.attrs.for;
-        if (typeof target === "string") {
-          referenced.add(target);
-          evidenceTargets.add(target);
-          refSites.push({ target, node, attrKey: "for" });
-        } else {
-          diagnostics.push({
-            severity: "warning",
-            code: "evidence-missing-for",
-            message: `${node.name} block has no \`for=\` attribute.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-      }
-      if (node.name === "diagram" && !suppressed(node)) {
-        const kind = String(node.attrs.kind ?? "");
-        if (!kind) {
-          diagnostics.push({
-            severity: "warning",
-            code: "diagram-missing-kind",
-            message: `Diagram "${node.id ?? "?"}" has no \`kind=\` (mermaid|graphviz|drawio).`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-        if (!(node.body && node.body.trim())) {
-          diagnostics.push({
-            severity: "warning",
-            code: "diagram-missing-source",
-            message: `Diagram "${node.id ?? "?"}" has no source body.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-      }
-      if (node.name === "plotly" && !suppressed(node)) {
-        const body = (node.body ?? "").trim();
-        if (!body) {
-          diagnostics.push({
-            severity: "warning",
-            code: "plotly-missing-spec",
-            message: `Plotly "${node.id ?? "?"}" has no JSON spec body.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        } else {
-          try {
-            JSON.parse(body);
-          } catch (e) {
-            diagnostics.push({
-              severity: "error",
-              code: "plotly-invalid-json",
-              message: `Plotly "${node.id ?? "?"}" body is not valid JSON: ${e.message}`,
-              pos: node.pos,
-              nodeId: node.id
-            });
-          }
-        }
-      }
-      if (node.name === "figure" && !suppressed(node) && !node.attrs.alt && !node.attrs.caption) {
-        diagnostics.push({
-          severity: "warning",
-          code: "figure-missing-alt",
-          message: `Figure block has no alt or caption text.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
-      if (node.name === "plot") {
-        const hasData = "data" in node.attrs || "dataset" in node.attrs;
-        if (typeof node.attrs.dataset === "string") {
-          const ref = node.attrs.dataset;
-          if (!datasetIds.has(ref)) {
-            diagnostics.push({
-              severity: "error",
-              code: "plot-unknown-dataset",
-              message: `Plot "${node.id ?? "?"}" references unknown dataset "${ref}".`,
-              pos: node.pos,
-              nodeId: node.id
-            });
-          } else if (typeof node.attrs.column === "string") {
-            const cols = datasetColumns.get(ref) ?? /* @__PURE__ */ new Set();
-            if (cols.size > 0 && !cols.has(node.attrs.column)) {
-              diagnostics.push({
-                severity: "error",
-                code: "plot-unknown-column",
-                message: `Plot "${node.id ?? "?"}" references unknown column "${node.attrs.column}" in dataset "${ref}".`,
-                pos: node.pos,
-                nodeId: node.id
-              });
-            }
-          }
-        }
-        if (!hasData) {
-          diagnostics.push({
-            severity: "error",
-            code: "plot-missing-data",
-            message: `Plot has no data or dataset attribute.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-        if (!suppressed(node)) {
-          const data = typeof node.attrs.data === "string" ? node.attrs.data : "";
-          const labels = typeof node.attrs.xlabels === "string" ? node.attrs.xlabels : "";
-          const delim = (s) => {
-            const hasComma = /,/.test(s);
-            const hasSpace = /\s/.test(s.trim());
-            if (hasComma && !hasSpace) return "comma";
-            if (hasSpace && !hasComma) return "space";
-            return null;
-          };
-          const a = delim(data);
-          const b = delim(labels);
-          if (a && b && a !== b) {
-            diagnostics.push({
-              severity: "warning",
-              code: "plot-mixed-delimiters",
-              message: `Plot "${node.id ?? "?"}" mixes ${a}-separated data with ${b}-separated xlabels. Use commas for both (preferred).`,
-              pos: node.pos,
-              nodeId: node.id
-            });
-          }
-        }
-      }
-      if (node.name === "risk" && !suppressed(node) && !node.attrs.owner) {
-        diagnostics.push({
-          severity: "warning",
-          code: "risk-without-owner",
-          message: `Risk "${node.id ?? "?"}" has no \`owner=\` attribute.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
-      if ((node.name === "decision" || node.name === "adr") && !suppressed(node) && !node.attrs.status) {
-        diagnostics.push({
-          severity: "warning",
-          code: "decision-without-status",
-          message: `${node.name} "${node.id ?? "?"}" has no \`status=\` attribute.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
-      if ((node.name === "decision" || node.name === "adr") && activeProfiles.has("adr") && !suppressed(node)) {
-        if (!node.attrs.owner) {
-          diagnostics.push({
-            severity: "warning",
-            code: "adr-missing-owner",
-            message: `${node.name} "${node.id ?? "?"}" has no \`owner=\` attribute required by the adr profile.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-        if (!node.attrs.date && !node.attrs.decided_at && !node.attrs.decidedAt) {
-          diagnostics.push({
-            severity: "warning",
-            code: "adr-missing-date",
-            message: `${node.name} "${node.id ?? "?"}" has no \`date=\` or \`decided_at=\` attribute required by the adr profile.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-      }
-      if ((node.name === "agent_task" || node.name === "todo") && !suppressed(node) && !node.attrs.scope && !(node.body && node.body.trim().length > 0) && node.children.length === 0) {
-        diagnostics.push({
-          severity: "warning",
-          code: "agent-task-without-scope",
-          message: `Agent task "${node.id ?? "?"}" has no scope or body.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
-      if ((node.name === "html" || node.name === "svg" || node.name === "script") && !suppressed(node) && node.attrs.trusted !== true) {
-        diagnostics.push({
-          severity: "warning",
-          code: "escape-hatch-untrusted",
-          message: `${node.name} escape-hatch block has no \`trusted\` attribute. Add \`trusted\` to silence this warning, or \`noverify\` to suppress all checks on this block.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
-      if (node.name === "memory" && !suppressed(node)) {
-        const t = node.attrs.type;
-        if (typeof t !== "string" || !t) {
-          diagnostics.push({
-            severity: "error",
-            code: "memory-missing-type",
-            message: `Memory "${node.id ?? "?"}" has no \`type=\` attribute.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        } else if (!MEMORY_TYPES.has(t)) {
-          diagnostics.push({
-            severity: "error",
-            code: "memory-invalid-type",
-            message: `Memory "${node.id ?? "?"}" has type="${t}". Must be one of: ${[...MEMORY_TYPES].join(", ")}.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-        if ("confidence" in node.attrs) {
-          const c = node.attrs.confidence;
-          let num = null;
-          if (typeof c === "number" && Number.isFinite(c)) {
-            num = c;
-          } else if (typeof c === "string" && c.trim() !== "") {
-            const n = Number(c);
-            if (Number.isFinite(n)) num = n;
-          }
-          if (num === null || num < 0 || num > 1) {
-            diagnostics.push({
-              severity: "error",
-              code: "memory-invalid-confidence",
-              message: `Memory "${node.id ?? "?"}" confidence="${c}" must be a number in [0, 1].`,
-              pos: node.pos,
-              nodeId: node.id
-            });
-          }
-        }
-        if ("last_seen" in node.attrs) {
-          const ls = node.attrs.last_seen;
-          const s = typeof ls === "string" ? ls : "";
-          if (!s || !ISO_DATE_RE.test(s) || !isValidIsoDate(s)) {
-            diagnostics.push({
-              severity: "error",
-              code: "memory-invalid-last-seen",
-              message: `Memory "${node.id ?? "?"}" last_seen="${ls}" must be ISO date (YYYY-MM-DD or full ISO 8601).`,
-              pos: node.pos,
-              nodeId: node.id
-            });
-          }
-        }
-        if (!node.id) {
-          diagnostics.push({
-            severity: "error",
-            code: "memory-missing-id",
-            message: `Memory block has no \`id=\` attribute.`,
-            pos: node.pos
-          });
-        }
-      }
-      if (node.name === "citation" && !suppressed(node)) {
-        if (!node.attrs.url && !node.attrs.source && !node.attrs.doi) {
-          diagnostics.push({
-            severity: "warning",
-            code: "citation-missing-source",
-            message: `Citation "${node.id ?? "?"}" has no \`url=\`, \`source=\`, or \`doi=\` attribute.`,
-            pos: node.pos,
-            nodeId: node.id
-          });
-        }
-        if (node.attrs.accessed) {
-          const perBlock = readPositiveNumber(node.attrs.stale_after_days);
-          const window2 = perBlock ?? staleDays;
-          const stale = isStale2(String(node.attrs.accessed), now, window2);
-          if (stale) {
-            diagnostics.push({
-              severity: "warning",
-              code: "stale-citation",
-              message: `Citation "${node.id ?? "?"}" was last accessed ${node.attrs.accessed} (>${window2} days ago).`,
-              pos: node.pos,
-              nodeId: node.id
-            });
-          }
-        }
-      }
+      h[0] = h[0] + a >>> 0;
+      h[1] = h[1] + b >>> 0;
+      h[2] = h[2] + c >>> 0;
+      h[3] = h[3] + d >>> 0;
+      h[4] = h[4] + e >>> 0;
+      h[5] = h[5] + f >>> 0;
+      h[6] = h[6] + g >>> 0;
+      h[7] = h[7] + hh >>> 0;
     }
-    for (const target of referenced) {
-      if (ids.has(target) || aliasIds.has(target)) continue;
-      const suggestion = nearestId(target, [...ids.keys(), ...aliasIds]);
-      const hint = suggestion ? ` Did you mean "${suggestion}"?` : "";
-      const sites2 = refSites.filter((site) => site.target === target);
-      if (sites2.length === 0) {
-        diagnostics.push({
-          severity: "error",
-          code: "broken-reference",
-          message: `Reference to unknown block ID "${target}".${hint}`
-        });
-        continue;
-      }
-      for (const site of sites2) {
-        diagnostics.push({
-          severity: "error",
-          code: "broken-reference",
-          message: `Reference to unknown block ID "${target}".${hint}`,
-          pos: site.node.pos,
-          nodeId: site.node.id,
-          ...suggestion && site.attrKey && site.node.id ? {
-            fix: {
-              op: "update_attribute",
-              id: site.node.id,
-              key: site.attrKey,
-              value: suggestion
-            }
-          } : {}
-        });
-      }
-    }
-    if (activeProfiles.has("memory") || activeProfiles.has("agent-memory")) {
-      for (const target of wikilinkRefs) {
-        const node = ids.get(target) ?? aliasToNode.get(target);
-        if (!node) continue;
-        const isMemory = node.type === "directive" && node.name === "memory";
-        if (!isMemory) {
-          diagnostics.push({
-            severity: "warning",
-            code: "memory-wikilink-non-memory-target",
-            message: `Wikilink [[${target}]] points at a non-::memory block. Memory profile expects wikilinks to resolve to ::memory directives.`
-          });
-        }
-      }
-    }
-    if (activeProfiles.has("adr") && adrNodes.length === 0) {
-      diagnostics.push({
-        severity: "warning",
-        code: "adr-missing-decision",
-        message: `ADR profile expects at least one ::decision or ::adr block.`
-      });
-    }
-    if (requireEvidence) {
-      for (const claim of claims) {
-        if (suppressed(claim)) continue;
-        if (claim.id && !evidenceTargets.has(claim.id)) {
-          diagnostics.push({
-            severity: "warning",
-            code: "claim-without-evidence",
-            message: `Claim "${claim.id}" has no evidence backing it.`,
-            pos: claim.pos,
-            nodeId: claim.id
-          });
-        }
-      }
-    }
-    validateComputedNodes(computedNodes, controls, computed, diagnostics);
-    for (const diagnostic of diagnostics) {
-      if (diagnostic.endLine !== void 0 || !diagnostic.nodeId) continue;
-      const node = ids.get(diagnostic.nodeId) ?? aliasToNode.get(diagnostic.nodeId);
-      if (node?.endLine !== void 0) diagnostic.endLine = node.endLine;
-    }
-    const ignore = options.ignoreRules;
-    if (ignore && ignore.length > 0) {
-      const known = collectRuleCodes();
-      for (const rule of ignore) {
-        if (!known.has(rule)) {
-          diagnostics.push({
-            severity: "info",
-            code: "unknown-ignore-rule",
-            message: `--ignore-rule "${rule}" matches no known validator rule (ignored).`
-          });
-        }
-      }
-      const set2 = new Set(ignore);
-      return diagnostics.filter((d) => !set2.has(d.code));
-    }
-    return diagnostics;
-  }
-  function readDeclaredProfiles(meta, optionProfiles = []) {
-    const out = [];
-    const add = (value) => {
-      if (typeof value !== "string") return;
-      for (const p of value.split(/[,\s]+/)) {
-        const trimmed = p.trim();
-        if (trimmed && !out.includes(trimmed)) out.push(trimmed);
-      }
-    };
-    if (Array.isArray(meta.profiles)) {
-      for (const p of meta.profiles) add(p);
-    }
-    if (typeof meta.profile === "string" && meta.profile.trim()) {
-      add(meta.profile);
-    }
-    for (const profile of optionProfiles) add(profile);
+    let out = "";
+    for (let i = 0; i < 8; i++) out += h[i].toString(16).padStart(8, "0");
     return out;
   }
-  var KNOWN_RULES = [
-    "duplicate-id",
-    "out-of-profile-directive",
-    "unknown-profile",
-    "broken-reference",
-    "evidence-missing-for",
-    "figure-missing-alt",
-    "plot-unknown-dataset",
-    "plot-unknown-column",
-    "plot-missing-data",
-    "plot-mixed-delimiters",
-    "risk-without-owner",
-    "decision-without-status",
-    "agent-task-without-scope",
-    "escape-hatch-untrusted",
-    "stale-citation",
-    "claim-without-evidence",
-    "state-change-missing-block",
-    "state-change-missing-from-to",
-    "change-request-invalid-action",
-    "change-request-missing-revision-text",
-    "diagram-missing-kind",
-    "diagram-missing-source",
-    "plotly-missing-spec",
-    "plotly-invalid-json",
-    "dataset-src-missing",
-    "memory-missing-type",
-    "memory-invalid-type",
-    "memory-invalid-confidence",
-    "memory-invalid-last-seen",
-    "memory-missing-id",
-    "memory-wikilink-non-memory-target",
-    "claim-invalid-confidence",
-    "claim-missing-confidence",
-    "adr-missing-owner",
-    "adr-missing-date",
-    "adr-missing-decision",
-    "citation-missing-source",
-    "control-missing-default",
-    "control-out-of-range-default",
-    "control-invalid-lock",
-    "computed-missing-formula",
-    "computed-unknown-dependency",
-    "formula-parse-error",
-    "computed-chain-too-deep"
-  ];
-  function collectRuleCodes() {
-    return new Set(KNOWN_RULES);
-  }
-  function suppressed(node) {
-    return node.attrs.noverify === true;
-  }
-  function readFirstStringAttr(node, keys) {
-    return readFirstStringAttrEntry(node, keys)?.value;
-  }
-  function readFirstStringAttrEntry(node, keys) {
-    for (const key of keys) {
-      const value = node.attrs[key];
-      if (typeof value === "string" && value.trim()) return { key, value: value.trim() };
+
+  // src/patch.ts
+  var PatchError = class extends Error {
+    constructor(code, message, op) {
+      super(message);
+      this.code = code;
+      this.op = op;
+      this.name = "PatchError";
     }
-    return void 0;
+  };
+  var OP_REQUIRED_FIELDS = {
+    replace_block: [["id", "string"], ["content", "string"]],
+    replace_body: [["id", "string"], ["content", "string"]],
+    update_heading: [["id", "string"], ["title", "string"]],
+    add_comment: [["id", "string"], ["target", "string"], ["content", "string"]],
+    resolve_comment: [["id", "string"]],
+    add_footnote: [["id", "string"], ["target", "string"], ["content", "string"]],
+    add_endnote: [["id", "string"], ["target", "string"], ["content", "string"]],
+    add_change_request: [["id", "string"], ["target", "string"], ["action", "string"]],
+    update_table_cell: [["id", "string"], ["row", "number"], ["column", "number|string"], ["value", "string"]],
+    update_table_header_cell: [["id", "string"], ["column", "number|string"], ["value", "string"]],
+    insert_table_row: [["id", "string"], ["row", "number"], ["cells", "string[]"]],
+    delete_table_row: [["id", "string"], ["row", "number"]],
+    insert_table_column: [["id", "string"], ["column", "number"], ["cells", "string[]"]],
+    delete_table_column: [["id", "string"], ["column", "number|string"]],
+    update_dataset_cell: [["id", "string"], ["row", "number"], ["column", "number|string"], ["value", "string"]],
+    insert_dataset_row: [["id", "string"], ["row", "number"], ["cells", "string[]"]],
+    delete_dataset_row: [["id", "string"], ["row", "number"]],
+    insert_dataset_column: [["id", "string"], ["column", "number"], ["header", "string"], ["cells", "string[]"]],
+    delete_dataset_column: [["id", "string"], ["column", "number|string"]],
+    move_block: [["id", "string"], ["parent", "string"]],
+    add_block: [["parent", "string"], ["content", "string"]],
+    delete_block: [["id", "string"]],
+    update_attribute: [["id", "string"], ["key", "string"], ["value", "attr"]],
+    remove_attribute: [["id", "string"], ["key", "string"]],
+    rename_id: [["from", "string"], ["to", "string"]]
+  };
+  var FIELD_ALIASES = {
+    content: ["body", "text", "value"],
+    title: ["heading", "text"],
+    value: ["content"]
+  };
+  function fieldMatches(value, kind) {
+    switch (kind) {
+      case "string":
+        return typeof value === "string";
+      case "number":
+        return typeof value === "number" && Number.isFinite(value);
+      case "number|string":
+        return typeof value === "string" || typeof value === "number" && Number.isFinite(value);
+      case "string[]":
+        return Array.isArray(value) && value.every((cell) => typeof cell === "string");
+      case "attr":
+        return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+    }
   }
-  function levenshtein(a, b) {
-    if (Math.abs(a.length - b.length) > 2) return 3;
-    const prev = new Array(b.length + 1);
-    for (let j = 0; j <= b.length; j++) prev[j] = j;
-    for (let i = 1; i <= a.length; i++) {
-      let diag = prev[0];
-      prev[0] = i;
-      for (let j = 1; j <= b.length; j++) {
-        const cur = prev[j];
-        prev[j] = Math.min(cur + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
-        diag = cur;
+  function validateOpShape(op) {
+    const requirements = OP_REQUIRED_FIELDS[op.op];
+    if (!requirements) {
+      throw new PatchError("unsupported_op", `unknown patch op "${op.op}"`, op);
+    }
+    const record = op;
+    for (const [field, kind] of requirements) {
+      if (fieldMatches(record[field], kind)) continue;
+      let hint = "";
+      if (record[field] === void 0) {
+        const alias = (FIELD_ALIASES[field] ?? []).find((candidate) => record[candidate] !== void 0);
+        if (alias) hint = ` \u2014 found "${alias}"; did you mean "${field}"?`;
+      }
+      throw new PatchError(
+        "invalid_content",
+        `op "${op.op}" requires ${kind} field "${field}"${hint} (received fields: ${Object.keys(record).join(", ")})`,
+        op
+      );
+    }
+  }
+  function findById(node, id) {
+    if (node.id === id) return node;
+    for (const arr of childArrays(node)) {
+      for (const child of arr.list) {
+        const found = findById(child, id);
+        if (found) return found;
       }
     }
-    return prev[b.length];
+    return null;
   }
-  function nearestId(target, candidates) {
-    let best;
-    let bestDistance = 3;
-    for (const candidate of candidates) {
-      const distance = levenshtein(target, candidate);
-      if (distance < bestDistance) {
-        best = candidate;
-        bestDistance = distance;
-      } else if (distance === bestDistance && best !== void 0) {
-        best = void 0;
-        bestDistance = distance;
-      }
+  function containsId(node, id) {
+    return findById(node, id) !== null;
+  }
+  function childArrays(node) {
+    if (node.type === "document" || node.type === "section" || node.type === "directive") {
+      return [{ key: "children", list: node.children }];
     }
-    return bestDistance <= 2 && target.length > 3 ? best : void 0;
+    if (node.type === "list") {
+      return [{ key: "items", list: node.items }];
+    }
+    return [];
   }
-  function hasChangeRequestRevisionText(node, action) {
-    const from = readFirstStringAttr(node, ["from"]);
-    const to = readFirstStringAttr(node, ["to"]);
-    const text = readFirstStringAttr(node, ["text"]);
-    const body = Boolean((node.body ?? "").trim() || node.children.length > 0);
-    if (action === "replace") return Boolean(from && to);
-    if (action === "insert") return Boolean(to || text || body);
-    return Boolean(from || text || body);
+  function hasChildren(node) {
+    return node.type === "document" || node.type === "section" || node.type === "directive";
   }
-  function validateControl(node, diagnostics) {
-    if (!controlNeedsNumericDefault(node)) return;
-    const def = controlDefaultNumber(node);
-    if (def === void 0) {
-      diagnostics.push({
-        severity: "warning",
-        code: "control-missing-default",
-        message: `Numeric control "${node.id ?? "?"}" has no numeric \`default=\` value for static rendering and LLM context.`,
-        pos: node.pos,
-        nodeId: node.id
+  function isBodyOnlyDirective(node) {
+    return isDirective(node) && (node.children.length === 0 || node.children.length === 1 && node.children[0]?.type === "paragraph" && node.body !== void 0);
+  }
+  function commentAttrs(op) {
+    return {
+      id: op.id,
+      ...op.reply_to ? { reply_to: op.reply_to } : { parent: op.target },
+      ...op.author ? { author: op.author } : {},
+      ...op.initials ? { initials: op.initials } : {},
+      ...op.date ? { date: op.date } : {}
+    };
+  }
+  function isCommentDirective(node) {
+    return isDirective(node) && node.name === "comment";
+  }
+  function noteAttrs(op) {
+    return {
+      id: op.id,
+      for: op.target,
+      ...op.label ? { label: op.label } : {}
+    };
+  }
+  function changeRequestAttrs(op) {
+    return {
+      id: op.id,
+      target: op.target,
+      action: op.action,
+      ...op.from !== void 0 ? { from: op.from } : {},
+      ...op.to !== void 0 ? { to: op.to } : {},
+      ...op.text !== void 0 ? { text: op.text } : {},
+      ...op.author ? { author: op.author } : {},
+      ...op.date ? { date: op.date } : {}
+    };
+  }
+  function isTableDirective(node) {
+    return isDirective(node) && node.name === "table";
+  }
+  function isDatasetDirective(node) {
+    return isDirective(node) && node.name === "dataset";
+  }
+  function sourceTableDirectiveRows(sourceLines, start, end, node, op) {
+    const lines = [];
+    for (let i = start; i < end - 1; i++) {
+      const line = sourceLines[i] ?? "";
+      if (!line.trim()) continue;
+      lines.push({
+        index: i,
+        indent: line.match(/^\s*/)?.[0] ?? "",
+        cells: tableLineCells(line.trim(), op)
       });
+    }
+    return tableRowsFromCells(lines, node, op);
+  }
+  function tableRowsFromCells(parsed, node, op) {
+    if (parsed.length === 0) {
+      throw new PatchError("invalid_content", `table "${node.id ?? "?"}" has no rows`, op);
+    }
+    const wantsHeader = node.attrs.header === true || node.attrs.header === "true";
+    const lines = parsed.map((entry, index) => {
+      if (Array.isArray(entry)) return { index, indent: "", cells: entry };
+      return entry;
+    });
+    const header = wantsHeader ? lines[0]?.cells : void 0;
+    const rows = wantsHeader ? lines.slice(1).map((line) => line.cells) : lines.map((line) => line.cells);
+    return {
+      ...header ? { header } : {},
+      rows,
+      lines
+    };
+  }
+  function updateTableRows(table, op) {
+    if (!Number.isInteger(op.row) || op.row < 0) {
+      throw new PatchError("invalid_content", `table row must be a non-negative integer`, op);
+    }
+    if (op.value.includes("\n") || op.value.includes("\r")) {
+      throw new PatchError("invalid_content", `table cell value must be a single line`, op);
+    }
+    if (op.row >= table.rows.length) {
+      throw new PatchError("invalid_content", `table row ${op.row} is out of range`, op);
+    }
+    const column = tableColumnIndex(table, op);
+    const columnCount = tableColumnCount(table);
+    if (column >= columnCount) {
+      throw new PatchError("invalid_content", `table column ${String(op.column)} is out of range`, op);
+    }
+    for (const row2 of table.rows) {
+      while (row2.length < columnCount) row2.push("");
+    }
+    const row = table.rows[op.row];
+    row[column] = op.value;
+    const lineOffset = table.header ? op.row + 1 : op.row;
+    return { lineOffset, cells: row };
+  }
+  function updateTableHeaderCell(table, op) {
+    if (!table.header) {
+      throw new PatchError("invalid_content", `table header cell update requires header=true`, op);
+    }
+    if (op.value.includes("\n") || op.value.includes("\r")) {
+      throw new PatchError("invalid_content", `table header cell value must be a single line`, op);
+    }
+    const column = tableColumnIndex(table, op);
+    const columnCount = tableColumnCount(table);
+    if (column >= columnCount) {
+      throw new PatchError("invalid_content", `table column ${String(op.column)} is out of range`, op);
+    }
+    while (table.header.length < columnCount) table.header.push("");
+    table.header[column] = op.value;
+    return { lineOffset: 0, cells: table.header };
+  }
+  function insertTableRow(table, op) {
+    const row = validateTableRowIndex(op.row, table.rows.length, true, op);
+    const cells = normalizeInsertedTableCells(table, op);
+    table.rows.splice(row, 0, cells);
+    const lineOffset = table.header ? row + 1 : row;
+    return { lineOffset, cells };
+  }
+  function deleteTableRow(table, op) {
+    const row = validateTableRowIndex(op.row, table.rows.length, false, op);
+    table.rows.splice(row, 1);
+    return { lineOffset: table.header ? row + 1 : row };
+  }
+  function insertTableColumn(table, op) {
+    const columnCount = tableColumnCount(table);
+    const column = validateTableColumnInsertIndex(op.column, columnCount, op);
+    const cells = normalizeInsertedTableColumnCells(table, op);
+    normalizeTableRows(table, columnCount);
+    if (table.header) table.header.splice(column, 0, op.header ?? "");
+    for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
+      table.rows[rowIndex].splice(column, 0, cells[rowIndex] ?? "");
+    }
+  }
+  function deleteTableColumn(table, op) {
+    const columnCount = tableColumnCount(table);
+    if (columnCount <= 1) {
+      throw new PatchError("invalid_content", `cannot delete the last table column`, op);
+    }
+    const column = tableColumnIndex(table, op);
+    if (column >= columnCount) {
+      throw new PatchError("invalid_content", `table column ${String(op.column)} is out of range`, op);
+    }
+    normalizeTableRows(table, columnCount);
+    if (table.header) table.header.splice(column, 1);
+    for (const row of table.rows) row.splice(column, 1);
+  }
+  function validateTableRowIndex(row, length, allowEnd, op) {
+    if (!Number.isInteger(row) || row < 0) {
+      throw new PatchError("invalid_content", `table row must be a non-negative integer`, op);
+    }
+    const max = allowEnd ? length : length - 1;
+    if (row > max) {
+      throw new PatchError("invalid_content", `table row ${row} is out of range`, op);
+    }
+    return row;
+  }
+  function normalizeInsertedTableCells(table, op) {
+    if (!Array.isArray(op.cells)) {
+      throw new PatchError("invalid_content", `table row cells must be an array`, op);
+    }
+    const cells = op.cells.map((cell) => String(cell));
+    for (const cell of cells) {
+      if (cell.includes("\n") || cell.includes("\r")) {
+        throw new PatchError("invalid_content", `table row cells must be single-line strings`, op);
+      }
+    }
+    const columnCount = tableColumnCount(table);
+    while (cells.length < columnCount) cells.push("");
+    return cells;
+  }
+  function validateTableColumnInsertIndex(column, length, op) {
+    if (!Number.isInteger(column) || column < 0) {
+      throw new PatchError("invalid_content", `table column must be a non-negative integer`, op);
+    }
+    if (column > length) {
+      throw new PatchError("invalid_content", `table column ${column} is out of range`, op);
+    }
+    return column;
+  }
+  function normalizeInsertedTableColumnCells(table, op) {
+    if (!Array.isArray(op.cells)) {
+      throw new PatchError("invalid_content", `table column cells must be an array`, op);
+    }
+    if (!table.header && op.header !== void 0) {
+      throw new PatchError("invalid_content", `table column header requires header=true`, op);
+    }
+    if (op.header !== void 0 && (op.header.includes("\n") || op.header.includes("\r"))) {
+      throw new PatchError("invalid_content", `table column header must be a single-line string`, op);
+    }
+    if (op.cells.length > table.rows.length) {
+      throw new PatchError("invalid_content", `table column cells exceed row count`, op);
+    }
+    const cells = op.cells.map((cell) => String(cell));
+    for (const cell of cells) {
+      if (cell.includes("\n") || cell.includes("\r")) {
+        throw new PatchError("invalid_content", `table column cells must be single-line strings`, op);
+      }
+    }
+    while (cells.length < table.rows.length) cells.push("");
+    return cells;
+  }
+  function normalizeTableRows(table, columnCount) {
+    if (table.header) {
+      while (table.header.length < columnCount) table.header.push("");
+    }
+    for (const row of table.rows) {
+      while (row.length < columnCount) row.push("");
+    }
+  }
+  function validateChangeRequestOp(op) {
+    const attrValues = [op.from, op.to, op.text, op.author, op.date];
+    for (const value of attrValues) {
+      if (value !== void 0 && (value.includes("\n") || value.includes("\r"))) {
+        throw new PatchError("invalid_content", `change_request attributes must be single-line strings`, op);
+      }
+    }
+    if (op.action === "replace") {
+      if (!op.from || !op.to) {
+        throw new PatchError("invalid_content", `replace change_request requires from and to`, op);
+      }
       return;
     }
-    const min = numericAttr(node.attrs, "min");
-    const max = numericAttr(node.attrs, "max");
-    if (min !== void 0 && def < min || max !== void 0 && def > max) {
-      diagnostics.push({
-        severity: "warning",
-        code: "control-out-of-range-default",
-        message: `Numeric control "${node.id ?? "?"}" default=${def} is outside its declared range.`,
-        pos: node.pos,
-        nodeId: node.id
-      });
+    if (op.action === "insert") {
+      if (!op.to && !op.text) {
+        throw new PatchError("invalid_content", `insert change_request requires to or text`, op);
+      }
+      return;
+    }
+    if (op.action === "delete") {
+      if (!op.from && !op.text) {
+        throw new PatchError("invalid_content", `delete change_request requires from or text`, op);
+      }
+      return;
+    }
+    throw new PatchError("invalid_content", `change_request action must be insert, delete, or replace`, op);
+  }
+  function validateNoteOp(op) {
+    if (!op.content.trim()) {
+      throw new PatchError("invalid_content", `${op.op === "add_footnote" ? "footnote" : "endnote"} content must not be empty`, op);
+    }
+    if (op.label !== void 0 && (op.label.includes("\n") || op.label.includes("\r"))) {
+      throw new PatchError("invalid_content", `note label must be a single-line string`, op);
     }
   }
-  function validateControlLock(node, diagnostics) {
-    const value = node.attrs.lock ?? node.attrs.content_control_lock ?? node.attrs.sdt_lock;
-    if (value === void 0 || typeof value === "boolean") return;
-    const normalized = String(value).trim().toLowerCase().replace(/[\s_-]+/g, "");
-    if (CONTROL_LOCK_VALUES.has(normalized)) return;
-    diagnostics.push({
-      severity: "warning",
-      code: "control-invalid-lock",
-      message: `Control "${node.id ?? "?"}" lock="${value}" must be control, content, all, unlocked, or none.`,
-      pos: node.pos,
-      nodeId: node.id
-    });
-  }
-  var CONTROL_LOCK_VALUES = /* @__PURE__ */ new Set([
-    "control",
-    "field",
-    "container",
-    "sdt",
-    "sdtlocked",
-    "content",
-    "value",
-    "contentlocked",
-    "all",
-    "both",
-    "full",
-    "sdtcontentlocked",
-    "controlandcontent",
-    "fieldandcontent",
-    "unlocked",
-    "none",
-    "off",
-    "false",
-    "0",
-    "no",
-    ""
-  ]);
-  function controlNeedsNumericDefault(node) {
-    const type2 = typeof node.attrs.type === "string" ? node.attrs.type.trim().toLowerCase() : void 0;
-    if (!type2) return true;
-    return type2 === "slider" || type2 === "range" || type2 === "number" || type2 === "checkbox" || type2 === "toggle";
-  }
-  function validateComputedNodes(nodes, controls, computed, diagnostics) {
-    const depMap = /* @__PURE__ */ new Map();
-    for (const node of nodes) {
-      if (suppressed(node)) continue;
-      const formula = formulaText(node);
-      if (!formula) {
-        diagnostics.push({
-          severity: "warning",
-          code: "computed-missing-formula",
-          message: `${node.name} "${node.id ?? "?"}" has no \`formula=\` attribute or \`formula:\` body line.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-        continue;
+  function tableColumnIndex(table, op) {
+    if (typeof op.column === "number") {
+      if (!Number.isInteger(op.column) || op.column < 0) {
+        throw new PatchError("invalid_content", `table column must be a non-negative integer`, op);
       }
-      const parsed = parseFormula(formula);
-      if (!parsed.ok) {
-        diagnostics.push({
-          severity: "error",
-          code: "formula-parse-error",
-          message: `${node.name} "${node.id ?? "?"}" formula could not be parsed: ${parsed.error.message}`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-        continue;
-      }
-      const domainVars = computedDomainVars(node);
-      const deps = extractFormulaIdentifiers(parsed.ast);
-      depMap.set(node.id ?? `@${node.pos?.line ?? depMap.size}`, deps);
-      for (const dep of deps) {
-        if (domainVars.has(dep) || controls.has(dep) || computed.has(dep)) continue;
-        diagnostics.push({
-          severity: "error",
-          code: "computed-unknown-dependency",
-          message: `${node.name} "${node.id ?? "?"}" formula references unknown control or computed block "${dep}".`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
+      return op.column;
     }
-    const depthMemo = /* @__PURE__ */ new Map();
-    const visiting = /* @__PURE__ */ new Set();
-    const depthOf = (id) => {
-      if (controls.has(id)) return 0;
-      const memo = depthMemo.get(id);
-      if (memo !== void 0) return memo;
-      if (visiting.has(id)) return Infinity;
-      const node = computed.get(id);
-      if (!node) return 0;
-      visiting.add(id);
-      const deps = depMap.get(id) ?? [];
-      let depth = 1;
-      for (const dep of deps) {
-        if (computed.has(dep)) depth = Math.max(depth, depthOf(dep) + 1);
+    if (!table.header) {
+      throw new PatchError("invalid_content", `table column labels require header=true`, op);
+    }
+    const index = table.header.indexOf(op.column);
+    if (index === -1) {
+      throw new PatchError("invalid_content", `table column "${op.column}" not found`, op);
+    }
+    return index;
+  }
+  function tableColumnCount(table) {
+    return Math.max(
+      table.header?.length ?? 0,
+      ...table.rows.map((row) => row.length)
+    );
+  }
+  function tableLineCells(line, op) {
+    if (!line.includes("|")) {
+      throw new PatchError("invalid_content", `table rows must use pipe syntax`, op);
+    }
+    return splitPipeRow(line);
+  }
+  function datasetFormat(node) {
+    const format = node.attrs.format;
+    return typeof format === "string" && format.trim() ? format.trim().toLowerCase() : "yaml";
+  }
+  function parseJsonDatasetText(body, node, op) {
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      throw new PatchError("invalid_content", `dataset "${node.id ?? "?"}" is not valid JSON`, op);
+    }
+    if (Array.isArray(parsed)) {
+      if (parsed.length > 0 && firstJsonRowIsRecord(parsed)) {
+        const columns2 = Object.keys(parsed[0]);
+        return {
+          columns: columns2,
+          rows: parsed.map((row) => columns2.map((column) => row[column] ?? null)),
+          sourceShape: "records"
+        };
       }
-      visiting.delete(id);
-      depthMemo.set(id, depth);
-      return depth;
+      return {
+        columns: columnsAttr(node),
+        rows: parsed.filter(Array.isArray).map((row) => [...row]),
+        sourceShape: "arrays"
+      };
+    }
+    const record = recordValue(parsed);
+    if (!record || !Array.isArray(record.rows)) {
+      throw new PatchError("invalid_content", `dataset "${node.id ?? "?"}" has no JSON rows array`, op);
+    }
+    const columns = Array.isArray(record.columns) ? record.columns.map(String) : columnsAttr(node);
+    return {
+      columns,
+      rows: record.rows.filter(Array.isArray).map((row) => [...row]),
+      sourceShape: "object"
     };
-    for (const node of nodes) {
-      if (suppressed(node) || !node.id) continue;
-      const depth = depthOf(node.id);
-      if (depth > 2) {
-        diagnostics.push({
-          severity: "warning",
-          code: "computed-chain-too-deep",
-          message: `${node.name} "${node.id}" has computed dependency depth ${depth === Infinity ? "cycle" : depth}; keep computed chains at depth <= 2.`,
-          pos: node.pos,
-          nodeId: node.id
-        });
-      }
-    }
   }
-  function readDatasetColumns(node) {
-    const cols = /* @__PURE__ */ new Set();
-    if (typeof node.attrs.columns === "string") {
-      for (const c of node.attrs.columns.split(/[,\s]+/).filter(Boolean)) cols.add(c);
-    }
-    const body = node.body ?? "";
-    const format = String(node.attrs.format ?? "").toLowerCase();
-    if (!body.trim()) return cols;
-    if (format === "csv" || format === "tsv") {
-      const delim = format === "tsv" ? "	" : ",";
-      const firstLine = body.replace(/\r\n?/g, "\n").split("\n").find((l) => l.length > 0);
-      if (firstLine) {
-        for (const c of splitDelimitedRow(firstLine, delim).filter(Boolean)) {
-          cols.add(c);
-        }
-      }
-      return cols;
-    }
-    if (format === "json") {
-      try {
-        const parsed2 = JSON.parse(body);
-        if (Array.isArray(parsed2) && parsed2.length > 0) {
-          const head = parsed2[0];
-          if (head && typeof head === "object" && !Array.isArray(head)) {
-            for (const k of Object.keys(head)) cols.add(k);
-          }
-        } else if (parsed2 && typeof parsed2 === "object" && Array.isArray(parsed2.columns)) {
-          for (const c of parsed2.columns) {
-            if (typeof c === "string") cols.add(c);
-          }
-        }
-      } catch {
-      }
-      return cols;
-    }
+  function loadYamlDatasetText(body, id, op) {
     let parsed;
     try {
       parsed = yaml.load(body);
     } catch {
-      parsed = null;
+      throw new PatchError("invalid_content", `dataset "${id ?? "?"}" is not valid YAML`, op);
     }
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const schema2 = parsed.schema;
-      if (schema2 && typeof schema2 === "object" && !Array.isArray(schema2)) {
-        for (const k of Object.keys(schema2)) cols.add(k);
+    const record = recordValue(parsed);
+    if (!record) throw new PatchError("invalid_content", `dataset "${id ?? "?"}" must be a YAML object`, op);
+    return record;
+  }
+  function datasetColumnsFromYaml(node, parsed, rows) {
+    const schema2 = recordValue(parsed.schema);
+    if (schema2) return Object.keys(schema2);
+    const attrColumns = columnsAttr(node);
+    if (attrColumns.length > 0) return attrColumns;
+    return inferredDatasetColumns(rows);
+  }
+  function columnsAttr(node) {
+    const columns = node.attrs.columns;
+    return typeof columns === "string" ? columns.split(/[,\s]+/).filter(Boolean) : [];
+  }
+  function inferredDatasetColumns(rows) {
+    const width = Math.max(0, ...rows.filter(Array.isArray).map((row) => row.length));
+    return Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
+  }
+  function updateDatasetRows(table, op) {
+    if (!Number.isInteger(op.row) || op.row < 0) {
+      throw new PatchError("invalid_content", `dataset row must be a non-negative integer`, op);
+    }
+    if (op.value.includes("\n") || op.value.includes("\r")) {
+      throw new PatchError("invalid_content", `dataset cell value must be a single line`, op);
+    }
+    if (op.row >= table.rows.length) {
+      throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
+    }
+    const column = datasetColumnIndex(table, op);
+    const columnCount = datasetColumnCount(table);
+    if (column >= columnCount) {
+      throw new PatchError("invalid_content", `dataset column ${String(op.column)} is out of range`, op);
+    }
+    for (const row2 of table.rows) {
+      while (row2.length < columnCount) row2.push(null);
+    }
+    const row = table.rows[op.row];
+    const columnName = table.columns[column];
+    row[column] = coerceDatasetPatchValue(op.value, columnName ? table.schema?.[columnName] : void 0);
+    return { lineOffset: op.row, column, cells: row };
+  }
+  function insertDatasetRow(table, op) {
+    const row = validateDatasetRowIndex(op.row, table.rows.length, true, op);
+    const cells = normalizeInsertedDatasetCells(table, op);
+    table.rows.splice(row, 0, cells);
+    return { lineOffset: row, cells };
+  }
+  function deleteDatasetRow(table, op) {
+    const row = validateDatasetRowIndex(op.row, table.rows.length, false, op);
+    table.rows.splice(row, 1);
+    return { lineOffset: row };
+  }
+  function insertDatasetColumn(table, op) {
+    const column = validateDatasetColumnInsertIndex(op.column, datasetColumnCount(table), op);
+    if (op.header.includes("\n") || op.header.includes("\r") || op.header.trim().length === 0) {
+      throw new PatchError("invalid_content", `dataset column header must be a non-empty single-line string`, op);
+    }
+    if (table.columns.includes(op.header)) {
+      throw new PatchError("invalid_content", `dataset column "${op.header}" already exists`, op);
+    }
+    const values = normalizeInsertedDatasetColumnCells(table, op);
+    const schemaValue = inferDatasetType(values.map(datasetScalarText));
+    normalizeDatasetRows(table, datasetColumnCount(table));
+    table.columns.splice(column, 0, op.header);
+    for (let rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
+      table.rows[rowIndex].splice(column, 0, values[rowIndex] ?? "");
+    }
+    if (table.schema) {
+      table.schema = insertRecordEntry(table.schema, op.header, schemaValue, column);
+    }
+    return { column, values };
+  }
+  function deleteDatasetColumn(table, op) {
+    const columnCount = datasetColumnCount(table);
+    if (columnCount <= 1) {
+      throw new PatchError("invalid_content", `cannot delete the last dataset column`, op);
+    }
+    const column = datasetColumnIndex(table, op);
+    if (column >= columnCount) {
+      throw new PatchError("invalid_content", `dataset column ${String(op.column)} is out of range`, op);
+    }
+    normalizeDatasetRows(table, columnCount);
+    const header = table.columns[column] ?? `Column ${column + 1}`;
+    table.columns.splice(column, 1);
+    for (const row of table.rows) row.splice(column, 1);
+    if (table.schema) {
+      const nextSchema = {};
+      for (const [key, value] of Object.entries(table.schema)) {
+        if (key !== header) nextSchema[key] = value;
+      }
+      table.schema = nextSchema;
+    }
+    return { column, header };
+  }
+  function validateDatasetRowIndex(row, length, allowEnd, op) {
+    if (!Number.isInteger(row) || row < 0) {
+      throw new PatchError("invalid_content", `dataset row must be a non-negative integer`, op);
+    }
+    const max = allowEnd ? length : length - 1;
+    if (row > max) {
+      throw new PatchError("invalid_content", `dataset row ${row} is out of range`, op);
+    }
+    return row;
+  }
+  function normalizeInsertedDatasetCells(table, op) {
+    if (!Array.isArray(op.cells)) {
+      throw new PatchError("invalid_content", `dataset row cells must be an array`, op);
+    }
+    const rawCells = op.cells.map((cell) => String(cell));
+    for (const cell of rawCells) {
+      if (cell.includes("\n") || cell.includes("\r")) {
+        throw new PatchError("invalid_content", `dataset row cells must be single-line strings`, op);
       }
     }
-    return cols;
+    let columnCount = datasetColumnCount(table);
+    if (columnCount === 0) {
+      columnCount = rawCells.length;
+      table.columns = inferredDatasetColumns([rawCells]);
+    }
+    if (rawCells.length > columnCount) {
+      throw new PatchError("invalid_content", `dataset row cells exceed column count`, op);
+    }
+    while (rawCells.length < columnCount) rawCells.push("");
+    return rawCells.map((cell, column) => {
+      const columnName = table.columns[column];
+      return coerceDatasetPatchValue(cell, columnName ? table.schema?.[columnName] : void 0);
+    });
   }
-  function readPositiveNumber(v) {
-    if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
-    if (typeof v === "string") {
-      const n = Number(v);
-      if (Number.isFinite(n) && n > 0) return n;
+  function validateDatasetColumnInsertIndex(column, length, op) {
+    if (!Number.isInteger(column) || column < 0) {
+      throw new PatchError("invalid_content", `dataset column must be a non-negative integer`, op);
+    }
+    if (column > length) {
+      throw new PatchError("invalid_content", `dataset column ${column} is out of range`, op);
+    }
+    return column;
+  }
+  function normalizeInsertedDatasetColumnCells(table, op) {
+    if (!Array.isArray(op.cells)) {
+      throw new PatchError("invalid_content", `dataset column cells must be an array`, op);
+    }
+    if (op.cells.length > table.rows.length) {
+      throw new PatchError("invalid_content", `dataset column cells exceed row count`, op);
+    }
+    const cells = op.cells.map((cell) => String(cell));
+    for (const cell of cells) {
+      if (cell.includes("\n") || cell.includes("\r")) {
+        throw new PatchError("invalid_content", `dataset column cells must be single-line strings`, op);
+      }
+    }
+    while (cells.length < table.rows.length) cells.push("");
+    const schemaValue = inferDatasetType(cells);
+    return cells.map((cell) => coerceDatasetPatchValue(cell, schemaValue));
+  }
+  function normalizeDatasetRows(table, columnCount) {
+    while (table.columns.length < columnCount) table.columns.push(`Column ${table.columns.length + 1}`);
+    for (const row of table.rows) {
+      while (row.length < columnCount) row.push(null);
+    }
+  }
+  function insertRecordEntry(record, key, value, index) {
+    const out = {};
+    const entries = Object.entries(record);
+    for (let i = 0; i <= entries.length; i++) {
+      if (i === index) out[key] = value;
+      const entry = entries[i];
+      if (entry) out[entry[0]] = entry[1];
+    }
+    return out;
+  }
+  function datasetColumnIndex(table, op) {
+    if (typeof op.column === "number") {
+      if (!Number.isInteger(op.column) || op.column < 0) {
+        throw new PatchError("invalid_content", `dataset column must be a non-negative integer`, op);
+      }
+      return op.column;
+    }
+    const index = table.columns.indexOf(op.column);
+    if (index === -1) throw new PatchError("invalid_content", `dataset column "${op.column}" not found`, op);
+    return index;
+  }
+  function datasetColumnCount(table) {
+    return Math.max(table.columns.length, ...table.rows.map((row) => row.length), 0);
+  }
+  function coerceDatasetPatchValue(value, schemaValue) {
+    const type2 = schemaType(schemaValue);
+    if (type2 === "number" || type2 === "integer") {
+      if (!value.trim()) return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : value;
+    }
+    if (type2 === "boolean") {
+      if (!value.trim()) return null;
+      return booleanText(value) ?? value;
+    }
+    return type2 ? value : coerceDatasetScalar(value);
+  }
+  function coerceDatasetScalar(value) {
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    const boolean = booleanText(trimmed);
+    if (boolean !== void 0) return boolean;
+    const number = Number(trimmed);
+    if (Number.isFinite(number) && /^-?\d/.test(trimmed)) return number;
+    return value;
+  }
+  function inferDatasetType(values) {
+    const present = values.map((value) => value.trim()).filter(Boolean);
+    if (present.length === 0) return "string";
+    if (present.every((value) => Number.isFinite(Number(value)))) return "number";
+    if (present.every((value) => booleanText(value) !== void 0)) return "boolean";
+    return "string";
+  }
+  function schemaType(schemaValue) {
+    if (typeof schemaValue === "string") return schemaValue.toLowerCase();
+    const record = recordValue(schemaValue);
+    const type2 = record?.type;
+    return typeof type2 === "string" ? type2.toLowerCase() : void 0;
+  }
+  function booleanText(value) {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "yes" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "no" || normalized === "0") return false;
+    return void 0;
+  }
+  function datasetScalarText(value) {
+    if (value === null || value === void 0) return "";
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+    return JSON.stringify(value);
+  }
+  function firstJsonRowIsRecord(rows) {
+    const first = rows[0];
+    return Boolean(first && typeof first === "object" && !Array.isArray(first));
+  }
+  function recordValue(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+  }
+  function allTableRows(table) {
+    return table.header ? [table.header, ...table.rows] : table.rows;
+  }
+  function serializePipeRow(cells, indent = "") {
+    return `${indent}| ${cells.map(escapePipeTableCell).join(" | ")} |`;
+  }
+  function parseFragment(content, op) {
+    const doc = parse(content);
+    if (doc.children.length === 0) {
+      throw new PatchError("invalid_content", `fragment parsed to no blocks`, op);
+    }
+    if (doc.children.length > 1) {
+      throw new PatchError(
+        "invalid_content",
+        `fragment must contain exactly one top-level block (got ${doc.children.length})`,
+        op
+      );
+    }
+    const node = doc.children[0];
+    if (!isDirective(node)) {
+      throw new PatchError("invalid_content", `fragment must be a directive block (got ${node.type})`, op);
+    }
+    return node;
+  }
+  function patchSource(source, ops) {
+    const list = Array.isArray(ops) ? ops : [ops];
+    let cur = source;
+    for (const op of list) cur = applyToSource(cur, op);
+    return cur;
+  }
+  function blockSourceHash(source, id) {
+    const doc = parse(source);
+    const node = findById(doc, id);
+    if (!node) throw new Error(`block "${id}" not found`);
+    const start = node.pos?.line;
+    const end = node.endLine;
+    if (!start || !end) throw new Error(`block "${id}" has no source span`);
+    return sha256Hex(source.split("\n").slice(start - 1, end).join("\n"));
+  }
+  function patchTargetId(op) {
+    switch (op.op) {
+      case "rename_id":
+        return op.from;
+      case "add_block":
+        return op.parent;
+      case "add_comment":
+      case "add_footnote":
+      case "add_endnote":
+      case "add_change_request":
+        return op.target;
+      default:
+        return op.id;
+    }
+  }
+  function verifyBaseHash(source, op) {
+    const expected = op.baseHash?.trim().toLowerCase();
+    if (!expected) return;
+    if (!/^[0-9a-f]{8,64}$/.test(expected)) {
+      throw new PatchError(
+        "invalid_content",
+        `baseHash must be 8\u201364 hex chars of the block's sha256 (got "${op.baseHash}")`,
+        op
+      );
+    }
+    const targetId = patchTargetId(op);
+    let actual;
+    try {
+      actual = blockSourceHash(source, targetId);
+    } catch {
+      throw new PatchError("target_missing", `block "${targetId}" not found`, op);
+    }
+    if (!actual.startsWith(expected)) {
+      throw new PatchError(
+        "sha_mismatch",
+        `block "${targetId}" changed since it was read: baseHash ${expected.slice(0, 12)} does not match current ${actual.slice(0, 12)}`,
+        op
+      );
+    }
+  }
+  function applyToSource(source, op) {
+    validateOpShape(op);
+    verifyBaseHash(source, op);
+    switch (op.op) {
+      case "update_attribute":
+        return applySrcUpdateAttr(source, op);
+      case "remove_attribute":
+        return applySrcRemoveAttr(source, op);
+      case "replace_block":
+        return applySrcReplace(source, op);
+      case "replace_body":
+        return applySrcReplaceBody(source, op);
+      case "update_heading":
+        return applySrcUpdateHeading(source, op);
+      case "add_comment":
+        return applySrcAddComment(source, op);
+      case "resolve_comment":
+        return applySrcResolveComment(source, op);
+      case "add_footnote":
+      case "add_endnote":
+        return applySrcAddNote(source, op);
+      case "add_change_request":
+        return applySrcAddChangeRequest(source, op);
+      case "update_table_cell":
+        return applySrcUpdateTableCell(source, op);
+      case "update_table_header_cell":
+        return applySrcUpdateTableHeaderCell(source, op);
+      case "insert_table_row":
+        return applySrcInsertTableRow(source, op);
+      case "delete_table_row":
+        return applySrcDeleteTableRow(source, op);
+      case "insert_table_column":
+        return applySrcInsertTableColumn(source, op);
+      case "delete_table_column":
+        return applySrcDeleteTableColumn(source, op);
+      case "update_dataset_cell":
+        return applySrcUpdateDatasetCell(source, op);
+      case "insert_dataset_row":
+        return applySrcInsertDatasetRow(source, op);
+      case "delete_dataset_row":
+        return applySrcDeleteDatasetRow(source, op);
+      case "insert_dataset_column":
+        return applySrcInsertDatasetColumn(source, op);
+      case "delete_dataset_column":
+        return applySrcDeleteDatasetColumn(source, op);
+      case "move_block":
+        return applySrcMove(source, op);
+      case "delete_block":
+        return applySrcDelete(source, op);
+      case "add_block":
+        return applySrcAdd(source, op);
+      case "rename_id":
+        return applySrcRenameId(source, op);
+      default: {
+        const _exhaustive = op;
+        void _exhaustive;
+        throw new Error("unknown patch op");
+      }
+    }
+  }
+  function locate(source, id, op) {
+    const doc = parse(source);
+    const node = findById(doc, id);
+    if (!node) throw new PatchError("target_missing", `block "${id}" not found`, op);
+    const start = node.pos?.line;
+    const end = node.endLine;
+    if (!start || !end) {
+      throw new Error(`block "${id}" has no source span`);
+    }
+    return { node, start, end };
+  }
+  function applySrcReplaceBody(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    const lines = source.split("\n");
+    const bodyLines = op.content.replace(/\n+$/, "").split("\n");
+    if (isDirective(node)) {
+      if (!isBodyOnlyDirective(node)) {
+        throw new PatchError("invalid_content", `block "${op.id}" has child blocks; use replace_block`, op);
+      }
+      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
+      return lines.join("\n");
+    }
+    if (node.type === "paragraph") {
+      lines.splice(start - 1, end - start + 1, ...bodyLines);
+      return lines.join("\n");
+    }
+    if (node.type === "quote") {
+      const quoted = bodyLines.map((line) => line ? `> ${line}` : ">");
+      lines.splice(start - 1, end - start + 1, ...quoted);
+      return lines.join("\n");
+    }
+    if (node.type === "code") {
+      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
+      return lines.join("\n");
+    }
+    if (node.type === "list_item") {
+      const marker = (lines[start - 1] ?? "").match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
+      lines[start - 1] = `${marker}${op.content.replace(/\n/g, " ")}`;
+      return lines.join("\n");
+    }
+    throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
+  }
+  function applySrcUpdateHeading(source, op) {
+    const { node, start } = locate(source, op.id, op);
+    if (node.type !== "section") {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a section heading`, op);
+    }
+    const lines = source.split("\n");
+    lines[start - 1] = rewriteHeadingTitle(lines[start - 1] ?? "", op.title, node.id);
+    return lines.join("\n");
+  }
+  function applySrcUpdateAttr(source, op) {
+    if (op.key === "id") {
+      throw new PatchError("id_attribute_protected", `use rename_id to change a block's id`, op);
+    }
+    const { node, start } = locate(source, op.id, op);
+    if (!isDirective(node)) {
+      throw new PatchError("target_missing", `block "${op.id}" is not a directive`, op);
+    }
+    const lines = source.split("\n");
+    const lineIdx = start - 1;
+    const open = lines[lineIdx] ?? "";
+    lines[lineIdx] = rewriteOpenLineAttr(open, op.key, op.value, op);
+    return lines.join("\n");
+  }
+  function applySrcRemoveAttr(source, op) {
+    if (op.key === "id") {
+      throw new PatchError("id_attribute_protected", `use rename_id to change a block's id`, op);
+    }
+    const { node, start } = locate(source, op.id, op);
+    if (!isDirective(node)) {
+      throw new PatchError("target_missing", `block "${op.id}" is not a directive`, op);
+    }
+    const lines = source.split("\n");
+    const lineIdx = start - 1;
+    const open = lines[lineIdx] ?? "";
+    lines[lineIdx] = rewriteOpenLineRemoveAttr(open, op.key, op);
+    return lines.join("\n");
+  }
+  function applySrcReplace(source, op) {
+    parseFragment(op.content, op);
+    const { start, end } = locate(source, op.id, op);
+    const lines = source.split("\n");
+    const replacement = op.content.replace(/\n+$/, "").split("\n");
+    lines.splice(start - 1, end - start + 1, ...replacement);
+    return lines.join("\n");
+  }
+  function applySrcDelete(source, op) {
+    const { start, end } = locate(source, op.id, op);
+    const lines = source.split("\n");
+    let removeCount = end - start + 1;
+    if (lines[start - 1 + removeCount] === "" && lines[start - 2] === "") {
+      removeCount += 1;
+    }
+    lines.splice(start - 1, removeCount);
+    return lines.join("\n");
+  }
+  function applySrcAdd(source, op) {
+    parseFragment(op.content, op);
+    const doc = parse(source);
+    const parent = findById(doc, op.parent);
+    if (!parent) throw new PatchError("parent_missing", `parent "${op.parent}" not found`, op);
+    if (!hasChildren(parent)) {
+      throw new PatchError("parent_missing", `parent "${op.parent}" cannot have children`, op);
+    }
+    const children = parent.children;
+    const pos = Math.max(0, Math.min(op.position ?? children.length, children.length));
+    const lines = source.split("\n");
+    const fragmentLines = op.content.replace(/\n+$/, "").split("\n");
+    let insertAt;
+    if (pos < children.length) {
+      const next = children[pos];
+      const nextStart = next.pos?.line;
+      if (!nextStart) throw new Error(`sibling has no source span`);
+      insertAt = nextStart - 1;
+      fragmentLines.push("");
+    } else if (children.length > 0) {
+      const last = children[children.length - 1];
+      const lastEnd = last.endLine;
+      if (!lastEnd) throw new Error(`sibling has no source span`);
+      insertAt = lastEnd;
+      fragmentLines.unshift("");
+    } else {
+      if (parent.type === "directive" && parent.endLine) {
+        insertAt = parent.endLine - 1;
+      } else if (parent.type === "section" && parent.endLine) {
+        insertAt = parent.endLine;
+      } else {
+        insertAt = lines.length;
+      }
+    }
+    lines.splice(insertAt, 0, ...fragmentLines);
+    return lines.join("\n");
+  }
+  function applySrcAddComment(source, op) {
+    const doc = parse(source);
+    if (findById(doc, op.id)) {
+      throw new PatchError("id_conflict", `target id "${op.id}" already exists`, op);
+    }
+    const target = findById(doc, op.target);
+    if (!target) throw new PatchError("target_missing", `block "${op.target}" not found`, op);
+    const start = target.pos?.line;
+    const end = target.endLine;
+    if (!start || !end) throw new Error(`block "${op.target}" has no source span`);
+    const lines = source.split("\n");
+    const fragmentLines = siblingDirectiveFragmentLines(target, lines, serializeCommentBlock(op));
+    let insertAt;
+    if (target.type === "section") {
+      insertAt = start;
+      if (lines[insertAt] === "") insertAt += 1;
+      fragmentLines.push("");
+    } else {
+      insertAt = end;
+      fragmentLines.unshift("");
+    }
+    lines.splice(insertAt, 0, ...fragmentLines);
+    return lines.join("\n");
+  }
+  function applySrcResolveComment(source, op) {
+    const { node, start } = locate(source, op.id, op);
+    if (!isCommentDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a comment`, op);
+    }
+    const lines = source.split("\n");
+    const lineIdx = start - 1;
+    lines[lineIdx] = rewriteCommentResolutionAttrs(lines[lineIdx] ?? "", op);
+    return lines.join("\n");
+  }
+  function applySrcAddNote(source, op) {
+    validateNoteOp(op);
+    const doc = parse(source);
+    if (findById(doc, op.id)) {
+      throw new PatchError("id_conflict", `target id "${op.id}" already exists`, op);
+    }
+    const target = findById(doc, op.target);
+    if (!target) throw new PatchError("target_missing", `block "${op.target}" not found`, op);
+    const start = target.pos?.line;
+    const end = target.endLine;
+    if (!start || !end) throw new Error(`block "${op.target}" has no source span`);
+    const lines = source.split("\n");
+    const fragmentLines = siblingDirectiveFragmentLines(target, lines, serializeNoteBlock(op));
+    let insertAt;
+    if (target.type === "section") {
+      insertAt = start;
+      if (lines[insertAt] === "") insertAt += 1;
+      fragmentLines.push("");
+    } else {
+      insertAt = end;
+      fragmentLines.unshift("");
+    }
+    lines.splice(insertAt, 0, ...fragmentLines);
+    return lines.join("\n");
+  }
+  function applySrcAddChangeRequest(source, op) {
+    validateChangeRequestOp(op);
+    const doc = parse(source);
+    if (findById(doc, op.id)) {
+      throw new PatchError("id_conflict", `target id "${op.id}" already exists`, op);
+    }
+    const target = findById(doc, op.target);
+    if (!target) throw new PatchError("target_missing", `block "${op.target}" not found`, op);
+    const start = target.pos?.line;
+    const end = target.endLine;
+    if (!start || !end) throw new Error(`block "${op.target}" has no source span`);
+    const lines = source.split("\n");
+    const fragmentLines = siblingDirectiveFragmentLines(target, lines, serializeChangeRequestBlock(op));
+    let insertAt;
+    if (target.type === "section") {
+      insertAt = start;
+      if (lines[insertAt] === "") insertAt += 1;
+      fragmentLines.push("");
+    } else {
+      insertAt = end;
+      fragmentLines.unshift("");
+    }
+    lines.splice(insertAt, 0, ...fragmentLines);
+    return lines.join("\n");
+  }
+  function siblingDirectiveFragmentLines(target, lines, source) {
+    const targetDepth = isDirective(target) ? directiveFenceDepth(target, lines) : 2;
+    return normalizeDirectiveFenceDepth(source, 2, targetDepth).split("\n");
+  }
+  function applySrcUpdateTableCell(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isTableDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
+    }
+    const lines = source.split("\n");
+    const table = sourceTableDirectiveRows(lines, start, end, node, op);
+    const target = updateTableRows(table, op);
+    const sourceLine = table.lines[target.lineOffset];
+    lines[sourceLine.index] = serializePipeRow(target.cells, sourceLine.indent);
+    return lines.join("\n");
+  }
+  function applySrcUpdateTableHeaderCell(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isTableDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
+    }
+    const lines = source.split("\n");
+    const table = sourceTableDirectiveRows(lines, start, end, node, op);
+    const target = updateTableHeaderCell(table, op);
+    const sourceLine = table.lines[target.lineOffset];
+    lines[sourceLine.index] = serializePipeRow(target.cells, sourceLine.indent);
+    return lines.join("\n");
+  }
+  function applySrcInsertTableRow(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isTableDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
+    }
+    const lines = source.split("\n");
+    const table = sourceTableDirectiveRows(lines, start, end, node, op);
+    const target = insertTableRow(table, op);
+    const indent = tableRowIndent(table, target.lineOffset);
+    const insertAt = tableInsertLineIndex(table, target.lineOffset, end);
+    lines.splice(insertAt, 0, serializePipeRow(target.cells, indent));
+    return lines.join("\n");
+  }
+  function applySrcDeleteTableRow(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isTableDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
+    }
+    const lines = source.split("\n");
+    const table = sourceTableDirectiveRows(lines, start, end, node, op);
+    const target = deleteTableRow(table, op);
+    const sourceLine = table.lines[target.lineOffset];
+    if (!sourceLine) throw new PatchError("invalid_content", `table row ${op.row} is out of range`, op);
+    lines.splice(sourceLine.index, 1);
+    return lines.join("\n");
+  }
+  function applySrcInsertTableColumn(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isTableDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
+    }
+    const lines = source.split("\n");
+    const table = sourceTableDirectiveRows(lines, start, end, node, op);
+    insertTableColumn(table, op);
+    rewriteSourceTableRows(lines, table);
+    return lines.join("\n");
+  }
+  function applySrcDeleteTableColumn(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isTableDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a table directive`, op);
+    }
+    const lines = source.split("\n");
+    const table = sourceTableDirectiveRows(lines, start, end, node, op);
+    deleteTableColumn(table, op);
+    rewriteSourceTableRows(lines, table);
+    return lines.join("\n");
+  }
+  function applySrcUpdateDatasetCell(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isDatasetDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
+    }
+    const lines = source.split("\n");
+    const format = datasetFormat(node);
+    if (format === "csv" || format === "tsv") {
+      const delimiter = format === "tsv" ? "	" : ",";
+      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
+      const target = updateDatasetRows(table, op);
+      const sourceLine = table.lines[target.lineOffset + 1];
+      const cells = target.cells.map(datasetScalarText);
+      if (cells.some((cell) => /[\r\n]/.test(cell))) {
+        throw new PatchError("invalid_content", `dataset cell value must be a single line`, op);
+      }
+      lines[sourceLine.index] = `${sourceLine.indent}${serializeDelimitedRow(cells, delimiter)}`;
+      return lines.join("\n");
+    }
+    if (format === "yaml") {
+      const table = sourceYamlDatasetRows(lines, start, end, node, op);
+      const target = updateDatasetRows(table, op);
+      const sourceLine = table.lines[target.lineOffset];
+      lines[sourceLine.index] = `${sourceLine.indent}- ${serializeYamlFlowRow(target.cells)}${sourceLine.trailing}`;
+      return lines.join("\n");
+    }
+    if (format === "json") {
+      const table = sourceJsonDatasetRows(lines, start, end, node, op);
+      const target = updateDatasetRows(table, op);
+      if (table.sourceShape === "records") {
+        const sourceRow = table.lines[target.lineOffset];
+        if (!sourceRow) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
+        const column = target.column;
+        const key = table.columns[column];
+        if (!key) throw new PatchError("invalid_content", `dataset column ${String(op.column)} is out of range`, op);
+        const sourceLine2 = sourceRow.propertyLines.get(key);
+        if (sourceLine2 === void 0) {
+          throw new PatchError("invalid_content", `source-preserving update_dataset_cell could not map JSON property "${key}"`, op);
+        }
+        lines[sourceLine2] = rewriteJsonPropertyLine(lines[sourceLine2] ?? "", key, target.cells[column], op);
+        return lines.join("\n");
+      }
+      const sourceLine = table.lines[target.lineOffset];
+      if (!sourceLine) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
+      lines[sourceLine.index] = `${sourceLine.indent}${JSON.stringify(target.cells)}${sourceLine.trailing}`;
+      return lines.join("\n");
+    }
+    throw new PatchError("invalid_content", `source-preserving update_dataset_cell does not support ${format} datasets`, op);
+  }
+  function applySrcInsertDatasetRow(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isDatasetDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
+    }
+    const lines = source.split("\n");
+    const format = datasetFormat(node);
+    if (format === "csv" || format === "tsv") {
+      const delimiter = format === "tsv" ? "	" : ",";
+      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
+      const target = insertDatasetRow(table, op);
+      const cells = target.cells.map(datasetScalarText);
+      if (cells.some((cell) => /[\r\n]/.test(cell))) {
+        throw new PatchError("invalid_content", `dataset cell value must be a single line`, op);
+      }
+      const indent = delimitedDatasetRowIndent(table, target.lineOffset);
+      const insertAt = delimitedDatasetInsertLineIndex(table, target.lineOffset, end);
+      lines.splice(insertAt, 0, `${indent}${serializeDelimitedRow(cells, delimiter)}`);
+      return lines.join("\n");
+    }
+    if (format === "yaml") {
+      const table = sourceYamlDatasetRows(lines, start, end, node, op);
+      const target = insertDatasetRow(table, op);
+      const indent = yamlDatasetRowIndent(table, target.lineOffset);
+      const insertAt = yamlDatasetInsertLineIndex(table, target.lineOffset, end);
+      if (table.lines.length === 0) {
+        lines[table.rowsLineIndex] = rewriteYamlRowsLineAsBlock(lines[table.rowsLineIndex] ?? "", op);
+      }
+      lines.splice(insertAt, 0, `${indent}- ${serializeYamlFlowRow(target.cells)}`);
+      return lines.join("\n");
+    }
+    if (format === "json") {
+      const table = sourceJsonDatasetRows(lines, start, end, node, op);
+      if (table.sourceShape === "records") {
+        const target2 = insertDatasetRow(table, op);
+        const insertAt2 = jsonRecordDatasetInsertLineIndex(table, target2.lineOffset);
+        if (target2.lineOffset >= table.lines.length && table.lines.length > 0) {
+          const previous = table.lines[table.lines.length - 1];
+          lines[previous.end] = ensureJsonTrailingComma(lines[previous.end] ?? "");
+        }
+        const reference = jsonRecordReferenceRow(table, target2.lineOffset);
+        const trailing2 = target2.lineOffset < table.lines.length ? "," : "";
+        lines.splice(insertAt2, 0, ...serializeJsonRecordRow(table.columns, target2.cells, reference, trailing2));
+        return lines.join("\n");
+      }
+      const target = insertDatasetRow(table, op);
+      const literal = JSON.stringify(target.cells);
+      if (table.inlineEmptyRowsLine) {
+        lines.splice(
+          table.inlineEmptyRowsLine.index,
+          1,
+          `${table.inlineEmptyRowsLine.indent}${table.inlineEmptyRowsLine.prefix}[`,
+          `${table.rowIndent}${literal}`,
+          `${table.inlineEmptyRowsLine.indent}]${table.inlineEmptyRowsLine.trailing}`
+        );
+        return lines.join("\n");
+      }
+      const insertAt = jsonDatasetInsertLineIndex(table, target.lineOffset);
+      if (target.lineOffset >= table.lines.length && table.lines.length > 0) {
+        const previous = table.lines[table.lines.length - 1];
+        lines[previous.index] = ensureJsonTrailingComma(lines[previous.index] ?? "");
+      }
+      const trailing = target.lineOffset < table.lines.length ? "," : "";
+      lines.splice(insertAt, 0, `${table.rowIndent}${literal}${trailing}`);
+      return lines.join("\n");
+    }
+    throw new PatchError("invalid_content", `source-preserving insert_dataset_row does not support ${format} datasets`, op);
+  }
+  function applySrcDeleteDatasetRow(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isDatasetDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
+    }
+    const lines = source.split("\n");
+    const format = datasetFormat(node);
+    if (format === "csv" || format === "tsv") {
+      const delimiter = format === "tsv" ? "	" : ",";
+      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
+      const target = deleteDatasetRow(table, op);
+      const sourceLine = table.lines[target.lineOffset + 1];
+      if (!sourceLine) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
+      lines.splice(sourceLine.index, 1);
+      return lines.join("\n");
+    }
+    if (format === "yaml") {
+      const table = sourceYamlDatasetRows(lines, start, end, node, op);
+      const deletingLast = table.rows.length === 1;
+      const target = deleteDatasetRow(table, op);
+      const sourceLine = table.lines[target.lineOffset];
+      if (!sourceLine) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
+      if (deletingLast) {
+        lines[table.rowsLineIndex] = rewriteYamlRowsLineAsEmpty(lines[table.rowsLineIndex] ?? "", op);
+      }
+      lines.splice(sourceLine.index, 1);
+      return lines.join("\n");
+    }
+    if (format === "json") {
+      const table = sourceJsonDatasetRows(lines, start, end, node, op);
+      if (table.sourceShape === "records") {
+        const deletingLast2 = op.row === table.rows.length - 1;
+        const target2 = deleteDatasetRow(table, op);
+        const sourceRow = table.lines[target2.lineOffset];
+        if (!sourceRow) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
+        lines.splice(sourceRow.start, sourceRow.end - sourceRow.start + 1);
+        if (deletingLast2 && table.lines.length > 1) {
+          const previous = table.lines[target2.lineOffset - 1];
+          if (previous) lines[previous.end] = removeJsonTrailingComma(lines[previous.end] ?? "");
+        }
+        return lines.join("\n");
+      }
+      const deletingLast = op.row === table.rows.length - 1;
+      const target = deleteDatasetRow(table, op);
+      const sourceLine = table.lines[target.lineOffset];
+      if (!sourceLine) throw new PatchError("invalid_content", `dataset row ${op.row} is out of range`, op);
+      lines.splice(sourceLine.index, 1);
+      if (deletingLast && table.lines.length > 1) {
+        const previous = table.lines[target.lineOffset - 1];
+        if (previous) {
+          const previousIndex = previous.index > sourceLine.index ? previous.index - 1 : previous.index;
+          lines[previousIndex] = removeJsonTrailingComma(lines[previousIndex] ?? "");
+        }
+      }
+      return lines.join("\n");
+    }
+    throw new PatchError("invalid_content", `source-preserving delete_dataset_row does not support ${format} datasets`, op);
+  }
+  function applySrcInsertDatasetColumn(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isDatasetDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
+    }
+    const lines = source.split("\n");
+    const format = datasetFormat(node);
+    if (format === "csv" || format === "tsv") {
+      const delimiter = format === "tsv" ? "	" : ",";
+      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
+      insertDatasetColumn(table, op);
+      rewriteSourceDelimitedDatasetRows(lines, table, delimiter, op);
+      return lines.join("\n");
+    }
+    if (format === "yaml") {
+      const table = sourceYamlDatasetRows(lines, start, end, node, op);
+      const target = insertDatasetColumn(table, op);
+      rewriteSourceYamlDatasetRows(lines, table);
+      insertSourceYamlSchemaLine(lines, table, target.column, op.header, inferDatasetType(target.values.map(datasetScalarText)), op);
+      return lines.join("\n");
+    }
+    if (format === "json") {
+      const table = sourceJsonDatasetRows(lines, start, end, node, op);
+      if (table.sourceShape === "records") {
+        insertDatasetColumn(table, op);
+        rewriteSourceJsonRecordDatasetRows(lines, table);
+        return lines.join("\n");
+      }
+      if (table.sourceShape !== "object") {
+        throw new PatchError("invalid_content", `source-preserving insert_dataset_column requires JSON columns in the dataset body`, op);
+      }
+      insertDatasetColumn(table, op);
+      rewriteSourceJsonColumnsLine(lines, table, op);
+      rewriteSourceJsonArrayDatasetRows(lines, table);
+      return lines.join("\n");
+    }
+    throw new PatchError("invalid_content", `source-preserving insert_dataset_column does not support ${format} datasets`, op);
+  }
+  function applySrcDeleteDatasetColumn(source, op) {
+    const { node, start, end } = locate(source, op.id, op);
+    if (!isDatasetDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a dataset directive`, op);
+    }
+    const lines = source.split("\n");
+    const format = datasetFormat(node);
+    if (format === "csv" || format === "tsv") {
+      const delimiter = format === "tsv" ? "	" : ",";
+      const table = sourceDelimitedDatasetRows(lines, start, end, delimiter, op);
+      deleteDatasetColumn(table, op);
+      rewriteSourceDelimitedDatasetRows(lines, table, delimiter, op);
+      return lines.join("\n");
+    }
+    if (format === "yaml") {
+      const table = sourceYamlDatasetRows(lines, start, end, node, op);
+      const target = deleteDatasetColumn(table, op);
+      rewriteSourceYamlDatasetRows(lines, table);
+      deleteSourceYamlSchemaLine(lines, table, target.header, op);
+      return lines.join("\n");
+    }
+    if (format === "json") {
+      const table = sourceJsonDatasetRows(lines, start, end, node, op);
+      if (table.sourceShape === "records") {
+        deleteDatasetColumn(table, op);
+        rewriteSourceJsonRecordDatasetRows(lines, table);
+        return lines.join("\n");
+      }
+      if (table.sourceShape !== "object") {
+        throw new PatchError("invalid_content", `source-preserving delete_dataset_column requires JSON columns in the dataset body`, op);
+      }
+      deleteDatasetColumn(table, op);
+      rewriteSourceJsonColumnsLine(lines, table, op);
+      rewriteSourceJsonArrayDatasetRows(lines, table);
+      return lines.join("\n");
+    }
+    throw new PatchError("invalid_content", `source-preserving delete_dataset_column does not support ${format} datasets`, op);
+  }
+  function rewriteSourceTableRows(lines, table) {
+    const rows = allTableRows(table);
+    for (let i = 0; i < table.lines.length; i++) {
+      const sourceLine = table.lines[i];
+      const row = rows[i];
+      if (row) lines[sourceLine.index] = serializePipeRow(row, sourceLine.indent);
+    }
+  }
+  function rewriteSourceDelimitedDatasetRows(lines, table, delimiter, op) {
+    const rows = [table.columns, ...table.rows.map((row) => row.map(datasetScalarText))];
+    if (rows.some((row) => row.some((cell) => /[\r\n]/.test(cell)))) {
+      throw new PatchError("invalid_content", `dataset cell value must be a single line`, op);
+    }
+    for (let i = 0; i < table.lines.length; i++) {
+      const sourceLine = table.lines[i];
+      const row = rows[i];
+      if (row) lines[sourceLine.index] = `${sourceLine.indent}${serializeDelimitedRow(row, delimiter)}`;
+    }
+  }
+  function rewriteSourceYamlDatasetRows(lines, table) {
+    for (let i = 0; i < table.lines.length; i++) {
+      const sourceLine = table.lines[i];
+      const row = table.rows[i];
+      if (row) lines[sourceLine.index] = `${sourceLine.indent}- ${serializeYamlFlowRow(row)}${sourceLine.trailing}`;
+    }
+  }
+  function insertSourceYamlSchemaLine(lines, table, column, header, schemaValue, op) {
+    if (table.schemaLineIndex === void 0) {
+      throw new PatchError("invalid_content", `source-preserving insert_dataset_column requires a YAML schema block`, op);
+    }
+    const indent = yamlSchemaIndent(table);
+    const insertAt = yamlSchemaInsertLineIndex(table, column);
+    lines.splice(insertAt, 0, `${indent}${header}: ${schemaValue}`);
+  }
+  function deleteSourceYamlSchemaLine(lines, table, header, op) {
+    const sourceLine = table.schemaLines.get(header);
+    if (!sourceLine) {
+      throw new PatchError("invalid_content", `source-preserving delete_dataset_column could not map YAML schema column "${header}"`, op);
+    }
+    lines.splice(sourceLine.index, 1);
+  }
+  function yamlSchemaIndent(table) {
+    const sourceLine = table.schemaOrder[0];
+    return sourceLine?.indent ?? `${table.schemaKeyIndent}  `;
+  }
+  function yamlSchemaInsertLineIndex(table, column) {
+    const existingColumn = table.columns[column];
+    const existing = existingColumn ? table.schemaLines.get(existingColumn) : void 0;
+    if (existing) return existing.index;
+    const previousColumn = table.columns[column - 1];
+    const previous = previousColumn ? table.schemaLines.get(previousColumn) : void 0;
+    if (previous) return previous.index + 1;
+    return (table.schemaLineIndex ?? table.rowsLineIndex) + 1;
+  }
+  function rewriteSourceJsonColumnsLine(lines, table, op) {
+    if (!table.columnsLine) {
+      throw new PatchError("invalid_content", `source-preserving dataset column edits require a one-line JSON columns array`, op);
+    }
+    lines[table.columnsLine.index] = `${table.columnsLine.indent}${table.columnsLine.prefix}${JSON.stringify(table.columns)}${table.columnsLine.trailing}`;
+  }
+  function rewriteSourceJsonArrayDatasetRows(lines, table) {
+    for (let i = 0; i < table.lines.length; i++) {
+      const sourceLine = table.lines[i];
+      const row = table.rows[i];
+      if (row) lines[sourceLine.index] = `${sourceLine.indent}${JSON.stringify(row)}${sourceLine.trailing}`;
+    }
+  }
+  function rewriteSourceJsonRecordDatasetRows(lines, table) {
+    for (let i = table.lines.length - 1; i >= 0; i--) {
+      const sourceRow = table.lines[i];
+      const row = table.rows[i];
+      if (!row) continue;
+      const trailing = /\},?\s*$/.test(lines[sourceRow.end] ?? "") && (lines[sourceRow.end] ?? "").trim().endsWith(",") ? "," : "";
+      lines.splice(sourceRow.start, sourceRow.end - sourceRow.start + 1, ...serializeJsonRecordRow(table.columns, row, sourceRow, trailing));
+    }
+  }
+  function tableRowIndent(table, lineOffset) {
+    const sourceLine = table.lines[lineOffset] ?? table.lines[Math.max(0, lineOffset - 1)] ?? table.lines[0];
+    return sourceLine?.indent ?? "";
+  }
+  function tableInsertLineIndex(table, lineOffset, end) {
+    const existing = table.lines[lineOffset];
+    if (existing) return existing.index;
+    const previous = table.lines[Math.max(0, lineOffset - 1)];
+    return previous ? previous.index + 1 : end - 1;
+  }
+  function delimitedDatasetRowIndent(table, row) {
+    const sourceLine = table.lines[row + 1] ?? table.lines[row] ?? table.lines[0];
+    return sourceLine?.indent ?? "";
+  }
+  function delimitedDatasetInsertLineIndex(table, row, end) {
+    const existing = table.lines[row + 1];
+    if (existing) return existing.index;
+    const previous = table.lines[row] ?? table.lines[0];
+    return previous ? previous.index + 1 : end - 1;
+  }
+  function yamlDatasetRowIndent(table, row) {
+    const sourceLine = table.lines[row] ?? table.lines[Math.max(0, row - 1)] ?? table.lines[0];
+    return sourceLine?.indent ?? `${table.rowsKeyIndent}  `;
+  }
+  function yamlDatasetInsertLineIndex(table, row, end) {
+    const existing = table.lines[row];
+    if (existing) return existing.index;
+    const previous = table.lines[Math.max(0, row - 1)];
+    if (previous) return previous.index + 1;
+    return table.rowsLineIndex >= 0 ? table.rowsLineIndex + 1 : end - 1;
+  }
+  function rewriteYamlRowsLineAsBlock(line, op) {
+    const next = line.replace(
+      /^(\s*rows\s*:)\s*\[\]\s*(#.*)?\s*$/,
+      (_match, prefix, comment) => `${prefix}${comment ? ` ${comment}` : ""}`
+    );
+    if (next === line && /\[\]/.test(line)) return next;
+    if (next === line && !/^\s*rows\s*:\s*(?:#.*)?$/.test(line)) {
+      throw new PatchError("invalid_content", `source-preserving insert_dataset_row requires a block YAML rows array`, op);
+    }
+    return next;
+  }
+  function rewriteYamlRowsLineAsEmpty(line, op) {
+    const next = line.replace(
+      /^(\s*rows\s*:)(?:\s*(#.*))?\s*$/,
+      (_match, prefix, comment) => `${prefix} []${comment ? ` ${comment}` : ""}`
+    );
+    if (next === line) {
+      throw new PatchError("invalid_content", `source-preserving delete_dataset_row could not rewrite YAML rows as empty`, op);
+    }
+    return next;
+  }
+  function sourceDelimitedDatasetRows(sourceLines, start, end, delimiter, op) {
+    const lines = [];
+    const rows = [];
+    for (let i = start; i < end - 1; i++) {
+      const line = sourceLines[i] ?? "";
+      if (!line.trim()) continue;
+      lines.push({ index: i, indent: line.match(/^\s*/)?.[0] ?? "" });
+      rows.push(splitDelimitedRow(line.trim(), delimiter));
+    }
+    if (rows.length < 1) throw new PatchError("invalid_content", `dataset must have a header row`, op);
+    return { columns: rows[0], rows: rows.slice(1), lines };
+  }
+  function sourceYamlDatasetRows(sourceLines, start, end, node, op) {
+    const body = sourceLines.slice(start, end - 1).join("\n");
+    const parsed = loadYamlDatasetText(body, node.id, op);
+    const rows = parsed.rows;
+    if (!Array.isArray(rows)) throw new PatchError("invalid_content", `dataset "${node.id ?? "?"}" has no rows array`, op);
+    const lines = [];
+    const parsedRows = [];
+    let insideRows = false;
+    let rowsIndent = -1;
+    let rowsLineIndex = -1;
+    let rowsKeyIndent = "";
+    for (let i = start; i < end - 1; i++) {
+      const line = sourceLines[i] ?? "";
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      if (!insideRows) {
+        const rowsMatch = line.match(/^(\s*)rows\s*:/);
+        if (rowsMatch) {
+          insideRows = true;
+          rowsIndent = indent.length;
+          rowsLineIndex = i;
+          rowsKeyIndent = rowsMatch[1] ?? "";
+        }
+        continue;
+      }
+      if (indent.length <= rowsIndent && !trimmed.startsWith("-")) break;
+      const match = line.match(/^(\s*)-\s*(\[.*\])(\s+#.*)?\s*$/);
+      if (!match) {
+        if (trimmed.startsWith("-")) {
+          throw new PatchError("invalid_content", `source-preserving dataset row edits require inline YAML row arrays`, op);
+        }
+        continue;
+      }
+      let row;
+      try {
+        row = yaml.load(match[2] ?? "");
+      } catch {
+        throw new PatchError("invalid_content", `dataset row is not valid YAML`, op);
+      }
+      if (!Array.isArray(row)) {
+        throw new PatchError("invalid_content", `source-preserving dataset row edits require inline YAML row arrays`, op);
+      }
+      lines.push({ index: i, indent: match[1] ?? "", trailing: match[3] ?? "" });
+      parsedRows.push([...row]);
+    }
+    if (parsedRows.length !== rows.filter(Array.isArray).length) {
+      throw new PatchError("invalid_content", `source-preserving dataset row edits could not map every YAML row`, op);
+    }
+    if (rowsLineIndex === -1) {
+      throw new PatchError("invalid_content", `source-preserving dataset row edits could not locate YAML rows`, op);
+    }
+    const schemaSource = sourceYamlSchemaLines(sourceLines, start, end);
+    return {
+      columns: datasetColumnsFromYaml(node, parsed, rows),
+      rows: parsedRows,
+      schema: recordValue(parsed.schema),
+      lines,
+      rowsLineIndex,
+      rowsKeyIndent,
+      ...schemaSource
+    };
+  }
+  function sourceYamlSchemaLines(sourceLines, start, end) {
+    const schemaLines = /* @__PURE__ */ new Map();
+    const schemaOrder = [];
+    let schemaLineIndex;
+    let schemaIndent = -1;
+    let schemaKeyIndent = "";
+    for (let i = start; i < end - 1; i++) {
+      const line = sourceLines[i] ?? "";
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      if (schemaLineIndex === void 0) {
+        const schemaMatch = line.match(/^(\s*)schema\s*:/);
+        if (schemaMatch) {
+          schemaLineIndex = i;
+          schemaIndent = indent.length;
+          schemaKeyIndent = schemaMatch[1] ?? "";
+        }
+        continue;
+      }
+      if (indent.length <= schemaIndent && /^[A-Za-z_][\w-]*\s*:/.test(trimmed)) break;
+      const propertyMatch = line.match(/^(\s*)([A-Za-z_][\w-]*)\s*:/);
+      if (!propertyMatch || indent.length <= schemaIndent) continue;
+      const key = propertyMatch[2] ?? "";
+      const sourceLine = { key, index: i, indent: propertyMatch[1] ?? "" };
+      schemaLines.set(key, { index: i, indent: sourceLine.indent });
+      schemaOrder.push(sourceLine);
+    }
+    return { schemaLineIndex, schemaKeyIndent, schemaLines, schemaOrder };
+  }
+  function serializeYamlFlowRow(cells) {
+    return yaml.dump(cells, { flowLevel: 0, lineWidth: -1, noRefs: true }).trim();
+  }
+  function sourceJsonDatasetRows(sourceLines, start, end, node, op) {
+    const body = sourceLines.slice(start, end - 1).join("\n");
+    const table = parseJsonDatasetText(body, node, op);
+    if (table.sourceShape === "records") {
+      const sourceRows2 = sourceJsonRecordRows(sourceLines, start, end, table.columns, op);
+      if (sourceRows2.lines.length !== table.rows.length) {
+        throw new PatchError("invalid_content", `source-preserving update_dataset_cell could not map every JSON record row`, op);
+      }
+      return { ...table, sourceShape: "records", ...sourceRows2 };
+    }
+    const sourceRows = sourceJsonArrayRows(sourceLines, start, end, table.sourceShape === "object", op);
+    if (sourceRows.lines.length !== table.rows.length) {
+      throw new PatchError("invalid_content", `source-preserving update_dataset_cell could not map every JSON row array`, op);
+    }
+    return { ...table, sourceShape: table.sourceShape === "object" ? "object" : "arrays", ...sourceRows };
+  }
+  function sourceJsonArrayRows(sourceLines, start, end, objectRows, op) {
+    const bounds = sourceJsonArrayBounds(sourceLines, start, end, objectRows, op);
+    const out = [];
+    for (let i = bounds.rowsStartIndex + 1; i < bounds.rowsEndIndex; i++) {
+      const line = sourceLines[i] ?? "";
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("[") || trimmed === "[" || trimmed === "],") continue;
+      const trailing = trimmed.endsWith(",") ? "," : "";
+      const candidate = trailing ? trimmed.slice(0, -1).trimEnd() : trimmed;
+      let parsed;
+      try {
+        parsed = JSON.parse(candidate);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(parsed)) continue;
+      out.push({ index: i, indent: line.match(/^\s*/)?.[0] ?? "", trailing });
+    }
+    const rowIndent = out[0]?.indent ?? bounds.rowIndent;
+    return { lines: out, rowsStartIndex: bounds.rowsStartIndex, rowsEndIndex: bounds.rowsEndIndex, rowIndent, inlineEmptyRowsLine: bounds.inlineEmptyRowsLine, columnsLine: bounds.columnsLine };
+  }
+  function sourceJsonArrayBounds(sourceLines, start, end, objectRows, op) {
+    let columnsLine;
+    for (let i = start; i < end - 1; i++) {
+      const line = sourceLines[i] ?? "";
+      const trimmed = line.trim();
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      if (objectRows) {
+        const columnsMatch = line.match(/^(\s*)("columns"\s*:\s*)(\[.*\])(\s*,?)\s*$/);
+        if (columnsMatch) {
+          try {
+            if (Array.isArray(JSON.parse(columnsMatch[3] ?? ""))) {
+              columnsLine = {
+                index: i,
+                indent: columnsMatch[1] ?? "",
+                prefix: columnsMatch[2] ?? '"columns": ',
+                trailing: columnsMatch[4] ?? ""
+              };
+            }
+          } catch {
+          }
+        }
+        const inlineEmpty = line.match(/^(\s*)("rows"\s*:\s*)\[\]\s*(,?)\s*$/);
+        if (inlineEmpty) {
+          return {
+            rowsStartIndex: i,
+            rowsEndIndex: i,
+            rowIndent: `${indent}  `,
+            columnsLine,
+            inlineEmptyRowsLine: {
+              index: i,
+              indent: inlineEmpty[1] ?? "",
+              prefix: inlineEmpty[2] ?? '"rows": ',
+              trailing: inlineEmpty[3] ?? ""
+            }
+          };
+        }
+        if (!/^"rows"\s*:\s*\[\s*$/.test(trimmed)) continue;
+      } else if (trimmed !== "[") {
+        continue;
+      }
+      for (let close = i + 1; close < end - 1; close++) {
+        const closeLine = sourceLines[close] ?? "";
+        if (/^\s*\]\s*,?\s*$/.test(closeLine)) {
+          return {
+            rowsStartIndex: i,
+            rowsEndIndex: close,
+            rowIndent: `${indent}  `,
+            columnsLine
+          };
+        }
+      }
+      break;
+    }
+    throw new PatchError("invalid_content", `source-preserving dataset row edits require a mappable JSON row array`, op);
+  }
+  function jsonDatasetInsertLineIndex(table, row) {
+    const existing = table.lines[row];
+    if (existing) return existing.index;
+    const previous = table.lines[Math.max(0, row - 1)];
+    if (previous) return previous.index + 1;
+    return table.rowsEndIndex;
+  }
+  function ensureJsonTrailingComma(line) {
+    return /,\s*$/.test(line) ? line : line.replace(/\s*$/, ",");
+  }
+  function removeJsonTrailingComma(line) {
+    return line.replace(/,\s*$/, "");
+  }
+  function sourceJsonRecordRows(sourceLines, start, end, columns, op) {
+    const bounds = sourceJsonRecordArrayBounds(sourceLines, start, end, op);
+    const out = [];
+    for (let i = bounds.rowsStartIndex + 1; i < bounds.rowsEndIndex; i++) {
+      const line = sourceLines[i] ?? "";
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("{")) continue;
+      const block = jsonObjectBlock(sourceLines, i, bounds.rowsEndIndex + 1);
+      if (!block) continue;
+      const candidate = stripJsonTrailingComma(block.lines.join("\n"));
+      let parsed;
+      try {
+        parsed = JSON.parse(candidate);
+      } catch {
+        continue;
+      }
+      if (!recordValue(parsed)) continue;
+      const propertyLines = /* @__PURE__ */ new Map();
+      if (block.lines.length === 1) {
+        for (const column of columns) {
+          if (jsonLineHasProperty(block.lines[0] ?? "", column)) propertyLines.set(column, i);
+        }
+      } else {
+        for (let offset = 0; offset < block.lines.length; offset++) {
+          const sourceLine = block.lines[offset] ?? "";
+          for (const column of columns) {
+            if (jsonLineHasProperty(sourceLine, column)) propertyLines.set(column, i + offset);
+          }
+        }
+      }
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      const propertyIndent = jsonRecordPropertyIndent(block.lines, indent);
+      if (propertyLines.size > 0) {
+        out.push({
+          propertyLines,
+          start: i,
+          end: block.end,
+          indent,
+          propertyIndent,
+          multiline: block.lines.length > 1
+        });
+      }
+      i = block.end;
+    }
+    if (out.length === 0) {
+      throw new PatchError("invalid_content", `source-preserving update_dataset_cell requires mappable JSON record rows`, op);
+    }
+    return {
+      lines: out,
+      rowsStartIndex: bounds.rowsStartIndex,
+      rowsEndIndex: bounds.rowsEndIndex,
+      rowIndent: out[0]?.indent ?? bounds.rowIndent,
+      propertyIndent: out[0]?.propertyIndent ?? `${bounds.rowIndent}  `
+    };
+  }
+  function sourceJsonRecordArrayBounds(sourceLines, start, end, op) {
+    for (let i = start; i < end - 1; i++) {
+      const line = sourceLines[i] ?? "";
+      const trimmed = line.trim();
+      if (trimmed !== "[") continue;
+      const indent = line.match(/^\s*/)?.[0] ?? "";
+      for (let close = i + 1; close < end - 1; close++) {
+        const closeLine = sourceLines[close] ?? "";
+        if (/^\s*\]\s*$/.test(closeLine)) {
+          return { rowsStartIndex: i, rowsEndIndex: close, rowIndent: `${indent}  ` };
+        }
+      }
+      break;
+    }
+    throw new PatchError("invalid_content", `source-preserving dataset row edits require a mappable JSON record array`, op);
+  }
+  function jsonRecordPropertyIndent(lines, rowIndent) {
+    for (const line of lines.slice(1, -1)) {
+      if (jsonLineHasAnyProperty(line)) return line.match(/^\s*/)?.[0] ?? `${rowIndent}  `;
+    }
+    return `${rowIndent}  `;
+  }
+  function jsonLineHasAnyProperty(line) {
+    return /"(?:(?:\\.)|[^"\\])*"\s*:/.test(line);
+  }
+  function jsonRecordDatasetInsertLineIndex(table, row) {
+    const existing = table.lines[row];
+    if (existing) return existing.start;
+    const previous = table.lines[Math.max(0, row - 1)];
+    if (previous) return previous.end + 1;
+    return table.rowsEndIndex;
+  }
+  function jsonRecordReferenceRow(table, row) {
+    const sourceRow = table.lines[row] ?? table.lines[Math.max(0, row - 1)] ?? table.lines[0];
+    if (!sourceRow) {
+      return {
+        propertyLines: /* @__PURE__ */ new Map(),
+        start: table.rowsStartIndex,
+        end: table.rowsStartIndex,
+        indent: table.rowIndent,
+        propertyIndent: table.propertyIndent,
+        multiline: false
+      };
+    }
+    return sourceRow;
+  }
+  function serializeJsonRecordRow(columns, cells, reference, trailing) {
+    const pairs2 = columns.map((column, index) => [column, cells[index] ?? null]);
+    if (!reference.multiline) {
+      const fields = pairs2.map(([key, value]) => `${JSON.stringify(key)}: ${JSON.stringify(value)}`).join(", ");
+      return [`${reference.indent}{ ${fields} }${trailing}`];
+    }
+    const lines = [`${reference.indent}{`];
+    pairs2.forEach(([key, value], index) => {
+      const comma = index === pairs2.length - 1 ? "" : ",";
+      lines.push(`${reference.propertyIndent}${JSON.stringify(key)}: ${JSON.stringify(value)}${comma}`);
+    });
+    lines.push(`${reference.indent}}${trailing}`);
+    return lines;
+  }
+  function jsonObjectBlock(sourceLines, startIndex, end) {
+    const first = sourceLines[startIndex] ?? "";
+    const firstTrimmed = first.trim();
+    if (firstTrimmed.includes("}") && stripJsonTrailingComma(firstTrimmed).endsWith("}")) {
+      return { end: startIndex, lines: [first] };
+    }
+    const lines = [];
+    for (let i = startIndex; i < end - 1; i++) {
+      const line = sourceLines[i] ?? "";
+      lines.push(line);
+      if (line.trim().startsWith("}")) return { end: i, lines };
     }
     return void 0;
   }
-  function isValidIsoDate(s) {
-    const t = Date.parse(s);
-    if (Number.isNaN(t)) return false;
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!m) return true;
-    const y = Number(m[1]);
-    const mo = Number(m[2]);
-    const d = Number(m[3]);
-    const dt = new Date(Date.UTC(y, mo - 1, d));
-    return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+  function stripJsonTrailingComma(text) {
+    return text.replace(/,\s*$/, "");
   }
-  function isStale2(accessed, now, days) {
-    const t = Date.parse(accessed);
-    if (Number.isNaN(t)) return false;
-    const ageMs = now.getTime() - t;
-    return ageMs > days * 24 * 60 * 60 * 1e3;
+  function jsonLineHasProperty(line, key) {
+    return new RegExp(`${escapeRegExp2(JSON.stringify(key))}\\s*:`).test(line);
   }
-
-  // themes/default.css
-  var default_default = ':root {\n  --noma-bg: #fbfaf7;\n  --noma-fg: #1d1c1a;\n  --noma-muted: #6b6a66;\n  --noma-rule: #e7e4dc;\n  --noma-accent: #b9522a;\n  --noma-accent-soft: #f4dccd;\n  --noma-claim: #2c5d8f;\n  --noma-claim-soft: #dfeaf5;\n  --noma-evidence: #2f7d4a;\n  --noma-evidence-soft: #dff0e3;\n  --noma-risk: #a8362e;\n  --noma-risk-soft: #f7d9d4;\n  --noma-code-bg: #f1ede4;\n  --noma-card-bg: #ffffff;\n  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);\n  --noma-radius: 8px;\n  --noma-cols: 2;\n  --noma-grid-min: 14rem;\n  --noma-grid-gap: 1rem;\n  --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;\n  --noma-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;\n  --noma-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;\n}\n\n* { box-sizing: border-box; }\n\nhtml, body {\n  margin: 0;\n  padding: 0;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n  font-family: var(--noma-font-serif);\n  font-size: 16px;\n  line-height: 1.58;\n  -webkit-font-smoothing: antialiased;\n  text-rendering: optimizeLegibility;\n}\n\nmain.noma-doc {\n  max-width: 1040px;\n  margin: 3rem auto;\n  padding: 0 1.25rem 5rem;\n}\n\nmain.noma-doc > section.noma-hero ~ section,\nmain.noma-doc > .noma-grid,\nmain.noma-doc > .noma-columns {\n  max-width: 100%;\n}\n\nh1, h2, h3, h4, h5, h6 {\n  font-family: var(--noma-font-sans);\n  font-weight: 700;\n  line-height: 1.2;\n  letter-spacing: 0;\n  margin: 2em 0 0.55em;\n}\nh1 { font-size: 2.1rem; margin-top: 0; }\nh2 { font-size: 1.45rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.25em; }\nh3 { font-size: 1.15rem; }\nh4 { font-size: 0.98rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n\np { margin: 0 0 1.05em; }\na { color: var(--noma-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }\na:hover { text-decoration-thickness: 2px; }\n\ncode {\n  font-family: var(--noma-font-mono);\n  font-size: 0.9em;\n  background: var(--noma-code-bg);\n  padding: 0.1em 0.35em;\n  border-radius: 4px;\n}\npre {\n  background: var(--noma-code-bg);\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  overflow-x: auto;\n  font-size: 0.9rem;\n  line-height: 1.5;\n}\npre code { background: none; padding: 0; }\n\nblockquote {\n  border-left: 3px solid var(--noma-accent);\n  margin: 1.5em 0;\n  padding: 0.2em 1.2em;\n  color: var(--noma-muted);\n  font-style: italic;\n}\n\nhr { border: 0; border-top: 1px solid var(--noma-rule); margin: 3em 0; }\n\nul, ol { padding-left: 1.4em; }\nli { margin: 0.25em 0; }\n\nfigure {\n  margin: 1.8em 0;\n}\nfigure img {\n  display: block;\n  max-width: 100%;\n  height: auto;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\nfigcaption {\n  margin-top: 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n\n/* Callouts */\naside.noma-callout {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-accent-soft);\n  border-left: 3px solid var(--noma-accent);\n}\naside.noma-callout-warning { background: #fbe6df; border-color: var(--noma-risk); }\naside.noma-callout-tip     { background: #e6f3eb; border-color: var(--noma-evidence); }\naside.noma-callout-note    { background: #ecedf2; border-color: #5a6071; }\n\n/* Research blocks */\naside.noma-research {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-research .noma-research-head {\n  display: flex;\n  align-items: center;\n  gap: 0.8em;\n  margin-bottom: 0.5em;\n}\naside.noma-research .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-muted);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-code-bg);\n}\naside.noma-claim          { border-left: 3px solid var(--noma-claim); }\naside.noma-claim .noma-tag { color: var(--noma-claim); background: var(--noma-claim-soft); }\naside.noma-evidence       { border-left: 3px solid var(--noma-evidence); }\naside.noma-evidence .noma-tag { color: var(--noma-evidence); background: var(--noma-evidence-soft); }\naside.noma-counterevidence { border-left: 3px solid var(--noma-risk); }\naside.noma-counterevidence .noma-tag { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-risk           { border-left: 3px solid var(--noma-risk); }\naside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }\naside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }\naside.noma-open_question { border-left: 3px solid #8b6c1a; }\naside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }\naside.noma-assumption { border-left: 3px solid #5a6071; }\naside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }\n\n/* Variants \u2014 themable per-block emphasis without inline styling */\n[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }\n[data-variant="subtle"] { opacity: 0.78; box-shadow: none; }\n[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }\n[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }\n[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }\n\n/* Export buttons (artifact-side action surface) */\n.noma-export-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  border: 0;\n  padding: 0.55em 1.1em;\n  margin: 0.3em 0.4em 0.3em 0;\n  border-radius: 999px;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.85rem;\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n.noma-export-button:hover { background: var(--noma-accent); color: white; }\n.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }\n.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }\n.noma-export-button[data-format="json"] { background: var(--noma-muted); }\n\n/* Controls (interactive artifact blocks) */\n.noma-control {\n  margin: 1em 0;\n  padding: 0.8em 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-control-row {\n  display: grid;\n  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 2fr);\n  gap: 0.75rem;\n  align-items: center;\n}\n.noma-control-label { font-weight: 650; }\n.noma-control input,\n.noma-control select {\n  width: 100%;\n  accent-color: var(--noma-accent);\n  font: inherit;\n}\n.noma-control input[type="number"],\n.noma-control input[type="text"],\n.noma-control select {\n  border: 1px solid var(--noma-rule);\n  border-radius: 6px;\n  padding: 0.35em 0.5em;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n}\n.noma-control input[type="checkbox"] {\n  width: auto;\n  justify-self: start;\n}\n.noma-control-value {\n  display: block;\n  margin-top: 0.35rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-mono);\n  font-size: 0.82rem;\n}\n.noma-interactive-disabled {\n  display: inline-block;\n  margin-bottom: 0.5rem;\n  padding: 0.18em 0.55em;\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n  font-weight: 650;\n}\n\n.noma-computed {\n  margin: 1.2em 0;\n  padding: 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 4px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-computed-head {\n  display: flex;\n  gap: 0.8rem;\n  align-items: baseline;\n  flex-wrap: wrap;\n  margin-bottom: 0.45rem;\n}\n.noma-computed-head h3 {\n  margin: 0;\n  font-size: 1rem;\n}\n.noma-computed-value {\n  font-family: var(--noma-font-sans);\n  font-size: 1.75rem;\n  line-height: 1.15;\n  font-weight: 750;\n  color: var(--noma-claim);\n}\n.noma-computed-body {\n  margin-top: 0.75rem;\n}\n.noma-computed-body p {\n  margin-bottom: 0;\n}\n.noma-computed-plot {\n  padding: 1em;\n}\n.noma-computed-canvas {\n  margin-bottom: 0.5rem;\n}\n.noma-computed-table-view {\n  margin: 0.65rem 0 0;\n  font-size: 0.9rem;\n}\n.noma-computed-table-view th:last-child,\n.noma-computed-table-view td:last-child {\n  text-align: right;\n}\n@media (max-width: 720px) {\n  .noma-control-row {\n    grid-template-columns: 1fr;\n  }\n}\n\n.noma-confidence {\n  flex: 1;\n  height: 6px;\n  border-radius: 999px;\n  background: var(--noma-rule);\n  overflow: hidden;\n  max-width: 140px;\n}\n.noma-confidence-bar {\n  height: 100%;\n  background: linear-gradient(90deg, var(--noma-accent), var(--noma-claim));\n}\n\n.noma-meta {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\n.noma-meta-key {\n  font-weight: 600;\n  color: var(--noma-fg);\n}\n\n/* Grid */\n.noma-grid,\n.noma-columns {\n  display: grid;\n  grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));\n  gap: var(--noma-grid-gap);\n  margin: 1.5em 0;\n}\n.noma-grid-auto,\n.noma-columns-auto {\n  grid-template-columns: repeat(auto-fit, minmax(min(var(--noma-grid-min), 100%), 1fr));\n}\n.noma-grid-wide,\n.noma-columns-wide,\n.noma-grid-full,\n.noma-columns-full {\n  position: relative;\n  left: 50%;\n  transform: translateX(-50%);\n}\n.noma-grid-wide,\n.noma-columns-wide {\n  width: min(1180px, calc(100vw - 2rem));\n}\n.noma-grid-full,\n.noma-columns-full {\n  width: min(1440px, calc(100vw - 2rem));\n}\n.noma-grid-compact,\n.noma-columns-compact {\n  --noma-grid-gap: 0.75rem;\n}\n@media (max-width: 720px) {\n  .noma-grid,\n  .noma-columns {\n    grid-template-columns: 1fr;\n    width: auto;\n    left: auto;\n    transform: none;\n  }\n}\n\n/* Card */\narticle.noma-card {\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 1em 1.1em;\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-card .noma-card-head {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  margin-bottom: 0.4em;\n}\narticle.noma-card h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-family: var(--noma-font-sans);\n}\narticle.noma-card .noma-icon {\n  color: var(--noma-accent);\n  font-size: 0.9em;\n}\narticle.noma-card p:last-child { margin-bottom: 0; }\n\n/* Hero */\nsection.noma-hero {\n  background: linear-gradient(180deg, var(--noma-accent-soft), transparent);\n  padding: 3rem 2rem 2.4rem;\n  border-radius: var(--noma-radius);\n  margin: 0 0 3rem;\n  text-align: center;\n}\nsection.noma-hero h1 { font-size: 2.8rem; margin-top: 0; }\n\na.noma-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  padding: 0.7em 1.4em;\n  border-radius: 999px;\n  text-decoration: none;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.95rem;\n  margin-top: 0.5em;\n}\na.noma-button:hover { background: var(--noma-accent); color: white; }\n\n/* Plot */\nfigure.noma-plot {\n  margin: 1.8em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n}\nfigure.noma-plot .noma-plot-canvas {\n  color: var(--noma-claim);\n  background: linear-gradient(180deg, transparent, var(--noma-claim-soft));\n  border-radius: 6px;\n  padding: 0.6em;\n}\nfigure.noma-plot svg { width: 100%; height: auto; display: block; }\nfigure.noma-plot figcaption {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\nfigure.noma-plot[data-compact="true"] {\n  padding: 0.65em 0.8em;\n}\nfigure.noma-plot[data-compact="true"] figcaption {\n  margin-top: 0.35em;\n  font-size: 0.78rem;\n}\n\n/* Dataset */\ndetails.noma-dataset {\n  margin: 1.4em 0;\n  padding: 0.6em 1em;\n  background: var(--noma-code-bg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\ndetails.noma-dataset pre {\n  background: transparent;\n  padding: 0.6em 0 0;\n}\n\n/* Agent task */\n.noma-agent-task {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-claim-soft);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n}\n.noma-agent-task label {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.9rem;\n  margin-bottom: 0.4em;\n}\n\n/* Collaboration metadata */\naside.noma-comment,\naside.noma-review-meta {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-comment {\n  background: #f7f6f1;\n}\n.noma-comment-head,\n.noma-review-meta-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.55em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-comment .noma-tag,\n.noma-review-meta .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-review-meta.noma-collab-review {\n  border-left-color: var(--noma-accent);\n}\n.noma-review-meta.noma-collab-review .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-review-meta.noma-collab-provenance {\n  border-left-color: var(--noma-claim);\n}\n.noma-review-meta.noma-collab-provenance .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-review-meta.noma-collab-confidence {\n  border-left-color: var(--noma-evidence);\n}\n.noma-review-meta.noma-collab-confidence .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-comment-body p:last-child,\n.noma-review-meta-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Memory profile */\naside.noma-memory,\naside.noma-memory-index {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-memory-index {\n  background: #f4f7f8;\n}\n.noma-memory-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-memory .noma-tag,\n.noma-memory-index .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-memory h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-memory.noma-memory-user {\n  border-left-color: var(--noma-evidence);\n}\n.noma-memory.noma-memory-user .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-memory.noma-memory-feedback {\n  border-left-color: var(--noma-accent);\n}\n.noma-memory.noma-memory-feedback .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-memory.noma-memory-project {\n  border-left-color: var(--noma-claim);\n}\n.noma-memory.noma-memory-project .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-memory.noma-memory-reference {\n  border-left-color: #5a6071;\n}\n.noma-memory.noma-memory-reference .noma-tag {\n  color: #5a6071;\n  background: #ecedf2;\n}\n.noma-memory-body p:last-child,\n.noma-memory-index .noma-memory-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Metrics */\naside.noma-metric {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-evidence);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-metric-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.25em;\n}\n.noma-metric .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-evidence);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-evidence-soft);\n}\n.noma-metric h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-metric-value {\n  margin: 0.2em 0 0.25em;\n  color: var(--noma-evidence);\n  font-family: var(--noma-font-sans);\n  font-size: 1.7rem;\n  font-weight: 800;\n  line-height: 1.15;\n}\n.noma-metric-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Technical documentation */\narticle.noma-technical {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-technical .noma-technical-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n}\narticle.noma-technical .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-claim);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n}\narticle.noma-technical h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-technical-meta {\n  margin: 0.35em 0 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.85rem;\n}\n.noma-technical-body p:last-child {\n  margin-bottom: 0;\n}\npre.noma-technical-code {\n  margin: 0.7em 0 0;\n}\n\n/* Custom directives */\naside.noma-block {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-block-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n  font-family: var(--noma-font-sans);\n}\naside.noma-block .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\naside.noma-block h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-block-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Change requests */\naside.noma-change-request {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: #fff4f0;\n  border: 1px solid #f0c7bd;\n  border-left: 3px solid #c85c4a;\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-change-request-head {\n  font-size: 0.85rem;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.45em;\n}\n.noma-change-request-delta {\n  display: flex;\n  align-items: baseline;\n  gap: 0.55em;\n  margin: 0.35em 0 0.55em;\n  line-height: 1.5;\n}\n.noma-change-request del {\n  color: #9a382b;\n  text-decoration-thickness: 0.12em;\n}\n.noma-change-request ins {\n  color: #2f6e42;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n/* State change */\naside.noma-state-change {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-fg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-state-change-head {\n  font-size: 0.85rem;\n  letter-spacing: 0.02em;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.4em;\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  flex-wrap: wrap;\n}\n.noma-state-change-delta {\n  font-size: 1rem;\n  display: flex;\n  align-items: baseline;\n  gap: 0.6em;\n  margin: 0.3em 0 0.5em;\n  font-variant-numeric: tabular-nums;\n}\n.noma-state-from {\n  text-decoration: line-through;\n  opacity: 0.65;\n}\n.noma-state-to {\n  font-weight: 700;\n}\n.noma-state-arrow {\n  opacity: 0.55;\n  font-size: 0.95em;\n}\n\n/* Tables */\ntable.noma-table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 1.6em 0;\n  font-family: var(--noma-font-sans);\n  font-size: 0.88rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  overflow: hidden;\n  box-shadow: var(--noma-shadow);\n}\ntable.noma-table thead {\n  background: var(--noma-code-bg);\n}\ntable.noma-table th {\n  text-align: left;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  padding: 0.55em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  color: var(--noma-fg);\n}\ntable.noma-table td {\n  padding: 0.5em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  vertical-align: top;\n}\ntable.noma-table tbody tr:last-child td { border-bottom: 0; }\ntable.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }\n\n.noma-page-header,\n.noma-page-footer {\n  margin: 1.2rem 0;\n  padding: 0.55rem 0;\n  border-color: var(--noma-rule);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-page-header {\n  border-bottom: 1px solid var(--noma-rule);\n}\n.noma-page-footer {\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-page-header p,\n.noma-page-footer p {\n  margin: 0;\n}\n.noma-page-number {\n  display: block;\n  text-align: right;\n}\n\n.noma-toc {\n  margin: 1.6rem 0 2rem;\n  padding: 1rem 1.1rem;\n  border: 1px solid var(--noma-rule);\n  background: var(--noma-card-bg);\n  font-family: var(--noma-font-sans);\n  box-shadow: var(--noma-shadow);\n}\n.noma-toc h2 {\n  margin: 0 0 0.6rem;\n  padding: 0;\n  border: 0;\n  font-size: 1.1rem;\n}\n.noma-toc ol {\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n.noma-toc li {\n  margin: 0.15rem 0;\n}\n.noma-toc li[data-level="2"] { margin-left: 1rem; }\n.noma-toc li[data-level="3"] { margin-left: 2rem; }\n.noma-toc li[data-level="4"] { margin-left: 3rem; }\n.noma-toc li[data-level="5"] { margin-left: 4rem; }\n.noma-toc li[data-level="6"] { margin-left: 5rem; }\n\n.noma-footnote,\n.noma-endnote {\n  margin: 1.2rem 0;\n  padding: 0.7rem 0.9rem;\n  border-left: 3px solid var(--noma-rule);\n  background: var(--noma-code-bg);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-footnote p,\n.noma-endnote p {\n  margin: 0.25rem 0;\n}\n.noma-footnote sup,\n.noma-endnote sup {\n  margin-right: 0.4rem;\n  color: var(--noma-accent);\n  font-weight: 700;\n}\n\n.noma-bibliography {\n  margin: 2rem 0;\n  padding-top: 0.8rem;\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-bibliography h2 {\n  margin-top: 0;\n}\n.noma-bibliography ol {\n  padding-left: 1.4rem;\n}\n.noma-citation-meta {\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9em;\n}\n\n.noma-pagebreak {\n  margin: 2rem 0;\n  border: 0;\n  border-top: 1px dashed var(--noma-rule);\n}\n\n/* Print */\n@media print {\n  @page { margin: 20mm 18mm; }\n  html, body { background: white; font-size: 11pt; }\n  main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }\n  section.noma-hero { background: none; border: 1px solid var(--noma-rule); }\n  a { color: var(--noma-fg); }\n  pre, article.noma-card, article.noma-technical, aside.noma-block, .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, aside.noma-comment, aside.noma-review-meta, aside.noma-memory, aside.noma-memory-index, aside.noma-metric, aside.noma-change-request, aside.noma-footnote, aside.noma-endnote, nav.noma-toc, header.noma-page-header, footer.noma-page-footer, details.noma-dataset, table.noma-table {\n    box-shadow: none;\n    page-break-inside: avoid;\n    break-inside: avoid;\n  }\n  .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {\n    background: white;\n  }\n  table.noma-table {\n    font-size: 9.5pt;\n    box-shadow: none;\n  }\n  table.noma-table th,\n  table.noma-table td {\n    padding: 0.35em 0.55em;\n  }\n  h1, h2, h3 {\n    page-break-after: avoid;\n    break-after: avoid;\n  }\n  .noma-pagebreak {\n    margin: 0;\n    border: 0;\n    height: 0;\n    page-break-after: always;\n    break-after: page;\n  }\n}\n\n/* v0.4 \u2014 alias anchors (offset for sticky-headed pages) */\na.noma-alias {\n  display: block;\n  position: relative;\n  top: -1.2em;\n  visibility: hidden;\n  height: 0;\n}\n\n/* v0.4 \u2014 multi-page site nav (rendered above main when --to site) */\nnav.noma-site-nav {\n  max-width: 1040px;\n  margin: 1.5rem auto 0;\n  padding: 0 2rem;\n  display: flex;\n  align-items: baseline;\n  gap: 1.5rem;\n  flex-wrap: wrap;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n}\nnav.noma-site-nav a.noma-site-home {\n  font-weight: 600;\n  color: var(--noma-fg);\n  text-decoration: none;\n  border-right: 1px solid var(--noma-rule);\n  padding-right: 1.25rem;\n}\nnav.noma-site-nav ol {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n  display: flex;\n  gap: 1.25rem;\n  flex-wrap: wrap;\n  counter-reset: chap;\n}\nnav.noma-site-nav li {\n  counter-increment: chap;\n}\nnav.noma-site-nav li::before {\n  content: counter(chap, decimal-leading-zero) " \xB7 ";\n  color: var(--noma-rule);\n  font-variant-numeric: tabular-nums;\n}\nnav.noma-site-nav a {\n  color: var(--noma-muted);\n  text-decoration: none;\n}\nnav.noma-site-nav a:hover { color: var(--noma-accent); }\nnav.noma-site-nav .noma-nav-current span {\n  color: var(--noma-fg);\n  font-weight: 500;\n}\n\na.noma-ref.noma-xchapter::after {\n  content: " \u2197";\n  font-size: 0.85em;\n  color: var(--noma-muted);\n}\n\nmain.noma-site-index {\n  padding-top: 3rem;\n}\nheader.noma-site-header h1 {\n  font-size: 2.4rem;\n  margin-bottom: 0.25rem;\n}\nheader.noma-site-header .noma-site-author {\n  color: var(--noma-muted);\n  margin: 0 0 2rem;\n}\nol.noma-site-toc {\n  list-style: none;\n  padding: 0;\n  margin: 2rem 0;\n  display: grid;\n  gap: 0.6rem;\n  counter-reset: toc;\n}\nol.noma-site-toc li {\n  counter-increment: toc;\n}\na.noma-site-chapter {\n  display: block;\n  padding: 1.1rem 1.4rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  text-decoration: none;\n  color: inherit;\n  transition: border-color 120ms ease, transform 120ms ease;\n}\na.noma-site-chapter:hover {\n  border-color: var(--noma-accent);\n  transform: translateY(-1px);\n}\na.noma-site-chapter::before {\n  content: counter(toc, decimal-leading-zero);\n  display: block;\n  font-size: 0.75rem;\n  font-variant-numeric: tabular-nums;\n  color: var(--noma-muted);\n  margin-bottom: 0.25rem;\n}\n.noma-site-chapter-title {\n  display: block;\n  font-weight: 600;\n  font-size: 1.1rem;\n}\n.noma-site-chapter-summary {\n  display: block;\n  color: var(--noma-muted);\n  margin-top: 0.4rem;\n  font-size: 0.93rem;\n}\n.noma-site-description {\n  max-width: 48rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 1.02rem;\n}\n.noma-site-chapter-tags,\n.noma-space-tags {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  margin-top: 0.6rem;\n}\n.noma-site-chapter-tags span,\n.noma-space-tags span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  padding: 0.12rem 0.45rem;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n}\n\n/* Space renderer \u2014 source-controlled documentation/wiki surface */\nbody.noma-space-body {\n  background: linear-gradient(180deg, #f7f5ef 0, var(--noma-bg) 16rem);\n}\n.noma-space-shell {\n  display: grid;\n  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);\n  min-height: 100vh;\n}\n.noma-space-sidebar {\n  position: sticky;\n  top: 0;\n  height: 100vh;\n  overflow: auto;\n  border-right: 1px solid var(--noma-rule);\n  background: rgba(255, 255, 255, 0.68);\n  padding: 1rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-home {\n  display: block;\n  margin-bottom: 0.45rem;\n  color: var(--noma-fg);\n  font-weight: 800;\n  text-decoration: none;\n}\n.noma-space-description,\n.noma-space-search-disabled {\n  margin: 0 0 1rem;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n  line-height: 1.38;\n}\n.noma-space-search {\n  display: grid;\n  gap: 0.35rem;\n  margin: 0.9rem 0 0.75rem;\n  color: var(--noma-muted);\n  font-size: 0.74rem;\n  font-weight: 750;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n}\n.noma-space-search input {\n  width: 100%;\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  padding: 0.5rem 0.6rem;\n  background: var(--noma-card-bg);\n  color: var(--noma-fg);\n  font: 500 0.88rem var(--noma-font-sans);\n  text-transform: none;\n  letter-spacing: 0;\n}\n.noma-space-search-results {\n  display: grid;\n  gap: 0.4rem;\n  margin: 0 0 0.85rem;\n  padding: 0.45rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: 8px;\n  background: var(--noma-card-bg);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-search-results a {\n  display: grid;\n  gap: 0.1rem;\n  padding: 0.45rem 0.5rem;\n  border-radius: 6px;\n  color: var(--noma-fg);\n  text-decoration: none;\n}\n.noma-space-search-results a:hover {\n  background: var(--noma-code-bg);\n}\n.noma-space-search-results small {\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n}\n.noma-space-search-results em {\n  display: flex;\n  gap: 0.25rem;\n  flex-wrap: wrap;\n  font-style: normal;\n}\n.noma-space-search-results em span {\n  color: var(--noma-accent);\n  font-size: 0.68rem;\n}\n.noma-space-search-results p {\n  margin: 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-sidebar nav.noma-site-nav {\n  max-width: none;\n  margin: 0;\n  padding: 0;\n  display: block;\n}\n.noma-space-sidebar nav.noma-site-nav ol {\n  display: grid;\n  gap: 0.18rem;\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  counter-reset: none;\n}\n.noma-space-sidebar nav.noma-site-nav li {\n  padding-left: calc(var(--depth, 0) * 0.85rem);\n}\n.noma-space-sidebar nav.noma-site-nav li::before {\n  content: "";\n}\n.noma-space-sidebar nav.noma-site-nav a,\n.noma-space-sidebar nav.noma-site-nav span {\n  display: block;\n  border-radius: 6px;\n  padding: 0.38rem 0.5rem;\n  color: var(--noma-muted);\n  text-decoration: none;\n  font-size: 0.88rem;\n  line-height: 1.25;\n}\n.noma-space-sidebar nav.noma-site-nav a:hover {\n  background: var(--noma-code-bg);\n  color: var(--noma-fg);\n}\n.noma-space-sidebar nav.noma-site-nav .noma-nav-current span {\n  background: var(--noma-accent-soft);\n  color: var(--noma-accent);\n  font-weight: 760;\n}\n.noma-space-sidebar nav.noma-site-nav small {\n  display: block;\n  padding: 0 0.5rem 0.32rem;\n  color: var(--noma-muted);\n  font-size: 0.68rem;\n}\n.noma-space-main {\n  min-width: 0;\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);\n  grid-template-rows: auto 1fr;\n  gap: 1rem;\n  padding: 1rem;\n}\n.noma-space-topbar {\n  grid-column: 1 / -1;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 1rem;\n  min-width: 0;\n  padding: 0.5rem 0.2rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-breadcrumbs {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  min-width: 0;\n  color: var(--noma-muted);\n  font-size: 0.83rem;\n}\n.noma-space-breadcrumbs a,\n.noma-space-breadcrumbs span {\n  color: inherit;\n  text-decoration: none;\n}\n.noma-space-breadcrumbs span:last-child {\n  color: var(--noma-fg);\n  font-weight: 700;\n}\n.noma-space-breadcrumbs a::after,\n.noma-space-breadcrumbs span::after {\n  content: "/";\n  margin-left: 0.35rem;\n  color: var(--noma-rule);\n}\n.noma-space-breadcrumbs span:last-child::after {\n  content: "";\n  margin: 0;\n}\n.noma-space-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.noma-space-actions button {\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.38rem 0.6rem;\n  font: 700 0.78rem var(--noma-font-sans);\n  cursor: pointer;\n}\n.noma-space-actions button:hover {\n  border-color: var(--noma-accent);\n  color: var(--noma-accent);\n}\nbody.noma-space-body main.noma-doc {\n  min-width: 0;\n  max-width: none;\n  margin: 0;\n  padding: 2rem min(4vw, 2.5rem) 5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: rgba(255, 255, 255, 0.78);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector {\n  min-width: 0;\n  align-self: start;\n  position: sticky;\n  top: 1rem;\n  display: grid;\n  gap: 0.75rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-inspector section {\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 0.85rem;\n  background: rgba(255, 255, 255, 0.72);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector h2 {\n  margin: 0 0 0.55rem;\n  padding: 0;\n  border: 0;\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n}\n.noma-space-inspector p {\n  display: flex;\n  justify-content: space-between;\n  gap: 0.6rem;\n  margin: 0.3rem 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-inspector strong {\n  color: var(--noma-fg);\n  overflow-wrap: anywhere;\n}\n.noma-space-inspector ul {\n  margin: 0;\n  padding-left: 1rem;\n}\n.noma-space-inspector li {\n  margin: 0.25rem 0;\n  font-size: 0.84rem;\n}\n.noma-space-empty {\n  display: block !important;\n  color: var(--noma-muted);\n}\n.noma-space-stats {\n  display: flex;\n  gap: 0.5rem;\n  flex-wrap: wrap;\n  margin: 1rem 0 0;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-stats span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.2rem 0.6rem;\n  font-size: 0.8rem;\n  font-weight: 700;\n}\nbody.noma-space-body ol.noma-site-toc {\n  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));\n}\n@media (max-width: 1100px) {\n  .noma-space-main {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .noma-space-inspector {\n    position: static;\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n}\n@media (max-width: 780px) {\n  .noma-space-shell {\n    grid-template-columns: 1fr;\n  }\n  .noma-space-sidebar {\n    position: static;\n    height: auto;\n    border-right: 0;\n    border-bottom: 1px solid var(--noma-rule);\n  }\n  .noma-space-main {\n    padding: 0.75rem;\n  }\n  .noma-space-topbar {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  body.noma-space-body main.noma-doc {\n    padding: 1.25rem 1rem 3rem;\n  }\n  .noma-space-inspector {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* v0.4 \u2014 math (KaTeX is loaded from CDN; we just style block layout) */\n.noma-math-display {\n  margin: 1.4em auto;\n  text-align: center;\n  overflow-x: auto;\n}\n.noma-math-inline {\n  display: inline;\n}\n';
-
-  // web/cloud-app.ts
-  var CloudRequestError = class extends Error {
-    constructor(status, message, payload) {
-      super(message);
-      this.status = status;
-      this.payload = payload;
-      this.name = "CloudRequestError";
+  function rewriteJsonPropertyLine(line, key, value, op) {
+    const literal = JSON.stringify(value ?? null);
+    const valuePattern = `"(?:(?:\\\\.)|[^"\\\\])*"|true|false|null|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?`;
+    const pattern = new RegExp(`(${escapeRegExp2(JSON.stringify(key))}\\s*:\\s*)(?:${valuePattern})(\\s*(?:,|}|$))`);
+    const next = line.replace(pattern, (_match, prefix, suffix) => `${prefix}${literal}${suffix}`);
+    if (next === line) {
+      throw new PatchError("invalid_content", `source-preserving update_dataset_cell could not rewrite JSON property "${key}"`, op);
     }
-  };
-  var userStorageKey = "noma.cloud.user.v1";
-  var activeSiteStorageKey = "noma.cloud.activeSite.v1";
-  var activeDocumentStorageKey = "noma.cloud.activeDocument.v1";
-  var viewModeStorageKey = "noma.cloud.viewMode.v1";
-  var panelsOpenStorageKey = "noma.cloud.panelsOpen.v1";
-  var splitSourceRatioStorageKey = "noma.cloud.splitSourceRatio.v1";
-  var previewPaperWidthStorageKey = "noma.cloud.previewPaperWidth.v1";
-  var themeStorageKey = "noma.cloud.theme.v1";
-  var offlineDraftStorageKey = "noma.cloud.offlineDrafts.v1";
-  var query = new URLSearchParams(window.location.search);
-  var workIssueStatuses = ["backlog", "todo", "in_progress", "in_review", "done"];
-  var cloudUserNameInput = requireElement("cloudUserName");
-  var cloudInvitationCodeInput = requireElement("cloudInvitationCode");
-  var cloudUserTokenInput = requireElement("cloudUserToken");
-  var newUserButton = requireElement("newUserButton");
-  var loginUserButton = requireElement("loginUserButton");
-  var logoutUserButton = requireElement("logoutUserButton");
-  var copyUserIdButton = requireElement("copyUserIdButton");
-  var copyUserTokenButton = requireElement("copyUserTokenButton");
-  var themeToggleButton = requireElement("themeToggleButton");
-  var cloudStatus = requireElement("cloudStatus");
-  var globalSearchInput = requireElement("globalSearchInput");
-  var searchButton = requireElement("searchButton");
-  var searchScopeSelect = requireElement("searchScopeSelect");
-  var searchResults = requireElement("searchResults");
-  var siteTitleInput = requireElement("siteTitleInput");
-  var newSpaceButton = requireElement("newSpaceButton");
-  var saveSpaceButton = requireElement("saveSpaceButton");
-  var siteList = requireElement("siteList");
-  var newPageButton = requireElement("newPageButton");
-  var newFolderButton = requireElement("newFolderButton");
-  var importPageButton = requireElement("importPageButton");
-  var importPageInput = requireElement("importPageInput");
-  var pageTemplateSelect = requireElement("pageTemplateSelect");
-  var pageList = requireElement("pageList");
-  var favoriteList = requireElement("favoriteList");
-  var recentList = requireElement("recentList");
-  var trashList = requireElement("trashList");
-  var refreshTrashButton = requireElement("refreshTrashButton");
-  var pageTitleInput = requireElement("pageTitleInput");
-  var roleBadge = requireElement("roleBadge");
-  var dirtyBadge = requireElement("dirtyBadge");
-  var updatedText = requireElement("updatedText");
-  var sourceViewButton = requireElement("sourceViewButton");
-  var splitViewButton = requireElement("splitViewButton");
-  var previewViewButton = requireElement("previewViewButton");
-  var togglePanelsButton = requireElement("togglePanelsButton");
-  var savePageButton = requireElement("savePageButton");
-  var reloadPageButton = requireElement("reloadPageButton");
-  var favoritePageButton = requireElement("favoritePageButton");
-  var watchPageButton = requireElement("watchPageButton");
-  var pageBreadcrumbs = requireElement("pageBreadcrumbs");
-  var pageLabels = requireElement("pageLabels");
-  var addLabelButton = requireElement("addLabelButton");
-  var revisionDiffOutput = requireElement("revisionDiffOutput");
-  var copyPageLinkButton = requireElement("copyPageLinkButton");
-  var copyArtifactLinkButton = requireElement("copyArtifactLinkButton");
-  var copySiteLinkButton = requireElement("copySiteLinkButton");
-  var openPublishedSiteButton = requireElement("openPublishedSiteButton");
-  var documentGrid = requireElement("documentGrid");
-  var splitResizeHandle = requireElement("splitResizeHandle");
-  var sourceInput = requireElement("sourceInput");
-  var previewFrame = requireElement("previewFrame");
-  var shareRoleSelect = requireElement("shareRoleSelect");
-  var inviteUserIdInput = requireElement("inviteUserIdInput");
-  var inviteRoleSelect = requireElement("inviteRoleSelect");
-  var inviteUserButton = requireElement("inviteUserButton");
-  var inviteGroupSelect = requireElement("inviteGroupSelect");
-  var inviteGroupButton = requireElement("inviteGroupButton");
-  var shareStatus = requireElement("shareStatus");
-  var refreshAccessButton = requireElement("refreshAccessButton");
-  var accessList = requireElement("accessList");
-  var refreshNotificationsButton = requireElement("refreshNotificationsButton");
-  var readAllNotificationsButton = requireElement("readAllNotificationsButton");
-  var notificationList = requireElement("notificationList");
-  var refreshCommentsButton = requireElement("refreshCommentsButton");
-  var commentBlockIdInput = requireElement("commentBlockIdInput");
-  var commentBodyInput = requireElement("commentBodyInput");
-  var addCommentButton = requireElement("addCommentButton");
-  var commentList = requireElement("commentList");
-  var commentStatus = requireElement("commentStatus");
-  var refreshApprovalsButton = requireElement("refreshApprovalsButton");
-  var approvalReviewerInput = requireElement("approvalReviewerInput");
-  var approvalNoteInput = requireElement("approvalNoteInput");
-  var requestApprovalButton = requireElement("requestApprovalButton");
-  var approvalList = requireElement("approvalList");
-  var approvalStatus = requireElement("approvalStatus");
-  var refreshActivityButton = requireElement("refreshActivityButton");
-  var activityList = requireElement("activityList");
-  var refreshGroupsButton = requireElement("refreshGroupsButton");
-  var groupNameInput = requireElement("groupNameInput");
-  var createGroupButton = requireElement("createGroupButton");
-  var manageGroupSelect = requireElement("manageGroupSelect");
-  var groupMemberIdInput = requireElement("groupMemberIdInput");
-  var groupMemberRoleSelect = requireElement("groupMemberRoleSelect");
-  var addGroupMemberButton = requireElement("addGroupMemberButton");
-  var groupList = requireElement("groupList");
-  var groupStatus = requireElement("groupStatus");
-  var refreshHistoryButton = requireElement("refreshHistoryButton");
-  var historyList = requireElement("historyList");
-  var historyStatus = requireElement("historyStatus");
-  var refreshWorkButton = requireElement("refreshWorkButton");
-  var workProjectSelect = requireElement("workProjectSelect");
-  var projectKeyInput = requireElement("projectKeyInput");
-  var projectNameInput = requireElement("projectNameInput");
-  var createProjectButton = requireElement("createProjectButton");
-  var issueSummaryInput = requireElement("issueSummaryInput");
-  var issueTypeSelect = requireElement("issueTypeSelect");
-  var issuePrioritySelect = requireElement("issuePrioritySelect");
-  var issueAssigneeInput = requireElement("issueAssigneeInput");
-  var issueLabelsInput = requireElement("issueLabelsInput");
-  var issueSprintSelect = requireElement("issueSprintSelect");
-  var createIssueButton = requireElement("createIssueButton");
-  var sprintNameInput = requireElement("sprintNameInput");
-  var createSprintButton = requireElement("createSprintButton");
-  var manageSprintSelect = requireElement("manageSprintSelect");
-  var startSprintButton = requireElement("startSprintButton");
-  var completeSprintButton = requireElement("completeSprintButton");
-  var issueFilterSelect = requireElement("issueFilterSelect");
-  var issueSearchInput = requireElement("issueSearchInput");
-  var workBoard = requireElement("workBoard");
-  var selectedIssueSummary = requireElement("selectedIssueSummary");
-  var issueCommentInput = requireElement("issueCommentInput");
-  var addIssueCommentButton = requireElement("addIssueCommentButton");
-  var issueLinkTargetInput = requireElement("issueLinkTargetInput");
-  var issueLinkTypeSelect = requireElement("issueLinkTypeSelect");
-  var addIssueLinkButton = requireElement("addIssueLinkButton");
-  var issueDetailList = requireElement("issueDetailList");
-  var workStatus = requireElement("workStatus");
-  var patchInput = requireElement("patchInput");
-  var applyPatchButton = requireElement("applyPatchButton");
-  var proposePatchButton = requireElement("proposePatchButton");
-  var copyLlmButton = requireElement("copyLlmButton");
-  var refreshPatchProposalsButton = requireElement("refreshPatchProposalsButton");
-  var agentStatus = requireElement("agentStatus");
-  var patchProposalList = requireElement("patchProposalList");
-  var diagnosticsSummary = requireElement("diagnosticsSummary");
-  var diagnosticsList = requireElement("diagnosticsList");
-  var outlineList = requireElement("outlineList");
-  var wikiSummary = requireElement("wikiSummary");
-  var wikiLinksList = requireElement("wikiLinksList");
-  var askNomaInput = requireElement("askNomaInput");
-  var askNomaButton = requireElement("askNomaButton");
-  var refreshKnowledgeButton = requireElement("refreshKnowledgeButton");
-  var askNomaStatus = requireElement("askNomaStatus");
-  var askNomaResult = requireElement("askNomaResult");
-  var knowledgeHealthList = requireElement("knowledgeHealthList");
-  var agentChangeInboxList = requireElement("agentChangeInboxList");
-  var agentDirectoryList = requireElement("agentDirectoryList");
-  var offlineStatus = requireElement("offlineStatus");
-  var draftRecoveryStatus = requireElement("draftRecoveryStatus");
-  var recoverDraftButton = requireElement("recoverDraftButton");
-  var mergeDraftButton = requireElement("mergeDraftButton");
-  var discardDraftButton = requireElement("discardDraftButton");
-  var cloudAvailable = false;
-  var busy = false;
-  var cloudUser = readCloudUser();
-  var shareToken = readShareToken();
-  var sites = [];
-  var currentSite;
-  var pages = [];
-  var currentPage;
-  var documentRevisions = [];
-  var pageTemplates = [];
-  var cloudSearchResults = [];
-  var recentItems = [];
-  var favoriteItems = [];
-  var currentLabels = [];
-  var currentWatching = false;
-  var trashItems = [];
-  var notifications = [];
-  var comments = [];
-  var approvals = [];
-  var activityEvents = [];
-  var groups = [];
-  var workProjects = [];
-  var workIssues = [];
-  var workSprints = [];
-  var selectedIssue;
-  var patchProposals = [];
-  var collaboratorGrants = [];
-  var groupGrants = [];
-  var shareGrants = [];
-  var activeFolder = "";
-  var dirty = false;
-  var renderTimer;
-  var renderState = emptyRenderState();
-  var viewMode = readViewMode();
-  var panelsOpen = readPanelsOpen();
-  var splitSourceRatio = readSplitSourceRatio();
-  var previewPaperWidth = readPreviewPaperWidth();
-  var themeMode = readThemeMode();
-  var pendingPreviewFocusLine;
-  var askNomaResponse;
-  var knowledgeHealth = [];
-  var agentInbox = [];
-  var scopedAgents = [];
-  var pendingLocalDraft;
-  var savedPageSource = "";
-  var savedPageHash = "";
-  var savedPageTitle = "";
-  applyThemeMode();
-  cloudUserNameInput.value = cloudUser?.name ?? "Noma collaborator";
-  bindEvents();
-  renderChrome();
-  registerCloudPwa();
-  void initializeCloud();
-  function requireElement(id) {
-    const element = document.getElementById(id);
-    if (!element) throw new Error(`Missing #${id}`);
-    return element;
+    return next;
   }
-  function bindEvents() {
-    document.addEventListener("click", () => closeContextMenu());
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") closeContextMenu();
+  function escapeRegExp2(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  function applySrcMove(source, op) {
+    const doc = parse(source);
+    const node = findById(doc, op.id);
+    if (!node) throw new PatchError("target_missing", `block "${op.id}" not found`, op);
+    if (!isDirective(node)) {
+      throw new PatchError("invalid_content", `block "${op.id}" is not a directive block`, op);
+    }
+    const parent = findById(doc, op.parent);
+    if (!parent) throw new PatchError("parent_missing", `parent "${op.parent}" not found`, op);
+    if (!hasChildren(parent)) {
+      throw new PatchError("parent_missing", `parent "${op.parent}" cannot have children`, op);
+    }
+    if (containsId(node, op.parent)) {
+      throw new PatchError("invalid_content", `cannot move "${op.id}" into itself or its descendants`, op);
+    }
+    const start = node.pos?.line;
+    const end = node.endLine;
+    if (!start || !end) throw new Error(`block "${op.id}" has no source span`);
+    const lines = source.split("\n");
+    const sourceDepth = directiveFenceDepth(node, lines);
+    const targetDepth = parent.type === "directive" ? directiveFenceDepth(parent, lines) + 1 : 2;
+    const content = normalizeDirectiveFenceDepth(
+      lines.slice(start - 1, end).join("\n"),
+      sourceDepth,
+      targetDepth
+    );
+    let deleted = applySrcDelete(source, { op: "delete_block", id: op.id });
+    if (start === 1 && deleted.startsWith("\n")) deleted = deleted.slice(1);
+    return applySrcAdd(deleted, {
+      op: "add_block",
+      parent: op.parent,
+      content,
+      ...op.position !== void 0 ? { position: op.position } : {}
     });
-    window.addEventListener("resize", () => closeContextMenu());
-    newUserButton.addEventListener("click", () => {
-      void createCloudUser();
-    });
-    loginUserButton.addEventListener("click", () => {
-      void loginCloudUser();
-    });
-    logoutUserButton.addEventListener("click", () => {
-      logoutCloudUser();
-    });
-    copyUserIdButton.addEventListener("click", () => {
-      if (cloudUser) void copyText(cloudUser.id, "Copied user ID");
-    });
-    copyUserTokenButton.addEventListener("click", () => {
-      if (cloudUser) void copyText(cloudUser.token, "Copied user token");
-    });
-    themeToggleButton.addEventListener("click", () => {
-      themeMode = themeMode === "dark" ? "light" : "dark";
-      localStorage.setItem(themeStorageKey, themeMode);
-      applyThemeMode();
-      renderChrome();
-      renderCurrent();
-    });
-    newSpaceButton.addEventListener("click", () => {
-      void createStarterWorkspace(promptName("Space name", "Research Workspace"));
-    });
-    saveSpaceButton.addEventListener("click", () => {
-      void saveCurrentSite();
-    });
-    newPageButton.addEventListener("click", () => {
-      void createPage();
-    });
-    newFolderButton.addEventListener("click", () => {
-      void createFolder();
-    });
-    importPageButton.addEventListener("click", () => importPageInput.click());
-    importPageInput.addEventListener("change", () => {
-      const file = importPageInput.files?.[0];
-      if (file) void importPage(file);
-      importPageInput.value = "";
-    });
-    searchButton.addEventListener("click", () => {
-      void searchCloud();
-    });
-    globalSearchInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") void searchCloud();
-      if (event.key === "Escape") {
-        globalSearchInput.value = "";
-        cloudSearchResults = [];
-        renderSearchResults();
+  }
+  function directiveFenceDepth(node, lines) {
+    const start = node.pos?.line;
+    const line = start ? lines[start - 1] : void 0;
+    return line?.match(/^\s*(:{2,})/)?.[1]?.length ?? 2;
+  }
+  function normalizeDirectiveFenceDepth(content, from, to) {
+    if (from === to) return content;
+    const delta = to - from;
+    let inFence = false;
+    return content.split("\n").map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence;
+        return line;
       }
-    });
-    globalSearchInput.addEventListener("input", () => {
-      searchButton.disabled = busy || !cloudUser || !globalSearchInput.value.trim();
-      if (!globalSearchInput.value.trim()) {
-        cloudSearchResults = [];
-        renderSearchResults();
+      if (inFence) return line;
+      const match = line.match(/^(\s*)(:{2,})(.*)$/);
+      if (!match) return line;
+      const rest = match[3] ?? "";
+      if (!/^\s*(?:[a-zA-Z_]|$)/.test(rest)) return line;
+      const depth = match[2].length;
+      if (depth < from) return line;
+      return `${match[1] ?? ""}${":".repeat(Math.max(2, depth + delta))}${rest}`;
+    }).join("\n");
+  }
+  function applySrcRenameId(source, op) {
+    const doc = parse(source);
+    const node = findById(doc, op.from);
+    if (!node) throw new PatchError("target_missing", `block "${op.from}" not found`, op);
+    if (findById(doc, op.to)) {
+      throw new PatchError("id_conflict", `target id "${op.to}" already exists`, op);
+    }
+    const lines = source.split("\n");
+    const startLine = node.pos?.line;
+    if (!startLine) throw new Error(`block has no source span`);
+    const lineIdx = startLine - 1;
+    const open = lines[lineIdx] ?? "";
+    if (isDirective(node)) {
+      lines[lineIdx] = rewriteOpenLineAttr(open, "id", op.to, op);
+    } else if (node.type === "section") {
+      lines[lineIdx] = rewriteHeadingId(open, op.to);
+    }
+    let result = lines.join("\n");
+    result = rewriteWikilinksInSource(result, op.from, op.to);
+    result = rewriteAttrReferences(result, op.from, op.to);
+    return result;
+  }
+  var REF_ATTRS = /* @__PURE__ */ new Set(["for", "parent", "dataset", "block", "ref"]);
+  function rewriteAttrReferences(source, from, to) {
+    const escFrom = escapeRegex(from);
+    return source.split("\n").map((line) => {
+      if (!/^:{2,}\w/.test(line.trim())) return line;
+      let out = line;
+      for (const k of REF_ATTRS) {
+        const quoted = new RegExp(`(\\b${k}=)("|')${escFrom}\\2`, "g");
+        out = out.replace(quoted, `$1$2${to}$2`);
+        const bare = new RegExp(`(\\b${k}=)${escFrom}(?=[\\s}])`, "g");
+        out = out.replace(bare, `$1"${to}"`);
       }
-    });
-    favoritePageButton.addEventListener("click", () => {
-      if (currentPage) void toggleFavorite("document", currentPage.id);
-    });
-    watchPageButton.addEventListener("click", () => {
-      void toggleWatch();
-    });
-    addLabelButton.addEventListener("click", () => {
-      void addLabel();
-    });
-    refreshTrashButton.addEventListener("click", () => {
-      void refreshTrash();
-    });
-    savePageButton.addEventListener("click", () => {
-      void saveCurrentPage();
-    });
-    reloadPageButton.addEventListener("click", () => {
-      void reloadCurrentPage();
-    });
-    refreshHistoryButton.addEventListener("click", () => {
-      void refreshHistory();
-    });
-    refreshWorkButton.addEventListener("click", () => void refreshWorkManagement());
-    workProjectSelect.addEventListener("change", () => void loadWorkProject(workProjectSelect.value));
-    createProjectButton.addEventListener("click", () => void createWorkProject());
-    createIssueButton.addEventListener("click", () => void createWorkIssue());
-    createSprintButton.addEventListener("click", () => void createWorkSprint());
-    startSprintButton.addEventListener("click", () => void updateWorkSprint("active"));
-    completeSprintButton.addEventListener("click", () => void updateWorkSprint("closed"));
-    issueFilterSelect.addEventListener("change", () => renderWorkBoard());
-    issueSearchInput.addEventListener("input", () => renderWorkBoard());
-    addIssueCommentButton.addEventListener("click", () => void addWorkIssueComment());
-    addIssueLinkButton.addEventListener("click", () => void addWorkIssueLink());
-    copyPageLinkButton.addEventListener("click", () => {
-      void copyPageLink();
-    });
-    copyArtifactLinkButton.addEventListener("click", () => {
-      void copyArtifactLink();
-    });
-    copySiteLinkButton.addEventListener("click", () => {
-      void copySiteLink();
-    });
-    openPublishedSiteButton.addEventListener("click", () => {
-      void openPublishedSite();
-    });
-    inviteUserButton.addEventListener("click", () => {
-      void inviteCollaborator();
-    });
-    inviteGroupButton.addEventListener("click", () => {
-      void inviteGroup();
-    });
-    refreshAccessButton.addEventListener("click", () => void refreshAccessManagement());
-    refreshNotificationsButton.addEventListener("click", () => void refreshNotifications());
-    readAllNotificationsButton.addEventListener("click", () => void readAllNotifications());
-    refreshCommentsButton.addEventListener("click", () => void refreshComments());
-    addCommentButton.addEventListener("click", () => void addComment());
-    refreshApprovalsButton.addEventListener("click", () => void refreshApprovals());
-    requestApprovalButton.addEventListener("click", () => void requestApproval());
-    refreshActivityButton.addEventListener("click", () => void refreshActivity());
-    refreshGroupsButton.addEventListener("click", () => void refreshGroups());
-    createGroupButton.addEventListener("click", () => void createGroup());
-    addGroupMemberButton.addEventListener("click", () => void addGroupMember());
-    manageGroupSelect.addEventListener("change", () => renderChrome());
-    applyPatchButton.addEventListener("click", () => {
-      void applyAgentPatch();
-    });
-    proposePatchButton.addEventListener("click", () => void proposeAgentPatch());
-    refreshPatchProposalsButton.addEventListener("click", () => void refreshPatchProposals());
-    copyLlmButton.addEventListener("click", () => {
-      void copyLlmContext();
-    });
-    askNomaButton.addEventListener("click", () => void askNoma());
-    askNomaInput.addEventListener("input", () => renderKnowledgeWorkspace());
-    askNomaInput.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" || !event.metaKey && !event.ctrlKey) return;
-      event.preventDefault();
-      void askNoma();
-    });
-    refreshKnowledgeButton.addEventListener("click", () => void refreshKnowledgeWorkspace());
-    recoverDraftButton.addEventListener("click", () => recoverLocalDraft());
-    mergeDraftButton.addEventListener("click", () => void mergeLocalDraft());
-    discardDraftButton.addEventListener("click", () => discardCurrentLocalDraft());
-    window.addEventListener("online", () => {
-      cloudAvailable = true;
-      renderKnowledgeWorkspace();
-      void refreshKnowledgeWorkspace();
-    });
-    window.addEventListener("offline", () => {
-      cloudAvailable = false;
-      renderKnowledgeWorkspace();
-      setCloudStatus("Offline \u2014 your draft remains editable and cached locally", "warning");
-    });
-    for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
-      button.addEventListener("click", () => {
-        const mode = button.dataset.viewMode;
-        setViewMode(mode === "source" || mode === "preview" ? mode : "split");
-      });
-    }
-    togglePanelsButton.addEventListener("click", () => {
-      panelsOpen = !panelsOpen;
-      localStorage.setItem(panelsOpenStorageKey, panelsOpen ? "true" : "false");
-      renderChrome();
-    });
-    sourceInput.addEventListener("input", () => {
-      markDirty();
-      persistLocalDraft();
-      syncTitleFromSource();
-      scheduleRender();
-    });
-    pageTitleInput.addEventListener("input", () => {
-      const nextTitle = pageTitleInput.value.trim() || "Untitled Page";
-      sourceInput.value = replaceFirstHeading(sourceInput.value, nextTitle);
-      if (currentPage) currentPage = { ...currentPage, title: nextTitle, source: sourceInput.value };
-      markDirty();
-      persistLocalDraft();
-      scheduleRender();
-    });
-    sourceInput.addEventListener("keydown", (event) => {
-      if (!event.metaKey && !event.ctrlKey || event.key.toLowerCase() !== "s") return;
-      event.preventDefault();
-      void saveCurrentPage();
-    });
-    sourceInput.addEventListener("contextmenu", (event) => showSourceContextMenu(event));
-    splitResizeHandle.addEventListener("pointerdown", (event) => startSplitResize(event));
-    splitResizeHandle.addEventListener("keydown", (event) => handleSplitResizeKeydown(event));
-    previewFrame.addEventListener("load", () => installPreviewEditing());
-  }
-  async function initializeCloud() {
-    setBusy(true, "Connecting to cloud", "warning");
-    try {
-      const status = await fetchCloudJson("/api/status");
-      cloudAvailable = true;
-      validateStoredCloudUser(status.user);
-      if (!cloudUser && !shareToken) {
-        clearWorkspaceState();
-        setCloudStatus("Register with an invitation code or log in with an existing user token", "warning");
-        return;
-      }
-      await openInitialWorkspace();
-      setCloudStatus("Ready", "ok");
-    } catch (error) {
-      cloudAvailable = false;
-      if (restoreLatestOfflineDraft()) setCloudStatus("Offline draft recovered from this device", "warning");
-      else setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function openInitialWorkspace() {
-    const requestedSite = readCloudId(query.get("site")) ?? readCloudId(localStorage.getItem(activeSiteStorageKey));
-    const requestedDoc = readCloudId(query.get("doc")) ?? readCloudId(localStorage.getItem(activeDocumentStorageKey));
-    await refreshSites({ silent: true });
-    if (requestedSite) {
-      await loadSite(requestedSite, requestedDoc);
-    } else if (requestedDoc) {
-      await loadStandaloneDocument(requestedDoc);
-    } else {
-      const firstSite = sites[0];
-      if (firstSite) await loadSite(firstSite.id);
-      else await createStarterWorkspace("Research Workspace");
-    }
-    await refreshWorkspaceTools();
-  }
-  function validateStoredCloudUser(statusUser) {
-    if (!cloudUser) return;
-    if (statusUser && statusUser.id === cloudUser.id) {
-      cloudUser = {
-        id: statusUser.id,
-        name: statusUser.name,
-        token: cloudUser.token,
-        tokenPreview: statusUser.tokenPreview ?? cloudUser.tokenPreview
-      };
-      localStorage.setItem(userStorageKey, JSON.stringify(cloudUser));
-      cloudUserNameInput.value = cloudUser.name;
-      return;
-    }
-    cloudUser = void 0;
-    localStorage.removeItem(userStorageKey);
-    localStorage.removeItem(activeSiteStorageKey);
-    localStorage.removeItem(activeDocumentStorageKey);
-  }
-  function clearWorkspaceState() {
-    sites = [];
-    currentSite = void 0;
-    activeFolder = "";
-    pages = [];
-    cloudSearchResults = [];
-    recentItems = [];
-    favoriteItems = [];
-    trashItems = [];
-    notifications = [];
-    comments = [];
-    approvals = [];
-    activityEvents = [];
-    groups = [];
-    workProjects = [];
-    workIssues = [];
-    workSprints = [];
-    selectedIssue = void 0;
-    patchProposals = [];
-    collaboratorGrants = [];
-    groupGrants = [];
-    shareGrants = [];
-    askNomaResponse = void 0;
-    knowledgeHealth = [];
-    agentInbox = [];
-    scopedAgents = [];
-    pendingLocalDraft = void 0;
-    setCurrentPage(void 0);
-    siteTitleInput.value = "Research Workspace";
-    renderWorkspaceTools();
-  }
-  async function refreshSites(options = {}) {
-    if (!cloudUser) return;
-    if (!options.silent) setBusy(true, "Loading spaces", "warning");
-    try {
-      const response = await fetchCloudJson("/api/sites");
-      sites = response.sites.map(normalizeSite);
-    } finally {
-      if (!options.silent) setBusy(false);
-      renderNavigation();
-    }
-  }
-  async function refreshWorkspaceTools() {
-    if (!cloudUser) {
-      pageTemplates = [];
-      recentItems = [];
-      favoriteItems = [];
-      trashItems = [];
-      notifications = [];
-      groups = [];
-      workProjects = [];
-      workIssues = [];
-      workSprints = [];
-      selectedIssue = void 0;
-      patchProposals = [];
-      collaboratorGrants = [];
-      groupGrants = [];
-      shareGrants = [];
-      askNomaResponse = void 0;
-      knowledgeHealth = [];
-      agentInbox = [];
-      scopedAgents = [];
-      renderWorkspaceTools();
-      renderCollaborationPanels();
-      renderWorkManagement();
-      renderAccessManagement();
-      return;
-    }
-    await Promise.all([
-      refreshTemplates(),
-      refreshNavigationItems(),
-      refreshTrash(),
-      refreshNotifications(),
-      refreshGroups(),
-      refreshWorkManagement(),
-      refreshAccessManagement(),
-      refreshKnowledgeWorkspace()
-    ]);
-  }
-  async function refreshTemplates() {
-    const selected = pageTemplateSelect.value;
-    const response = await fetchCloudJson("/api/templates");
-    pageTemplates = response.templates;
-    pageTemplateSelect.textContent = "";
-    for (const template of pageTemplates) {
-      const option = document.createElement("option");
-      option.value = template.id;
-      option.textContent = `${template.title} \xB7 ${template.category}`;
-      option.title = template.description;
-      pageTemplateSelect.append(option);
-    }
-    pageTemplateSelect.value = pageTemplates.some((template) => template.id === selected) ? selected : "blank";
-  }
-  async function refreshNavigationItems() {
-    const response = await fetchCloudJson("/api/navigation");
-    recentItems = response.recents;
-    favoriteItems = response.favorites;
-    renderWorkspaceTools();
-  }
-  async function refreshTrash() {
-    if (!cloudUser) {
-      trashItems = [];
-      renderWorkspaceTools();
-      return;
-    }
-    try {
-      const response = await fetchCloudJson("/api/trash");
-      trashItems = response.items;
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      renderWorkspaceTools();
-    }
-  }
-  async function searchCloud() {
-    const q = globalSearchInput.value.trim();
-    if (!q || !cloudUser) {
-      cloudSearchResults = [];
-      renderSearchResults();
-      return;
-    }
-    searchButton.disabled = true;
-    try {
-      const params = new URLSearchParams({ q });
-      if (searchScopeSelect.value === "site" && currentSite) params.set("site", currentSite.id);
-      const response = await fetchCloudJson(`/api/knowledge/search?${params.toString()}`);
-      cloudSearchResults = response.results;
-      setCloudStatus(`${cloudSearchResults.length} search result${cloudSearchResults.length === 1 ? "" : "s"}`, "ok");
-    } catch (error) {
-      cloudSearchResults = [];
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      searchButton.disabled = busy || !cloudUser;
-      renderSearchResults();
-    }
-  }
-  function renderWorkspaceTools() {
-    renderNavigationList(favoriteList, favoriteItems.slice(0, 8), "No favorites", true);
-    renderNavigationList(recentList, recentItems.slice(0, 8), "No recent items", false);
-    renderTrashList();
-    renderSearchResults();
-  }
-  function renderSearchResults() {
-    searchResults.textContent = "";
-    if (!globalSearchInput.value.trim()) return;
-    if (cloudSearchResults.length === 0) {
-      searchResults.append(emptyState("No matches"));
-      return;
-    }
-    for (const result of cloudSearchResults.slice(0, 20)) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "search-result";
-      const title = document.createElement("span");
-      title.className = "row-title";
-      title.textContent = result.title || result.documentTitle;
-      const meta = document.createElement("span");
-      meta.className = "row-meta";
-      const excerpt = result.excerpt ?? result.exactSource?.replace(/\s+/g, " ").slice(0, 180) ?? "";
-      const score = result.score === void 0 ? "" : ` \xB7 ${Math.round(result.score * 100)}%`;
-      const freshness = result.freshness ? ` \xB7 ${result.freshness.state.replace("_", " ")}` : "";
-      const line = result.line ?? result.sourceSpan?.line;
-      meta.textContent = `${result.documentTitle}${line ? ` \xB7 line ${line}` : ""}${score}${freshness} \xB7 ${excerpt}`;
-      button.append(title, meta);
-      button.addEventListener("click", () => void openSearchResult(result));
-      searchResults.append(button);
-    }
-  }
-  async function askNoma() {
-    const query2 = askNomaInput.value.trim();
-    if (!query2 || !cloudUser || !cloudAvailable) return;
-    askNomaButton.disabled = true;
-    setPanelStatus(askNomaStatus, "Retrieving exact, permission-scoped evidence", "warning");
-    try {
-      askNomaResponse = await fetchCloudJson("/api/ask", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query: query2, ...currentSite ? { siteId: currentSite.id } : {} })
-      });
-      setPanelStatus(
-        askNomaStatus,
-        askNomaResponse.state === "answered" ? `${askNomaResponse.confidence.label} confidence \xB7 ${askNomaResponse.citations.length} exact citation${askNomaResponse.citations.length === 1 ? "" : "s"}` : "Insufficient evidence \u2014 Noma abstained",
-        askNomaResponse.state === "answered" ? "ok" : "warning"
-      );
-    } catch (error) {
-      askNomaResponse = void 0;
-      setPanelStatus(askNomaStatus, errorMessage(error), "error");
-    } finally {
-      askNomaButton.disabled = false;
-      renderKnowledgeWorkspace();
-    }
-  }
-  async function refreshKnowledgeWorkspace() {
-    if (!cloudAvailable || !cloudUser) {
-      knowledgeHealth = [];
-      agentInbox = [];
-      scopedAgents = [];
-      renderKnowledgeWorkspace();
-      return;
-    }
-    const siteQuery = currentSite ? `?site=${encodeURIComponent(currentSite.id)}` : "";
-    try {
-      const [health, inbox, agents] = await Promise.all([
-        fetchCloudJson(`/api/knowledge/health${siteQuery}`),
-        fetchCloudJson(`/api/agent-inbox${siteQuery}`),
-        fetchCloudJson("/api/agents")
-      ]);
-      knowledgeHealth = health.items;
-      agentInbox = inbox.changes;
-      scopedAgents = agents.agents;
-    } catch (error) {
-      setPanelStatus(askNomaStatus, errorMessage(error), "error");
-    } finally {
-      renderKnowledgeWorkspace();
-    }
-  }
-  function renderKnowledgeWorkspace() {
-    offlineStatus.textContent = navigator.onLine && cloudAvailable ? "online" : "offline";
-    offlineStatus.dataset.state = navigator.onLine && cloudAvailable ? "ok" : "warning";
-    askNomaButton.disabled = busy || !cloudUser || !cloudAvailable || !askNomaInput.value.trim();
-    refreshKnowledgeButton.disabled = busy || !cloudUser || !cloudAvailable;
-    renderAskNomaAnswer();
-    renderKnowledgeHealth();
-    renderAgentInbox();
-    renderAgentDirectory();
-    renderDraftRecovery();
-  }
-  function renderAskNomaAnswer() {
-    askNomaResult.textContent = "";
-    if (!askNomaResponse) {
-      askNomaResult.append(emptyState("Ask a question to retrieve exact block and version citations"));
-      return;
-    }
-    const answer = document.createElement("div");
-    answer.className = "knowledge-answer-text";
-    answer.textContent = askNomaResponse.answer;
-    askNomaResult.append(answer);
-    for (const citation of askNomaResponse.citations) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "knowledge-citation";
-      const title = document.createElement("span");
-      title.className = "row-title";
-      title.textContent = `[${citation.citation}] ${citation.documentTitle} \xB7 #${citation.blockId}`;
-      const meta = document.createElement("span");
-      meta.className = "row-meta";
-      meta.textContent = `lines ${citation.sourceSpan.line}-${citation.sourceSpan.endLine} \xB7 ${citation.freshness.state.replace("_", " ")} \xB7 ${Math.round(citation.score * 100)}% \xB7 ${citation.versionHash.slice(0, 10)}`;
-      button.append(title, meta);
-      button.addEventListener("click", () => void openKnowledgeCitation(citation));
-      askNomaResult.append(button);
-    }
-    for (const conflict of askNomaResponse.conflicts) {
-      const row = knowledgePanelRow(`Conflict: ${conflict.concept}`, conflict.reason, "error");
-      askNomaResult.append(row);
-    }
-  }
-  async function openKnowledgeCitation(citation) {
-    const sitePage = currentSite?.documentIds.includes(citation.documentId);
-    if (sitePage && currentSite) await loadSite(currentSite.id, citation.documentId);
-    else await loadStandaloneDocument(citation.documentId);
-    focusSourceLine(citation.sourceSpan.line);
-    try {
-      await fetchCloudJson("/api/analytics", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "citation_opened", documentId: citation.documentId, query: askNomaInput.value.trim() })
-      });
-    } catch {
-      return;
-    }
-  }
-  function renderKnowledgeHealth() {
-    knowledgeHealthList.textContent = "";
-    if (knowledgeHealth.length === 0) {
-      knowledgeHealthList.append(emptyState("No active health issues"));
-      return;
-    }
-    for (const item of knowledgeHealth.slice(0, 12)) {
-      const row = knowledgePanelRow(item.kind.replaceAll("_", " "), item.message, item.severity);
-      if (item.documentId) row.addEventListener("click", () => void openHealthItem(item));
-      knowledgeHealthList.append(row);
-    }
-  }
-  async function openHealthItem(item) {
-    if (!item.documentId) return;
-    if (currentSite?.documentIds.includes(item.documentId)) await loadSite(currentSite.id, item.documentId);
-    else await loadStandaloneDocument(item.documentId);
-    if (item.blockId) focusBlock(item.blockId);
-  }
-  function renderAgentInbox() {
-    agentChangeInboxList.textContent = "";
-    if (agentInbox.length === 0) {
-      agentChangeInboxList.append(emptyState("No agent changes awaiting review"));
-      return;
-    }
-    for (const item of agentInbox.slice(0, 12)) {
-      const row = knowledgePanelRow(item.applyStatus.replaceAll("_", " "), item.plan[0] ?? "Agent change", item.applyStatus === "rejected" ? "error" : item.applyStatus === "applied" ? "ok" : "warning");
-      row.addEventListener("click", () => void openAgentInboxItem(item));
-      agentChangeInboxList.append(row);
-    }
-  }
-  async function openAgentInboxItem(item) {
-    if (currentSite?.documentIds.includes(item.documentId)) await loadSite(currentSite.id, item.documentId);
-    else await loadStandaloneDocument(item.documentId);
-    if (item.affectedIds[0]) focusBlock(item.affectedIds[0]);
-  }
-  function renderAgentDirectory() {
-    agentDirectoryList.textContent = "";
-    if (scopedAgents.length === 0) {
-      agentDirectoryList.append(emptyState("No scoped agents"));
-      return;
-    }
-    for (const agent of scopedAgents.slice(0, 10)) {
-      const retention = agent.modelPolicy.zeroRetention ? "zero retention" : "provider retention";
-      agentDirectoryList.append(knowledgePanelRow(`${agent.name} \xB7 ${agent.status}`, `${agent.modelPolicy.model} \xB7 ${retention} \xB7 $${agent.spentUsd.toFixed(2)} / $${agent.budgetUsd.toFixed(2)} \xB7 ${agent.capabilities.length} capabilities`, agent.status === "active" ? "ok" : "warning"));
-    }
-  }
-  function knowledgePanelRow(titleText, metaText, state) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "collaboration-row";
-    row.dataset.state = state;
-    const title = document.createElement("span");
-    title.className = "row-title";
-    title.textContent = titleText;
-    const meta = document.createElement("span");
-    meta.className = "row-meta";
-    meta.textContent = metaText;
-    row.append(title, meta);
-    return row;
-  }
-  function renderNavigationList(container, items, emptyText, removable) {
-    container.textContent = "";
-    if (items.length === 0) {
-      container.append(emptyState(emptyText));
-      return;
-    }
-    for (const item of items) {
-      const entry = document.createElement("div");
-      entry.className = "navigation-entry";
-      const button = navigationButton(item);
-      entry.append(button);
-      if (removable) {
-        entry.append(iconButton("\xD7", `Remove ${item.title} from favorites`, () => void toggleFavorite(item.resourceType, item.resourceId)));
-      }
-      container.append(entry);
-    }
-  }
-  function navigationButton(item) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "navigation-row";
-    const title = document.createElement("span");
-    title.className = "row-title";
-    title.textContent = item.title;
-    const meta = document.createElement("span");
-    meta.className = "row-meta";
-    meta.textContent = `${item.resourceType} \xB7 ${formatDate(item.activityAt)}`;
-    button.append(title, meta);
-    button.addEventListener("click", () => void openNavigationItem(item));
-    return button;
-  }
-  function renderTrashList() {
-    trashList.textContent = "";
-    if (trashItems.length === 0) {
-      trashList.append(emptyState("Trash is empty"));
-      return;
-    }
-    for (const item of trashItems.slice(0, 20)) {
-      const entry = document.createElement("div");
-      entry.className = "navigation-entry";
-      entry.append(navigationButton(item), iconButton("Restore", `Restore ${item.title}`, () => void restoreTrashItem(item)));
-      trashList.append(entry);
-    }
-  }
-  async function openSearchResult(result) {
-    if (result.siteId) await loadSite(result.siteId, result.documentId);
-    else await loadStandaloneDocument(result.documentId);
-    const line = result.line ?? result.sourceSpan?.line;
-    if (line) focusSourceLine(line);
-  }
-  async function openNavigationItem(item) {
-    if (item.resourceType === "site") await loadSite(item.resourceId);
-    else if (item.siteId) await loadSite(item.siteId, item.resourceId);
-    else await loadStandaloneDocument(item.resourceId);
-  }
-  async function toggleFavorite(resourceType, resourceId) {
-    if (!cloudUser) return;
-    const exists = favoriteItems.some((item) => item.resourceType === resourceType && item.resourceId === resourceId);
-    try {
-      await fetchCloudJson("/api/navigation/favorites", {
-        method: exists ? "DELETE" : "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ resourceType, resourceId })
-      });
-      await refreshNavigationItems();
-      renderChrome();
-      setCloudStatus(exists ? "Removed favorite" : "Added favorite", "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    }
-  }
-  async function recordRecent(resourceType, resourceId) {
-    if (!cloudUser) return;
-    try {
-      await fetchCloudJson("/api/navigation/recent", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ resourceType, resourceId })
-      });
-      await refreshNavigationItems();
-    } catch {
-      return;
-    }
-  }
-  async function loadSite(siteId, preferredDocumentId) {
-    if (!confirmDiscardDirty()) return;
-    setBusy(true, "Opening space", "warning");
-    try {
-      const site = await fetchCloudJson(`/api/sites/${encodeURIComponent(siteId)}?include=documents`);
-      currentSite = normalizeSite(site);
-      pages = site.documents ?? [];
-      siteTitleInput.value = currentSite.title;
-      localStorage.setItem(activeSiteStorageKey, currentSite.id);
-      const selected = preferredDocumentId ? pages.find((page) => page.id === preferredDocumentId) : void 0;
-      setCurrentPage(selected ?? pages[0]);
-      updateAddress();
-      if (cloudUser) await Promise.all([refreshSites({ silent: true }), refreshWorkManagement(), refreshAccessManagement()]);
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function loadStandaloneDocument(documentId) {
-    if (!confirmDiscardDirty()) return;
-    setBusy(true, "Opening page", "warning");
-    try {
-      const page = await fetchCloudJson(`/api/documents/${encodeURIComponent(documentId)}`);
-      currentSite = void 0;
-      activeFolder = "";
-      pages = [page];
-      siteTitleInput.value = "Standalone Page";
-      setCurrentPage(page);
-      updateAddress();
-      await Promise.all([refreshWorkManagement(), refreshAccessManagement()]);
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function createStarterWorkspace(name) {
-    if (!cloudAvailable) return;
-    if (!cloudUser) {
-      setCloudStatus("Register a user before creating workspaces", "error");
-      return;
-    }
-    if (!confirmDiscardDirty()) return;
-    setBusy(true, "Creating space", "warning");
-    try {
-      const page = await fetchCloudJson("/api/documents", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: "Research Paper Draft",
-          source: starterPage("Research Paper Draft", name)
-        })
-      });
-      const site = await fetchCloudJson("/api/sites", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: name,
-          documentIds: [page.id],
-          folders: ["Drafts"],
-          pageFolders: { [page.id]: "Drafts" }
-        })
-      });
-      await refreshSites({ silent: true });
-      await loadSite(site.id, page.id);
-      setCloudStatus("Created space", "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function createPage(folder = activeFolder, parentId) {
-    if (!currentSite) {
-      await createStarterWorkspace(promptName("Space name", "Research Workspace"));
-      return;
-    }
-    if (!cloudUser) {
-      setCloudStatus("A user token is required to create pages", "error");
-      return;
-    }
-    if (!confirmDiscardDirty()) return;
-    const normalizedFolder = normalizeFolderName(folder);
-    const template = selectedPageTemplate();
-    const title = promptName(normalizedFolder ? `Page title in ${normalizedFolder}` : "Page title", template?.title ?? "Untitled Page");
-    setBusy(true, "Creating page", "warning");
-    try {
-      const page = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}/documents`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title,
-          templateId: template?.id ?? "blank",
-          folder: normalizedFolder,
-          ...parentId ? { parentId } : {}
-        })
-      });
-      pages = [...pages, page];
-      if (parentId) {
-        const refreshed = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}`);
-        currentSite = { ...currentSite, documentIds: refreshed.documentIds, pageParents: refreshed.pageParents ?? {} };
-        pages = refreshed.documentIds.map((id) => pages.find((candidate) => candidate.id === id)).filter((candidate) => Boolean(candidate));
-      }
-      const documentIds = [...currentSite.documentIds, page.id];
-      const pageFolders = normalizedPageFolders({ ...currentSite.pageFolders, ...normalizedFolder ? { [page.id]: normalizedFolder } : {} }, documentIds);
-      currentSite = {
-        ...currentSite,
-        documentIds,
-        folders: normalizeFolders([...currentSite.folders ?? [], normalizedFolder, ...Object.values(pageFolders)]),
-        pageFolders,
-        documents: pages
-      };
-      activeFolder = normalizedFolder;
-      setCurrentPage(page);
-      await refreshSites({ silent: true });
-      updateAddress();
-      await refreshWorkspaceTools();
-      setCloudStatus("Created page", "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function importPage(file) {
-    if (!currentSite) {
-      await createStarterWorkspace("Research Workspace");
-    }
-    if (!currentSite || !cloudUser || !canCreatePage()) return;
-    if (!confirmDiscardDirty()) return;
-    const source = await file.text();
-    if (!source.trim()) {
-      setCloudStatus("The imported file is empty", "error");
-      return;
-    }
-    const markdown = /\.(?:md|markdown)$/i.test(file.name);
-    const fileTitle = file.name.replace(/\.(?:noma|md|markdown)$/i, "").replace(/[-_]+/g, " ").trim();
-    const title = sourceTitle(source) || fileTitle || "Imported Page";
-    const folder = normalizeFolderName(activeFolder);
-    setBusy(true, `Importing ${file.name}`, "warning");
-    try {
-      const page = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}/documents`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, source, format: markdown ? "markdown" : "noma", folder })
-      });
-      pages = [...pages, page];
-      const documentIds = [...currentSite.documentIds, page.id];
-      const pageFolders = normalizedPageFolders({ ...currentSite.pageFolders, ...folder ? { [page.id]: folder } : {} }, documentIds);
-      currentSite = {
-        ...currentSite,
-        documentIds,
-        folders: normalizeFolders([...currentSite.folders ?? [], folder, ...Object.values(pageFolders)]),
-        pageFolders,
-        documents: pages
-      };
-      setCurrentPage(page);
-      await refreshSites({ silent: true });
-      await refreshWorkspaceTools();
-      updateAddress();
-      setCloudStatus(`Imported ${file.name}`, "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  function selectedPageTemplate() {
-    return pageTemplates.find((template) => template.id === pageTemplateSelect.value);
-  }
-  async function trashPage(page) {
-    if (!canEditSite() && page.access?.role !== "owner" && page.access?.role !== "editor") return;
-    if (currentPage?.id === page.id && !confirmDiscardDirty()) return;
-    if (!window.confirm(`Move page "${page.title}" to trash? It can be restored later.`)) return;
-    setBusy(true, "Moving page to trash", "warning");
-    try {
-      await fetchCloudJson(`/api/trash/document/${encodeURIComponent(page.id)}`, { method: "POST" });
-      dirty = false;
-      if (currentSite) await loadSite(currentSite.id);
-      else if (currentPage?.id === page.id) setCurrentPage(void 0);
-      await refreshSites({ silent: true });
-      await refreshWorkspaceTools();
-      setCloudStatus("Moved page to trash", "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function trashSite(site) {
-    if (site.access?.role !== "owner" && site.currentRole !== "owner") return;
-    if (currentSite?.id === site.id && !confirmDiscardDirty()) return;
-    if (!window.confirm(`Move space "${site.title}" to trash? Its pages remain recoverable.`)) return;
-    setBusy(true, "Moving space to trash", "warning");
-    try {
-      await fetchCloudJson(`/api/trash/site/${encodeURIComponent(site.id)}`, { method: "POST" });
-      dirty = false;
-      await refreshSites({ silent: true });
-      const nextSite = sites.find((candidate) => candidate.id !== site.id);
-      if (nextSite) await loadSite(nextSite.id);
-      else clearWorkspaceState();
-      await refreshWorkspaceTools();
-      setCloudStatus("Moved space to trash", "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function restoreTrashItem(item) {
-    setBusy(true, `Restoring ${item.title}`, "warning");
-    try {
-      await fetchCloudJson(`/api/trash/${item.resourceType}/${encodeURIComponent(item.resourceId)}/restore`, { method: "POST" });
-      await refreshSites({ silent: true });
-      await refreshWorkspaceTools();
-      if (item.resourceType === "site") await loadSite(item.resourceId);
-      else if (item.siteId) await loadSite(item.siteId, item.resourceId);
-      else await loadStandaloneDocument(item.resourceId);
-      setCloudStatus(`Restored ${item.title}`, "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function createFolder() {
-    if (!currentSite || !canEditSite()) return;
-    const folder = promptFolder("Folder name", "Research Notes");
-    if (folder === void 0) return;
-    if (!folder) {
-      setCloudStatus("Folder name required", "error");
-      return;
-    }
-    if (siteFolders(currentSite).some((item) => sameFolder(item, folder))) {
-      activeFolder = folder;
-      setCloudStatus("Selected folder", "ok");
-      renderChrome();
-      return;
-    }
-    currentSite = {
-      ...currentSite,
-      folders: normalizeFolders([...currentSite.folders ?? [], folder]),
-      pageFolders: normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds),
-      documents: pages
-    };
-    activeFolder = folder;
-    await saveSiteStructure("Created folder");
-  }
-  async function renameFolder(folder) {
-    if (!currentSite || !canEditSite()) return;
-    const currentFolder = normalizeFolderName(folder);
-    if (!currentFolder) return;
-    const nextFolder = promptFolder("Rename folder", currentFolder);
-    if (nextFolder === void 0 || !nextFolder || sameFolder(currentFolder, nextFolder)) return;
-    const pageFolders = normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds);
-    for (const [pageId, pageFolder2] of Object.entries(pageFolders)) {
-      if (sameFolder(pageFolder2, currentFolder)) pageFolders[pageId] = nextFolder;
-    }
-    currentSite = {
-      ...currentSite,
-      folders: normalizeFolders((currentSite.folders ?? []).map((item) => sameFolder(item, currentFolder) ? nextFolder : item)),
-      pageFolders,
-      documents: pages
-    };
-    activeFolder = nextFolder;
-    await saveSiteStructure("Renamed folder");
-  }
-  async function deleteFolder(folder) {
-    if (!currentSite || !canEditSite()) return;
-    const currentFolder = normalizeFolderName(folder);
-    if (!currentFolder) return;
-    const pagesInFolder = pages.filter((page) => sameFolder(pageFolder(page.id), currentFolder)).length;
-    const message = pagesInFolder > 0 ? `Delete folder "${currentFolder}"? ${pagesInFolder} page${pagesInFolder === 1 ? "" : "s"} will move to Pages.` : `Delete folder "${currentFolder}"?`;
-    if (!window.confirm(message)) return;
-    const pageFolders = normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds);
-    for (const [pageId, pageFolder2] of Object.entries(pageFolders)) {
-      if (sameFolder(pageFolder2, currentFolder)) delete pageFolders[pageId];
-    }
-    currentSite = {
-      ...currentSite,
-      folders: normalizeFolders((currentSite.folders ?? []).filter((item) => !sameFolder(item, currentFolder))),
-      pageFolders,
-      documents: pages
-    };
-    if (sameFolder(activeFolder, currentFolder)) activeFolder = "";
-    await saveSiteStructure("Deleted folder");
-  }
-  async function movePageUnder(pageId) {
-    if (!currentSite || !canEditSite()) return;
-    const page = pages.find((item) => item.id === pageId);
-    const answer = window.prompt(`Parent page title for "${page?.title ?? "page"}" (leave empty for top level)`, "");
-    if (answer === null) return;
-    const parent = answer.trim() ? pages.find((item) => item.title.toLowerCase() === answer.trim().toLowerCase()) : void 0;
-    if (answer.trim() && !parent) {
-      setCloudStatus(`No page titled "${answer.trim()}" in this space`, "error");
-      return;
-    }
-    setBusy(true, "Moving page", "warning");
-    try {
-      const response = await fetchCloudJson(
-        `/api/sites/${encodeURIComponent(currentSite.id)}/documents/${encodeURIComponent(pageId)}/parent`,
-        { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentId: parent?.id ?? null }) }
-      );
-      currentSite = { ...currentSite, documentIds: response.site.documentIds, pageParents: response.site.pageParents ?? {} };
-      pages = response.site.documentIds.map((id) => pages.find((candidate) => candidate.id === id)).filter((candidate) => Boolean(candidate));
-      setCloudStatus(parent ? `Moved under ${parent.title}` : "Moved to top level", "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function movePage(pageId) {
-    if (!currentSite || !canEditSite()) return;
-    const page = pages.find((item) => item.id === pageId);
-    if (!page) return;
-    const folder = promptFolder(`Move "${page.title}" to folder`, pageFolder(page.id));
-    if (folder === void 0) return;
-    await movePageToFolder(pageId, folder);
-  }
-  async function movePageToFolder(pageId, folder) {
-    if (!currentSite || !canEditSite()) return;
-    const page = pages.find((item) => item.id === pageId);
-    if (!page) return;
-    const pageFolders = normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds);
-    if (folder) pageFolders[page.id] = folder;
-    else delete pageFolders[page.id];
-    currentSite = {
-      ...currentSite,
-      folders: normalizeFolders([...currentSite.folders ?? [], folder, ...Object.values(pageFolders)]),
-      pageFolders,
-      documents: pages
-    };
-    activeFolder = folder;
-    await saveSiteStructure(folder ? `Moved page to ${folder}` : "Moved page to Pages");
-  }
-  async function saveSiteStructure(status) {
-    if (!currentSite || !canEditSite()) return;
-    setBusy(true, "Saving folders", "warning");
-    try {
-      const saved = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: siteTitleInput.value.trim() || currentSite.title,
-          documentIds: currentSite.documentIds,
-          folders: siteFolders(currentSite),
-          pageFolders: normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds)
-        })
-      });
-      currentSite = { ...normalizeSite(saved), documents: pages };
-      sites = sites.map((site) => site.id === saved.id ? normalizeSite(saved) : site);
-      setCloudStatus(status, "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function saveCurrentPage() {
-    if (!currentPage || !canEditPage()) return;
-    if (renderState.error) {
-      setCloudStatus("Fix the render error before saving", "error");
-      return;
-    }
-    setBusy(true, "Saving page", "warning");
-    try {
-      const endpoint = currentPageEndpoint();
-      const saved = await fetchCloudJson(endpoint, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value),
-          source: sourceInput.value,
-          expectedHash: currentPage.hash
-        })
-      });
-      replacePage(saved);
-      currentPage = saved;
-      savedPageSource = saved.source;
-      savedPageHash = saved.hash;
-      savedPageTitle = saved.title;
-      dirty = false;
-      clearLocalDraft(saved.id);
-      pendingLocalDraft = void 0;
-      syncTitleFromSource();
-      setCloudStatus("Saved page", "ok");
-      updateAddress();
-      await Promise.all([refreshHistory({ silent: true }), refreshApprovals(), refreshActivity()]);
-    } catch (error) {
-      if (error instanceof CloudRequestError && error.status === 409) {
-        setCloudStatus("This page changed elsewhere. Your draft is preserved; reload to review the latest saved version.", "error");
-        setPanelStatus(historyStatus, "Save conflict: reload the page before merging or saving again.", "error");
-      } else {
-        setCloudStatus(errorMessage(error), "error");
-      }
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function reloadCurrentPage() {
-    if (!currentPage || !confirmDiscardDirty()) return;
-    setBusy(true, "Reloading page", "warning");
-    try {
-      const page = await fetchCloudJson(currentPageEndpoint());
-      replacePage(page);
-      setCurrentPage(page);
-      setCloudStatus("Reloaded latest page", "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  function currentPageEndpoint() {
-    if (!currentPage) throw new Error("No page is selected");
-    return currentSite?.documentIds.includes(currentPage.id) ? `/api/sites/${encodeURIComponent(currentSite.id)}/documents/${encodeURIComponent(currentPage.id)}` : `/api/documents/${encodeURIComponent(currentPage.id)}`;
-  }
-  async function saveCurrentSite() {
-    if (!currentSite || !canEditSite()) return;
-    setBusy(true, "Saving space", "warning");
-    try {
-      const saved = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: siteTitleInput.value.trim() || currentSite.title,
-          documentIds: currentSite.documentIds,
-          folders: siteFolders(currentSite),
-          pageFolders: normalizedPageFolders(currentSite.pageFolders, currentSite.documentIds)
-        })
-      });
-      currentSite = { ...normalizeSite(saved), documents: pages };
-      sites = sites.map((site) => site.id === saved.id ? saved : site);
-      setCloudStatus("Saved space", "ok");
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function copyPageLink() {
-    if (!currentPage) return;
-    await ensureSavedBeforeShare();
-    const role = selectedShareRole();
-    const share = await createShare(`/api/documents/${encodeURIComponent(currentPage.id)}/shares`, role, "Noma Cloud page");
-    await copyText(cloudAppDocumentUrl(currentPage.id, share.token), `Copied ${role} page link`);
-  }
-  async function copyArtifactLink() {
-    if (!currentPage) return;
-    await ensureSavedBeforeShare();
-    const share = await createShare(`/api/documents/${encodeURIComponent(currentPage.id)}/shares`, "viewer", "Noma rendered artifact");
-    await copyText(absoluteUrl(`/d/${currentPage.id}?share=${encodeURIComponent(share.token)}`), "Copied artifact link");
-  }
-  async function copySiteLink() {
-    if (!currentSite) return;
-    await ensureSavedBeforeShare();
-    const role = selectedShareRole();
-    const share = await createShare(`/api/sites/${encodeURIComponent(currentSite.id)}/shares`, role, "Noma Cloud space");
-    await copyText(cloudAppSiteUrl(currentSite.id, share.token), `Copied ${role} space link`);
-  }
-  async function openPublishedSite() {
-    if (!currentSite) return;
-    await ensureSavedBeforeShare();
-    const share = await createShare(`/api/sites/${encodeURIComponent(currentSite.id)}/shares`, "viewer", "Published site");
-    window.open(absoluteUrl(`/s/${currentSite.id}?share=${encodeURIComponent(share.token)}`), "_blank", "noopener");
-  }
-  async function inviteCollaborator() {
-    const userId = inviteUserIdInput.value.trim();
-    if (!readCloudId(userId)) {
-      setPanelStatus(shareStatus, "Enter a valid user ID", "error");
-      return;
-    }
-    const role = selectedInviteRole();
-    if (!currentSite && !currentPage) return;
-    setBusy(true, "Inviting collaborator", "warning");
-    try {
-      if (currentSite) {
-        await postCollaborator(`/api/sites/${encodeURIComponent(currentSite.id)}/collaborators`, userId, role);
-      } else if (currentPage) {
-        await postCollaborator(`/api/documents/${encodeURIComponent(currentPage.id)}/collaborators`, userId, role);
-      }
-      inviteUserIdInput.value = "";
-      await refreshAccessManagement();
-      setPanelStatus(shareStatus, `Invited ${userId} as ${role}`, "ok");
-      setCloudStatus("Invited collaborator", "ok");
-    } catch (error) {
-      setPanelStatus(shareStatus, errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-      renderChrome();
-    }
-  }
-  async function postCollaborator(url, userId, role) {
-    await fetchCloudJson(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId, role })
-    });
-  }
-  async function refreshAccessManagement() {
-    if (!cloudUser || !currentSite && !currentPage) {
-      collaboratorGrants = [];
-      groupGrants = [];
-      shareGrants = [];
-      renderAccessManagement();
-      return;
-    }
-    const base = accessTargetEndpoint();
-    try {
-      if (canManagePermissions()) {
-        const [collaborators, groupAccess, shares] = await Promise.all([
-          fetchCloudJson(`${base}/collaborators`),
-          fetchCloudJson(`${base}/group-collaborators`),
-          fetchCloudJson(`${base}/shares`)
-        ]);
-        collaboratorGrants = collaborators.collaborators;
-        groupGrants = groupAccess.groups;
-        shareGrants = shares.shares;
-      } else if (canEditPage()) {
-        collaboratorGrants = [];
-        groupGrants = [];
-        shareGrants = (await fetchCloudJson(`${base}/shares`)).shares;
-      } else {
-        collaboratorGrants = [];
-        groupGrants = [];
-        shareGrants = [];
-      }
-    } catch (error) {
-      setPanelStatus(shareStatus, errorMessage(error), "error");
-    } finally {
-      renderAccessManagement();
-    }
-  }
-  async function removeCollaboratorGrant(userId) {
-    try {
-      await fetchCloudJson(`${accessTargetEndpoint()}/collaborators/${encodeURIComponent(userId)}`, { method: "DELETE" });
-      await refreshAccessManagement();
-    } catch (error) {
-      setPanelStatus(shareStatus, errorMessage(error), "error");
-    }
-  }
-  async function removeGroupGrant(groupId) {
-    try {
-      await fetchCloudJson(`${accessTargetEndpoint()}/group-collaborators/${encodeURIComponent(groupId)}`, { method: "DELETE" });
-      await refreshAccessManagement();
-    } catch (error) {
-      setPanelStatus(shareStatus, errorMessage(error), "error");
-    }
-  }
-  async function revokeShareGrant(shareId) {
-    try {
-      await fetchCloudJson(`${accessTargetEndpoint()}/shares/${encodeURIComponent(shareId)}`, { method: "DELETE" });
-      await refreshAccessManagement();
-    } catch (error) {
-      setPanelStatus(shareStatus, errorMessage(error), "error");
-    }
-  }
-  function renderAccessManagement() {
-    accessList.textContent = "";
-    const activeShares = shareGrants.filter((share) => !share.revokedAt);
-    if (collaboratorGrants.length === 0 && groupGrants.length === 0 && activeShares.length === 0) {
-      accessList.append(emptyState(canManagePermissions() || canEditPage() ? "No additional access" : "Owner/editor access required"));
-      return;
-    }
-    for (const grant of collaboratorGrants) {
-      const row = collaborationRow(`User ${shortId(grant.userId)}`, grant.role, formatDate(grant.addedAt));
-      if (grant.role !== "owner") row.append(collaborationActionsWith(actionButton("Remove", () => void removeCollaboratorGrant(grant.userId))));
-      accessList.append(row);
-    }
-    for (const grant of groupGrants) {
-      const row = collaborationRow(grant.groupName, `group \xB7 ${grant.role}`, formatDate(grant.addedAt));
-      row.append(collaborationActionsWith(actionButton("Remove", () => void removeGroupGrant(grant.groupId))));
-      accessList.append(row);
-    }
-    for (const share of activeShares) {
-      const row = collaborationRow(share.label || "Share link", `${share.role} \xB7 ${share.tokenPreview}`, "token link");
-      row.append(collaborationActionsWith(actionButton("Revoke", () => void revokeShareGrant(share.id))));
-      accessList.append(row);
-    }
-  }
-  function collaborationActionsWith(...buttons) {
-    const actions = collaborationActions();
-    actions.append(...buttons);
-    return actions;
-  }
-  function accessTargetEndpoint() {
-    if (currentSite) return `/api/sites/${encodeURIComponent(currentSite.id)}`;
-    if (currentPage) return `/api/documents/${encodeURIComponent(currentPage.id)}`;
-    throw new Error("No page or space is selected");
-  }
-  async function inviteGroup() {
-    const groupId = inviteGroupSelect.value;
-    if (!groupId || !currentSite && !currentPage) {
-      setPanelStatus(shareStatus, "Create or join a group before inviting it", "error");
-      return;
-    }
-    const role = selectedInviteRole();
-    const endpoint = currentSite ? `/api/sites/${encodeURIComponent(currentSite.id)}/group-collaborators` : `/api/documents/${encodeURIComponent(currentPage?.id ?? "")}/group-collaborators`;
-    setBusy(true, "Inviting group", "warning");
-    try {
-      await fetchCloudJson(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ groupId, role })
-      });
-      setPanelStatus(shareStatus, `Invited ${groupName(groupId)} as ${role}`, "ok");
-      await refreshAccessManagement();
-      setCloudStatus("Invited group", "ok");
-    } catch (error) {
-      setPanelStatus(shareStatus, errorMessage(error), "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function refreshNotifications() {
-    if (!cloudUser) {
-      notifications = [];
-      renderNotifications();
-      return;
-    }
-    try {
-      const response = await fetchCloudJson("/api/notifications");
-      notifications = response.notifications;
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      renderNotifications();
-    }
-  }
-  async function readAllNotifications() {
-    if (!cloudUser) return;
-    try {
-      await fetchCloudJson("/api/notifications/read-all", { method: "POST" });
-      await refreshNotifications();
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    }
-  }
-  async function markNotificationRead(notification) {
-    if (!notification.readAt) {
-      await fetchCloudJson(`/api/notifications/${encodeURIComponent(notification.id)}/read`, { method: "POST" });
-    }
-    if (notification.resourceType === "document" && notification.resourceId) {
-      if (pages.some((page) => page.id === notification.resourceId)) selectPage(notification.resourceId);
-      else await loadStandaloneDocument(notification.resourceId);
-    } else if (notification.resourceType === "site" && notification.resourceId) {
-      await loadSite(notification.resourceId);
-    }
-    await refreshNotifications();
-  }
-  function renderNotifications() {
-    notificationList.textContent = "";
-    if (notifications.length === 0) {
-      notificationList.append(emptyState("No notifications"));
-      return;
-    }
-    for (const notification of notifications.slice(0, 30)) {
-      const row = collaborationRow(notification.title, notification.body, `${notification.type.replaceAll("_", " ")} \xB7 ${formatDate(notification.createdAt)}`);
-      row.dataset.unread = String(!notification.readAt);
-      const actions = collaborationActions();
-      actions.append(actionButton(notification.readAt ? "Open" : "Read", () => void markNotificationRead(notification)));
-      row.append(actions);
-      notificationList.append(row);
-    }
-  }
-  async function refreshPageCollaboration() {
-    await Promise.all([refreshComments(), refreshApprovals(), refreshActivity(), refreshPatchProposals()]);
-  }
-  async function refreshComments() {
-    if (!currentPage) {
-      comments = [];
-      renderComments();
-      return;
-    }
-    const pageId = currentPage.id;
-    try {
-      const response = await fetchCloudJson(`${currentPageEndpoint()}/comments`);
-      if (currentPage?.id === pageId) comments = response.comments;
-    } catch (error) {
-      setPanelStatus(commentStatus, errorMessage(error), "error");
-    } finally {
-      renderComments();
-    }
-  }
-  async function addComment(parentId, replyBody) {
-    if (!currentPage) return;
-    const body = (replyBody ?? commentBodyInput.value).trim();
-    if (!body) {
-      setPanelStatus(commentStatus, "Write a comment first", "error");
-      return;
-    }
-    try {
-      await fetchCloudJson(`${currentPageEndpoint()}/comments`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          body,
-          blockId: parentId ? void 0 : commentBlockIdInput.value.trim() || void 0,
-          parentId
-        })
-      });
-      if (!parentId) {
-        commentBodyInput.value = "";
-        commentBlockIdInput.value = "";
-      }
-      setPanelStatus(commentStatus, parentId ? "Reply added" : "Comment added", "ok");
-      await Promise.all([refreshComments(), refreshActivity(), refreshNotifications()]);
-    } catch (error) {
-      setPanelStatus(commentStatus, errorMessage(error), "error");
-    }
-  }
-  async function replyToComment(comment) {
-    const body = window.prompt(`Reply to ${comment.createdByName}`)?.trim();
-    if (body) await addComment(comment.id, body);
-  }
-  async function toggleCommentResolution(comment) {
-    try {
-      await fetchCloudJson(`${currentPageEndpoint()}/comments/${encodeURIComponent(comment.id)}/resolve`, { method: "POST" });
-      await Promise.all([refreshComments(), refreshActivity()]);
-    } catch (error) {
-      setPanelStatus(commentStatus, errorMessage(error), "error");
-    }
-  }
-  function renderComments() {
-    commentList.textContent = "";
-    if (!currentPage) {
-      commentList.append(emptyState("Select a page"));
-      return;
-    }
-    if (comments.length === 0) {
-      commentList.append(emptyState("No comments"));
-      return;
-    }
-    for (const comment of comments) {
-      const target = [comment.blockId ? `#${comment.blockId}` : void 0, comment.line ? `line ${comment.line}` : void 0].filter(Boolean).join(" \xB7 ");
-      const row = collaborationRow(
-        `${comment.parentId ? "\u21B3 " : ""}${comment.createdByName}${comment.resolvedAt ? " \xB7 resolved" : ""}`,
-        comment.body,
-        `${target ? `${target} \xB7 ` : ""}${formatDate(comment.createdAt)}`
-      );
-      const actions = collaborationActions();
-      actions.append(actionButton("Reply", () => void replyToComment(comment)));
-      if (comment.createdBy === cloudUser?.id || canEditPage()) {
-        actions.append(actionButton(comment.resolvedAt ? "Reopen" : "Resolve", () => void toggleCommentResolution(comment)));
-      }
-      row.append(actions);
-      commentList.append(row);
-    }
-  }
-  async function refreshApprovals() {
-    if (!currentPage) {
-      approvals = [];
-      renderApprovals();
-      return;
-    }
-    const pageId = currentPage.id;
-    try {
-      const response = await fetchCloudJson(`${currentPageEndpoint()}/approvals`);
-      if (currentPage?.id === pageId) approvals = response.approvals;
-    } catch (error) {
-      setPanelStatus(approvalStatus, errorMessage(error), "error");
-    } finally {
-      renderApprovals();
-    }
-  }
-  async function requestApproval() {
-    if (!currentPage) return;
-    const reviewerId = approvalReviewerInput.value.trim();
-    if (!readCloudId(reviewerId)) {
-      setPanelStatus(approvalStatus, "Enter a valid reviewer user ID", "error");
-      return;
-    }
-    try {
-      await fetchCloudJson(`${currentPageEndpoint()}/approvals`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reviewerId, note: approvalNoteInput.value.trim() || void 0 })
-      });
-      approvalReviewerInput.value = "";
-      approvalNoteInput.value = "";
-      setPanelStatus(approvalStatus, "Approval requested for the current saved version", "ok");
-      await Promise.all([refreshApprovals(), refreshActivity()]);
-    } catch (error) {
-      setPanelStatus(approvalStatus, errorMessage(error), "error");
-    }
-  }
-  async function updateApproval(approval, status) {
-    try {
-      await fetchCloudJson(`${currentPageEndpoint()}/approvals/${encodeURIComponent(approval.id)}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status })
-      });
-      await Promise.all([refreshApprovals(), refreshActivity(), refreshNotifications()]);
-    } catch (error) {
-      setPanelStatus(approvalStatus, errorMessage(error), "error");
-    }
-  }
-  function renderApprovals() {
-    approvalList.textContent = "";
-    if (!currentPage) {
-      approvalList.append(emptyState("Select a page"));
-      return;
-    }
-    if (approvals.length === 0) {
-      approvalList.append(emptyState("No approval requests"));
-      return;
-    }
-    for (const approval of approvals) {
-      const currentVersion = approval.documentHash === currentPage.hash;
-      const row = collaborationRow(
-        `${approval.reviewerName} \xB7 ${approval.status.replaceAll("_", " ")}`,
-        approval.note || "No review note",
-        `${currentVersion ? "current version" : "older version"} \xB7 ${approval.documentHash.slice(0, 8)} \xB7 ${formatDate(approval.updatedAt)}`
-      );
-      if (approval.status === "pending") {
-        const actions = collaborationActions();
-        if (approval.reviewerId === cloudUser?.id) {
-          actions.append(
-            actionButton("Approve", () => void updateApproval(approval, "approved"), !currentVersion),
-            actionButton("Request changes", () => void updateApproval(approval, "changes_requested"))
-          );
-        }
-        if (approval.requestedBy === cloudUser?.id) {
-          actions.append(actionButton("Cancel", () => void updateApproval(approval, "cancelled")));
-        }
-        row.append(actions);
-      }
-      approvalList.append(row);
-    }
-  }
-  async function refreshActivity() {
-    if (!cloudUser || !currentPage) {
-      activityEvents = [];
-      renderActivity();
-      return;
-    }
-    const pageId = currentPage.id;
-    try {
-      const response = await fetchCloudJson(`/api/activity?document=${encodeURIComponent(pageId)}&limit=30`);
-      if (currentPage?.id === pageId) activityEvents = response.events;
-    } catch (error) {
-      setCloudStatus(errorMessage(error), "error");
-    } finally {
-      renderActivity();
-    }
-  }
-  function renderActivity() {
-    activityList.textContent = "";
-    if (activityEvents.length === 0) {
-      activityList.append(emptyState(currentPage ? "No activity" : "Select a page"));
-      return;
-    }
-    for (const event of activityEvents) {
-      activityList.append(
-        collaborationRow(event.action.replaceAll(".", " "), event.actorName, `${event.resourceType} \xB7 ${formatDate(event.createdAt)}`)
-      );
-    }
-  }
-  async function refreshGroups() {
-    if (!cloudUser) {
-      groups = [];
-      renderGroups();
-      return;
-    }
-    try {
-      const response = await fetchCloudJson("/api/groups");
-      groups = response.groups;
-    } catch (error) {
-      setPanelStatus(groupStatus, errorMessage(error), "error");
-    } finally {
-      renderGroups();
-    }
-  }
-  async function createGroup() {
-    const name = groupNameInput.value.trim();
-    if (!name) {
-      setPanelStatus(groupStatus, "Enter a group name", "error");
-      return;
-    }
-    try {
-      const group = await fetchCloudJson("/api/groups", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name })
-      });
-      groupNameInput.value = "";
-      await refreshGroups();
-      manageGroupSelect.value = group.id;
-      inviteGroupSelect.value = group.id;
-      renderChrome();
-      setPanelStatus(groupStatus, `Created ${group.name}`, "ok");
-    } catch (error) {
-      setPanelStatus(groupStatus, errorMessage(error), "error");
-    }
-  }
-  async function addGroupMember() {
-    const groupId = manageGroupSelect.value;
-    const userId = groupMemberIdInput.value.trim();
-    if (!groupId || !readCloudId(userId)) {
-      setPanelStatus(groupStatus, "Choose a group and enter a valid user ID", "error");
-      return;
-    }
-    try {
-      await fetchCloudJson(`/api/groups/${encodeURIComponent(groupId)}/members`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId, role: groupMemberRoleSelect.value })
-      });
-      groupMemberIdInput.value = "";
-      await refreshGroups();
-      setPanelStatus(groupStatus, "Group member updated", "ok");
-    } catch (error) {
-      setPanelStatus(groupStatus, errorMessage(error), "error");
-    }
-  }
-  async function removeGroupMember(groupId, userId) {
-    try {
-      await fetchCloudJson(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" });
-      await refreshGroups();
-    } catch (error) {
-      setPanelStatus(groupStatus, errorMessage(error), "error");
-    }
-  }
-  function renderGroups() {
-    const managedSelection = manageGroupSelect.value;
-    const inviteSelection = inviteGroupSelect.value;
-    for (const select of [manageGroupSelect, inviteGroupSelect]) select.textContent = "";
-    for (const group of groups) {
-      for (const select of [manageGroupSelect, inviteGroupSelect]) {
-        const option = document.createElement("option");
-        option.value = group.id;
-        option.textContent = group.name;
-        select.append(option);
-      }
-    }
-    manageGroupSelect.value = groups.some((group) => group.id === managedSelection) ? managedSelection : groups[0]?.id ?? "";
-    inviteGroupSelect.value = groups.some((group) => group.id === inviteSelection) ? inviteSelection : groups[0]?.id ?? "";
-    groupList.textContent = "";
-    const selected = groups.find((group) => group.id === manageGroupSelect.value);
-    if (!selected) {
-      groupList.append(emptyState("No groups"));
-      return;
-    }
-    const isManager = selected.members.some((member) => member.userId === cloudUser?.id && member.role === "manager");
-    for (const member of selected.members) {
-      const row = collaborationRow(member.userName, member.role, shortId(member.userId));
-      if (isManager) {
-        const actions = collaborationActions();
-        actions.append(actionButton("Remove", () => void removeGroupMember(selected.id, member.userId)));
-        row.append(actions);
-      }
-      groupList.append(row);
-    }
-  }
-  function groupName(groupId) {
-    return groups.find((group) => group.id === groupId)?.name ?? shortId(groupId);
-  }
-  function selectedGroupManagedByCurrentUser() {
-    return Boolean(
-      groups.find((group) => group.id === manageGroupSelect.value)?.members.some((member) => member.userId === cloudUser?.id && member.role === "manager")
+      return out;
+    }).join("\n");
+  }
+  function rewriteWikilinksInSource(source, from, to) {
+    return source.replace(
+      new RegExp(`\\[\\[${escapeRegex(from)}\\]\\]`, "g"),
+      `[[${to}]]`
     );
   }
-  function renderCollaborationPanels() {
-    renderNotifications();
-    renderComments();
-    renderApprovals();
-    renderActivity();
-    renderGroups();
+  function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-  function collaborationRow(titleText, bodyText, metaText) {
-    const row = document.createElement("div");
-    row.className = "collaboration-row";
-    const copy = document.createElement("div");
-    copy.className = "collaboration-copy";
-    const title = document.createElement("strong");
-    title.textContent = titleText;
-    const body = document.createElement("span");
-    body.textContent = bodyText;
-    const meta = document.createElement("span");
-    meta.className = "history-meta";
-    meta.textContent = metaText;
-    copy.append(title, body, meta);
-    row.append(copy);
-    return row;
-  }
-  function collaborationActions() {
-    const actions = document.createElement("div");
-    actions.className = "collaboration-actions";
-    return actions;
-  }
-  function actionButton(label, action, disabled = false, accessibleLabel) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = label;
-    button.disabled = disabled;
-    if (accessibleLabel) {
-      button.setAttribute("aria-label", accessibleLabel);
-      button.title = accessibleLabel;
+  var ATTR_TOKEN_RE = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s}]+)))?/g;
+  function rewriteOpenLineAttr(line, key, value, op) {
+    const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)(\s*\{)?(.*?)(\}\s*)?$/);
+    if (!openMatch) {
+      throw new PatchError("invalid_content", `malformed open line for "${op.id}"`, op);
     }
-    button.addEventListener("click", action);
-    return button;
+    const head = openMatch[1] ?? "";
+    const inner = openMatch[3] ?? "";
+    const trailing = (line.match(/\s*$/) ?? [""])[0];
+    const serialized = serializeOneAttr(key, value);
+    let replaced = false;
+    const rewrittenInner = inner.replace(ATTR_TOKEN_RE, (m, k) => {
+      if (k !== key) return m;
+      replaced = true;
+      return value === false && typeof value === "boolean" ? `${key}=false` : serialized;
+    });
+    let next;
+    if (replaced) {
+      next = rewrittenInner;
+    } else {
+      const trimmed = inner.trim();
+      next = trimmed ? `${trimmed} ${serialized}` : serialized;
+    }
+    return `${head}{${next.trim()}}${trailing}`.replace(/\s+$/, "") + (line.endsWith("\n") ? "\n" : "");
   }
+  function rewriteOpenLineRemoveAttr(line, key, op) {
+    const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)(\s*\{)?(.*?)(\}\s*)?$/);
+    if (!openMatch) {
+      throw new PatchError("invalid_content", `malformed open line for "${op.id}"`, op);
+    }
+    const head = openMatch[1] ?? "";
+    const inner = openMatch[3] ?? "";
+    const trailing = (line.match(/\s*$/) ?? [""])[0];
+    let removed = false;
+    const kept = [];
+    inner.replace(ATTR_TOKEN_RE, (m, k) => {
+      if (k !== key) {
+        kept.push(m);
+        return m;
+      }
+      removed = true;
+      return "";
+    });
+    const rewrittenInner = kept.join(" ").trim();
+    if (!removed) return line;
+    if (!rewrittenInner) {
+      return `${head}${trailing}`.replace(/\s+$/, "") + (line.endsWith("\n") ? "\n" : "");
+    }
+    return `${head}{${rewrittenInner}}${trailing}`.replace(/\s+$/, "") + (line.endsWith("\n") ? "\n" : "");
+  }
+  function rewriteCommentResolutionAttrs(line, op) {
+    let next = rewriteOpenLineAttr(line, "status", "resolved", op);
+    if (op.resolved_by) next = rewriteOpenLineAttr(next, "resolved_by", op.resolved_by, op);
+    if (op.resolved_at) next = rewriteOpenLineAttr(next, "resolved_at", op.resolved_at, op);
+    return next;
+  }
+  function rewriteHeadingId(line, newId) {
+    const m = line.match(/^(#+\s+.+?)(?:\s+\{([^}]*)\})?\s*$/);
+    if (!m) return line;
+    const head = m[1] ?? "";
+    const attrsInner = (m[2] ?? "").trim();
+    if (!attrsInner) return `${head} {id="${newId}"}`;
+    let replaced = false;
+    const updated = attrsInner.replace(ATTR_TOKEN_RE, (full, k) => {
+      if (k !== "id") return full;
+      replaced = true;
+      return `id="${newId}"`;
+    });
+    if (!replaced) return `${head} {${attrsInner} id="${newId}"}`;
+    return `${head} {${updated.trim()}}`;
+  }
+  function rewriteHeadingTitle(line, newTitle, stableId) {
+    const m = line.match(/^(#+)(\s+)(.*?)(?:\s+\{([^}]*)\})?\s*$/);
+    if (!m) return line;
+    const hashes = m[1] ?? "#";
+    const space = m[2] ?? " ";
+    const attrsInner = (m[4] ?? "").trim();
+    const needsExplicitId = stableId && stableId.length > 0 && slugify(newTitle) !== stableId;
+    if (!attrsInner) {
+      return needsExplicitId ? `${hashes}${space}${newTitle} {id="${stableId}"}` : `${hashes}${space}${newTitle}`;
+    }
+    let hasId = false;
+    attrsInner.replace(ATTR_TOKEN_RE, (_full, k) => {
+      if (k === "id") hasId = true;
+      return _full;
+    });
+    const attrs = needsExplicitId && !hasId ? `${attrsInner} id="${stableId}"` : attrsInner;
+    return `${hashes}${space}${newTitle} {${attrs.trim()}}`;
+  }
+  function serializeCommentBlock(op) {
+    if (!op.content.trim()) {
+      throw new PatchError("invalid_content", `comment content must not be empty`, op);
+    }
+    const attrs = Object.entries(commentAttrs(op)).map(([key, value]) => serializeOneAttr(key, value)).join(" ");
+    const content = op.content.replace(/\n+$/, "");
+    const source = `::comment{${attrs}}
+${content}
+::`;
+    parseFragment(source, op);
+    return source;
+  }
+  function serializeNoteBlock(op) {
+    validateNoteOp(op);
+    const attrs = Object.entries(noteAttrs(op)).map(([key, value]) => serializeOneAttr(key, value)).join(" ");
+    const content = op.content.replace(/\n+$/, "");
+    const source = `::${op.op === "add_footnote" ? "footnote" : "endnote"}{${attrs}}
+${content}
+::`;
+    parseFragment(source, op);
+    return source;
+  }
+  function serializeChangeRequestBlock(op) {
+    validateChangeRequestOp(op);
+    const attrs = Object.entries(changeRequestAttrs(op)).map(([key, value]) => serializeOneAttr(key, value)).join(" ");
+    const content = op.content?.replace(/\n+$/, "") ?? "";
+    const source = content ? `::change_request{${attrs}}
+${content}
+::` : `::change_request{${attrs}}
+::`;
+    parseFragment(source, op);
+    return source;
+  }
+  function serializeOneAttr(key, value) {
+    if (value === true) return key;
+    if (value === false) return `${key}=false`;
+    if (typeof value === "number") return `${key}=${value}`;
+    const s = String(value);
+    if (s.includes('"')) {
+      if (s.includes("'")) return `${key}="${s.replace(/"/g, '\\"')}"`;
+      return `${key}='${s}'`;
+    }
+    return `${key}="${s}"`;
+  }
+
+  // web/cloud/work.ts
   async function refreshWorkManagement() {
-    if (!cloudUser) {
-      workProjects = [];
-      workIssues = [];
-      workSprints = [];
-      selectedIssue = void 0;
+    if (!state.cloudUser) {
+      state.workProjects = [];
+      state.workIssues = [];
+      state.workSprints = [];
+      state.selectedIssue = void 0;
       renderWorkManagement();
       return;
     }
     const selectedId = workProjectSelect.value;
     try {
       const response = await fetchCloudJson("/api/projects");
-      const available = currentSite ? response.projects.filter((project) => project.siteId === currentSite?.id) : response.projects;
-      workProjects = available;
+      const available = state.currentSite ? response.projects.filter((project) => project.siteId === state.currentSite?.id) : response.projects;
+      state.workProjects = available;
       const projectId = available.some((project) => project.id === selectedId) ? selectedId : available[0]?.id;
       if (projectId) await loadWorkProject(projectId);
       else {
-        workIssues = [];
-        workSprints = [];
-        selectedIssue = void 0;
+        state.workIssues = [];
+        state.workSprints = [];
+        state.selectedIssue = void 0;
       }
     } catch (error) {
       setPanelStatus(workStatus, errorMessage(error), "error");
@@ -11846,21 +10112,21 @@ ${bodyRows}
   }
   async function loadWorkProject(projectId) {
     if (!projectId) return;
-    const previousIssueId = selectedIssue?.id;
+    const previousIssueId = state.selectedIssue?.id;
     const [issueResponse, sprintResponse] = await Promise.all([
       fetchCloudJson(`/api/projects/${encodeURIComponent(projectId)}/issues?limit=500`),
       fetchCloudJson(`/api/projects/${encodeURIComponent(projectId)}/sprints`)
     ]);
-    workIssues = issueResponse.issues;
-    workSprints = sprintResponse.sprints;
-    const nextIssue = previousIssueId ? workIssues.find((issue) => issue.id === previousIssueId) : void 0;
+    state.workIssues = issueResponse.issues;
+    state.workSprints = sprintResponse.sprints;
+    const nextIssue = previousIssueId ? state.workIssues.find((issue) => issue.id === previousIssueId) : void 0;
     if (nextIssue) await selectWorkIssue(nextIssue.id);
-    else selectedIssue = void 0;
+    else state.selectedIssue = void 0;
     renderWorkManagement();
     renderChrome();
   }
   async function createWorkProject() {
-    if (!currentSite || !canEditSite()) {
+    if (!state.currentSite || !canEditSite()) {
       setPanelStatus(workStatus, "Open an editable space before creating a project", "error");
       return;
     }
@@ -11874,7 +10140,7 @@ ${bodyRows}
       const project = await fetchCloudJson("/api/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key, name, siteId: currentSite.id })
+        body: JSON.stringify({ key, name, siteId: state.currentSite.id })
       });
       projectKeyInput.value = "";
       projectNameInput.value = "";
@@ -11964,7 +10230,7 @@ ${bodyRows}
         body: JSON.stringify({ status })
       });
       await loadWorkProject(project.id);
-      if (selectedIssue?.id === issue.id) await selectWorkIssue(issue.id);
+      if (state.selectedIssue?.id === issue.id) await selectWorkIssue(issue.id);
     } catch (error) {
       setPanelStatus(workStatus, errorMessage(error), "error");
     }
@@ -11973,11 +10239,11 @@ ${bodyRows}
     const project = selectedWorkProject();
     if (!project) return;
     try {
-      selectedIssue = await fetchCloudJson(
+      state.selectedIssue = await fetchCloudJson(
         `/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(issueId)}`
       );
     } catch (error) {
-      selectedIssue = void 0;
+      state.selectedIssue = void 0;
       setPanelStatus(workStatus, errorMessage(error), "error");
     } finally {
       renderChrome();
@@ -11986,18 +10252,18 @@ ${bodyRows}
   async function addWorkIssueComment() {
     const project = selectedWorkProject();
     const body = issueCommentInput.value.trim();
-    if (!project || !selectedIssue || !body) {
+    if (!project || !state.selectedIssue || !body) {
       setPanelStatus(workStatus, "Select an issue and write a comment", "error");
       return;
     }
     try {
-      await fetchCloudJson(`/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(selectedIssue.id)}/comments`, {
+      await fetchCloudJson(`/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(state.selectedIssue.id)}/comments`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ body })
       });
       issueCommentInput.value = "";
-      await selectWorkIssue(selectedIssue.id);
+      await selectWorkIssue(state.selectedIssue.id);
     } catch (error) {
       setPanelStatus(workStatus, errorMessage(error), "error");
     }
@@ -12005,18 +10271,18 @@ ${bodyRows}
   async function addWorkIssueLink() {
     const project = selectedWorkProject();
     const targetIssueId = issueLinkTargetInput.value.trim();
-    if (!project || !selectedIssue || !targetIssueId) {
+    if (!project || !state.selectedIssue || !targetIssueId) {
       setPanelStatus(workStatus, "Select an issue and enter a target issue key or ID", "error");
       return;
     }
     try {
-      await fetchCloudJson(`/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(selectedIssue.id)}/links`, {
+      await fetchCloudJson(`/api/projects/${encodeURIComponent(project.id)}/issues/${encodeURIComponent(state.selectedIssue.id)}/links`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ targetIssueId, type: issueLinkTypeSelect.value })
       });
       issueLinkTargetInput.value = "";
-      await selectWorkIssue(selectedIssue.id);
+      await selectWorkIssue(state.selectedIssue.id);
     } catch (error) {
       setPanelStatus(workStatus, errorMessage(error), "error");
     }
@@ -12030,13 +10296,13 @@ ${bodyRows}
   function renderWorkProjectSelect() {
     const selected = workProjectSelect.value;
     workProjectSelect.textContent = "";
-    for (const project of workProjects) {
+    for (const project of state.workProjects) {
       const option = document.createElement("option");
       option.value = project.id;
       option.textContent = `${project.key} \xB7 ${project.name}`;
       workProjectSelect.append(option);
     }
-    workProjectSelect.value = workProjects.some((project) => project.id === selected) ? selected : workProjects[0]?.id ?? "";
+    workProjectSelect.value = state.workProjects.some((project) => project.id === selected) ? selected : state.workProjects[0]?.id ?? "";
   }
   function renderWorkSprintSelects() {
     const manageSelected = manageSprintSelect.value;
@@ -12047,7 +10313,7 @@ ${bodyRows}
     backlog.value = "";
     backlog.textContent = "Backlog / no sprint";
     issueSprintSelect.append(backlog);
-    for (const sprint of workSprints) {
+    for (const sprint of state.workSprints) {
       const manageOption = document.createElement("option");
       manageOption.value = sprint.id;
       manageOption.textContent = `${sprint.name} \xB7 ${sprint.status}`;
@@ -12059,20 +10325,20 @@ ${bodyRows}
         issueSprintSelect.append(issueOption);
       }
     }
-    manageSprintSelect.value = workSprints.some((sprint) => sprint.id === manageSelected) ? manageSelected : workSprints[0]?.id ?? "";
-    issueSprintSelect.value = workSprints.some((sprint) => sprint.id === issueSelected && sprint.status !== "closed") ? issueSelected : "";
+    manageSprintSelect.value = state.workSprints.some((sprint) => sprint.id === manageSelected) ? manageSelected : state.workSprints[0]?.id ?? "";
+    issueSprintSelect.value = state.workSprints.some((sprint) => sprint.id === issueSelected && sprint.status !== "closed") ? issueSelected : "";
   }
   function renderWorkBoard() {
     workBoard.textContent = "";
     const filter = issueFilterSelect.value;
     const query2 = issueSearchInput.value.trim().toLowerCase();
-    const filtered = workIssues.filter((issue) => {
+    const filtered = state.workIssues.filter((issue) => {
       if (filter !== "all" && issue.status !== filter) return false;
       if (!query2) return true;
       return [issue.key, issue.summary, issue.assigneeName ?? "", ...issue.labels].some((value) => value.toLowerCase().includes(query2));
     });
     if (!selectedWorkProject()) {
-      workBoard.append(emptyState(currentSite ? "Create a project for this space" : "Open a space to manage work"));
+      workBoard.append(emptyState(state.currentSite ? "Create a project for this space" : "Open a space to manage work"));
       return;
     }
     if (filtered.length === 0) {
@@ -12095,7 +10361,7 @@ ${bodyRows}
   function workIssueRow(issue) {
     const row = document.createElement("div");
     row.className = "work-issue-row";
-    row.setAttribute("aria-current", String(selectedIssue?.id === issue.id));
+    row.setAttribute("aria-current", String(state.selectedIssue?.id === issue.id));
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "work-issue-copy";
@@ -12122,27 +10388,27 @@ ${bodyRows}
   }
   function renderSelectedWorkIssue() {
     issueDetailList.textContent = "";
-    if (!selectedIssue) {
+    if (!state.selectedIssue) {
       selectedIssueSummary.textContent = "Select an issue";
       issueDetailList.append(emptyState("Comments, links, and history appear here"));
       return;
     }
-    selectedIssueSummary.textContent = `${selectedIssue.key} \xB7 ${selectedIssue.status.replaceAll("_", " ")}`;
-    for (const comment of selectedIssue.comments) {
+    selectedIssueSummary.textContent = `${state.selectedIssue.key} \xB7 ${state.selectedIssue.status.replaceAll("_", " ")}`;
+    for (const comment of state.selectedIssue.comments) {
       issueDetailList.append(collaborationRow(comment.createdByName, comment.body, formatDate(comment.createdAt)));
     }
-    for (const link of selectedIssue.links) {
+    for (const link of state.selectedIssue.links) {
       issueDetailList.append(collaborationRow(`${link.type} ${link.targetIssueKey}`, link.targetIssueSummary, "issue link"));
     }
-    for (const event of selectedIssue.events.slice(0, 8)) {
+    for (const event of state.selectedIssue.events.slice(0, 8)) {
       issueDetailList.append(collaborationRow(event.action.replaceAll(".", " "), event.actorName, formatDate(event.createdAt)));
     }
   }
   function selectedWorkProject() {
-    return workProjects.find((project) => project.id === workProjectSelect.value);
+    return state.workProjects.find((project) => project.id === workProjectSelect.value);
   }
   function selectedWorkSprint() {
-    return workSprints.find((sprint) => sprint.id === manageSprintSelect.value);
+    return state.workSprints.find((sprint) => sprint.id === manageSprintSelect.value);
   }
   function issueStatusLabel(status) {
     if (status === "todo") return "To do";
@@ -12163,145 +10429,288 @@ ${bodyRows}
     if (status === "in_review") return "done";
     return void 0;
   }
-  async function refreshPatchProposals() {
-    if (!currentPage) {
-      patchProposals = [];
-      renderPatchProposals();
+
+  // web/cloud/permissions.ts
+  function canEditSiteRecord(site) {
+    const role = cloudRole(site.access?.role ?? site.currentRole);
+    return Boolean(state.cloudAvailable && state.cloudUser && roleRank(role) >= roleRank("editor"));
+  }
+  function cloudRole(value) {
+    return value === "owner" || value === "editor" || value === "viewer" ? value : "viewer";
+  }
+  function canEditPage() {
+    return roleRank(currentPageRole()) >= roleRank("editor");
+  }
+  function canCreatePage() {
+    return Boolean(state.cloudAvailable && state.cloudUser && state.currentSite && roleRank(state.currentSite.access?.role ?? "viewer") >= roleRank("editor"));
+  }
+  function canEditSite() {
+    return Boolean(state.cloudAvailable && state.cloudUser && state.currentSite && roleRank(state.currentSite.access?.role ?? "viewer") >= roleRank("editor"));
+  }
+  function canManagePermissions() {
+    const role = state.currentSite?.access?.role ?? state.currentPage?.access?.role ?? "viewer";
+    return role === "owner";
+  }
+  function canEditWorkProject() {
+    return roleRank(selectedWorkProject()?.access?.role ?? "viewer") >= roleRank("editor");
+  }
+  function currentPageRole() {
+    return state.currentPage?.access?.role ?? state.currentSite?.access?.role ?? "viewer";
+  }
+  function selectedShareRole() {
+    return shareRoleSelect.value === "viewer" ? "viewer" : "editor";
+  }
+  function selectedInviteRole() {
+    return inviteRoleSelect.value === "viewer" ? "viewer" : "editor";
+  }
+  function roleRank(role) {
+    return role === "owner" ? 3 : role === "editor" ? 2 : 1;
+  }
+
+  // web/cloud/page-meta.ts
+  async function refreshPageMeta() {
+    state.currentLabels = [];
+    state.currentWatching = false;
+    revisionDiffOutput.hidden = true;
+    const page = state.currentPage;
+    if (!page || !state.cloudUser) {
+      renderChrome();
       return;
     }
-    const pageId = currentPage.id;
     try {
-      const response = await fetchCloudJson(`${currentPageEndpoint()}/patch-proposals`);
-      if (currentPage?.id === pageId) patchProposals = response.proposals;
-    } catch (error) {
-      setPanelStatus(agentStatus, errorMessage(error), "error");
+      const [labels, watch] = await Promise.all([
+        fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/labels`),
+        fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/watch`)
+      ]);
+      if (state.currentPage?.id !== page.id) return;
+      state.currentLabels = labels.labels;
+      state.currentWatching = watch.watching;
+    } catch {
+      return;
     } finally {
-      renderPatchProposals();
+      renderChrome();
     }
   }
-  async function proposeAgentPatch() {
-    if (!currentPage || !canEditPage()) return;
-    if (dirty) {
-      setPanelStatus(agentStatus, "Save the current draft before creating a version-bound patch proposal", "error");
-      return;
-    }
+  async function toggleWatch() {
+    if (!state.currentPage || !state.cloudUser) return;
     try {
-      const ops = parsePatchOps(patchInput.value);
-      const proposal = await fetchCloudJson(`${currentPageEndpoint()}/patch-proposals`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          ops,
-          issueId: selectedIssue?.id,
-          summary: selectedIssue ? `Agent patch for ${selectedIssue.key}` : "Agent patch proposal"
-        })
+      const response = await fetchCloudJson(`/api/documents/${encodeURIComponent(state.currentPage.id)}/watch`, {
+        method: state.currentWatching ? "DELETE" : "PUT"
       });
-      await Promise.all([refreshPatchProposals(), refreshActivity()]);
-      if (selectedIssue) await selectWorkIssue(selectedIssue.id);
-      setPanelStatus(
-        agentStatus,
-        `Proof ${proposal.proof.status ?? "created"}; proposal awaits review${selectedIssue ? ` on ${selectedIssue.key}` : ""}`,
-        "ok"
-      );
+      state.currentWatching = response.watching;
+      setCloudStatus(state.currentWatching ? "Watching page: you will be notified of edits" : "Stopped watching page", "ok");
     } catch (error) {
-      setPanelStatus(agentStatus, errorMessage(error), "error");
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      renderChrome();
     }
   }
-  async function reviewPatchProposal(proposal, decision) {
+  async function addLabel() {
+    if (!state.currentPage || !canEditPage()) return;
+    const label = window.prompt("Add label", "")?.trim();
+    if (!label) return;
+    await updateLabels({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label }) });
+  }
+  async function removeLabel(label) {
+    if (!state.currentPage || !canEditPage()) return;
+    await updateLabels({ method: "DELETE" }, `/${encodeURIComponent(label)}`);
+  }
+  async function updateLabels(init, suffix = "") {
+    if (!state.currentPage) return;
     try {
-      await fetchCloudJson(`${currentPageEndpoint()}/patch-proposals/${encodeURIComponent(proposal.id)}/review`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decision })
-      });
-      await Promise.all([refreshPatchProposals(), refreshActivity()]);
-      if (proposal.issueId && selectedIssue?.id === proposal.issueId) await selectWorkIssue(proposal.issueId);
+      const response = await fetchCloudJson(`/api/documents/${encodeURIComponent(state.currentPage.id)}/labels${suffix}`, init);
+      state.currentLabels = response.labels;
+      setCloudStatus("Updated labels", "ok");
     } catch (error) {
-      setPanelStatus(agentStatus, errorMessage(error), "error");
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      renderChrome();
     }
   }
-  async function applyPatchProposal(proposal) {
-    if (dirty && !window.confirm("Discard the unsaved draft and apply this reviewed patch to the saved page?")) return;
+  function renderPageMeta() {
+    pageLabels.textContent = "";
+    for (const label of state.currentLabels) {
+      const chip = document.createElement("span");
+      chip.className = "label-chip";
+      chip.textContent = label;
+      if (canEditPage()) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "\xD7";
+        remove.setAttribute("aria-label", `Remove label ${label}`);
+        remove.addEventListener("click", () => void removeLabel(label));
+        chip.append(remove);
+      }
+      pageLabels.append(chip);
+    }
+    addLabelButton.hidden = !state.currentPage || !canEditPage();
+    addLabelButton.disabled = state.busy;
+    watchPageButton.disabled = state.busy || !state.cloudUser || !state.currentPage;
+    watchPageButton.textContent = state.currentWatching ? "Unwatch" : "Watch";
+    watchPageButton.setAttribute("aria-pressed", String(state.currentWatching));
+    pageBreadcrumbs.textContent = "";
+    if (!state.currentSite || !state.currentPage) return;
+    const siteCrumb = document.createElement("span");
+    siteCrumb.className = "crumb crumb-site";
+    siteCrumb.textContent = state.currentSite.title;
+    pageBreadcrumbs.append(siteCrumb);
+    for (const ancestorId of pageAncestors(state.currentPage.id).reverse()) {
+      const ancestor = state.pages.find((page) => page.id === ancestorId);
+      if (!ancestor) continue;
+      const crumb = document.createElement("button");
+      crumb.type = "button";
+      crumb.className = "crumb";
+      crumb.textContent = ancestor.title;
+      crumb.addEventListener("click", () => selectPage(ancestor.id));
+      pageBreadcrumbs.append(crumb);
+    }
+  }
+  function pageParentId(pageId) {
+    const parent = state.currentSite?.pageParents?.[pageId];
+    return parent && state.pages.some((page) => page.id === parent) ? parent : void 0;
+  }
+  function pageAncestors(pageId) {
+    const ancestors = [];
+    let cursor = pageParentId(pageId);
+    while (cursor && !ancestors.includes(cursor) && cursor !== pageId) {
+      ancestors.push(cursor);
+      cursor = pageParentId(cursor);
+    }
+    return ancestors;
+  }
+
+  // web/cloud/session.ts
+  async function initializeCloud() {
+    setBusy(true, "Connecting to cloud", "warning");
     try {
-      const response = await fetchCloudJson(
-        `${currentPageEndpoint()}/patch-proposals/${encodeURIComponent(proposal.id)}/apply`,
-        { method: "POST" }
-      );
-      replacePage(response.document);
-      setCurrentPage(response.document);
-      setPanelStatus(agentStatus, `Applied reviewed patch \xB7 ${response.document.hash.slice(0, 8)}`, "ok");
-      if (proposal.issueId && selectedIssue?.id === proposal.issueId) await selectWorkIssue(proposal.issueId);
+      const status = await fetchCloudJson("/api/status");
+      state.cloudAvailable = true;
+      validateStoredCloudUser(status.user);
+      if (!state.cloudUser && !shareToken) {
+        clearWorkspaceState();
+        setCloudStatus("Register with an invitation code or log in with an existing user token", "warning");
+        return;
+      }
+      await openInitialWorkspace();
+      setCloudStatus("Ready", "ok");
     } catch (error) {
-      setPanelStatus(agentStatus, errorMessage(error), "error");
+      state.cloudAvailable = false;
+      if (restoreLatestOfflineDraft()) setCloudStatus("Offline draft recovered from this device", "warning");
+      else setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
     }
   }
-  function renderPatchProposals() {
-    patchProposalList.textContent = "";
-    if (!currentPage) {
-      patchProposalList.append(emptyState("Select a page"));
+  async function openInitialWorkspace() {
+    const requestedSite = readCloudId(query.get("site")) ?? readCloudId(localStorage.getItem(activeSiteStorageKey));
+    const requestedDoc = readCloudId(query.get("doc")) ?? readCloudId(localStorage.getItem(activeDocumentStorageKey));
+    await refreshSites({ silent: true });
+    if (requestedSite) {
+      await loadSite(requestedSite, requestedDoc);
+    } else if (requestedDoc) {
+      await loadStandaloneDocument(requestedDoc);
+    } else {
+      const firstSite = state.sites[0];
+      if (firstSite) await loadSite(firstSite.id);
+      else await createStarterWorkspace("Research Workspace");
+    }
+    await refreshWorkspaceTools();
+  }
+  function validateStoredCloudUser(statusUser) {
+    if (!state.cloudUser) return;
+    if (statusUser && statusUser.id === state.cloudUser.id) {
+      state.cloudUser = {
+        id: statusUser.id,
+        name: statusUser.name,
+        token: state.cloudUser.token,
+        tokenPreview: statusUser.tokenPreview ?? state.cloudUser.tokenPreview
+      };
+      localStorage.setItem(userStorageKey, JSON.stringify(state.cloudUser));
+      cloudUserNameInput.value = state.cloudUser.name;
       return;
     }
-    if (patchProposals.length === 0) {
-      patchProposalList.append(emptyState("No patch proposals"));
+    state.cloudUser = void 0;
+    localStorage.removeItem(userStorageKey);
+    localStorage.removeItem(activeSiteStorageKey);
+    localStorage.removeItem(activeDocumentStorageKey);
+  }
+  function clearWorkspaceState() {
+    state.sites = [];
+    state.currentSite = void 0;
+    state.activeFolder = "";
+    state.pages = [];
+    state.cloudSearchResults = [];
+    state.recentItems = [];
+    state.favoriteItems = [];
+    state.trashItems = [];
+    state.notifications = [];
+    state.comments = [];
+    state.approvals = [];
+    state.activityEvents = [];
+    state.groups = [];
+    state.workProjects = [];
+    state.workIssues = [];
+    state.workSprints = [];
+    state.selectedIssue = void 0;
+    state.patchProposals = [];
+    state.collaboratorGrants = [];
+    state.groupGrants = [];
+    state.shareGrants = [];
+    state.askNomaResponse = void 0;
+    state.knowledgeHealth = [];
+    state.agentInbox = [];
+    state.scopedAgents = [];
+    state.pendingLocalDraft = void 0;
+    setCurrentPage(void 0);
+    siteTitleInput.value = "Research Workspace";
+    renderWorkspaceTools();
+  }
+  async function refreshWorkspaceTools() {
+    if (!state.cloudUser) {
+      state.pageTemplates = [];
+      state.recentItems = [];
+      state.favoriteItems = [];
+      state.trashItems = [];
+      state.notifications = [];
+      state.groups = [];
+      state.workProjects = [];
+      state.workIssues = [];
+      state.workSprints = [];
+      state.selectedIssue = void 0;
+      state.patchProposals = [];
+      state.collaboratorGrants = [];
+      state.groupGrants = [];
+      state.shareGrants = [];
+      state.askNomaResponse = void 0;
+      state.knowledgeHealth = [];
+      state.agentInbox = [];
+      state.scopedAgents = [];
+      renderWorkspaceTools();
+      renderCollaborationPanels();
+      renderWorkManagement();
+      renderAccessManagement();
       return;
     }
-    for (const proposal of patchProposals.slice(0, 20)) {
-      const linkedIssue = proposal.issueId ? workIssues.find((issue) => issue.id === proposal.issueId)?.key ?? shortId(proposal.issueId) : void 0;
-      const stale = proposal.documentHash !== currentPage.hash && proposal.status !== "applied";
-      const preserved = proposal.proof.sourceMetrics?.preservedPercent;
-      const row = collaborationRow(
-        `${proposal.status} \xB7 ${proposal.proposedByName}`,
-        proposal.summary || proposal.proof.diff?.slice(0, 260) || "Agent patch",
-        `${linkedIssue ? `${linkedIssue} \xB7 ` : ""}${proposal.proof.status ?? "proof"}${typeof preserved === "number" ? ` \xB7 ${preserved.toFixed(1)}% preserved` : ""}${stale ? " \xB7 stale" : ""} \xB7 ${formatDate(proposal.createdAt)}`
-      );
-      const actions = collaborationActions();
-      if (proposal.status === "pending" && !stale) {
-        if (proposal.proposedBy !== cloudUser?.id && canEditPage()) {
-          actions.append(
-            actionButton("Approve", () => void reviewPatchProposal(proposal, "approved")),
-            actionButton("Reject", () => void reviewPatchProposal(proposal, "rejected"))
-          );
-        } else if (proposal.proposedBy === cloudUser?.id) {
-          actions.append(actionButton("Withdraw", () => void reviewPatchProposal(proposal, "rejected")));
-        }
-      }
-      if (proposal.status === "approved" && !stale && canEditPage()) {
-        actions.append(actionButton("Apply", () => void applyPatchProposal(proposal)));
-      }
-      row.append(actions);
-      patchProposalList.append(row);
-    }
+    await Promise.all([
+      refreshTemplates(),
+      refreshNavigationItems(),
+      refreshTrash(),
+      refreshNotifications(),
+      refreshGroups(),
+      refreshWorkManagement(),
+      refreshAccessManagement(),
+      refreshKnowledgeWorkspace()
+    ]);
   }
-  async function applyAgentPatch() {
-    try {
-      const ops = parsePatchOps(patchInput.value);
-      const nextSource = patchSource(sourceInput.value, ops);
-      const nextDoc = parse(nextSource, { filename: `${currentPage?.id ?? "draft"}.noma` });
-      const nextDiagnostics = validate(nextDoc);
-      const errors = nextDiagnostics.filter((item) => item.severity === "error");
-      if (errors.length > 0) {
-        throw new Error(`Patch produced ${errors.length} validation error${errors.length === 1 ? "" : "s"}`);
-      }
-      sourceInput.value = nextSource;
-      markDirty();
-      syncTitleFromSource();
-      renderCurrent();
-      setPanelStatus(agentStatus, `Applied ${ops.length} patch op${ops.length === 1 ? "" : "s"}`, "ok");
-      setCloudStatus("Applied patch", "ok");
-    } catch (error) {
-      setPanelStatus(agentStatus, errorMessage(error), "error");
-    }
-  }
-  async function copyLlmContext() {
-    if (renderState.error || !renderState.llm) {
-      setPanelStatus(agentStatus, "Render the page before copying LLM context", "error");
-      return;
-    }
-    await copyText(renderState.llm, "Copied LLM context");
-    setPanelStatus(agentStatus, "Copied LLM context", "ok");
+  function renderWorkspaceTools() {
+    renderNavigationList(favoriteList, state.favoriteItems.slice(0, 8), "No favorites", true);
+    renderNavigationList(recentList, state.recentItems.slice(0, 8), "No recent items", false);
+    renderTrashList();
+    renderSearchResults();
   }
   async function createCloudUser(options = {}) {
-    if (!cloudAvailable && !options.silent) return;
+    if (!state.cloudAvailable && !options.silent) return;
     setBusy(true, "Creating user", "warning");
     try {
       const response = await fetchCloudJson("/api/auth/register", {
@@ -12325,7 +10734,7 @@ ${bodyRows}
     }
   }
   async function loginCloudUser() {
-    if (!cloudAvailable) return;
+    if (!state.cloudAvailable) return;
     const userToken = cloudUserTokenInput.value.trim();
     if (!userToken) {
       setCloudStatus("Enter an existing user token", "error");
@@ -12351,13 +10760,13 @@ ${bodyRows}
     }
   }
   function activateCloudUser(user) {
-    cloudUser = user;
+    state.cloudUser = user;
     localStorage.setItem(userStorageKey, JSON.stringify(user));
     cloudUserNameInput.value = user.name;
   }
   function logoutCloudUser() {
     if (!confirmDiscardDirty()) return;
-    cloudUser = void 0;
+    state.cloudUser = void 0;
     cloudUserTokenInput.value = "";
     cloudInvitationCodeInput.value = "";
     localStorage.removeItem(userStorageKey);
@@ -12367,221 +10776,841 @@ ${bodyRows}
     setCloudStatus("Signed out", "ok");
     renderChrome();
   }
-  async function ensureSavedBeforeShare() {
-    if (dirty) await saveCurrentPage();
-  }
-  async function createShare(url, role, label) {
-    const share = await fetchCloudJson(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ role, label })
+  function registerCloudPwa() {
+    if (!("serviceWorker" in navigator)) return;
+    window.addEventListener("load", () => {
+      void navigator.serviceWorker.register("/cloud-sw.js").catch(() => void 0);
     });
-    await refreshAccessManagement();
-    return share;
   }
-  function setCurrentPage(page) {
-    currentPage = page;
-    documentRevisions = [];
-    comments = [];
-    approvals = [];
-    activityEvents = [];
-    patchProposals = [];
-    if (!page) {
-      pageTitleInput.value = "";
-      sourceInput.value = "";
-      dirty = false;
-      savedPageSource = "";
-      savedPageHash = "";
-      savedPageTitle = "";
-      pendingLocalDraft = void 0;
-      renderCurrent();
-      renderHistory();
-      renderCollaborationPanels();
-      renderChrome();
-      return;
+
+  // web/cloud/navigation.ts
+  async function refreshSites(options = {}) {
+    if (!state.cloudUser) return;
+    if (!options.silent) setBusy(true, "Loading spaces", "warning");
+    try {
+      const response = await fetchCloudJson("/api/sites");
+      state.sites = response.sites.map(normalizeSite);
+    } finally {
+      if (!options.silent) setBusy(false);
+      renderNavigation();
     }
-    savedPageSource = page.source;
-    savedPageHash = page.hash;
-    savedPageTitle = page.title;
-    pendingLocalDraft = readLocalDraft(page.id);
-    const recoverableDraft = pendingLocalDraft?.baseHash === page.hash ? pendingLocalDraft : void 0;
-    const recoverable = recoverableDraft !== void 0;
-    pageTitleInput.value = recoverableDraft ? recoverableDraft.title : page.title;
-    sourceInput.value = recoverableDraft ? recoverableDraft.source : page.source;
-    activeFolder = pageFolder(page.id);
-    dirty = Boolean(recoverable);
-    localStorage.setItem(activeDocumentStorageKey, page.id);
-    if (recoverable) setPanelStatus(draftRecoveryStatus, `Recovered local draft from ${formatDate(pendingLocalDraft.updatedAt)}`, "warning");
-    else if (pendingLocalDraft) setPanelStatus(draftRecoveryStatus, "Saved source changed since this local draft. Recover or run an explicit three-way merge.", "error");
-    renderCurrent();
-    renderHistory();
-    renderCollaborationPanels();
-    renderChrome();
-    void refreshHistory({ silent: true });
-    void refreshPageCollaboration();
-    void refreshPageMeta();
-    void recordRecent("document", page.id);
   }
-  async function refreshPageMeta() {
-    currentLabels = [];
-    currentWatching = false;
-    revisionDiffOutput.hidden = true;
-    const page = currentPage;
-    if (!page || !cloudUser) {
-      renderChrome();
+  async function refreshTemplates() {
+    const selected = pageTemplateSelect.value;
+    const response = await fetchCloudJson("/api/templates");
+    state.pageTemplates = response.templates;
+    pageTemplateSelect.textContent = "";
+    for (const template of state.pageTemplates) {
+      const option = document.createElement("option");
+      option.value = template.id;
+      option.textContent = `${template.title} \xB7 ${template.category}`;
+      option.title = template.description;
+      pageTemplateSelect.append(option);
+    }
+    pageTemplateSelect.value = state.pageTemplates.some((template) => template.id === selected) ? selected : "blank";
+  }
+  async function refreshNavigationItems() {
+    const response = await fetchCloudJson("/api/navigation");
+    state.recentItems = response.recents;
+    state.favoriteItems = response.favorites;
+    renderWorkspaceTools();
+  }
+  async function refreshTrash() {
+    if (!state.cloudUser) {
+      state.trashItems = [];
+      renderWorkspaceTools();
       return;
     }
     try {
-      const [labels, watch] = await Promise.all([
-        fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/labels`),
-        fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/watch`)
-      ]);
-      if (currentPage?.id !== page.id) return;
-      currentLabels = labels.labels;
-      currentWatching = watch.watching;
+      const response = await fetchCloudJson("/api/trash");
+      state.trashItems = response.items;
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      renderWorkspaceTools();
+    }
+  }
+  function renderNavigationList(container, items, emptyText, removable) {
+    container.textContent = "";
+    if (items.length === 0) {
+      container.append(emptyState(emptyText));
+      return;
+    }
+    for (const item of items) {
+      const entry = document.createElement("div");
+      entry.className = "navigation-entry";
+      const button = navigationButton(item);
+      entry.append(button);
+      if (removable) {
+        entry.append(iconButton("\xD7", `Remove ${item.title} from favorites`, () => void toggleFavorite(item.resourceType, item.resourceId)));
+      }
+      container.append(entry);
+    }
+  }
+  function navigationButton(item) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "navigation-row";
+    const title = document.createElement("span");
+    title.className = "row-title";
+    title.textContent = item.title;
+    const meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = `${item.resourceType} \xB7 ${formatDate(item.activityAt)}`;
+    button.append(title, meta);
+    button.addEventListener("click", () => void openNavigationItem(item));
+    return button;
+  }
+  function renderTrashList() {
+    trashList.textContent = "";
+    if (state.trashItems.length === 0) {
+      trashList.append(emptyState("Trash is empty"));
+      return;
+    }
+    for (const item of state.trashItems.slice(0, 20)) {
+      const entry = document.createElement("div");
+      entry.className = "navigation-entry";
+      entry.append(navigationButton(item), iconButton("Restore", `Restore ${item.title}`, () => void restoreTrashItem(item)));
+      trashList.append(entry);
+    }
+  }
+  async function openNavigationItem(item) {
+    if (item.resourceType === "site") await loadSite(item.resourceId);
+    else if (item.siteId) await loadSite(item.siteId, item.resourceId);
+    else await loadStandaloneDocument(item.resourceId);
+  }
+  async function toggleFavorite(resourceType, resourceId) {
+    if (!state.cloudUser) return;
+    const exists = state.favoriteItems.some((item) => item.resourceType === resourceType && item.resourceId === resourceId);
+    try {
+      await fetchCloudJson("/api/navigation/favorites", {
+        method: exists ? "DELETE" : "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ resourceType, resourceId })
+      });
+      await refreshNavigationItems();
+      renderChrome();
+      setCloudStatus(exists ? "Removed favorite" : "Added favorite", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    }
+  }
+  async function recordRecent(resourceType, resourceId) {
+    if (!state.cloudUser) return;
+    try {
+      await fetchCloudJson("/api/navigation/recent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ resourceType, resourceId })
+      });
+      await refreshNavigationItems();
     } catch {
       return;
+    }
+  }
+  async function loadSite(siteId, preferredDocumentId) {
+    if (!confirmDiscardDirty()) return;
+    setBusy(true, "Opening space", "warning");
+    try {
+      const site = await fetchCloudJson(`/api/sites/${encodeURIComponent(siteId)}?include=documents`);
+      state.currentSite = normalizeSite(site);
+      state.pages = site.documents ?? [];
+      siteTitleInput.value = state.currentSite.title;
+      localStorage.setItem(activeSiteStorageKey, state.currentSite.id);
+      const selected = preferredDocumentId ? state.pages.find((page) => page.id === preferredDocumentId) : void 0;
+      setCurrentPage(selected ?? state.pages[0]);
+      updateAddress();
+      if (state.cloudUser) await Promise.all([refreshSites({ silent: true }), refreshWorkManagement(), refreshAccessManagement()]);
     } finally {
+      setBusy(false);
       renderChrome();
     }
   }
-  async function toggleWatch() {
-    if (!currentPage || !cloudUser) return;
+  async function loadStandaloneDocument(documentId) {
+    if (!confirmDiscardDirty()) return;
+    setBusy(true, "Opening page", "warning");
     try {
-      const response = await fetchCloudJson(`/api/documents/${encodeURIComponent(currentPage.id)}/watch`, {
-        method: currentWatching ? "DELETE" : "PUT"
+      const page = await fetchCloudJson(`/api/documents/${encodeURIComponent(documentId)}`);
+      state.currentSite = void 0;
+      state.activeFolder = "";
+      state.pages = [page];
+      siteTitleInput.value = "Standalone Page";
+      setCurrentPage(page);
+      updateAddress();
+      await Promise.all([refreshWorkManagement(), refreshAccessManagement()]);
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function createStarterWorkspace(name) {
+    if (!state.cloudAvailable) return;
+    if (!state.cloudUser) {
+      setCloudStatus("Register a user before creating workspaces", "error");
+      return;
+    }
+    if (!confirmDiscardDirty()) return;
+    setBusy(true, "Creating space", "warning");
+    try {
+      const page = await fetchCloudJson("/api/documents", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Research Paper Draft",
+          source: starterPage("Research Paper Draft", name)
+        })
       });
-      currentWatching = response.watching;
-      setCloudStatus(currentWatching ? "Watching page: you will be notified of edits" : "Stopped watching page", "ok");
+      const site = await fetchCloudJson("/api/sites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: name,
+          documentIds: [page.id],
+          folders: ["Drafts"],
+          pageFolders: { [page.id]: "Drafts" }
+        })
+      });
+      await refreshSites({ silent: true });
+      await loadSite(site.id, page.id);
+      setCloudStatus("Created space", "ok");
     } catch (error) {
       setCloudStatus(errorMessage(error), "error");
     } finally {
+      setBusy(false);
       renderChrome();
     }
   }
-  async function addLabel() {
-    if (!currentPage || !canEditPage()) return;
-    const label = window.prompt("Add label", "")?.trim();
-    if (!label) return;
-    await updateLabels({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label }) });
-  }
-  async function removeLabel(label) {
-    if (!currentPage || !canEditPage()) return;
-    await updateLabels({ method: "DELETE" }, `/${encodeURIComponent(label)}`);
-  }
-  async function updateLabels(init, suffix = "") {
-    if (!currentPage) return;
+  async function createPage(folder = state.activeFolder, parentId) {
+    if (!state.currentSite) {
+      await createStarterWorkspace(promptName("Space name", "Research Workspace"));
+      return;
+    }
+    if (!state.cloudUser) {
+      setCloudStatus("A user token is required to create pages", "error");
+      return;
+    }
+    if (!confirmDiscardDirty()) return;
+    const normalizedFolder = normalizeFolderName(folder);
+    const template = selectedPageTemplate();
+    const title = promptName(normalizedFolder ? `Page title in ${normalizedFolder}` : "Page title", template?.title ?? "Untitled Page");
+    setBusy(true, "Creating page", "warning");
     try {
-      const response = await fetchCloudJson(`/api/documents/${encodeURIComponent(currentPage.id)}/labels${suffix}`, init);
-      currentLabels = response.labels;
-      setCloudStatus("Updated labels", "ok");
+      const page = await fetchCloudJson(`/api/sites/${encodeURIComponent(state.currentSite.id)}/documents`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title,
+          templateId: template?.id ?? "blank",
+          folder: normalizedFolder,
+          ...parentId ? { parentId } : {}
+        })
+      });
+      state.pages = [...state.pages, page];
+      if (parentId) {
+        const refreshed = await fetchCloudJson(`/api/sites/${encodeURIComponent(state.currentSite.id)}`);
+        state.currentSite = { ...state.currentSite, documentIds: refreshed.documentIds, pageParents: refreshed.pageParents ?? {} };
+        state.pages = refreshed.documentIds.map((id) => state.pages.find((candidate) => candidate.id === id)).filter((candidate) => Boolean(candidate));
+      }
+      const documentIds = [...state.currentSite.documentIds, page.id];
+      const pageFolders = normalizedPageFolders({ ...state.currentSite.pageFolders, ...normalizedFolder ? { [page.id]: normalizedFolder } : {} }, documentIds);
+      state.currentSite = {
+        ...state.currentSite,
+        documentIds,
+        folders: normalizeFolders([...state.currentSite.folders ?? [], normalizedFolder, ...Object.values(pageFolders)]),
+        pageFolders,
+        documents: state.pages
+      };
+      state.activeFolder = normalizedFolder;
+      setCurrentPage(page);
+      await refreshSites({ silent: true });
+      updateAddress();
+      await refreshWorkspaceTools();
+      setCloudStatus("Created page", "ok");
     } catch (error) {
       setCloudStatus(errorMessage(error), "error");
     } finally {
+      setBusy(false);
       renderChrome();
     }
   }
-  function renderPageMeta() {
-    pageLabels.textContent = "";
-    for (const label of currentLabels) {
-      const chip = document.createElement("span");
-      chip.className = "label-chip";
-      chip.textContent = label;
-      if (canEditPage()) {
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.textContent = "\xD7";
-        remove.setAttribute("aria-label", `Remove label ${label}`);
-        remove.addEventListener("click", () => void removeLabel(label));
-        chip.append(remove);
-      }
-      pageLabels.append(chip);
+  async function importPage(file) {
+    if (!state.currentSite) {
+      await createStarterWorkspace("Research Workspace");
     }
-    addLabelButton.hidden = !currentPage || !canEditPage();
-    addLabelButton.disabled = busy;
-    watchPageButton.disabled = busy || !cloudUser || !currentPage;
-    watchPageButton.textContent = currentWatching ? "Unwatch" : "Watch";
-    watchPageButton.setAttribute("aria-pressed", String(currentWatching));
-    pageBreadcrumbs.textContent = "";
-    if (!currentSite || !currentPage) return;
-    const siteCrumb = document.createElement("span");
-    siteCrumb.className = "crumb crumb-site";
-    siteCrumb.textContent = currentSite.title;
-    pageBreadcrumbs.append(siteCrumb);
-    for (const ancestorId of pageAncestors(currentPage.id).reverse()) {
-      const ancestor = pages.find((page) => page.id === ancestorId);
-      if (!ancestor) continue;
-      const crumb = document.createElement("button");
-      crumb.type = "button";
-      crumb.className = "crumb";
-      crumb.textContent = ancestor.title;
-      crumb.addEventListener("click", () => selectPage(ancestor.id));
-      pageBreadcrumbs.append(crumb);
+    if (!state.currentSite || !state.cloudUser || !canCreatePage()) return;
+    if (!confirmDiscardDirty()) return;
+    const source = await file.text();
+    if (!source.trim()) {
+      setCloudStatus("The imported file is empty", "error");
+      return;
     }
-  }
-  function pageParentId(pageId) {
-    const parent = currentSite?.pageParents?.[pageId];
-    return parent && pages.some((page) => page.id === parent) ? parent : void 0;
-  }
-  function pageAncestors(pageId) {
-    const ancestors = [];
-    let cursor = pageParentId(pageId);
-    while (cursor && !ancestors.includes(cursor) && cursor !== pageId) {
-      ancestors.push(cursor);
-      cursor = pageParentId(cursor);
-    }
-    return ancestors;
-  }
-  async function showRevisionDiff(revision) {
-    if (!currentPage) return;
+    const markdown = /\.(?:md|markdown)$/i.test(file.name);
+    const fileTitle = file.name.replace(/\.(?:noma|md|markdown)$/i, "").replace(/[-_]+/g, " ").trim();
+    const title = sourceTitle(source) || fileTitle || "Imported Page";
+    const folder = normalizeFolderName(state.activeFolder);
+    setBusy(true, `Importing ${file.name}`, "warning");
     try {
-      const response = await fetchCloudJson(`${currentPageEndpoint()}/revisions/${revision.revision}/diff`);
-      revisionDiffOutput.textContent = "";
-      const heading = document.createElement("strong");
-      heading.textContent = `Version ${revision.revision} vs ${response.from ? `version ${response.from.revision}` : "empty page"}: +${response.stats.added} \u2212${response.stats.removed}`;
-      revisionDiffOutput.append(heading);
-      const changedBlocks = [
-        ...response.blocks.added.map((id) => `+${id}`),
-        ...response.blocks.removed.map((id) => `\u2212${id}`),
-        ...response.blocks.changed.map((id) => `~${id}`)
-      ];
-      if (changedBlocks.length > 0) {
-        const blocks = document.createElement("div");
-        blocks.className = "revision-diff-blocks";
-        blocks.textContent = `Blocks: ${changedBlocks.join(", ")}`;
-        revisionDiffOutput.append(blocks);
+      const page = await fetchCloudJson(`/api/sites/${encodeURIComponent(state.currentSite.id)}/documents`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title, source, format: markdown ? "markdown" : "noma", folder })
+      });
+      state.pages = [...state.pages, page];
+      const documentIds = [...state.currentSite.documentIds, page.id];
+      const pageFolders = normalizedPageFolders({ ...state.currentSite.pageFolders, ...folder ? { [page.id]: folder } : {} }, documentIds);
+      state.currentSite = {
+        ...state.currentSite,
+        documentIds,
+        folders: normalizeFolders([...state.currentSite.folders ?? [], folder, ...Object.values(pageFolders)]),
+        pageFolders,
+        documents: state.pages
+      };
+      setCurrentPage(page);
+      await refreshSites({ silent: true });
+      await refreshWorkspaceTools();
+      updateAddress();
+      setCloudStatus(`Imported ${file.name}`, "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  function selectedPageTemplate() {
+    return state.pageTemplates.find((template) => template.id === pageTemplateSelect.value);
+  }
+  async function trashPage(page) {
+    if (!canEditSite() && page.access?.role !== "owner" && page.access?.role !== "editor") return;
+    if (state.currentPage?.id === page.id && !confirmDiscardDirty()) return;
+    if (!window.confirm(`Move page "${page.title}" to trash? It can be restored later.`)) return;
+    setBusy(true, "Moving page to trash", "warning");
+    try {
+      await fetchCloudJson(`/api/trash/document/${encodeURIComponent(page.id)}`, { method: "POST" });
+      state.dirty = false;
+      if (state.currentSite) await loadSite(state.currentSite.id);
+      else if (state.currentPage?.id === page.id) setCurrentPage(void 0);
+      await refreshSites({ silent: true });
+      await refreshWorkspaceTools();
+      setCloudStatus("Moved page to trash", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function trashSite(site) {
+    if (site.access?.role !== "owner" && site.currentRole !== "owner") return;
+    if (state.currentSite?.id === site.id && !confirmDiscardDirty()) return;
+    if (!window.confirm(`Move space "${site.title}" to trash? Its pages remain recoverable.`)) return;
+    setBusy(true, "Moving space to trash", "warning");
+    try {
+      await fetchCloudJson(`/api/trash/site/${encodeURIComponent(site.id)}`, { method: "POST" });
+      state.dirty = false;
+      await refreshSites({ silent: true });
+      const nextSite = state.sites.find((candidate) => candidate.id !== site.id);
+      if (nextSite) await loadSite(nextSite.id);
+      else clearWorkspaceState();
+      await refreshWorkspaceTools();
+      setCloudStatus("Moved space to trash", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function restoreTrashItem(item) {
+    setBusy(true, `Restoring ${item.title}`, "warning");
+    try {
+      await fetchCloudJson(`/api/trash/${item.resourceType}/${encodeURIComponent(item.resourceId)}/restore`, { method: "POST" });
+      await refreshSites({ silent: true });
+      await refreshWorkspaceTools();
+      if (item.resourceType === "site") await loadSite(item.resourceId);
+      else if (item.siteId) await loadSite(item.siteId, item.resourceId);
+      else await loadStandaloneDocument(item.resourceId);
+      setCloudStatus(`Restored ${item.title}`, "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function createFolder() {
+    if (!state.currentSite || !canEditSite()) return;
+    const folder = promptFolder("Folder name", "Research Notes");
+    if (folder === void 0) return;
+    if (!folder) {
+      setCloudStatus("Folder name required", "error");
+      return;
+    }
+    if (siteFolders(state.currentSite).some((item) => sameFolder(item, folder))) {
+      state.activeFolder = folder;
+      setCloudStatus("Selected folder", "ok");
+      renderChrome();
+      return;
+    }
+    state.currentSite = {
+      ...state.currentSite,
+      folders: normalizeFolders([...state.currentSite.folders ?? [], folder]),
+      pageFolders: normalizedPageFolders(state.currentSite.pageFolders, state.currentSite.documentIds),
+      documents: state.pages
+    };
+    state.activeFolder = folder;
+    await saveSiteStructure("Created folder");
+  }
+  async function renameFolder(folder) {
+    if (!state.currentSite || !canEditSite()) return;
+    const currentFolder = normalizeFolderName(folder);
+    if (!currentFolder) return;
+    const nextFolder = promptFolder("Rename folder", currentFolder);
+    if (nextFolder === void 0 || !nextFolder || sameFolder(currentFolder, nextFolder)) return;
+    const pageFolders = normalizedPageFolders(state.currentSite.pageFolders, state.currentSite.documentIds);
+    for (const [pageId, pageFolder2] of Object.entries(pageFolders)) {
+      if (sameFolder(pageFolder2, currentFolder)) pageFolders[pageId] = nextFolder;
+    }
+    state.currentSite = {
+      ...state.currentSite,
+      folders: normalizeFolders((state.currentSite.folders ?? []).map((item) => sameFolder(item, currentFolder) ? nextFolder : item)),
+      pageFolders,
+      documents: state.pages
+    };
+    state.activeFolder = nextFolder;
+    await saveSiteStructure("Renamed folder");
+  }
+  async function deleteFolder(folder) {
+    if (!state.currentSite || !canEditSite()) return;
+    const currentFolder = normalizeFolderName(folder);
+    if (!currentFolder) return;
+    const pagesInFolder = state.pages.filter((page) => sameFolder(pageFolder(page.id), currentFolder)).length;
+    const message = pagesInFolder > 0 ? `Delete folder "${currentFolder}"? ${pagesInFolder} page${pagesInFolder === 1 ? "" : "s"} will move to Pages.` : `Delete folder "${currentFolder}"?`;
+    if (!window.confirm(message)) return;
+    const pageFolders = normalizedPageFolders(state.currentSite.pageFolders, state.currentSite.documentIds);
+    for (const [pageId, pageFolder2] of Object.entries(pageFolders)) {
+      if (sameFolder(pageFolder2, currentFolder)) delete pageFolders[pageId];
+    }
+    state.currentSite = {
+      ...state.currentSite,
+      folders: normalizeFolders((state.currentSite.folders ?? []).filter((item) => !sameFolder(item, currentFolder))),
+      pageFolders,
+      documents: state.pages
+    };
+    if (sameFolder(state.activeFolder, currentFolder)) state.activeFolder = "";
+    await saveSiteStructure("Deleted folder");
+  }
+  async function movePageUnder(pageId) {
+    if (!state.currentSite || !canEditSite()) return;
+    const page = state.pages.find((item) => item.id === pageId);
+    const answer = window.prompt(`Parent page title for "${page?.title ?? "page"}" (leave empty for top level)`, "");
+    if (answer === null) return;
+    const parent = answer.trim() ? state.pages.find((item) => item.title.toLowerCase() === answer.trim().toLowerCase()) : void 0;
+    if (answer.trim() && !parent) {
+      setCloudStatus(`No page titled "${answer.trim()}" in this space`, "error");
+      return;
+    }
+    setBusy(true, "Moving page", "warning");
+    try {
+      const response = await fetchCloudJson(
+        `/api/sites/${encodeURIComponent(state.currentSite.id)}/documents/${encodeURIComponent(pageId)}/parent`,
+        { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ parentId: parent?.id ?? null }) }
+      );
+      state.currentSite = { ...state.currentSite, documentIds: response.site.documentIds, pageParents: response.site.pageParents ?? {} };
+      state.pages = response.site.documentIds.map((id) => state.pages.find((candidate) => candidate.id === id)).filter((candidate) => Boolean(candidate));
+      setCloudStatus(parent ? `Moved under ${parent.title}` : "Moved to top level", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function movePage(pageId) {
+    if (!state.currentSite || !canEditSite()) return;
+    const page = state.pages.find((item) => item.id === pageId);
+    if (!page) return;
+    const folder = promptFolder(`Move "${page.title}" to folder`, pageFolder(page.id));
+    if (folder === void 0) return;
+    await movePageToFolder(pageId, folder);
+  }
+  async function movePageToFolder(pageId, folder) {
+    if (!state.currentSite || !canEditSite()) return;
+    const page = state.pages.find((item) => item.id === pageId);
+    if (!page) return;
+    const pageFolders = normalizedPageFolders(state.currentSite.pageFolders, state.currentSite.documentIds);
+    if (folder) pageFolders[page.id] = folder;
+    else delete pageFolders[page.id];
+    state.currentSite = {
+      ...state.currentSite,
+      folders: normalizeFolders([...state.currentSite.folders ?? [], folder, ...Object.values(pageFolders)]),
+      pageFolders,
+      documents: state.pages
+    };
+    state.activeFolder = folder;
+    await saveSiteStructure(folder ? `Moved page to ${folder}` : "Moved page to Pages");
+  }
+  async function saveSiteStructure(status) {
+    if (!state.currentSite || !canEditSite()) return;
+    setBusy(true, "Saving folders", "warning");
+    try {
+      const saved = await fetchCloudJson(`/api/sites/${encodeURIComponent(state.currentSite.id)}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: siteTitleInput.value.trim() || state.currentSite.title,
+          documentIds: state.currentSite.documentIds,
+          folders: siteFolders(state.currentSite),
+          pageFolders: normalizedPageFolders(state.currentSite.pageFolders, state.currentSite.documentIds)
+        })
+      });
+      state.currentSite = { ...normalizeSite(saved), documents: state.pages };
+      state.sites = state.sites.map((site) => site.id === saved.id ? normalizeSite(saved) : site);
+      setCloudStatus(status, "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function saveCurrentSite() {
+    if (!state.currentSite || !canEditSite()) return;
+    setBusy(true, "Saving space", "warning");
+    try {
+      const saved = await fetchCloudJson(`/api/sites/${encodeURIComponent(state.currentSite.id)}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: siteTitleInput.value.trim() || state.currentSite.title,
+          documentIds: state.currentSite.documentIds,
+          folders: siteFolders(state.currentSite),
+          pageFolders: normalizedPageFolders(state.currentSite.pageFolders, state.currentSite.documentIds)
+        })
+      });
+      state.currentSite = { ...normalizeSite(saved), documents: state.pages };
+      state.sites = state.sites.map((site) => site.id === saved.id ? saved : site);
+      setCloudStatus("Saved space", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function copyPageLink() {
+    if (!state.currentPage) return;
+    await ensureSavedBeforeShare();
+    const role = selectedShareRole();
+    const share = await createShare(`/api/documents/${encodeURIComponent(state.currentPage.id)}/shares`, role, "Noma Cloud page");
+    await copyText(cloudAppDocumentUrl(state.currentPage.id, share.token), `Copied ${role} page link`);
+  }
+  async function copyArtifactLink() {
+    if (!state.currentPage) return;
+    await ensureSavedBeforeShare();
+    const share = await createShare(`/api/documents/${encodeURIComponent(state.currentPage.id)}/shares`, "viewer", "Noma rendered artifact");
+    await copyText(absoluteUrl(`/d/${state.currentPage.id}?share=${encodeURIComponent(share.token)}`), "Copied artifact link");
+  }
+  async function copySiteLink() {
+    if (!state.currentSite) return;
+    await ensureSavedBeforeShare();
+    const role = selectedShareRole();
+    const share = await createShare(`/api/sites/${encodeURIComponent(state.currentSite.id)}/shares`, role, "Noma Cloud space");
+    await copyText(cloudAppSiteUrl(state.currentSite.id, share.token), `Copied ${role} space link`);
+  }
+  async function openPublishedSite() {
+    if (!state.currentSite) return;
+    await ensureSavedBeforeShare();
+    const share = await createShare(`/api/sites/${encodeURIComponent(state.currentSite.id)}/shares`, "viewer", "Published site");
+    window.open(absoluteUrl(`/s/${state.currentSite.id}?share=${encodeURIComponent(share.token)}`), "_blank", "noopener");
+  }
+  function replacePage(page) {
+    state.pages = state.pages.map((item) => item.id === page.id ? page : item);
+    if (state.currentSite) state.currentSite = { ...state.currentSite, documents: state.pages };
+  }
+  function selectPage(pageId) {
+    if (state.currentPage?.id === pageId) return true;
+    if (!confirmDiscardDirty()) return false;
+    const page = state.pages.find((item) => item.id === pageId);
+    if (!page) return false;
+    setCurrentPage(page);
+    updateAddress();
+    return true;
+  }
+  function renderNavigation() {
+    siteList.textContent = "";
+    if (state.sites.length === 0 && !state.currentSite) {
+      siteList.append(emptyState("No spaces"));
+    } else {
+      for (const site of state.sites) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "site-row";
+        button.setAttribute("aria-current", String(state.currentSite?.id === site.id));
+        button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
+        const title = button.querySelector(".row-title");
+        const meta = button.querySelector(".row-meta");
+        if (title) title.textContent = site.title;
+        if (meta) meta.textContent = `${site.documentIds.length} page${site.documentIds.length === 1 ? "" : "s"} / ${site.access?.role ?? site.currentRole ?? "viewer"}`;
+        button.addEventListener("click", () => {
+          void loadSite(site.id);
+        });
+        button.addEventListener("contextmenu", (event) => showSiteContextMenu(event, site));
+        siteList.append(button);
       }
-      const pre = document.createElement("pre");
-      for (const line of response.diff.split("\n")) {
-        const row = document.createElement("span");
-        row.className = line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del" : "diff-ctx";
-        row.textContent = `${line}
+    }
+    pageList.textContent = "";
+    if (state.pages.length === 0) {
+      pageList.append(emptyState("No pages"));
+      return;
+    }
+    const groups = groupedPages();
+    for (const group of groups) {
+      pageList.append(folderRow(group.folder, group.pages.length));
+      for (const { page, depth } of pageTreeOrder(group.pages)) {
+        pageList.append(pageRow(page, depth));
+      }
+    }
+  }
+  function pageTreeOrder(groupPages) {
+    const inGroup = new Set(groupPages.map((page) => page.id));
+    const children = /* @__PURE__ */ new Map();
+    const roots = [];
+    for (const page of groupPages) {
+      const parent = pageParentId(page.id);
+      if (parent && inGroup.has(parent)) children.set(parent, [...children.get(parent) ?? [], page]);
+      else roots.push(page);
+    }
+    const ordered = [];
+    const visit = (page, depth) => {
+      if (ordered.some((entry) => entry.page.id === page.id)) return;
+      ordered.push({ page, depth });
+      for (const child of children.get(page.id) ?? []) visit(child, depth + 1);
+    };
+    for (const root of roots) visit(root, 0);
+    return ordered;
+  }
+  function folderRow(folder, pageCount) {
+    const row = document.createElement("div");
+    row.className = "folder-row";
+    row.setAttribute("aria-current", String(sameFolder(state.activeFolder, folder)));
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "folder-label";
+    label.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
+    const title = label.querySelector(".row-title");
+    const meta = label.querySelector(".row-meta");
+    if (title) title.textContent = folder || "Pages";
+    if (meta) meta.textContent = `${pageCount} page${pageCount === 1 ? "" : "s"}`;
+    label.addEventListener("click", () => {
+      state.activeFolder = folder;
+      setCloudStatus(folder ? `Selected ${folder}` : "Selected Pages", "ok");
+      renderChrome();
+    });
+    row.addEventListener("contextmenu", (event) => showFolderContextMenu(event, folder));
+    const actions = document.createElement("div");
+    actions.className = "folder-actions";
+    const addPage = iconButton("+", folder ? `New page in ${folder}` : "New page in Pages", () => {
+      state.activeFolder = folder;
+      void createPage(folder);
+    });
+    actions.append(addPage);
+    if (folder) {
+      actions.append(
+        iconButton("Rename", `Rename ${folder}`, () => void renameFolder(folder)),
+        iconButton("Delete", `Delete ${folder}`, () => void deleteFolder(folder), "danger")
+      );
+    }
+    row.append(label, actions);
+    return row;
+  }
+  function pageRow(page, depth = 0) {
+    const row = document.createElement("div");
+    row.className = "page-entry";
+    row.style.setProperty("--page-depth", String(Math.min(depth, 8)));
+    if (depth > 0) row.dataset.child = "true";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "page-row";
+    button.setAttribute("aria-current", String(state.currentPage?.id === page.id));
+    button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
+    const title = button.querySelector(".row-title");
+    const meta = button.querySelector(".row-meta");
+    if (title) title.textContent = page.title;
+    if (meta) meta.textContent = `${shortId(page.id)} / ${page.access?.role ?? state.currentSite?.access?.role ?? "viewer"}`;
+    button.addEventListener("click", () => selectPage(page.id));
+    row.addEventListener("contextmenu", (event) => showPageContextMenu(event, page));
+    const move = iconButton("Move", `Move ${page.title}`, () => void movePage(page.id));
+    move.disabled = state.busy || !canEditSite();
+    row.append(button, move);
+    return row;
+  }
+  function groupedPages() {
+    const folders = siteFolders(state.currentSite);
+    const groupFolder = (page) => pageFolder(pageAncestors(page.id).at(-1) ?? page.id);
+    const rootPages = state.pages.filter((page) => !groupFolder(page));
+    return [
+      { folder: "", pages: rootPages },
+      ...folders.map((folder) => ({ folder, pages: state.pages.filter((page) => sameFolder(groupFolder(page), folder)) }))
+    ];
+  }
+  function siteFolders(site) {
+    if (!site) return [];
+    return normalizeFolders([...site.folders ?? [], ...Object.values(site.pageFolders ?? {})]);
+  }
+  function normalizeSite(site) {
+    const pageFolders = normalizedPageFolders(site.pageFolders, site.documentIds);
+    return {
+      ...site,
+      folders: normalizeFolders([...site.folders ?? [], ...Object.values(pageFolders)]),
+      pageFolders,
+      pageParents: site.pageParents ?? {}
+    };
+  }
+  function normalizedPageFolders(value, documentIds) {
+    const allowed = new Set(documentIds);
+    const next = {};
+    for (const [pageId, folder] of Object.entries(value ?? {})) {
+      if (!allowed.has(pageId)) continue;
+      const normalized = normalizeFolderName(folder);
+      if (normalized) next[pageId] = normalized;
+    }
+    return next;
+  }
+  function pageFolder(pageId) {
+    return normalizeFolderName(state.currentSite?.pageFolders?.[pageId] ?? "");
+  }
+  function normalizeFolders(values) {
+    const seen = /* @__PURE__ */ new Set();
+    const next = [];
+    for (const value of values) {
+      const folder = normalizeFolderName(value ?? "");
+      if (!folder) continue;
+      const key = folder.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push(folder);
+    }
+    return next.slice(0, 80);
+  }
+  function normalizeFolderName(value) {
+    return value.replace(/\\/g, "/").split("/").map((part) => part.trim().replace(/\s+/g, " ")).filter(Boolean).join("/").slice(0, 80);
+  }
+  function sameFolder(left, right) {
+    return normalizeFolderName(left).toLowerCase() === normalizeFolderName(right).toLowerCase();
+  }
+  function promptFolder(label, fallback = "") {
+    const value = window.prompt(label, fallback);
+    return value === null ? void 0 : normalizeFolderName(value);
+  }
+  async function runWithLoadedSite(siteId, action) {
+    if (state.currentSite?.id !== siteId) await loadSite(siteId);
+    if (state.currentSite?.id === siteId) await action();
+  }
+  function runAfterSelectPage(pageId, action) {
+    if (!selectPage(pageId)) return;
+    void action();
+  }
+  function starterPage(title, siteName) {
+    return `# ${title} {id="${slug(title) || "intro"}"}
+
+::abstract{id="abstract" status="draft"}
+${siteName} draft abstract. State the research question, method, primary result, and confidence in one paragraph.
+::
+
+## Research Question {id="research-question"}
+
+::claim{id="claim-main" confidence=0.68}
+The central claim of this paper goes here.
+::
+
+::evidence{id="evidence-primary" for="claim-main" source="source-primary"}
+Summarize the strongest evidence for the central claim.
+::
+
+## Methods {id="methods"}
+
+Describe the study design, corpus, data collection window, and analysis method.
+
+::table{id="review-checklist" header align="l,c,l"}
+| Section | Status | Owner |
+| Abstract | draft | Research |
+| Methods | draft | Research |
+| Evidence | needs source check | Reviewer |
+::
+
+## Findings {id="findings"}
+
+Draft the result narrative here. Use stable IDs on claims, evidence, figures, tables, citations, and review tasks so collaborators and agents can patch exactly the right block.
+
+::citation{id="source-primary" source="Primary source placeholder" url="https://example.com/source" accessed="2026-06-07"}
+Replace this placeholder with the paper's canonical source.
+::
+
+::bibliography{id="references"}
+::
+
+## Review Queue {id="review-queue"}
+
+::agent_task{id="task-source-check" scope="paper-review" owner="reviewer"}
+Verify the primary source, update the citation metadata, and leave unrelated blocks unchanged.
+::
 `;
-        pre.append(row);
-      }
-      revisionDiffOutput.append(pre);
-      revisionDiffOutput.hidden = false;
-    } catch (error) {
-      setPanelStatus(historyStatus, errorMessage(error), "error");
-    }
   }
+  function replaceFirstHeading(source, title) {
+    if (/^#\s+.+$/m.test(source)) {
+      return source.replace(/^#\s+(.+?)(\s+\{[^}]*\})?\s*$/m, (_match, _oldTitle, attrs) => {
+        return `# ${title}${attrs ?? ""}`;
+      });
+    }
+    return `# ${title} {id="${slug(title) || "intro"}"}
+
+${source}`;
+  }
+  function sourceTitle(source) {
+    return source.match(/^#\s+(.+)$/m)?.[1]?.replace(/\s+\{[^}]*\}\s*$/, "").trim() || "Untitled Page";
+  }
+  function confirmDiscardDirty() {
+    if (!state.dirty) return true;
+    if (!window.confirm("Discard unsaved page changes?")) return false;
+    if (state.currentPage) clearLocalDraft(state.currentPage.id);
+    state.pendingLocalDraft = void 0;
+    state.dirty = false;
+    return true;
+  }
+  function updateAddress() {
+    const params = new URLSearchParams();
+    if (state.currentSite) params.set("site", state.currentSite.id);
+    if (state.currentPage) params.set("doc", state.currentPage.id);
+    if (shareToken) params.set("share", shareToken);
+    const next = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState(null, "", next);
+  }
+  function cloudAppDocumentUrl(id, token) {
+    return absoluteUrl(`/cloud.html?doc=${encodeURIComponent(id)}&share=${encodeURIComponent(token)}`);
+  }
+  function cloudAppSiteUrl(id, token) {
+    return absoluteUrl(`/cloud.html?site=${encodeURIComponent(id)}&share=${encodeURIComponent(token)}`);
+  }
+
+  // web/cloud/drafts.ts
   function persistLocalDraft() {
-    if (!cloudUser || !currentPage || !dirty) return;
+    if (!state.cloudUser || !state.currentPage || !state.dirty) return;
     const drafts = readLocalDrafts();
-    const existing = drafts[currentPage.id];
+    const existing = drafts[state.currentPage.id];
     const draft = {
       ...existing?.id ? { id: existing.id } : {},
-      userId: cloudUser.id,
-      documentId: currentPage.id,
+      userId: state.cloudUser.id,
+      documentId: state.currentPage.id,
       title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value),
-      baseHash: existing?.baseHash ?? (savedPageHash || currentPage.hash),
-      baseSource: existing?.baseSource ?? savedPageSource,
+      baseHash: existing?.baseHash ?? (state.savedPageHash || state.currentPage.hash),
+      baseSource: existing?.baseSource ?? state.savedPageSource,
       source: sourceInput.value,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    drafts[currentPage.id] = draft;
+    drafts[state.currentPage.id] = draft;
     localStorage.setItem(offlineDraftStorageKey, JSON.stringify(drafts));
-    pendingLocalDraft = draft;
+    state.pendingLocalDraft = draft;
     renderDraftRecovery();
   }
   function readLocalDrafts() {
@@ -12593,7 +11622,7 @@ ${bodyRows}
         if (!value || typeof value !== "object" || Array.isArray(value)) continue;
         const candidate = value;
         if (typeof candidate.documentId !== "string" || typeof candidate.baseHash !== "string" || typeof candidate.baseSource !== "string" || typeof candidate.source !== "string" || typeof candidate.title !== "string" || typeof candidate.updatedAt !== "string" || typeof candidate.userId !== "string") continue;
-        if (cloudUser && candidate.userId !== cloudUser.id) continue;
+        if (state.cloudUser && candidate.userId !== state.cloudUser.id) continue;
         drafts[id] = candidate;
       }
       return drafts;
@@ -12622,38 +11651,38 @@ ${bodyRows}
       diagnostics: [],
       access: { role: "editor", via: "offline-cache" }
     };
-    currentSite = void 0;
-    pages = [page];
+    state.currentSite = void 0;
+    state.pages = [page];
     setCurrentPage(page);
     return true;
   }
   function recoverLocalDraft() {
-    if (!pendingLocalDraft || !currentPage) return;
-    sourceInput.value = pendingLocalDraft.source;
-    pageTitleInput.value = pendingLocalDraft.title;
-    dirty = true;
+    if (!state.pendingLocalDraft || !state.currentPage) return;
+    sourceInput.value = state.pendingLocalDraft.source;
+    pageTitleInput.value = state.pendingLocalDraft.title;
+    state.dirty = true;
     setPanelStatus(draftRecoveryStatus, "Recovered the cached draft. Save or merge when connected.", "warning");
     scheduleRender();
     renderChrome();
   }
   async function mergeLocalDraft() {
-    if (!pendingLocalDraft || !currentPage) return;
+    if (!state.pendingLocalDraft || !state.currentPage) return;
     setPanelStatus(draftRecoveryStatus, "Merging saved, current, and offline sources", "warning");
     try {
       let merged;
-      if (cloudAvailable && cloudUser) {
+      if (state.cloudAvailable && state.cloudUser) {
         const savedDraft = await fetchCloudJson("/api/offline/drafts", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ documentId: pendingLocalDraft.documentId, baseHash: pendingLocalDraft.baseHash, baseSource: pendingLocalDraft.baseSource, source: pendingLocalDraft.source })
+          body: JSON.stringify({ documentId: state.pendingLocalDraft.documentId, baseHash: state.pendingLocalDraft.baseHash, baseSource: state.pendingLocalDraft.baseSource, source: state.pendingLocalDraft.source })
         });
         merged = await fetchCloudJson(`/api/offline/drafts/${encodeURIComponent(savedDraft.id)}/merge`, { method: "POST" });
       } else {
-        merged = mergeOfflineSources(pendingLocalDraft.baseSource, savedPageSource, pendingLocalDraft.source, savedPageHash);
+        merged = mergeOfflineSources(state.pendingLocalDraft.baseSource, state.savedPageSource, state.pendingLocalDraft.source, state.savedPageHash);
       }
       sourceInput.value = merged.source;
       pageTitleInput.value = sourceTitle(merged.source);
-      dirty = true;
+      state.dirty = true;
       persistLocalDraft();
       setPanelStatus(draftRecoveryStatus, merged.state === "conflict" ? `${merged.conflicts.length} merge conflict${merged.conflicts.length === 1 ? "" : "s"}; resolve the markers before saving` : "Draft merged against the current saved source", merged.state === "conflict" ? "error" : "ok");
       scheduleRender();
@@ -12688,848 +11717,400 @@ ${draftLine}
     return { state: conflicts.length > 0 ? "conflict" : "merged", source: output.join("\n"), expectedHash, conflicts };
   }
   function discardCurrentLocalDraft() {
-    if (!currentPage || !pendingLocalDraft) return;
-    clearLocalDraft(currentPage.id);
-    pendingLocalDraft = void 0;
+    if (!state.currentPage || !state.pendingLocalDraft) return;
+    clearLocalDraft(state.currentPage.id);
+    state.pendingLocalDraft = void 0;
     setPanelStatus(draftRecoveryStatus, "Cached draft discarded", "ok");
     renderChrome();
   }
   function renderDraftRecovery() {
-    const hasDraft = Boolean(pendingLocalDraft && currentPage?.id === pendingLocalDraft.documentId);
-    recoverDraftButton.disabled = busy || !hasDraft;
-    mergeDraftButton.disabled = busy || !hasDraft;
-    discardDraftButton.disabled = busy || !hasDraft;
-    if (!hasDraft && !dirty) setPanelStatus(draftRecoveryStatus, "Drafts are cached locally as you type.", "ok");
+    const hasDraft = Boolean(state.pendingLocalDraft && state.currentPage?.id === state.pendingLocalDraft.documentId);
+    recoverDraftButton.disabled = state.busy || !hasDraft;
+    mergeDraftButton.disabled = state.busy || !hasDraft;
+    discardDraftButton.disabled = state.busy || !hasDraft;
+    if (!hasDraft && !state.dirty) setPanelStatus(draftRecoveryStatus, "Drafts are cached locally as you type.", "ok");
   }
-  function replacePage(page) {
-    pages = pages.map((item) => item.id === page.id ? page : item);
-    if (currentSite) currentSite = { ...currentSite, documents: pages };
-  }
-  async function refreshHistory(options = {}) {
-    if (!currentPage) {
-      documentRevisions = [];
-      renderHistory();
+
+  // web/cloud/knowledge.ts
+  async function searchCloud() {
+    const q = globalSearchInput.value.trim();
+    if (!q || !state.cloudUser) {
+      state.cloudSearchResults = [];
+      renderSearchResults();
       return;
     }
-    const pageId = currentPage.id;
-    if (!options.silent) setPanelStatus(historyStatus, "Loading history", "warning");
+    searchButton.disabled = true;
     try {
-      const response = await fetchCloudJson(`${currentPageEndpoint()}/revisions`);
-      if (currentPage?.id !== pageId) return;
-      documentRevisions = response.revisions;
-      if (!options.silent) setPanelStatus(historyStatus, `${documentRevisions.length} saved version${documentRevisions.length === 1 ? "" : "s"}`, "ok");
+      const params = new URLSearchParams({ q });
+      if (searchScopeSelect.value === "site" && state.currentSite) params.set("site", state.currentSite.id);
+      const response = await fetchCloudJson(`/api/knowledge/search?${params.toString()}`);
+      state.cloudSearchResults = response.results;
+      setCloudStatus(`${state.cloudSearchResults.length} search result${state.cloudSearchResults.length === 1 ? "" : "s"}`, "ok");
     } catch (error) {
-      if (!options.silent) setPanelStatus(historyStatus, errorMessage(error), "error");
-    } finally {
-      renderHistory();
-    }
-  }
-  function renderHistory() {
-    historyList.textContent = "";
-    refreshHistoryButton.disabled = busy || !currentPage;
-    refreshWorkButton.disabled = busy || !cloudUser;
-    workProjectSelect.disabled = busy || workProjects.length === 0;
-    projectKeyInput.disabled = busy || !canEditSite();
-    projectNameInput.disabled = busy || !canEditSite();
-    createProjectButton.disabled = busy || !canEditSite();
-    issueSummaryInput.disabled = busy || !canEditWorkProject();
-    issueTypeSelect.disabled = busy || !canEditWorkProject();
-    issuePrioritySelect.disabled = busy || !canEditWorkProject();
-    issueAssigneeInput.disabled = busy || !canEditWorkProject();
-    issueLabelsInput.disabled = busy || !canEditWorkProject();
-    issueSprintSelect.disabled = busy || !canEditWorkProject();
-    createIssueButton.disabled = busy || !canEditWorkProject();
-    sprintNameInput.disabled = busy || !canEditWorkProject();
-    createSprintButton.disabled = busy || !canEditWorkProject();
-    manageSprintSelect.disabled = busy || workSprints.length === 0;
-    startSprintButton.disabled = busy || !canEditWorkProject() || selectedWorkSprint()?.status !== "planned";
-    completeSprintButton.disabled = busy || !canEditWorkProject() || selectedWorkSprint()?.status !== "active";
-    issueFilterSelect.disabled = busy || !selectedWorkProject();
-    issueSearchInput.disabled = busy || !selectedWorkProject();
-    issueCommentInput.disabled = busy || !selectedIssue || !cloudUser;
-    addIssueCommentButton.disabled = busy || !selectedIssue || !cloudUser;
-    issueLinkTargetInput.disabled = busy || !selectedIssue || !canEditWorkProject();
-    issueLinkTypeSelect.disabled = busy || !selectedIssue || !canEditWorkProject();
-    addIssueLinkButton.disabled = busy || !selectedIssue || !canEditWorkProject();
-    if (!currentPage) {
-      historyList.append(emptyState("Select a page"));
-      return;
-    }
-    if (documentRevisions.length === 0) {
-      historyList.append(emptyState("No saved versions"));
-      return;
-    }
-    for (const [index, revision] of documentRevisions.entries()) {
-      const row = document.createElement("div");
-      row.className = "history-row";
-      const copy = document.createElement("div");
-      copy.className = "history-copy";
-      const title = document.createElement("strong");
-      const isCurrent = index === 0 && revision.hash === currentPage.hash;
-      title.textContent = `Version ${revision.revision}${isCurrent ? " \xB7 current" : ""}`;
-      const meta = document.createElement("span");
-      meta.className = "history-meta";
-      meta.textContent = `${formatDate(revision.createdAt)} \xB7 ${shortId(revision.createdBy)} \xB7 ${revision.hash.slice(0, 8)}`;
-      copy.append(title, meta);
-      const restore = document.createElement("button");
-      restore.type = "button";
-      restore.textContent = "Restore";
-      restore.disabled = busy || isCurrent || !canEditPage();
-      restore.addEventListener("click", () => {
-        void restoreRevision(revision);
-      });
-      const diff = document.createElement("button");
-      diff.type = "button";
-      diff.textContent = "Diff";
-      diff.disabled = busy;
-      diff.setAttribute("aria-label", `Compare version ${revision.revision} with the previous version`);
-      diff.addEventListener("click", () => {
-        void showRevisionDiff(revision);
-      });
-      const actions = document.createElement("div");
-      actions.className = "history-actions";
-      actions.append(restore, diff);
-      row.append(copy, actions);
-      historyList.append(row);
-    }
-  }
-  async function restoreRevision(revision) {
-    if (!currentPage || !canEditPage()) return;
-    if (dirty && !window.confirm("Discard the unsaved draft and restore this saved version?")) return;
-    if (!window.confirm(`Restore version ${revision.revision} as a new current version?`)) return;
-    setBusy(true, `Restoring version ${revision.revision}`, "warning");
-    try {
-      const restored = await fetchCloudJson(`${currentPageEndpoint()}/revisions/${revision.revision}/restore`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ expectedHash: currentPage.hash })
-      });
-      replacePage(restored);
-      setCurrentPage(restored);
-      setCloudStatus(`Restored version ${revision.revision}`, "ok");
-      await refreshHistory({ silent: true });
-    } catch (error) {
-      setPanelStatus(historyStatus, errorMessage(error), "error");
+      state.cloudSearchResults = [];
       setCloudStatus(errorMessage(error), "error");
     } finally {
-      setBusy(false);
-      renderChrome();
+      searchButton.disabled = state.busy || !state.cloudUser;
+      renderSearchResults();
     }
   }
-  function selectPage(pageId) {
-    if (currentPage?.id === pageId) return true;
-    if (!confirmDiscardDirty()) return false;
-    const page = pages.find((item) => item.id === pageId);
-    if (!page) return false;
-    setCurrentPage(page);
-    updateAddress();
-    return true;
-  }
-  function renderCurrent() {
-    const source = sourceInput.value;
-    try {
-      const doc = parse(source, { filename: `${currentPage?.id ?? "draft"}.noma` });
-      const diagnostics = validate(doc);
-      const body = renderHtml(doc, {
-        standalone: false,
-        allowEscapeHatches: false,
-        externalAssets: false,
-        interactive: false,
-        sourcePositions: true
-      });
-      renderState = {
-        doc,
-        diagnostics,
-        llm: renderLlm(doc)
-      };
-      previewFrame.srcdoc = previewDocument(body);
-    } catch (error) {
-      renderState = {
-        doc: null,
-        diagnostics: [],
-        llm: "",
-        error: error instanceof Error ? error : new Error(String(error))
-      };
-      previewFrame.srcdoc = previewError(errorMessage(error));
-    }
-    renderDiagnostics();
-    renderOutline();
-    renderWikiPanel();
-    renderChrome();
-  }
-  function scheduleRender() {
-    if (renderTimer !== void 0) window.clearTimeout(renderTimer);
-    renderTimer = window.setTimeout(() => {
-      renderTimer = void 0;
-      renderCurrent();
-    }, 180);
-  }
-  function setViewMode(mode) {
-    viewMode = mode;
-    if (mode === "preview") panelsOpen = false;
-    localStorage.setItem(viewModeStorageKey, viewMode);
-    localStorage.setItem(panelsOpenStorageKey, panelsOpen ? "true" : "false");
-    renderChrome();
-    renderCurrent();
-  }
-  function renderChrome() {
-    const shell = document.querySelector(".cloud-shell");
-    if (shell) {
-      shell.dataset.viewMode = viewMode;
-      shell.dataset.panels = panelsOpen ? "open" : "closed";
-    }
-    documentGrid.style.setProperty("--source-pane-width", `${splitSourceRatio}%`);
-    cloudUserNameInput.disabled = busy;
-    cloudInvitationCodeInput.disabled = busy || Boolean(cloudUser);
-    cloudUserTokenInput.disabled = busy || Boolean(cloudUser);
-    newUserButton.disabled = busy || !cloudAvailable || Boolean(cloudUser);
-    loginUserButton.disabled = busy || !cloudAvailable || Boolean(cloudUser);
-    logoutUserButton.disabled = busy || !cloudUser;
-    copyUserIdButton.disabled = busy || !cloudUser;
-    copyUserTokenButton.disabled = busy || !cloudUser;
-    themeToggleButton.textContent = themeMode === "dark" ? "Light" : "Dark";
-    themeToggleButton.setAttribute("aria-pressed", String(themeMode === "dark"));
-    newSpaceButton.disabled = busy || !cloudAvailable || !cloudUser;
-    saveSpaceButton.disabled = busy || !canEditSite();
-    newPageButton.disabled = busy || !canCreatePage();
-    newFolderButton.disabled = busy || !canEditSite();
-    importPageButton.disabled = busy || !canCreatePage();
-    pageTemplateSelect.disabled = busy || !canCreatePage() || pageTemplates.length === 0;
-    globalSearchInput.disabled = busy || !cloudUser;
-    searchScopeSelect.disabled = busy || !cloudUser;
-    searchButton.disabled = busy || !cloudUser || !globalSearchInput.value.trim();
-    refreshTrashButton.disabled = busy || !cloudUser;
-    savePageButton.disabled = busy || !canEditPage() || !currentPage;
-    reloadPageButton.disabled = busy || !currentPage;
-    favoritePageButton.disabled = busy || !cloudUser || !currentPage;
-    sourceInput.disabled = busy || !canEditPage();
-    pageTitleInput.disabled = busy || !canEditPage();
-    copyPageLinkButton.disabled = busy || !currentPage;
-    copyArtifactLinkButton.disabled = busy || !currentPage;
-    copySiteLinkButton.disabled = busy || !currentSite;
-    openPublishedSiteButton.disabled = busy || !currentSite;
-    inviteUserButton.disabled = busy || !canManagePermissions();
-    inviteGroupSelect.disabled = busy || !canManagePermissions() || groups.length === 0;
-    inviteGroupButton.disabled = busy || !canManagePermissions() || groups.length === 0;
-    refreshAccessButton.disabled = busy || !canManagePermissions() && !canEditPage();
-    refreshNotificationsButton.disabled = busy || !cloudUser;
-    readAllNotificationsButton.disabled = busy || !cloudUser || !notifications.some((notification) => !notification.readAt);
-    refreshCommentsButton.disabled = busy || !currentPage;
-    addCommentButton.disabled = busy || !currentPage || !cloudUser;
-    commentBlockIdInput.disabled = busy || !currentPage;
-    commentBodyInput.disabled = busy || !currentPage;
-    refreshApprovalsButton.disabled = busy || !currentPage;
-    requestApprovalButton.disabled = busy || !currentPage || !canEditPage();
-    approvalReviewerInput.disabled = busy || !currentPage || !canEditPage();
-    approvalNoteInput.disabled = busy || !currentPage || !canEditPage();
-    refreshActivityButton.disabled = busy || !currentPage;
-    refreshGroupsButton.disabled = busy || !cloudUser;
-    createGroupButton.disabled = busy || !cloudUser;
-    manageGroupSelect.disabled = busy || groups.length === 0;
-    groupMemberIdInput.disabled = busy || !selectedGroupManagedByCurrentUser();
-    groupMemberRoleSelect.disabled = busy || !selectedGroupManagedByCurrentUser();
-    addGroupMemberButton.disabled = busy || !selectedGroupManagedByCurrentUser();
-    applyPatchButton.disabled = busy || !canEditPage();
-    proposePatchButton.disabled = busy || !canEditPage() || !currentPage || dirty;
-    refreshPatchProposalsButton.disabled = busy || !currentPage;
-    copyLlmButton.disabled = busy || Boolean(renderState.error) || !renderState.llm;
-    togglePanelsButton.setAttribute("aria-pressed", String(panelsOpen));
-    togglePanelsButton.textContent = panelsOpen ? "Hide Panels" : "Panels";
-    for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
-      button.setAttribute("aria-pressed", String(button.dataset.viewMode === viewMode));
-    }
-    const role = currentPageRole();
-    const currentFavorite = Boolean(currentPage && favoriteItems.some((item) => item.resourceType === "document" && item.resourceId === currentPage?.id));
-    favoritePageButton.textContent = currentFavorite ? "Unfavorite" : "Favorite";
-    favoritePageButton.setAttribute("aria-pressed", String(currentFavorite));
-    roleBadge.textContent = role;
-    roleBadge.dataset.state = roleRank(role) >= roleRank("editor") ? "ok" : "warning";
-    dirtyBadge.textContent = dirty ? "unsaved" : "saved";
-    dirtyBadge.dataset.state = dirty ? "dirty" : "ok";
-    updatedText.textContent = currentPage ? `Updated ${formatDate(currentPage.updatedAt)}` : "";
-    renderPageMeta();
-    renderNavigation();
-    renderHistory();
-    renderWorkspaceTools();
-    renderCollaborationPanels();
-    renderWorkManagement();
-    renderPatchProposals();
-    renderAccessManagement();
-    renderKnowledgeWorkspace();
-  }
-  function renderNavigation() {
-    siteList.textContent = "";
-    if (sites.length === 0 && !currentSite) {
-      siteList.append(emptyState("No spaces"));
-    } else {
-      for (const site of sites) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "site-row";
-        button.setAttribute("aria-current", String(currentSite?.id === site.id));
-        button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
-        const title = button.querySelector(".row-title");
-        const meta = button.querySelector(".row-meta");
-        if (title) title.textContent = site.title;
-        if (meta) meta.textContent = `${site.documentIds.length} page${site.documentIds.length === 1 ? "" : "s"} / ${site.access?.role ?? site.currentRole ?? "viewer"}`;
-        button.addEventListener("click", () => {
-          void loadSite(site.id);
-        });
-        button.addEventListener("contextmenu", (event) => showSiteContextMenu(event, site));
-        siteList.append(button);
-      }
-    }
-    pageList.textContent = "";
-    if (pages.length === 0) {
-      pageList.append(emptyState("No pages"));
+  function renderSearchResults() {
+    searchResults.textContent = "";
+    if (!globalSearchInput.value.trim()) return;
+    if (state.cloudSearchResults.length === 0) {
+      searchResults.append(emptyState("No matches"));
       return;
     }
-    const groups2 = groupedPages();
-    for (const group of groups2) {
-      pageList.append(folderRow(group.folder, group.pages.length));
-      for (const { page, depth } of pageTreeOrder(group.pages)) {
-        pageList.append(pageRow(page, depth));
-      }
-    }
-  }
-  function pageTreeOrder(groupPages) {
-    const inGroup = new Set(groupPages.map((page) => page.id));
-    const children = /* @__PURE__ */ new Map();
-    const roots = [];
-    for (const page of groupPages) {
-      const parent = pageParentId(page.id);
-      if (parent && inGroup.has(parent)) children.set(parent, [...children.get(parent) ?? [], page]);
-      else roots.push(page);
-    }
-    const ordered = [];
-    const visit = (page, depth) => {
-      if (ordered.some((entry) => entry.page.id === page.id)) return;
-      ordered.push({ page, depth });
-      for (const child of children.get(page.id) ?? []) visit(child, depth + 1);
-    };
-    for (const root of roots) visit(root, 0);
-    return ordered;
-  }
-  function folderRow(folder, pageCount) {
-    const row = document.createElement("div");
-    row.className = "folder-row";
-    row.setAttribute("aria-current", String(sameFolder(activeFolder, folder)));
-    const label = document.createElement("button");
-    label.type = "button";
-    label.className = "folder-label";
-    label.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
-    const title = label.querySelector(".row-title");
-    const meta = label.querySelector(".row-meta");
-    if (title) title.textContent = folder || "Pages";
-    if (meta) meta.textContent = `${pageCount} page${pageCount === 1 ? "" : "s"}`;
-    label.addEventListener("click", () => {
-      activeFolder = folder;
-      setCloudStatus(folder ? `Selected ${folder}` : "Selected Pages", "ok");
-      renderChrome();
-    });
-    row.addEventListener("contextmenu", (event) => showFolderContextMenu(event, folder));
-    const actions = document.createElement("div");
-    actions.className = "folder-actions";
-    const addPage = iconButton("+", folder ? `New page in ${folder}` : "New page in Pages", () => {
-      activeFolder = folder;
-      void createPage(folder);
-    });
-    actions.append(addPage);
-    if (folder) {
-      actions.append(
-        iconButton("Rename", `Rename ${folder}`, () => void renameFolder(folder)),
-        iconButton("Delete", `Delete ${folder}`, () => void deleteFolder(folder), "danger")
-      );
-    }
-    row.append(label, actions);
-    return row;
-  }
-  function pageRow(page, depth = 0) {
-    const row = document.createElement("div");
-    row.className = "page-entry";
-    row.style.setProperty("--page-depth", String(Math.min(depth, 8)));
-    if (depth > 0) row.dataset.child = "true";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "page-row";
-    button.setAttribute("aria-current", String(currentPage?.id === page.id));
-    button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
-    const title = button.querySelector(".row-title");
-    const meta = button.querySelector(".row-meta");
-    if (title) title.textContent = page.title;
-    if (meta) meta.textContent = `${shortId(page.id)} / ${page.access?.role ?? currentSite?.access?.role ?? "viewer"}`;
-    button.addEventListener("click", () => selectPage(page.id));
-    row.addEventListener("contextmenu", (event) => showPageContextMenu(event, page));
-    const move = iconButton("Move", `Move ${page.title}`, () => void movePage(page.id));
-    move.disabled = busy || !canEditSite();
-    row.append(button, move);
-    return row;
-  }
-  function groupedPages() {
-    const folders = siteFolders(currentSite);
-    const groupFolder = (page) => pageFolder(pageAncestors(page.id).at(-1) ?? page.id);
-    const rootPages = pages.filter((page) => !groupFolder(page));
-    return [
-      { folder: "", pages: rootPages },
-      ...folders.map((folder) => ({ folder, pages: pages.filter((page) => sameFolder(groupFolder(page), folder)) }))
-    ];
-  }
-  function siteFolders(site) {
-    if (!site) return [];
-    return normalizeFolders([...site.folders ?? [], ...Object.values(site.pageFolders ?? {})]);
-  }
-  function normalizeSite(site) {
-    const pageFolders = normalizedPageFolders(site.pageFolders, site.documentIds);
-    return {
-      ...site,
-      folders: normalizeFolders([...site.folders ?? [], ...Object.values(pageFolders)]),
-      pageFolders,
-      pageParents: site.pageParents ?? {}
-    };
-  }
-  function normalizedPageFolders(value, documentIds) {
-    const allowed = new Set(documentIds);
-    const next = {};
-    for (const [pageId, folder] of Object.entries(value ?? {})) {
-      if (!allowed.has(pageId)) continue;
-      const normalized = normalizeFolderName(folder);
-      if (normalized) next[pageId] = normalized;
-    }
-    return next;
-  }
-  function pageFolder(pageId) {
-    return normalizeFolderName(currentSite?.pageFolders?.[pageId] ?? "");
-  }
-  function normalizeFolders(values) {
-    const seen = /* @__PURE__ */ new Set();
-    const next = [];
-    for (const value of values) {
-      const folder = normalizeFolderName(value ?? "");
-      if (!folder) continue;
-      const key = folder.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      next.push(folder);
-    }
-    return next.slice(0, 80);
-  }
-  function normalizeFolderName(value) {
-    return value.replace(/\\/g, "/").split("/").map((part) => part.trim().replace(/\s+/g, " ")).filter(Boolean).join("/").slice(0, 80);
-  }
-  function sameFolder(left, right) {
-    return normalizeFolderName(left).toLowerCase() === normalizeFolderName(right).toLowerCase();
-  }
-  function promptFolder(label, fallback = "") {
-    const value = window.prompt(label, fallback);
-    return value === null ? void 0 : normalizeFolderName(value);
-  }
-  function iconButton(text, title, onClick, variant) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = variant === "danger" ? "row-action row-action-danger" : "row-action";
-    button.textContent = text;
-    button.title = title;
-    button.setAttribute("aria-label", title);
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onClick();
-    });
-    return button;
-  }
-  function showContextMenu(event, actions) {
-    event.preventDefault();
-    event.stopPropagation();
-    showContextMenuAt(event.clientX, event.clientY, actions);
-  }
-  function showContextMenuAt(clientX, clientY, actions) {
-    closeContextMenu();
-    if (actions.length === 0) return;
-    const menu = document.createElement("div");
-    menu.className = "cloud-context-menu";
-    menu.setAttribute("role", "menu");
-    menu.addEventListener("click", (event) => event.stopPropagation());
-    menu.addEventListener("pointerdown", (event) => event.stopPropagation());
-    for (const item of actions) {
-      if (item.separatorBefore) {
-        const separator = document.createElement("div");
-        separator.className = "cloud-context-menu-separator";
-        separator.setAttribute("role", "separator");
-        menu.append(separator);
-      }
+    for (const result of state.cloudSearchResults.slice(0, 20)) {
       const button = document.createElement("button");
       button.type = "button";
-      button.setAttribute("role", "menuitem");
-      button.disabled = item.disabled === true;
-      if (item.danger) button.dataset.danger = "true";
-      const label = document.createElement("span");
-      label.textContent = item.label;
-      button.append(label);
-      if (item.hint) {
-        const hint = document.createElement("span");
-        hint.className = "cloud-context-menu-hint";
-        hint.textContent = item.hint;
-        button.append(hint);
-      }
-      button.addEventListener("click", () => {
-        if (button.disabled) return;
-        closeContextMenu();
-        void item.action();
-      });
-      menu.append(button);
-    }
-    menu.style.visibility = "hidden";
-    document.body.append(menu);
-    const rect = menu.getBoundingClientRect();
-    const left = Math.min(Math.max(8, clientX), Math.max(8, window.innerWidth - rect.width - 8));
-    const top = Math.min(Math.max(8, clientY), Math.max(8, window.innerHeight - rect.height - 8));
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-    menu.style.visibility = "visible";
-  }
-  function closeContextMenu() {
-    for (const menu of [...document.querySelectorAll(".cloud-context-menu")]) menu.remove();
-  }
-  function showSiteContextMenu(event, site) {
-    const isCurrent = currentSite?.id === site.id;
-    const canEdit = canEditSiteRecord(site);
-    const favorite = favoriteItems.some((item) => item.resourceType === "site" && item.resourceId === site.id);
-    showContextMenu(event, [
-      {
-        label: isCurrent ? "Refresh space" : "Open space",
-        hint: site.documentIds.length === 1 ? "1 page" : `${site.documentIds.length} pages`,
-        action: () => void loadSite(site.id)
-      },
-      {
-        label: "New page in space",
-        disabled: !canEdit,
-        action: () => void runWithLoadedSite(site.id, () => createPage())
-      },
-      {
-        label: "New folder",
-        disabled: !canEdit,
-        action: () => void runWithLoadedSite(site.id, () => createFolder())
-      },
-      {
-        label: "Copy space link",
-        disabled: !canEdit,
-        separatorBefore: true,
-        action: () => void runWithLoadedSite(site.id, () => copySiteLink())
-      },
-      {
-        label: favorite ? "Remove from favorites" : "Add to favorites",
-        action: () => void toggleFavorite("site", site.id)
-      },
-      {
-        label: "Save space",
-        disabled: !isCurrent || !canEditSite(),
-        action: () => void saveCurrentSite()
-      },
-      {
-        label: "Move space to trash",
-        disabled: site.access?.role !== "owner" && site.currentRole !== "owner",
-        danger: true,
-        action: () => void trashSite(site)
-      }
-    ]);
-  }
-  function showFolderContextMenu(event, folder) {
-    const title = folder || "Pages";
-    const sameAsCurrentPage = currentPage ? sameFolder(pageFolder(currentPage.id), folder) : false;
-    showContextMenu(event, [
-      {
-        label: "Select folder",
-        hint: title,
-        action: () => {
-          activeFolder = folder;
-          setCloudStatus(folder ? `Selected ${folder}` : "Selected Pages", "ok");
-          renderChrome();
-        }
-      },
-      {
-        label: "New page here",
-        disabled: !canCreatePage(),
-        action: () => {
-          activeFolder = folder;
-          void createPage(folder);
-        }
-      },
-      {
-        label: "Move current page here",
-        disabled: !currentPage || !canEditSite() || sameAsCurrentPage,
-        action: () => {
-          if (currentPage) void movePageToFolder(currentPage.id, folder);
-        }
-      },
-      {
-        label: "Rename folder",
-        disabled: !folder || !canEditSite(),
-        separatorBefore: true,
-        action: () => void renameFolder(folder)
-      },
-      {
-        label: "Delete folder",
-        disabled: !folder || !canEditSite(),
-        danger: true,
-        action: () => void deleteFolder(folder)
-      }
-    ]);
-  }
-  function showPageContextMenu(event, page) {
-    const isCurrent = currentPage?.id === page.id;
-    const favorite = favoriteItems.some((item) => item.resourceType === "document" && item.resourceId === page.id);
-    showContextMenu(event, [
-      {
-        label: isCurrent ? "Focus page" : "Open page",
-        hint: page.access?.role ?? currentSite?.access?.role ?? "viewer",
-        action: () => {
-          selectPage(page.id);
-        }
-      },
-      {
-        label: "Open in preview",
-        action: () => {
-          if (selectPage(page.id)) setViewMode("preview");
-        }
-      },
-      {
-        label: "Add child page",
-        disabled: !canEditSite(),
-        action: () => void createPage(pageFolder(pageAncestors(page.id).at(-1) ?? page.id), page.id)
-      },
-      {
-        label: "Move under page...",
-        disabled: !canEditSite(),
-        action: () => void movePageUnder(page.id)
-      },
-      {
-        label: "Move to folder...",
-        disabled: !canEditSite(),
-        action: () => void movePage(page.id)
-      },
-      {
-        label: activeFolder ? `Move to ${activeFolder}` : "Move to Pages",
-        disabled: !canEditSite() || sameFolder(pageFolder(page.id), activeFolder),
-        action: () => void movePageToFolder(page.id, activeFolder)
-      },
-      {
-        label: "Copy page link",
-        disabled: !currentSite,
-        separatorBefore: true,
-        action: () => runAfterSelectPage(page.id, () => copyPageLink())
-      },
-      {
-        label: "Copy artifact link",
-        action: () => runAfterSelectPage(page.id, () => copyArtifactLink())
-      },
-      {
-        label: "Copy page ID",
-        action: () => void copyText(page.id, "Copied page ID")
-      },
-      {
-        label: favorite ? "Remove from favorites" : "Add to favorites",
-        action: () => void toggleFavorite("document", page.id)
-      },
-      {
-        label: "Save page",
-        disabled: !isCurrent || !canEditPage(),
-        separatorBefore: true,
-        action: () => void saveCurrentPage()
-      },
-      {
-        label: "Move page to trash",
-        disabled: !canEditSite() && page.access?.role !== "owner" && page.access?.role !== "editor",
-        danger: true,
-        action: () => void trashPage(page)
-      }
-    ]);
-  }
-  function showOutlineContextMenu(event, node) {
-    const line = node.line;
-    const canEdit = canEditPage();
-    showContextMenu(event, [
-      {
-        label: "Focus in source",
-        disabled: line === void 0,
-        hint: line ? `Line ${line}` : void 0,
-        action: () => {
-          if (line) focusSourceLine(line);
-        }
-      },
-      {
-        label: "Insert section after",
-        disabled: !canEdit || line === void 0,
-        action: () => {
-          if (line) insertSourceBlockAtIndex(sectionEndInsertIndex(line), newSectionSource(line), "Added section from outline");
-        }
-      },
-      {
-        label: "Insert text after heading",
-        disabled: !canEdit || line === void 0,
-        action: () => {
-          if (line) insertSourceBlockAtIndex(line, "New paragraph.", "Added paragraph from outline");
-        }
-      },
-      {
-        label: "Copy block ID",
-        disabled: !node.id,
-        separatorBefore: true,
-        action: () => {
-          if (node.id) void copyText(node.id, "Copied block ID");
-        }
-      },
-      {
-        label: "Delete section",
-        disabled: !canEdit || node.level <= 1 || line === void 0,
-        danger: true,
-        action: () => deleteSectionAtLine(line)
-      }
-    ]);
-  }
-  function showWikiContextMenu(event, link, kind) {
-    showContextMenu(event, [
-      {
-        label: link.missing ? "Create linked page" : "Open linked page",
-        hint: `[[${link.target}]]`,
-        action: () => void openWikiTarget(link.target)
-      },
-      {
-        label: "Open backlink source",
-        disabled: kind !== "backlink" || !link.page,
-        action: () => {
-          if (link.page) selectPage(link.page.id);
-        }
-      },
-      {
-        label: "Copy wiki link",
-        separatorBefore: true,
-        action: () => void copyText(`[[${link.target}]]`, "Copied wiki link")
-      },
-      {
-        label: "Copy target",
-        action: () => void copyText(link.target, "Copied wiki target")
-      }
-    ]);
-  }
-  function showSourceContextMenu(event) {
-    showContextMenu(event, [
-      {
-        label: "Insert section at cursor",
-        disabled: !canEditPage(),
-        action: () => insertSectionAtCursor()
-      },
-      {
-        label: "Insert text at cursor",
-        disabled: !canEditPage(),
-        action: () => insertParagraphAtCursor()
-      },
-      {
-        label: "Save page",
-        disabled: !canEditPage() || !currentPage,
-        separatorBefore: true,
-        hint: "Cmd/Ctrl S",
-        action: () => void saveCurrentPage()
-      },
-      {
-        label: "Copy LLM context",
-        disabled: Boolean(renderState.error) || !renderState.llm,
-        action: () => void copyLlmContext()
-      },
-      {
-        label: "Preview only",
-        separatorBefore: true,
-        action: () => setViewMode("preview")
-      },
-      {
-        label: "Split view",
-        action: () => setViewMode("split")
-      }
-    ]);
-  }
-  function canEditSiteRecord(site) {
-    const role = cloudRole(site.access?.role ?? site.currentRole);
-    return Boolean(cloudAvailable && cloudUser && roleRank(role) >= roleRank("editor"));
-  }
-  function cloudRole(value) {
-    return value === "owner" || value === "editor" || value === "viewer" ? value : "viewer";
-  }
-  async function runWithLoadedSite(siteId, action) {
-    if (currentSite?.id !== siteId) await loadSite(siteId);
-    if (currentSite?.id === siteId) await action();
-  }
-  function runAfterSelectPage(pageId, action) {
-    if (!selectPage(pageId)) return;
-    void action();
-  }
-  function renderDiagnostics() {
-    diagnosticsList.textContent = "";
-    if (renderState.error) {
-      diagnosticsSummary.textContent = "Render failed";
-      diagnosticsSummary.dataset.state = "error";
-      diagnosticsList.append(diagnosticRow("error", "render", renderState.error.message));
-      return;
-    }
-    const errors = renderState.diagnostics.filter((item) => item.severity === "error").length;
-    const warnings = renderState.diagnostics.filter((item) => item.severity === "warning").length;
-    const infos = renderState.diagnostics.filter((item) => item.severity === "info").length;
-    diagnosticsSummary.textContent = `${errors} errors / ${warnings} warnings / ${infos} info`;
-    diagnosticsSummary.dataset.state = errors > 0 ? "error" : warnings > 0 ? "warning" : "ok";
-    if (renderState.diagnostics.length === 0) {
-      diagnosticsList.append(emptyState("No diagnostics"));
-      return;
-    }
-    for (const item of renderState.diagnostics) {
-      diagnosticsList.append(diagnosticRow(item.severity, item.code, item.message, item.pos?.line));
-    }
-  }
-  function renderOutline() {
-    outlineList.textContent = "";
-    const doc = renderState.doc;
-    if (!doc) {
-      outlineList.append(emptyState("No outline"));
-      return;
-    }
-    let count = 0;
-    for (const node of walk(doc)) {
-      if (node.type !== "section") continue;
-      count += 1;
-      const row = document.createElement("div");
-      row.className = "outline-row";
-      row.style.paddingLeft = `${Math.min(node.level - 1, 4) * 10 + 9}px`;
-      if (node.pos?.line) row.dataset.line = String(node.pos.line);
+      button.className = "search-result";
       const title = document.createElement("span");
       title.className = "row-title";
-      title.textContent = node.title;
+      title.textContent = result.title || result.documentTitle;
       const meta = document.createElement("span");
       meta.className = "row-meta";
-      meta.textContent = node.id ?? `h${node.level}`;
-      row.addEventListener("click", () => {
-        if (node.pos?.line) focusSourceLine(node.pos.line);
-      });
-      row.addEventListener("contextmenu", (event) => showOutlineContextMenu(event, {
-        id: node.id,
-        title: node.title,
-        level: node.level,
-        line: node.pos?.line
-      }));
-      row.append(title, meta);
-      if (node.level > 1 && node.pos?.line && canEditPage()) {
-        const deleteButton = iconButton("Delete", `Delete ${node.title}`, () => deleteSectionAtLine(node.pos?.line), "danger");
-        row.append(deleteButton);
-      }
-      outlineList.append(row);
+      const excerpt = result.excerpt ?? result.exactSource?.replace(/\s+/g, " ").slice(0, 180) ?? "";
+      const score = result.score === void 0 ? "" : ` \xB7 ${Math.round(result.score * 100)}%`;
+      const freshness = result.freshness ? ` \xB7 ${result.freshness.state.replace("_", " ")}` : "";
+      const line = result.line ?? result.sourceSpan?.line;
+      meta.textContent = `${result.documentTitle}${line ? ` \xB7 line ${line}` : ""}${score}${freshness} \xB7 ${excerpt}`;
+      button.append(title, meta);
+      button.addEventListener("click", () => void openSearchResult(result));
+      searchResults.append(button);
     }
-    if (count === 0) outlineList.append(emptyState("No outline"));
   }
+  async function askNoma() {
+    const query2 = askNomaInput.value.trim();
+    if (!query2 || !state.cloudUser || !state.cloudAvailable) return;
+    askNomaButton.disabled = true;
+    setPanelStatus(askNomaStatus, "Retrieving exact, permission-scoped evidence", "warning");
+    try {
+      state.askNomaResponse = await fetchCloudJson("/api/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: query2, ...state.currentSite ? { siteId: state.currentSite.id } : {} })
+      });
+      setPanelStatus(
+        askNomaStatus,
+        state.askNomaResponse.state === "answered" ? `${state.askNomaResponse.confidence.label} confidence \xB7 ${state.askNomaResponse.citations.length} exact citation${state.askNomaResponse.citations.length === 1 ? "" : "s"}` : "Insufficient evidence \u2014 Noma abstained",
+        state.askNomaResponse.state === "answered" ? "ok" : "warning"
+      );
+    } catch (error) {
+      state.askNomaResponse = void 0;
+      setPanelStatus(askNomaStatus, errorMessage(error), "error");
+    } finally {
+      askNomaButton.disabled = false;
+      renderKnowledgeWorkspace();
+    }
+  }
+  async function refreshKnowledgeWorkspace() {
+    if (!state.cloudAvailable || !state.cloudUser) {
+      state.knowledgeHealth = [];
+      state.agentInbox = [];
+      state.scopedAgents = [];
+      renderKnowledgeWorkspace();
+      return;
+    }
+    const siteQuery = state.currentSite ? `?site=${encodeURIComponent(state.currentSite.id)}` : "";
+    try {
+      const [health, inbox, agents] = await Promise.all([
+        fetchCloudJson(`/api/knowledge/health${siteQuery}`),
+        fetchCloudJson(`/api/agent-inbox${siteQuery}`),
+        fetchCloudJson("/api/agents")
+      ]);
+      state.knowledgeHealth = health.items;
+      state.agentInbox = inbox.changes;
+      state.scopedAgents = agents.agents;
+    } catch (error) {
+      setPanelStatus(askNomaStatus, errorMessage(error), "error");
+    } finally {
+      renderKnowledgeWorkspace();
+    }
+  }
+  function renderKnowledgeWorkspace() {
+    offlineStatus.textContent = navigator.onLine && state.cloudAvailable ? "online" : "offline";
+    offlineStatus.dataset.state = navigator.onLine && state.cloudAvailable ? "ok" : "warning";
+    askNomaButton.disabled = state.busy || !state.cloudUser || !state.cloudAvailable || !askNomaInput.value.trim();
+    refreshKnowledgeButton.disabled = state.busy || !state.cloudUser || !state.cloudAvailable;
+    renderAskNomaAnswer();
+    renderKnowledgeHealth();
+    renderAgentInbox();
+    renderAgentDirectory();
+    renderDraftRecovery();
+  }
+  function renderAskNomaAnswer() {
+    askNomaResult.textContent = "";
+    if (!state.askNomaResponse) {
+      askNomaResult.append(emptyState("Ask a question to retrieve exact block and version citations"));
+      return;
+    }
+    const answer = document.createElement("div");
+    answer.className = "knowledge-answer-text";
+    answer.textContent = state.askNomaResponse.answer;
+    askNomaResult.append(answer);
+    for (const citation of state.askNomaResponse.citations) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "knowledge-citation";
+      const title = document.createElement("span");
+      title.className = "row-title";
+      title.textContent = `[${citation.citation}] ${citation.documentTitle} \xB7 #${citation.blockId}`;
+      const meta = document.createElement("span");
+      meta.className = "row-meta";
+      meta.textContent = `lines ${citation.sourceSpan.line}-${citation.sourceSpan.endLine} \xB7 ${citation.freshness.state.replace("_", " ")} \xB7 ${Math.round(citation.score * 100)}% \xB7 ${citation.versionHash.slice(0, 10)}`;
+      button.append(title, meta);
+      button.addEventListener("click", () => void openKnowledgeCitation(citation));
+      askNomaResult.append(button);
+    }
+    for (const conflict of state.askNomaResponse.conflicts) {
+      const row = knowledgePanelRow(`Conflict: ${conflict.concept}`, conflict.reason, "error");
+      askNomaResult.append(row);
+    }
+  }
+  async function openKnowledgeCitation(citation) {
+    const sitePage = state.currentSite?.documentIds.includes(citation.documentId);
+    if (sitePage && state.currentSite) await loadSite(state.currentSite.id, citation.documentId);
+    else await loadStandaloneDocument(citation.documentId);
+    focusSourceLine(citation.sourceSpan.line);
+    try {
+      await fetchCloudJson("/api/analytics", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "citation_opened", documentId: citation.documentId, query: askNomaInput.value.trim() })
+      });
+    } catch {
+      return;
+    }
+  }
+  function renderKnowledgeHealth() {
+    knowledgeHealthList.textContent = "";
+    if (state.knowledgeHealth.length === 0) {
+      knowledgeHealthList.append(emptyState("No active health issues"));
+      return;
+    }
+    for (const item of state.knowledgeHealth.slice(0, 12)) {
+      const row = knowledgePanelRow(item.kind.replaceAll("_", " "), item.message, item.severity);
+      if (item.documentId) row.addEventListener("click", () => void openHealthItem(item));
+      knowledgeHealthList.append(row);
+    }
+  }
+  async function openHealthItem(item) {
+    if (!item.documentId) return;
+    if (state.currentSite?.documentIds.includes(item.documentId)) await loadSite(state.currentSite.id, item.documentId);
+    else await loadStandaloneDocument(item.documentId);
+    if (item.blockId) focusBlock(item.blockId);
+  }
+  function renderAgentInbox() {
+    agentChangeInboxList.textContent = "";
+    if (state.agentInbox.length === 0) {
+      agentChangeInboxList.append(emptyState("No agent changes awaiting review"));
+      return;
+    }
+    for (const item of state.agentInbox.slice(0, 12)) {
+      const row = knowledgePanelRow(item.applyStatus.replaceAll("_", " "), item.plan[0] ?? "Agent change", item.applyStatus === "rejected" ? "error" : item.applyStatus === "applied" ? "ok" : "warning");
+      row.addEventListener("click", () => void openAgentInboxItem(item));
+      agentChangeInboxList.append(row);
+    }
+  }
+  async function openAgentInboxItem(item) {
+    if (state.currentSite?.documentIds.includes(item.documentId)) await loadSite(state.currentSite.id, item.documentId);
+    else await loadStandaloneDocument(item.documentId);
+    if (item.affectedIds[0]) focusBlock(item.affectedIds[0]);
+  }
+  function renderAgentDirectory() {
+    agentDirectoryList.textContent = "";
+    if (state.scopedAgents.length === 0) {
+      agentDirectoryList.append(emptyState("No scoped agents"));
+      return;
+    }
+    for (const agent of state.scopedAgents.slice(0, 10)) {
+      const retention = agent.modelPolicy.zeroRetention ? "zero retention" : "provider retention";
+      agentDirectoryList.append(knowledgePanelRow(`${agent.name} \xB7 ${agent.status}`, `${agent.modelPolicy.model} \xB7 ${retention} \xB7 $${agent.spentUsd.toFixed(2)} / $${agent.budgetUsd.toFixed(2)} \xB7 ${agent.capabilities.length} capabilities`, agent.status === "active" ? "ok" : "warning"));
+    }
+  }
+  function knowledgePanelRow(titleText, metaText, panelState) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "collaboration-row";
+    row.dataset.state = panelState;
+    const title = document.createElement("span");
+    title.className = "row-title";
+    title.textContent = titleText;
+    const meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = metaText;
+    row.append(title, meta);
+    return row;
+  }
+  async function openSearchResult(result) {
+    if (result.siteId) await loadSite(result.siteId, result.documentId);
+    else await loadStandaloneDocument(result.documentId);
+    const line = result.line ?? result.sourceSpan?.line;
+    if (line) focusSourceLine(line);
+  }
+  async function refreshPatchProposals() {
+    if (!state.currentPage) {
+      state.patchProposals = [];
+      renderPatchProposals();
+      return;
+    }
+    const pageId = state.currentPage.id;
+    try {
+      const response = await fetchCloudJson(`${currentPageEndpoint()}/patch-proposals`);
+      if (state.currentPage?.id === pageId) state.patchProposals = response.proposals;
+    } catch (error) {
+      setPanelStatus(agentStatus, errorMessage(error), "error");
+    } finally {
+      renderPatchProposals();
+    }
+  }
+  async function proposeAgentPatch() {
+    if (!state.currentPage || !canEditPage()) return;
+    if (state.dirty) {
+      setPanelStatus(agentStatus, "Save the current draft before creating a version-bound patch proposal", "error");
+      return;
+    }
+    try {
+      const ops = parsePatchOps(patchInput.value);
+      const proposal = await fetchCloudJson(`${currentPageEndpoint()}/patch-proposals`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ops,
+          issueId: state.selectedIssue?.id,
+          summary: state.selectedIssue ? `Agent patch for ${state.selectedIssue.key}` : "Agent patch proposal"
+        })
+      });
+      await Promise.all([refreshPatchProposals(), refreshActivity()]);
+      if (state.selectedIssue) await selectWorkIssue(state.selectedIssue.id);
+      setPanelStatus(
+        agentStatus,
+        `Proof ${proposal.proof.status ?? "created"}; proposal awaits review${state.selectedIssue ? ` on ${state.selectedIssue.key}` : ""}`,
+        "ok"
+      );
+    } catch (error) {
+      setPanelStatus(agentStatus, errorMessage(error), "error");
+    }
+  }
+  async function reviewPatchProposal(proposal, decision) {
+    try {
+      await fetchCloudJson(`${currentPageEndpoint()}/patch-proposals/${encodeURIComponent(proposal.id)}/review`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision })
+      });
+      await Promise.all([refreshPatchProposals(), refreshActivity()]);
+      if (proposal.issueId && state.selectedIssue?.id === proposal.issueId) await selectWorkIssue(proposal.issueId);
+    } catch (error) {
+      setPanelStatus(agentStatus, errorMessage(error), "error");
+    }
+  }
+  async function applyPatchProposal(proposal) {
+    if (state.dirty && !window.confirm("Discard the unsaved draft and apply this reviewed patch to the saved page?")) return;
+    try {
+      const response = await fetchCloudJson(
+        `${currentPageEndpoint()}/patch-proposals/${encodeURIComponent(proposal.id)}/apply`,
+        { method: "POST" }
+      );
+      replacePage(response.document);
+      setCurrentPage(response.document);
+      setPanelStatus(agentStatus, `Applied reviewed patch \xB7 ${response.document.hash.slice(0, 8)}`, "ok");
+      if (proposal.issueId && state.selectedIssue?.id === proposal.issueId) await selectWorkIssue(proposal.issueId);
+    } catch (error) {
+      setPanelStatus(agentStatus, errorMessage(error), "error");
+    }
+  }
+  function renderPatchProposals() {
+    patchProposalList.textContent = "";
+    if (!state.currentPage) {
+      patchProposalList.append(emptyState("Select a page"));
+      return;
+    }
+    if (state.patchProposals.length === 0) {
+      patchProposalList.append(emptyState("No patch proposals"));
+      return;
+    }
+    for (const proposal of state.patchProposals.slice(0, 20)) {
+      const linkedIssue = proposal.issueId ? state.workIssues.find((issue) => issue.id === proposal.issueId)?.key ?? shortId(proposal.issueId) : void 0;
+      const stale = proposal.documentHash !== state.currentPage.hash && proposal.status !== "applied";
+      const preserved = proposal.proof.sourceMetrics?.preservedPercent;
+      const row = collaborationRow(
+        `${proposal.status} \xB7 ${proposal.proposedByName}`,
+        proposal.summary || proposal.proof.diff?.slice(0, 260) || "Agent patch",
+        `${linkedIssue ? `${linkedIssue} \xB7 ` : ""}${proposal.proof.status ?? "proof"}${typeof preserved === "number" ? ` \xB7 ${preserved.toFixed(1)}% preserved` : ""}${stale ? " \xB7 stale" : ""} \xB7 ${formatDate(proposal.createdAt)}`
+      );
+      const actions = collaborationActions();
+      if (proposal.status === "pending" && !stale) {
+        if (proposal.proposedBy !== state.cloudUser?.id && canEditPage()) {
+          actions.append(
+            actionButton("Approve", () => void reviewPatchProposal(proposal, "approved")),
+            actionButton("Reject", () => void reviewPatchProposal(proposal, "rejected"))
+          );
+        } else if (proposal.proposedBy === state.cloudUser?.id) {
+          actions.append(actionButton("Withdraw", () => void reviewPatchProposal(proposal, "rejected")));
+        }
+      }
+      if (proposal.status === "approved" && !stale && canEditPage()) {
+        actions.append(actionButton("Apply", () => void applyPatchProposal(proposal)));
+      }
+      row.append(actions);
+      patchProposalList.append(row);
+    }
+  }
+  async function applyAgentPatch() {
+    try {
+      const ops = parsePatchOps(patchInput.value);
+      const nextSource = patchSource(sourceInput.value, ops);
+      const nextDoc = parse(nextSource, { filename: `${state.currentPage?.id ?? "draft"}.noma` });
+      const nextDiagnostics = validate(nextDoc);
+      const errors = nextDiagnostics.filter((item) => item.severity === "error");
+      if (errors.length > 0) {
+        throw new Error(`Patch produced ${errors.length} validation error${errors.length === 1 ? "" : "s"}`);
+      }
+      sourceInput.value = nextSource;
+      markDirty();
+      syncTitleFromSource();
+      renderCurrent();
+      setPanelStatus(agentStatus, `Applied ${ops.length} patch op${ops.length === 1 ? "" : "s"}`, "ok");
+      setCloudStatus("Applied patch", "ok");
+    } catch (error) {
+      setPanelStatus(agentStatus, errorMessage(error), "error");
+    }
+  }
+  async function copyLlmContext() {
+    if (state.renderState.error || !state.renderState.llm) {
+      setPanelStatus(agentStatus, "Render the page before copying LLM context", "error");
+      return;
+    }
+    await copyText(state.renderState.llm, "Copied LLM context");
+    setPanelStatus(agentStatus, "Copied LLM context", "ok");
+  }
+  function parsePatchOps(text) {
+    const parsed = JSON.parse(text);
+    const list = Array.isArray(parsed) ? parsed : [parsed];
+    for (const item of list) {
+      if (!item || typeof item !== "object" || typeof item.op !== "string") {
+        throw new Error("Patch operations must be objects with an op field");
+      }
+    }
+    return list;
+  }
+
+  // themes/default.css
+  var default_default = ':root {\n  --noma-bg: #fbfaf7;\n  --noma-fg: #1d1c1a;\n  --noma-muted: #6b6a66;\n  --noma-rule: #e7e4dc;\n  --noma-accent: #b9522a;\n  --noma-accent-soft: #f4dccd;\n  --noma-claim: #2c5d8f;\n  --noma-claim-soft: #dfeaf5;\n  --noma-evidence: #2f7d4a;\n  --noma-evidence-soft: #dff0e3;\n  --noma-risk: #a8362e;\n  --noma-risk-soft: #f7d9d4;\n  --noma-code-bg: #f1ede4;\n  --noma-card-bg: #ffffff;\n  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);\n  --noma-radius: 8px;\n  --noma-cols: 2;\n  --noma-grid-min: 14rem;\n  --noma-grid-gap: 1rem;\n  --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;\n  --noma-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;\n  --noma-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;\n}\n\n* { box-sizing: border-box; }\n\nhtml, body {\n  margin: 0;\n  padding: 0;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n  font-family: var(--noma-font-serif);\n  font-size: 16px;\n  line-height: 1.58;\n  -webkit-font-smoothing: antialiased;\n  text-rendering: optimizeLegibility;\n}\n\nmain.noma-doc {\n  max-width: 1040px;\n  margin: 3rem auto;\n  padding: 0 1.25rem 5rem;\n}\n\nmain.noma-doc > section.noma-hero ~ section,\nmain.noma-doc > .noma-grid,\nmain.noma-doc > .noma-columns {\n  max-width: 100%;\n}\n\nh1, h2, h3, h4, h5, h6 {\n  font-family: var(--noma-font-sans);\n  font-weight: 700;\n  line-height: 1.2;\n  letter-spacing: 0;\n  margin: 2em 0 0.55em;\n}\nh1 { font-size: 2.1rem; margin-top: 0; }\nh2 { font-size: 1.45rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.25em; }\nh3 { font-size: 1.15rem; }\nh4 { font-size: 0.98rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n\np { margin: 0 0 1.05em; }\na { color: var(--noma-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }\na:hover { text-decoration-thickness: 2px; }\n\ncode {\n  font-family: var(--noma-font-mono);\n  font-size: 0.9em;\n  background: var(--noma-code-bg);\n  padding: 0.1em 0.35em;\n  border-radius: 4px;\n}\npre {\n  background: var(--noma-code-bg);\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  overflow-x: auto;\n  font-size: 0.9rem;\n  line-height: 1.5;\n}\npre code { background: none; padding: 0; }\n\nblockquote {\n  border-left: 3px solid var(--noma-accent);\n  margin: 1.5em 0;\n  padding: 0.2em 1.2em;\n  color: var(--noma-muted);\n  font-style: italic;\n}\n\nhr { border: 0; border-top: 1px solid var(--noma-rule); margin: 3em 0; }\n\nul, ol { padding-left: 1.4em; }\nli { margin: 0.25em 0; }\n\nfigure {\n  margin: 1.8em 0;\n}\nfigure img {\n  display: block;\n  max-width: 100%;\n  height: auto;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\nfigcaption {\n  margin-top: 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n\n/* Callouts */\naside.noma-callout {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-accent-soft);\n  border-left: 3px solid var(--noma-accent);\n}\naside.noma-callout-warning { background: #fbe6df; border-color: var(--noma-risk); }\naside.noma-callout-tip     { background: #e6f3eb; border-color: var(--noma-evidence); }\naside.noma-callout-note    { background: #ecedf2; border-color: #5a6071; }\n\n/* Research blocks */\naside.noma-research {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-research .noma-research-head {\n  display: flex;\n  align-items: center;\n  gap: 0.8em;\n  margin-bottom: 0.5em;\n}\naside.noma-research .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-muted);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-code-bg);\n}\naside.noma-claim          { border-left: 3px solid var(--noma-claim); }\naside.noma-claim .noma-tag { color: var(--noma-claim); background: var(--noma-claim-soft); }\naside.noma-evidence       { border-left: 3px solid var(--noma-evidence); }\naside.noma-evidence .noma-tag { color: var(--noma-evidence); background: var(--noma-evidence-soft); }\naside.noma-counterevidence { border-left: 3px solid var(--noma-risk); }\naside.noma-counterevidence .noma-tag { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-risk           { border-left: 3px solid var(--noma-risk); }\naside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }\naside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }\naside.noma-open_question { border-left: 3px solid #8b6c1a; }\naside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }\naside.noma-assumption { border-left: 3px solid #5a6071; }\naside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }\n\n/* Variants \u2014 themable per-block emphasis without inline styling */\n[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }\n[data-variant="subtle"] { opacity: 0.78; box-shadow: none; }\n[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }\n[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }\n[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }\n\n/* Export buttons (artifact-side action surface) */\n.noma-export-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  border: 0;\n  padding: 0.55em 1.1em;\n  margin: 0.3em 0.4em 0.3em 0;\n  border-radius: 999px;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.85rem;\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n.noma-export-button:hover { background: var(--noma-accent); color: white; }\n.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }\n.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }\n.noma-export-button[data-format="json"] { background: var(--noma-muted); }\n\n/* Controls (interactive artifact blocks) */\n.noma-control {\n  margin: 1em 0;\n  padding: 0.8em 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-control-row {\n  display: grid;\n  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 2fr);\n  gap: 0.75rem;\n  align-items: center;\n}\n.noma-control-label { font-weight: 650; }\n.noma-control input,\n.noma-control select {\n  width: 100%;\n  accent-color: var(--noma-accent);\n  font: inherit;\n}\n.noma-control input[type="number"],\n.noma-control input[type="text"],\n.noma-control select {\n  border: 1px solid var(--noma-rule);\n  border-radius: 6px;\n  padding: 0.35em 0.5em;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n}\n.noma-control input[type="checkbox"] {\n  width: auto;\n  justify-self: start;\n}\n.noma-control-value {\n  display: block;\n  margin-top: 0.35rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-mono);\n  font-size: 0.82rem;\n}\n.noma-interactive-disabled {\n  display: inline-block;\n  margin-bottom: 0.5rem;\n  padding: 0.18em 0.55em;\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n  font-weight: 650;\n}\n\n.noma-computed {\n  margin: 1.2em 0;\n  padding: 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 4px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-computed-head {\n  display: flex;\n  gap: 0.8rem;\n  align-items: baseline;\n  flex-wrap: wrap;\n  margin-bottom: 0.45rem;\n}\n.noma-computed-head h3 {\n  margin: 0;\n  font-size: 1rem;\n}\n.noma-computed-value {\n  font-family: var(--noma-font-sans);\n  font-size: 1.75rem;\n  line-height: 1.15;\n  font-weight: 750;\n  color: var(--noma-claim);\n}\n.noma-computed-body {\n  margin-top: 0.75rem;\n}\n.noma-computed-body p {\n  margin-bottom: 0;\n}\n.noma-computed-plot {\n  padding: 1em;\n}\n.noma-computed-canvas {\n  margin-bottom: 0.5rem;\n}\n.noma-computed-table-view {\n  margin: 0.65rem 0 0;\n  font-size: 0.9rem;\n}\n.noma-computed-table-view th:last-child,\n.noma-computed-table-view td:last-child {\n  text-align: right;\n}\n@media (max-width: 720px) {\n  .noma-control-row {\n    grid-template-columns: 1fr;\n  }\n}\n\n.noma-confidence {\n  flex: 1;\n  height: 6px;\n  border-radius: 999px;\n  background: var(--noma-rule);\n  overflow: hidden;\n  max-width: 140px;\n}\n.noma-confidence-bar {\n  height: 100%;\n  background: linear-gradient(90deg, var(--noma-accent), var(--noma-claim));\n}\n\n.noma-meta {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\n.noma-meta-key {\n  font-weight: 600;\n  color: var(--noma-fg);\n}\n\n/* Grid */\n.noma-grid,\n.noma-columns {\n  display: grid;\n  grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));\n  gap: var(--noma-grid-gap);\n  margin: 1.5em 0;\n}\n.noma-grid-auto,\n.noma-columns-auto {\n  grid-template-columns: repeat(auto-fit, minmax(min(var(--noma-grid-min), 100%), 1fr));\n}\n.noma-grid-wide,\n.noma-columns-wide,\n.noma-grid-full,\n.noma-columns-full {\n  position: relative;\n  left: 50%;\n  transform: translateX(-50%);\n}\n.noma-grid-wide,\n.noma-columns-wide {\n  width: min(1180px, calc(100vw - 2rem));\n}\n.noma-grid-full,\n.noma-columns-full {\n  width: min(1440px, calc(100vw - 2rem));\n}\n.noma-grid-compact,\n.noma-columns-compact {\n  --noma-grid-gap: 0.75rem;\n}\n@media (max-width: 720px) {\n  .noma-grid,\n  .noma-columns {\n    grid-template-columns: 1fr;\n    width: auto;\n    left: auto;\n    transform: none;\n  }\n}\n\n/* Card */\narticle.noma-card {\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 1em 1.1em;\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-card .noma-card-head {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  margin-bottom: 0.4em;\n}\narticle.noma-card h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-family: var(--noma-font-sans);\n}\narticle.noma-card .noma-icon {\n  color: var(--noma-accent);\n  font-size: 0.9em;\n}\narticle.noma-card p:last-child { margin-bottom: 0; }\n\n/* Hero */\nsection.noma-hero {\n  background: linear-gradient(180deg, var(--noma-accent-soft), transparent);\n  padding: 3rem 2rem 2.4rem;\n  border-radius: var(--noma-radius);\n  margin: 0 0 3rem;\n  text-align: center;\n}\nsection.noma-hero h1 { font-size: 2.8rem; margin-top: 0; }\n\na.noma-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  padding: 0.7em 1.4em;\n  border-radius: 999px;\n  text-decoration: none;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.95rem;\n  margin-top: 0.5em;\n}\na.noma-button:hover { background: var(--noma-accent); color: white; }\n\n/* Plot */\nfigure.noma-plot {\n  margin: 1.8em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n}\nfigure.noma-plot .noma-plot-canvas {\n  color: var(--noma-claim);\n  background: linear-gradient(180deg, transparent, var(--noma-claim-soft));\n  border-radius: 6px;\n  padding: 0.6em;\n}\nfigure.noma-plot svg { width: 100%; height: auto; display: block; }\nfigure.noma-plot figcaption {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\nfigure.noma-plot[data-compact="true"] {\n  padding: 0.65em 0.8em;\n}\nfigure.noma-plot[data-compact="true"] figcaption {\n  margin-top: 0.35em;\n  font-size: 0.78rem;\n}\n\n/* Dataset */\ndetails.noma-dataset {\n  margin: 1.4em 0;\n  padding: 0.6em 1em;\n  background: var(--noma-code-bg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\ndetails.noma-dataset pre {\n  background: transparent;\n  padding: 0.6em 0 0;\n}\n\n/* Agent task */\n.noma-agent-task {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-claim-soft);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n}\n.noma-agent-task label {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.9rem;\n  margin-bottom: 0.4em;\n}\n\n/* Collaboration metadata */\naside.noma-comment,\naside.noma-review-meta {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-comment {\n  background: #f7f6f1;\n}\n.noma-comment-head,\n.noma-review-meta-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.55em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-comment .noma-tag,\n.noma-review-meta .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-review-meta.noma-collab-review {\n  border-left-color: var(--noma-accent);\n}\n.noma-review-meta.noma-collab-review .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-review-meta.noma-collab-provenance {\n  border-left-color: var(--noma-claim);\n}\n.noma-review-meta.noma-collab-provenance .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-review-meta.noma-collab-confidence {\n  border-left-color: var(--noma-evidence);\n}\n.noma-review-meta.noma-collab-confidence .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-comment-body p:last-child,\n.noma-review-meta-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Memory profile */\naside.noma-memory,\naside.noma-memory-index {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-memory-index {\n  background: #f4f7f8;\n}\n.noma-memory-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-memory .noma-tag,\n.noma-memory-index .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-memory h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-memory.noma-memory-user {\n  border-left-color: var(--noma-evidence);\n}\n.noma-memory.noma-memory-user .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-memory.noma-memory-feedback {\n  border-left-color: var(--noma-accent);\n}\n.noma-memory.noma-memory-feedback .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-memory.noma-memory-project {\n  border-left-color: var(--noma-claim);\n}\n.noma-memory.noma-memory-project .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-memory.noma-memory-reference {\n  border-left-color: #5a6071;\n}\n.noma-memory.noma-memory-reference .noma-tag {\n  color: #5a6071;\n  background: #ecedf2;\n}\n.noma-memory-body p:last-child,\n.noma-memory-index .noma-memory-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Metrics */\naside.noma-metric {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-evidence);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-metric-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.25em;\n}\n.noma-metric .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-evidence);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-evidence-soft);\n}\n.noma-metric h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-metric-value {\n  margin: 0.2em 0 0.25em;\n  color: var(--noma-evidence);\n  font-family: var(--noma-font-sans);\n  font-size: 1.7rem;\n  font-weight: 800;\n  line-height: 1.15;\n}\n.noma-metric-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Technical documentation */\narticle.noma-technical {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-technical .noma-technical-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n}\narticle.noma-technical .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-claim);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n}\narticle.noma-technical h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-technical-meta {\n  margin: 0.35em 0 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.85rem;\n}\n.noma-technical-body p:last-child {\n  margin-bottom: 0;\n}\npre.noma-technical-code {\n  margin: 0.7em 0 0;\n}\n\n/* Custom directives */\naside.noma-block {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-block-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n  font-family: var(--noma-font-sans);\n}\naside.noma-block .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\naside.noma-block h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-block-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Change requests */\naside.noma-change-request {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: #fff4f0;\n  border: 1px solid #f0c7bd;\n  border-left: 3px solid #c85c4a;\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-change-request-head {\n  font-size: 0.85rem;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.45em;\n}\n.noma-change-request-delta {\n  display: flex;\n  align-items: baseline;\n  gap: 0.55em;\n  margin: 0.35em 0 0.55em;\n  line-height: 1.5;\n}\n.noma-change-request del {\n  color: #9a382b;\n  text-decoration-thickness: 0.12em;\n}\n.noma-change-request ins {\n  color: #2f6e42;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n/* State change */\naside.noma-state-change {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-fg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-state-change-head {\n  font-size: 0.85rem;\n  letter-spacing: 0.02em;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.4em;\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  flex-wrap: wrap;\n}\n.noma-state-change-delta {\n  font-size: 1rem;\n  display: flex;\n  align-items: baseline;\n  gap: 0.6em;\n  margin: 0.3em 0 0.5em;\n  font-variant-numeric: tabular-nums;\n}\n.noma-state-from {\n  text-decoration: line-through;\n  opacity: 0.65;\n}\n.noma-state-to {\n  font-weight: 700;\n}\n.noma-state-arrow {\n  opacity: 0.55;\n  font-size: 0.95em;\n}\n\n/* Tables */\ntable.noma-table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 1.6em 0;\n  font-family: var(--noma-font-sans);\n  font-size: 0.88rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  overflow: hidden;\n  box-shadow: var(--noma-shadow);\n}\ntable.noma-table thead {\n  background: var(--noma-code-bg);\n}\ntable.noma-table th {\n  text-align: left;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  padding: 0.55em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  color: var(--noma-fg);\n}\ntable.noma-table td {\n  padding: 0.5em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  vertical-align: top;\n}\ntable.noma-table tbody tr:last-child td { border-bottom: 0; }\ntable.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }\n\n.noma-page-header,\n.noma-page-footer {\n  margin: 1.2rem 0;\n  padding: 0.55rem 0;\n  border-color: var(--noma-rule);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-page-header {\n  border-bottom: 1px solid var(--noma-rule);\n}\n.noma-page-footer {\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-page-header p,\n.noma-page-footer p {\n  margin: 0;\n}\n.noma-page-number {\n  display: block;\n  text-align: right;\n}\n\n.noma-toc {\n  margin: 1.6rem 0 2rem;\n  padding: 1rem 1.1rem;\n  border: 1px solid var(--noma-rule);\n  background: var(--noma-card-bg);\n  font-family: var(--noma-font-sans);\n  box-shadow: var(--noma-shadow);\n}\n.noma-toc h2 {\n  margin: 0 0 0.6rem;\n  padding: 0;\n  border: 0;\n  font-size: 1.1rem;\n}\n.noma-toc ol {\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n.noma-toc li {\n  margin: 0.15rem 0;\n}\n.noma-toc li[data-level="2"] { margin-left: 1rem; }\n.noma-toc li[data-level="3"] { margin-left: 2rem; }\n.noma-toc li[data-level="4"] { margin-left: 3rem; }\n.noma-toc li[data-level="5"] { margin-left: 4rem; }\n.noma-toc li[data-level="6"] { margin-left: 5rem; }\n\n.noma-footnote,\n.noma-endnote {\n  margin: 1.2rem 0;\n  padding: 0.7rem 0.9rem;\n  border-left: 3px solid var(--noma-rule);\n  background: var(--noma-code-bg);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-footnote p,\n.noma-endnote p {\n  margin: 0.25rem 0;\n}\n.noma-footnote sup,\n.noma-endnote sup {\n  margin-right: 0.4rem;\n  color: var(--noma-accent);\n  font-weight: 700;\n}\n\n.noma-bibliography {\n  margin: 2rem 0;\n  padding-top: 0.8rem;\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-bibliography h2 {\n  margin-top: 0;\n}\n.noma-bibliography ol {\n  padding-left: 1.4rem;\n}\n.noma-citation-meta {\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9em;\n}\n\n.noma-pagebreak {\n  margin: 2rem 0;\n  border: 0;\n  border-top: 1px dashed var(--noma-rule);\n}\n\n/* Print */\n@media print {\n  @page { margin: 20mm 18mm; }\n  html, body { background: white; font-size: 11pt; }\n  main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }\n  section.noma-hero { background: none; border: 1px solid var(--noma-rule); }\n  a { color: var(--noma-fg); }\n  pre, article.noma-card, article.noma-technical, aside.noma-block, .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, aside.noma-comment, aside.noma-review-meta, aside.noma-memory, aside.noma-memory-index, aside.noma-metric, aside.noma-change-request, aside.noma-footnote, aside.noma-endnote, nav.noma-toc, header.noma-page-header, footer.noma-page-footer, details.noma-dataset, table.noma-table {\n    box-shadow: none;\n    page-break-inside: avoid;\n    break-inside: avoid;\n  }\n  .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {\n    background: white;\n  }\n  table.noma-table {\n    font-size: 9.5pt;\n    box-shadow: none;\n  }\n  table.noma-table th,\n  table.noma-table td {\n    padding: 0.35em 0.55em;\n  }\n  h1, h2, h3 {\n    page-break-after: avoid;\n    break-after: avoid;\n  }\n  .noma-pagebreak {\n    margin: 0;\n    border: 0;\n    height: 0;\n    page-break-after: always;\n    break-after: page;\n  }\n}\n\n/* v0.4 \u2014 alias anchors (offset for sticky-headed pages) */\na.noma-alias {\n  display: block;\n  position: relative;\n  top: -1.2em;\n  visibility: hidden;\n  height: 0;\n}\n\n/* v0.4 \u2014 multi-page site nav (rendered above main when --to site) */\nnav.noma-site-nav {\n  max-width: 1040px;\n  margin: 1.5rem auto 0;\n  padding: 0 2rem;\n  display: flex;\n  align-items: baseline;\n  gap: 1.5rem;\n  flex-wrap: wrap;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n}\nnav.noma-site-nav a.noma-site-home {\n  font-weight: 600;\n  color: var(--noma-fg);\n  text-decoration: none;\n  border-right: 1px solid var(--noma-rule);\n  padding-right: 1.25rem;\n}\nnav.noma-site-nav ol {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n  display: flex;\n  gap: 1.25rem;\n  flex-wrap: wrap;\n  counter-reset: chap;\n}\nnav.noma-site-nav li {\n  counter-increment: chap;\n}\nnav.noma-site-nav li::before {\n  content: counter(chap, decimal-leading-zero) " \xB7 ";\n  color: var(--noma-rule);\n  font-variant-numeric: tabular-nums;\n}\nnav.noma-site-nav a {\n  color: var(--noma-muted);\n  text-decoration: none;\n}\nnav.noma-site-nav a:hover { color: var(--noma-accent); }\nnav.noma-site-nav .noma-nav-current span {\n  color: var(--noma-fg);\n  font-weight: 500;\n}\n\na.noma-ref.noma-xchapter::after {\n  content: " \u2197";\n  font-size: 0.85em;\n  color: var(--noma-muted);\n}\n\nmain.noma-site-index {\n  padding-top: 3rem;\n}\nheader.noma-site-header h1 {\n  font-size: 2.4rem;\n  margin-bottom: 0.25rem;\n}\nheader.noma-site-header .noma-site-author {\n  color: var(--noma-muted);\n  margin: 0 0 2rem;\n}\nol.noma-site-toc {\n  list-style: none;\n  padding: 0;\n  margin: 2rem 0;\n  display: grid;\n  gap: 0.6rem;\n  counter-reset: toc;\n}\nol.noma-site-toc li {\n  counter-increment: toc;\n}\na.noma-site-chapter {\n  display: block;\n  padding: 1.1rem 1.4rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  text-decoration: none;\n  color: inherit;\n  transition: border-color 120ms ease, transform 120ms ease;\n}\na.noma-site-chapter:hover {\n  border-color: var(--noma-accent);\n  transform: translateY(-1px);\n}\na.noma-site-chapter::before {\n  content: counter(toc, decimal-leading-zero);\n  display: block;\n  font-size: 0.75rem;\n  font-variant-numeric: tabular-nums;\n  color: var(--noma-muted);\n  margin-bottom: 0.25rem;\n}\n.noma-site-chapter-title {\n  display: block;\n  font-weight: 600;\n  font-size: 1.1rem;\n}\n.noma-site-chapter-summary {\n  display: block;\n  color: var(--noma-muted);\n  margin-top: 0.4rem;\n  font-size: 0.93rem;\n}\n.noma-site-description {\n  max-width: 48rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 1.02rem;\n}\n.noma-site-chapter-tags,\n.noma-space-tags {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  margin-top: 0.6rem;\n}\n.noma-site-chapter-tags span,\n.noma-space-tags span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  padding: 0.12rem 0.45rem;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n}\n\n/* Space renderer \u2014 source-controlled documentation/wiki surface */\nbody.noma-space-body {\n  background: linear-gradient(180deg, #f7f5ef 0, var(--noma-bg) 16rem);\n}\n.noma-space-shell {\n  display: grid;\n  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);\n  min-height: 100vh;\n}\n.noma-space-sidebar {\n  position: sticky;\n  top: 0;\n  height: 100vh;\n  overflow: auto;\n  border-right: 1px solid var(--noma-rule);\n  background: rgba(255, 255, 255, 0.68);\n  padding: 1rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-home {\n  display: block;\n  margin-bottom: 0.45rem;\n  color: var(--noma-fg);\n  font-weight: 800;\n  text-decoration: none;\n}\n.noma-space-description,\n.noma-space-search-disabled {\n  margin: 0 0 1rem;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n  line-height: 1.38;\n}\n.noma-space-search {\n  display: grid;\n  gap: 0.35rem;\n  margin: 0.9rem 0 0.75rem;\n  color: var(--noma-muted);\n  font-size: 0.74rem;\n  font-weight: 750;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n}\n.noma-space-search input {\n  width: 100%;\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  padding: 0.5rem 0.6rem;\n  background: var(--noma-card-bg);\n  color: var(--noma-fg);\n  font: 500 0.88rem var(--noma-font-sans);\n  text-transform: none;\n  letter-spacing: 0;\n}\n.noma-space-search-results {\n  display: grid;\n  gap: 0.4rem;\n  margin: 0 0 0.85rem;\n  padding: 0.45rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: 8px;\n  background: var(--noma-card-bg);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-search-results a {\n  display: grid;\n  gap: 0.1rem;\n  padding: 0.45rem 0.5rem;\n  border-radius: 6px;\n  color: var(--noma-fg);\n  text-decoration: none;\n}\n.noma-space-search-results a:hover {\n  background: var(--noma-code-bg);\n}\n.noma-space-search-results small {\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n}\n.noma-space-search-results em {\n  display: flex;\n  gap: 0.25rem;\n  flex-wrap: wrap;\n  font-style: normal;\n}\n.noma-space-search-results em span {\n  color: var(--noma-accent);\n  font-size: 0.68rem;\n}\n.noma-space-search-results p {\n  margin: 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-sidebar nav.noma-site-nav {\n  max-width: none;\n  margin: 0;\n  padding: 0;\n  display: block;\n}\n.noma-space-sidebar nav.noma-site-nav ol {\n  display: grid;\n  gap: 0.18rem;\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  counter-reset: none;\n}\n.noma-space-sidebar nav.noma-site-nav li {\n  padding-left: calc(var(--depth, 0) * 0.85rem);\n}\n.noma-space-sidebar nav.noma-site-nav li::before {\n  content: "";\n}\n.noma-space-sidebar nav.noma-site-nav a,\n.noma-space-sidebar nav.noma-site-nav span {\n  display: block;\n  border-radius: 6px;\n  padding: 0.38rem 0.5rem;\n  color: var(--noma-muted);\n  text-decoration: none;\n  font-size: 0.88rem;\n  line-height: 1.25;\n}\n.noma-space-sidebar nav.noma-site-nav a:hover {\n  background: var(--noma-code-bg);\n  color: var(--noma-fg);\n}\n.noma-space-sidebar nav.noma-site-nav .noma-nav-current span {\n  background: var(--noma-accent-soft);\n  color: var(--noma-accent);\n  font-weight: 760;\n}\n.noma-space-sidebar nav.noma-site-nav small {\n  display: block;\n  padding: 0 0.5rem 0.32rem;\n  color: var(--noma-muted);\n  font-size: 0.68rem;\n}\n.noma-space-main {\n  min-width: 0;\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);\n  grid-template-rows: auto 1fr;\n  gap: 1rem;\n  padding: 1rem;\n}\n.noma-space-topbar {\n  grid-column: 1 / -1;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 1rem;\n  min-width: 0;\n  padding: 0.5rem 0.2rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-breadcrumbs {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  min-width: 0;\n  color: var(--noma-muted);\n  font-size: 0.83rem;\n}\n.noma-space-breadcrumbs a,\n.noma-space-breadcrumbs span {\n  color: inherit;\n  text-decoration: none;\n}\n.noma-space-breadcrumbs span:last-child {\n  color: var(--noma-fg);\n  font-weight: 700;\n}\n.noma-space-breadcrumbs a::after,\n.noma-space-breadcrumbs span::after {\n  content: "/";\n  margin-left: 0.35rem;\n  color: var(--noma-rule);\n}\n.noma-space-breadcrumbs span:last-child::after {\n  content: "";\n  margin: 0;\n}\n.noma-space-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.noma-space-actions button {\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.38rem 0.6rem;\n  font: 700 0.78rem var(--noma-font-sans);\n  cursor: pointer;\n}\n.noma-space-actions button:hover {\n  border-color: var(--noma-accent);\n  color: var(--noma-accent);\n}\nbody.noma-space-body main.noma-doc {\n  min-width: 0;\n  max-width: none;\n  margin: 0;\n  padding: 2rem min(4vw, 2.5rem) 5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: rgba(255, 255, 255, 0.78);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector {\n  min-width: 0;\n  align-self: start;\n  position: sticky;\n  top: 1rem;\n  display: grid;\n  gap: 0.75rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-inspector section {\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 0.85rem;\n  background: rgba(255, 255, 255, 0.72);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector h2 {\n  margin: 0 0 0.55rem;\n  padding: 0;\n  border: 0;\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n}\n.noma-space-inspector p {\n  display: flex;\n  justify-content: space-between;\n  gap: 0.6rem;\n  margin: 0.3rem 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-inspector strong {\n  color: var(--noma-fg);\n  overflow-wrap: anywhere;\n}\n.noma-space-inspector ul {\n  margin: 0;\n  padding-left: 1rem;\n}\n.noma-space-inspector li {\n  margin: 0.25rem 0;\n  font-size: 0.84rem;\n}\n.noma-space-empty {\n  display: block !important;\n  color: var(--noma-muted);\n}\n.noma-space-stats {\n  display: flex;\n  gap: 0.5rem;\n  flex-wrap: wrap;\n  margin: 1rem 0 0;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-stats span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.2rem 0.6rem;\n  font-size: 0.8rem;\n  font-weight: 700;\n}\nbody.noma-space-body ol.noma-site-toc {\n  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));\n}\n@media (max-width: 1100px) {\n  .noma-space-main {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .noma-space-inspector {\n    position: static;\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n}\n@media (max-width: 780px) {\n  .noma-space-shell {\n    grid-template-columns: 1fr;\n  }\n  .noma-space-sidebar {\n    position: static;\n    height: auto;\n    border-right: 0;\n    border-bottom: 1px solid var(--noma-rule);\n  }\n  .noma-space-main {\n    padding: 0.75rem;\n  }\n  .noma-space-topbar {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  body.noma-space-body main.noma-doc {\n    padding: 1.25rem 1rem 3rem;\n  }\n  .noma-space-inspector {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* v0.4 \u2014 math (KaTeX is loaded from CDN; we just style block layout) */\n.noma-math-display {\n  margin: 1.4em auto;\n  text-align: center;\n  overflow-x: auto;\n}\n.noma-math-inline {\n  display: inline;\n}\n';
+
+  // web/cloud/wiki.ts
   function renderWikiPanel() {
     wikiLinksList.textContent = "";
-    if (!currentPage) {
+    if (!state.currentPage) {
       wikiSummary.textContent = "No wiki links";
       wikiSummary.dataset.state = "ok";
       wikiLinksList.append(emptyState("No page"));
       return;
     }
-    const outgoing = wikiLinksForPage(currentPage);
-    const backlinks = pages.filter((page) => page.id !== currentPage?.id).flatMap((page) => wikiLinksForPage(page).filter((link) => link.page?.id === currentPage?.id).map((link) => ({ page, link })));
+    const outgoing = wikiLinksForPage(state.currentPage);
+    const backlinks = state.pages.filter((page) => page.id !== state.currentPage?.id).flatMap((page) => wikiLinksForPage(page).filter((link) => link.page?.id === state.currentPage?.id).map((link) => ({ page, link })));
     const missing = outgoing.filter((link) => link.missing);
     wikiSummary.textContent = `${outgoing.length} links / ${backlinks.length} backlinks / ${missing.length} missing`;
     wikiSummary.dataset.state = missing.length > 0 ? "warning" : "ok";
@@ -13615,23 +12196,23 @@ ${draftLine}
     await createWikiPage(wikiPageTitleFromTarget(target));
   }
   async function createWikiPage(title) {
-    if (!currentSite || !cloudUser) return;
-    if (dirty) await saveCurrentPage();
+    if (!state.currentSite || !state.cloudUser) return;
+    if (state.dirty) await saveCurrentPage();
     setBusy(true, "Creating wiki page", "warning");
     try {
-      const page = await fetchCloudJson(`/api/sites/${encodeURIComponent(currentSite.id)}/documents`, {
+      const page = await fetchCloudJson(`/api/sites/${encodeURIComponent(state.currentSite.id)}/documents`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           title,
-          source: wikiPage(title, currentSite.title, currentPage?.title ?? currentSite.title)
+          source: wikiPage(title, state.currentSite.title, state.currentPage?.title ?? state.currentSite.title)
         })
       });
-      pages = [...pages, page];
-      currentSite = {
-        ...currentSite,
-        documentIds: [...currentSite.documentIds, page.id],
-        documents: pages
+      state.pages = [...state.pages, page];
+      state.currentSite = {
+        ...state.currentSite,
+        documentIds: [...state.currentSite.documentIds, page.id],
+        documents: state.pages
       };
       setCurrentPage(page);
       await refreshSites({ silent: true });
@@ -13648,7 +12229,7 @@ ${draftLine}
     const base = wikiPageTitleFromTarget(target);
     const key = wikiKey(base);
     const slugKey = slug(base);
-    return pages.find((page) => {
+    return state.pages.find((page) => {
       const title = sourceTitle(page.source) || page.title;
       return wikiKey(page.id) === key || wikiKey(page.title) === key || wikiKey(title) === key || slug(page.title) === slugKey || slug(title) === slugKey;
     });
@@ -13656,7 +12237,7 @@ ${draftLine}
   function resolveWikiBlockPage(target) {
     const base = wikiPageTitleFromTarget(target);
     const key = wikiKey(base);
-    for (const page of pages) {
+    for (const page of state.pages) {
       try {
         const doc = parse(page.source, { filename: `${page.id}.noma` });
         for (const node of walk(doc)) {
@@ -13669,7 +12250,7 @@ ${draftLine}
     return void 0;
   }
   function hasCurrentDocumentBlock(target) {
-    const doc = renderState.doc;
+    const doc = state.renderState.doc;
     if (!doc) return false;
     for (const node of walk(doc)) {
       if (node.id === target || node.aliases?.includes(target)) return true;
@@ -13694,106 +12275,35 @@ ${draftLine}
   function stripFencedCode(source) {
     return source.replace(/```[\s\S]*?```/g, "");
   }
-  function diagnosticRow(severity, code, message, line) {
-    const row = document.createElement("div");
-    row.className = "diagnostic-row";
-    row.dataset.severity = severity;
-    const title = document.createElement("span");
-    title.className = "row-title";
-    title.textContent = `${severity} / ${code}`;
-    const meta = document.createElement("span");
-    meta.className = "row-meta";
-    meta.textContent = line ? `Line ${line}: ${message}` : message;
-    row.append(title, meta);
-    return row;
+  function wikiPage(title, siteName, relatedTitle) {
+    const id = slug(title) || "wiki-page";
+    return `# ${title} {id="${id}"}
+
+::summary{id="summary"}
+Summarize what this page captures in ${siteName}. Keep it connected to the related pages below.
+::
+
+## Notes {id="notes"}
+
+Start writing the durable explanation here.
+
+## Related {id="related"}
+
+- [[${relatedTitle}]]
+
+## Agent Tasks {id="agent-tasks"}
+
+::agent_task{id="task-expand-${id}" scope="wiki-maintenance" owner="agent"}
+Expand this page with definitions, sources, backlinks, and missing related pages without rewriting unrelated pages.
+::
+`;
   }
-  function emptyState(text) {
-    const row = document.createElement("div");
-    row.className = "empty-state";
-    row.textContent = text;
-    return row;
-  }
-  function markDirty() {
-    dirty = true;
-    if (currentPage) currentPage = { ...currentPage, source: sourceInput.value, title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value) };
-    persistLocalDraft();
-    renderChrome();
-  }
-  function syncTitleFromSource() {
-    if (document.activeElement === pageTitleInput) return;
-    const title = sourceTitle(sourceInput.value);
-    pageTitleInput.value = title;
-    if (currentPage) currentPage = { ...currentPage, title };
-  }
-  function canEditPage() {
-    return roleRank(currentPageRole()) >= roleRank("editor");
-  }
-  function canCreatePage() {
-    return Boolean(cloudAvailable && cloudUser && currentSite && roleRank(currentSite.access?.role ?? "viewer") >= roleRank("editor"));
-  }
-  function canEditSite() {
-    return Boolean(cloudAvailable && cloudUser && currentSite && roleRank(currentSite.access?.role ?? "viewer") >= roleRank("editor"));
-  }
-  function canManagePermissions() {
-    const role = currentSite?.access?.role ?? currentPage?.access?.role ?? "viewer";
-    return role === "owner";
-  }
-  function canEditWorkProject() {
-    return roleRank(selectedWorkProject()?.access?.role ?? "viewer") >= roleRank("editor");
-  }
-  function currentPageRole() {
-    return currentPage?.access?.role ?? currentSite?.access?.role ?? "viewer";
-  }
-  function selectedShareRole() {
-    return shareRoleSelect.value === "viewer" ? "viewer" : "editor";
-  }
-  function selectedInviteRole() {
-    return inviteRoleSelect.value === "viewer" ? "viewer" : "editor";
-  }
-  function roleRank(role) {
-    return role === "owner" ? 3 : role === "editor" ? 2 : 1;
-  }
-  async function fetchCloudJson(url, init) {
-    const headers = new Headers(init?.headers);
-    headers.set("accept", "application/json");
-    if (cloudUser) headers.set("authorization", `Bearer ${cloudUser.token}`);
-    if (shareToken) headers.set("x-noma-share-token", shareToken);
-    const response = await fetch(url, {
-      ...init,
-      headers
-    });
-    if (!response.ok) {
-      let message = `${response.status} ${response.statusText}`;
-      const text = await response.text();
-      let payload = {};
-      try {
-        payload = JSON.parse(text);
-        if (payload.error) message = payload.error;
-      } catch {
-        if (text) message = text;
-      }
-      if (response.status === 401 && message.includes("Noma Cloud access token required")) {
-        const next = `${window.location.pathname}${window.location.search}`;
-        window.location.assign(`/login.html?next=${encodeURIComponent(next)}`);
-      }
-      throw new CloudRequestError(response.status, message, payload);
-    }
-    return response.json();
-  }
-  function parsePatchOps(text) {
-    const parsed = JSON.parse(text);
-    const list = Array.isArray(parsed) ? parsed : [parsed];
-    for (const item of list) {
-      if (!item || typeof item !== "object" || typeof item.op !== "string") {
-        throw new Error("Patch operations must be objects with an op field");
-      }
-    }
-    return list;
-  }
+
+  // web/cloud/preview.ts
   function previewDocument(body) {
-    const previewChrome = themeMode === "dark" ? "#111820" : "#f4f1e9";
-    const previewBorder = themeMode === "dark" ? "#37323d" : "#e6dfd2";
-    const previewShadow = themeMode === "dark" ? "0 24px 70px -46px rgba(0,0,0,.86)" : "0 24px 70px -46px rgba(32,36,42,.42)";
+    const previewChrome = state.themeMode === "dark" ? "#111820" : "#f4f1e9";
+    const previewBorder = state.themeMode === "dark" ? "#37323d" : "#e6dfd2";
+    const previewShadow = state.themeMode === "dark" ? "0 24px 70px -46px rgba(0,0,0,.86)" : "0 24px 70px -46px rgba(32,36,42,.42)";
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -13801,7 +12311,7 @@ ${draftLine}
 <style>
 ${default_default}
 body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
-.noma-document{max-width:${previewPaperWidth}px;margin:0 auto;background:#fffefa;border:1px solid ${previewBorder};box-shadow:${previewShadow};padding:44px 52px}
+.noma-document{max-width:${state.previewPaperWidth}px;margin:0 auto;background:#fffefa;border:1px solid ${previewBorder};box-shadow:${previewShadow};padding:44px 52px}
 @media(max-width:720px){body{padding:14px}.noma-document{padding:24px 20px}}
 </style>
 </head>
@@ -13813,8 +12323,8 @@ body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
     if (!previewDoc) return;
     applyPreviewPaperWidth(previewDoc);
     installPreviewWikiLinks(previewDoc);
-    if (!renderState.error && canEditPage()) installPreviewContextMenus(previewDoc);
-    if (viewMode !== "preview" || renderState.error || !canEditPage()) return;
+    if (!state.renderState.error && canEditPage()) installPreviewContextMenus(previewDoc);
+    if (state.viewMode !== "preview" || state.renderState.error || !canEditPage()) return;
     const style = previewDoc.createElement("style");
     style.textContent = previewEditCss();
     previewDoc.head.append(style);
@@ -13885,43 +12395,6 @@ body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
         showPreviewContextMenuAt(frameRect.left + event.clientX, frameRect.top + event.clientY, element);
       });
     }
-  }
-  function showPreviewContextMenuAt(clientX, clientY, element) {
-    const line = positiveInt(element.dataset.nomaLine);
-    const kind = element.dataset.nomaEditable;
-    const blockId = previewElementBlockId(element);
-    showContextMenuAt(clientX, clientY, [
-      {
-        label: "Edit in source",
-        disabled: line === void 0,
-        hint: line ? `Line ${line}` : void 0,
-        action: () => {
-          if (line) focusSourceLine(line);
-        }
-      },
-      {
-        label: "Add section after",
-        action: () => insertPreviewBlockAfter(element, "section")
-      },
-      {
-        label: "Add text after",
-        action: () => insertPreviewBlockAfter(element, "paragraph")
-      },
-      {
-        label: "Copy block ID",
-        disabled: !blockId,
-        separatorBefore: true,
-        action: () => {
-          if (blockId) void copyText(blockId, "Copied block ID");
-        }
-      },
-      {
-        label: "Delete section",
-        disabled: kind !== "section",
-        danger: true,
-        action: () => deletePreviewSection(element)
-      }
-    ]);
   }
   function previewElementBlockId(element) {
     const owned = element.closest("[id]");
@@ -14082,78 +12555,6 @@ body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
     button.addEventListener("click", () => insertSectionAtEnd());
     paper.append(button);
   }
-  function applyPreviewPaperWidth(previewDoc) {
-    const paper = previewDoc.querySelector(".noma-document");
-    if (paper) paper.style.maxWidth = `${previewPaperWidth}px`;
-  }
-  function startSplitResize(event) {
-    if (viewMode !== "split") return;
-    event.preventDefault();
-    const rect = documentGrid.getBoundingClientRect();
-    documentGrid.dataset.resizing = "true";
-    splitResizeHandle.setPointerCapture(event.pointerId);
-    const onMove = (moveEvent) => {
-      const nextRatio = (moveEvent.clientX - rect.left) / rect.width * 100;
-      setSplitSourceRatio(nextRatio);
-    };
-    const onUp = () => {
-      delete documentGrid.dataset.resizing;
-      splitResizeHandle.removeEventListener("pointermove", onMove);
-      splitResizeHandle.removeEventListener("pointerup", onUp);
-      splitResizeHandle.removeEventListener("pointercancel", onUp);
-      setCloudStatus("Resized split view", "ok");
-    };
-    splitResizeHandle.addEventListener("pointermove", onMove);
-    splitResizeHandle.addEventListener("pointerup", onUp);
-    splitResizeHandle.addEventListener("pointercancel", onUp);
-  }
-  function handleSplitResizeKeydown(event) {
-    if (viewMode !== "split") return;
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    setSplitSourceRatio(splitSourceRatio + (event.key === "ArrowRight" ? 3 : -3));
-    setCloudStatus("Resized split view", "ok");
-  }
-  function setSplitSourceRatio(value) {
-    splitSourceRatio = Math.round(clamp(value, 30, 66) * 10) / 10;
-    localStorage.setItem(splitSourceRatioStorageKey, String(splitSourceRatio));
-    documentGrid.style.setProperty("--source-pane-width", `${splitSourceRatio}%`);
-  }
-  function startPreviewPaperResize(event, paper) {
-    event.preventDefault();
-    event.stopPropagation();
-    const handle = event.currentTarget;
-    const startX = event.clientX;
-    const startWidth = paper.getBoundingClientRect().width;
-    const ownerWindow = paper.ownerDocument.defaultView;
-    if (!handle || !ownerWindow) return;
-    handle.setPointerCapture(event.pointerId);
-    const onMove = (moveEvent) => {
-      const nextWidth = startWidth + (moveEvent.clientX - startX) * 2;
-      setPreviewPaperWidth(nextWidth, paper);
-    };
-    const onUp = () => {
-      ownerWindow.removeEventListener("pointermove", onMove);
-      ownerWindow.removeEventListener("pointerup", onUp);
-      ownerWindow.removeEventListener("pointercancel", onUp);
-      setCloudStatus("Resized preview paper", "ok");
-    };
-    ownerWindow.addEventListener("pointermove", onMove);
-    ownerWindow.addEventListener("pointerup", onUp);
-    ownerWindow.addEventListener("pointercancel", onUp);
-  }
-  function handlePreviewPaperResizeKeydown(event, paper) {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    event.stopPropagation();
-    setPreviewPaperWidth(previewPaperWidth + (event.key === "ArrowRight" ? 40 : -40), paper);
-    setCloudStatus("Resized preview paper", "ok");
-  }
-  function setPreviewPaperWidth(value, paper) {
-    previewPaperWidth = Math.round(clamp(value, 680, 1280));
-    localStorage.setItem(previewPaperWidthStorageKey, String(previewPaperWidth));
-    if (paper) paper.style.maxWidth = `${previewPaperWidth}px`;
-  }
   function insertPreviewBlockAfter(element, kind) {
     const editableKind = element.dataset.nomaEditable;
     const line = positiveInt(element.dataset.nomaLine);
@@ -14170,92 +12571,10 @@ body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
     const index = editableKind === "section" ? line : endLine;
     insertSourceBlockAtIndex(index, "New paragraph.", "Added paragraph from preview");
   }
-  function insertSectionAtEnd() {
-    const lines = sourceInput.value.split("\n");
-    insertSourceBlockAtIndex(lines.length, newSectionSource(lines.length), "Added section at end");
-  }
-  function insertSectionAtCursor() {
-    const index = sourceCursorInsertIndex();
-    insertSourceBlockAtIndex(index, newSectionSource(index + 1), "Added section at cursor");
-  }
-  function insertParagraphAtCursor() {
-    insertSourceBlockAtIndex(sourceCursorInsertIndex(), "New paragraph.", "Added paragraph at cursor");
-  }
-  function sourceCursorInsertIndex() {
-    const beforeCursor = sourceInput.value.slice(0, sourceInput.selectionStart);
-    return beforeCursor.split("\n").length;
-  }
-  function insertSourceBlockAtIndex(index, sourceBlock, status) {
-    if (renderTimer !== void 0) {
-      window.clearTimeout(renderTimer);
-      renderTimer = void 0;
-    }
-    const lines = sourceInput.value.split("\n");
-    const boundedIndex = Math.max(0, Math.min(lines.length, index));
-    const needsPrefix = boundedIndex > 0 && lines[boundedIndex - 1]?.trim() !== "";
-    const needsSuffix = boundedIndex < lines.length && lines[boundedIndex]?.trim() !== "";
-    const insertLines = [
-      ...needsPrefix ? [""] : [],
-      ...sourceBlock.split("\n"),
-      ...needsSuffix ? [""] : []
-    ];
-    pendingPreviewFocusLine = boundedIndex + (needsPrefix ? 2 : 1);
-    lines.splice(boundedIndex, 0, ...insertLines);
-    sourceInput.value = lines.join("\n");
-    syncTitleFromSource();
-    markDirty();
-    setCloudStatus(status, "ok");
-    renderCurrent();
-  }
-  function newSectionSource(contextLine) {
-    const currentLevel = headingLevelAtLine(contextLine) ?? nearestHeadingLevelBefore(contextLine) ?? 2;
-    const level = Math.max(2, currentLevel);
-    const id = uniqueSourceId("new-section");
-    return `${"#".repeat(level)} New section {id="${id}"}
-
-Start writing here.`;
-  }
-  function sectionEndInsertIndex(headingLine) {
-    const lines = sourceInput.value.split("\n");
-    const level = headingLevelAtLine(headingLine);
-    if (level === void 0) return headingLine;
-    for (let index = headingLine; index < lines.length; index += 1) {
-      const nextLevel = headingLevel(lines[index]);
-      if (nextLevel !== void 0 && nextLevel <= level) return index;
-    }
-    return lines.length;
-  }
-  function headingLevelAtLine(line) {
-    const lines = sourceInput.value.split("\n");
-    return headingLevel(lines[line - 1]);
-  }
-  function nearestHeadingLevelBefore(line) {
-    const lines = sourceInput.value.split("\n");
-    for (let index = Math.min(line - 1, lines.length - 1); index >= 0; index -= 1) {
-      const level = headingLevel(lines[index]);
-      if (level !== void 0) return level;
-    }
-    return void 0;
-  }
-  function headingLevel(line) {
-    const match = /^(#{1,6})\s+/.exec(line ?? "");
-    return match?.[1]?.length;
-  }
-  function uniqueSourceId(base) {
-    const ids = new Set(
-      [...sourceInput.value.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]).filter((id) => id !== void 0)
-    );
-    if (!ids.has(base)) return base;
-    for (let suffix = 2; suffix < 1e3; suffix += 1) {
-      const candidate = `${base}-${suffix}`;
-      if (!ids.has(candidate)) return candidate;
-    }
-    return `${base}-${Date.now().toString(36)}`;
-  }
   function focusPendingPreviewLine(previewDoc) {
-    const line = pendingPreviewFocusLine;
+    const line = state.pendingPreviewFocusLine;
     if (line === void 0) return;
-    pendingPreviewFocusLine = void 0;
+    state.pendingPreviewFocusLine = void 0;
     window.setTimeout(() => {
       const element = previewDoc.querySelector(`[data-noma-line="${line}"]`);
       if (!element) return;
@@ -14343,10 +12662,829 @@ Start writing here.`;
       }
     }
   }
+  function deletePreviewSection(element) {
+    if (element.dataset.nomaEditable !== "section") {
+      setCloudStatus("Select a section heading to delete", "warning");
+      return;
+    }
+    deleteSectionAtLine(positiveInt(element.dataset.nomaLine));
+  }
+  function isPreviewEditKind(value) {
+    return value === "section" || value === "paragraph" || value === "list_item" || value === "quote";
+  }
+  function previewError(message) {
+    return `<!doctype html><html lang="en"><body style="font:14px sans-serif;color:#a33a32;padding:20px">${escapeHtml2(message)}</body></html>`;
+  }
+
+  // web/cloud/context-menu.ts
+  function showContextMenu(event, actions) {
+    event.preventDefault();
+    event.stopPropagation();
+    showContextMenuAt(event.clientX, event.clientY, actions);
+  }
+  function showContextMenuAt(clientX, clientY, actions) {
+    closeContextMenu();
+    if (actions.length === 0) return;
+    const menu = document.createElement("div");
+    menu.className = "cloud-context-menu";
+    menu.setAttribute("role", "menu");
+    menu.addEventListener("click", (event) => event.stopPropagation());
+    menu.addEventListener("pointerdown", (event) => event.stopPropagation());
+    for (const item of actions) {
+      if (item.separatorBefore) {
+        const separator = document.createElement("div");
+        separator.className = "cloud-context-menu-separator";
+        separator.setAttribute("role", "separator");
+        menu.append(separator);
+      }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "menuitem");
+      button.disabled = item.disabled === true;
+      if (item.danger) button.dataset.danger = "true";
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      button.append(label);
+      if (item.hint) {
+        const hint = document.createElement("span");
+        hint.className = "cloud-context-menu-hint";
+        hint.textContent = item.hint;
+        button.append(hint);
+      }
+      button.addEventListener("click", () => {
+        if (button.disabled) return;
+        closeContextMenu();
+        void item.action();
+      });
+      menu.append(button);
+    }
+    menu.style.visibility = "hidden";
+    document.body.append(menu);
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(Math.max(8, clientX), Math.max(8, window.innerWidth - rect.width - 8));
+    const top = Math.min(Math.max(8, clientY), Math.max(8, window.innerHeight - rect.height - 8));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.visibility = "visible";
+  }
+  function closeContextMenu() {
+    for (const menu of [...document.querySelectorAll(".cloud-context-menu")]) menu.remove();
+  }
+  function showSiteContextMenu(event, site) {
+    const isCurrent = state.currentSite?.id === site.id;
+    const canEdit = canEditSiteRecord(site);
+    const favorite = state.favoriteItems.some((item) => item.resourceType === "site" && item.resourceId === site.id);
+    showContextMenu(event, [
+      {
+        label: isCurrent ? "Refresh space" : "Open space",
+        hint: site.documentIds.length === 1 ? "1 page" : `${site.documentIds.length} pages`,
+        action: () => void loadSite(site.id)
+      },
+      {
+        label: "New page in space",
+        disabled: !canEdit,
+        action: () => void runWithLoadedSite(site.id, () => createPage())
+      },
+      {
+        label: "New folder",
+        disabled: !canEdit,
+        action: () => void runWithLoadedSite(site.id, () => createFolder())
+      },
+      {
+        label: "Copy space link",
+        disabled: !canEdit,
+        separatorBefore: true,
+        action: () => void runWithLoadedSite(site.id, () => copySiteLink())
+      },
+      {
+        label: favorite ? "Remove from favorites" : "Add to favorites",
+        action: () => void toggleFavorite("site", site.id)
+      },
+      {
+        label: "Save space",
+        disabled: !isCurrent || !canEditSite(),
+        action: () => void saveCurrentSite()
+      },
+      {
+        label: "Move space to trash",
+        disabled: site.access?.role !== "owner" && site.currentRole !== "owner",
+        danger: true,
+        action: () => void trashSite(site)
+      }
+    ]);
+  }
+  function showFolderContextMenu(event, folder) {
+    const title = folder || "Pages";
+    const sameAsCurrentPage = state.currentPage ? sameFolder(pageFolder(state.currentPage.id), folder) : false;
+    showContextMenu(event, [
+      {
+        label: "Select folder",
+        hint: title,
+        action: () => {
+          state.activeFolder = folder;
+          setCloudStatus(folder ? `Selected ${folder}` : "Selected Pages", "ok");
+          renderChrome();
+        }
+      },
+      {
+        label: "New page here",
+        disabled: !canCreatePage(),
+        action: () => {
+          state.activeFolder = folder;
+          void createPage(folder);
+        }
+      },
+      {
+        label: "Move current page here",
+        disabled: !state.currentPage || !canEditSite() || sameAsCurrentPage,
+        action: () => {
+          if (state.currentPage) void movePageToFolder(state.currentPage.id, folder);
+        }
+      },
+      {
+        label: "Rename folder",
+        disabled: !folder || !canEditSite(),
+        separatorBefore: true,
+        action: () => void renameFolder(folder)
+      },
+      {
+        label: "Delete folder",
+        disabled: !folder || !canEditSite(),
+        danger: true,
+        action: () => void deleteFolder(folder)
+      }
+    ]);
+  }
+  function showPageContextMenu(event, page) {
+    const isCurrent = state.currentPage?.id === page.id;
+    const favorite = state.favoriteItems.some((item) => item.resourceType === "document" && item.resourceId === page.id);
+    showContextMenu(event, [
+      {
+        label: isCurrent ? "Focus page" : "Open page",
+        hint: page.access?.role ?? state.currentSite?.access?.role ?? "viewer",
+        action: () => {
+          selectPage(page.id);
+        }
+      },
+      {
+        label: "Open in preview",
+        action: () => {
+          if (selectPage(page.id)) setViewMode("preview");
+        }
+      },
+      {
+        label: "Add child page",
+        disabled: !canEditSite(),
+        action: () => void createPage(pageFolder(pageAncestors(page.id).at(-1) ?? page.id), page.id)
+      },
+      {
+        label: "Move under page...",
+        disabled: !canEditSite(),
+        action: () => void movePageUnder(page.id)
+      },
+      {
+        label: "Move to folder...",
+        disabled: !canEditSite(),
+        action: () => void movePage(page.id)
+      },
+      {
+        label: state.activeFolder ? `Move to ${state.activeFolder}` : "Move to Pages",
+        disabled: !canEditSite() || sameFolder(pageFolder(page.id), state.activeFolder),
+        action: () => void movePageToFolder(page.id, state.activeFolder)
+      },
+      {
+        label: "Copy page link",
+        disabled: !state.currentSite,
+        separatorBefore: true,
+        action: () => runAfterSelectPage(page.id, () => copyPageLink())
+      },
+      {
+        label: "Copy artifact link",
+        action: () => runAfterSelectPage(page.id, () => copyArtifactLink())
+      },
+      {
+        label: "Copy page ID",
+        action: () => void copyText(page.id, "Copied page ID")
+      },
+      {
+        label: favorite ? "Remove from favorites" : "Add to favorites",
+        action: () => void toggleFavorite("document", page.id)
+      },
+      {
+        label: "Save page",
+        disabled: !isCurrent || !canEditPage(),
+        separatorBefore: true,
+        action: () => void saveCurrentPage()
+      },
+      {
+        label: "Move page to trash",
+        disabled: !canEditSite() && page.access?.role !== "owner" && page.access?.role !== "editor",
+        danger: true,
+        action: () => void trashPage(page)
+      }
+    ]);
+  }
+  function showOutlineContextMenu(event, node) {
+    const line = node.line;
+    const canEdit = canEditPage();
+    showContextMenu(event, [
+      {
+        label: "Focus in source",
+        disabled: line === void 0,
+        hint: line ? `Line ${line}` : void 0,
+        action: () => {
+          if (line) focusSourceLine(line);
+        }
+      },
+      {
+        label: "Insert section after",
+        disabled: !canEdit || line === void 0,
+        action: () => {
+          if (line) insertSourceBlockAtIndex(sectionEndInsertIndex(line), newSectionSource(line), "Added section from outline");
+        }
+      },
+      {
+        label: "Insert text after heading",
+        disabled: !canEdit || line === void 0,
+        action: () => {
+          if (line) insertSourceBlockAtIndex(line, "New paragraph.", "Added paragraph from outline");
+        }
+      },
+      {
+        label: "Copy block ID",
+        disabled: !node.id,
+        separatorBefore: true,
+        action: () => {
+          if (node.id) void copyText(node.id, "Copied block ID");
+        }
+      },
+      {
+        label: "Delete section",
+        disabled: !canEdit || node.level <= 1 || line === void 0,
+        danger: true,
+        action: () => deleteSectionAtLine(line)
+      }
+    ]);
+  }
+  function showWikiContextMenu(event, link, kind) {
+    showContextMenu(event, [
+      {
+        label: link.missing ? "Create linked page" : "Open linked page",
+        hint: `[[${link.target}]]`,
+        action: () => void openWikiTarget(link.target)
+      },
+      {
+        label: "Open backlink source",
+        disabled: kind !== "backlink" || !link.page,
+        action: () => {
+          if (link.page) selectPage(link.page.id);
+        }
+      },
+      {
+        label: "Copy wiki link",
+        separatorBefore: true,
+        action: () => void copyText(`[[${link.target}]]`, "Copied wiki link")
+      },
+      {
+        label: "Copy target",
+        action: () => void copyText(link.target, "Copied wiki target")
+      }
+    ]);
+  }
+  function showSourceContextMenu(event) {
+    showContextMenu(event, [
+      {
+        label: "Insert section at cursor",
+        disabled: !canEditPage(),
+        action: () => insertSectionAtCursor()
+      },
+      {
+        label: "Insert text at cursor",
+        disabled: !canEditPage(),
+        action: () => insertParagraphAtCursor()
+      },
+      {
+        label: "Save page",
+        disabled: !canEditPage() || !state.currentPage,
+        separatorBefore: true,
+        hint: "Cmd/Ctrl S",
+        action: () => void saveCurrentPage()
+      },
+      {
+        label: "Copy LLM context",
+        disabled: Boolean(state.renderState.error) || !state.renderState.llm,
+        action: () => void copyLlmContext()
+      },
+      {
+        label: "Preview only",
+        separatorBefore: true,
+        action: () => setViewMode("preview")
+      },
+      {
+        label: "Split view",
+        action: () => setViewMode("split")
+      }
+    ]);
+  }
+  function showPreviewContextMenuAt(clientX, clientY, element) {
+    const line = positiveInt(element.dataset.nomaLine);
+    const kind = element.dataset.nomaEditable;
+    const blockId = previewElementBlockId(element);
+    showContextMenuAt(clientX, clientY, [
+      {
+        label: "Edit in source",
+        disabled: line === void 0,
+        hint: line ? `Line ${line}` : void 0,
+        action: () => {
+          if (line) focusSourceLine(line);
+        }
+      },
+      {
+        label: "Add section after",
+        action: () => insertPreviewBlockAfter(element, "section")
+      },
+      {
+        label: "Add text after",
+        action: () => insertPreviewBlockAfter(element, "paragraph")
+      },
+      {
+        label: "Copy block ID",
+        disabled: !blockId,
+        separatorBefore: true,
+        action: () => {
+          if (blockId) void copyText(blockId, "Copied block ID");
+        }
+      },
+      {
+        label: "Delete section",
+        disabled: kind !== "section",
+        danger: true,
+        action: () => deletePreviewSection(element)
+      }
+    ]);
+  }
+
+  // web/cloud/history.ts
+  async function showRevisionDiff(revision) {
+    if (!state.currentPage) return;
+    try {
+      const response = await fetchCloudJson(`${currentPageEndpoint()}/revisions/${revision.revision}/diff`);
+      revisionDiffOutput.textContent = "";
+      const heading = document.createElement("strong");
+      heading.textContent = `Version ${revision.revision} vs ${response.from ? `version ${response.from.revision}` : "empty page"}: +${response.stats.added} \u2212${response.stats.removed}`;
+      revisionDiffOutput.append(heading);
+      const changedBlocks = [
+        ...response.blocks.added.map((id) => `+${id}`),
+        ...response.blocks.removed.map((id) => `\u2212${id}`),
+        ...response.blocks.changed.map((id) => `~${id}`)
+      ];
+      if (changedBlocks.length > 0) {
+        const blocks = document.createElement("div");
+        blocks.className = "revision-diff-blocks";
+        blocks.textContent = `Blocks: ${changedBlocks.join(", ")}`;
+        revisionDiffOutput.append(blocks);
+      }
+      const pre = document.createElement("pre");
+      for (const line of response.diff.split("\n")) {
+        const row = document.createElement("span");
+        row.className = line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del" : "diff-ctx";
+        row.textContent = `${line}
+`;
+        pre.append(row);
+      }
+      revisionDiffOutput.append(pre);
+      revisionDiffOutput.hidden = false;
+    } catch (error) {
+      setPanelStatus(historyStatus, errorMessage(error), "error");
+    }
+  }
+  async function refreshHistory(options = {}) {
+    if (!state.currentPage) {
+      state.documentRevisions = [];
+      renderHistory();
+      return;
+    }
+    const pageId = state.currentPage.id;
+    if (!options.silent) setPanelStatus(historyStatus, "Loading history", "warning");
+    try {
+      const response = await fetchCloudJson(`${currentPageEndpoint()}/revisions`);
+      if (state.currentPage?.id !== pageId) return;
+      state.documentRevisions = response.revisions;
+      if (!options.silent) setPanelStatus(historyStatus, `${state.documentRevisions.length} saved version${state.documentRevisions.length === 1 ? "" : "s"}`, "ok");
+    } catch (error) {
+      if (!options.silent) setPanelStatus(historyStatus, errorMessage(error), "error");
+    } finally {
+      renderHistory();
+    }
+  }
+  function renderHistory() {
+    historyList.textContent = "";
+    refreshHistoryButton.disabled = state.busy || !state.currentPage;
+    refreshWorkButton.disabled = state.busy || !state.cloudUser;
+    workProjectSelect.disabled = state.busy || state.workProjects.length === 0;
+    projectKeyInput.disabled = state.busy || !canEditSite();
+    projectNameInput.disabled = state.busy || !canEditSite();
+    createProjectButton.disabled = state.busy || !canEditSite();
+    issueSummaryInput.disabled = state.busy || !canEditWorkProject();
+    issueTypeSelect.disabled = state.busy || !canEditWorkProject();
+    issuePrioritySelect.disabled = state.busy || !canEditWorkProject();
+    issueAssigneeInput.disabled = state.busy || !canEditWorkProject();
+    issueLabelsInput.disabled = state.busy || !canEditWorkProject();
+    issueSprintSelect.disabled = state.busy || !canEditWorkProject();
+    createIssueButton.disabled = state.busy || !canEditWorkProject();
+    sprintNameInput.disabled = state.busy || !canEditWorkProject();
+    createSprintButton.disabled = state.busy || !canEditWorkProject();
+    manageSprintSelect.disabled = state.busy || state.workSprints.length === 0;
+    startSprintButton.disabled = state.busy || !canEditWorkProject() || selectedWorkSprint()?.status !== "planned";
+    completeSprintButton.disabled = state.busy || !canEditWorkProject() || selectedWorkSprint()?.status !== "active";
+    issueFilterSelect.disabled = state.busy || !selectedWorkProject();
+    issueSearchInput.disabled = state.busy || !selectedWorkProject();
+    issueCommentInput.disabled = state.busy || !state.selectedIssue || !state.cloudUser;
+    addIssueCommentButton.disabled = state.busy || !state.selectedIssue || !state.cloudUser;
+    issueLinkTargetInput.disabled = state.busy || !state.selectedIssue || !canEditWorkProject();
+    issueLinkTypeSelect.disabled = state.busy || !state.selectedIssue || !canEditWorkProject();
+    addIssueLinkButton.disabled = state.busy || !state.selectedIssue || !canEditWorkProject();
+    if (!state.currentPage) {
+      historyList.append(emptyState("Select a page"));
+      return;
+    }
+    if (state.documentRevisions.length === 0) {
+      historyList.append(emptyState("No saved versions"));
+      return;
+    }
+    for (const [index, revision] of state.documentRevisions.entries()) {
+      const row = document.createElement("div");
+      row.className = "history-row";
+      const copy = document.createElement("div");
+      copy.className = "history-copy";
+      const title = document.createElement("strong");
+      const isCurrent = index === 0 && revision.hash === state.currentPage.hash;
+      title.textContent = `Version ${revision.revision}${isCurrent ? " \xB7 current" : ""}`;
+      const meta = document.createElement("span");
+      meta.className = "history-meta";
+      meta.textContent = `${formatDate(revision.createdAt)} \xB7 ${shortId(revision.createdBy)} \xB7 ${revision.hash.slice(0, 8)}`;
+      copy.append(title, meta);
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.textContent = "Restore";
+      restore.disabled = state.busy || isCurrent || !canEditPage();
+      restore.addEventListener("click", () => {
+        void restoreRevision(revision);
+      });
+      const diff = document.createElement("button");
+      diff.type = "button";
+      diff.textContent = "Diff";
+      diff.disabled = state.busy;
+      diff.setAttribute("aria-label", `Compare version ${revision.revision} with the previous version`);
+      diff.addEventListener("click", () => {
+        void showRevisionDiff(revision);
+      });
+      const actions = document.createElement("div");
+      actions.className = "history-actions";
+      actions.append(restore, diff);
+      row.append(copy, actions);
+      historyList.append(row);
+    }
+  }
+  async function restoreRevision(revision) {
+    if (!state.currentPage || !canEditPage()) return;
+    if (state.dirty && !window.confirm("Discard the unsaved draft and restore this saved version?")) return;
+    if (!window.confirm(`Restore version ${revision.revision} as a new current version?`)) return;
+    setBusy(true, `Restoring version ${revision.revision}`, "warning");
+    try {
+      const restored = await fetchCloudJson(`${currentPageEndpoint()}/revisions/${revision.revision}/restore`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expectedHash: state.currentPage.hash })
+      });
+      replacePage(restored);
+      setCurrentPage(restored);
+      setCloudStatus(`Restored version ${revision.revision}`, "ok");
+      await refreshHistory({ silent: true });
+    } catch (error) {
+      setPanelStatus(historyStatus, errorMessage(error), "error");
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+
+  // web/cloud/editor.ts
+  async function saveCurrentPage() {
+    if (!state.currentPage || !canEditPage()) return;
+    if (state.renderState.error) {
+      setCloudStatus("Fix the render error before saving", "error");
+      return;
+    }
+    setBusy(true, "Saving page", "warning");
+    try {
+      const endpoint = currentPageEndpoint();
+      const saved = await fetchCloudJson(endpoint, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value),
+          source: sourceInput.value,
+          expectedHash: state.currentPage.hash
+        })
+      });
+      replacePage(saved);
+      state.currentPage = saved;
+      state.savedPageSource = saved.source;
+      state.savedPageHash = saved.hash;
+      state.savedPageTitle = saved.title;
+      state.dirty = false;
+      clearLocalDraft(saved.id);
+      state.pendingLocalDraft = void 0;
+      syncTitleFromSource();
+      setCloudStatus("Saved page", "ok");
+      updateAddress();
+      await Promise.all([refreshHistory({ silent: true }), refreshApprovals(), refreshActivity()]);
+    } catch (error) {
+      if (error instanceof CloudRequestError && error.status === 409) {
+        setCloudStatus("This page changed elsewhere. Your draft is preserved; reload to review the latest saved version.", "error");
+        setPanelStatus(historyStatus, "Save conflict: reload the page before merging or saving again.", "error");
+      } else {
+        setCloudStatus(errorMessage(error), "error");
+      }
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function reloadCurrentPage() {
+    if (!state.currentPage || !confirmDiscardDirty()) return;
+    setBusy(true, "Reloading page", "warning");
+    try {
+      const page = await fetchCloudJson(currentPageEndpoint());
+      replacePage(page);
+      setCurrentPage(page);
+      setCloudStatus("Reloaded latest page", "ok");
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  function currentPageEndpoint() {
+    if (!state.currentPage) throw new Error("No page is selected");
+    return state.currentSite?.documentIds.includes(state.currentPage.id) ? `/api/sites/${encodeURIComponent(state.currentSite.id)}/documents/${encodeURIComponent(state.currentPage.id)}` : `/api/documents/${encodeURIComponent(state.currentPage.id)}`;
+  }
+  function setCurrentPage(page) {
+    state.currentPage = page;
+    state.documentRevisions = [];
+    state.comments = [];
+    state.approvals = [];
+    state.activityEvents = [];
+    state.patchProposals = [];
+    if (!page) {
+      pageTitleInput.value = "";
+      sourceInput.value = "";
+      state.dirty = false;
+      state.savedPageSource = "";
+      state.savedPageHash = "";
+      state.savedPageTitle = "";
+      state.pendingLocalDraft = void 0;
+      renderCurrent();
+      renderHistory();
+      renderCollaborationPanels();
+      renderChrome();
+      return;
+    }
+    state.savedPageSource = page.source;
+    state.savedPageHash = page.hash;
+    state.savedPageTitle = page.title;
+    state.pendingLocalDraft = readLocalDraft(page.id);
+    const recoverableDraft = state.pendingLocalDraft?.baseHash === page.hash ? state.pendingLocalDraft : void 0;
+    const recoverable = recoverableDraft !== void 0;
+    pageTitleInput.value = recoverableDraft ? recoverableDraft.title : page.title;
+    sourceInput.value = recoverableDraft ? recoverableDraft.source : page.source;
+    state.activeFolder = pageFolder(page.id);
+    state.dirty = Boolean(recoverable);
+    localStorage.setItem(activeDocumentStorageKey, page.id);
+    if (recoverable) setPanelStatus(draftRecoveryStatus, `Recovered local draft from ${formatDate(state.pendingLocalDraft.updatedAt)}`, "warning");
+    else if (state.pendingLocalDraft) setPanelStatus(draftRecoveryStatus, "Saved source changed since this local draft. Recover or run an explicit three-way merge.", "error");
+    renderCurrent();
+    renderHistory();
+    renderCollaborationPanels();
+    renderChrome();
+    void refreshHistory({ silent: true });
+    void refreshPageCollaboration();
+    void refreshPageMeta();
+    void recordRecent("document", page.id);
+  }
+  function renderCurrent() {
+    const source = sourceInput.value;
+    try {
+      const doc = parse(source, { filename: `${state.currentPage?.id ?? "draft"}.noma` });
+      const diagnostics = validate(doc);
+      const body = renderHtml(doc, {
+        standalone: false,
+        allowEscapeHatches: false,
+        externalAssets: false,
+        interactive: false,
+        sourcePositions: true
+      });
+      state.renderState = {
+        doc,
+        diagnostics,
+        llm: renderLlm(doc)
+      };
+      previewFrame.srcdoc = previewDocument(body);
+    } catch (error) {
+      state.renderState = {
+        doc: null,
+        diagnostics: [],
+        llm: "",
+        error: error instanceof Error ? error : new Error(String(error))
+      };
+      previewFrame.srcdoc = previewError(errorMessage(error));
+    }
+    renderDiagnostics();
+    renderOutline();
+    renderWikiPanel();
+    renderChrome();
+  }
+  function scheduleRender() {
+    if (state.renderTimer !== void 0) window.clearTimeout(state.renderTimer);
+    state.renderTimer = window.setTimeout(() => {
+      state.renderTimer = void 0;
+      renderCurrent();
+    }, 180);
+  }
+  function renderDiagnostics() {
+    diagnosticsList.textContent = "";
+    if (state.renderState.error) {
+      diagnosticsSummary.textContent = "Render failed";
+      diagnosticsSummary.dataset.state = "error";
+      diagnosticsList.append(diagnosticRow("error", "render", state.renderState.error.message));
+      return;
+    }
+    const errors = state.renderState.diagnostics.filter((item) => item.severity === "error").length;
+    const warnings = state.renderState.diagnostics.filter((item) => item.severity === "warning").length;
+    const infos = state.renderState.diagnostics.filter((item) => item.severity === "info").length;
+    diagnosticsSummary.textContent = `${errors} errors / ${warnings} warnings / ${infos} info`;
+    diagnosticsSummary.dataset.state = errors > 0 ? "error" : warnings > 0 ? "warning" : "ok";
+    if (state.renderState.diagnostics.length === 0) {
+      diagnosticsList.append(emptyState("No diagnostics"));
+      return;
+    }
+    for (const item of state.renderState.diagnostics) {
+      diagnosticsList.append(diagnosticRow(item.severity, item.code, item.message, item.pos?.line));
+    }
+  }
+  function renderOutline() {
+    outlineList.textContent = "";
+    const doc = state.renderState.doc;
+    if (!doc) {
+      outlineList.append(emptyState("No outline"));
+      return;
+    }
+    let count = 0;
+    for (const node of walk(doc)) {
+      if (node.type !== "section") continue;
+      count += 1;
+      const row = document.createElement("div");
+      row.className = "outline-row";
+      row.style.paddingLeft = `${Math.min(node.level - 1, 4) * 10 + 9}px`;
+      if (node.pos?.line) row.dataset.line = String(node.pos.line);
+      const title = document.createElement("span");
+      title.className = "row-title";
+      title.textContent = node.title;
+      const meta = document.createElement("span");
+      meta.className = "row-meta";
+      meta.textContent = node.id ?? `h${node.level}`;
+      row.addEventListener("click", () => {
+        if (node.pos?.line) focusSourceLine(node.pos.line);
+      });
+      row.addEventListener("contextmenu", (event) => showOutlineContextMenu(event, {
+        id: node.id,
+        title: node.title,
+        level: node.level,
+        line: node.pos?.line
+      }));
+      row.append(title, meta);
+      if (node.level > 1 && node.pos?.line && canEditPage()) {
+        const deleteButton = iconButton("Delete", `Delete ${node.title}`, () => deleteSectionAtLine(node.pos?.line), "danger");
+        row.append(deleteButton);
+      }
+      outlineList.append(row);
+    }
+    if (count === 0) outlineList.append(emptyState("No outline"));
+  }
+  function diagnosticRow(severity, code, message, line) {
+    const row = document.createElement("div");
+    row.className = "diagnostic-row";
+    row.dataset.severity = severity;
+    const title = document.createElement("span");
+    title.className = "row-title";
+    title.textContent = `${severity} / ${code}`;
+    const meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = line ? `Line ${line}: ${message}` : message;
+    row.append(title, meta);
+    return row;
+  }
+  function markDirty() {
+    state.dirty = true;
+    if (state.currentPage) state.currentPage = { ...state.currentPage, source: sourceInput.value, title: pageTitleInput.value.trim() || sourceTitle(sourceInput.value) };
+    persistLocalDraft();
+    renderChrome();
+  }
+  function syncTitleFromSource() {
+    if (document.activeElement === pageTitleInput) return;
+    const title = sourceTitle(sourceInput.value);
+    pageTitleInput.value = title;
+    if (state.currentPage) state.currentPage = { ...state.currentPage, title };
+  }
+  function insertSectionAtEnd() {
+    const lines = sourceInput.value.split("\n");
+    insertSourceBlockAtIndex(lines.length, newSectionSource(lines.length), "Added section at end");
+  }
+  function insertSectionAtCursor() {
+    const index = sourceCursorInsertIndex();
+    insertSourceBlockAtIndex(index, newSectionSource(index + 1), "Added section at cursor");
+  }
+  function insertParagraphAtCursor() {
+    insertSourceBlockAtIndex(sourceCursorInsertIndex(), "New paragraph.", "Added paragraph at cursor");
+  }
+  function sourceCursorInsertIndex() {
+    const beforeCursor = sourceInput.value.slice(0, sourceInput.selectionStart);
+    return beforeCursor.split("\n").length;
+  }
+  function insertSourceBlockAtIndex(index, sourceBlock, status) {
+    if (state.renderTimer !== void 0) {
+      window.clearTimeout(state.renderTimer);
+      state.renderTimer = void 0;
+    }
+    const lines = sourceInput.value.split("\n");
+    const boundedIndex = Math.max(0, Math.min(lines.length, index));
+    const needsPrefix = boundedIndex > 0 && lines[boundedIndex - 1]?.trim() !== "";
+    const needsSuffix = boundedIndex < lines.length && lines[boundedIndex]?.trim() !== "";
+    const insertLines = [
+      ...needsPrefix ? [""] : [],
+      ...sourceBlock.split("\n"),
+      ...needsSuffix ? [""] : []
+    ];
+    state.pendingPreviewFocusLine = boundedIndex + (needsPrefix ? 2 : 1);
+    lines.splice(boundedIndex, 0, ...insertLines);
+    sourceInput.value = lines.join("\n");
+    syncTitleFromSource();
+    markDirty();
+    setCloudStatus(status, "ok");
+    renderCurrent();
+  }
+  function newSectionSource(contextLine) {
+    const currentLevel = headingLevelAtLine(contextLine) ?? nearestHeadingLevelBefore(contextLine) ?? 2;
+    const level = Math.max(2, currentLevel);
+    const id = uniqueSourceId("new-section");
+    return `${"#".repeat(level)} New section {id="${id}"}
+
+Start writing here.`;
+  }
+  function sectionEndInsertIndex(headingLine) {
+    const lines = sourceInput.value.split("\n");
+    const level = headingLevelAtLine(headingLine);
+    if (level === void 0) return headingLine;
+    for (let index = headingLine; index < lines.length; index += 1) {
+      const nextLevel = headingLevel(lines[index]);
+      if (nextLevel !== void 0 && nextLevel <= level) return index;
+    }
+    return lines.length;
+  }
+  function headingLevelAtLine(line) {
+    const lines = sourceInput.value.split("\n");
+    return headingLevel(lines[line - 1]);
+  }
+  function nearestHeadingLevelBefore(line) {
+    const lines = sourceInput.value.split("\n");
+    for (let index = Math.min(line - 1, lines.length - 1); index >= 0; index -= 1) {
+      const level = headingLevel(lines[index]);
+      if (level !== void 0) return level;
+    }
+    return void 0;
+  }
+  function headingLevel(line) {
+    const match = /^(#{1,6})\s+/.exec(line ?? "");
+    return match?.[1]?.length;
+  }
+  function uniqueSourceId(base) {
+    const ids = new Set(
+      [...sourceInput.value.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]).filter((id) => id !== void 0)
+    );
+    if (!ids.has(base)) return base;
+    for (let suffix = 2; suffix < 1e3; suffix += 1) {
+      const candidate = `${base}-${suffix}`;
+      if (!ids.has(candidate)) return candidate;
+    }
+    return `${base}-${Date.now().toString(36)}`;
+  }
   function replaceSourceLines(startLine, endLine, replacement) {
-    if (renderTimer !== void 0) {
-      window.clearTimeout(renderTimer);
-      renderTimer = void 0;
+    if (state.renderTimer !== void 0) {
+      window.clearTimeout(state.renderTimer);
+      state.renderTimer = void 0;
     }
     const lines = sourceInput.value.split("\n");
     const startIndex = startLine - 1;
@@ -14357,13 +13495,6 @@ Start writing here.`;
     markDirty();
     renderCurrent();
   }
-  function deletePreviewSection(element) {
-    if (element.dataset.nomaEditable !== "section") {
-      setCloudStatus("Select a section heading to delete", "warning");
-      return;
-    }
-    deleteSectionAtLine(positiveInt(element.dataset.nomaLine));
-  }
   function deleteSectionAtLine(line) {
     if (!line || !canEditPage()) return;
     const level = headingLevelAtLine(line);
@@ -14373,9 +13504,9 @@ Start writing here.`;
     }
     const title = sourceSectionTitleAtLine(line);
     if (!window.confirm(`Delete section "${title}" and all nested content?`)) return;
-    if (renderTimer !== void 0) {
-      window.clearTimeout(renderTimer);
-      renderTimer = void 0;
+    if (state.renderTimer !== void 0) {
+      window.clearTimeout(state.renderTimer);
+      state.renderTimer = void 0;
     }
     const lines = sourceInput.value.split("\n");
     const startIndex = line - 1;
@@ -14399,7 +13530,7 @@ Start writing here.`;
     return currentLine.replace(/^#{1,6}\s+/, "").replace(/\s+\{[^}]*\}\s*$/, "").trim() || "Untitled";
   }
   function focusBlock(blockId) {
-    const doc = parse(sourceInput.value, { filename: `${currentPage?.id ?? "draft"}.noma` });
+    const doc = parse(sourceInput.value, { filename: `${state.currentPage?.id ?? "draft"}.noma` });
     for (const node of walk(doc)) {
       if ((node.id === blockId || node.aliases?.includes(blockId)) && node.pos) {
         focusSourceLine(node.pos.line);
@@ -14416,6 +13547,210 @@ Start writing here.`;
     const lineHeight = Number.parseFloat(window.getComputedStyle(sourceInput).lineHeight) || 20;
     sourceInput.scrollTop = Math.max(0, (boundedLine - 4) * lineHeight);
   }
+
+  // web/cloud/layout.ts
+  function setViewMode(mode) {
+    state.viewMode = mode;
+    if (mode === "preview") state.panelsOpen = false;
+    localStorage.setItem(viewModeStorageKey, state.viewMode);
+    localStorage.setItem(panelsOpenStorageKey, state.panelsOpen ? "true" : "false");
+    renderChrome();
+    renderCurrent();
+  }
+  function renderChrome() {
+    const shell = document.querySelector(".cloud-shell");
+    if (shell) {
+      shell.dataset.viewMode = state.viewMode;
+      shell.dataset.panels = state.panelsOpen ? "open" : "closed";
+    }
+    documentGrid.style.setProperty("--source-pane-width", `${state.splitSourceRatio}%`);
+    cloudUserNameInput.disabled = state.busy;
+    cloudInvitationCodeInput.disabled = state.busy || Boolean(state.cloudUser);
+    cloudUserTokenInput.disabled = state.busy || Boolean(state.cloudUser);
+    newUserButton.disabled = state.busy || !state.cloudAvailable || Boolean(state.cloudUser);
+    loginUserButton.disabled = state.busy || !state.cloudAvailable || Boolean(state.cloudUser);
+    logoutUserButton.disabled = state.busy || !state.cloudUser;
+    copyUserIdButton.disabled = state.busy || !state.cloudUser;
+    copyUserTokenButton.disabled = state.busy || !state.cloudUser;
+    themeToggleButton.textContent = state.themeMode === "dark" ? "Light" : "Dark";
+    themeToggleButton.setAttribute("aria-pressed", String(state.themeMode === "dark"));
+    newSpaceButton.disabled = state.busy || !state.cloudAvailable || !state.cloudUser;
+    saveSpaceButton.disabled = state.busy || !canEditSite();
+    newPageButton.disabled = state.busy || !canCreatePage();
+    newFolderButton.disabled = state.busy || !canEditSite();
+    importPageButton.disabled = state.busy || !canCreatePage();
+    pageTemplateSelect.disabled = state.busy || !canCreatePage() || state.pageTemplates.length === 0;
+    globalSearchInput.disabled = state.busy || !state.cloudUser;
+    searchScopeSelect.disabled = state.busy || !state.cloudUser;
+    searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
+    refreshTrashButton.disabled = state.busy || !state.cloudUser;
+    savePageButton.disabled = state.busy || !canEditPage() || !state.currentPage;
+    reloadPageButton.disabled = state.busy || !state.currentPage;
+    favoritePageButton.disabled = state.busy || !state.cloudUser || !state.currentPage;
+    sourceInput.disabled = state.busy || !canEditPage();
+    pageTitleInput.disabled = state.busy || !canEditPage();
+    copyPageLinkButton.disabled = state.busy || !state.currentPage;
+    copyArtifactLinkButton.disabled = state.busy || !state.currentPage;
+    copySiteLinkButton.disabled = state.busy || !state.currentSite;
+    openPublishedSiteButton.disabled = state.busy || !state.currentSite;
+    inviteUserButton.disabled = state.busy || !canManagePermissions();
+    inviteGroupSelect.disabled = state.busy || !canManagePermissions() || state.groups.length === 0;
+    inviteGroupButton.disabled = state.busy || !canManagePermissions() || state.groups.length === 0;
+    refreshAccessButton.disabled = state.busy || !canManagePermissions() && !canEditPage();
+    refreshNotificationsButton.disabled = state.busy || !state.cloudUser;
+    readAllNotificationsButton.disabled = state.busy || !state.cloudUser || !state.notifications.some((notification) => !notification.readAt);
+    refreshCommentsButton.disabled = state.busy || !state.currentPage;
+    addCommentButton.disabled = state.busy || !state.currentPage || !state.cloudUser;
+    commentBlockIdInput.disabled = state.busy || !state.currentPage;
+    commentBodyInput.disabled = state.busy || !state.currentPage;
+    refreshApprovalsButton.disabled = state.busy || !state.currentPage;
+    requestApprovalButton.disabled = state.busy || !state.currentPage || !canEditPage();
+    approvalReviewerInput.disabled = state.busy || !state.currentPage || !canEditPage();
+    approvalNoteInput.disabled = state.busy || !state.currentPage || !canEditPage();
+    refreshActivityButton.disabled = state.busy || !state.currentPage;
+    refreshGroupsButton.disabled = state.busy || !state.cloudUser;
+    createGroupButton.disabled = state.busy || !state.cloudUser;
+    manageGroupSelect.disabled = state.busy || state.groups.length === 0;
+    groupMemberIdInput.disabled = state.busy || !selectedGroupManagedByCurrentUser();
+    groupMemberRoleSelect.disabled = state.busy || !selectedGroupManagedByCurrentUser();
+    addGroupMemberButton.disabled = state.busy || !selectedGroupManagedByCurrentUser();
+    applyPatchButton.disabled = state.busy || !canEditPage();
+    proposePatchButton.disabled = state.busy || !canEditPage() || !state.currentPage || state.dirty;
+    refreshPatchProposalsButton.disabled = state.busy || !state.currentPage;
+    copyLlmButton.disabled = state.busy || Boolean(state.renderState.error) || !state.renderState.llm;
+    togglePanelsButton.setAttribute("aria-pressed", String(state.panelsOpen));
+    togglePanelsButton.textContent = state.panelsOpen ? "Hide Panels" : "Panels";
+    for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
+      button.setAttribute("aria-pressed", String(button.dataset.viewMode === state.viewMode));
+    }
+    const role = currentPageRole();
+    const currentFavorite = Boolean(state.currentPage && state.favoriteItems.some((item) => item.resourceType === "document" && item.resourceId === state.currentPage?.id));
+    favoritePageButton.textContent = currentFavorite ? "Unfavorite" : "Favorite";
+    favoritePageButton.setAttribute("aria-pressed", String(currentFavorite));
+    roleBadge.textContent = role;
+    roleBadge.dataset.state = roleRank(role) >= roleRank("editor") ? "ok" : "warning";
+    dirtyBadge.textContent = state.dirty ? "unsaved" : "saved";
+    dirtyBadge.dataset.state = state.dirty ? "dirty" : "ok";
+    updatedText.textContent = state.currentPage ? `Updated ${formatDate(state.currentPage.updatedAt)}` : "";
+    renderPageMeta();
+    renderNavigation();
+    renderHistory();
+    renderWorkspaceTools();
+    renderCollaborationPanels();
+    renderWorkManagement();
+    renderPatchProposals();
+    renderAccessManagement();
+    renderKnowledgeWorkspace();
+  }
+  function applyPreviewPaperWidth(previewDoc) {
+    const paper = previewDoc.querySelector(".noma-document");
+    if (paper) paper.style.maxWidth = `${state.previewPaperWidth}px`;
+  }
+  function startSplitResize(event) {
+    if (state.viewMode !== "split") return;
+    event.preventDefault();
+    const rect = documentGrid.getBoundingClientRect();
+    documentGrid.dataset.resizing = "true";
+    splitResizeHandle.setPointerCapture(event.pointerId);
+    const onMove = (moveEvent) => {
+      const nextRatio = (moveEvent.clientX - rect.left) / rect.width * 100;
+      setSplitSourceRatio(nextRatio);
+    };
+    const onUp = () => {
+      delete documentGrid.dataset.resizing;
+      splitResizeHandle.removeEventListener("pointermove", onMove);
+      splitResizeHandle.removeEventListener("pointerup", onUp);
+      splitResizeHandle.removeEventListener("pointercancel", onUp);
+      setCloudStatus("Resized split view", "ok");
+    };
+    splitResizeHandle.addEventListener("pointermove", onMove);
+    splitResizeHandle.addEventListener("pointerup", onUp);
+    splitResizeHandle.addEventListener("pointercancel", onUp);
+  }
+  function handleSplitResizeKeydown(event) {
+    if (state.viewMode !== "split") return;
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    setSplitSourceRatio(state.splitSourceRatio + (event.key === "ArrowRight" ? 3 : -3));
+    setCloudStatus("Resized split view", "ok");
+  }
+  function setSplitSourceRatio(value) {
+    state.splitSourceRatio = Math.round(clamp(value, 30, 66) * 10) / 10;
+    localStorage.setItem(splitSourceRatioStorageKey, String(state.splitSourceRatio));
+    documentGrid.style.setProperty("--source-pane-width", `${state.splitSourceRatio}%`);
+  }
+  function startPreviewPaperResize(event, paper) {
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = paper.getBoundingClientRect().width;
+    const ownerWindow = paper.ownerDocument.defaultView;
+    if (!handle || !ownerWindow) return;
+    handle.setPointerCapture(event.pointerId);
+    const onMove = (moveEvent) => {
+      const nextWidth = startWidth + (moveEvent.clientX - startX) * 2;
+      setPreviewPaperWidth(nextWidth, paper);
+    };
+    const onUp = () => {
+      ownerWindow.removeEventListener("pointermove", onMove);
+      ownerWindow.removeEventListener("pointerup", onUp);
+      ownerWindow.removeEventListener("pointercancel", onUp);
+      setCloudStatus("Resized preview paper", "ok");
+    };
+    ownerWindow.addEventListener("pointermove", onMove);
+    ownerWindow.addEventListener("pointerup", onUp);
+    ownerWindow.addEventListener("pointercancel", onUp);
+  }
+  function handlePreviewPaperResizeKeydown(event, paper) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    event.stopPropagation();
+    setPreviewPaperWidth(state.previewPaperWidth + (event.key === "ArrowRight" ? 40 : -40), paper);
+    setCloudStatus("Resized preview paper", "ok");
+  }
+  function setPreviewPaperWidth(value, paper) {
+    state.previewPaperWidth = Math.round(clamp(value, 680, 1280));
+    localStorage.setItem(previewPaperWidthStorageKey, String(state.previewPaperWidth));
+    if (paper) paper.style.maxWidth = `${state.previewPaperWidth}px`;
+  }
+  function applyThemeMode() {
+    document.documentElement.dataset.theme = state.themeMode;
+    document.documentElement.style.colorScheme = state.themeMode;
+  }
+
+  // web/cloud/util.ts
+  function actionButton(label, action, disabled = false, accessibleLabel) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.disabled = disabled;
+    if (accessibleLabel) {
+      button.setAttribute("aria-label", accessibleLabel);
+      button.title = accessibleLabel;
+    }
+    button.addEventListener("click", action);
+    return button;
+  }
+  function iconButton(text, title, onClick, variant) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = variant === "danger" ? "row-action row-action-danger" : "row-action";
+    button.textContent = text;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
+  function emptyState(text) {
+    const row = document.createElement("div");
+    row.className = "empty-state";
+    row.textContent = text;
+    return row;
+  }
   function normalizeInlineText(text) {
     return text.replace(/\s+/g, " ").trim();
   }
@@ -14427,94 +13762,6 @@ Start writing here.`;
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : void 0;
   }
-  function isPreviewEditKind(value) {
-    return value === "section" || value === "paragraph" || value === "list_item" || value === "quote";
-  }
-  function previewError(message) {
-    return `<!doctype html><html lang="en"><body style="font:14px sans-serif;color:#a33a32;padding:20px">${escapeHtml2(message)}</body></html>`;
-  }
-  function starterPage(title, siteName) {
-    return `# ${title} {id="${slug(title) || "intro"}"}
-
-::abstract{id="abstract" status="draft"}
-${siteName} draft abstract. State the research question, method, primary result, and confidence in one paragraph.
-::
-
-## Research Question {id="research-question"}
-
-::claim{id="claim-main" confidence=0.68}
-The central claim of this paper goes here.
-::
-
-::evidence{id="evidence-primary" for="claim-main" source="source-primary"}
-Summarize the strongest evidence for the central claim.
-::
-
-## Methods {id="methods"}
-
-Describe the study design, corpus, data collection window, and analysis method.
-
-::table{id="review-checklist" header align="l,c,l"}
-| Section | Status | Owner |
-| Abstract | draft | Research |
-| Methods | draft | Research |
-| Evidence | needs source check | Reviewer |
-::
-
-## Findings {id="findings"}
-
-Draft the result narrative here. Use stable IDs on claims, evidence, figures, tables, citations, and review tasks so collaborators and agents can patch exactly the right block.
-
-::citation{id="source-primary" source="Primary source placeholder" url="https://example.com/source" accessed="2026-06-07"}
-Replace this placeholder with the paper's canonical source.
-::
-
-::bibliography{id="references"}
-::
-
-## Review Queue {id="review-queue"}
-
-::agent_task{id="task-source-check" scope="paper-review" owner="reviewer"}
-Verify the primary source, update the citation metadata, and leave unrelated blocks unchanged.
-::
-`;
-  }
-  function wikiPage(title, siteName, relatedTitle) {
-    const id = slug(title) || "wiki-page";
-    return `# ${title} {id="${id}"}
-
-::summary{id="summary"}
-Summarize what this page captures in ${siteName}. Keep it connected to the related pages below.
-::
-
-## Notes {id="notes"}
-
-Start writing the durable explanation here.
-
-## Related {id="related"}
-
-- [[${relatedTitle}]]
-
-## Agent Tasks {id="agent-tasks"}
-
-::agent_task{id="task-expand-${id}" scope="wiki-maintenance" owner="agent"}
-Expand this page with definitions, sources, backlinks, and missing related pages without rewriting unrelated pages.
-::
-`;
-  }
-  function replaceFirstHeading(source, title) {
-    if (/^#\s+.+$/m.test(source)) {
-      return source.replace(/^#\s+(.+?)(\s+\{[^}]*\})?\s*$/m, (_match, _oldTitle, attrs) => {
-        return `# ${title}${attrs ?? ""}`;
-      });
-    }
-    return `# ${title} {id="${slug(title) || "intro"}"}
-
-${source}`;
-  }
-  function sourceTitle(source) {
-    return source.match(/^#\s+(.+)$/m)?.[1]?.replace(/\s+\{[^}]*\}\s*$/, "").trim() || "Untitled Page";
-  }
   function slug(value) {
     return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
   }
@@ -14522,37 +13769,112 @@ ${source}`;
     const value = window.prompt(label, fallback);
     return value?.trim() || fallback;
   }
-  function confirmDiscardDirty() {
-    if (!dirty) return true;
-    if (!window.confirm("Discard unsaved page changes?")) return false;
-    if (currentPage) clearLocalDraft(currentPage.id);
-    pendingLocalDraft = void 0;
-    dirty = false;
-    return true;
-  }
-  function registerCloudPwa() {
-    if (!("serviceWorker" in navigator)) return;
-    window.addEventListener("load", () => {
-      void navigator.serviceWorker.register("/cloud-sw.js").catch(() => void 0);
-    });
-  }
-  function updateAddress() {
-    const params = new URLSearchParams();
-    if (currentSite) params.set("site", currentSite.id);
-    if (currentPage) params.set("doc", currentPage.id);
-    if (shareToken) params.set("share", shareToken);
-    const next = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState(null, "", next);
-  }
   function absoluteUrl(path) {
     return new URL(path, window.location.origin).toString();
   }
-  function cloudAppDocumentUrl(id, token) {
-    return absoluteUrl(`/cloud.html?doc=${encodeURIComponent(id)}&share=${encodeURIComponent(token)}`);
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
   }
-  function cloudAppSiteUrl(id, token) {
-    return absoluteUrl(`/cloud.html?site=${encodeURIComponent(id)}&share=${encodeURIComponent(token)}`);
+  function setBusy(value, message, panelState = "warning") {
+    state.busy = value;
+    if (message) setCloudStatus(message, panelState);
+    renderChrome();
   }
+  function setCloudStatus(message, panelState) {
+    cloudStatus.textContent = message;
+    cloudStatus.dataset.state = panelState;
+  }
+  function setPanelStatus(element, message, panelState) {
+    element.textContent = message;
+    element.dataset.state = panelState;
+  }
+  async function copyText(text, status) {
+    await navigator.clipboard.writeText(text);
+    setCloudStatus(status, "ok");
+  }
+  function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  function formatDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(void 0, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  }
+  function shortId(value) {
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  }
+  function escapeHtml2(value) {
+    return value.replace(/[&<>"']/g, (char) => {
+      switch (char) {
+        case "&":
+          return "&amp;";
+        case "<":
+          return "&lt;";
+        case ">":
+          return "&gt;";
+        case '"':
+          return "&quot;";
+        default:
+          return "&#39;";
+      }
+    });
+  }
+
+  // web/cloud/state.ts
+  var state = {
+    cloudAvailable: false,
+    busy: false,
+    cloudUser: readCloudUser(),
+    sites: [],
+    currentSite: void 0,
+    pages: [],
+    currentPage: void 0,
+    documentRevisions: [],
+    pageTemplates: [],
+    cloudSearchResults: [],
+    recentItems: [],
+    favoriteItems: [],
+    currentLabels: [],
+    currentWatching: false,
+    trashItems: [],
+    notifications: [],
+    comments: [],
+    approvals: [],
+    activityEvents: [],
+    groups: [],
+    workProjects: [],
+    workIssues: [],
+    workSprints: [],
+    selectedIssue: void 0,
+    patchProposals: [],
+    collaboratorGrants: [],
+    groupGrants: [],
+    shareGrants: [],
+    activeFolder: "",
+    dirty: false,
+    renderTimer: void 0,
+    renderState: emptyRenderState(),
+    viewMode: readViewMode(),
+    panelsOpen: readPanelsOpen(),
+    splitSourceRatio: readSplitSourceRatio(),
+    previewPaperWidth: readPreviewPaperWidth(),
+    themeMode: readThemeMode(),
+    pendingPreviewFocusLine: void 0,
+    askNomaResponse: void 0,
+    knowledgeHealth: [],
+    agentInbox: [],
+    scopedAgents: [],
+    pendingLocalDraft: void 0,
+    savedPageSource: "",
+    savedPageHash: "",
+    savedPageTitle: ""
+  };
+  var shareToken = readShareToken();
   function readCloudUser() {
     const stored = localStorage.getItem(userStorageKey);
     if (!stored) return void 0;
@@ -14602,26 +13924,6 @@ ${source}`;
     if (stored === "light" || stored === "dark") return stored;
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }
-  function applyThemeMode() {
-    document.documentElement.dataset.theme = themeMode;
-    document.documentElement.style.colorScheme = themeMode;
-  }
-  function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-  }
-  function setBusy(value, message, state = "warning") {
-    busy = value;
-    if (message) setCloudStatus(message, state);
-    renderChrome();
-  }
-  function setCloudStatus(message, state) {
-    cloudStatus.textContent = message;
-    cloudStatus.dataset.state = state;
-  }
-  function setPanelStatus(element, message, state) {
-    element.textContent = message;
-    element.dataset.state = state;
-  }
   function emptyRenderState() {
     return {
       doc: null,
@@ -14629,40 +13931,778 @@ ${source}`;
       llm: ""
     };
   }
-  async function copyText(text, status) {
-    await navigator.clipboard.writeText(text);
-    setCloudStatus(status, "ok");
+
+  // web/cloud/api.ts
+  var CloudRequestError = class extends Error {
+    constructor(status, message, payload) {
+      super(message);
+      this.status = status;
+      this.payload = payload;
+      this.name = "CloudRequestError";
+    }
+  };
+  async function fetchCloudJson(url, init) {
+    const headers = new Headers(init?.headers);
+    headers.set("accept", "application/json");
+    if (state.cloudUser) headers.set("authorization", `Bearer ${state.cloudUser.token}`);
+    if (shareToken) headers.set("x-noma-share-token", shareToken);
+    const response = await fetch(url, {
+      ...init,
+      headers
+    });
+    if (!response.ok) {
+      let message = `${response.status} ${response.statusText}`;
+      const text = await response.text();
+      let payload = {};
+      try {
+        payload = JSON.parse(text);
+        if (payload.error) message = payload.error;
+      } catch {
+        if (text) message = text;
+      }
+      if (response.status === 401 && message.includes("Noma Cloud access token required")) {
+        const next = `${window.location.pathname}${window.location.search}`;
+        window.location.assign(`/login.html?next=${encodeURIComponent(next)}`);
+      }
+      throw new CloudRequestError(response.status, message, payload);
+    }
+    return response.json();
   }
-  function errorMessage(error) {
-    return error instanceof Error ? error.message : String(error);
+
+  // web/cloud/collaboration.ts
+  async function inviteCollaborator() {
+    const userId = inviteUserIdInput.value.trim();
+    if (!readCloudId(userId)) {
+      setPanelStatus(shareStatus, "Enter a valid user ID", "error");
+      return;
+    }
+    const role = selectedInviteRole();
+    if (!state.currentSite && !state.currentPage) return;
+    setBusy(true, "Inviting collaborator", "warning");
+    try {
+      if (state.currentSite) {
+        await postCollaborator(`/api/sites/${encodeURIComponent(state.currentSite.id)}/collaborators`, userId, role);
+      } else if (state.currentPage) {
+        await postCollaborator(`/api/documents/${encodeURIComponent(state.currentPage.id)}/collaborators`, userId, role);
+      }
+      inviteUserIdInput.value = "";
+      await refreshAccessManagement();
+      setPanelStatus(shareStatus, `Invited ${userId} as ${role}`, "ok");
+      setCloudStatus("Invited collaborator", "ok");
+    } catch (error) {
+      setPanelStatus(shareStatus, errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
   }
-  function formatDate(value) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString(void 0, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
+  async function postCollaborator(url, userId, role) {
+    await fetchCloudJson(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId, role })
     });
   }
-  function shortId(value) {
-    return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  async function refreshAccessManagement() {
+    if (!state.cloudUser || !state.currentSite && !state.currentPage) {
+      state.collaboratorGrants = [];
+      state.groupGrants = [];
+      state.shareGrants = [];
+      renderAccessManagement();
+      return;
+    }
+    const base = accessTargetEndpoint();
+    try {
+      if (canManagePermissions()) {
+        const [collaborators, groupAccess, shares] = await Promise.all([
+          fetchCloudJson(`${base}/collaborators`),
+          fetchCloudJson(`${base}/group-collaborators`),
+          fetchCloudJson(`${base}/shares`)
+        ]);
+        state.collaboratorGrants = collaborators.collaborators;
+        state.groupGrants = groupAccess.groups;
+        state.shareGrants = shares.shares;
+      } else if (canEditPage()) {
+        state.collaboratorGrants = [];
+        state.groupGrants = [];
+        state.shareGrants = (await fetchCloudJson(`${base}/shares`)).shares;
+      } else {
+        state.collaboratorGrants = [];
+        state.groupGrants = [];
+        state.shareGrants = [];
+      }
+    } catch (error) {
+      setPanelStatus(shareStatus, errorMessage(error), "error");
+    } finally {
+      renderAccessManagement();
+    }
   }
-  function escapeHtml2(value) {
-    return value.replace(/[&<>"']/g, (char) => {
-      switch (char) {
-        case "&":
-          return "&amp;";
-        case "<":
-          return "&lt;";
-        case ">":
-          return "&gt;";
-        case '"':
-          return "&quot;";
-        default:
-          return "&#39;";
+  async function removeCollaboratorGrant(userId) {
+    try {
+      await fetchCloudJson(`${accessTargetEndpoint()}/collaborators/${encodeURIComponent(userId)}`, { method: "DELETE" });
+      await refreshAccessManagement();
+    } catch (error) {
+      setPanelStatus(shareStatus, errorMessage(error), "error");
+    }
+  }
+  async function removeGroupGrant(groupId) {
+    try {
+      await fetchCloudJson(`${accessTargetEndpoint()}/group-collaborators/${encodeURIComponent(groupId)}`, { method: "DELETE" });
+      await refreshAccessManagement();
+    } catch (error) {
+      setPanelStatus(shareStatus, errorMessage(error), "error");
+    }
+  }
+  async function revokeShareGrant(shareId) {
+    try {
+      await fetchCloudJson(`${accessTargetEndpoint()}/shares/${encodeURIComponent(shareId)}`, { method: "DELETE" });
+      await refreshAccessManagement();
+    } catch (error) {
+      setPanelStatus(shareStatus, errorMessage(error), "error");
+    }
+  }
+  function renderAccessManagement() {
+    accessList.textContent = "";
+    const activeShares = state.shareGrants.filter((share) => !share.revokedAt);
+    if (state.collaboratorGrants.length === 0 && state.groupGrants.length === 0 && activeShares.length === 0) {
+      accessList.append(emptyState(canManagePermissions() || canEditPage() ? "No additional access" : "Owner/editor access required"));
+      return;
+    }
+    for (const grant of state.collaboratorGrants) {
+      const row = collaborationRow(`User ${shortId(grant.userId)}`, grant.role, formatDate(grant.addedAt));
+      if (grant.role !== "owner") row.append(collaborationActionsWith(actionButton("Remove", () => void removeCollaboratorGrant(grant.userId))));
+      accessList.append(row);
+    }
+    for (const grant of state.groupGrants) {
+      const row = collaborationRow(grant.groupName, `group \xB7 ${grant.role}`, formatDate(grant.addedAt));
+      row.append(collaborationActionsWith(actionButton("Remove", () => void removeGroupGrant(grant.groupId))));
+      accessList.append(row);
+    }
+    for (const share of activeShares) {
+      const row = collaborationRow(share.label || "Share link", `${share.role} \xB7 ${share.tokenPreview}`, "token link");
+      row.append(collaborationActionsWith(actionButton("Revoke", () => void revokeShareGrant(share.id))));
+      accessList.append(row);
+    }
+  }
+  function collaborationActionsWith(...buttons) {
+    const actions = collaborationActions();
+    actions.append(...buttons);
+    return actions;
+  }
+  function accessTargetEndpoint() {
+    if (state.currentSite) return `/api/sites/${encodeURIComponent(state.currentSite.id)}`;
+    if (state.currentPage) return `/api/documents/${encodeURIComponent(state.currentPage.id)}`;
+    throw new Error("No page or space is selected");
+  }
+  async function inviteGroup() {
+    const groupId = inviteGroupSelect.value;
+    if (!groupId || !state.currentSite && !state.currentPage) {
+      setPanelStatus(shareStatus, "Create or join a group before inviting it", "error");
+      return;
+    }
+    const role = selectedInviteRole();
+    const endpoint = state.currentSite ? `/api/sites/${encodeURIComponent(state.currentSite.id)}/group-collaborators` : `/api/documents/${encodeURIComponent(state.currentPage?.id ?? "")}/group-collaborators`;
+    setBusy(true, "Inviting group", "warning");
+    try {
+      await fetchCloudJson(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ groupId, role })
+      });
+      setPanelStatus(shareStatus, `Invited ${groupName(groupId)} as ${role}`, "ok");
+      await refreshAccessManagement();
+      setCloudStatus("Invited group", "ok");
+    } catch (error) {
+      setPanelStatus(shareStatus, errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function refreshNotifications() {
+    if (!state.cloudUser) {
+      state.notifications = [];
+      renderNotifications();
+      return;
+    }
+    try {
+      const response = await fetchCloudJson("/api/notifications");
+      state.notifications = response.notifications;
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      renderNotifications();
+    }
+  }
+  async function readAllNotifications() {
+    if (!state.cloudUser) return;
+    try {
+      await fetchCloudJson("/api/notifications/read-all", { method: "POST" });
+      await refreshNotifications();
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    }
+  }
+  async function markNotificationRead(notification) {
+    if (!notification.readAt) {
+      await fetchCloudJson(`/api/notifications/${encodeURIComponent(notification.id)}/read`, { method: "POST" });
+    }
+    if (notification.resourceType === "document" && notification.resourceId) {
+      if (state.pages.some((page) => page.id === notification.resourceId)) selectPage(notification.resourceId);
+      else await loadStandaloneDocument(notification.resourceId);
+    } else if (notification.resourceType === "site" && notification.resourceId) {
+      await loadSite(notification.resourceId);
+    }
+    await refreshNotifications();
+  }
+  function renderNotifications() {
+    notificationList.textContent = "";
+    if (state.notifications.length === 0) {
+      notificationList.append(emptyState("No notifications"));
+      return;
+    }
+    for (const notification of state.notifications.slice(0, 30)) {
+      const row = collaborationRow(notification.title, notification.body, `${notification.type.replaceAll("_", " ")} \xB7 ${formatDate(notification.createdAt)}`);
+      row.dataset.unread = String(!notification.readAt);
+      const actions = collaborationActions();
+      actions.append(actionButton(notification.readAt ? "Open" : "Read", () => void markNotificationRead(notification)));
+      row.append(actions);
+      notificationList.append(row);
+    }
+  }
+  async function refreshPageCollaboration() {
+    await Promise.all([refreshComments(), refreshApprovals(), refreshActivity(), refreshPatchProposals()]);
+  }
+  async function refreshComments() {
+    if (!state.currentPage) {
+      state.comments = [];
+      renderComments();
+      return;
+    }
+    const pageId = state.currentPage.id;
+    try {
+      const response = await fetchCloudJson(`${currentPageEndpoint()}/comments`);
+      if (state.currentPage?.id === pageId) state.comments = response.comments;
+    } catch (error) {
+      setPanelStatus(commentStatus, errorMessage(error), "error");
+    } finally {
+      renderComments();
+    }
+  }
+  async function addComment(parentId, replyBody) {
+    if (!state.currentPage) return;
+    const body = (replyBody ?? commentBodyInput.value).trim();
+    if (!body) {
+      setPanelStatus(commentStatus, "Write a comment first", "error");
+      return;
+    }
+    try {
+      await fetchCloudJson(`${currentPageEndpoint()}/comments`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          body,
+          blockId: parentId ? void 0 : commentBlockIdInput.value.trim() || void 0,
+          parentId
+        })
+      });
+      if (!parentId) {
+        commentBodyInput.value = "";
+        commentBlockIdInput.value = "";
+      }
+      setPanelStatus(commentStatus, parentId ? "Reply added" : "Comment added", "ok");
+      await Promise.all([refreshComments(), refreshActivity(), refreshNotifications()]);
+    } catch (error) {
+      setPanelStatus(commentStatus, errorMessage(error), "error");
+    }
+  }
+  async function replyToComment(comment) {
+    const body = window.prompt(`Reply to ${comment.createdByName}`)?.trim();
+    if (body) await addComment(comment.id, body);
+  }
+  async function toggleCommentResolution(comment) {
+    try {
+      await fetchCloudJson(`${currentPageEndpoint()}/comments/${encodeURIComponent(comment.id)}/resolve`, { method: "POST" });
+      await Promise.all([refreshComments(), refreshActivity()]);
+    } catch (error) {
+      setPanelStatus(commentStatus, errorMessage(error), "error");
+    }
+  }
+  function renderComments() {
+    commentList.textContent = "";
+    if (!state.currentPage) {
+      commentList.append(emptyState("Select a page"));
+      return;
+    }
+    if (state.comments.length === 0) {
+      commentList.append(emptyState("No comments"));
+      return;
+    }
+    for (const comment of state.comments) {
+      const target = [comment.blockId ? `#${comment.blockId}` : void 0, comment.line ? `line ${comment.line}` : void 0].filter(Boolean).join(" \xB7 ");
+      const row = collaborationRow(
+        `${comment.parentId ? "\u21B3 " : ""}${comment.createdByName}${comment.resolvedAt ? " \xB7 resolved" : ""}`,
+        comment.body,
+        `${target ? `${target} \xB7 ` : ""}${formatDate(comment.createdAt)}`
+      );
+      const actions = collaborationActions();
+      actions.append(actionButton("Reply", () => void replyToComment(comment)));
+      if (comment.createdBy === state.cloudUser?.id || canEditPage()) {
+        actions.append(actionButton(comment.resolvedAt ? "Reopen" : "Resolve", () => void toggleCommentResolution(comment)));
+      }
+      row.append(actions);
+      commentList.append(row);
+    }
+  }
+  async function refreshApprovals() {
+    if (!state.currentPage) {
+      state.approvals = [];
+      renderApprovals();
+      return;
+    }
+    const pageId = state.currentPage.id;
+    try {
+      const response = await fetchCloudJson(`${currentPageEndpoint()}/approvals`);
+      if (state.currentPage?.id === pageId) state.approvals = response.approvals;
+    } catch (error) {
+      setPanelStatus(approvalStatus, errorMessage(error), "error");
+    } finally {
+      renderApprovals();
+    }
+  }
+  async function requestApproval() {
+    if (!state.currentPage) return;
+    const reviewerId = approvalReviewerInput.value.trim();
+    if (!readCloudId(reviewerId)) {
+      setPanelStatus(approvalStatus, "Enter a valid reviewer user ID", "error");
+      return;
+    }
+    try {
+      await fetchCloudJson(`${currentPageEndpoint()}/approvals`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reviewerId, note: approvalNoteInput.value.trim() || void 0 })
+      });
+      approvalReviewerInput.value = "";
+      approvalNoteInput.value = "";
+      setPanelStatus(approvalStatus, "Approval requested for the current saved version", "ok");
+      await Promise.all([refreshApprovals(), refreshActivity()]);
+    } catch (error) {
+      setPanelStatus(approvalStatus, errorMessage(error), "error");
+    }
+  }
+  async function updateApproval(approval, status) {
+    try {
+      await fetchCloudJson(`${currentPageEndpoint()}/approvals/${encodeURIComponent(approval.id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      await Promise.all([refreshApprovals(), refreshActivity(), refreshNotifications()]);
+    } catch (error) {
+      setPanelStatus(approvalStatus, errorMessage(error), "error");
+    }
+  }
+  function renderApprovals() {
+    approvalList.textContent = "";
+    if (!state.currentPage) {
+      approvalList.append(emptyState("Select a page"));
+      return;
+    }
+    if (state.approvals.length === 0) {
+      approvalList.append(emptyState("No approval requests"));
+      return;
+    }
+    for (const approval of state.approvals) {
+      const currentVersion = approval.documentHash === state.currentPage.hash;
+      const row = collaborationRow(
+        `${approval.reviewerName} \xB7 ${approval.status.replaceAll("_", " ")}`,
+        approval.note || "No review note",
+        `${currentVersion ? "current version" : "older version"} \xB7 ${approval.documentHash.slice(0, 8)} \xB7 ${formatDate(approval.updatedAt)}`
+      );
+      if (approval.status === "pending") {
+        const actions = collaborationActions();
+        if (approval.reviewerId === state.cloudUser?.id) {
+          actions.append(
+            actionButton("Approve", () => void updateApproval(approval, "approved"), !currentVersion),
+            actionButton("Request changes", () => void updateApproval(approval, "changes_requested"))
+          );
+        }
+        if (approval.requestedBy === state.cloudUser?.id) {
+          actions.append(actionButton("Cancel", () => void updateApproval(approval, "cancelled")));
+        }
+        row.append(actions);
+      }
+      approvalList.append(row);
+    }
+  }
+  async function refreshActivity() {
+    if (!state.cloudUser || !state.currentPage) {
+      state.activityEvents = [];
+      renderActivity();
+      return;
+    }
+    const pageId = state.currentPage.id;
+    try {
+      const response = await fetchCloudJson(`/api/activity?document=${encodeURIComponent(pageId)}&limit=30`);
+      if (state.currentPage?.id === pageId) state.activityEvents = response.events;
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      renderActivity();
+    }
+  }
+  function renderActivity() {
+    activityList.textContent = "";
+    if (state.activityEvents.length === 0) {
+      activityList.append(emptyState(state.currentPage ? "No activity" : "Select a page"));
+      return;
+    }
+    for (const event of state.activityEvents) {
+      activityList.append(
+        collaborationRow(event.action.replaceAll(".", " "), event.actorName, `${event.resourceType} \xB7 ${formatDate(event.createdAt)}`)
+      );
+    }
+  }
+  async function refreshGroups() {
+    if (!state.cloudUser) {
+      state.groups = [];
+      renderGroups();
+      return;
+    }
+    try {
+      const response = await fetchCloudJson("/api/groups");
+      state.groups = response.groups;
+    } catch (error) {
+      setPanelStatus(groupStatus, errorMessage(error), "error");
+    } finally {
+      renderGroups();
+    }
+  }
+  async function createGroup() {
+    const name = groupNameInput.value.trim();
+    if (!name) {
+      setPanelStatus(groupStatus, "Enter a group name", "error");
+      return;
+    }
+    try {
+      const group = await fetchCloudJson("/api/groups", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      groupNameInput.value = "";
+      await refreshGroups();
+      manageGroupSelect.value = group.id;
+      inviteGroupSelect.value = group.id;
+      renderChrome();
+      setPanelStatus(groupStatus, `Created ${group.name}`, "ok");
+    } catch (error) {
+      setPanelStatus(groupStatus, errorMessage(error), "error");
+    }
+  }
+  async function addGroupMember() {
+    const groupId = manageGroupSelect.value;
+    const userId = groupMemberIdInput.value.trim();
+    if (!groupId || !readCloudId(userId)) {
+      setPanelStatus(groupStatus, "Choose a group and enter a valid user ID", "error");
+      return;
+    }
+    try {
+      await fetchCloudJson(`/api/groups/${encodeURIComponent(groupId)}/members`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId, role: groupMemberRoleSelect.value })
+      });
+      groupMemberIdInput.value = "";
+      await refreshGroups();
+      setPanelStatus(groupStatus, "Group member updated", "ok");
+    } catch (error) {
+      setPanelStatus(groupStatus, errorMessage(error), "error");
+    }
+  }
+  async function removeGroupMember(groupId, userId) {
+    try {
+      await fetchCloudJson(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" });
+      await refreshGroups();
+    } catch (error) {
+      setPanelStatus(groupStatus, errorMessage(error), "error");
+    }
+  }
+  function renderGroups() {
+    const managedSelection = manageGroupSelect.value;
+    const inviteSelection = inviteGroupSelect.value;
+    for (const select of [manageGroupSelect, inviteGroupSelect]) select.textContent = "";
+    for (const group of state.groups) {
+      for (const select of [manageGroupSelect, inviteGroupSelect]) {
+        const option = document.createElement("option");
+        option.value = group.id;
+        option.textContent = group.name;
+        select.append(option);
+      }
+    }
+    manageGroupSelect.value = state.groups.some((group) => group.id === managedSelection) ? managedSelection : state.groups[0]?.id ?? "";
+    inviteGroupSelect.value = state.groups.some((group) => group.id === inviteSelection) ? inviteSelection : state.groups[0]?.id ?? "";
+    groupList.textContent = "";
+    const selected = state.groups.find((group) => group.id === manageGroupSelect.value);
+    if (!selected) {
+      groupList.append(emptyState("No groups"));
+      return;
+    }
+    const isManager = selected.members.some((member) => member.userId === state.cloudUser?.id && member.role === "manager");
+    for (const member of selected.members) {
+      const row = collaborationRow(member.userName, member.role, shortId(member.userId));
+      if (isManager) {
+        const actions = collaborationActions();
+        actions.append(actionButton("Remove", () => void removeGroupMember(selected.id, member.userId)));
+        row.append(actions);
+      }
+      groupList.append(row);
+    }
+  }
+  function groupName(groupId) {
+    return state.groups.find((group) => group.id === groupId)?.name ?? shortId(groupId);
+  }
+  function selectedGroupManagedByCurrentUser() {
+    return Boolean(
+      state.groups.find((group) => group.id === manageGroupSelect.value)?.members.some((member) => member.userId === state.cloudUser?.id && member.role === "manager")
+    );
+  }
+  function renderCollaborationPanels() {
+    renderNotifications();
+    renderComments();
+    renderApprovals();
+    renderActivity();
+    renderGroups();
+  }
+  function collaborationRow(titleText, bodyText, metaText) {
+    const row = document.createElement("div");
+    row.className = "collaboration-row";
+    const copy = document.createElement("div");
+    copy.className = "collaboration-copy";
+    const title = document.createElement("strong");
+    title.textContent = titleText;
+    const body = document.createElement("span");
+    body.textContent = bodyText;
+    const meta = document.createElement("span");
+    meta.className = "history-meta";
+    meta.textContent = metaText;
+    copy.append(title, body, meta);
+    row.append(copy);
+    return row;
+  }
+  function collaborationActions() {
+    const actions = document.createElement("div");
+    actions.className = "collaboration-actions";
+    return actions;
+  }
+  async function ensureSavedBeforeShare() {
+    if (state.dirty) await saveCurrentPage();
+  }
+  async function createShare(url, role, label) {
+    const share = await fetchCloudJson(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role, label })
+    });
+    await refreshAccessManagement();
+    return share;
+  }
+
+  // web/cloud/main.ts
+  applyThemeMode();
+  cloudUserNameInput.value = state.cloudUser?.name ?? "Noma collaborator";
+  bindEvents();
+  renderChrome();
+  registerCloudPwa();
+  void initializeCloud();
+  function bindEvents() {
+    document.addEventListener("click", () => closeContextMenu());
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeContextMenu();
+    });
+    window.addEventListener("resize", () => closeContextMenu());
+    newUserButton.addEventListener("click", () => {
+      void createCloudUser();
+    });
+    loginUserButton.addEventListener("click", () => {
+      void loginCloudUser();
+    });
+    logoutUserButton.addEventListener("click", () => {
+      logoutCloudUser();
+    });
+    copyUserIdButton.addEventListener("click", () => {
+      if (state.cloudUser) void copyText(state.cloudUser.id, "Copied user ID");
+    });
+    copyUserTokenButton.addEventListener("click", () => {
+      if (state.cloudUser) void copyText(state.cloudUser.token, "Copied user token");
+    });
+    themeToggleButton.addEventListener("click", () => {
+      state.themeMode = state.themeMode === "dark" ? "light" : "dark";
+      localStorage.setItem(themeStorageKey, state.themeMode);
+      applyThemeMode();
+      renderChrome();
+      renderCurrent();
+    });
+    newSpaceButton.addEventListener("click", () => {
+      void createStarterWorkspace(promptName("Space name", "Research Workspace"));
+    });
+    saveSpaceButton.addEventListener("click", () => {
+      void saveCurrentSite();
+    });
+    newPageButton.addEventListener("click", () => {
+      void createPage();
+    });
+    newFolderButton.addEventListener("click", () => {
+      void createFolder();
+    });
+    importPageButton.addEventListener("click", () => importPageInput.click());
+    importPageInput.addEventListener("change", () => {
+      const file = importPageInput.files?.[0];
+      if (file) void importPage(file);
+      importPageInput.value = "";
+    });
+    searchButton.addEventListener("click", () => {
+      void searchCloud();
+    });
+    globalSearchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") void searchCloud();
+      if (event.key === "Escape") {
+        globalSearchInput.value = "";
+        state.cloudSearchResults = [];
+        renderSearchResults();
       }
     });
+    globalSearchInput.addEventListener("input", () => {
+      searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
+      if (!globalSearchInput.value.trim()) {
+        state.cloudSearchResults = [];
+        renderSearchResults();
+      }
+    });
+    favoritePageButton.addEventListener("click", () => {
+      if (state.currentPage) void toggleFavorite("document", state.currentPage.id);
+    });
+    watchPageButton.addEventListener("click", () => {
+      void toggleWatch();
+    });
+    addLabelButton.addEventListener("click", () => {
+      void addLabel();
+    });
+    refreshTrashButton.addEventListener("click", () => {
+      void refreshTrash();
+    });
+    savePageButton.addEventListener("click", () => {
+      void saveCurrentPage();
+    });
+    reloadPageButton.addEventListener("click", () => {
+      void reloadCurrentPage();
+    });
+    refreshHistoryButton.addEventListener("click", () => {
+      void refreshHistory();
+    });
+    refreshWorkButton.addEventListener("click", () => void refreshWorkManagement());
+    workProjectSelect.addEventListener("change", () => void loadWorkProject(workProjectSelect.value));
+    createProjectButton.addEventListener("click", () => void createWorkProject());
+    createIssueButton.addEventListener("click", () => void createWorkIssue());
+    createSprintButton.addEventListener("click", () => void createWorkSprint());
+    startSprintButton.addEventListener("click", () => void updateWorkSprint("active"));
+    completeSprintButton.addEventListener("click", () => void updateWorkSprint("closed"));
+    issueFilterSelect.addEventListener("change", () => renderWorkBoard());
+    issueSearchInput.addEventListener("input", () => renderWorkBoard());
+    addIssueCommentButton.addEventListener("click", () => void addWorkIssueComment());
+    addIssueLinkButton.addEventListener("click", () => void addWorkIssueLink());
+    copyPageLinkButton.addEventListener("click", () => {
+      void copyPageLink();
+    });
+    copyArtifactLinkButton.addEventListener("click", () => {
+      void copyArtifactLink();
+    });
+    copySiteLinkButton.addEventListener("click", () => {
+      void copySiteLink();
+    });
+    openPublishedSiteButton.addEventListener("click", () => {
+      void openPublishedSite();
+    });
+    inviteUserButton.addEventListener("click", () => {
+      void inviteCollaborator();
+    });
+    inviteGroupButton.addEventListener("click", () => {
+      void inviteGroup();
+    });
+    refreshAccessButton.addEventListener("click", () => void refreshAccessManagement());
+    refreshNotificationsButton.addEventListener("click", () => void refreshNotifications());
+    readAllNotificationsButton.addEventListener("click", () => void readAllNotifications());
+    refreshCommentsButton.addEventListener("click", () => void refreshComments());
+    addCommentButton.addEventListener("click", () => void addComment());
+    refreshApprovalsButton.addEventListener("click", () => void refreshApprovals());
+    requestApprovalButton.addEventListener("click", () => void requestApproval());
+    refreshActivityButton.addEventListener("click", () => void refreshActivity());
+    refreshGroupsButton.addEventListener("click", () => void refreshGroups());
+    createGroupButton.addEventListener("click", () => void createGroup());
+    addGroupMemberButton.addEventListener("click", () => void addGroupMember());
+    manageGroupSelect.addEventListener("change", () => renderChrome());
+    applyPatchButton.addEventListener("click", () => {
+      void applyAgentPatch();
+    });
+    proposePatchButton.addEventListener("click", () => void proposeAgentPatch());
+    refreshPatchProposalsButton.addEventListener("click", () => void refreshPatchProposals());
+    copyLlmButton.addEventListener("click", () => {
+      void copyLlmContext();
+    });
+    askNomaButton.addEventListener("click", () => void askNoma());
+    askNomaInput.addEventListener("input", () => renderKnowledgeWorkspace());
+    askNomaInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || !event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      void askNoma();
+    });
+    refreshKnowledgeButton.addEventListener("click", () => void refreshKnowledgeWorkspace());
+    recoverDraftButton.addEventListener("click", () => recoverLocalDraft());
+    mergeDraftButton.addEventListener("click", () => void mergeLocalDraft());
+    discardDraftButton.addEventListener("click", () => discardCurrentLocalDraft());
+    window.addEventListener("online", () => {
+      state.cloudAvailable = true;
+      renderKnowledgeWorkspace();
+      void refreshKnowledgeWorkspace();
+    });
+    window.addEventListener("offline", () => {
+      state.cloudAvailable = false;
+      renderKnowledgeWorkspace();
+      setCloudStatus("Offline \u2014 your draft remains editable and cached locally", "warning");
+    });
+    for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.viewMode;
+        setViewMode(mode === "source" || mode === "preview" ? mode : "split");
+      });
+    }
+    togglePanelsButton.addEventListener("click", () => {
+      state.panelsOpen = !state.panelsOpen;
+      localStorage.setItem(panelsOpenStorageKey, state.panelsOpen ? "true" : "false");
+      renderChrome();
+    });
+    sourceInput.addEventListener("input", () => {
+      markDirty();
+      persistLocalDraft();
+      syncTitleFromSource();
+      scheduleRender();
+    });
+    pageTitleInput.addEventListener("input", () => {
+      const nextTitle = pageTitleInput.value.trim() || "Untitled Page";
+      sourceInput.value = replaceFirstHeading(sourceInput.value, nextTitle);
+      if (state.currentPage) state.currentPage = { ...state.currentPage, title: nextTitle, source: sourceInput.value };
+      markDirty();
+      persistLocalDraft();
+      scheduleRender();
+    });
+    sourceInput.addEventListener("keydown", (event) => {
+      if (!event.metaKey && !event.ctrlKey || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      void saveCurrentPage();
+    });
+    sourceInput.addEventListener("contextmenu", (event) => showSourceContextMenu(event));
+    splitResizeHandle.addEventListener("pointerdown", (event) => startSplitResize(event));
+    splitResizeHandle.addEventListener("keydown", (event) => handleSplitResizeKeydown(event));
+    previewFrame.addEventListener("load", () => installPreviewEditing());
   }
 })();
