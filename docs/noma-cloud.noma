@@ -472,6 +472,39 @@ GET    /api/sites/<site-id>/webhooks/<webhook-id>/deliveries?limit=50
 
 The Space settings panel has a Webhooks section for owners.
 
+## Email, notification preferences, and digests
+
+Each person chooses, per notification type (`mention`, `comment`,
+`approval_requested`, `approval_updated`, `page_updated`, `task_assigned`),
+whether it is shown **in app** only (the default), **in app and by email**, or
+**off** (not recorded at all). A daily or weekly **digest** emails a summary of
+notifications that are still unread; nothing is sent when everything is read.
+The first digest arrives one full period after it is turned on.
+
+Email needs an address on the profile. It is visible only to its owner:
+`GET /api/users` and the DB API never return it.
+
+```text
+GET /api/users/me
+PUT /api/users/me                      {"email": "ada@example.com", "name": "Ada"}   (email null clears it)
+GET /api/users/me/preferences
+PUT /api/users/me/preferences          {"channels": {"mention": "email", "comment": "off"}, "digest": "daily|weekly|off"}
+```
+
+Mail goes through a persisted outbox drained by the same background queue as
+webhooks. Transient failures retry after 1, 2, 4, and 8 minutes; SMTP `5xx`
+replies fail immediately.
+
+| Setting | Behavior |
+|---|---|
+| `NOMA_CLOUD_SMTP_URL` | `smtp://user:pass@host:587` uses STARTTLS when the server offers it (`?starttls=required` to insist, `?starttls=never` to skip). `smtps://host:465` uses implicit TLS. Credentials are sent with AUTH PLAIN or LOGIN, and only over TLS. `?insecure=1` skips certificate checks and allows AUTH without TLS; use it for local testing only. |
+| `NOMA_CLOUD_MAIL_TRANSPORT=log` | Development transport: writes each message as a JSON line to `NOMA_CLOUD_MAIL_LOG`, or to stdout. It is also used when no SMTP URL is set. |
+| `NOMA_CLOUD_MAIL_FROM` | Sender, default `Noma Cloud <noreply@localhost>`. |
+| `NOMA_CLOUD_PUBLIC_URL` | Base URL for links in emails. |
+
+The Notifications panel has a **Notification settings** section for the email
+address, per-type channels, and the digest frequency.
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

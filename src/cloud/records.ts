@@ -145,7 +145,14 @@ export function accessResponse(access: AccessContext): Record<string, unknown> {
   };
 }
 
-export function publicUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash"> {
+/** A user as other people may see it: no token hash and no email address. */
+export function publicUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash" | "email"> {
+  const { tokenHash, email, ...out } = user;
+  return out;
+}
+
+/** The signed-in user's own profile, including their email address. */
+export function selfUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash"> {
   const { tokenHash, ...out } = user;
   return out;
 }

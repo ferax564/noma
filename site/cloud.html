@@ -307,6 +307,22 @@
         </div>
       </div>
       <div id="notificationList" class="collaboration-list"></div>
+      <details id="notificationSettings" class="notification-settings">
+        <summary>Notification settings</summary>
+        <label class="stack-field" for="notificationEmailInput">Email address
+          <input id="notificationEmailInput" type="email" autocomplete="email" placeholder="you@example.com" />
+        </label>
+        <div id="notificationChannelList" class="notification-channels"></div>
+        <label class="stack-field" for="notificationDigestSelect">Email digest of unread notifications
+          <select id="notificationDigestSelect">
+            <option value="off">Off</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </label>
+        <button id="notificationSettingsSaveButton" type="button">Save settings</button>
+        <div id="notificationSettingsStatus" class="panel-status"></div>
+      </details>
     </section>
 
     <section class="inspector-section">

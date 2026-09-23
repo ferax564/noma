@@ -28,6 +28,8 @@ export interface CloudUserRecord {
   version: 1;
   id: string;
   name: string;
+  /** Address for email notifications and digests; visible only to the user. */
+  email?: string;
   tokenHash: string;
   tokenPreview: string;
   createdAt: string;
@@ -464,6 +466,35 @@ export interface CloudWebhookDelivery {
   deliveredAt?: string;
 }
 
+export type CloudNotificationChannel = "in_app" | "email" | "off";
+export type CloudDigestFrequency = "off" | "daily" | "weekly";
+
+export interface CloudNotificationPreferences {
+  userId: string;
+  channels: Record<CloudNotificationType, CloudNotificationChannel>;
+  digest: CloudDigestFrequency;
+  lastDigestAt?: string;
+  updatedAt?: string;
+}
+
+export type CloudEmailKind = "notification" | "digest";
+export type CloudEmailStatus = "pending" | "sent" | "failed";
+
+export interface CloudEmail {
+  id: string;
+  userId: string;
+  to: string;
+  subject: string;
+  text: string;
+  kind: CloudEmailKind;
+  status: CloudEmailStatus;
+  attempts: number;
+  nextAttemptAt: string;
+  lastError?: string;
+  createdAt: string;
+  sentAt?: string;
+}
+
 export interface CloudWatch {
   userId: string;
   resourceType: CloudResourceType;
@@ -623,6 +654,21 @@ interface WebhookDeliveryRow {
   last_error: string | null;
   created_at: string;
   delivered_at: string | null;
+}
+
+interface EmailRow {
+  id: string;
+  user_id: string;
+  to_address: string;
+  subject: string;
+  body_text: string;
+  kind: CloudEmailKind;
+  status: CloudEmailStatus;
+  attempts: number;
+  next_attempt_at: string;
+  last_error: string | null;
+  created_at: string;
+  sent_at: string | null;
 }
 
 interface NotificationRow {
@@ -2355,6 +2401,101 @@ export class NomaCloudDatabase {
     return this.db.prepare("DELETE FROM webhook_deliveries WHERE status <> 'pending' AND created_at < ?").run(before).changes;
   }
 
+  // --- wiki experience: notification preferences, email outbox, digests ------------------
+
+  notificationPreferences(userId: string): CloudNotificationPreferences {
+    const row = this.db.prepare("SELECT * FROM notification_preferences WHERE user_id = ?").get(userId) as
+      | { channels_json: string; digest: CloudDigestFrequency; last_digest_at: string | null; updated_at: string }
+      | undefined;
+    const stored = row ? parseRecord<Partial<Record<CloudNotificationType, CloudNotificationChannel>>>(row.channels_json) : {};
+    const channels = Object.fromEntries(cloudNotificationTypes.map((type) => [type, stored[type] ?? "in_app"])) as Record<CloudNotificationType, CloudNotificationChannel>;
+    return {
+      userId,
+      channels,
+      digest: row?.digest ?? "off",
+      ...(row?.last_digest_at ? { lastDigestAt: row.last_digest_at } : {}),
+      ...(row?.updated_at ? { updatedAt: row.updated_at } : {}),
+    };
+  }
+
+  writeNotificationPreferences(preferences: CloudNotificationPreferences, updatedAt: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO notification_preferences (user_id, channels_json, digest, last_digest_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET channels_json = excluded.channels_json, digest = excluded.digest, last_digest_at = excluded.last_digest_at, updated_at = excluded.updated_at`,
+      )
+      .run(preferences.userId, JSON.stringify(preferences.channels), preferences.digest, preferences.lastDigestAt ?? null, updatedAt);
+  }
+
+  /** Users with a digest schedule whose previous digest is older than their period (or who never had one). */
+  dueDigestUsers(now: string, limit: number): Array<{ userId: string; digest: Exclude<CloudDigestFrequency, "off">; lastDigestAt?: string }> {
+    const nowMs = Date.parse(now);
+    const dailyCutoff = new Date(nowMs - 86_400_000).toISOString();
+    const weeklyCutoff = new Date(nowMs - 7 * 86_400_000).toISOString();
+    const rows = this.db
+      .prepare(
+        `SELECT user_id, digest, last_digest_at FROM notification_preferences
+         WHERE (digest = 'daily' AND (last_digest_at IS NULL OR last_digest_at <= ?))
+            OR (digest = 'weekly' AND (last_digest_at IS NULL OR last_digest_at <= ?))
+         ORDER BY COALESCE(last_digest_at, ''), user_id
+         LIMIT ?`,
+      )
+      .all(dailyCutoff, weeklyCutoff, limit) as Array<{ user_id: string; digest: "daily" | "weekly"; last_digest_at: string | null }>;
+    return rows.map((row) => ({ userId: row.user_id, digest: row.digest, ...(row.last_digest_at ? { lastDigestAt: row.last_digest_at } : {}) }));
+  }
+
+  markDigestSent(userId: string, at: string): void {
+    this.db.prepare("UPDATE notification_preferences SET last_digest_at = ? WHERE user_id = ?").run(at, userId);
+  }
+
+  /** Unread notifications for the user created at or after `since`, newest first. */
+  unreadNotificationsSince(userId: string, since: string, limit: number): CloudNotification[] {
+    const rows = this.db
+      .prepare("SELECT * FROM notifications WHERE user_id = ? AND read_at IS NULL AND created_at >= ? ORDER BY created_at DESC, id DESC LIMIT ?")
+      .all(userId, since, limit) as NotificationRow[];
+    return rows.map(cloudNotification);
+  }
+
+  enqueueEmail(email: Omit<CloudEmail, "status" | "attempts" | "lastError" | "sentAt">): void {
+    this.db
+      .prepare(
+        `INSERT INTO email_outbox (id, user_id, to_address, subject, body_text, kind, status, attempts, next_attempt_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+      )
+      .run(email.id, email.userId, email.to, email.subject, email.text, email.kind, email.nextAttemptAt, email.createdAt);
+  }
+
+  claimDueEmails(now: string, leaseUntil: string, limit: number): CloudEmail[] {
+    const claim = this.db.transaction((): CloudEmail[] => {
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM email_outbox
+           WHERE status = 'pending' AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)
+           ORDER BY next_attempt_at, created_at LIMIT ?`,
+        )
+        .all(now, now, limit) as EmailRow[];
+      const lease = this.db.prepare("UPDATE email_outbox SET lease_until = ? WHERE id = ?");
+      for (const row of rows) lease.run(leaseUntil, row.id);
+      return rows.map(cloudEmail);
+    });
+    return claim();
+  }
+
+  completeEmail(id: string, result: { status: CloudEmailStatus; attempts: number; nextAttemptAt: string; lastError?: string; sentAt?: string }): void {
+    this.db
+      .prepare("UPDATE email_outbox SET status = ?, attempts = ?, next_attempt_at = ?, lease_until = NULL, last_error = ?, sent_at = ? WHERE id = ?")
+      .run(result.status, result.attempts, result.nextAttemptAt, result.lastError ?? null, result.sentAt ?? null, id);
+  }
+
+  listEmails(userId: string, limit: number): CloudEmail[] {
+    return (this.db.prepare("SELECT * FROM email_outbox WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?").all(userId, limit) as EmailRow[]).map(cloudEmail);
+  }
+
+  pruneEmails(before: string): number {
+    return this.db.prepare("DELETE FROM email_outbox WHERE status <> 'pending' AND created_at < ?").run(before).changes;
+  }
+
   // --- wiki experience: people directory ----------------------------------------------
 
   /**
@@ -2826,6 +2967,33 @@ export class NomaCloudDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_due ON webhook_deliveries(status, next_attempt_at);
       CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_hook ON webhook_deliveries(webhook_id, created_at DESC);
+
+      -- notification preferences and email
+      CREATE TABLE IF NOT EXISTS notification_preferences (
+        user_id TEXT PRIMARY KEY,
+        channels_json TEXT NOT NULL,
+        digest TEXT NOT NULL CHECK (digest IN ('off', 'daily', 'weekly')),
+        last_digest_at TEXT,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_notification_preferences_digest ON notification_preferences(digest, last_digest_at);
+      CREATE TABLE IF NOT EXISTS email_outbox (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        to_address TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        body_text TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('notification', 'digest')),
+        status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT NOT NULL,
+        lease_until TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        sent_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_email_outbox_due ON email_outbox(status, next_attempt_at);
+      CREATE INDEX IF NOT EXISTS idx_email_outbox_user ON email_outbox(user_id, created_at DESC);
 
       -- page analytics
       CREATE TABLE IF NOT EXISTS page_views (
@@ -3782,5 +3950,22 @@ function cloudWebhookDelivery(row: WebhookDeliveryRow): CloudWebhookDelivery {
     ...(row.last_error ? { lastError: row.last_error } : {}),
     createdAt: row.created_at,
     ...(row.delivered_at ? { deliveredAt: row.delivered_at } : {}),
+  };
+}
+
+function cloudEmail(row: EmailRow): CloudEmail {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    to: row.to_address,
+    subject: row.subject,
+    text: row.body_text,
+    kind: row.kind,
+    status: row.status,
+    attempts: row.attempts,
+    nextAttemptAt: row.next_attempt_at,
+    ...(row.last_error ? { lastError: row.last_error } : {}),
+    createdAt: row.created_at,
+    ...(row.sent_at ? { sentAt: row.sent_at } : {}),
   };
 }

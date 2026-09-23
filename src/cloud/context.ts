@@ -18,6 +18,7 @@ import type {
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
 import { assertCloudId } from "./input.js";
+import { routeNotificationByPreference } from "./mail.js";
 
 export interface CloudServerConfig {
   dataDir: string;
@@ -278,7 +279,7 @@ export function writeNotification(
   resourceType?: CloudResourceType,
   resourceId?: string,
 ): void {
-  config.store.writeNotification({
+  const notification: CloudNotification = {
     id: randomId(),
     userId,
     type,
@@ -287,7 +288,9 @@ export function writeNotification(
     ...(resourceType ? { resourceType } : {}),
     ...(resourceId ? { resourceId } : {}),
     createdAt: config.now().toISOString(),
-  });
+  };
+  if (!routeNotificationByPreference(config.store, notification, notification.createdAt)) return;
+  config.store.writeNotification(notification);
 }
 
 export function recordActivity(

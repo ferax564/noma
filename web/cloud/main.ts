@@ -18,6 +18,7 @@ import { bindSpaceSettings } from "./spaces.js";
 import { bindPageAnalytics } from "./analytics.js";
 import { bindTasks, decoratePreviewTasks } from "./tasks.js";
 import { bindWebhooks } from "./webhooks.js";
+import { bindNotificationSettings } from "./notification-settings.js";
 import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
@@ -104,6 +105,7 @@ function bindEvents(): void {
   bindPageAnalytics();
   bindTasks();
   bindWebhooks();
+  bindNotificationSettings();
   globalSearchInput.addEventListener("input", () => {
     searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
     if (!globalSearchInput.value.trim()) {

@@ -23,7 +23,7 @@ import { publicUser } from "./cloud/records.js";
 import { renderDocumentHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
 import { routeApi } from "./cloud/router.js";
 import { recordPageView } from "./cloud/routes-analytics.js";
-import { runQueueDrain } from "./cloud/webhooks.js";
+import { runServerQueueTick } from "./cloud/queue.js";
 import {
   isCloudAppShell,
   redirectWithCloudAccessCookie,
@@ -148,7 +148,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     });
   });
   const queueIntervalMs = options.queueIntervalMs ?? Number(process.env.NOMA_CLOUD_QUEUE_INTERVAL_MS ?? 5_000);
-  const queueTimer = queueIntervalMs > 0 ? setInterval(() => void runQueueDrain(config), queueIntervalMs) : undefined;
+  const queueTimer = queueIntervalMs > 0 ? setInterval(() => void runServerQueueTick(config), queueIntervalMs) : undefined;
   queueTimer?.unref();
   server.on("close", () => {
     if (queueTimer) clearInterval(queueTimer);

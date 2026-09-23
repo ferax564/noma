@@ -1613,3 +1613,9 @@ button.wiki-row {
 .webhook-delivery-failed{color:#a4573c}
 .webhook-delivery-pending{color:var(--muted,#5c6670)}
 
+/* notification settings */
+.notification-settings{margin-top:8px}
+.notification-settings summary{cursor:pointer;font-size:.8rem;font-weight:700}
+.notification-channels{display:grid;gap:4px;margin:6px 0}
+.notification-channel{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;font-size:.78rem}
+
