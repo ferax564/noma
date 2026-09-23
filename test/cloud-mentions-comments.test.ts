@@ -84,3 +84,104 @@ test("user directory only lists people who share a space and source mentions not
     await harness.close();
   }
 });
+
+interface CommentResponse {
+  id: string;
+  body: string;
+  parentId?: string;
+  editedAt?: string;
+  deleted?: true;
+  deletedBy?: string;
+  outdated?: boolean;
+  anchor?: { blockId: string; quote: string; prefix?: string; suffix?: string };
+  reactions: Array<{ emoji: string; count: number; reacted: boolean; users: string[] }>;
+}
+
+test("comments can be edited, soft-deleted, reacted to, and anchored to text ranges that go outdated", async () => {
+  const harness = await startCloudServer("noma-comments-");
+  const { base, clock } = harness;
+  try {
+    const root = await createCloudUser(base, "Root Admin");
+    const ada = await createCloudUser(base, "Ada Lovelace");
+    const bob = await createCloudUser(base, "Bob Builder");
+    const carl = await createCloudUser(base, "Carl Sagan");
+    const { site, pages } = await createSpace(base, ada.token, "Engineering", [
+      '# Plan\n\nKickoff notes for the **launch** team.\n\n## Risks {id="risks"}\n\nVendor delay is likely.\n',
+    ]);
+    for (const [user, role] of [[bob, "editor"], [carl, "viewer"], [root, "viewer"]] as const) {
+      await json(`${base}/api/sites/${site.id}/collaborators`, { method: "POST", token: ada.token, body: { userId: user.id, role } });
+    }
+    let page = pages[0]!;
+    const comments = `${base}/api/documents/${page.id}/comments`;
+    const siteComments = `${base}/api/sites/${site.id}/documents/${page.id}/comments`;
+
+    const bobComment = await json<CommentResponse>(comments, { method: "POST", token: bob.token, body: { body: "Needs a date" } });
+    clock.advance(60_000);
+    const edited = await json<CommentResponse>(`${comments}/${bobComment.id}`, { method: "PATCH", token: bob.token, body: { body: `Needs a date, @{${carl.id}}` } });
+    assert.equal(edited.body, `Needs a date, @{${carl.id}}`);
+    assert.equal(edited.editedAt, "2026-06-06T12:01:00.000Z");
+    const carlNotifications = await json<NotificationList>(`${base}/api/notifications`, { token: carl.token });
+    assert.equal(carlNotifications.notifications.filter((item) => item.type === "mention").length, 1, "editing in a mention notifies");
+    await json(`${comments}/${bobComment.id}`, { method: "PATCH", token: ada.token, body: { body: "hijack" }, expectedStatus: 403 });
+    await json(`${comments}/${bobComment.id}`, { method: "PATCH", token: bob.token, body: { body: "" }, expectedStatus: 400 });
+
+    const reply = await json<CommentResponse>(siteComments, { method: "POST", token: carl.token, body: { body: "Agreed", parentId: bobComment.id } });
+    await json(`${comments}/${bobComment.id}`, { method: "DELETE", token: carl.token, expectedStatus: 403 });
+
+    const reacted = await json<CommentResponse>(`${comments}/${reply.id}/reactions`, { method: "POST", token: bob.token, body: { emoji: "👍" } });
+    assert.deepEqual(reacted.reactions, [{ emoji: "👍", count: 1, reacted: true, users: ["Bob Builder"] }]);
+    await json(`${siteComments}/${reply.id}/reactions`, { method: "POST", token: carl.token, body: { emoji: "👍" } });
+    await json(`${comments}/${reply.id}/reactions`, { method: "POST", token: carl.token, body: { emoji: "👍" } });
+    await json(`${comments}/${reply.id}/reactions`, { method: "POST", token: carl.token, body: { emoji: "🎉" } });
+    await json(`${comments}/${reply.id}/reactions`, { method: "POST", token: carl.token, body: { emoji: "<script>" }, expectedStatus: 400 });
+    let listed = await json<{ comments: CommentResponse[]; reactionSet: string[] }>(comments, { token: ada.token });
+    assert.ok(listed.reactionSet.includes("👍"));
+    assert.deepEqual(
+      listed.comments.find((item) => item.id === reply.id)?.reactions.map((reaction) => [reaction.emoji, reaction.count, reaction.reacted]),
+      [["👍", 2, false], ["🎉", 1, false]],
+    );
+    const removed = await json<CommentResponse>(`${comments}/${reply.id}/reactions/${encodeURIComponent("🎉")}`, { method: "DELETE", token: carl.token });
+    assert.deepEqual(removed.reactions.map((reaction) => reaction.emoji), ["👍"]);
+
+    const deleted = await json<CommentResponse>(`${comments}/${bobComment.id}`, { method: "DELETE", token: ada.token });
+    assert.equal(deleted.deleted, true);
+    assert.equal(deleted.body, "");
+    assert.equal(deleted.deletedBy, ada.id);
+    listed = await json<{ comments: CommentResponse[]; reactionSet: string[] }>(comments, { token: bob.token });
+    assert.deepEqual(listed.comments.map((item) => [item.id, item.deleted ?? false, item.parentId]), [
+      [bobComment.id, true, undefined],
+      [reply.id, false, bobComment.id],
+    ]);
+    await json(`${comments}/${bobComment.id}`, { method: "PATCH", token: bob.token, body: { body: "undo" }, expectedStatus: 409 });
+    await json(`${comments}/${bobComment.id}/reactions`, { method: "POST", token: bob.token, body: { emoji: "👍" }, expectedStatus: 409 });
+    await json(comments, { method: "POST", token: bob.token, body: { body: "late", parentId: bobComment.id }, expectedStatus: 409 });
+
+    await json(`${comments}/${reply.id}`, { method: "DELETE", token: bob.token, expectedStatus: 403 });
+    const adminDeleted = await json<CommentResponse>(`${comments}/${reply.id}`, { method: "DELETE", token: root.token });
+    assert.equal(adminDeleted.deleted, true, "workspace admins can delete others' comments");
+
+    const anchored = await json<CommentResponse>(comments, {
+      method: "POST",
+      token: carl.token,
+      body: { body: "Which vendor?", anchor: { blockId: "risks", quote: "Vendor  delay", prefix: "", suffix: " is likely" } },
+    });
+    assert.deepEqual(anchored.anchor, { blockId: "risks", quote: "Vendor delay", suffix: " is likely" });
+    assert.equal(anchored.outdated, false);
+    const formatted = await json<CommentResponse>(comments, {
+      method: "POST",
+      token: carl.token,
+      body: { body: "Which team?", anchor: { blockId: "plan", quote: "for the launch team" } },
+    });
+    assert.equal(formatted.outdated, false, "quotes match the rendered text, not raw markdown");
+    await json(comments, { method: "POST", token: carl.token, body: { body: "x", anchor: { blockId: "risks", quote: "not in the block" } }, expectedStatus: 400 });
+    await json(comments, { method: "POST", token: carl.token, body: { body: "x", anchor: { blockId: "missing", quote: "Vendor" } }, expectedStatus: 400 });
+
+    page = await savePage(base, ada.token, page, '# Plan\n\nKickoff notes for the **launch** team.\n\n## Risks {id="risks"}\n\nVendor slip is likely.\n');
+    listed = await json<{ comments: CommentResponse[]; reactionSet: string[] }>(comments, { token: carl.token });
+    assert.equal(listed.comments.find((item) => item.id === anchored.id)?.outdated, true);
+    assert.equal(listed.comments.find((item) => item.id === formatted.id)?.outdated, false);
+    assert.equal(listed.comments.find((item) => item.id === anchored.id)?.body, "Which vendor?", "outdated comments are kept");
+  } finally {
+    await harness.close();
+  }
+});

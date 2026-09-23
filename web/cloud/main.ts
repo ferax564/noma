@@ -11,6 +11,7 @@ import { applyThemeMode, handleSplitResizeKeydown, renderChrome, setViewMode, st
 import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage, createStarterWorkspace, importPage, openPublishedSite, refreshTrash, replaceFirstHeading, saveCurrentSite, toggleFavorite } from "./navigation.js";
 import { addLabel, toggleWatch } from "./page-meta.js";
 import { installPreviewEditing } from "./preview.js";
+import { installCommentSelectionCapture } from "./comments.js";
 import { attachMentionPicker, decoratePreviewMentions } from "./mentions.js";
 import { bindSearchFilters } from "./search-filters.js";
 import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
@@ -254,6 +255,7 @@ function bindEvents(): void {
 
   previewFrame.addEventListener("load", () => installPreviewEditing());
   previewFrame.addEventListener("load", () => decoratePreviewMentions(previewFrame.contentDocument));
+  previewFrame.addEventListener("load", () => installCommentSelectionCapture(previewFrame.contentDocument));
   attachMentionPicker(commentBodyInput);
   attachMentionPicker(sourceInput);
 }

@@ -4,10 +4,8 @@ import { walk } from "../ast.js";
 import type {
   CloudApproval,
   CloudApprovalStatus,
-  CloudComment,
   CloudDocumentRecord,
   CloudDocumentRevision,
-  CloudNotification,
   CloudResourceType,
   CloudSiteRecord,
   CloudUserRecord,
@@ -29,18 +27,17 @@ import {
   writeNotification,
 } from "./context.js";
 import { decodePathSegment, HttpError, readJsonBody, sendJson, sendText } from "./http.js";
-import { boundedInteger, labelInput, optionalString, stringInput } from "./input.js";
+import { labelInput, optionalString, stringInput } from "./input.js";
 import {
   createDocument,
-  documentHasBlock,
   documentResponse,
   inspectSource,
   requireDocumentPrecondition,
   updateDocument,
 } from "./records.js";
-import { extractMentions, mentionNames } from "./mentions.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
+import { routeComments } from "./routes-comments.js";
 import { routePatchProposals } from "./routes-patch.js";
 
 export async function routeDocuments(
@@ -105,7 +102,7 @@ export async function routeDocuments(
   }
 
   if (suffix === "comments") {
-    await routeDocumentComments(req, res, parts[4], parts[5], config, principal, record);
+    await routeDocumentComments(req, res, parts[4], parts[5], config, principal, record, undefined, parts[6]);
     return;
   }
 
@@ -217,65 +214,10 @@ export async function routeDocumentComments(
   principal: Principal,
   document: CloudDocumentRecord,
   inheritedAccess?: AccessContext,
+  actionArg?: string,
 ): Promise<void> {
-  const method = req.method ?? "GET";
   const access = inheritedAccess ?? requireRecordAccess(config, document, principal, "viewer");
-  const user = requireUser(principal);
-  if (!commentId && method === "GET") {
-    sendJson(res, 200, { comments: config.store.listComments(document.id).map((comment) => commentWithMentions(config, user, comment)) });
-    return;
-  }
-  if (!commentId && method === "POST") {
-    const input = await readJsonBody(req, config.maxBodyBytes);
-    const body = stringInput(input, "body").slice(0, 10_000);
-    const blockId = optionalString(input.blockId)?.slice(0, 160);
-    const line = input.line === undefined ? undefined : boundedInteger(input.line, 1, 1, 1_000_000, "line");
-    const parentId = optionalString(input.parentId);
-    if (blockId && !documentHasBlock(document, blockId)) throw new HttpError(400, "Comment blockId does not exist in this document");
-    if (parentId) {
-      const parent = config.store.readComment(parentId);
-      if (!parent || parent.documentId !== document.id) throw new HttpError(400, "Comment parentId does not exist in this document");
-    }
-    const now = config.now().toISOString();
-    const comment: Omit<CloudComment, "createdByName"> = {
-      id: uniqueId(config),
-      documentId: document.id,
-      ...(blockId ? { blockId } : {}),
-      ...(line === undefined ? {} : { line }),
-      ...(parentId ? { parentId } : {}),
-      body,
-      createdBy: user.id,
-      createdAt: now,
-      updatedAt: now,
-    };
-    config.store.writeComment(comment);
-    notifyCommentParticipants(config, document, comment, user);
-    recordActivity(config, user, parentId ? "comment.replied" : "comment.created", "document", document.id, {
-      commentId: comment.id,
-      blockId,
-      line,
-    });
-    sendJson(res, 201, commentWithMentions(config, user, config.store.readComment(comment.id)!));
-    return;
-  }
-  if (commentId && action === "resolve" && method === "POST") {
-    const existing = config.store.readComment(commentId);
-    if (!existing || existing.documentId !== document.id) throw new HttpError(404, "Comment not found");
-    if (existing.createdBy !== user.id) requireAccessRole(access, "editor");
-    const now = config.now().toISOString();
-    config.store.writeComment({
-      ...existing,
-      updatedAt: now,
-      resolvedAt: existing.resolvedAt ? undefined : now,
-      resolvedBy: existing.resolvedAt ? undefined : user.id,
-    });
-    recordActivity(config, user, existing.resolvedAt ? "comment.reopened" : "comment.resolved", "document", document.id, {
-      commentId,
-    });
-    sendJson(res, 200, config.store.readComment(commentId));
-    return;
-  }
-  throw new HttpError(404, "Unknown comment route");
+  await routeComments(req, res, commentId, action, actionArg, config, principal, document, access);
 }
 
 export async function routeDocumentApprovals(
@@ -377,39 +319,6 @@ async function listDocuments(config: CloudServerConfig, user: CloudUserRecord): 
     updatedBy: record.updatedBy,
     currentRole: record.currentRole,
   }));
-}
-
-function notifyCommentParticipants(
-  config: CloudServerConfig,
-  document: CloudDocumentRecord,
-  comment: Omit<CloudComment, "createdByName">,
-  actor: CloudUserRecord,
-): void {
-  const recipients = new Map<string, CloudNotification["type"]>();
-  for (const userId of extractMentions(comment.body)) {
-    if (userId !== actor.id && config.store.documentAccessRole(userId, document.id)) recipients.set(userId, "mention");
-  }
-  if (comment.parentId) {
-    const parent = config.store.readComment(comment.parentId);
-    if (parent && parent.createdBy !== actor.id) recipients.set(parent.createdBy, recipients.get(parent.createdBy) ?? "comment");
-  } else if (document.createdBy !== actor.id) {
-    recipients.set(document.createdBy, recipients.get(document.createdBy) ?? "comment");
-  }
-  for (const [userId, type] of recipients) {
-    writeNotification(
-      config,
-      userId,
-      type,
-      type === "mention" ? `Mentioned in ${document.title}` : `New comment on ${document.title}`,
-      `${actor.name}: ${comment.body.slice(0, 240)}`,
-      "document",
-      document.id,
-    );
-  }
-}
-
-function commentWithMentions(config: CloudServerConfig, user: CloudUserRecord, comment: CloudComment): CloudComment & { mentions: Array<{ id: string; name: string }> } {
-  return { ...comment, mentions: mentionNames(config, user, comment.body, comment.documentId) };
 }
 
 function approvalStatusInput(value: unknown): Exclude<CloudApprovalStatus, "pending"> {

@@ -254,6 +254,10 @@
       <label class="stack-field" for="commentBodyInput">Page comment
         <textarea id="commentBodyInput" class="compact-textarea" placeholder="Type @ to mention someone"></textarea>
       </label>
+      <div class="comment-quote-row">
+        <span id="commentQuoteStatus" class="panel-status comment-quote-status">Select text in the preview to quote it</span>
+        <button id="commentQuoteClearButton" type="button" aria-label="Stop quoting the selected text" hidden>Clear quote</button>
+      </div>
       <button id="addCommentButton" type="button">Add Comment</button>
       <div id="commentList" class="collaboration-list"></div>
       <div id="commentStatus" class="panel-status"></div>

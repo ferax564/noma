@@ -1565,3 +1565,18 @@ button.wiki-row {
 .mention-option[aria-selected="true"],.mention-option:hover{background:var(--accent-soft,#e6f0ee);color:var(--accent,#0f666b)}
 .mention-picker-empty{padding:6px 10px;font-size:.8rem;color:var(--muted,#5c6670)}
 
+/* comments */
+.comment-reply{margin-left:14px;border-left:2px solid var(--line,#d9ded8);padding-left:8px}
+.comment-deleted .comment-body{font-style:italic;color:var(--muted,#5c6670)}
+.comment-quote{margin:4px 0;padding:3px 8px;border-left:3px solid #d9a21b;background:rgba(253,241,199,.45);font-size:.8rem;cursor:pointer}
+.comment-quote-outdated{border-left-color:var(--muted,#8b949e);background:transparent;color:var(--muted,#5c6670);cursor:default;text-decoration:line-through}
+.comment-outdated-badge{text-decoration:none;display:inline-block}
+.comment-reactions{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:4px 0}
+.comment-reaction{padding:1px 7px;border-radius:999px;font-size:.78rem;min-height:0}
+.comment-reaction-active{background:var(--accent-soft,#e6f0ee);border-color:var(--accent,#0f666b)}
+.comment-reaction-picker summary{cursor:pointer;font-size:.76rem;color:var(--muted,#5c6670);list-style:none}
+.comment-reaction-picker[open]{display:flex;flex-wrap:wrap;gap:2px}
+.comment-reaction-choice{padding:0 5px;min-height:0;border:0;background:transparent;font-size:1rem}
+.comment-quote-row{display:flex;align-items:center;gap:6px;margin:4px 0}
+.comment-quote-status{flex:1;font-size:.76rem}
+

@@ -111,6 +111,18 @@ export interface CloudComment {
   createdAt: string;
   resolvedAt?: string;
   mentions?: Array<{ id: string; name: string }>;
+  editedAt?: string;
+  deleted?: boolean;
+  outdated?: boolean;
+  anchor?: CommentAnchor;
+  reactions?: Array<{ emoji: string; count: number; reacted: boolean; users: string[] }>;
+}
+
+export interface CommentAnchor {
+  blockId: string;
+  quote: string;
+  prefix?: string;
+  suffix?: string;
 }
 
 export interface CloudNotification {

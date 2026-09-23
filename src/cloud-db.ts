@@ -121,6 +121,25 @@ export interface CloudComment {
   updatedAt: string;
   resolvedAt?: string;
   resolvedBy?: string;
+  editedAt?: string;
+  deletedAt?: string;
+  deletedBy?: string;
+  anchor?: CloudCommentAnchor;
+}
+
+/** Text-range anchor: `quote` inside block `blockId`, disambiguated by up to 64 chars of surrounding text. */
+export interface CloudCommentAnchor {
+  blockId: string;
+  quote: string;
+  prefix?: string;
+  suffix?: string;
+}
+
+export interface CloudCommentReaction {
+  emoji: string;
+  userId: string;
+  userName: string;
+  createdAt: string;
 }
 
 export type CloudNotificationType = "mention" | "comment" | "approval_requested" | "approval_updated" | "page_updated";
@@ -456,6 +475,10 @@ interface CommentRow {
   updated_at: string;
   resolved_at: string | null;
   resolved_by: string | null;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  anchor_json?: string | null;
 }
 
 interface NotificationRow {
@@ -1068,6 +1091,7 @@ export class NomaCloudDatabase {
       }
       this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
       if (type === "document") {
+        this.db.prepare("DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE document_id = ?)").run(id);
         for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels"]) {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
@@ -1854,6 +1878,62 @@ export class NomaCloudDatabase {
     return new Set(rows.map((row) => row.id));
   }
 
+  // --- wiki experience: comments --------------------------------------------------------
+
+  setCommentAnchor(commentId: string, anchor: CloudCommentAnchor): void {
+    this.db.prepare("UPDATE comments SET anchor_json = ? WHERE id = ?").run(JSON.stringify(anchor), commentId);
+  }
+
+  editComment(commentId: string, body: string, editedAt: string): void {
+    this.db.prepare("UPDATE comments SET body = ?, edited_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL").run(body, editedAt, editedAt, commentId);
+  }
+
+  /** Soft delete: the row stays so replies keep their parent, but the body and reactions are dropped. */
+  softDeleteComment(commentId: string, deletedBy: string, deletedAt: string): void {
+    const remove = this.db.transaction(() => {
+      this.db
+        .prepare("UPDATE comments SET body = '', deleted_at = ?, deleted_by = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
+        .run(deletedAt, deletedBy, deletedAt, commentId);
+      this.db.prepare("DELETE FROM comment_reactions WHERE comment_id = ?").run(commentId);
+    });
+    remove();
+  }
+
+  addCommentReaction(commentId: string, userId: string, emoji: string, createdAt: string): void {
+    this.db
+      .prepare("INSERT INTO comment_reactions (comment_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING")
+      .run(commentId, userId, emoji, createdAt);
+  }
+
+  removeCommentReaction(commentId: string, userId: string, emoji: string): boolean {
+    return this.db.prepare("DELETE FROM comment_reactions WHERE comment_id = ? AND user_id = ? AND emoji = ?").run(commentId, userId, emoji).changes > 0;
+  }
+
+  /** Reactions for every comment on a document, keyed by comment ID. */
+  listCommentReactions(documentId: string): Map<string, CloudCommentReaction[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT r.comment_id, r.user_id, u.name AS user_name, r.emoji, r.created_at
+         FROM comment_reactions r
+         JOIN comments c ON c.id = r.comment_id
+         JOIN users u ON u.id = r.user_id
+         WHERE c.document_id = ?
+         ORDER BY r.created_at, r.user_id`,
+      )
+      .all(documentId) as Array<{ comment_id: string; user_id: string; user_name: string; emoji: string; created_at: string }>;
+    const byComment = new Map<string, CloudCommentReaction[]>();
+    for (const row of rows) {
+      const list = byComment.get(row.comment_id) ?? [];
+      list.push({ emoji: row.emoji, userId: row.user_id, userName: row.user_name, createdAt: row.created_at });
+      byComment.set(row.comment_id, list);
+    }
+    return byComment;
+  }
+
+  countCommentReactions(commentId: string): number {
+    return (this.db.prepare("SELECT COUNT(*) AS count FROM comment_reactions WHERE comment_id = ?").get(commentId) as { count: number }).count;
+  }
+
   // --- wiki experience: people directory ----------------------------------------------
 
   /**
@@ -2271,6 +2351,15 @@ export class NomaCloudDatabase {
         PRIMARY KEY (user_id, resource_type, resource_id)
       );
 
+      -- comments: reactions (edit/delete/anchor columns are added by migrateCommentColumns)
+      CREATE TABLE IF NOT EXISTS comment_reactions (
+        comment_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (comment_id, user_id, emoji)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_permissions_user ON permissions(user_id, resource_type, resource_id);
       CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token_hash);
       CREATE INDEX IF NOT EXISTS idx_site_documents_document ON site_documents(document_id, site_id);
@@ -2307,6 +2396,7 @@ export class NomaCloudDatabase {
       CREATE INDEX IF NOT EXISTS idx_watchers_resource ON watchers(resource_type, resource_id, user_id);
     `);
     this.migrateNotificationTypes();
+    this.migrateCommentColumns();
     this.db.exec(`
       INSERT OR IGNORE INTO document_revisions
         (document_id, revision, title, source, hash, created_at, created_by)
@@ -2343,6 +2433,14 @@ export class NomaCloudDatabase {
         CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at, created_at DESC);
       `);
     })();
+  }
+
+  /** Adds the comment edit/soft-delete/anchor columns to databases created before they existed. */
+  private migrateCommentColumns(): void {
+    const columns = new Set((this.db.prepare("PRAGMA table_info(comments)").all() as Array<{ name: string }>).map((column) => column.name));
+    for (const [name, type] of [["edited_at", "TEXT"], ["deleted_at", "TEXT"], ["deleted_by", "TEXT"], ["anchor_json", "TEXT"]] as const) {
+      if (!columns.has(name)) this.db.exec(`ALTER TABLE comments ADD COLUMN ${name} ${type}`);
+    }
   }
 
   private importLegacyJsonOnce(): void {
@@ -2674,6 +2772,10 @@ function cloudComment(row: CommentRow): CloudComment {
     updatedAt: row.updated_at,
     ...(row.resolved_at ? { resolvedAt: row.resolved_at } : {}),
     ...(row.resolved_by ? { resolvedBy: row.resolved_by } : {}),
+    ...(row.edited_at ? { editedAt: row.edited_at } : {}),
+    ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
+    ...(row.deleted_by ? { deletedBy: row.deleted_by } : {}),
+    ...(row.anchor_json ? { anchor: parseRecord<CloudCommentAnchor>(row.anchor_json) } : {}),
   };
 }
 

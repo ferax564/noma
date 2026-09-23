@@ -291,6 +291,34 @@ GET /api/users?ids=<id,id,...>&document=<optional page id>
 display names for mentions and returns only people you share a space with, or
 people who can open the given page.
 
+## Comment editing, reactions, and quoted text
+
+Comments are threads anchored to the page, a block, or an exact quote.
+
+| Action | Who | Behavior |
+|---|---|---|
+| Edit | The author | Replaces the body and sets `editedAt`; the UI shows **edited**. Mentions added by an edit notify. |
+| Delete | The author, a page owner, or a workspace admin | Soft delete: the comment keeps its place so replies stay threaded, but the body, mentions, and reactions are removed and it returns `deleted: true`. |
+| Resolve | The author or an editor | Toggles `resolvedAt`. |
+| React | Anyone who can view the page | Adds or removes one of 👍 👎 😄 🎉 😕 ❤️ 🚀 👀 (one of each per person). |
+| Quote | Anyone who can comment | Select text in the preview, then add a comment. The comment stores `anchor: {blockId, quote, prefix, suffix}` and the preview highlights the quoted text. |
+
+The quote must appear in the block's rendered text when the comment is
+created. When later edits remove it, the comment is kept and returned with
+`outdated: true`; the UI strikes the quote through and stops highlighting it.
+
+```text
+GET    /api/documents/<id>/comments
+POST   /api/documents/<id>/comments                       {"body": "...", "anchor": {"blockId": "risks", "quote": "Vendor delay", "prefix": "", "suffix": " is likely"}}
+PATCH  /api/documents/<id>/comments/<comment-id>          {"body": "..."}
+DELETE /api/documents/<id>/comments/<comment-id>
+POST   /api/documents/<id>/comments/<comment-id>/resolve
+POST   /api/documents/<id>/comments/<comment-id>/reactions   {"emoji": "👍"}
+DELETE /api/documents/<id>/comments/<comment-id>/reactions/<emoji>
+```
+
+The same routes exist under `/api/sites/<site-id>/documents/<page-id>/comments`.
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

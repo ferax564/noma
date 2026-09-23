@@ -7,7 +7,7 @@ import { renderChrome } from "./layout.js";
 import { loadSite, loadStandaloneDocument, selectPage } from "./navigation.js";
 import { canEditPage, canManagePermissions, selectedInviteRole } from "./permissions.js";
 import { readCloudId, state } from "./state.js";
-import { mentionDisplay } from "./mentions.js";
+import { highlightCommentAnchors, renderCommentThread, takePendingAnchor } from "./comments.js";
 import type { CloudActivityEvent, CloudApproval, CloudCollaboratorGrant, CloudComment, CloudGroup, CloudGroupGrant, CloudNotification, CloudRole, CloudShareGrant, CloudShareResponse } from "./types.js";
 import { actionButton, emptyState, errorMessage, formatDate, setBusy, setCloudStatus, setPanelStatus, shortId } from "./util.js";
 
@@ -262,6 +262,7 @@ export async function addComment(parentId?: string, replyBody?: string): Promise
       body: JSON.stringify({
         body,
         blockId: parentId ? undefined : commentBlockIdInput.value.trim() || undefined,
+        anchor: parentId ? undefined : takePendingAnchor(),
         parentId,
       }),
     });
@@ -291,32 +292,16 @@ async function toggleCommentResolution(comment: CloudComment): Promise<void> {
 }
 
 function renderComments(): void {
-  commentList.textContent = "";
-  if (!state.currentPage) {
-    commentList.append(emptyState("Select a page"));
-    return;
-  }
-  if (state.comments.length === 0) {
-    commentList.append(emptyState("No comments"));
-    return;
-  }
-  for (const comment of state.comments) {
-    const target = [comment.blockId ? `#${comment.blockId}` : undefined, comment.line ? `line ${comment.line}` : undefined]
-      .filter(Boolean)
-      .join(" · ");
-    const row = collaborationRow(
-      `${comment.parentId ? "↳ " : ""}${comment.createdByName}${comment.resolvedAt ? " · resolved" : ""}`,
-      mentionDisplay(comment.body, comment.mentions),
-      `${target ? `${target} · ` : ""}${formatDate(comment.createdAt)}`,
-    );
-    const actions = collaborationActions();
-    actions.append(actionButton("Reply", () => void replyToComment(comment)));
-    if (comment.createdBy === state.cloudUser?.id || canEditPage()) {
-      actions.append(actionButton(comment.resolvedAt ? "Reopen" : "Resolve", () => void toggleCommentResolution(comment)));
-    }
-    row.append(actions);
-    commentList.append(row);
-  }
+  renderCommentThread(commentList, state.comments, {
+    endpoint: currentPageEndpoint,
+    reply: (comment) => void replyToComment(comment),
+    toggleResolved: (comment) => void toggleCommentResolution(comment),
+    refresh: async () => {
+      await refreshComments();
+    },
+    status: (message, kind) => setPanelStatus(commentStatus, message, kind),
+  });
+  highlightCommentAnchors();
 }
 
 export async function refreshApprovals(): Promise<void> {

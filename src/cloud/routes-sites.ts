@@ -224,7 +224,7 @@ async function routeSiteDocuments(
   }
 
   if (parts[5] === "comments") {
-    await routeDocumentComments(req, res, parts[6], parts[7], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
+    await routeDocumentComments(req, res, parts[6], parts[7], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"), parts[8]);
     return;
   }
 
