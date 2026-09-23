@@ -1,1 +1,1 @@
-export { evaluateRagFixture, summarizeRagEvals } from "@ferax564/noma-cli";
+export { evaluateRagFixture, summarizeRagEvals } from "@ferax564/noma-cli/enterprise";

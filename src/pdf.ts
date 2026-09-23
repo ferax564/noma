@@ -16,6 +16,29 @@ export interface PdfWriteOptions {
   printBackground?: boolean;
 }
 
+const importPuppeteer = () => import("puppeteer");
+type PuppeteerModule = Awaited<ReturnType<typeof importPuppeteer>>;
+
+/** Actionable message shown when `--to pdf` runs without Puppeteer installed. */
+export const PUPPETEER_MISSING_MESSAGE =
+  "install puppeteer to render PDF: npm i puppeteer (it is an optional peer dependency of @ferax564/noma-cli)";
+
+/**
+ * Loads Puppeteer lazily. It is an optional peer dependency, so a plain
+ * `npm i @ferax564/noma-cli` does not install it; the importer is injectable
+ * so the missing-module path can be tested.
+ */
+export async function loadPuppeteer(
+  importer: () => Promise<PuppeteerModule> = importPuppeteer,
+): Promise<PuppeteerModule> {
+  try {
+    return await importer();
+  } catch (error) {
+    const detail = error instanceof Error ? ` (${error.message})` : "";
+    throw new Error(`${PUPPETEER_MISSING_MESSAGE}${detail}`, { cause: error });
+  }
+}
+
 const DEFAULT_MARGIN: PdfMarginOptions = {
   top: "20mm",
   right: "18mm",
@@ -39,12 +62,7 @@ export async function writePdfFromHtml(
 
   try {
     writeFileSync(tempHtmlPath, html, "utf8");
-    const puppeteer = await import("puppeteer").catch((error: unknown) => {
-      const cause = error instanceof Error ? ` (${error.message})` : "";
-      throw new Error(
-        `PDF rendering requires Puppeteer. Install it with "npm install puppeteer" or run inside the Noma repo after "npm install".${cause}`,
-      );
-    });
+    const puppeteer = await loadPuppeteer();
     const browser = await puppeteer.default.launch({
       headless: true,
       args: ["--no-sandbox"],

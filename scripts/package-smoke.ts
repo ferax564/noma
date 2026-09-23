@@ -165,6 +165,48 @@ writeFileSync(
 run(process.execPath, ["api-smoke.mjs"], { cwd: workDir });
 
 writeFileSync(
+  join(workDir, "subpath-smoke.mjs"),
+  [
+    'import * as core from "@ferax564/noma-cli";',
+    'import { createNomaCloudServer, CloudKnowledgePlatform, cloudPageTemplates } from "@ferax564/noma-cli/cloud";',
+    'import { EnterpriseWorkspace, createTestOidc, paperDomHtmlExport } from "@ferax564/noma-cli/enterprise";',
+    'if (typeof createNomaCloudServer !== "function" || typeof CloudKnowledgePlatform !== "function") throw new Error("cloud subpath exports missing");',
+    'if (!Array.isArray(cloudPageTemplates) || cloudPageTemplates.length === 0) throw new Error("cloud templates missing");',
+    'if (typeof EnterpriseWorkspace !== "function" || typeof createTestOidc !== "function" || typeof paperDomHtmlExport !== "function") throw new Error("enterprise subpath exports missing");',
+    'if ("CloudKnowledgePlatform" in core || "EnterpriseWorkspace" in core) throw new Error("root entry still re-exports cloud/enterprise APIs");',
+  ].join("\n"),
+);
+run(process.execPath, ["subpath-smoke.mjs"], { cwd: workDir });
+
+writeFileSync(
+  join(workDir, "lean-root-smoke.mjs"),
+  [
+    'import * as nodeModule from "node:module";',
+    'if (typeof nodeModule.registerHooks !== "function") {',
+    '  console.log("lean-root-smoke: skipped (module.registerHooks needs Node >= 22.15)");',
+    "} else {",
+    "  const seen = [];",
+    "  nodeModule.registerHooks({ resolve(specifier, context, next) { seen.push(specifier); return next(specifier, context); } });",
+    '  const { parse } = await import("@ferax564/noma-cli");',
+    '  if (typeof parse !== "function") throw new Error("root parse export missing");',
+    '  const heavy = seen.filter((spec) => ["better-sqlite3", "ws", "yjs", "puppeteer"].some((dep) => spec === dep || spec.includes("node_modules/" + dep + "/")));',
+    '  if (heavy.length > 0) throw new Error("root import loaded server deps: " + heavy.join(", "));',
+    "}",
+  ].join("\n"),
+);
+run(process.execPath, ["lean-root-smoke.mjs"], { cwd: workDir });
+
+const pdfAttempt = spawnSync(npx, ["noma", "render", "demo/demo.noma", "--to", "pdf", "--out", "out/demo.pdf"], {
+  cwd: workDir,
+  encoding: "utf8",
+});
+if (pdfAttempt.status === 0 || !(pdfAttempt.stderr ?? "").includes("npm i puppeteer")) {
+  throw new Error(
+    `--to pdf without the optional puppeteer peer should fail with an install hint (exit ${pdfAttempt.status}):\n${pdfAttempt.stdout ?? ""}${pdfAttempt.stderr ?? ""}`,
+  );
+}
+
+writeFileSync(
   join(workDir, "unsafe.noma"),
   ['# Unsafe', "", '::html{id="raw"}', "<script>alert(1)</script>", "::", ""].join("\n"),
 );
