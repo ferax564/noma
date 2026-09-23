@@ -44,6 +44,30 @@ export function measureUsabilityTasks(tasks: UsabilityTask[]): {
   };
 }
 
+const TIMING_SAMPLES = 7;
+
+/**
+ * Medians of interleaved baseline/Noma runs after one warm-up each. Alternating
+ * the two means a GC pause or a burst of load on a busy CI runner hits both
+ * sides alike instead of flipping the go/no-go comparison.
+ */
+function pairedMedianMs(baseline: () => void, noma: () => void): { baselineMs: number; nomaMs: number } {
+  baseline();
+  noma();
+  const baselineSamples: number[] = [];
+  const nomaSamples: number[] = [];
+  for (let i = 0; i < TIMING_SAMPLES; i += 1) {
+    baselineSamples.push(timeMs(baseline));
+    nomaSamples.push(timeMs(noma));
+  }
+  return { baselineMs: median(baselineSamples), nomaMs: median(nomaSamples) };
+}
+
+function median(samples: number[]): number {
+  const sorted = [...samples].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)]!;
+}
+
 function timeMs(run: () => void): number {
   const start = performance.now();
   run();
@@ -93,18 +117,22 @@ export function runPaidPilotUsability(): {
       const documentId = ws.createDocument(alice, { spaceId, title: `${partner.name} spec`, source });
       const token = `TOKEN_${partner.seats}`;
       const replacement = `${partner.id}-updated`;
-      const baselineMs = timeMs(() => {
-        const current = baselineWikiRoundTrip(source, token, replacement);
-        if (!current.includes(replacement)) throw new Error("baseline failed");
-      });
-      const nomaMs = timeMs(() => {
-        ws.persistCollaborativeUpdate(alice, {
-          documentId,
-          clientId: partner.id,
-          clientSeq: 1,
-          ops: [{ kind: "replace_paragraph", blockId: `b${partner.seats}`, content: replacement }],
-        });
-      });
+      let clientSeq = 0;
+      const { baselineMs, nomaMs } = pairedMedianMs(
+        () => {
+          const current = baselineWikiRoundTrip(source, token, replacement);
+          if (!current.includes(replacement)) throw new Error("baseline failed");
+        },
+        () => {
+          clientSeq += 1;
+          ws.persistCollaborativeUpdate(alice, {
+            documentId,
+            clientId: partner.id,
+            clientSeq,
+            ops: [{ kind: "replace_paragraph", blockId: `b${partner.seats}`, content: replacement }],
+          });
+        },
+      );
       const updated = ws.readDocument(alice, documentId).source.includes(replacement);
       ws.publishDocument(alice, documentId);
       const hits = ws.search(alice, replacement);

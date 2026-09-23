@@ -25,9 +25,14 @@ function run(command: string, args: string[], options: RunOptions = {}): string 
   return result.stdout ?? "";
 }
 
-function hasNestedDistEntry(dir: string): boolean {
+/** `dist/cloud/` holds the Cloud server's route modules and ships on purpose; any other directory is leaked build output. */
+const SHIPPED_DIST_DIRS = new Set(["cloud"]);
+
+function hasNestedDistEntry(dir: string, allowed: ReadonlySet<string> = SHIPPED_DIST_DIRS): boolean {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) return true;
+    if (!entry.isDirectory()) continue;
+    if (!allowed.has(entry.name)) return true;
+    if (hasNestedDistEntry(join(dir, entry.name), new Set())) return true;
   }
   return false;
 }
