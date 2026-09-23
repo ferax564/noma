@@ -76,10 +76,20 @@ export {
   atlassianFetch,
   fetchConfluencePage,
   fetchJiraIssue,
+  confluenceApiBase,
   fetchJiraIssuePayload,
+  jiraApiBase,
+  listConfluencePages,
   searchJira,
 } from "./enterprise-atlassian.js";
-export type { AtlassianAuth, AtlassianEdition, AtlassianHttp } from "./enterprise-atlassian.js";
+export type {
+  AtlassianAuth,
+  AtlassianEdition,
+  AtlassianHttp,
+  AtlassianPaged,
+  AtlassianPageOptions,
+  ConfluenceContentSummary,
+} from "./enterprise-atlassian.js";
 export {
   AWS_EU_ALLOWED_REGIONS,
   AWS_EU_REGION,
