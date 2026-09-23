@@ -56,6 +56,7 @@ import {
   requireDocumentPrecondition,
   updateDocument,
 } from "./records.js";
+import { backupAttachments, restoreBackupAttachments, validateBackupAttachments } from "./attachments.js";
 import { cloudProofRecord, createCloudPatchProof, patchOpsInput } from "./routes-patch.js";
 import { pageQuery, requestUrl } from "./security.js";
 
@@ -261,7 +262,8 @@ export async function routeBackup(req: IncomingMessage, res: ServerResponse, par
     const requested = input.documentIds === undefined ? documents : documents.filter((document) => documentIdList(input.documentIds).includes(document.id));
     const gitInput = optionalRecord(input.git, "git");
     const git = gitInput ? { repository: stringInput(gitInput, "repository"), branch: stringInput(gitInput, "branch"), pullRequestReview: gitInput.pullRequestReview === true } : undefined;
-    sendJson(res, 200, config.platform.exportBackup(requested, config.now().toISOString(), git));
+    const attachments = input.includeAttachments === false ? [] : await backupAttachments(config, requested);
+    sendJson(res, 200, config.platform.exportBackup(requested, config.now().toISOString(), git, attachments));
     return;
   }
   if (action === "import") {
@@ -329,11 +331,21 @@ export async function routeBackup(req: IncomingMessage, res: ServerResponse, par
       notifyPageWatchers(config, record, access);
       config.store.setWatch(user.id, "document", record.id, now);
     }
+    const editable = new Set([
+      ...created.map((record) => record.id),
+      ...updated.map((record) => record.id),
+      ...plan.unchanged.filter((documentId) => {
+        const existing = config.store.readDocument(documentId);
+        return existing !== undefined && !config.store.isTrashed("document", documentId) && roleRank[config.store.documentAccessRole(user.id, documentId) ?? "viewer"] >= roleRank.editor;
+      }),
+    ]);
+    const attachments = await restoreBackupAttachments(config, bundle, editable, user.id);
     sendJson(res, 200, {
       applied: true,
       created: created.map((record) => record.id),
       updated: updated.map((record) => record.id),
       unchanged: plan.unchanged,
+      attachments,
       pullRequestReview: plan.pullRequestReview,
     });
     return;
@@ -462,7 +474,7 @@ export function knowledgeDocuments(config: CloudServerConfig, user: CloudUserRec
       const siteGrant = agentGrants.find((grant) => grant.resourceType === "site" && siteGrantDocuments.get(grant.id)?.has(summary.id));
       const agentAccess = direct ?? siteGrant;
       if (!agentAccess) continue;
-      role = agentAccess.role;
+      role = roleRank[agentAccess.role] > roleRank[humanAccess.role] ? humanAccess.role : agentAccess.role;
       via = "agent";
     }
     const document = config.store.readDocument(summary.id);
@@ -571,6 +583,7 @@ function backupBundleInput(value: unknown): NomaBackupBundle {
   if (JSON.stringify(typed.manifest.files) !== JSON.stringify(expectedManifestFiles)) {
     throw new HttpError(400, "Backup manifest does not match bundle files");
   }
+  validateBackupAttachments(typed, documentIds);
   const digest = shaInput(bundle.digest, "bundle.digest");
   const actualDigest = sha256Hex(`${JSON.stringify(typed.manifest)}\n${typed.files.map((file) => `${file.path}\n${file.source}`).join("\n")}`);
   if (digest !== actualDigest) throw new HttpError(400, "Backup bundle digest does not match its contents");

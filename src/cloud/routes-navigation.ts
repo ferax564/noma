@@ -1,6 +1,7 @@
 /** Workspace-wide listings: search, navigation, templates, trash, labels, notifications, activity. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { cloudPageTemplates } from "../cloud-templates.js";
+import { collectAttachmentGarbage } from "./attachments.js";
 import {
   type CloudServerConfig,
   type Principal,
@@ -118,8 +119,10 @@ export async function routeTrash(
       .listLegalHolds()
       .some((hold) => !hold.releasedAt && hold.resourceType === resourceType && hold.resourceId === resourceId);
     if (held) throw new HttpError(409, "Resource is under legal hold", { code: "legal_hold" });
+    const blobHashes = resourceType === "document" ? config.store.attachmentBlobHashes(resourceId) : [];
     config.store.purgeResource(resourceType, resourceId);
-    sendJson(res, 200, { ok: true, purged: true, resourceType, resourceId });
+    const blobsRemoved = await collectAttachmentGarbage(config, blobHashes);
+    sendJson(res, 200, { ok: true, purged: true, resourceType, resourceId, blobsRemoved });
     return;
   }
   throw new HttpError(404, "Unknown trash route");
@@ -137,7 +140,9 @@ export async function routeNotifications(
   const id = parts[2];
   const action = parts[3];
   if (!id && method === "GET") {
-    const notifications = config.store.listNotifications(user.id);
+    const notifications = config.store
+      .listNotifications(user.id)
+      .filter((item) => item.resourceType !== "document" || !item.resourceId || config.store.documentAccessRole(user.id, item.resourceId) !== undefined);
     sendJson(res, 200, { notifications, unread: notifications.filter((notification) => !notification.readAt).length });
     return;
   }

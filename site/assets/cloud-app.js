@@ -13,6 +13,69 @@
   var query = new URLSearchParams(window.location.search);
   var workIssueStatuses = ["backlog", "todo", "in_progress", "in_review", "done"];
 
+  // web/cloud/auth.ts
+  var csrfCookieName = "noma_csrf";
+  var csrfHeaderName = "x-noma-csrf";
+  var csrfToken;
+  function currentCsrfToken() {
+    return readCookie(csrfCookieName) ?? csrfToken;
+  }
+  function rememberCsrfToken(token) {
+    if (token) csrfToken = token;
+  }
+  function forgetCsrfToken() {
+    csrfToken = void 0;
+  }
+  function isMutatingMethod(method) {
+    const normalized = (method ?? "GET").toUpperCase();
+    return normalized !== "GET" && normalized !== "HEAD" && normalized !== "OPTIONS";
+  }
+  async function migrateLegacyStoredToken() {
+    let token;
+    try {
+      const stored = localStorage.getItem(userStorageKey);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      token = typeof parsed.token === "string" && parsed.token ? parsed.token : void 0;
+    } catch {
+      token = void 0;
+    }
+    try {
+      if (!token) return;
+      const response = await fetch("/api/auth/session", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ userToken: token })
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        rememberCsrfToken(payload.csrfToken);
+      }
+    } catch {
+      return;
+    } finally {
+      try {
+        localStorage.removeItem(userStorageKey);
+      } catch {
+      }
+    }
+  }
+  function readCookie(name) {
+    for (const part of document.cookie.split(";")) {
+      const [key, ...value] = part.trim().split("=");
+      if (key === name && value.length > 0) {
+        const raw = value.join("=");
+        try {
+          return decodeURIComponent(raw);
+        } catch {
+          return raw;
+        }
+      }
+    }
+    return void 0;
+  }
+
   // web/cloud/dom.ts
   var cloudUserNameInput = requireElement("cloudUserName");
   var cloudInvitationCodeInput = requireElement("cloudInvitationCode");
@@ -3239,14 +3302,21 @@
   function isBlockReferenceWikilinkTarget(target) {
     return BLOCK_REFERENCE_WIKILINK_RE.test(target);
   }
-  var SAFE_URL_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:", "mailto:", "tel:"]);
+  var SAFE_URL_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:", "mailto:", "tel:", "att:"]);
+  var ATTACHMENT_URL_PREFIX = "att:";
+  function resolveHref(href, resolveAttachment) {
+    if (resolveAttachment && href.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
+      return resolveAttachment(href.slice(ATTACHMENT_URL_PREFIX.length)) ?? "#";
+    }
+    return safeHref(href);
+  }
   function safeHref(href) {
     const normalized = href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
     const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized)?.[1];
     if (!scheme) return href;
     return SAFE_URL_SCHEMES.has(`${scheme}:`) ? href : "#";
   }
-  function inlineToHtml(src) {
+  function inlineToHtml(src, options = {}) {
     let text = escapeHtml(src);
     const codeSpans = [];
     const PH_OPEN = String.fromCharCode(2);
@@ -3261,7 +3331,10 @@
     text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
     text = text.replace(
       MARKDOWN_LINK_RE,
-      (_m, label, href) => `<a href="${escapeAttr(safeHref(href))}">${unescapeMarkdownLinkLabel(label)}</a>`
+      (_m, label, href) => {
+        const target = options.resolveAttachment && href.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX) ? resolveHref(unescapeHtmlEntities(href), options.resolveAttachment) : safeHref(href);
+        return `<a href="${escapeAttr(target)}">${unescapeMarkdownLinkLabel(label)}</a>`;
+      }
     );
     text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
     text = text.replace(/(?:  +|\\)\n/g, "<br />");
@@ -3269,6 +3342,9 @@
     const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
     text = text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
     return text;
+  }
+  function unescapeHtmlEntities(value) {
+    return value.replace(/&(amp|lt|gt|quot|#39);/g, (_m, name) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[name] ?? "");
   }
   function inlineToPlain(src) {
     const codeSpans = [];
@@ -3443,8 +3519,9 @@
 
   // src/parser.ts
   var FRONTMATTER_RE = /^---\s*$/;
-  var HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
-  var FENCE_RE = /^```(\w*)\s*$/;
+  var HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+  var HEADING_ATTRS_RE = /^(.+?)\s+\{([^}]*)\}$/;
+  var FENCE_OPEN_RE = /^(`{3,})([^`]*)$|^(~{3,})(.*)$/;
   var DIRECTIVE_OPEN_RE = /^(:{2,})\s*([a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)\s*(\{.*\})?\s*$/;
   var DIRECTIVE_CLOSE_RE = /^(:{2,})\s*$/;
   var LIST_RE = /^([-*])\s+(.+)$/;
@@ -3500,18 +3577,36 @@
     if (aliases.size > 0) root.aliases = [...aliases];
   }
   function extractFrontmatter(lines) {
-    if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) {
-      return { meta: {}, raw: "", startLine: 0, endLine: 0 };
-    }
+    const none = { meta: {}, raw: "", startLine: 0, endLine: 0 };
+    if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) return none;
     for (let i = 1; i < lines.length; i++) {
-      if (FRONTMATTER_RE.test(lines[i] ?? "")) {
-        const raw = lines.slice(1, i).join("\n");
-        const parsed = yaml.load(raw);
-        const meta = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-        return { meta, raw, startLine: i + 1, endLine: i + 1 };
+      if (!FRONTMATTER_RE.test(lines[i] ?? "")) continue;
+      const raw = lines.slice(1, i).join("\n");
+      const block = { raw, startLine: i + 1, endLine: i + 1 };
+      const result = loadFrontmatterYaml(raw);
+      if (result.ok) {
+        const parsed = result.value;
+        if (parsed === null || parsed === void 0) return raw.trim() === "" ? { meta: {}, ...block } : none;
+        if (typeof parsed === "object" && !Array.isArray(parsed)) {
+          return { meta: parsed, ...block };
+        }
+        return none;
       }
+      return looksLikeYamlMapping(raw) ? { meta: {}, ...block } : none;
     }
-    return { meta: {}, raw: "", startLine: 0, endLine: 0 };
+    return none;
+  }
+  function loadFrontmatterYaml(raw) {
+    try {
+      return { ok: true, value: yaml.load(raw) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message.split("\n")[0] ?? message };
+    }
+  }
+  function looksLikeYamlMapping(raw) {
+    const first = raw.split("\n").find((line) => line.trim() !== "" && !line.trim().startsWith("#"));
+    return first !== void 0 && /^[\w"'][\w\s"'.-]*:(?:\s|$)/.test(first);
   }
   function splitIdList(raw) {
     if (!raw) return void 0;
@@ -3590,12 +3685,13 @@
       const heading = matchOnce(HEADING_RE, line);
       if (heading) {
         const level = heading[1].length;
-        const title = heading[2].trim();
-        const headingAttrs = heading[3] ? parseAttrs(`{${heading[3]}}`) : {};
-        const explicitId = typeof headingAttrs.id === "string" ? headingAttrs.id : void 0;
+        const split = splitHeadingAttrs(heading[2]);
+        const title = split.title;
+        const headingAttrs = split.attrs ?? {};
+        const explicitId = typeof headingAttrs.id === "string" && headingAttrs.id !== "" ? headingAttrs.id : void 0;
         const section = {
           type: "section",
-          id: explicitId ?? slugify(title),
+          id: explicitId ?? headingSlug(title),
           level,
           title,
           children: [],
@@ -3612,19 +3708,17 @@
         i++;
         continue;
       }
-      const fence = matchOnce(FENCE_RE, line);
+      const fence = matchCodeFenceOpen(line);
       if (fence) {
-        const lang = fence[1] || void 0;
         const start = i + 1;
-        let end = start;
-        while (end < to && !FENCE_RE.test(lines[end] ?? "")) end++;
+        const end = findCodeFenceClose(lines, start, to, fence);
         const content = lines.slice(start, end).join("\n");
         const closed = end < to;
         out.push(
           applyPendingId(
             {
               type: "code",
-              lang,
+              lang: fence.lang,
               content,
               pos: { line: i + 1, column: 1 },
               endLine: closed ? end + 1 : end
@@ -3717,7 +3811,7 @@
       while (i < to) {
         const cur = lines[i] ?? "";
         const next = lines[i + 1] ?? "";
-        if (cur.trim() === "" || HEADING_RE.test(cur) || FENCE_RE.test(cur) || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || STABLE_ID_LINE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
+        if (cur.trim() === "" || HEADING_RE.test(cur) || matchCodeFenceOpen(cur) !== null || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || STABLE_ID_LINE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
           break;
         }
         buf.push(cur);
@@ -3733,10 +3827,9 @@
     const attrs = parseAttrs(opener[3] ?? "");
     let close = -1;
     for (let j = i + 1; j < to; j++) {
-      const fence = matchOnce(FENCE_RE, lines[j] ?? "");
+      const fence = matchCodeFenceOpen(lines[j] ?? "");
       if (fence) {
-        j++;
-        while (j < to && !FENCE_RE.test(lines[j] ?? "")) j++;
+        j = findCodeFenceClose(lines, j + 1, to, fence);
         continue;
       }
       const m = matchOnce(DIRECTIVE_CLOSE_RE, lines[j] ?? "");
@@ -3802,24 +3895,115 @@
     if (cellIds.some((row) => row.some(Boolean))) node.cellIds = cellIds;
     return { node, next: j };
   }
-  function parseAttrs(raw) {
-    const attrs = {};
-    if (!raw) return attrs;
-    const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
-    if (!inner) return attrs;
-    const re = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s]+)))?/g;
-    for (const m of inner.matchAll(re)) {
-      const key = m[1];
-      if (m[2] === void 0) {
-        attrs[key] = true;
+  function matchCodeFenceOpen(line) {
+    const m = FENCE_OPEN_RE.exec(line);
+    if (!m) return null;
+    const marker = m[1] ?? m[3] ?? "";
+    const lang = (m[2] ?? m[4] ?? "").trim().split(/\s+/)[0];
+    return { char: marker[0] === "~" ? "~" : "`", length: marker.length, ...lang ? { lang } : {} };
+  }
+  function isCodeFenceClose(line, open) {
+    const m = /^(`{3,}|~{3,})\s*$/.exec(line);
+    return m !== null && m[1][0] === open.char && m[1].length >= open.length;
+  }
+  function findCodeFenceClose(lines, from, to, open) {
+    let j = from;
+    while (j < to && !isCodeFenceClose(lines[j] ?? "", open)) j++;
+    return j;
+  }
+  var ATTR_KEY_RE = /^[a-zA-Z_][\w-]*/;
+  var ATTR_NAME_RE = /^[a-zA-Z_][\w-]*$/;
+  function tokenizeAttrs(inner, strict) {
+    const tokens = [];
+    let i = 0;
+    const atBoundary = (at) => at >= inner.length || /\s/.test(inner[at]);
+    while (i < inner.length) {
+      if (/\s/.test(inner[i])) {
+        i++;
         continue;
       }
-      const quoted = m[3] ?? m[4];
-      const bare = m[5];
-      const value = quoted !== void 0 ? quoted : bare ?? "";
-      attrs[key] = coerce(value);
+      const keyMatch = ATTR_KEY_RE.exec(inner.slice(i));
+      if (!keyMatch) {
+        if (strict) return null;
+        i++;
+        continue;
+      }
+      const key = keyMatch[0];
+      i += key.length;
+      if (inner[i] !== "=") {
+        if (strict && !atBoundary(i)) return null;
+        tokens.push({ key, quoted: false });
+        continue;
+      }
+      const valueStart = i + 1;
+      const quote = inner[valueStart];
+      if (quote === '"' || quote === "'") {
+        const scanned = scanQuoted(inner, valueStart + 1, quote);
+        if (scanned) {
+          if (strict && !atBoundary(scanned.next)) return null;
+          tokens.push({ key, value: scanned.value, quoted: true });
+          i = scanned.next;
+          continue;
+        }
+      }
+      const bare = /^\S+/.exec(inner.slice(valueStart));
+      if (!bare) {
+        if (strict) return null;
+        tokens.push({ key, quoted: false });
+        continue;
+      }
+      tokens.push({ key, value: bare[0], quoted: false });
+      i = valueStart + bare[0].length;
+    }
+    return tokens;
+  }
+  function scanQuoted(s, from, quote) {
+    let value = "";
+    for (let j = from; j < s.length; j++) {
+      const c = s[j];
+      if (c === quote) return { value, next: j + 1 };
+      if (quote === '"' && c === "\\" && (s[j + 1] === '"' || s[j + 1] === "\\")) {
+        value += s[j + 1];
+        j++;
+        continue;
+      }
+      value += c;
+    }
+    return null;
+  }
+  function tokensToAttrs(tokens) {
+    const attrs = {};
+    for (const t of tokens) {
+      if (t.value === void 0) attrs[t.key] = true;
+      else if (t.quoted || t.key === "id") attrs[t.key] = t.value;
+      else attrs[t.key] = coerce(t.value);
     }
     return attrs;
+  }
+  function parseAttrs(raw) {
+    if (!raw) return {};
+    const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
+    if (!inner) return {};
+    return tokensToAttrs(tokenizeAttrs(inner, false) ?? []);
+  }
+  function splitHeadingAttrs(text) {
+    const trimmed = text.trim();
+    const m = HEADING_ATTRS_RE.exec(trimmed);
+    if (!m) return { title: trimmed };
+    const tokens = tokenizeAttrs(m[2], true);
+    if (!tokens || !tokens.some((t) => t.value !== void 0)) return { title: trimmed };
+    return { title: m[1].trim(), attrs: tokensToAttrs(tokens), rawAttrs: m[2] };
+  }
+  function serializeAttr(key, value) {
+    if (value === true) return key;
+    if (value === false) return `${key}=false`;
+    if (typeof value === "number") return `${key}=${value}`;
+    const s = String(value);
+    if (s.includes('"') && !s.includes("'")) return `${key}='${s}'`;
+    return `${key}="${escapeAttrValue(s)}"`;
+  }
+  function escapeAttrValue(s) {
+    return s.replace(/\\(?=[\\"]|$)/g, "\\\\").replace(/"/g, '\\"');
   }
   function coerce(v) {
     if (v === "true") return true;
@@ -3889,7 +4073,10 @@
     return root;
   }
   function slugify(input) {
-    return input.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    return input.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").normalize("NFC").replace(/\p{Script=Inherited}/gu, "").replace(/[^\p{L}\p{N}\p{M}\s-]/gu, "").replace(/\p{Script=Latin}/gu, (ch) => ch >= "a" && ch <= "z" ? ch : "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  }
+  function headingSlug(title) {
+    return slugify(title) || "section";
   }
 
   // src/formula.ts
@@ -4567,6 +4754,19 @@
       return any ? union : void 0;
     })();
     const profileLabel = declaredProfiles.join("+");
+    const frontmatter = doc.children[0];
+    if (frontmatter?.type === "frontmatter") {
+      const loaded = loadFrontmatterYaml(frontmatter.raw);
+      if (!loaded.ok) {
+        diagnostics.push({
+          severity: "error",
+          code: "invalid-frontmatter",
+          message: `Frontmatter is not valid YAML (${loaded.error}); its keys are ignored.`,
+          pos: frontmatter.pos,
+          ...frontmatter.endLine !== void 0 ? { endLine: frontmatter.endLine } : {}
+        });
+      }
+    }
     const wikilinkRefs = /* @__PURE__ */ new Set();
     const collectWikilinks = (text, node) => {
       for (const link of extractWikilinks(text)) {
@@ -5133,6 +5333,7 @@
     return out;
   }
   var KNOWN_RULES = [
+    "invalid-frontmatter",
     "duplicate-id",
     "out-of-profile-directive",
     "unknown-profile",
@@ -5182,7 +5383,7 @@
     return new Set(KNOWN_RULES);
   }
   function suppressed(node) {
-    return node.attrs.noverify === true;
+    return node.attrs.noverify === true || node.attrs.noverify === "true";
   }
   function readFirstStringAttr(node, keys) {
     return readFirstStringAttrEntry(node, keys)?.value;
@@ -5209,10 +5410,10 @@
     }
     return prev[b.length];
   }
-  function nearestId(target, candidates) {
+  function nearestId(target, candidates2) {
     let best;
     let bestDistance = 3;
-    for (const candidate of candidates) {
+    for (const candidate of candidates2) {
       const distance = levenshtein(target, candidate);
       if (distance < bestDistance) {
         best = candidate;
@@ -5653,7 +5854,9 @@
       sections: collectSectionEntries(doc),
       captions: collectCaptionEntries(doc),
       computed: buildComputedEvalContext(doc),
-      sourcePositions: options.sourcePositions === true
+      sourcePositions: options.sourcePositions === true,
+      inline: options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {},
+      ...options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}
     };
     const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
     if (!options.standalone) return body;
@@ -6102,22 +6305,22 @@ document.querySelectorAll(".noma-plotly").forEach((el) => {
       case "section":
         return renderSection(node, ctx);
       case "paragraph":
-        return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content)}</p>`;
+        return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content, ctx.inline)}</p>`;
       case "code": {
         const langClass = node.lang ? ` class="lang-${escapeAttr(node.lang)}"` : "";
         return `<pre><code${langClass}>${escapeHtml(node.content)}</code></pre>`;
       }
       case "list": {
         const tag = node.ordered ? "ol" : "ul";
-        const items = node.items.map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content)}</li>`).join("\n");
+        const items = node.items.map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content, ctx.inline)}</li>`).join("\n");
         return `<${tag}>
 ${items}
 </${tag}>`;
       }
       case "list_item":
-        return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content)}</li>`;
+        return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content, ctx.inline)}</li>`;
       case "quote":
-        return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content)}</blockquote>`;
+        return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content, ctx.inline)}</blockquote>`;
       case "thematic_break":
         return `<hr />`;
       case "table": {
@@ -6131,7 +6334,7 @@ ${items}
             cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
             colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
           ].join("");
-          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</th>`;
+          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</th>`;
         }).join("");
         const body = node.rows.map((row, rowIndex) => {
           const rowId = node.rowIds?.[rowIndex];
@@ -6146,7 +6349,7 @@ ${items}
               cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
               colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
             ].join("");
-            return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</td>`;
+            return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</td>`;
           }).join("");
           return `<tr${trAttr}>${cells}</tr>`;
         }).join("\n");
@@ -6172,7 +6375,7 @@ ${body}
   function renderSection(node, ctx) {
     const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
     const aliasAnchors = (node.aliases ?? []).map((a) => `<a class="noma-alias" id="${escapeAttr(a)}" aria-hidden="true"></a>`).join("");
-    const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title)}</h${node.level}>`;
+    const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title, ctx.inline)}</h${node.level}>`;
     const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
     return `<section${idAttr} data-level="${node.level}">
 ${aliasAnchors}${heading}
@@ -6195,9 +6398,9 @@ ${inner}
       node.attrs.min ?? node.attrs.min_width ?? node.attrs.minWidth ?? node.attrs.minColumnWidth ?? node.attrs["min-width"]
     );
     const gap = cssLength(node.attrs.gap);
-    if (node.attrs.wide === true || width === "wide") classes.push(`${baseClass}-wide`);
-    if (node.attrs.full === true || width === "full") classes.push(`${baseClass}-full`);
-    if (node.attrs.compact === true || node.attrs.dense === true) classes.push(`${baseClass}-compact`);
+    if (attrBool(node.attrs.wide) || width === "wide") classes.push(`${baseClass}-wide`);
+    if (attrBool(node.attrs.full) || width === "full") classes.push(`${baseClass}-full`);
+    if (attrBool(node.attrs.compact) || attrBool(node.attrs.dense)) classes.push(`${baseClass}-compact`);
     if (min) classes.push(`${baseClass}-auto`);
     const safeColumns = Number.isFinite(columns) ? Math.max(1, Math.min(12, Math.floor(columns))) : 2;
     const vars = [`--noma-cols: ${safeColumns}`];
@@ -6277,7 +6480,7 @@ ${inner}
       case "pagebreak":
         return `<div class="noma-pagebreak"${idAttr} role="separator" aria-label="Page break"></div>`;
       case "button": {
-        const href = node.attrs.href ? safeHref(String(node.attrs.href)) : "#";
+        const href = node.attrs.href ? resolveHref(String(node.attrs.href), ctx.resolveAttachment) : "#";
         return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</a>`;
       }
       case "figure": {
@@ -6294,11 +6497,11 @@ ${inner}
       case "plotly":
         return renderPlotly(node, idAttr);
       case "dataset": {
-        const summary = `Dataset: ${escapeHtml(String(node.attrs.id ?? "dataset"))}`;
+        const summary2 = `Dataset: ${escapeHtml(String(node.attrs.id ?? "dataset"))}`;
         const src = typeof node.attrs.src === "string" ? node.attrs.src : "";
         const inline = node.body ?? "";
         const body = inline.trim() ? escapeHtml(inline) : src ? `<a class="noma-dataset-src" href="${escapeAttr(safeHref(src))}">${escapeHtml(src)}</a>` : "";
-        return `<details class="noma-dataset"${idAttr}${src ? ` data-src="${escapeAttr(src)}"` : ""}><summary>${summary}</summary><pre>${body}</pre></details>`;
+        return `<details class="noma-dataset"${idAttr}${src ? ` data-src="${escapeAttr(src)}"` : ""}><summary>${summary2}</summary><pre>${body}</pre></details>`;
       }
       case "metric":
         return renderMetric(node, idAttr + dataAttrs, ctx);
@@ -6340,7 +6543,7 @@ ${inner}
       case "state_change":
         return renderStateChange(node, idAttr, ctx);
       case "table":
-        return renderTableDirective(node, idAttr);
+        return renderTableDirective(node, idAttr, ctx);
       case "math": {
         const body = (node.body ?? "").trim();
         const display = node.attrs.display !== "inline";
@@ -6397,6 +6600,11 @@ ${inner}
 </aside>`;
   }
   function renderFigureImage(src, alt, ctx) {
+    if (src.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
+      const url = ctx.resolveAttachment?.(src.slice(ATTACHMENT_URL_PREFIX.length));
+      if (url) return `<img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" loading="lazy" />`;
+      return `<aside class="noma-blocked-escape" data-kind="figure">[attachment not available: ${escapeHtml(src)}]</aside>`;
+    }
     if (ctx.externalAssets || /^data:image\//i.test(src)) {
       return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" />`;
     }
@@ -6435,7 +6643,7 @@ ${inner}
   function renderResearchBlock(node, ctx) {
     const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
     const variant = variantAttr(node);
-    const confidence = typeof node.attrs.confidence === "number" ? node.attrs.confidence : void 0;
+    const confidence = numericAttr2(node.attrs, "confidence");
     const meta = researchMetaHtml(node);
     const confidenceBar = confidence !== void 0 ? `<div class="noma-confidence" title="confidence ${confidence}"><div class="noma-confidence-bar" style="width: ${Math.round(confidence * 100)}%"></div></div>` : "";
     const metaHtml = meta ? `<div class="noma-meta">${meta}</div>` : "";
@@ -6605,7 +6813,7 @@ ${entries || "<li>No sections found.</li>"}
   }
   function renderBibliography(node, idAndAttrs, ctx) {
     const title = stringAttr2(node.attrs, "title") ?? "Bibliography";
-    const intro = node.children.length > 0 ? renderChildren(node, ctx) : node.body?.trim() ? `<p>${inlineToHtml(node.body)}</p>` : "";
+    const intro = node.children.length > 0 ? renderChildren(node, ctx) : node.body?.trim() ? `<p>${inlineToHtml(node.body, ctx.inline)}</p>` : "";
     const items = ctx.citations.length > 0 ? ctx.citations.map((entry) => `<li>${renderCitationEntry(entry)}</li>`).join("\n") : "<li>No citations found.</li>";
     return `<section class="noma-bibliography"${idAndAttrs}>
   <h2>${escapeHtml(title)}</h2>
@@ -6663,7 +6871,7 @@ ${items}
     return out;
   }
   var splitTableLine = splitPipeRow;
-  function renderTableDirective(node, idAttr) {
+  function renderTableDirective(node, idAttr, ctx) {
     const body = node.body ?? "";
     const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return `<div class="noma-block noma-block-table"${idAttr}></div>`;
@@ -6676,7 +6884,7 @@ ${items}
     const renderCell = (tag, cell, idx) => {
       const a = align[idx];
       const styleAttr = a ? ` style="text-align: ${a}"` : "";
-      return `<${tag}${styleAttr}>${inlineToHtml(cell)}</${tag}>`;
+      return `<${tag}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</${tag}>`;
     };
     const head = headerRow ? `<thead><tr>${headerRow.map((c, i) => renderCell("th", c, i)).join("")}</tr></thead>
 ` : "";
@@ -6710,7 +6918,7 @@ ${bodyRows}
 </aside>`;
   }
   function renderAgentTask(node, idAttr, ctx) {
-    const checked = node.attrs.done === true ? " checked" : "";
+    const checked = attrBool(node.attrs.done) ? " checked" : "";
     return `<div class="noma-agent-task"${idAttr}>
   <label><input type="checkbox" disabled${checked} /> <span class="noma-tag">${escapeHtml(node.name)}</span></label>
   <div class="noma-agent-body">${renderChildren(node, ctx)}</div>
@@ -7007,7 +7215,7 @@ ${bodyRows}
         "y_label",
         "yLabel"
       ]);
-      return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text)}</p></div>` : "";
+      return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text, ctx.inline)}</p></div>` : "";
     }
     const rendered = renderChildren(node, ctx);
     return rendered ? `<div class="noma-computed-body">${rendered}</div>` : "";
@@ -7622,7 +7830,7 @@ ${bodyRows}
   }
   function renderChildren(node, ctx) {
     if (node.children.length === 0 && node.body !== void 0) {
-      return `<p>${inlineToHtml(node.body)}</p>`;
+      return `<p>${inlineToHtml(node.body, ctx.inline)}</p>`;
     }
     return node.children.map((c) => renderNode(c, ctx)).join("\n");
   }
@@ -7884,7 +8092,7 @@ ${bodyRows}
     const t = Date.parse(ls);
     if (Number.isNaN(t)) return false;
     const type2 = typeof node.attrs.type === "string" ? node.attrs.type : "";
-    const expired = node.attrs.expired === true;
+    const expired = node.attrs.expired === true || node.attrs.expired === "true";
     if (!STALE_OPT_IN_TYPES.has(type2) && !expired) return false;
     return cfg.now.getTime() - t > cfg.days * 24 * 60 * 60 * 1e3;
   }
@@ -8073,6 +8281,41 @@ ${bodyRows}
         return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
     }
   }
+  var OP_ATTR_VALUE_FIELDS = {
+    update_attribute: ["value"],
+    add_comment: ["id", "target", "author", "initials", "date", "reply_to"],
+    resolve_comment: ["resolved_by", "resolved_at"],
+    add_footnote: ["id", "target", "label"],
+    add_endnote: ["id", "target", "label"],
+    add_change_request: ["id", "target", "action", "from", "to", "text", "author", "date"],
+    rename_id: ["to"]
+  };
+  var LINE_BREAK_RE = /[\r\n\u2028\u2029]/;
+  function validateOpSafety(op) {
+    const record = op;
+    if (op.op === "update_attribute" || op.op === "remove_attribute") {
+      if (!ATTR_NAME_RE.test(op.key)) {
+        throw new PatchError(
+          "invalid_attribute_key",
+          `attribute key ${JSON.stringify(op.key)} must match ${ATTR_NAME_RE.source}`,
+          op
+        );
+      }
+    }
+    for (const field of OP_ATTR_VALUE_FIELDS[op.op] ?? []) {
+      const value = record[field];
+      if (typeof value === "string" && LINE_BREAK_RE.test(value)) {
+        throw new PatchError(
+          "invalid_attribute_value",
+          `op "${op.op}" field "${field}" is written into an attribute list and must not contain line breaks`,
+          op
+        );
+      }
+    }
+    if (op.op === "update_heading" && LINE_BREAK_RE.test(op.title)) {
+      throw new PatchError("invalid_content", `heading title must be a single line`, op);
+    }
+  }
   function validateOpShape(op) {
     const requirements = OP_REQUIRED_FIELDS[op.op];
     if (!requirements) {
@@ -8092,6 +8335,7 @@ ${bodyRows}
         op
       );
     }
+    validateOpSafety(op);
   }
   function findById(node, id) {
     if (node.id === id) return node;
@@ -8752,6 +8996,15 @@ ${bodyRows}
   function applyToSource(source, op) {
     validateOpShape(op);
     verifyBaseHash(source, op);
+    if (!usesCrlf(source)) return dispatchSourceOp(source, op);
+    const patched = dispatchSourceOp(source.replace(/\r\n/g, "\n"), op);
+    return patched.replace(/\r?\n/g, "\r\n");
+  }
+  function usesCrlf(source) {
+    const lf = source.split("\n").length - 1;
+    return lf > 0 && source.split("\r\n").length - 1 === lf;
+  }
+  function dispatchSourceOp(source, op) {
     switch (op.op) {
       case "update_attribute":
         return applySrcUpdateAttr(source, op);
@@ -8824,32 +9077,76 @@ ${bodyRows}
     const { node, start, end } = locate(source, op.id, op);
     const lines = source.split("\n");
     const bodyLines = op.content.replace(/\n+$/, "").split("\n");
+    if (node.type === "list_item") {
+      const line = lines[start - 1] ?? "";
+      const marker = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
+      const hasIdMarker = node.id !== void 0 && INLINE_STABLE_ID_RE.test(line.slice(marker.length));
+      const idPrefix = hasIdMarker ? `{#${node.id}} ` : "";
+      lines[start - 1] = `${marker}${idPrefix}${op.content.replace(/\n/g, " ")}`;
+      return lines.join("\n");
+    }
+    let from;
+    let count;
+    let replacement = bodyLines;
     if (isDirective(node)) {
       if (!isBodyOnlyDirective(node)) {
         throw new PatchError("invalid_content", `block "${op.id}" has child blocks; use replace_block`, op);
       }
-      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-      return lines.join("\n");
+      from = start;
+      count = fencedBodyLineCount(lines, start, end, isDirectiveCloserFor(lines[start - 1] ?? ""));
+    } else if (node.type === "code") {
+      const fence = matchCodeFenceOpen(lines[start - 1] ?? "");
+      from = start;
+      count = fencedBodyLineCount(lines, start, end, (line) => fence !== null && isCodeFenceClose(line, fence));
+    } else if (node.type === "paragraph") {
+      from = start - 1;
+      count = end - start + 1;
+    } else if (node.type === "quote") {
+      from = start - 1;
+      count = end - start + 1;
+      replacement = bodyLines.map((line) => line ? `> ${line}` : ">");
+    } else {
+      throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
     }
-    if (node.type === "paragraph") {
-      lines.splice(start - 1, end - start + 1, ...bodyLines);
-      return lines.join("\n");
+    lines.splice(from, count, ...replacement);
+    const patched = lines.join("\n");
+    assertContainedEdit(source, patched, from + 1, from + count, from + replacement.length, op);
+    return patched;
+  }
+  function isDirectiveCloserFor(openLine) {
+    const colons = openLine.match(/^\s*(:{2,})/)?.[1]?.length ?? 2;
+    return (line) => line.match(/^(:{2,})\s*$/)?.[1]?.length === colons;
+  }
+  function fencedBodyLineCount(lines, start, end, isCloser) {
+    if (end > start && isCloser(lines[end - 1] ?? "")) return end - start - 1;
+    let last = end - 1;
+    while (last >= start && (lines[last] ?? "").trim() === "") last--;
+    return Math.max(0, last - start + 1);
+  }
+  function assertContainedEdit(before, after, start, oldEnd, newEnd, op) {
+    const delta = newEnd - oldEnd;
+    const expected = outsideStructure(parse(before), start, oldEnd, delta);
+    const actual = outsideStructure(parse(after), start, newEnd, 0);
+    if (expected.length === actual.length && expected.every((sig, i) => sig === actual[i])) return;
+    throw new PatchError(
+      "unbalanced_fence_content",
+      `content for "${patchTargetId(op)}" changes document structure outside the target (unbalanced \`::\` or code fence?)`,
+      op
+    );
+  }
+  function outsideStructure(doc, start, end, delta) {
+    const out = [];
+    for (const node of walk(doc)) {
+      const line = node.pos?.line;
+      if (line === void 0) continue;
+      const endLine = node.endLine ?? line;
+      if (line >= start && endLine <= end) continue;
+      const from = line > end ? line + delta : line;
+      const to = endLine >= end ? endLine + delta : endLine;
+      const name = isDirective(node) ? node.name : "";
+      out.push(`${node.type}:${name}:${node.id ?? ""}:${from}:${to}`);
     }
-    if (node.type === "quote") {
-      const quoted = bodyLines.map((line) => line ? `> ${line}` : ">");
-      lines.splice(start - 1, end - start + 1, ...quoted);
-      return lines.join("\n");
-    }
-    if (node.type === "code") {
-      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-      return lines.join("\n");
-    }
-    if (node.type === "list_item") {
-      const marker = (lines[start - 1] ?? "").match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
-      lines[start - 1] = `${marker}${op.content.replace(/\n/g, " ")}`;
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
+    return out;
   }
   function applySrcUpdateHeading(source, op) {
     const { node, start } = locate(source, op.id, op);
@@ -9886,13 +10183,14 @@ ${bodyRows}
   function normalizeDirectiveFenceDepth(content, from, to) {
     if (from === to) return content;
     const delta = to - from;
-    let inFence = false;
+    let fence = null;
     return content.split("\n").map((line) => {
-      if (/^\s*```/.test(line)) {
-        inFence = !inFence;
+      if (fence) {
+        if (isCodeFenceClose(line, fence)) fence = null;
         return line;
       }
-      if (inFence) return line;
+      fence = matchCodeFenceOpen(line);
+      if (fence) return line;
       const match = line.match(/^(\s*)(:{2,})(.*)$/);
       if (!match) return line;
       const rest = match[3] ?? "";
@@ -9948,7 +10246,7 @@ ${bodyRows}
   function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-  var ATTR_TOKEN_RE = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s}]+)))?/g;
+  var ATTR_TOKEN_RE = /([a-zA-Z_][\w-]*)(?:=("((?:[^"\\]|\\.)*)"|'([^']*)'|([^\s}]+)))?/g;
   function rewriteOpenLineAttr(line, key, value, op) {
     const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)(\s*\{)?(.*?)(\}\s*)?$/);
     if (!openMatch) {
@@ -10004,38 +10302,43 @@ ${bodyRows}
     if (op.resolved_at) next = rewriteOpenLineAttr(next, "resolved_at", op.resolved_at, op);
     return next;
   }
+  var HEADING_LINE_RE = /^(#{1,6})(\s+)(.+?)\s*$/;
   function rewriteHeadingId(line, newId) {
-    const m = line.match(/^(#+\s+.+?)(?:\s+\{([^}]*)\})?\s*$/);
+    const m = line.match(HEADING_LINE_RE);
     if (!m) return line;
-    const head = m[1] ?? "";
-    const attrsInner = (m[2] ?? "").trim();
-    if (!attrsInner) return `${head} {id="${newId}"}`;
+    const head = `${m[1]}${m[2]}`;
+    const split = splitHeadingAttrs(m[3] ?? "");
+    const idAttr = serializeAttr("id", newId);
+    const attrsInner = (split.rawAttrs ?? "").trim();
+    if (!attrsInner) return `${head}${split.title} {${idAttr}}`;
     let replaced = false;
     const updated = attrsInner.replace(ATTR_TOKEN_RE, (full, k) => {
       if (k !== "id") return full;
       replaced = true;
-      return `id="${newId}"`;
+      return idAttr;
     });
-    if (!replaced) return `${head} {${attrsInner} id="${newId}"}`;
-    return `${head} {${updated.trim()}}`;
+    if (!replaced) return `${head}${split.title} {${attrsInner} ${idAttr}}`;
+    return `${head}${split.title} {${updated.trim()}}`;
   }
   function rewriteHeadingTitle(line, newTitle, stableId) {
-    const m = line.match(/^(#+)(\s+)(.*?)(?:\s+\{([^}]*)\})?\s*$/);
+    const m = line.match(HEADING_LINE_RE);
     if (!m) return line;
     const hashes = m[1] ?? "#";
     const space = m[2] ?? " ";
-    const attrsInner = (m[4] ?? "").trim();
-    const needsExplicitId = stableId && stableId.length > 0 && slugify(newTitle) !== stableId;
+    const attrsInner = (splitHeadingAttrs(m[3] ?? "").rawAttrs ?? "").trim();
+    const title = newTitle.trim();
+    const needsExplicitId = stableId !== void 0 && stableId.length > 0 && (headingSlug(title) !== stableId || splitHeadingAttrs(title).attrs !== void 0);
+    const idAttr = stableId ? serializeAttr("id", stableId) : "";
     if (!attrsInner) {
-      return needsExplicitId ? `${hashes}${space}${newTitle} {id="${stableId}"}` : `${hashes}${space}${newTitle}`;
+      return needsExplicitId ? `${hashes}${space}${title} {${idAttr}}` : `${hashes}${space}${title}`;
     }
     let hasId = false;
     attrsInner.replace(ATTR_TOKEN_RE, (_full, k) => {
       if (k === "id") hasId = true;
       return _full;
     });
-    const attrs = needsExplicitId && !hasId ? `${attrsInner} id="${stableId}"` : attrsInner;
-    return `${hashes}${space}${newTitle} {${attrs.trim()}}`;
+    const attrs = needsExplicitId && !hasId ? `${attrsInner} ${idAttr}` : attrsInner;
+    return `${hashes}${space}${title} {${attrs.trim()}}`;
   }
   function serializeCommentBlock(op) {
     if (!op.content.trim()) {
@@ -10071,15 +10374,7 @@ ${content}
     return source;
   }
   function serializeOneAttr(key, value) {
-    if (value === true) return key;
-    if (value === false) return `${key}=false`;
-    if (typeof value === "number") return `${key}=${value}`;
-    const s = String(value);
-    if (s.includes('"')) {
-      if (s.includes("'")) return `${key}="${s.replace(/"/g, '\\"')}"`;
-      return `${key}='${s}'`;
-    }
-    return `${key}="${s}"`;
+    return serializeAttr(key, value);
   }
 
   // web/cloud/work.ts
@@ -10154,8 +10449,8 @@ ${content}
   }
   async function createWorkIssue() {
     const project = selectedWorkProject();
-    const summary = issueSummaryInput.value.trim();
-    if (!project || !summary) {
+    const summary2 = issueSummaryInput.value.trim();
+    if (!project || !summary2) {
       setPanelStatus(workStatus, "Choose a project and enter an issue summary", "error");
       return;
     }
@@ -10164,7 +10459,7 @@ ${content}
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          summary,
+          summary: summary2,
           type: issueTypeSelect.value,
           priority: issuePrioritySelect.value,
           assigneeId: issueAssigneeInput.value.trim() || void 0,
@@ -10579,13 +10874,244 @@ ${content}
     return ancestors;
   }
 
+  // web/cloud/restrictions.ts
+  var badge = requireElement2("restrictionBadge");
+  var dialog = requireElement2("restrictionsDialog");
+  var dialogTitle = requireElement2("restrictionsTitle");
+  var summary = requireElement2("restrictionsSummary");
+  var inheritedNote = requireElement2("restrictionsInherited");
+  var viewList = requireElement2("restrictionsViewList");
+  var editList = requireElement2("restrictionsEditList");
+  var kindSelect = requireElement2("restrictionsKindSelect");
+  var principalInput = requireElement2("restrictionsPrincipalInput");
+  var principalOptions = requireElement2("restrictionsPrincipalOptions");
+  var addButton = requireElement2("restrictionsAddButton");
+  var clearButton = requireElement2("restrictionsClearButton");
+  var cancelButton = requireElement2("restrictionsCancelButton");
+  var saveButton = requireElement2("restrictionsSaveButton");
+  var dialogStatus = requireElement2("restrictionsStatus");
+  var currentRestrictions;
+  var flagsSiteId;
+  var treeFlags = /* @__PURE__ */ new Map();
+  var dialogPageId;
+  var dialogCanManage = false;
+  var draft = { view: [], edit: [] };
+  var candidates = [];
+  function installRestrictions() {
+    badge.addEventListener("click", () => {
+      if (state.currentPage) void openRestrictionsDialog(state.currentPage.id, state.currentPage.title);
+    });
+    addButton.addEventListener("click", () => addPrincipal());
+    principalInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      addPrincipal();
+    });
+    clearButton.addEventListener("click", () => {
+      draft = { view: [], edit: [] };
+      renderDraft();
+    });
+    cancelButton.addEventListener("click", () => dialog.close());
+    saveButton.addEventListener("click", () => void saveRestrictions());
+  }
+  async function refreshRestrictions() {
+    const page = state.currentPage;
+    currentRestrictions = void 0;
+    renderRestrictionBadge();
+    if (!page || !state.cloudUser) return;
+    try {
+      const [restrictions] = await Promise.all([
+        fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/restrictions`),
+        refreshTreeFlags()
+      ]);
+      if (state.currentPage?.id !== page.id) return;
+      currentRestrictions = restrictions;
+    } catch {
+      return;
+    } finally {
+      renderChrome();
+    }
+  }
+  async function refreshTreeFlags() {
+    const site = state.currentSite;
+    if (!site) {
+      flagsSiteId = void 0;
+      treeFlags = /* @__PURE__ */ new Map();
+      return;
+    }
+    const tree = await fetchCloudJson(`/api/sites/${encodeURIComponent(site.id)}/tree`);
+    const next = /* @__PURE__ */ new Map();
+    const visit = (nodes) => {
+      for (const node of nodes) {
+        if (node.restrictions) next.set(node.id, node.restrictions);
+        visit(node.children);
+      }
+    };
+    visit(tree.pages);
+    flagsSiteId = site.id;
+    treeFlags = next;
+  }
+  function renderRestrictionBadge() {
+    const restrictions = state.currentPage && currentRestrictions?.documentId === state.currentPage.id ? currentRestrictions : void 0;
+    const inherited = (restrictions?.inherited.length ?? 0) > 0;
+    const locked = Boolean(restrictions && (restrictions.restricted.view || restrictions.restricted.edit || inherited));
+    badge.hidden = !restrictions || !locked && !restrictions.canManage;
+    badge.dataset.state = locked ? "restricted" : "open";
+    badge.textContent = locked ? restrictionLabel(restrictions.restricted.view, restrictions.restricted.edit, inherited) : "Unrestricted";
+    badge.title = locked ? "This page has view or edit restrictions. Open to review them." : "Anyone with access to this space can view and edit per their role. Click to add restrictions.";
+  }
+  function restrictionIndicator(pageId) {
+    if (flagsSiteId !== state.currentSite?.id) return void 0;
+    const flags = treeFlags.get(pageId);
+    if (!flags || !flags.view && !flags.edit && !flags.inheritedView) return void 0;
+    const lock = document.createElement("span");
+    lock.className = "restriction-lock";
+    lock.dataset.kind = flags.view || flags.inheritedView ? "view" : "edit";
+    const label = restrictionLabel(flags.view, flags.edit, flags.inheritedView);
+    lock.title = label;
+    lock.setAttribute("aria-label", label);
+    lock.innerHTML = '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M5 7V5a3 3 0 0 1 6 0v2h.5A1.5 1.5 0 0 1 13 8.5v5A1.5 1.5 0 0 1 11.5 15h-7A1.5 1.5 0 0 1 3 13.5v-5A1.5 1.5 0 0 1 4.5 7H5Zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2Z"/></svg>';
+    return lock;
+  }
+  async function openRestrictionsDialog(pageId, title) {
+    if (!state.cloudUser) {
+      setCloudStatus("Sign in to manage page restrictions", "warning");
+      return;
+    }
+    try {
+      const [restrictions, users, groups] = await Promise.all([
+        fetchCloudJson(`/api/documents/${encodeURIComponent(pageId)}/restrictions`),
+        fetchCloudJson("/api/users").catch(() => ({ users: [] })),
+        fetchCloudJson("/api/groups").catch(() => ({ groups: [] }))
+      ]);
+      dialogPageId = pageId;
+      dialogCanManage = restrictions.canManage;
+      draft = {
+        view: principalsOf(restrictions.view),
+        edit: principalsOf(restrictions.edit)
+      };
+      candidates = [
+        ...users.users.map((user) => ({ type: "user", id: user.id, name: user.name })),
+        ...groups.groups.map((group) => ({ type: "group", id: group.id, name: group.name }))
+      ];
+      principalOptions.textContent = "";
+      for (const candidate of candidates) {
+        const option = document.createElement("option");
+        option.value = `${candidate.type}:${candidate.id}`;
+        option.label = `${candidate.name} (${candidate.type})`;
+        principalOptions.append(option);
+      }
+      dialogTitle.textContent = `Restrictions: ${title}`;
+      summary.textContent = restrictions.canManage ? "Only listed people and groups (plus page owners and workspace admins) can view or edit. Leave a list empty to inherit the space permissions." : "Only the page owner, a space owner, or a workspace admin can change these restrictions.";
+      inheritedNote.hidden = restrictions.inherited.length === 0;
+      inheritedNote.textContent = restrictions.inherited.length ? `Also inherits view restrictions from: ${restrictions.inherited.map((item) => item.title ?? "a restricted parent page").join(", ")}.` : "";
+      setPanelStatus(dialogStatus, "", "ok");
+      renderDraft();
+      if (!dialog.open) dialog.showModal();
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    }
+  }
+  function principalsOf(entry) {
+    return [
+      ...entry.users.map((user) => ({ type: "user", ...user })),
+      ...entry.groups.map((group) => ({ type: "group", ...group }))
+    ];
+  }
+  function renderDraft() {
+    for (const kind of ["view", "edit"]) {
+      const list = kind === "view" ? viewList : editList;
+      list.textContent = "";
+      if (draft[kind].length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "restrictions-empty";
+        empty.textContent = kind === "view" ? "Everyone with access to the space" : "Everyone who can edit in the space";
+        list.append(empty);
+        continue;
+      }
+      for (const principal of draft[kind]) {
+        const chip = document.createElement("span");
+        chip.className = "label-chip restrictions-chip";
+        chip.dataset.type = principal.type;
+        chip.textContent = `${principal.name}${principal.type === "group" ? " (group)" : ""}`;
+        if (dialogCanManage) {
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.textContent = "\xD7";
+          remove.setAttribute("aria-label", `Remove ${principal.name} from ${kind} restrictions`);
+          remove.addEventListener("click", () => {
+            draft[kind] = draft[kind].filter((item) => !(item.type === principal.type && item.id === principal.id));
+            renderDraft();
+          });
+          chip.append(remove);
+        }
+        list.append(chip);
+      }
+    }
+    for (const control of [kindSelect, principalInput, addButton, clearButton, saveButton]) control.disabled = !dialogCanManage;
+  }
+  function addPrincipal() {
+    const value = principalInput.value.trim();
+    if (!value) return;
+    const kind = kindSelect.value === "edit" ? "edit" : "view";
+    const match = /^(user|group):([A-Za-z0-9_-]{8,80})$/.exec(value);
+    const principal = (match ? candidates.find((item) => item.type === match[1] && item.id === match[2]) : void 0) ?? candidates.find((item) => item.name.toLowerCase() === value.toLowerCase()) ?? (/^[A-Za-z0-9_-]{8,80}$/.test(value) ? candidates.find((item) => item.id === value) ?? { type: "user", id: value, name: value } : void 0);
+    if (!principal) {
+      setPanelStatus(dialogStatus, `No user or group matches "${value}"`, "error");
+      return;
+    }
+    if (!draft[kind].some((item) => item.type === principal.type && item.id === principal.id)) draft[kind] = [...draft[kind], principal];
+    principalInput.value = "";
+    setPanelStatus(dialogStatus, "", "ok");
+    renderDraft();
+  }
+  async function saveRestrictions() {
+    if (!dialogPageId || !dialogCanManage) return;
+    const body = {
+      view: { users: idsOf(draft.view, "user"), groups: idsOf(draft.view, "group") },
+      edit: { users: idsOf(draft.edit, "user"), groups: idsOf(draft.edit, "group") }
+    };
+    saveButton.disabled = true;
+    try {
+      await fetchCloudJson(`/api/documents/${encodeURIComponent(dialogPageId)}/restrictions`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      dialog.close();
+      setCloudStatus("Saved page restrictions", "ok");
+      if (state.currentSite) await loadSite(state.currentSite.id, state.currentPage?.id);
+      await refreshRestrictions();
+    } catch (error) {
+      setPanelStatus(dialogStatus, errorMessage(error), "error");
+    } finally {
+      saveButton.disabled = !dialogCanManage;
+    }
+  }
+  function idsOf(principals, type2) {
+    return principals.filter((item) => item.type === type2).map((item) => item.id);
+  }
+  function restrictionLabel(view, edit, inheritedView) {
+    if (view && edit) return "View and edit restricted";
+    if (view) return "View restricted";
+    if (inheritedView && edit) return "Inherited view and edit restricted";
+    if (inheritedView) return "Inherits view restrictions";
+    return "Edit restricted";
+  }
+  function requireElement2(id) {
+    const element = document.getElementById(id);
+    if (!element) throw new Error(`Missing #${id}`);
+    return element;
+  }
+
   // web/cloud/session.ts
   async function initializeCloud() {
     setBusy(true, "Connecting to cloud", "warning");
     try {
+      await migrateLegacyStoredToken();
       const status = await fetchCloudJson("/api/status");
       state.cloudAvailable = true;
-      validateStoredCloudUser(status.user);
+      applySessionUser(status.user);
       if (!state.cloudUser && !shareToken) {
         clearWorkspaceState();
         setCloudStatus("Register with an invitation code or log in with an existing user token", "warning");
@@ -10617,21 +11143,13 @@ ${content}
     }
     await refreshWorkspaceTools();
   }
-  function validateStoredCloudUser(statusUser) {
-    if (!state.cloudUser) return;
-    if (statusUser && statusUser.id === state.cloudUser.id) {
-      state.cloudUser = {
-        id: statusUser.id,
-        name: statusUser.name,
-        token: state.cloudUser.token,
-        tokenPreview: statusUser.tokenPreview ?? state.cloudUser.tokenPreview
-      };
-      localStorage.setItem(userStorageKey, JSON.stringify(state.cloudUser));
-      cloudUserNameInput.value = state.cloudUser.name;
+  function applySessionUser(statusUser) {
+    if (statusUser) {
+      state.cloudUser = { id: statusUser.id, name: statusUser.name, tokenPreview: statusUser.tokenPreview };
+      cloudUserNameInput.value = statusUser.name;
       return;
     }
     state.cloudUser = void 0;
-    localStorage.removeItem(userStorageKey);
     localStorage.removeItem(activeSiteStorageKey);
     localStorage.removeItem(activeDocumentStorageKey);
   }
@@ -10722,7 +11240,7 @@ ${content}
         })
       });
       if (!response.user) throw new Error("Registration did not return a user session");
-      activateCloudUser(response.user);
+      activateCloudUser(response.user, response.csrfToken);
       cloudInvitationCodeInput.value = "";
       await openInitialWorkspace();
       if (!options.silent) setCloudStatus("Created user", "ok");
@@ -10748,7 +11266,7 @@ ${content}
         body: JSON.stringify({ userToken })
       });
       if (!response.user) throw new Error("Invalid Noma user token");
-      activateCloudUser(response.user);
+      activateCloudUser(response.user, response.csrfToken);
       cloudUserTokenInput.value = "";
       await openInitialWorkspace();
       setCloudStatus("Logged in", "ok");
@@ -10759,17 +11277,46 @@ ${content}
       renderChrome();
     }
   }
-  function activateCloudUser(user) {
-    state.cloudUser = user;
-    localStorage.setItem(userStorageKey, JSON.stringify(user));
+  function activateCloudUser(user, csrfToken2) {
+    state.cloudUser = { id: user.id, name: user.name, tokenPreview: user.tokenPreview };
+    rememberCsrfToken(csrfToken2);
     cloudUserNameInput.value = user.name;
   }
-  function logoutCloudUser() {
+  async function createApiToken() {
+    if (!state.cloudUser) return;
+    const name = window.prompt("Name for the new API token", "Cloud app token")?.trim();
+    if (!name) return;
+    setBusy(true, "Creating API token", "warning");
+    try {
+      const created = await fetchCloudJson("/api/tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, scopes: ["read", "write"], expiresInDays: 90 })
+      });
+      try {
+        await copyText(created.token, `Copied API token ${created.name}; it will not be shown again`);
+      } catch {
+        window.prompt("Copy your API token now; it will not be shown again", created.token);
+        setCloudStatus(`Created API token ${created.name}`, "ok");
+      }
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
+      renderChrome();
+    }
+  }
+  async function logoutCloudUser() {
     if (!confirmDiscardDirty()) return;
+    try {
+      await fetchCloudJson("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      setCloudStatus(errorMessage(error), "error");
+    }
+    forgetCsrfToken();
     state.cloudUser = void 0;
     cloudUserTokenInput.value = "";
     cloudInvitationCodeInput.value = "";
-    localStorage.removeItem(userStorageKey);
     localStorage.removeItem(activeSiteStorageKey);
     localStorage.removeItem(activeDocumentStorageKey);
     clearWorkspaceState();
@@ -11438,6 +11985,8 @@ ${content}
     const meta = button.querySelector(".row-meta");
     if (title) title.textContent = page.title;
     if (meta) meta.textContent = `${shortId(page.id)} / ${page.access?.role ?? state.currentSite?.access?.role ?? "viewer"}`;
+    const lock = restrictionIndicator(page.id);
+    if (lock) title?.append(lock);
     button.addEventListener("click", () => selectPage(page.id));
     row.addEventListener("contextmenu", (event) => showPageContextMenu(event, page));
     const move = iconButton("Move", `Move ${page.title}`, () => void movePage(page.id));
@@ -11598,7 +12147,7 @@ ${source}`;
     if (!state.cloudUser || !state.currentPage || !state.dirty) return;
     const drafts = readLocalDrafts();
     const existing = drafts[state.currentPage.id];
-    const draft = {
+    const draft2 = {
       ...existing?.id ? { id: existing.id } : {},
       userId: state.cloudUser.id,
       documentId: state.currentPage.id,
@@ -11608,9 +12157,9 @@ ${source}`;
       source: sourceInput.value,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    drafts[state.currentPage.id] = draft;
+    drafts[state.currentPage.id] = draft2;
     localStorage.setItem(offlineDraftStorageKey, JSON.stringify(drafts));
-    state.pendingLocalDraft = draft;
+    state.pendingLocalDraft = draft2;
     renderDraftRecovery();
   }
   function readLocalDrafts() {
@@ -11639,15 +12188,15 @@ ${source}`;
     localStorage.setItem(offlineDraftStorageKey, JSON.stringify(drafts));
   }
   function restoreLatestOfflineDraft() {
-    const draft = Object.values(readLocalDrafts()).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
-    if (!draft) return false;
+    const draft2 = Object.values(readLocalDrafts()).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    if (!draft2) return false;
     const page = {
-      id: draft.documentId,
-      title: draft.title,
-      source: draft.baseSource,
-      hash: draft.baseHash,
-      createdAt: draft.updatedAt,
-      updatedAt: draft.updatedAt,
+      id: draft2.documentId,
+      title: draft2.title,
+      source: draft2.baseSource,
+      hash: draft2.baseHash,
+      createdAt: draft2.updatedAt,
+      updatedAt: draft2.updatedAt,
       diagnostics: [],
       access: { role: "editor", via: "offline-cache" }
     };
@@ -11695,13 +12244,13 @@ ${source}`;
   function mergeOfflineSources(baseSource, currentSource, draftSource, expectedHash) {
     const base = baseSource.split("\n");
     const current = currentSource.split("\n");
-    const draft = draftSource.split("\n");
+    const draft2 = draftSource.split("\n");
     const output = [];
     const conflicts = [];
-    for (let index = 0; index < Math.max(base.length, current.length, draft.length); index++) {
+    for (let index = 0; index < Math.max(base.length, current.length, draft2.length); index++) {
       const baseLine = base[index] ?? "";
       const currentLine = current[index] ?? "";
-      const draftLine = draft[index] ?? "";
+      const draftLine = draft2[index] ?? "";
       if (currentLine === draftLine) output.push(currentLine);
       else if (currentLine === baseLine) output.push(draftLine);
       else if (draftLine === baseLine) output.push(currentLine);
@@ -12867,6 +13416,11 @@ body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
         action: () => void copyText(page.id, "Copied page ID")
       },
       {
+        label: "Restrictions...",
+        disabled: !state.cloudUser,
+        action: () => void openRestrictionsDialog(page.id, page.title)
+      },
+      {
         label: favorite ? "Remove from favorites" : "Add to favorites",
         action: () => void toggleFavorite("document", page.id)
       },
@@ -13273,6 +13827,8 @@ body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
     void refreshHistory({ silent: true });
     void refreshPageCollaboration();
     void refreshPageMeta();
+    void refreshAttachments();
+    void refreshRestrictions();
     void recordRecent("document", page.id);
   }
   function renderCurrent() {
@@ -13285,7 +13841,8 @@ body{margin:0;padding:28px;background:${previewChrome};color:#20242a}
         allowEscapeHatches: false,
         externalAssets: false,
         interactive: false,
-        sourcePositions: true
+        sourcePositions: true,
+        resolveAttachment: resolveAttachmentUrl
       });
       state.renderState = {
         doc,
@@ -13546,427 +14103,6 @@ Start writing here.`;
     sourceInput.setSelectionRange(offset, offset);
     const lineHeight = Number.parseFloat(window.getComputedStyle(sourceInput).lineHeight) || 20;
     sourceInput.scrollTop = Math.max(0, (boundedLine - 4) * lineHeight);
-  }
-
-  // web/cloud/layout.ts
-  function setViewMode(mode) {
-    state.viewMode = mode;
-    if (mode === "preview") state.panelsOpen = false;
-    localStorage.setItem(viewModeStorageKey, state.viewMode);
-    localStorage.setItem(panelsOpenStorageKey, state.panelsOpen ? "true" : "false");
-    renderChrome();
-    renderCurrent();
-  }
-  function renderChrome() {
-    const shell = document.querySelector(".cloud-shell");
-    if (shell) {
-      shell.dataset.viewMode = state.viewMode;
-      shell.dataset.panels = state.panelsOpen ? "open" : "closed";
-    }
-    documentGrid.style.setProperty("--source-pane-width", `${state.splitSourceRatio}%`);
-    cloudUserNameInput.disabled = state.busy;
-    cloudInvitationCodeInput.disabled = state.busy || Boolean(state.cloudUser);
-    cloudUserTokenInput.disabled = state.busy || Boolean(state.cloudUser);
-    newUserButton.disabled = state.busy || !state.cloudAvailable || Boolean(state.cloudUser);
-    loginUserButton.disabled = state.busy || !state.cloudAvailable || Boolean(state.cloudUser);
-    logoutUserButton.disabled = state.busy || !state.cloudUser;
-    copyUserIdButton.disabled = state.busy || !state.cloudUser;
-    copyUserTokenButton.disabled = state.busy || !state.cloudUser;
-    themeToggleButton.textContent = state.themeMode === "dark" ? "Light" : "Dark";
-    themeToggleButton.setAttribute("aria-pressed", String(state.themeMode === "dark"));
-    newSpaceButton.disabled = state.busy || !state.cloudAvailable || !state.cloudUser;
-    saveSpaceButton.disabled = state.busy || !canEditSite();
-    newPageButton.disabled = state.busy || !canCreatePage();
-    newFolderButton.disabled = state.busy || !canEditSite();
-    importPageButton.disabled = state.busy || !canCreatePage();
-    pageTemplateSelect.disabled = state.busy || !canCreatePage() || state.pageTemplates.length === 0;
-    globalSearchInput.disabled = state.busy || !state.cloudUser;
-    searchScopeSelect.disabled = state.busy || !state.cloudUser;
-    searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
-    refreshTrashButton.disabled = state.busy || !state.cloudUser;
-    savePageButton.disabled = state.busy || !canEditPage() || !state.currentPage;
-    reloadPageButton.disabled = state.busy || !state.currentPage;
-    favoritePageButton.disabled = state.busy || !state.cloudUser || !state.currentPage;
-    sourceInput.disabled = state.busy || !canEditPage();
-    pageTitleInput.disabled = state.busy || !canEditPage();
-    copyPageLinkButton.disabled = state.busy || !state.currentPage;
-    copyArtifactLinkButton.disabled = state.busy || !state.currentPage;
-    copySiteLinkButton.disabled = state.busy || !state.currentSite;
-    openPublishedSiteButton.disabled = state.busy || !state.currentSite;
-    inviteUserButton.disabled = state.busy || !canManagePermissions();
-    inviteGroupSelect.disabled = state.busy || !canManagePermissions() || state.groups.length === 0;
-    inviteGroupButton.disabled = state.busy || !canManagePermissions() || state.groups.length === 0;
-    refreshAccessButton.disabled = state.busy || !canManagePermissions() && !canEditPage();
-    refreshNotificationsButton.disabled = state.busy || !state.cloudUser;
-    readAllNotificationsButton.disabled = state.busy || !state.cloudUser || !state.notifications.some((notification) => !notification.readAt);
-    refreshCommentsButton.disabled = state.busy || !state.currentPage;
-    addCommentButton.disabled = state.busy || !state.currentPage || !state.cloudUser;
-    commentBlockIdInput.disabled = state.busy || !state.currentPage;
-    commentBodyInput.disabled = state.busy || !state.currentPage;
-    refreshApprovalsButton.disabled = state.busy || !state.currentPage;
-    requestApprovalButton.disabled = state.busy || !state.currentPage || !canEditPage();
-    approvalReviewerInput.disabled = state.busy || !state.currentPage || !canEditPage();
-    approvalNoteInput.disabled = state.busy || !state.currentPage || !canEditPage();
-    refreshActivityButton.disabled = state.busy || !state.currentPage;
-    refreshGroupsButton.disabled = state.busy || !state.cloudUser;
-    createGroupButton.disabled = state.busy || !state.cloudUser;
-    manageGroupSelect.disabled = state.busy || state.groups.length === 0;
-    groupMemberIdInput.disabled = state.busy || !selectedGroupManagedByCurrentUser();
-    groupMemberRoleSelect.disabled = state.busy || !selectedGroupManagedByCurrentUser();
-    addGroupMemberButton.disabled = state.busy || !selectedGroupManagedByCurrentUser();
-    applyPatchButton.disabled = state.busy || !canEditPage();
-    proposePatchButton.disabled = state.busy || !canEditPage() || !state.currentPage || state.dirty;
-    refreshPatchProposalsButton.disabled = state.busy || !state.currentPage;
-    copyLlmButton.disabled = state.busy || Boolean(state.renderState.error) || !state.renderState.llm;
-    togglePanelsButton.setAttribute("aria-pressed", String(state.panelsOpen));
-    togglePanelsButton.textContent = state.panelsOpen ? "Hide Panels" : "Panels";
-    for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
-      button.setAttribute("aria-pressed", String(button.dataset.viewMode === state.viewMode));
-    }
-    const role = currentPageRole();
-    const currentFavorite = Boolean(state.currentPage && state.favoriteItems.some((item) => item.resourceType === "document" && item.resourceId === state.currentPage?.id));
-    favoritePageButton.textContent = currentFavorite ? "Unfavorite" : "Favorite";
-    favoritePageButton.setAttribute("aria-pressed", String(currentFavorite));
-    roleBadge.textContent = role;
-    roleBadge.dataset.state = roleRank(role) >= roleRank("editor") ? "ok" : "warning";
-    dirtyBadge.textContent = state.dirty ? "unsaved" : "saved";
-    dirtyBadge.dataset.state = state.dirty ? "dirty" : "ok";
-    updatedText.textContent = state.currentPage ? `Updated ${formatDate(state.currentPage.updatedAt)}` : "";
-    renderPageMeta();
-    renderNavigation();
-    renderHistory();
-    renderWorkspaceTools();
-    renderCollaborationPanels();
-    renderWorkManagement();
-    renderPatchProposals();
-    renderAccessManagement();
-    renderKnowledgeWorkspace();
-  }
-  function applyPreviewPaperWidth(previewDoc) {
-    const paper = previewDoc.querySelector(".noma-document");
-    if (paper) paper.style.maxWidth = `${state.previewPaperWidth}px`;
-  }
-  function startSplitResize(event) {
-    if (state.viewMode !== "split") return;
-    event.preventDefault();
-    const rect = documentGrid.getBoundingClientRect();
-    documentGrid.dataset.resizing = "true";
-    splitResizeHandle.setPointerCapture(event.pointerId);
-    const onMove = (moveEvent) => {
-      const nextRatio = (moveEvent.clientX - rect.left) / rect.width * 100;
-      setSplitSourceRatio(nextRatio);
-    };
-    const onUp = () => {
-      delete documentGrid.dataset.resizing;
-      splitResizeHandle.removeEventListener("pointermove", onMove);
-      splitResizeHandle.removeEventListener("pointerup", onUp);
-      splitResizeHandle.removeEventListener("pointercancel", onUp);
-      setCloudStatus("Resized split view", "ok");
-    };
-    splitResizeHandle.addEventListener("pointermove", onMove);
-    splitResizeHandle.addEventListener("pointerup", onUp);
-    splitResizeHandle.addEventListener("pointercancel", onUp);
-  }
-  function handleSplitResizeKeydown(event) {
-    if (state.viewMode !== "split") return;
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    setSplitSourceRatio(state.splitSourceRatio + (event.key === "ArrowRight" ? 3 : -3));
-    setCloudStatus("Resized split view", "ok");
-  }
-  function setSplitSourceRatio(value) {
-    state.splitSourceRatio = Math.round(clamp(value, 30, 66) * 10) / 10;
-    localStorage.setItem(splitSourceRatioStorageKey, String(state.splitSourceRatio));
-    documentGrid.style.setProperty("--source-pane-width", `${state.splitSourceRatio}%`);
-  }
-  function startPreviewPaperResize(event, paper) {
-    event.preventDefault();
-    event.stopPropagation();
-    const handle = event.currentTarget;
-    const startX = event.clientX;
-    const startWidth = paper.getBoundingClientRect().width;
-    const ownerWindow = paper.ownerDocument.defaultView;
-    if (!handle || !ownerWindow) return;
-    handle.setPointerCapture(event.pointerId);
-    const onMove = (moveEvent) => {
-      const nextWidth = startWidth + (moveEvent.clientX - startX) * 2;
-      setPreviewPaperWidth(nextWidth, paper);
-    };
-    const onUp = () => {
-      ownerWindow.removeEventListener("pointermove", onMove);
-      ownerWindow.removeEventListener("pointerup", onUp);
-      ownerWindow.removeEventListener("pointercancel", onUp);
-      setCloudStatus("Resized preview paper", "ok");
-    };
-    ownerWindow.addEventListener("pointermove", onMove);
-    ownerWindow.addEventListener("pointerup", onUp);
-    ownerWindow.addEventListener("pointercancel", onUp);
-  }
-  function handlePreviewPaperResizeKeydown(event, paper) {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    event.stopPropagation();
-    setPreviewPaperWidth(state.previewPaperWidth + (event.key === "ArrowRight" ? 40 : -40), paper);
-    setCloudStatus("Resized preview paper", "ok");
-  }
-  function setPreviewPaperWidth(value, paper) {
-    state.previewPaperWidth = Math.round(clamp(value, 680, 1280));
-    localStorage.setItem(previewPaperWidthStorageKey, String(state.previewPaperWidth));
-    if (paper) paper.style.maxWidth = `${state.previewPaperWidth}px`;
-  }
-  function applyThemeMode() {
-    document.documentElement.dataset.theme = state.themeMode;
-    document.documentElement.style.colorScheme = state.themeMode;
-  }
-
-  // web/cloud/util.ts
-  function actionButton(label, action, disabled = false, accessibleLabel) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = label;
-    button.disabled = disabled;
-    if (accessibleLabel) {
-      button.setAttribute("aria-label", accessibleLabel);
-      button.title = accessibleLabel;
-    }
-    button.addEventListener("click", action);
-    return button;
-  }
-  function iconButton(text, title, onClick, variant) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = variant === "danger" ? "row-action row-action-danger" : "row-action";
-    button.textContent = text;
-    button.title = title;
-    button.setAttribute("aria-label", title);
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      onClick();
-    });
-    return button;
-  }
-  function emptyState(text) {
-    const row = document.createElement("div");
-    row.className = "empty-state";
-    row.textContent = text;
-    return row;
-  }
-  function normalizeInlineText(text) {
-    return text.replace(/\s+/g, " ").trim();
-  }
-  function normalizeBlockText(text) {
-    return text.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim()).filter((line) => line.length > 0).join("\n");
-  }
-  function positiveInt(value) {
-    if (!value) return void 0;
-    const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : void 0;
-  }
-  function slug(value) {
-    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
-  }
-  function promptName(label, fallback) {
-    const value = window.prompt(label, fallback);
-    return value?.trim() || fallback;
-  }
-  function absoluteUrl(path) {
-    return new URL(path, window.location.origin).toString();
-  }
-  function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-  }
-  function setBusy(value, message, panelState = "warning") {
-    state.busy = value;
-    if (message) setCloudStatus(message, panelState);
-    renderChrome();
-  }
-  function setCloudStatus(message, panelState) {
-    cloudStatus.textContent = message;
-    cloudStatus.dataset.state = panelState;
-  }
-  function setPanelStatus(element, message, panelState) {
-    element.textContent = message;
-    element.dataset.state = panelState;
-  }
-  async function copyText(text, status) {
-    await navigator.clipboard.writeText(text);
-    setCloudStatus(status, "ok");
-  }
-  function errorMessage(error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-  function formatDate(value) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString(void 0, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-  }
-  function shortId(value) {
-    return `${value.slice(0, 6)}...${value.slice(-4)}`;
-  }
-  function escapeHtml2(value) {
-    return value.replace(/[&<>"']/g, (char) => {
-      switch (char) {
-        case "&":
-          return "&amp;";
-        case "<":
-          return "&lt;";
-        case ">":
-          return "&gt;";
-        case '"':
-          return "&quot;";
-        default:
-          return "&#39;";
-      }
-    });
-  }
-
-  // web/cloud/state.ts
-  var state = {
-    cloudAvailable: false,
-    busy: false,
-    cloudUser: readCloudUser(),
-    sites: [],
-    currentSite: void 0,
-    pages: [],
-    currentPage: void 0,
-    documentRevisions: [],
-    pageTemplates: [],
-    cloudSearchResults: [],
-    recentItems: [],
-    favoriteItems: [],
-    currentLabels: [],
-    currentWatching: false,
-    trashItems: [],
-    notifications: [],
-    comments: [],
-    approvals: [],
-    activityEvents: [],
-    groups: [],
-    workProjects: [],
-    workIssues: [],
-    workSprints: [],
-    selectedIssue: void 0,
-    patchProposals: [],
-    collaboratorGrants: [],
-    groupGrants: [],
-    shareGrants: [],
-    activeFolder: "",
-    dirty: false,
-    renderTimer: void 0,
-    renderState: emptyRenderState(),
-    viewMode: readViewMode(),
-    panelsOpen: readPanelsOpen(),
-    splitSourceRatio: readSplitSourceRatio(),
-    previewPaperWidth: readPreviewPaperWidth(),
-    themeMode: readThemeMode(),
-    pendingPreviewFocusLine: void 0,
-    askNomaResponse: void 0,
-    knowledgeHealth: [],
-    agentInbox: [],
-    scopedAgents: [],
-    pendingLocalDraft: void 0,
-    savedPageSource: "",
-    savedPageHash: "",
-    savedPageTitle: ""
-  };
-  var shareToken = readShareToken();
-  function readCloudUser() {
-    const stored = localStorage.getItem(userStorageKey);
-    if (!stored) return void 0;
-    try {
-      const parsed = JSON.parse(stored);
-      if (parsed.id && parsed.name && parsed.token) {
-        return {
-          id: parsed.id,
-          name: parsed.name,
-          token: parsed.token,
-          tokenPreview: parsed.tokenPreview
-        };
-      }
-    } catch {
-      return void 0;
-    }
-    return void 0;
-  }
-  function readShareToken() {
-    const token = query.get("share");
-    return token && /^ns_[A-Za-z0-9_-]{16,}$/.test(token) ? token : void 0;
-  }
-  function readCloudId(value) {
-    return value && /^[A-Za-z0-9_-]{8,80}$/.test(value) ? value : void 0;
-  }
-  function readViewMode() {
-    const stored = localStorage.getItem(viewModeStorageKey);
-    return stored === "source" || stored === "preview" ? stored : "split";
-  }
-  function readPanelsOpen() {
-    return localStorage.getItem(panelsOpenStorageKey) !== "false";
-  }
-  function readSplitSourceRatio() {
-    const stored = localStorage.getItem(splitSourceRatioStorageKey);
-    if (stored === null) return 46;
-    const parsed = Number(stored);
-    return Number.isFinite(parsed) ? clamp(parsed, 30, 66) : 46;
-  }
-  function readPreviewPaperWidth() {
-    const stored = localStorage.getItem(previewPaperWidthStorageKey);
-    if (stored === null) return 1040;
-    const parsed = Number(stored);
-    return Number.isFinite(parsed) ? clamp(parsed, 680, 1280) : 1040;
-  }
-  function readThemeMode() {
-    const stored = localStorage.getItem(themeStorageKey);
-    if (stored === "light" || stored === "dark") return stored;
-    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-  function emptyRenderState() {
-    return {
-      doc: null,
-      diagnostics: [],
-      llm: ""
-    };
-  }
-
-  // web/cloud/api.ts
-  var CloudRequestError = class extends Error {
-    constructor(status, message, payload) {
-      super(message);
-      this.status = status;
-      this.payload = payload;
-      this.name = "CloudRequestError";
-    }
-  };
-  async function fetchCloudJson(url, init) {
-    const headers = new Headers(init?.headers);
-    headers.set("accept", "application/json");
-    if (state.cloudUser) headers.set("authorization", `Bearer ${state.cloudUser.token}`);
-    if (shareToken) headers.set("x-noma-share-token", shareToken);
-    const response = await fetch(url, {
-      ...init,
-      headers
-    });
-    if (!response.ok) {
-      let message = `${response.status} ${response.statusText}`;
-      const text = await response.text();
-      let payload = {};
-      try {
-        payload = JSON.parse(text);
-        if (payload.error) message = payload.error;
-      } catch {
-        if (text) message = text;
-      }
-      if (response.status === 401 && message.includes("Noma Cloud access token required")) {
-        const next = `${window.location.pathname}${window.location.search}`;
-        window.location.assign(`/login.html?next=${encodeURIComponent(next)}`);
-      }
-      throw new CloudRequestError(response.status, message, payload);
-    }
-    return response.json();
   }
 
   // web/cloud/collaboration.ts
@@ -14508,6 +14644,596 @@ Start writing here.`;
     return share;
   }
 
+  // web/cloud/layout.ts
+  function setViewMode(mode) {
+    state.viewMode = mode;
+    if (mode === "preview") state.panelsOpen = false;
+    localStorage.setItem(viewModeStorageKey, state.viewMode);
+    localStorage.setItem(panelsOpenStorageKey, state.panelsOpen ? "true" : "false");
+    renderChrome();
+    renderCurrent();
+  }
+  function renderChrome() {
+    const shell = document.querySelector(".cloud-shell");
+    if (shell) {
+      shell.dataset.viewMode = state.viewMode;
+      shell.dataset.panels = state.panelsOpen ? "open" : "closed";
+    }
+    documentGrid.style.setProperty("--source-pane-width", `${state.splitSourceRatio}%`);
+    cloudUserNameInput.disabled = state.busy;
+    cloudInvitationCodeInput.disabled = state.busy || Boolean(state.cloudUser);
+    cloudUserTokenInput.disabled = state.busy || Boolean(state.cloudUser);
+    newUserButton.disabled = state.busy || !state.cloudAvailable || Boolean(state.cloudUser);
+    loginUserButton.disabled = state.busy || !state.cloudAvailable || Boolean(state.cloudUser);
+    logoutUserButton.disabled = state.busy || !state.cloudUser;
+    copyUserIdButton.disabled = state.busy || !state.cloudUser;
+    copyUserTokenButton.disabled = state.busy || !state.cloudUser;
+    themeToggleButton.textContent = state.themeMode === "dark" ? "Light" : "Dark";
+    themeToggleButton.setAttribute("aria-pressed", String(state.themeMode === "dark"));
+    newSpaceButton.disabled = state.busy || !state.cloudAvailable || !state.cloudUser;
+    saveSpaceButton.disabled = state.busy || !canEditSite();
+    newPageButton.disabled = state.busy || !canCreatePage();
+    newFolderButton.disabled = state.busy || !canEditSite();
+    importPageButton.disabled = state.busy || !canCreatePage();
+    pageTemplateSelect.disabled = state.busy || !canCreatePage() || state.pageTemplates.length === 0;
+    globalSearchInput.disabled = state.busy || !state.cloudUser;
+    searchScopeSelect.disabled = state.busy || !state.cloudUser;
+    searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
+    refreshTrashButton.disabled = state.busy || !state.cloudUser;
+    savePageButton.disabled = state.busy || !canEditPage() || !state.currentPage;
+    reloadPageButton.disabled = state.busy || !state.currentPage;
+    favoritePageButton.disabled = state.busy || !state.cloudUser || !state.currentPage;
+    sourceInput.disabled = state.busy || !canEditPage();
+    pageTitleInput.disabled = state.busy || !canEditPage();
+    copyPageLinkButton.disabled = state.busy || !state.currentPage;
+    copyArtifactLinkButton.disabled = state.busy || !state.currentPage;
+    copySiteLinkButton.disabled = state.busy || !state.currentSite;
+    openPublishedSiteButton.disabled = state.busy || !state.currentSite;
+    inviteUserButton.disabled = state.busy || !canManagePermissions();
+    inviteGroupSelect.disabled = state.busy || !canManagePermissions() || state.groups.length === 0;
+    inviteGroupButton.disabled = state.busy || !canManagePermissions() || state.groups.length === 0;
+    refreshAccessButton.disabled = state.busy || !canManagePermissions() && !canEditPage();
+    refreshNotificationsButton.disabled = state.busy || !state.cloudUser;
+    readAllNotificationsButton.disabled = state.busy || !state.cloudUser || !state.notifications.some((notification) => !notification.readAt);
+    refreshCommentsButton.disabled = state.busy || !state.currentPage;
+    addCommentButton.disabled = state.busy || !state.currentPage || !state.cloudUser;
+    commentBlockIdInput.disabled = state.busy || !state.currentPage;
+    commentBodyInput.disabled = state.busy || !state.currentPage;
+    refreshApprovalsButton.disabled = state.busy || !state.currentPage;
+    requestApprovalButton.disabled = state.busy || !state.currentPage || !canEditPage();
+    approvalReviewerInput.disabled = state.busy || !state.currentPage || !canEditPage();
+    approvalNoteInput.disabled = state.busy || !state.currentPage || !canEditPage();
+    refreshActivityButton.disabled = state.busy || !state.currentPage;
+    refreshGroupsButton.disabled = state.busy || !state.cloudUser;
+    createGroupButton.disabled = state.busy || !state.cloudUser;
+    manageGroupSelect.disabled = state.busy || state.groups.length === 0;
+    groupMemberIdInput.disabled = state.busy || !selectedGroupManagedByCurrentUser();
+    groupMemberRoleSelect.disabled = state.busy || !selectedGroupManagedByCurrentUser();
+    addGroupMemberButton.disabled = state.busy || !selectedGroupManagedByCurrentUser();
+    applyPatchButton.disabled = state.busy || !canEditPage();
+    proposePatchButton.disabled = state.busy || !canEditPage() || !state.currentPage || state.dirty;
+    refreshPatchProposalsButton.disabled = state.busy || !state.currentPage;
+    copyLlmButton.disabled = state.busy || Boolean(state.renderState.error) || !state.renderState.llm;
+    togglePanelsButton.setAttribute("aria-pressed", String(state.panelsOpen));
+    togglePanelsButton.textContent = state.panelsOpen ? "Hide Panels" : "Panels";
+    for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
+      button.setAttribute("aria-pressed", String(button.dataset.viewMode === state.viewMode));
+    }
+    const role = currentPageRole();
+    const currentFavorite = Boolean(state.currentPage && state.favoriteItems.some((item) => item.resourceType === "document" && item.resourceId === state.currentPage?.id));
+    favoritePageButton.textContent = currentFavorite ? "Unfavorite" : "Favorite";
+    favoritePageButton.setAttribute("aria-pressed", String(currentFavorite));
+    roleBadge.textContent = role;
+    roleBadge.dataset.state = roleRank(role) >= roleRank("editor") ? "ok" : "warning";
+    dirtyBadge.textContent = state.dirty ? "unsaved" : "saved";
+    dirtyBadge.dataset.state = state.dirty ? "dirty" : "ok";
+    updatedText.textContent = state.currentPage ? `Updated ${formatDate(state.currentPage.updatedAt)}` : "";
+    renderPageMeta();
+    renderRestrictionBadge();
+    renderAttachments();
+    renderNavigation();
+    renderHistory();
+    renderWorkspaceTools();
+    renderCollaborationPanels();
+    renderWorkManagement();
+    renderPatchProposals();
+    renderAccessManagement();
+    renderKnowledgeWorkspace();
+  }
+  function applyPreviewPaperWidth(previewDoc) {
+    const paper = previewDoc.querySelector(".noma-document");
+    if (paper) paper.style.maxWidth = `${state.previewPaperWidth}px`;
+  }
+  function startSplitResize(event) {
+    if (state.viewMode !== "split") return;
+    event.preventDefault();
+    const rect = documentGrid.getBoundingClientRect();
+    documentGrid.dataset.resizing = "true";
+    splitResizeHandle.setPointerCapture(event.pointerId);
+    const onMove = (moveEvent) => {
+      const nextRatio = (moveEvent.clientX - rect.left) / rect.width * 100;
+      setSplitSourceRatio(nextRatio);
+    };
+    const onUp = () => {
+      delete documentGrid.dataset.resizing;
+      splitResizeHandle.removeEventListener("pointermove", onMove);
+      splitResizeHandle.removeEventListener("pointerup", onUp);
+      splitResizeHandle.removeEventListener("pointercancel", onUp);
+      setCloudStatus("Resized split view", "ok");
+    };
+    splitResizeHandle.addEventListener("pointermove", onMove);
+    splitResizeHandle.addEventListener("pointerup", onUp);
+    splitResizeHandle.addEventListener("pointercancel", onUp);
+  }
+  function handleSplitResizeKeydown(event) {
+    if (state.viewMode !== "split") return;
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    setSplitSourceRatio(state.splitSourceRatio + (event.key === "ArrowRight" ? 3 : -3));
+    setCloudStatus("Resized split view", "ok");
+  }
+  function setSplitSourceRatio(value) {
+    state.splitSourceRatio = Math.round(clamp(value, 30, 66) * 10) / 10;
+    localStorage.setItem(splitSourceRatioStorageKey, String(state.splitSourceRatio));
+    documentGrid.style.setProperty("--source-pane-width", `${state.splitSourceRatio}%`);
+  }
+  function startPreviewPaperResize(event, paper) {
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = paper.getBoundingClientRect().width;
+    const ownerWindow = paper.ownerDocument.defaultView;
+    if (!handle || !ownerWindow) return;
+    handle.setPointerCapture(event.pointerId);
+    const onMove = (moveEvent) => {
+      const nextWidth = startWidth + (moveEvent.clientX - startX) * 2;
+      setPreviewPaperWidth(nextWidth, paper);
+    };
+    const onUp = () => {
+      ownerWindow.removeEventListener("pointermove", onMove);
+      ownerWindow.removeEventListener("pointerup", onUp);
+      ownerWindow.removeEventListener("pointercancel", onUp);
+      setCloudStatus("Resized preview paper", "ok");
+    };
+    ownerWindow.addEventListener("pointermove", onMove);
+    ownerWindow.addEventListener("pointerup", onUp);
+    ownerWindow.addEventListener("pointercancel", onUp);
+  }
+  function handlePreviewPaperResizeKeydown(event, paper) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    event.stopPropagation();
+    setPreviewPaperWidth(state.previewPaperWidth + (event.key === "ArrowRight" ? 40 : -40), paper);
+    setCloudStatus("Resized preview paper", "ok");
+  }
+  function setPreviewPaperWidth(value, paper) {
+    state.previewPaperWidth = Math.round(clamp(value, 680, 1280));
+    localStorage.setItem(previewPaperWidthStorageKey, String(state.previewPaperWidth));
+    if (paper) paper.style.maxWidth = `${state.previewPaperWidth}px`;
+  }
+  function applyThemeMode() {
+    document.documentElement.dataset.theme = state.themeMode;
+    document.documentElement.style.colorScheme = state.themeMode;
+  }
+
+  // web/cloud/util.ts
+  function actionButton(label, action, disabled = false, accessibleLabel) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.disabled = disabled;
+    if (accessibleLabel) {
+      button.setAttribute("aria-label", accessibleLabel);
+      button.title = accessibleLabel;
+    }
+    button.addEventListener("click", action);
+    return button;
+  }
+  function iconButton(text, title, onClick, variant) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = variant === "danger" ? "row-action row-action-danger" : "row-action";
+    button.textContent = text;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
+  function emptyState(text) {
+    const row = document.createElement("div");
+    row.className = "empty-state";
+    row.textContent = text;
+    return row;
+  }
+  function normalizeInlineText(text) {
+    return text.replace(/\s+/g, " ").trim();
+  }
+  function normalizeBlockText(text) {
+    return text.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim()).filter((line) => line.length > 0).join("\n");
+  }
+  function positiveInt(value) {
+    if (!value) return void 0;
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : void 0;
+  }
+  function slug(value) {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  }
+  function promptName(label, fallback) {
+    const value = window.prompt(label, fallback);
+    return value?.trim() || fallback;
+  }
+  function absoluteUrl(path) {
+    return new URL(path, window.location.origin).toString();
+  }
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+  function setBusy(value, message, panelState = "warning") {
+    state.busy = value;
+    if (message) setCloudStatus(message, panelState);
+    renderChrome();
+  }
+  function setCloudStatus(message, panelState) {
+    cloudStatus.textContent = message;
+    cloudStatus.dataset.state = panelState;
+  }
+  function setPanelStatus(element, message, panelState) {
+    element.textContent = message;
+    element.dataset.state = panelState;
+  }
+  async function copyText(text, status) {
+    await navigator.clipboard.writeText(text);
+    setCloudStatus(status, "ok");
+  }
+  function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  function formatDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(void 0, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  }
+  function shortId(value) {
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  }
+  function escapeHtml2(value) {
+    return value.replace(/[&<>"']/g, (char) => {
+      switch (char) {
+        case "&":
+          return "&amp;";
+        case "<":
+          return "&lt;";
+        case ">":
+          return "&gt;";
+        case '"':
+          return "&quot;";
+        default:
+          return "&#39;";
+      }
+    });
+  }
+
+  // web/cloud/state.ts
+  var state = {
+    cloudAvailable: false,
+    busy: false,
+    cloudUser: void 0,
+    sites: [],
+    currentSite: void 0,
+    pages: [],
+    currentPage: void 0,
+    documentRevisions: [],
+    pageTemplates: [],
+    cloudSearchResults: [],
+    recentItems: [],
+    favoriteItems: [],
+    currentLabels: [],
+    currentWatching: false,
+    trashItems: [],
+    notifications: [],
+    comments: [],
+    approvals: [],
+    activityEvents: [],
+    groups: [],
+    workProjects: [],
+    workIssues: [],
+    workSprints: [],
+    selectedIssue: void 0,
+    patchProposals: [],
+    collaboratorGrants: [],
+    groupGrants: [],
+    shareGrants: [],
+    activeFolder: "",
+    dirty: false,
+    renderTimer: void 0,
+    renderState: emptyRenderState(),
+    viewMode: readViewMode(),
+    panelsOpen: readPanelsOpen(),
+    splitSourceRatio: readSplitSourceRatio(),
+    previewPaperWidth: readPreviewPaperWidth(),
+    themeMode: readThemeMode(),
+    pendingPreviewFocusLine: void 0,
+    askNomaResponse: void 0,
+    knowledgeHealth: [],
+    agentInbox: [],
+    scopedAgents: [],
+    pendingLocalDraft: void 0,
+    savedPageSource: "",
+    savedPageHash: "",
+    savedPageTitle: ""
+  };
+  var shareToken = readShareToken();
+  function readShareToken() {
+    const token = query.get("share");
+    return token && /^ns_[A-Za-z0-9_-]{16,}$/.test(token) ? token : void 0;
+  }
+  function readCloudId(value) {
+    return value && /^[A-Za-z0-9_-]{8,80}$/.test(value) ? value : void 0;
+  }
+  function readViewMode() {
+    const stored = localStorage.getItem(viewModeStorageKey);
+    return stored === "source" || stored === "preview" ? stored : "split";
+  }
+  function readPanelsOpen() {
+    return localStorage.getItem(panelsOpenStorageKey) !== "false";
+  }
+  function readSplitSourceRatio() {
+    const stored = localStorage.getItem(splitSourceRatioStorageKey);
+    if (stored === null) return 46;
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? clamp(parsed, 30, 66) : 46;
+  }
+  function readPreviewPaperWidth() {
+    const stored = localStorage.getItem(previewPaperWidthStorageKey);
+    if (stored === null) return 1040;
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? clamp(parsed, 680, 1280) : 1040;
+  }
+  function readThemeMode() {
+    const stored = localStorage.getItem(themeStorageKey);
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function emptyRenderState() {
+    return {
+      doc: null,
+      diagnostics: [],
+      llm: ""
+    };
+  }
+
+  // web/cloud/api.ts
+  var CloudRequestError = class extends Error {
+    constructor(status, message, payload) {
+      super(message);
+      this.status = status;
+      this.payload = payload;
+      this.name = "CloudRequestError";
+    }
+  };
+  async function fetchCloudJson(url, init) {
+    const headers = new Headers(init?.headers);
+    headers.set("accept", "application/json");
+    const csrf = currentCsrfToken();
+    if (csrf && isMutatingMethod(init?.method)) headers.set(csrfHeaderName, csrf);
+    if (shareToken) headers.set("x-noma-share-token", shareToken);
+    const response = await fetch(url, {
+      ...init,
+      credentials: "same-origin",
+      headers
+    });
+    if (!response.ok) {
+      let message = `${response.status} ${response.statusText}`;
+      const text = await response.text();
+      let payload = {};
+      try {
+        payload = JSON.parse(text);
+        if (payload.error) message = payload.error;
+      } catch {
+        if (text) message = text;
+      }
+      if (response.status === 401 && message.includes("Noma Cloud access token required")) {
+        const next = `${window.location.pathname}${window.location.search}`;
+        window.location.assign(`/login.html?next=${encodeURIComponent(next)}`);
+      }
+      throw new CloudRequestError(response.status, message, payload);
+    }
+    return response.json();
+  }
+
+  // web/cloud/attachments.ts
+  var attachmentList = requireElement3("attachmentsList");
+  var attachmentStatus = requireElement3("attachmentsStatus");
+  var uploadButton = requireElement3("attachmentsUploadButton");
+  var fileInput = requireElement3("attachmentsFileInput");
+  var refreshButton = requireElement3("attachmentsRefreshButton");
+  var attachments = [];
+  var attachmentsPageId;
+  function resolveAttachmentUrl(ref) {
+    if (!state.currentPage || attachmentsPageId !== state.currentPage.id) return void 0;
+    const attachment = attachments.find((item) => item.id === ref) ?? [...attachments].reverse().find((item) => item.filename === ref);
+    return attachment?.url;
+  }
+  function installAttachments() {
+    uploadButton.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      const files = [...fileInput.files ?? []];
+      fileInput.value = "";
+      if (files.length) void uploadAttachments(files, false);
+    });
+    refreshButton.addEventListener("click", () => void refreshAttachments());
+    sourceInput.addEventListener("dragover", (event) => {
+      if (!hasFiles(event.dataTransfer) || !canEditPage()) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      sourceInput.dataset.attachmentDrop = "true";
+    });
+    sourceInput.addEventListener("dragleave", () => {
+      delete sourceInput.dataset.attachmentDrop;
+    });
+    sourceInput.addEventListener("drop", (event) => {
+      delete sourceInput.dataset.attachmentDrop;
+      const files = [...event.dataTransfer?.files ?? []];
+      if (!files.length || !canEditPage()) return;
+      event.preventDefault();
+      void uploadAttachments(files, true);
+    });
+    sourceInput.addEventListener("paste", (event) => {
+      const files = [...event.clipboardData?.files ?? []];
+      if (!files.length || !canEditPage()) return;
+      event.preventDefault();
+      void uploadAttachments(files, true);
+    });
+  }
+  async function refreshAttachments() {
+    const page = state.currentPage;
+    if (!page || !state.cloudUser && !shareToken) {
+      attachments = [];
+      attachmentsPageId = void 0;
+      renderAttachments();
+      return;
+    }
+    try {
+      const response = await fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/attachments`);
+      if (state.currentPage?.id !== page.id) return;
+      const referencedBefore = attachmentsPageId === page.id ? attachments.map((item) => item.id).join(",") : "";
+      attachments = response.attachments;
+      attachmentsPageId = page.id;
+      renderAttachments();
+      if (attachments.map((item) => item.id).join(",") !== referencedBefore && /\batt:/.test(sourceInput.value)) renderCurrent();
+    } catch (error) {
+      if (state.currentPage?.id !== page.id) return;
+      attachments = [];
+      attachmentsPageId = page.id;
+      renderAttachments();
+      if (!(error instanceof CloudRequestError && error.status === 403)) setPanelStatus(attachmentStatus, errorMessage(error), "error");
+    }
+  }
+  function renderAttachments() {
+    const editable = Boolean(state.currentPage) && canEditPage();
+    uploadButton.disabled = state.busy || !editable;
+    refreshButton.disabled = state.busy || !state.currentPage;
+    attachmentList.textContent = "";
+    if (!state.currentPage) {
+      attachmentList.append(emptyState("Open a page to see its attachments."));
+      return;
+    }
+    const current = attachmentsPageId === state.currentPage.id ? attachments : [];
+    if (current.length === 0) {
+      attachmentList.append(emptyState(editable ? "No attachments. Drop or paste files into the source to upload." : "No attachments."));
+      return;
+    }
+    for (const attachment of current) {
+      const row = collaborationRow(attachment.filename, `${attachment.contentType} \xB7 ${formatBytes(attachment.size)}`, `${attachment.uploadedByName ?? "Uploaded"} \xB7 ${formatDate(attachment.createdAt)}`);
+      row.classList.add("attachment-row");
+      row.dataset.attachmentId = attachment.id;
+      const actions = collaborationActions();
+      if (attachment.url) {
+        const open = document.createElement("a");
+        open.className = "attachment-open";
+        open.href = attachment.url;
+        open.target = "_blank";
+        open.rel = "noopener noreferrer";
+        open.textContent = "Open";
+        actions.append(open);
+      }
+      actions.append(
+        actionButton("Copy ref", () => void copyText(attachmentSnippet(attachment), "Copied attachment reference"), false, `Copy reference to ${attachment.filename}`),
+        actionButton("Insert", () => insertAtCursor(attachmentSnippet(attachment)), !editable, `Insert ${attachment.filename} at the cursor`),
+        actionButton("Delete", () => void deleteAttachment(attachment), !editable, `Delete ${attachment.filename}`)
+      );
+      row.append(actions);
+      attachmentList.append(row);
+    }
+  }
+  async function uploadAttachments(files, insert) {
+    const page = state.currentPage;
+    if (!page || !canEditPage()) return;
+    const snippets = [];
+    for (const [index, file] of files.entries()) {
+      setPanelStatus(attachmentStatus, `Uploading ${file.name || "file"} (${index + 1}/${files.length})`, "warning");
+      try {
+        const attachment = await fetchCloudJson(`/api/documents/${encodeURIComponent(page.id)}/attachments`, {
+          method: "POST",
+          headers: { "content-type": file.type || "application/octet-stream", "x-filename": encodeURIComponent(file.name || defaultName(file)) },
+          body: file
+        });
+        if (state.currentPage?.id !== page.id) return;
+        attachments = [...attachmentsPageId === page.id ? attachments : [], attachment];
+        attachmentsPageId = page.id;
+        snippets.push(attachmentSnippet(attachment));
+      } catch (error) {
+        setPanelStatus(attachmentStatus, `${file.name || "File"}: ${errorMessage(error)}`, "error");
+        renderAttachments();
+        if (insert && snippets.length) insertAtCursor(snippets.join("\n\n"));
+        return;
+      }
+    }
+    setPanelStatus(attachmentStatus, files.length === 1 ? "Uploaded 1 attachment" : `Uploaded ${files.length} attachments`, "ok");
+    renderAttachments();
+    if (insert && snippets.length) insertAtCursor(snippets.join("\n\n"));
+    else renderCurrent();
+  }
+  async function deleteAttachment(attachment) {
+    if (!state.currentPage || !window.confirm(`Delete ${attachment.filename}? Pages that reference it will show a placeholder.`)) return;
+    try {
+      await fetchCloudJson(`/api/documents/${encodeURIComponent(attachment.documentId)}/attachments/${encodeURIComponent(attachment.id)}`, { method: "DELETE" });
+      attachments = attachments.filter((item) => item.id !== attachment.id);
+      setPanelStatus(attachmentStatus, `Deleted ${attachment.filename}`, "ok");
+      renderAttachments();
+      renderCurrent();
+    } catch (error) {
+      setPanelStatus(attachmentStatus, errorMessage(error), "error");
+    }
+  }
+  function attachmentSnippet(attachment) {
+    if (attachment.image) {
+      const alt = attachment.filename.replace(/\.[^.]+$/, "").replace(/["\\]/g, "").trim() || "Attachment";
+      return `::figure{src="att:${attachment.id}" alt="${alt}"}
+::`;
+    }
+    return `[${attachment.filename.replace(/([[\]\\])/g, "\\$1")}](att:${attachment.id})`;
+  }
+  function insertAtCursor(snippet2) {
+    const start = sourceInput.selectionStart ?? sourceInput.value.length;
+    const end = sourceInput.selectionEnd ?? start;
+    const before = sourceInput.value.slice(0, start);
+    const after = sourceInput.value.slice(end);
+    const block = snippet2.startsWith("::");
+    const prefix = block && before && !before.endsWith("\n\n") ? before.endsWith("\n") ? "\n" : "\n\n" : "";
+    const suffix = block ? after.startsWith("\n") ? "\n" : "\n\n" : "";
+    sourceInput.setRangeText(`${prefix}${snippet2}${suffix}`, start, end, "end");
+    sourceInput.focus();
+    sourceInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  function hasFiles(transfer) {
+    return Boolean(transfer && [...transfer.types].includes("Files"));
+  }
+  function defaultName(file) {
+    const extension = file.type.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "bin";
+    return `pasted-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.${extension}`;
+  }
+  function formatBytes(size) {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  function requireElement3(id) {
+    const element = document.getElementById(id);
+    if (!element) throw new Error(`Missing #${id}`);
+    return element;
+  }
+
   // web/cloud/main.ts
   applyThemeMode();
   cloudUserNameInput.value = state.cloudUser?.name ?? "Noma collaborator";
@@ -14528,13 +15254,13 @@ Start writing here.`;
       void loginCloudUser();
     });
     logoutUserButton.addEventListener("click", () => {
-      logoutCloudUser();
+      void logoutCloudUser();
     });
     copyUserIdButton.addEventListener("click", () => {
       if (state.cloudUser) void copyText(state.cloudUser.id, "Copied user ID");
     });
     copyUserTokenButton.addEventListener("click", () => {
-      if (state.cloudUser) void copyText(state.cloudUser.token, "Copied user token");
+      void createApiToken();
     });
     themeToggleButton.addEventListener("click", () => {
       state.themeMode = state.themeMode === "dark" ? "light" : "dark";
@@ -14704,5 +15430,7 @@ Start writing here.`;
     splitResizeHandle.addEventListener("pointerdown", (event) => startSplitResize(event));
     splitResizeHandle.addEventListener("keydown", (event) => handleSplitResizeKeydown(event));
     previewFrame.addEventListener("load", () => installPreviewEditing());
+    installAttachments();
+    installRestrictions();
   }
 })();

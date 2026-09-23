@@ -96,6 +96,7 @@
         <input id="pageTitleInput" class="page-title-input" type="text" aria-label="Page title" />
         <div class="page-meta">
           <span id="roleBadge" class="meta-badge">viewer</span>
+          <button id="restrictionBadge" class="meta-badge restriction-badge" type="button" hidden>Unrestricted</button>
           <span id="dirtyBadge" class="meta-badge">saved</span>
           <span id="updatedText" class="updated-text"></span>
           <span id="pageLabels" class="page-labels" aria-label="Page labels"></span>
@@ -202,6 +203,19 @@
         <button id="refreshAccessButton" type="button" aria-label="Refresh active access">Refresh</button>
       </div>
       <div id="accessList" class="collaboration-list"></div>
+    </section>
+
+    <section class="inspector-section attachments-section" aria-label="Page attachments">
+      <div class="inspector-heading-row">
+        <h2>Attachments</h2>
+        <div class="button-row">
+          <button id="attachmentsRefreshButton" type="button" aria-label="Refresh attachments">Refresh</button>
+          <button id="attachmentsUploadButton" type="button">Upload</button>
+        </div>
+      </div>
+      <input id="attachmentsFileInput" type="file" multiple hidden />
+      <div id="attachmentsList" class="collaboration-list"></div>
+      <div id="attachmentsStatus" class="panel-status"></div>
     </section>
 
     <section class="inspector-section">
@@ -438,6 +452,37 @@
     </section>
   </aside>
 </div>
+<dialog id="restrictionsDialog" class="restrictions-dialog" aria-labelledby="restrictionsTitle">
+  <div class="restrictions-body">
+    <h2 id="restrictionsTitle">Restrictions</h2>
+    <p id="restrictionsSummary" class="restrictions-summary"></p>
+    <p id="restrictionsInherited" class="restrictions-inherited" hidden></p>
+    <fieldset class="restrictions-group">
+      <legend>Who can view</legend>
+      <div id="restrictionsViewList" class="restrictions-chips"></div>
+    </fieldset>
+    <fieldset class="restrictions-group">
+      <legend>Who can edit</legend>
+      <div id="restrictionsEditList" class="restrictions-chips"></div>
+    </fieldset>
+    <div class="restrictions-add">
+      <select id="restrictionsKindSelect" aria-label="Restriction kind">
+        <option value="view">Can view</option>
+        <option value="edit">Can edit</option>
+      </select>
+      <input id="restrictionsPrincipalInput" type="text" list="restrictionsPrincipalOptions" autocomplete="off" placeholder="User or group" aria-label="User or group to add" />
+      <datalist id="restrictionsPrincipalOptions"></datalist>
+      <button id="restrictionsAddButton" type="button">Add</button>
+    </div>
+    <div id="restrictionsStatus" class="panel-status"></div>
+    <div class="restrictions-actions">
+      <button id="restrictionsClearButton" type="button">Remove all</button>
+      <span class="restrictions-spacer"></span>
+      <button id="restrictionsCancelButton" type="button">Cancel</button>
+      <button id="restrictionsSaveButton" type="button" class="primary-action">Save</button>
+    </div>
+  </div>
+</dialog>
 <script src="assets/cloud-app.js"></script>
 </body>
 </html>

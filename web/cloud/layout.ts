@@ -6,7 +6,9 @@ import { renderCurrent } from "./editor.js";
 import { renderHistory } from "./history.js";
 import { renderKnowledgeWorkspace, renderPatchProposals } from "./knowledge.js";
 import { renderNavigation } from "./navigation.js";
+import { renderAttachments } from "./attachments.js";
 import { renderPageMeta } from "./page-meta.js";
+import { renderRestrictionBadge } from "./restrictions.js";
 import { canCreatePage, canEditPage, canEditSite, canManagePermissions, currentPageRole, roleRank } from "./permissions.js";
 import { renderWorkspaceTools } from "./session.js";
 import { state } from "./state.js";
@@ -102,6 +104,8 @@ export function renderChrome(): void {
   dirtyBadge.dataset.state = state.dirty ? "dirty" : "ok";
   updatedText.textContent = state.currentPage ? `Updated ${formatDate(state.currentPage.updatedAt)}` : "";
   renderPageMeta();
+  renderRestrictionBadge();
+  renderAttachments();
 
   renderNavigation();
   renderHistory();

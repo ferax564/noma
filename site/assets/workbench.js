@@ -29,14 +29,21 @@
   function isBlockReferenceWikilinkTarget(target) {
     return BLOCK_REFERENCE_WIKILINK_RE.test(target);
   }
-  var SAFE_URL_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:", "mailto:", "tel:"]);
+  var SAFE_URL_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:", "mailto:", "tel:", "att:"]);
+  var ATTACHMENT_URL_PREFIX = "att:";
+  function resolveHref(href, resolveAttachment) {
+    if (resolveAttachment && href.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
+      return resolveAttachment(href.slice(ATTACHMENT_URL_PREFIX.length)) ?? "#";
+    }
+    return safeHref(href);
+  }
   function safeHref(href) {
     const normalized = href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
     const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized)?.[1];
     if (!scheme) return href;
     return SAFE_URL_SCHEMES.has(`${scheme}:`) ? href : "#";
   }
-  function inlineToHtml(src) {
+  function inlineToHtml(src, options = {}) {
     let text = escapeHtml(src);
     const codeSpans = [];
     const PH_OPEN = String.fromCharCode(2);
@@ -51,7 +58,10 @@
     text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
     text = text.replace(
       MARKDOWN_LINK_RE,
-      (_m, label, href) => `<a href="${escapeAttr(safeHref(href))}">${unescapeMarkdownLinkLabel(label)}</a>`
+      (_m, label, href) => {
+        const target = options.resolveAttachment && href.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX) ? resolveHref(unescapeHtmlEntities(href), options.resolveAttachment) : safeHref(href);
+        return `<a href="${escapeAttr(target)}">${unescapeMarkdownLinkLabel(label)}</a>`;
+      }
     );
     text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
     text = text.replace(/(?:  +|\\)\n/g, "<br />");
@@ -59,6 +69,9 @@
     const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
     text = text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
     return text;
+  }
+  function unescapeHtmlEntities(value) {
+    return value.replace(/&(amp|lt|gt|quot|#39);/g, (_m, name) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[name] ?? "");
   }
   function inlineToPlain(src) {
     const codeSpans = [];
@@ -3280,8 +3293,9 @@
 
   // src/parser.ts
   var FRONTMATTER_RE = /^---\s*$/;
-  var HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
-  var FENCE_RE = /^```(\w*)\s*$/;
+  var HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+  var HEADING_ATTRS_RE = /^(.+?)\s+\{([^}]*)\}$/;
+  var FENCE_OPEN_RE = /^(`{3,})([^`]*)$|^(~{3,})(.*)$/;
   var DIRECTIVE_OPEN_RE = /^(:{2,})\s*([a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)\s*(\{.*\})?\s*$/;
   var DIRECTIVE_CLOSE_RE = /^(:{2,})\s*$/;
   var LIST_RE = /^([-*])\s+(.+)$/;
@@ -3337,18 +3351,36 @@
     if (aliases.size > 0) root.aliases = [...aliases];
   }
   function extractFrontmatter(lines) {
-    if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) {
-      return { meta: {}, raw: "", startLine: 0, endLine: 0 };
-    }
+    const none = { meta: {}, raw: "", startLine: 0, endLine: 0 };
+    if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) return none;
     for (let i = 1; i < lines.length; i++) {
-      if (FRONTMATTER_RE.test(lines[i] ?? "")) {
-        const raw = lines.slice(1, i).join("\n");
-        const parsed = yaml.load(raw);
-        const meta = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-        return { meta, raw, startLine: i + 1, endLine: i + 1 };
+      if (!FRONTMATTER_RE.test(lines[i] ?? "")) continue;
+      const raw = lines.slice(1, i).join("\n");
+      const block = { raw, startLine: i + 1, endLine: i + 1 };
+      const result = loadFrontmatterYaml(raw);
+      if (result.ok) {
+        const parsed = result.value;
+        if (parsed === null || parsed === void 0) return raw.trim() === "" ? { meta: {}, ...block } : none;
+        if (typeof parsed === "object" && !Array.isArray(parsed)) {
+          return { meta: parsed, ...block };
+        }
+        return none;
       }
+      return looksLikeYamlMapping(raw) ? { meta: {}, ...block } : none;
     }
-    return { meta: {}, raw: "", startLine: 0, endLine: 0 };
+    return none;
+  }
+  function loadFrontmatterYaml(raw) {
+    try {
+      return { ok: true, value: yaml.load(raw) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message.split("\n")[0] ?? message };
+    }
+  }
+  function looksLikeYamlMapping(raw) {
+    const first = raw.split("\n").find((line) => line.trim() !== "" && !line.trim().startsWith("#"));
+    return first !== void 0 && /^[\w"'][\w\s"'.-]*:(?:\s|$)/.test(first);
   }
   function splitIdList(raw) {
     if (!raw) return void 0;
@@ -3427,12 +3459,13 @@
       const heading = matchOnce(HEADING_RE, line);
       if (heading) {
         const level = heading[1].length;
-        const title = heading[2].trim();
-        const headingAttrs = heading[3] ? parseAttrs(`{${heading[3]}}`) : {};
-        const explicitId = typeof headingAttrs.id === "string" ? headingAttrs.id : void 0;
+        const split = splitHeadingAttrs(heading[2]);
+        const title = split.title;
+        const headingAttrs = split.attrs ?? {};
+        const explicitId = typeof headingAttrs.id === "string" && headingAttrs.id !== "" ? headingAttrs.id : void 0;
         const section = {
           type: "section",
-          id: explicitId ?? slugify(title),
+          id: explicitId ?? headingSlug(title),
           level,
           title,
           children: [],
@@ -3449,19 +3482,17 @@
         i++;
         continue;
       }
-      const fence = matchOnce(FENCE_RE, line);
+      const fence = matchCodeFenceOpen(line);
       if (fence) {
-        const lang = fence[1] || void 0;
         const start = i + 1;
-        let end = start;
-        while (end < to && !FENCE_RE.test(lines[end] ?? "")) end++;
+        const end = findCodeFenceClose(lines, start, to, fence);
         const content = lines.slice(start, end).join("\n");
         const closed = end < to;
         out.push(
           applyPendingId(
             {
               type: "code",
-              lang,
+              lang: fence.lang,
               content,
               pos: { line: i + 1, column: 1 },
               endLine: closed ? end + 1 : end
@@ -3554,7 +3585,7 @@
       while (i < to) {
         const cur = lines[i] ?? "";
         const next = lines[i + 1] ?? "";
-        if (cur.trim() === "" || HEADING_RE.test(cur) || FENCE_RE.test(cur) || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || STABLE_ID_LINE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
+        if (cur.trim() === "" || HEADING_RE.test(cur) || matchCodeFenceOpen(cur) !== null || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || STABLE_ID_LINE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
           break;
         }
         buf.push(cur);
@@ -3570,10 +3601,9 @@
     const attrs = parseAttrs(opener[3] ?? "");
     let close = -1;
     for (let j = i + 1; j < to; j++) {
-      const fence = matchOnce(FENCE_RE, lines[j] ?? "");
+      const fence = matchCodeFenceOpen(lines[j] ?? "");
       if (fence) {
-        j++;
-        while (j < to && !FENCE_RE.test(lines[j] ?? "")) j++;
+        j = findCodeFenceClose(lines, j + 1, to, fence);
         continue;
       }
       const m = matchOnce(DIRECTIVE_CLOSE_RE, lines[j] ?? "");
@@ -3639,24 +3669,115 @@
     if (cellIds.some((row) => row.some(Boolean))) node.cellIds = cellIds;
     return { node, next: j };
   }
-  function parseAttrs(raw) {
-    const attrs = {};
-    if (!raw) return attrs;
-    const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
-    if (!inner) return attrs;
-    const re = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s]+)))?/g;
-    for (const m of inner.matchAll(re)) {
-      const key = m[1];
-      if (m[2] === void 0) {
-        attrs[key] = true;
+  function matchCodeFenceOpen(line) {
+    const m = FENCE_OPEN_RE.exec(line);
+    if (!m) return null;
+    const marker = m[1] ?? m[3] ?? "";
+    const lang = (m[2] ?? m[4] ?? "").trim().split(/\s+/)[0];
+    return { char: marker[0] === "~" ? "~" : "`", length: marker.length, ...lang ? { lang } : {} };
+  }
+  function isCodeFenceClose(line, open) {
+    const m = /^(`{3,}|~{3,})\s*$/.exec(line);
+    return m !== null && m[1][0] === open.char && m[1].length >= open.length;
+  }
+  function findCodeFenceClose(lines, from, to, open) {
+    let j = from;
+    while (j < to && !isCodeFenceClose(lines[j] ?? "", open)) j++;
+    return j;
+  }
+  var ATTR_KEY_RE = /^[a-zA-Z_][\w-]*/;
+  var ATTR_NAME_RE = /^[a-zA-Z_][\w-]*$/;
+  function tokenizeAttrs(inner, strict) {
+    const tokens = [];
+    let i = 0;
+    const atBoundary = (at) => at >= inner.length || /\s/.test(inner[at]);
+    while (i < inner.length) {
+      if (/\s/.test(inner[i])) {
+        i++;
         continue;
       }
-      const quoted = m[3] ?? m[4];
-      const bare = m[5];
-      const value = quoted !== void 0 ? quoted : bare ?? "";
-      attrs[key] = coerce(value);
+      const keyMatch = ATTR_KEY_RE.exec(inner.slice(i));
+      if (!keyMatch) {
+        if (strict) return null;
+        i++;
+        continue;
+      }
+      const key = keyMatch[0];
+      i += key.length;
+      if (inner[i] !== "=") {
+        if (strict && !atBoundary(i)) return null;
+        tokens.push({ key, quoted: false });
+        continue;
+      }
+      const valueStart = i + 1;
+      const quote = inner[valueStart];
+      if (quote === '"' || quote === "'") {
+        const scanned = scanQuoted(inner, valueStart + 1, quote);
+        if (scanned) {
+          if (strict && !atBoundary(scanned.next)) return null;
+          tokens.push({ key, value: scanned.value, quoted: true });
+          i = scanned.next;
+          continue;
+        }
+      }
+      const bare = /^\S+/.exec(inner.slice(valueStart));
+      if (!bare) {
+        if (strict) return null;
+        tokens.push({ key, quoted: false });
+        continue;
+      }
+      tokens.push({ key, value: bare[0], quoted: false });
+      i = valueStart + bare[0].length;
+    }
+    return tokens;
+  }
+  function scanQuoted(s, from, quote) {
+    let value = "";
+    for (let j = from; j < s.length; j++) {
+      const c = s[j];
+      if (c === quote) return { value, next: j + 1 };
+      if (quote === '"' && c === "\\" && (s[j + 1] === '"' || s[j + 1] === "\\")) {
+        value += s[j + 1];
+        j++;
+        continue;
+      }
+      value += c;
+    }
+    return null;
+  }
+  function tokensToAttrs(tokens) {
+    const attrs = {};
+    for (const t of tokens) {
+      if (t.value === void 0) attrs[t.key] = true;
+      else if (t.quoted || t.key === "id") attrs[t.key] = t.value;
+      else attrs[t.key] = coerce(t.value);
     }
     return attrs;
+  }
+  function parseAttrs(raw) {
+    if (!raw) return {};
+    const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
+    if (!inner) return {};
+    return tokensToAttrs(tokenizeAttrs(inner, false) ?? []);
+  }
+  function splitHeadingAttrs(text) {
+    const trimmed = text.trim();
+    const m = HEADING_ATTRS_RE.exec(trimmed);
+    if (!m) return { title: trimmed };
+    const tokens = tokenizeAttrs(m[2], true);
+    if (!tokens || !tokens.some((t) => t.value !== void 0)) return { title: trimmed };
+    return { title: m[1].trim(), attrs: tokensToAttrs(tokens), rawAttrs: m[2] };
+  }
+  function serializeAttr(key, value) {
+    if (value === true) return key;
+    if (value === false) return `${key}=false`;
+    if (typeof value === "number") return `${key}=${value}`;
+    const s = String(value);
+    if (s.includes('"') && !s.includes("'")) return `${key}='${s}'`;
+    return `${key}="${escapeAttrValue(s)}"`;
+  }
+  function escapeAttrValue(s) {
+    return s.replace(/\\(?=[\\"]|$)/g, "\\\\").replace(/"/g, '\\"');
   }
   function coerce(v) {
     if (v === "true") return true;
@@ -3726,7 +3847,10 @@
     return root;
   }
   function slugify(input) {
-    return input.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    return input.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").normalize("NFC").replace(/\p{Script=Inherited}/gu, "").replace(/[^\p{L}\p{N}\p{M}\s-]/gu, "").replace(/\p{Script=Latin}/gu, (ch) => ch >= "a" && ch <= "z" ? ch : "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  }
+  function headingSlug(title) {
+    return slugify(title) || "section";
   }
 
   // src/hash.ts
@@ -3913,6 +4037,41 @@
         return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
     }
   }
+  var OP_ATTR_VALUE_FIELDS = {
+    update_attribute: ["value"],
+    add_comment: ["id", "target", "author", "initials", "date", "reply_to"],
+    resolve_comment: ["resolved_by", "resolved_at"],
+    add_footnote: ["id", "target", "label"],
+    add_endnote: ["id", "target", "label"],
+    add_change_request: ["id", "target", "action", "from", "to", "text", "author", "date"],
+    rename_id: ["to"]
+  };
+  var LINE_BREAK_RE = /[\r\n\u2028\u2029]/;
+  function validateOpSafety(op) {
+    const record = op;
+    if (op.op === "update_attribute" || op.op === "remove_attribute") {
+      if (!ATTR_NAME_RE.test(op.key)) {
+        throw new PatchError(
+          "invalid_attribute_key",
+          `attribute key ${JSON.stringify(op.key)} must match ${ATTR_NAME_RE.source}`,
+          op
+        );
+      }
+    }
+    for (const field of OP_ATTR_VALUE_FIELDS[op.op] ?? []) {
+      const value = record[field];
+      if (typeof value === "string" && LINE_BREAK_RE.test(value)) {
+        throw new PatchError(
+          "invalid_attribute_value",
+          `op "${op.op}" field "${field}" is written into an attribute list and must not contain line breaks`,
+          op
+        );
+      }
+    }
+    if (op.op === "update_heading" && LINE_BREAK_RE.test(op.title)) {
+      throw new PatchError("invalid_content", `heading title must be a single line`, op);
+    }
+  }
   function validateOpShape(op) {
     const requirements = OP_REQUIRED_FIELDS[op.op];
     if (!requirements) {
@@ -3932,6 +4091,7 @@
         op
       );
     }
+    validateOpSafety(op);
   }
   function findById(node, id) {
     if (node.id === id) return node;
@@ -4592,6 +4752,15 @@
   function applyToSource(source, op) {
     validateOpShape(op);
     verifyBaseHash(source, op);
+    if (!usesCrlf(source)) return dispatchSourceOp(source, op);
+    const patched = dispatchSourceOp(source.replace(/\r\n/g, "\n"), op);
+    return patched.replace(/\r?\n/g, "\r\n");
+  }
+  function usesCrlf(source) {
+    const lf = source.split("\n").length - 1;
+    return lf > 0 && source.split("\r\n").length - 1 === lf;
+  }
+  function dispatchSourceOp(source, op) {
     switch (op.op) {
       case "update_attribute":
         return applySrcUpdateAttr(source, op);
@@ -4664,32 +4833,76 @@
     const { node, start, end } = locate(source, op.id, op);
     const lines = source.split("\n");
     const bodyLines = op.content.replace(/\n+$/, "").split("\n");
+    if (node.type === "list_item") {
+      const line = lines[start - 1] ?? "";
+      const marker = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
+      const hasIdMarker = node.id !== void 0 && INLINE_STABLE_ID_RE.test(line.slice(marker.length));
+      const idPrefix = hasIdMarker ? `{#${node.id}} ` : "";
+      lines[start - 1] = `${marker}${idPrefix}${op.content.replace(/\n/g, " ")}`;
+      return lines.join("\n");
+    }
+    let from;
+    let count;
+    let replacement = bodyLines;
     if (isDirective(node)) {
       if (!isBodyOnlyDirective(node)) {
         throw new PatchError("invalid_content", `block "${op.id}" has child blocks; use replace_block`, op);
       }
-      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-      return lines.join("\n");
+      from = start;
+      count = fencedBodyLineCount(lines, start, end, isDirectiveCloserFor(lines[start - 1] ?? ""));
+    } else if (node.type === "code") {
+      const fence = matchCodeFenceOpen(lines[start - 1] ?? "");
+      from = start;
+      count = fencedBodyLineCount(lines, start, end, (line) => fence !== null && isCodeFenceClose(line, fence));
+    } else if (node.type === "paragraph") {
+      from = start - 1;
+      count = end - start + 1;
+    } else if (node.type === "quote") {
+      from = start - 1;
+      count = end - start + 1;
+      replacement = bodyLines.map((line) => line ? `> ${line}` : ">");
+    } else {
+      throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
     }
-    if (node.type === "paragraph") {
-      lines.splice(start - 1, end - start + 1, ...bodyLines);
-      return lines.join("\n");
+    lines.splice(from, count, ...replacement);
+    const patched = lines.join("\n");
+    assertContainedEdit(source, patched, from + 1, from + count, from + replacement.length, op);
+    return patched;
+  }
+  function isDirectiveCloserFor(openLine) {
+    const colons = openLine.match(/^\s*(:{2,})/)?.[1]?.length ?? 2;
+    return (line) => line.match(/^(:{2,})\s*$/)?.[1]?.length === colons;
+  }
+  function fencedBodyLineCount(lines, start, end, isCloser) {
+    if (end > start && isCloser(lines[end - 1] ?? "")) return end - start - 1;
+    let last = end - 1;
+    while (last >= start && (lines[last] ?? "").trim() === "") last--;
+    return Math.max(0, last - start + 1);
+  }
+  function assertContainedEdit(before, after, start, oldEnd, newEnd, op) {
+    const delta = newEnd - oldEnd;
+    const expected = outsideStructure(parse(before), start, oldEnd, delta);
+    const actual = outsideStructure(parse(after), start, newEnd, 0);
+    if (expected.length === actual.length && expected.every((sig, i) => sig === actual[i])) return;
+    throw new PatchError(
+      "unbalanced_fence_content",
+      `content for "${patchTargetId(op)}" changes document structure outside the target (unbalanced \`::\` or code fence?)`,
+      op
+    );
+  }
+  function outsideStructure(doc, start, end, delta) {
+    const out = [];
+    for (const node of walk(doc)) {
+      const line = node.pos?.line;
+      if (line === void 0) continue;
+      const endLine = node.endLine ?? line;
+      if (line >= start && endLine <= end) continue;
+      const from = line > end ? line + delta : line;
+      const to = endLine >= end ? endLine + delta : endLine;
+      const name = isDirective(node) ? node.name : "";
+      out.push(`${node.type}:${name}:${node.id ?? ""}:${from}:${to}`);
     }
-    if (node.type === "quote") {
-      const quoted = bodyLines.map((line) => line ? `> ${line}` : ">");
-      lines.splice(start - 1, end - start + 1, ...quoted);
-      return lines.join("\n");
-    }
-    if (node.type === "code") {
-      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-      return lines.join("\n");
-    }
-    if (node.type === "list_item") {
-      const marker = (lines[start - 1] ?? "").match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
-      lines[start - 1] = `${marker}${op.content.replace(/\n/g, " ")}`;
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
+    return out;
   }
   function applySrcUpdateHeading(source, op) {
     const { node, start } = locate(source, op.id, op);
@@ -5726,13 +5939,14 @@
   function normalizeDirectiveFenceDepth(content, from, to) {
     if (from === to) return content;
     const delta = to - from;
-    let inFence = false;
+    let fence = null;
     return content.split("\n").map((line) => {
-      if (/^\s*```/.test(line)) {
-        inFence = !inFence;
+      if (fence) {
+        if (isCodeFenceClose(line, fence)) fence = null;
         return line;
       }
-      if (inFence) return line;
+      fence = matchCodeFenceOpen(line);
+      if (fence) return line;
       const match = line.match(/^(\s*)(:{2,})(.*)$/);
       if (!match) return line;
       const rest = match[3] ?? "";
@@ -5788,7 +6002,7 @@
   function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-  var ATTR_TOKEN_RE = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s}]+)))?/g;
+  var ATTR_TOKEN_RE = /([a-zA-Z_][\w-]*)(?:=("((?:[^"\\]|\\.)*)"|'([^']*)'|([^\s}]+)))?/g;
   function rewriteOpenLineAttr(line, key, value, op) {
     const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)(\s*\{)?(.*?)(\}\s*)?$/);
     if (!openMatch) {
@@ -5844,38 +6058,43 @@
     if (op.resolved_at) next = rewriteOpenLineAttr(next, "resolved_at", op.resolved_at, op);
     return next;
   }
+  var HEADING_LINE_RE = /^(#{1,6})(\s+)(.+?)\s*$/;
   function rewriteHeadingId(line, newId) {
-    const m = line.match(/^(#+\s+.+?)(?:\s+\{([^}]*)\})?\s*$/);
+    const m = line.match(HEADING_LINE_RE);
     if (!m) return line;
-    const head = m[1] ?? "";
-    const attrsInner = (m[2] ?? "").trim();
-    if (!attrsInner) return `${head} {id="${newId}"}`;
+    const head = `${m[1]}${m[2]}`;
+    const split = splitHeadingAttrs(m[3] ?? "");
+    const idAttr = serializeAttr("id", newId);
+    const attrsInner = (split.rawAttrs ?? "").trim();
+    if (!attrsInner) return `${head}${split.title} {${idAttr}}`;
     let replaced = false;
     const updated = attrsInner.replace(ATTR_TOKEN_RE, (full, k) => {
       if (k !== "id") return full;
       replaced = true;
-      return `id="${newId}"`;
+      return idAttr;
     });
-    if (!replaced) return `${head} {${attrsInner} id="${newId}"}`;
-    return `${head} {${updated.trim()}}`;
+    if (!replaced) return `${head}${split.title} {${attrsInner} ${idAttr}}`;
+    return `${head}${split.title} {${updated.trim()}}`;
   }
   function rewriteHeadingTitle(line, newTitle, stableId) {
-    const m = line.match(/^(#+)(\s+)(.*?)(?:\s+\{([^}]*)\})?\s*$/);
+    const m = line.match(HEADING_LINE_RE);
     if (!m) return line;
     const hashes = m[1] ?? "#";
     const space = m[2] ?? " ";
-    const attrsInner = (m[4] ?? "").trim();
-    const needsExplicitId = stableId && stableId.length > 0 && slugify(newTitle) !== stableId;
+    const attrsInner = (splitHeadingAttrs(m[3] ?? "").rawAttrs ?? "").trim();
+    const title = newTitle.trim();
+    const needsExplicitId = stableId !== void 0 && stableId.length > 0 && (headingSlug(title) !== stableId || splitHeadingAttrs(title).attrs !== void 0);
+    const idAttr = stableId ? serializeAttr("id", stableId) : "";
     if (!attrsInner) {
-      return needsExplicitId ? `${hashes}${space}${newTitle} {id="${stableId}"}` : `${hashes}${space}${newTitle}`;
+      return needsExplicitId ? `${hashes}${space}${title} {${idAttr}}` : `${hashes}${space}${title}`;
     }
     let hasId = false;
     attrsInner.replace(ATTR_TOKEN_RE, (_full, k) => {
       if (k === "id") hasId = true;
       return _full;
     });
-    const attrs = needsExplicitId && !hasId ? `${attrsInner} id="${stableId}"` : attrsInner;
-    return `${hashes}${space}${newTitle} {${attrs.trim()}}`;
+    const attrs = needsExplicitId && !hasId ? `${attrsInner} ${idAttr}` : attrsInner;
+    return `${hashes}${space}${title} {${attrs.trim()}}`;
   }
   function serializeCommentBlock(op) {
     if (!op.content.trim()) {
@@ -5911,15 +6130,7 @@ ${content}
     return source;
   }
   function serializeOneAttr(key, value) {
-    if (value === true) return key;
-    if (value === false) return `${key}=false`;
-    if (typeof value === "number") return `${key}=${value}`;
-    const s = String(value);
-    if (s.includes('"')) {
-      if (s.includes("'")) return `${key}="${s.replace(/"/g, '\\"')}"`;
-      return `${key}='${s}'`;
-    }
-    return `${key}="${s}"`;
+    return serializeAttr(key, value);
   }
 
   // src/formula.ts
@@ -6602,7 +6813,9 @@ ${content}
       sections: collectSectionEntries(doc),
       captions: collectCaptionEntries(doc),
       computed: buildComputedEvalContext(doc),
-      sourcePositions: options.sourcePositions === true
+      sourcePositions: options.sourcePositions === true,
+      inline: options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {},
+      ...options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}
     };
     const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
     if (!options.standalone) return body;
@@ -7051,22 +7264,22 @@ document.querySelectorAll(".noma-plotly").forEach((el) => {
       case "section":
         return renderSection(node, ctx);
       case "paragraph":
-        return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content)}</p>`;
+        return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content, ctx.inline)}</p>`;
       case "code": {
         const langClass = node.lang ? ` class="lang-${escapeAttr(node.lang)}"` : "";
         return `<pre><code${langClass}>${escapeHtml(node.content)}</code></pre>`;
       }
       case "list": {
         const tag = node.ordered ? "ol" : "ul";
-        const items = node.items.map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content)}</li>`).join("\n");
+        const items = node.items.map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content, ctx.inline)}</li>`).join("\n");
         return `<${tag}>
 ${items}
 </${tag}>`;
       }
       case "list_item":
-        return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content)}</li>`;
+        return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content, ctx.inline)}</li>`;
       case "quote":
-        return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content)}</blockquote>`;
+        return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content, ctx.inline)}</blockquote>`;
       case "thematic_break":
         return `<hr />`;
       case "table": {
@@ -7080,7 +7293,7 @@ ${items}
             cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
             colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
           ].join("");
-          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</th>`;
+          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</th>`;
         }).join("");
         const body = node.rows.map((row, rowIndex) => {
           const rowId = node.rowIds?.[rowIndex];
@@ -7095,7 +7308,7 @@ ${items}
               cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
               colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
             ].join("");
-            return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</td>`;
+            return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</td>`;
           }).join("");
           return `<tr${trAttr}>${cells}</tr>`;
         }).join("\n");
@@ -7121,7 +7334,7 @@ ${body}
   function renderSection(node, ctx) {
     const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
     const aliasAnchors = (node.aliases ?? []).map((a) => `<a class="noma-alias" id="${escapeAttr(a)}" aria-hidden="true"></a>`).join("");
-    const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title)}</h${node.level}>`;
+    const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title, ctx.inline)}</h${node.level}>`;
     const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
     return `<section${idAttr} data-level="${node.level}">
 ${aliasAnchors}${heading}
@@ -7144,9 +7357,9 @@ ${inner}
       node.attrs.min ?? node.attrs.min_width ?? node.attrs.minWidth ?? node.attrs.minColumnWidth ?? node.attrs["min-width"]
     );
     const gap = cssLength(node.attrs.gap);
-    if (node.attrs.wide === true || width === "wide") classes.push(`${baseClass}-wide`);
-    if (node.attrs.full === true || width === "full") classes.push(`${baseClass}-full`);
-    if (node.attrs.compact === true || node.attrs.dense === true) classes.push(`${baseClass}-compact`);
+    if (attrBool(node.attrs.wide) || width === "wide") classes.push(`${baseClass}-wide`);
+    if (attrBool(node.attrs.full) || width === "full") classes.push(`${baseClass}-full`);
+    if (attrBool(node.attrs.compact) || attrBool(node.attrs.dense)) classes.push(`${baseClass}-compact`);
     if (min) classes.push(`${baseClass}-auto`);
     const safeColumns = Number.isFinite(columns) ? Math.max(1, Math.min(12, Math.floor(columns))) : 2;
     const vars = [`--noma-cols: ${safeColumns}`];
@@ -7226,7 +7439,7 @@ ${inner}
       case "pagebreak":
         return `<div class="noma-pagebreak"${idAttr} role="separator" aria-label="Page break"></div>`;
       case "button": {
-        const href = node.attrs.href ? safeHref(String(node.attrs.href)) : "#";
+        const href = node.attrs.href ? resolveHref(String(node.attrs.href), ctx.resolveAttachment) : "#";
         return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</a>`;
       }
       case "figure": {
@@ -7289,7 +7502,7 @@ ${inner}
       case "state_change":
         return renderStateChange(node, idAttr, ctx);
       case "table":
-        return renderTableDirective(node, idAttr);
+        return renderTableDirective(node, idAttr, ctx);
       case "math": {
         const body = (node.body ?? "").trim();
         const display = node.attrs.display !== "inline";
@@ -7346,6 +7559,11 @@ ${inner}
 </aside>`;
   }
   function renderFigureImage(src, alt, ctx) {
+    if (src.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
+      const url = ctx.resolveAttachment?.(src.slice(ATTACHMENT_URL_PREFIX.length));
+      if (url) return `<img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" loading="lazy" />`;
+      return `<aside class="noma-blocked-escape" data-kind="figure">[attachment not available: ${escapeHtml(src)}]</aside>`;
+    }
     if (ctx.externalAssets || /^data:image\//i.test(src)) {
       return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" />`;
     }
@@ -7384,7 +7602,7 @@ ${inner}
   function renderResearchBlock(node, ctx) {
     const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
     const variant = variantAttr(node);
-    const confidence = typeof node.attrs.confidence === "number" ? node.attrs.confidence : void 0;
+    const confidence = numericAttr2(node.attrs, "confidence");
     const meta = researchMetaHtml(node);
     const confidenceBar = confidence !== void 0 ? `<div class="noma-confidence" title="confidence ${confidence}"><div class="noma-confidence-bar" style="width: ${Math.round(confidence * 100)}%"></div></div>` : "";
     const metaHtml = meta ? `<div class="noma-meta">${meta}</div>` : "";
@@ -7554,7 +7772,7 @@ ${entries || "<li>No sections found.</li>"}
   }
   function renderBibliography(node, idAndAttrs, ctx) {
     const title = stringAttr2(node.attrs, "title") ?? "Bibliography";
-    const intro = node.children.length > 0 ? renderChildren(node, ctx) : node.body?.trim() ? `<p>${inlineToHtml(node.body)}</p>` : "";
+    const intro = node.children.length > 0 ? renderChildren(node, ctx) : node.body?.trim() ? `<p>${inlineToHtml(node.body, ctx.inline)}</p>` : "";
     const items = ctx.citations.length > 0 ? ctx.citations.map((entry) => `<li>${renderCitationEntry(entry)}</li>`).join("\n") : "<li>No citations found.</li>";
     return `<section class="noma-bibliography"${idAndAttrs}>
   <h2>${escapeHtml(title)}</h2>
@@ -7612,7 +7830,7 @@ ${items}
     return out;
   }
   var splitTableLine = splitPipeRow;
-  function renderTableDirective(node, idAttr) {
+  function renderTableDirective(node, idAttr, ctx) {
     const body = node.body ?? "";
     const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return `<div class="noma-block noma-block-table"${idAttr}></div>`;
@@ -7625,7 +7843,7 @@ ${items}
     const renderCell = (tag, cell, idx) => {
       const a = align[idx];
       const styleAttr = a ? ` style="text-align: ${a}"` : "";
-      return `<${tag}${styleAttr}>${inlineToHtml(cell)}</${tag}>`;
+      return `<${tag}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</${tag}>`;
     };
     const head = headerRow ? `<thead><tr>${headerRow.map((c, i) => renderCell("th", c, i)).join("")}</tr></thead>
 ` : "";
@@ -7659,7 +7877,7 @@ ${bodyRows}
 </aside>`;
   }
   function renderAgentTask(node, idAttr, ctx) {
-    const checked = node.attrs.done === true ? " checked" : "";
+    const checked = attrBool(node.attrs.done) ? " checked" : "";
     return `<div class="noma-agent-task"${idAttr}>
   <label><input type="checkbox" disabled${checked} /> <span class="noma-tag">${escapeHtml(node.name)}</span></label>
   <div class="noma-agent-body">${renderChildren(node, ctx)}</div>
@@ -7956,7 +8174,7 @@ ${bodyRows}
         "y_label",
         "yLabel"
       ]);
-      return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text)}</p></div>` : "";
+      return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text, ctx.inline)}</p></div>` : "";
     }
     const rendered = renderChildren(node, ctx);
     return rendered ? `<div class="noma-computed-body">${rendered}</div>` : "";
@@ -8571,7 +8789,7 @@ ${bodyRows}
   }
   function renderChildren(node, ctx) {
     if (node.children.length === 0 && node.body !== void 0) {
-      return `<p>${inlineToHtml(node.body)}</p>`;
+      return `<p>${inlineToHtml(node.body, ctx.inline)}</p>`;
     }
     return node.children.map((c) => renderNode(c, ctx)).join("\n");
   }
@@ -8838,7 +9056,7 @@ ${bodyRows}
     const t = Date.parse(ls);
     if (Number.isNaN(t)) return false;
     const type2 = typeof node.attrs.type === "string" ? node.attrs.type : "";
-    const expired = node.attrs.expired === true;
+    const expired = node.attrs.expired === true || node.attrs.expired === "true";
     if (!STALE_OPT_IN_TYPES.has(type2) && !expired) return false;
     return cfg.now.getTime() - t > cfg.days * 24 * 60 * 60 * 1e3;
   }
@@ -9027,7 +9245,7 @@ $$`, ctx);
     ]);
   }
   function renderTask(node, ctx, depth) {
-    const checked = node.attrs.done === true || attrText(node, "status") === "done";
+    const checked = node.attrs.done === true || node.attrs.done === "true" || attrText(node, "status") === "done";
     const body = renderDirectiveContent(node, ctx, depth).trim() || directiveTitle(node);
     const firstLine = body.split("\n")[0] ?? "";
     const rest = body.split("\n").slice(1).join("\n");
@@ -9038,8 +9256,8 @@ $$`, ctx);
     const rows = (node.body ?? "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith("|")).map(splitPipeRow);
     if (rows.length === 0) return renderVerbatimDirective(node);
     const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
-    const header = node.attrs.header === true ? normalizeRow(rows[0] ?? [], width) : Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
-    const bodyRows = node.attrs.header === true ? rows.slice(1) : rows;
+    const header = node.attrs.header === true || node.attrs.header === "true" ? normalizeRow(rows[0] ?? [], width) : Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
+    const bodyRows = node.attrs.header === true || node.attrs.header === "true" ? rows.slice(1) : rows;
     return joinBlocks([
       attrText(node, "title", "caption") ? `**${renderInline(directiveTitle(node), ctx)}**` : "",
       renderMetadata(node),
@@ -9401,6 +9619,19 @@ ${fence}`;
       return any ? union : void 0;
     })();
     const profileLabel = declaredProfiles.join("+");
+    const frontmatter = doc.children[0];
+    if (frontmatter?.type === "frontmatter") {
+      const loaded = loadFrontmatterYaml(frontmatter.raw);
+      if (!loaded.ok) {
+        diagnostics.push({
+          severity: "error",
+          code: "invalid-frontmatter",
+          message: `Frontmatter is not valid YAML (${loaded.error}); its keys are ignored.`,
+          pos: frontmatter.pos,
+          ...frontmatter.endLine !== void 0 ? { endLine: frontmatter.endLine } : {}
+        });
+      }
+    }
     const wikilinkRefs = /* @__PURE__ */ new Set();
     const collectWikilinks = (text, node) => {
       for (const link of extractWikilinks(text)) {
@@ -9967,6 +10198,7 @@ ${fence}`;
     return out;
   }
   var KNOWN_RULES = [
+    "invalid-frontmatter",
     "duplicate-id",
     "out-of-profile-directive",
     "unknown-profile",
@@ -10016,7 +10248,7 @@ ${fence}`;
     return new Set(KNOWN_RULES);
   }
   function suppressed(node) {
-    return node.attrs.noverify === true;
+    return node.attrs.noverify === true || node.attrs.noverify === "true";
   }
   function readFirstStringAttr(node, keys) {
     return readFirstStringAttrEntry(node, keys)?.value;
@@ -11010,8 +11242,9 @@ body { background: #ffffff; }`;
     cloudLoading = true;
     renderCloudStatus();
     try {
-      await fetchCloudJson("/api/status");
+      const status = await fetchCloudJson("/api/status");
       cloudAvailable = true;
+      if (!cloudUser && status.user) cloudUser = { id: status.user.id, name: status.user.name, token: "", tokenPreview: status.user.tokenPreview };
       if (!cloudUser && !cloudShareToken) await createCloudUser({ silent: true });
       if (cloudDocumentId) {
         await loadCloudDocument(cloudDocumentId);
@@ -11202,6 +11435,10 @@ body { background: #ffffff; }`;
   }
   async function copyCloudUserToken() {
     if (!cloudUser) return;
+    if (!cloudUser.token) {
+      showTransientStatus("Signed in with a browser session; create an API token in Noma Cloud instead");
+      return;
+    }
     await copyText(cloudUser.token, "Copied cloud user token");
   }
   async function ensureCloudDocumentSaved() {
@@ -11236,10 +11473,13 @@ body { background: #ffffff; }`;
   async function fetchCloudJson(url, init) {
     const headers = new Headers(init?.headers);
     headers.set("accept", "application/json");
-    if (cloudUser) headers.set("authorization", `Bearer ${cloudUser.token}`);
+    if (cloudUser?.token) headers.set("authorization", `Bearer ${cloudUser.token}`);
+    const csrf = /(?:^|;\s*)noma_csrf=([^;]+)/.exec(document.cookie)?.[1];
+    if (csrf && !cloudUser?.token && (init?.method ?? "GET").toUpperCase() !== "GET") headers.set("x-noma-csrf", decodeURIComponent(csrf));
     if (cloudShareToken) headers.set("x-noma-share-token", cloudShareToken);
     const response = await fetch(url, {
       ...init,
+      credentials: "same-origin",
       headers
     });
     if (!response.ok) {

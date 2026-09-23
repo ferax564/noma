@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { type BlobStore, LocalDiskBlobStore } from "./cloud-blobs.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
 import { CloudKnowledgePlatform } from "./cloud-platform.js";
 import {
@@ -20,6 +21,7 @@ import {
 } from "./cloud/context.js";
 import { decodePathSegment, headerValue, HttpError, sendJson, sendText, sha256Hex } from "./cloud/http.js";
 import { selfUser } from "./cloud/records.js";
+import { attachmentResolver } from "./cloud/attachments.js";
 import { renderDocumentHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
 import { routeApi } from "./cloud/router.js";
 import {
@@ -92,6 +94,12 @@ export interface NomaCloudServerOptions {
    * only the first user ever registered on this database is the workspace admin.
    */
   adminUserIds?: string[];
+  /** Largest single attachment upload in bytes (default 25 MB, env `NOMA_CLOUD_MAX_ATTACHMENT_BYTES`). */
+  maxAttachmentBytes?: number;
+  /** Live attachment bytes per space, or per user outside spaces (default 1 GB, env `NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES`). */
+  attachmentQuotaBytes?: number;
+  /** Attachment blob storage; defaults to content-addressed files under `<storage root>/blobs`. */
+  blobStore?: BlobStore;
   now?: () => Date;
 }
 
@@ -107,7 +115,8 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
   const production = options.production ?? process.env.NODE_ENV === "production";
   validateProductionSecurity(options, production, accessTokenHash, invitationCodeHash);
   const now = options.now ?? (() => new Date());
-  const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir });
+  const adminUserIds = options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean);
+  const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir, adminUserIds, bootstrapFirstUserAdmin: !production });
   const platform = new CloudKnowledgePlatform(dbPath);
   const config: CloudServerConfig = {
     dataDir,
@@ -125,11 +134,20 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
       positiveInteger(options.authRateLimitMaxRequests ?? Number(process.env.NOMA_CLOUD_AUTH_RATE_LIMIT_MAX ?? 20), "authRateLimitMaxRequests"),
     ),
     trustProxy: options.trustProxy ?? enabledEnvironmentFlag("NOMA_CLOUD_TRUST_PROXY"),
-    adminUserIds: options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean),
+    adminUserIds,
     production,
     now,
     store,
     platform,
+    blobs: options.blobStore ?? new LocalDiskBlobStore(storageRoot),
+    maxAttachmentBytes: positiveInteger(
+      options.maxAttachmentBytes ?? Number(process.env.NOMA_CLOUD_MAX_ATTACHMENT_BYTES ?? 25 * 1024 * 1024),
+      "maxAttachmentBytes",
+    ),
+    attachmentQuotaBytes: positiveInteger(
+      options.attachmentQuotaBytes ?? Number(process.env.NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES ?? 1024 * 1024 * 1024),
+      "attachmentQuotaBytes",
+    ),
   };
 
   if (production && config.adminUserIds.length === 0) {
@@ -316,7 +334,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     const record = await readDocument(config, id);
     requireNotTrashed(config, "document", id);
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access) }), "text/html; charset=utf-8");
     return;
   }
 

@@ -16,6 +16,7 @@ import type {
   CloudUserRecord,
   NomaCloudDatabase,
 } from "../cloud-db.js";
+import type { BlobStore } from "../cloud-blobs.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
 import { assertCloudId } from "./input.js";
@@ -39,6 +40,11 @@ export interface CloudServerConfig {
   now: () => Date;
   store: NomaCloudDatabase;
   platform: CloudKnowledgePlatform;
+  blobs: BlobStore;
+  /** Largest single attachment upload, in bytes. */
+  maxAttachmentBytes: number;
+  /** Live attachment bytes allowed per space (or per user for pages outside any space). */
+  attachmentQuotaBytes: number;
 }
 
 export interface Principal {
@@ -218,11 +224,73 @@ function recordAccess(
 
   if (principal.shareTokenHash) {
     const share = record.shareLinks.find((item) => !item.revokedAt && item.tokenHash === principal.shareTokenHash);
-    if (share && (!best || roleRank[share.role] > roleRank[best.role])) {
-      best = { role: share.role, via: "share", user: principal.user, share };
-    }
+    const shareAccess = share ? capDocumentAccess(config, record, { role: share.role, via: "share", user: principal.user, share }) : undefined;
+    if (shareAccess && (!best || roleRank[shareAccess.role] > roleRank[best.role])) best = shareAccess;
   }
 
+  return best;
+}
+
+/**
+ * Narrows access that reached a document through a share link or a space by the page's
+ * restrictions. User grants from `store.resourceAccess` are already capped; share links are
+ * evaluated for the signed-in user when there is one, else as anonymous (never listed).
+ */
+export function capDocumentAccess(
+  config: CloudServerConfig,
+  record: CloudDocumentRecord | CloudSiteRecord,
+  access: AccessContext,
+): AccessContext | undefined {
+  if (!("source" in record)) return access;
+  return capAccessForDocument(config, record.id, access);
+}
+
+export function capAccessForDocument(config: CloudServerConfig, documentId: string, access: AccessContext): AccessContext | undefined {
+  const cap = config.store.documentRestrictionCap(access.user?.id, documentId);
+  if (cap === "hidden") return undefined;
+  if (cap === "viewer" && access.role !== "viewer") return { ...access, role: "viewer" };
+  return access;
+}
+
+/** Access to a page reached through a space: the space grant, narrowed by the page's restrictions. */
+export function siteDocumentAccess(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  documentId: string,
+  principal: Principal,
+): AccessContext | undefined {
+  if (!site.documentIds.includes(documentId)) return undefined;
+  const access = recordAccess(config, site, principal);
+  return access ? capAccessForDocument(config, documentId, access) : undefined;
+}
+
+/**
+ * Like `requireRecordAccess` for a page addressed through its space. Pages hidden by restrictions
+ * answer 404 so their existence does not leak through the space.
+ */
+export function requireSiteDocumentAccess(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  documentId: string,
+  principal: Principal,
+  minimum: CloudRole,
+): AccessContext {
+  requireRecordAccess(config, site, principal, "viewer");
+  const access = siteDocumentAccess(config, site, documentId, principal);
+  if (!access) throw new HttpError(404, "Document is not in this site");
+  requireAccessRole(access, minimum);
+  return access;
+}
+
+/** Best access to a document through its own grants/share links or any space that contains it. */
+export function documentAccessAnywhere(config: CloudServerConfig, document: CloudDocumentRecord, principal: Principal): AccessContext | undefined {
+  let best = recordAccess(config, document, principal);
+  for (const siteId of config.store.documentSiteIds(document.id)) {
+    if (config.store.isTrashed("site", siteId)) continue;
+    const site = config.store.readSite(siteId);
+    const access = site ? siteDocumentAccess(config, site, document.id, principal) : undefined;
+    if (access && (!best || roleRank[access.role] > roleRank[best.role])) best = access;
+  }
   return best;
 }
 

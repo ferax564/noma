@@ -1,5 +1,6 @@
 import DatabaseConstructor from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
+import { randomBytes } from "node:crypto";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Node } from "./ast.js";
@@ -327,6 +328,31 @@ export interface CloudWatch {
   watchedAt: string;
 }
 
+export interface CloudAttachment {
+  id: string;
+  documentId: string;
+  sha256: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  uploadedBy: string;
+  uploadedByName?: string;
+  createdAt: string;
+  deletedAt?: string;
+}
+
+export type CloudRestrictionKind = "view" | "edit";
+
+export interface CloudRestrictionPrincipals {
+  users: string[];
+  groups: string[];
+}
+
+export type CloudPageRestrictions = Record<CloudRestrictionKind, CloudRestrictionPrincipals>;
+
+/** How page restrictions narrow a principal's space/page grant: hide the page, or cap it at viewer. */
+export type CloudRestrictionCap = "hidden" | "viewer";
+
 export type CloudDbQueryResource = "documents" | "sites" | "blocks" | "users";
 
 export interface CloudDbQuery {
@@ -428,6 +454,23 @@ interface CloudDatabaseOptions {
   dataDir: string;
   usersDir: string;
   sitesDir: string;
+  /** Workspace admins, who bypass page restrictions. Empty means the first registered user. */
+  adminUserIds?: string[];
+  /** When false (production), an empty `adminUserIds` means no admin rather than the first registered user. */
+  bootstrapFirstUserAdmin?: boolean;
+}
+
+interface AttachmentRow {
+  id: string;
+  document_id: string;
+  sha256: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  uploaded_by: string;
+  uploaded_by_name: string | null;
+  created_at: string;
+  deleted_at: string | null;
 }
 
 interface RecordJsonRow {
@@ -695,6 +738,51 @@ const rankRole: Record<number, CloudRole> = {
   3: "owner",
 };
 
+/**
+ * Page restrictions for the user in `current_user`. `view_denied` holds every page the user cannot
+ * see: pages whose view restriction does not list them, plus every descendant of such a page in any
+ * space's page tree. `edit_denied` holds pages whose edit restriction does not list them. Direct
+ * page owners are exempt on their own page; workspace admins are exempt everywhere.
+ */
+const pageRestrictionCtes = `restriction_admin(exempt) AS (
+  SELECT CASE WHEN json_array_length(noma_workspace_admin_ids()) > 0
+    THEN EXISTS (SELECT 1 FROM json_each(noma_workspace_admin_ids()) admin JOIN current_user cu ON cu.user_id = admin.value)
+    WHEN noma_bootstrap_first_user_admin() = 0 THEN 0
+    ELSE EXISTS (SELECT 1 FROM current_user cu WHERE cu.user_id = (SELECT id FROM users ORDER BY created_at, rowid LIMIT 1))
+  END
+),
+restriction_allowed(document_id, kind) AS (
+  SELECT pr.document_id, pr.kind
+  FROM page_restrictions pr
+  JOIN current_user cu ON pr.principal_type = 'user' AND pr.principal_id = cu.user_id
+  UNION
+  SELECT pr.document_id, pr.kind
+  FROM page_restrictions pr
+  JOIN group_members gm ON pr.principal_type = 'group' AND pr.principal_id = gm.group_id
+  JOIN current_user cu ON cu.user_id = gm.user_id
+  UNION
+  SELECT p.resource_id, kinds.kind
+  FROM permissions p
+  JOIN current_user cu ON cu.user_id = p.user_id
+  CROSS JOIN (SELECT 'view' AS kind UNION ALL SELECT 'edit') kinds
+  WHERE p.resource_type = 'document' AND p.role = 'owner'
+),
+view_denied(document_id) AS (
+  SELECT document_id FROM (
+    SELECT document_id FROM page_restrictions WHERE kind = 'view'
+    EXCEPT
+    SELECT document_id FROM restriction_allowed WHERE kind = 'view'
+  )
+  WHERE NOT (SELECT exempt FROM restriction_admin)
+  UNION
+  SELECT pp.document_id FROM page_parents pp JOIN view_denied vd ON pp.parent_id = vd.document_id
+),
+edit_denied(document_id) AS (
+  SELECT document_id FROM page_restrictions WHERE kind = 'edit'
+  EXCEPT
+  SELECT document_id FROM restriction_allowed WHERE kind = 'edit'
+)`;
+
 const visibleResourcesCtes = `current_user(user_id) AS (VALUES (?)),
 visible_sites AS (
   SELECT id, MAX(rank) AS rank
@@ -718,7 +806,7 @@ visible_sites AS (
   )
   GROUP BY id
 ),
-visible_docs AS (
+granted_docs AS (
   SELECT id, MAX(rank) AS rank
   FROM (
     SELECT d.id AS id,
@@ -743,6 +831,19 @@ visible_docs AS (
     JOIN visible_sites ON visible_sites.id = sd.site_id
   )
   GROUP BY id
+),
+${pageRestrictionCtes},
+visible_docs AS (
+  SELECT g.id,
+    CASE
+      WHEN g.rank > 1
+        AND NOT (SELECT exempt FROM restriction_admin)
+        AND g.id IN (SELECT document_id FROM edit_denied)
+      THEN 1
+      ELSE g.rank
+    END AS rank
+  FROM granted_docs g
+  WHERE g.id NOT IN (SELECT document_id FROM view_denied)
 )`;
 
 export class NomaCloudDatabase {
@@ -754,6 +855,8 @@ export class NomaCloudDatabase {
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.db.pragma("busy_timeout = 5000");
+    this.db.function("noma_workspace_admin_ids", { deterministic: false }, () => JSON.stringify(this.options.adminUserIds ?? []));
+    this.db.function("noma_bootstrap_first_user_admin", { deterministic: false }, () => (this.options.bootstrapFirstUserAdmin === false ? 0 : 1));
     this.applySchema();
     this.importLegacyJsonOnce();
   }
@@ -874,7 +977,11 @@ export class NomaCloudDatabase {
         resourceId,
       ) as Array<{ role: CloudRole; via: "user" | "group"; group_id: string | null }>;
     const row = rows[0];
-    return row ? { role: row.role, via: row.via, ...(row.group_id ? { groupId: row.group_id } : {}) } : undefined;
+    if (!row) return undefined;
+    const cap = resourceType === "document" ? this.documentRestrictionCap(userId, resourceId) : undefined;
+    if (cap === "hidden") return undefined;
+    const role = cap === "viewer" ? "viewer" : row.role;
+    return { role, via: row.via, ...(row.group_id ? { groupId: row.group_id } : {}) };
   }
 
   listDocumentRevisions(id: string): CloudDocumentRevisionSummary[] {
@@ -1015,6 +1122,7 @@ export class NomaCloudDatabase {
       this.replacePermissions("site", next.id, next.permissions);
       this.replaceShares("site", next.id, next.shareLinks);
       this.replaceSiteDocuments(next);
+      this.replacePageParents(next);
     });
     write(record);
   }
@@ -1155,7 +1263,7 @@ export class NomaCloudDatabase {
       }
       this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
       if (type === "document") {
-        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels"]) {
+        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "attachments", "page_restrictions"]) {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
         this.db.prepare("DELETE FROM search_index WHERE document_id = ?").run(id);
@@ -1167,6 +1275,7 @@ export class NomaCloudDatabase {
         }
       } else {
         this.db.prepare("DELETE FROM site_documents WHERE site_id = ?").run(id);
+        this.db.prepare("DELETE FROM page_parents WHERE site_id = ?").run(id);
       }
       return removed;
     });
@@ -1864,6 +1973,271 @@ export class NomaCloudDatabase {
     return rows.map(cloudPatchProposal);
   }
 
+  // ---- attachments ----
+
+  insertAttachment(attachment: Omit<CloudAttachment, "uploadedByName" | "deletedAt">): void {
+    this.db
+      .prepare(
+        `INSERT INTO attachments (id, document_id, sha256, filename, content_type, size, uploaded_by, created_at)
+         VALUES (@id, @documentId, @sha256, @filename, @contentType, @size, @uploadedBy, @createdAt)`,
+      )
+      .run(attachment);
+  }
+
+  /** Reads an attachment row, including soft-deleted ones; callers decide whether deleted rows are usable. */
+  readAttachment(id: string): CloudAttachment | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT a.*, u.name AS uploaded_by_name FROM attachments a
+         LEFT JOIN users u ON u.id = a.uploaded_by
+         WHERE a.id = ?`,
+      )
+      .get(id) as AttachmentRow | undefined;
+    return row ? cloudAttachment(row) : undefined;
+  }
+
+  listAttachments(documentId: string, limit = 500): CloudAttachment[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT a.*, u.name AS uploaded_by_name FROM attachments a
+           LEFT JOIN users u ON u.id = a.uploaded_by
+           WHERE a.document_id = ? AND a.deleted_at IS NULL
+           ORDER BY a.created_at, a.rowid
+           LIMIT ?`,
+        )
+        .all(documentId, limit) as AttachmentRow[]
+    ).map(cloudAttachment);
+  }
+
+  markAttachmentDeleted(id: string, deletedAt: string): boolean {
+    return this.db.prepare("UPDATE attachments SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL").run(deletedAt, id).changes > 0;
+  }
+
+  /** Bytes of live attachments on pages in the space; each upload counts even when its blob is shared. */
+  siteAttachmentBytes(siteId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(a.size), 0) AS bytes FROM attachments a
+         JOIN site_documents sd ON sd.document_id = a.document_id
+         WHERE sd.site_id = ? AND a.deleted_at IS NULL`,
+      )
+      .get(siteId) as { bytes: number };
+    return row.bytes;
+  }
+
+  /** Bytes of live attachments a user uploaded to pages that belong to no space. */
+  unspacedAttachmentBytes(userId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(a.size), 0) AS bytes FROM attachments a
+         WHERE a.uploaded_by = ? AND a.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM site_documents sd WHERE sd.document_id = a.document_id)`,
+      )
+      .get(userId) as { bytes: number };
+    return row.bytes;
+  }
+
+  documentSiteIds(documentId: string): string[] {
+    return (this.db.prepare("SELECT site_id FROM site_documents WHERE document_id = ? ORDER BY position, site_id").all(documentId) as Array<{ site_id: string }>).map(
+      (row) => row.site_id,
+    );
+  }
+
+  /** Every blob hash a document's attachments point at, including soft-deleted attachments. */
+  attachmentBlobHashes(documentId: string): string[] {
+    return (this.db.prepare("SELECT DISTINCT sha256 FROM attachments WHERE document_id = ?").all(documentId) as Array<{ sha256: string }>).map((row) => row.sha256);
+  }
+
+  isBlobReferenced(sha256: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 AS found FROM attachments WHERE sha256 = ? LIMIT 1").get(sha256));
+  }
+
+  /** Re-indexes a document's attachment filenames into `blocks`/`search_index` as `attachment` rows. */
+  reindexAttachments(documentId: string): void {
+    const document = this.db.prepare("SELECT title FROM documents WHERE id = ?").get(documentId) as { title: string } | undefined;
+    if (!document) return;
+    this.db.transaction(() => this.indexAttachmentBlocks(documentId, document.title))();
+  }
+
+  /** HMAC key for signed attachment URLs; created once per database so signatures survive restarts. */
+  attachmentSigningKey(): string {
+    const read = () => this.db.prepare("SELECT value FROM meta WHERE key = 'attachment_signing_key'").get() as { value: string } | undefined;
+    const existing = read();
+    if (existing) return existing.value;
+    this.db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('attachment_signing_key', ?)").run(randomBytes(32).toString("hex"));
+    return read()!.value;
+  }
+
+  private indexAttachmentBlocks(documentId: string, documentTitle: string): void {
+    const stale = this.db.prepare("SELECT row_key FROM blocks WHERE document_id = ? AND node_type = 'attachment'").all(documentId) as Array<{ row_key: string }>;
+    const deleteSearch = this.db.prepare("DELETE FROM search_index WHERE row_key = ?");
+    for (const row of stale) deleteSearch.run(row.row_key);
+    this.db.prepare("DELETE FROM blocks WHERE document_id = ? AND node_type = 'attachment'").run(documentId);
+    const insert = this.db.prepare(
+      `INSERT INTO blocks
+        (row_key, document_id, block_id, aliases_json, node_type, directive_name, title, text, line, depth, ordinal)
+       VALUES (?, ?, ?, '[]', 'attachment', NULL, ?, ?, NULL, 0, ?)`,
+    );
+    const searchInsert = this.db.prepare("INSERT INTO search_index (row_key, document_id, document_title, block_id, text) VALUES (?, ?, ?, ?, ?)");
+    this.listAttachments(documentId).forEach((attachment, index) => {
+      const rowKey = `${documentId}:attachment:${attachment.id}`;
+      const blockId = `att:${attachment.id}`;
+      const text = `${attachment.filename} ${attachment.contentType}`;
+      insert.run(rowKey, documentId, blockId, attachment.filename, text, 1_000_000 + index);
+      searchInsert.run(rowKey, documentId, documentTitle, blockId, `${attachment.filename}\n${text}`);
+    });
+  }
+
+  // ---- page restrictions ----
+
+  readPageRestrictions(documentId: string): CloudPageRestrictions {
+    const restrictions: CloudPageRestrictions = { view: { users: [], groups: [] }, edit: { users: [], groups: [] } };
+    const rows = this.db
+      .prepare("SELECT kind, principal_type, principal_id FROM page_restrictions WHERE document_id = ? ORDER BY kind, principal_type, principal_id")
+      .all(documentId) as Array<{ kind: CloudRestrictionKind; principal_type: "user" | "group"; principal_id: string }>;
+    for (const row of rows) restrictions[row.kind][row.principal_type === "user" ? "users" : "groups"].push(row.principal_id);
+    return restrictions;
+  }
+
+  replacePageRestrictions(documentId: string, restrictions: CloudPageRestrictions, addedBy: string, addedAt: string): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM page_restrictions WHERE document_id = ?").run(documentId);
+      const insert = this.db.prepare(
+        `INSERT OR IGNORE INTO page_restrictions (document_id, kind, principal_type, principal_id, added_by, added_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      for (const kind of ["view", "edit"] as const) {
+        for (const userId of restrictions[kind].users) insert.run(documentId, kind, "user", userId, addedBy, addedAt);
+        for (const groupId of restrictions[kind].groups) insert.run(documentId, kind, "group", groupId, addedBy, addedAt);
+      }
+    })();
+  }
+
+  /**
+   * How page restrictions narrow `userId`'s access to a document (`undefined` = share-link or
+   * anonymous access, which no restriction lists). A view restriction on the page or on any ancestor
+   * in any space's page tree hides it; an edit restriction on the page itself caps it at viewer.
+   */
+  documentRestrictionCap(userId: string | undefined, documentId: string): CloudRestrictionCap | undefined {
+    const rows = this.db
+      .prepare(
+        `WITH ancestry(id, depth) AS (
+           SELECT ?, 0
+           UNION
+           SELECT pp.parent_id, a.depth + 1 FROM page_parents pp JOIN ancestry a ON pp.document_id = a.id WHERE a.depth < 256
+         )
+         SELECT DISTINCT pr.document_id, pr.kind
+         FROM page_restrictions pr
+         JOIN ancestry a ON a.id = pr.document_id
+         WHERE pr.kind = 'view' OR a.depth = 0
+         ORDER BY pr.kind DESC`,
+      )
+      .all(documentId) as Array<{ document_id: string; kind: CloudRestrictionKind }>;
+    if (rows.length === 0) return undefined;
+    if (userId && this.isWorkspaceAdmin(userId)) return undefined;
+    let cap: CloudRestrictionCap | undefined;
+    for (const row of rows) {
+      if (userId && this.restrictionAllows(userId, row.document_id, row.kind)) continue;
+      if (row.kind === "view") return "hidden";
+      cap = "viewer";
+    }
+    return cap;
+  }
+
+  /** Per page: whether it carries its own view/edit restrictions and whether an ancestor restricts viewing. */
+  pageRestrictionFlags(documentIds: string[]): Map<string, { view: boolean; edit: boolean; inheritedView: boolean }> {
+    const flags = new Map<string, { view: boolean; edit: boolean; inheritedView: boolean }>();
+    if (documentIds.length === 0) return flags;
+    const rows = this.db
+      .prepare(
+        `WITH ancestry(doc, id, depth) AS (
+           SELECT value, value, 0 FROM json_each(?)
+           UNION
+           SELECT a.doc, pp.parent_id, a.depth + 1 FROM page_parents pp JOIN ancestry a ON pp.document_id = a.id WHERE a.depth < 256
+         )
+         SELECT a.doc, pr.kind, MIN(a.depth) AS depth
+         FROM ancestry a JOIN page_restrictions pr ON pr.document_id = a.id
+         GROUP BY a.doc, pr.kind, a.depth = 0`,
+      )
+      .all(JSON.stringify(documentIds)) as Array<{ doc: string; kind: CloudRestrictionKind; depth: number }>;
+    for (const row of rows) {
+      const entry = flags.get(row.doc) ?? { view: false, edit: false, inheritedView: false };
+      if (row.depth === 0) entry[row.kind] = true;
+      else if (row.kind === "view") entry.inheritedView = true;
+      flags.set(row.doc, entry);
+    }
+    return flags;
+  }
+
+  /** Ancestor pages (in any space's tree) that carry their own view restrictions, nearest first. */
+  restrictedAncestors(documentId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `WITH ancestry(id, depth) AS (
+             SELECT ?, 0
+             UNION
+             SELECT pp.parent_id, a.depth + 1 FROM page_parents pp JOIN ancestry a ON pp.document_id = a.id WHERE a.depth < 256
+           )
+           SELECT a.id, MIN(a.depth) AS depth FROM ancestry a
+           WHERE a.depth > 0 AND EXISTS (SELECT 1 FROM page_restrictions pr WHERE pr.document_id = a.id AND pr.kind = 'view')
+           GROUP BY a.id
+           ORDER BY depth, a.id`,
+        )
+        .all(documentId) as Array<{ id: string }>
+    ).map((row) => row.id);
+  }
+
+  /** Workspace admins bypass page restrictions: the configured allowlist, or else the first registered user. */
+  isWorkspaceAdmin(userId: string): boolean {
+    const admins = this.options.adminUserIds ?? [];
+    if (admins.length > 0) return admins.includes(userId);
+    return this.options.bootstrapFirstUserAdmin !== false && this.firstRegisteredUserId() === userId;
+  }
+
+  isDirectDocumentOwner(userId: string, documentId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare("SELECT 1 AS found FROM permissions WHERE resource_type = 'document' AND resource_id = ? AND user_id = ? AND role = 'owner'")
+        .get(documentId, userId),
+    );
+  }
+
+  private restrictionAllows(userId: string, documentId: string, kind: CloudRestrictionKind): boolean {
+    if (this.isDirectDocumentOwner(userId, documentId)) return true;
+    return Boolean(
+      this.db
+        .prepare(
+          `SELECT 1 AS found FROM page_restrictions pr
+           WHERE pr.document_id = ? AND pr.kind = ?
+             AND ((pr.principal_type = 'user' AND pr.principal_id = ?)
+               OR (pr.principal_type = 'group' AND pr.principal_id IN (SELECT group_id FROM group_members WHERE user_id = ?)))
+           LIMIT 1`,
+        )
+        .get(documentId, kind, userId, userId),
+    );
+  }
+
+  private replacePageParents(site: CloudSiteRecord): void {
+    this.db.prepare("DELETE FROM page_parents WHERE site_id = ?").run(site.id);
+    const members = new Set(site.documentIds);
+    const insert = this.db.prepare("INSERT INTO page_parents (site_id, document_id, parent_id) VALUES (?, ?, ?)");
+    for (const [child, parent] of Object.entries(site.pageParents ?? {})) {
+      if (child !== parent && members.has(child) && members.has(parent)) insert.run(site.id, child, parent);
+    }
+  }
+
+  private rebuildPageParents(): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM page_parents").run();
+      for (const row of this.db.prepare("SELECT id FROM sites").all() as Array<{ id: string }>) {
+        const site = this.readSite(row.id);
+        if (site) this.replacePageParents(site);
+      }
+    })();
+  }
+
   query(user: CloudUserRecord, query: CloudDbQuery): CloudDbQueryResult {
     switch (query.resource) {
       case "documents":
@@ -2352,7 +2726,44 @@ export class NomaCloudDatabase {
       CREATE INDEX IF NOT EXISTS idx_patch_proposals_issue ON patch_proposals(issue_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_document_labels_label ON document_labels(label, document_id);
       CREATE INDEX IF NOT EXISTS idx_watchers_resource ON watchers(resource_type, resource_id, user_id);
+
+      -- attachments
+      CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL,
+        sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+        filename TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        size INTEGER NOT NULL CHECK (size >= 0),
+        uploaded_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_attachments_document ON attachments(document_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_attachments_sha256 ON attachments(sha256);
+      CREATE INDEX IF NOT EXISTS idx_attachments_uploader ON attachments(uploaded_by, deleted_at);
+
+      -- page restrictions
+      CREATE TABLE IF NOT EXISTS page_restrictions (
+        document_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('view', 'edit')),
+        principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
+        principal_id TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (document_id, kind, principal_type, principal_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_restrictions_principal ON page_restrictions(principal_type, principal_id, kind);
+      CREATE TABLE IF NOT EXISTS page_parents (
+        site_id TEXT NOT NULL,
+        document_id TEXT NOT NULL,
+        parent_id TEXT NOT NULL,
+        PRIMARY KEY (site_id, document_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_parents_parent ON page_parents(parent_id, document_id);
+      CREATE INDEX IF NOT EXISTS idx_page_parents_document ON page_parents(document_id, parent_id);
     `);
+    this.rebuildPageParents();
     this.migrateNotificationTypes();
     this.db.exec(`
       -- auth-hardening: cookie sessions and personal access tokens
@@ -2548,6 +2959,7 @@ export class NomaCloudDatabase {
       );
       searchInsert.run(row.rowKey, row.documentId, document.title, row.blockId ?? "", [row.title, row.text].filter(Boolean).join("\n"));
     }
+    this.indexAttachmentBlocks(document.id, document.title);
   }
 
   private rebuildSearchIndexOnce(): void {
@@ -2670,7 +3082,13 @@ export class NomaCloudDatabase {
       ORDER BY s.updated_at DESC, s.id
       LIMIT ? OFFSET ?`;
     const rows = this.db.prepare(sql).all(...params) as RecordJsonRankRow[];
-    return rows.map((row) => siteQueryRow(parseRecord<CloudSiteRecord>(row.record_json), rankToRole(row.rank)));
+    return rows.map((row) => {
+      const site = parseRecord<CloudSiteRecord>(row.record_json);
+      const visible = site.documentIds.filter((id) => this.documentRestrictionCap(user.id, id) !== "hidden");
+      const keep = new Set(visible);
+      const pageFolders = Object.fromEntries(Object.entries(site.pageFolders ?? {}).filter(([id]) => keep.has(id)));
+      return siteQueryRow({ ...site, documentIds: visible, pageFolders }, rankToRole(row.rank));
+    });
   }
 
   private queryBlocks(user: CloudUserRecord, query: CloudDbQuery): Array<Record<string, unknown>> {
@@ -2801,6 +3219,21 @@ function withoutSitePage(site: CloudSiteRecord, documentId: string): CloudSiteRe
     else if (removedParent) pageParents[child] = removedParent;
   }
   return { ...site, documentIds, pageFolders, pageParents };
+}
+
+function cloudAttachment(row: AttachmentRow): CloudAttachment {
+  return {
+    id: row.id,
+    documentId: row.document_id,
+    sha256: row.sha256,
+    filename: row.filename,
+    contentType: row.content_type,
+    size: row.size,
+    uploadedBy: row.uploaded_by,
+    ...(row.uploaded_by_name ? { uploadedByName: row.uploaded_by_name } : {}),
+    createdAt: row.created_at,
+    ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
+  };
 }
 
 function cloudNotification(row: NotificationRow): CloudNotification {
