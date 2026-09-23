@@ -1,5 +1,5 @@
 /** Shared mutable app state. ES module bindings cannot be reassigned by importers, so every mutable value lives on the exported `state` object. */
-import { panelsOpenStorageKey, previewPaperWidthStorageKey, query, splitSourceRatioStorageKey, themeStorageKey, userStorageKey, viewModeStorageKey } from "./constants.js";
+import { panelsOpenStorageKey, previewPaperWidthStorageKey, query, splitSourceRatioStorageKey, themeStorageKey, viewModeStorageKey } from "./constants.js";
 import type { AgentInboxItem, AskNomaResponse, CloudActivityEvent, CloudApproval, CloudCollaboratorGrant, CloudComment, CloudDocumentResponse, CloudDocumentRevisionSummary, CloudGroup, CloudGroupGrant, CloudIssue, CloudIssueDetail, CloudNavigationItem, CloudNotification, CloudPageTemplate, CloudPatchProposal, CloudProject, CloudSearchResult, CloudShareGrant, CloudSiteResponse, CloudSprint, CloudTrashItem, CloudUserSession, KnowledgeHealthItem, LocalOfflineDraft, RenderState, ScopedAgentSummary, ThemeMode, ViewMode } from "./types.js";
 import { clamp } from "./util.js";
 
@@ -55,7 +55,7 @@ export interface CloudAppState {
 export const state: CloudAppState = {
   cloudAvailable: false,
   busy: false,
-  cloudUser: readCloudUser(),
+  cloudUser: undefined,
   sites: [],
   currentSite: undefined,
   pages: [],
@@ -102,25 +102,6 @@ export const state: CloudAppState = {
 };
 
 export const shareToken = readShareToken();
-
-function readCloudUser(): CloudUserSession | undefined {
-  const stored = localStorage.getItem(userStorageKey);
-  if (!stored) return undefined;
-  try {
-    const parsed = JSON.parse(stored) as Partial<CloudUserSession>;
-    if (parsed.id && parsed.name && parsed.token) {
-      return {
-        id: parsed.id,
-        name: parsed.name,
-        token: parsed.token,
-        tokenPreview: parsed.tokenPreview,
-      };
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
-}
 
 function readShareToken(): string | undefined {
   const token = query.get("share");

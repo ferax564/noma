@@ -274,7 +274,7 @@ button:disabled {
       <ul class="policy-list">
         <li>Cloud access uses a server-side HttpOnly session cookie.</li>
         <li>New user registration requires an invitation code.</li>
-        <li>Existing user tokens can be imported during login.</li>
+        <li>Existing user tokens and personal access tokens open an HttpOnly browser session; the token itself is never stored in the browser.</li>
       </ul>
     </div>
     <p class="footnote">Shared published artifacts still require their own share tokens. This page does not expose the app shell until access is verified.</p>
@@ -375,7 +375,7 @@ async function logIn() {
       accessToken: accessTokenInput.value,
       userToken: userTokenInput.value || undefined,
     });
-    storeUser(payload.user);
+    forgetStoredUserToken();
     setStatus(loginStatus, "Access granted", "ok");
     window.location.assign(nextPath);
   } catch (error) {
@@ -393,7 +393,7 @@ async function register() {
       name: registerNameInput.value,
       invitationCode: invitationCodeInput.value,
     });
-    storeUser(payload.user);
+    forgetStoredUserToken();
     setStatus(registerStatus, "Registered", "ok");
     window.location.assign(nextPath);
   } catch (error) {
@@ -424,14 +424,12 @@ async function postJson(url, body) {
   return payload;
 }
 
-function storeUser(user) {
-  if (!user || !user.id || !user.name || !user.token) return;
-  localStorage.setItem(userStorageKey, JSON.stringify({
-    id: user.id,
-    name: user.name,
-    token: user.token,
-    tokenPreview: user.tokenPreview,
-  }));
+function forgetStoredUserToken() {
+  try {
+    localStorage.removeItem(userStorageKey);
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 function setBusy(busy, message, target) {

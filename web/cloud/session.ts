@@ -1,7 +1,8 @@
-/** Cloud connection, user session (register/login/logout) and workspace bootstrap. */
+/** Cloud connection, cookie-backed user session (register/login/logout), API tokens and workspace bootstrap. */
 import { fetchCloudJson } from "./api.js";
+import { forgetCsrfToken, migrateLegacyStoredToken, rememberCsrfToken } from "./auth.js";
 import { refreshAccessManagement, refreshGroups, refreshNotifications, renderAccessManagement, renderCollaborationPanels } from "./collaboration.js";
-import { activeDocumentStorageKey, activeSiteStorageKey, query, userStorageKey } from "./constants.js";
+import { activeDocumentStorageKey, activeSiteStorageKey, query } from "./constants.js";
 import { cloudInvitationCodeInput, cloudUserNameInput, cloudUserTokenInput, favoriteList, recentList, siteTitleInput } from "./dom.js";
 import { restoreLatestOfflineDraft } from "./drafts.js";
 import { setCurrentPage } from "./editor.js";
@@ -9,16 +10,17 @@ import { refreshKnowledgeWorkspace, renderSearchResults } from "./knowledge.js";
 import { renderChrome } from "./layout.js";
 import { confirmDiscardDirty, createStarterWorkspace, loadSite, loadStandaloneDocument, refreshNavigationItems, refreshSites, refreshTemplates, refreshTrash, renderNavigationList, renderTrashList } from "./navigation.js";
 import { readCloudId, shareToken, state } from "./state.js";
-import type { CloudAuthResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
-import { errorMessage, setBusy, setCloudStatus } from "./util.js";
+import type { CloudAuthResponse, CloudPersonalAccessTokenResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
+import { copyText, errorMessage, setBusy, setCloudStatus } from "./util.js";
 import { refreshWorkManagement, renderWorkManagement } from "./work.js";
 
 export async function initializeCloud(): Promise<void> {
   setBusy(true, "Connecting to cloud", "warning");
   try {
+    await migrateLegacyStoredToken();
     const status = await fetchCloudJson<CloudStatusResponse>("/api/status");
     state.cloudAvailable = true;
-    validateStoredCloudUser(status.user);
+    applySessionUser(status.user);
     if (!state.cloudUser && !shareToken) {
       clearWorkspaceState();
       setCloudStatus("Register with an invitation code or log in with an existing user token", "warning");
@@ -53,21 +55,13 @@ async function openInitialWorkspace(): Promise<void> {
   await refreshWorkspaceTools();
 }
 
-function validateStoredCloudUser(statusUser: CloudStatusResponse["user"]): void {
-  if (!state.cloudUser) return;
-  if (statusUser && statusUser.id === state.cloudUser.id) {
-    state.cloudUser = {
-      id: statusUser.id,
-      name: statusUser.name,
-      token: state.cloudUser.token,
-      tokenPreview: statusUser.tokenPreview ?? state.cloudUser.tokenPreview,
-    };
-    localStorage.setItem(userStorageKey, JSON.stringify(state.cloudUser));
-    cloudUserNameInput.value = state.cloudUser.name;
+function applySessionUser(statusUser: CloudStatusResponse["user"]): void {
+  if (statusUser) {
+    state.cloudUser = { id: statusUser.id, name: statusUser.name, tokenPreview: statusUser.tokenPreview };
+    cloudUserNameInput.value = statusUser.name;
     return;
   }
   state.cloudUser = undefined;
-  localStorage.removeItem(userStorageKey);
   localStorage.removeItem(activeSiteStorageKey);
   localStorage.removeItem(activeDocumentStorageKey);
 }
@@ -162,7 +156,7 @@ export async function createCloudUser(options: { silent?: boolean } = {}): Promi
       }),
     });
     if (!response.user) throw new Error("Registration did not return a user session");
-    activateCloudUser(response.user);
+    activateCloudUser(response.user, response.csrfToken);
     cloudInvitationCodeInput.value = "";
     await openInitialWorkspace();
     if (!options.silent) setCloudStatus("Created user", "ok");
@@ -189,7 +183,7 @@ export async function loginCloudUser(): Promise<void> {
       body: JSON.stringify({ userToken }),
     });
     if (!response.user) throw new Error("Invalid Noma user token");
-    activateCloudUser(response.user);
+    activateCloudUser(response.user, response.csrfToken);
     cloudUserTokenInput.value = "";
     await openInitialWorkspace();
     setCloudStatus("Logged in", "ok");
@@ -201,18 +195,49 @@ export async function loginCloudUser(): Promise<void> {
   }
 }
 
-function activateCloudUser(user: CloudUserSession): void {
-  state.cloudUser = user;
-  localStorage.setItem(userStorageKey, JSON.stringify(user));
+function activateCloudUser(user: CloudUserSession, csrfToken: string | undefined): void {
+  state.cloudUser = { id: user.id, name: user.name, tokenPreview: user.tokenPreview };
+  rememberCsrfToken(csrfToken);
   cloudUserNameInput.value = user.name;
 }
 
-export function logoutCloudUser(): void {
+/** Creates a personal access token (read + write) for scripts and agents and copies it once; it is never stored. */
+export async function createApiToken(): Promise<void> {
+  if (!state.cloudUser) return;
+  const name = window.prompt("Name for the new API token", "Cloud app token")?.trim();
+  if (!name) return;
+  setBusy(true, "Creating API token", "warning");
+  try {
+    const created = await fetchCloudJson<CloudPersonalAccessTokenResponse>("/api/tokens", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, scopes: ["read", "write"], expiresInDays: 90 }),
+    });
+    try {
+      await copyText(created.token, `Copied API token ${created.name}; it will not be shown again`);
+    } catch {
+      window.prompt("Copy your API token now; it will not be shown again", created.token);
+      setCloudStatus(`Created API token ${created.name}`, "ok");
+    }
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+    renderChrome();
+  }
+}
+
+export async function logoutCloudUser(): Promise<void> {
   if (!confirmDiscardDirty()) return;
+  try {
+    await fetchCloudJson<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+  } catch (error) {
+    setCloudStatus(errorMessage(error), "error");
+  }
+  forgetCsrfToken();
   state.cloudUser = undefined;
   cloudUserTokenInput.value = "";
   cloudInvitationCodeInput.value = "";
-  localStorage.removeItem(userStorageKey);
   localStorage.removeItem(activeSiteStorageKey);
   localStorage.removeItem(activeDocumentStorageKey);
   clearWorkspaceState();

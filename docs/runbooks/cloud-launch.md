@@ -57,7 +57,12 @@ NOMA_CLOUD_DATA_DIR=/data/noma/documents
 NOMA_CLOUD_DB=/data/noma/noma-cloud.sqlite
 NOMA_CLOUD_ACCESS_TOKEN_FILE=/data/noma/secrets/access-token
 NOMA_CLOUD_INVITATION_CODE_FILE=/data/noma/secrets/invitation-code
+NOMA_CLOUD_ADMIN_USER_IDS=<owner-user-id>[,<second-admin-id>]
 ```
+
+`NOMA_CLOUD_ADMIN_USER_IDS` is required for workspace administration in production. Without it the server starts, logs a warning, and every `/api/enterprise` route returns `403 admin_not_configured` (fail closed); the first-registered-user bootstrap applies only outside production. On first launch, register the owner, read its ID from `GET /api/users/me`, set the variable, and restart.
+
+Serve the app only over HTTPS: the `noma_session` and `noma_csrf` cookies carry `Secure` on every host except `localhost`, so a plain-HTTP public hostname cannot keep a browser signed in. When TLS terminates at a proxy, forward `X-Forwarded-Proto: https`.
 
 Set `NOMA_CLOUD_TRUST_PROXY=1` only when the app is behind a controlled reverse proxy that overwrites forwarded client headers. Set `NOMA_CLOUD_SSO_TRUST_SECRET` only between that trusted identity gateway and Noma. Never expose the SSO assertion route directly as an identity provider callback.
 
@@ -67,16 +72,17 @@ Mount `/data/noma` on persistent storage. Monitor free space because SQLite, imm
 
 1. Deploy the exact candidate image to a staging hostname with production security enabled.
 2. Confirm unauthenticated Cloud/API requests fail and `GET /healthz` returns `200` with `{"ok":true,"storage":"sqlite"}`.
-3. Register an owner with the invitation code, sign out, and sign in again with the returned user token.
+3. Register an owner with the invitation code. Confirm the browser holds an HttpOnly `noma_session` cookie and no token in `localStorage`, that a cookie-only `POST` without `X-Noma-CSRF` returns `403 csrf_required`, and that `GET /api/auth/sessions` lists the session. Create a read-only personal access token (`POST /api/tokens`), confirm it gets `403 insufficient_scope` on a write, revoke it, and confirm it then gets `401 token_revoked`. Sign out and sign in again with the returned user token.
 4. Create a space and page, edit it, reload it, and verify the hash and immutable revision changed.
 5. Send two writes with the same old hash; exactly one may succeed and the other must return `409 document_conflict`.
 6. Add a viewer. Confirm the viewer can retrieve cited evidence but cannot save, synchronize connector sources, or trigger an editor-scoped custom recipe.
 7. Ask an answerable and an unanswerable question. Verify exact block/version citations for the first and `insufficient_evidence` with no citations for the second.
 8. Create a scoped agent, grant one page, and verify an ungranted page is absent from search and LLM export.
 9. Proof and propose a block patch. Verify the proposer cannot self-approve, a different editor can approve, and apply fails after an intervening page edit.
-10. Export a backup, reject a tampered digest, import the clean bundle as a plan, and rehearse a restore into a disposable database.
-11. Restart the container and verify users, pages, permissions, revisions, agent metadata, and search survive.
-12. Send `SIGTERM`; verify the process stops cleanly and the next start passes `/healthz`.
+10. Export a backup, reject a tampered digest, import the clean bundle as a plan, and rehearse a restore into a disposable database. Confirm an import that names another user's page ID fails with `409 backup_ids_unavailable` and creates nothing.
+11. Repeat `GET /cloud.html?access=<wrong>` past `NOMA_CLOUD_AUTH_RATE_LIMIT_MAX` and confirm `429 rate_limit_exceeded`.
+12. Restart the container and verify users, pages, permissions, revisions, agent metadata, search, and browser sessions survive.
+13. Send `SIGTERM`; verify the process stops cleanly and the next start passes `/healthz`.
 
 Keep staging up for at least one working day with representative documents. Record failed searches, stale answers, permission denials, response latency, database growth, and operator interventions.
 
@@ -89,6 +95,7 @@ Retain:
 - the SQLite backup;
 - exported deterministic `.noma` bundles;
 - the two secret files in a separate secret backup;
+- any `legacy-imported-<timestamp>/` directory next to the data directory, until you have confirmed the SQLite import (older JSON-era deployments move their `*.json` records there on first start);
 - the exact image digest and Git commit;
 - restore instructions and the last successful rehearsal time.
 
