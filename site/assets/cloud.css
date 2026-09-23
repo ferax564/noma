@@ -1593,3 +1593,10 @@ button.wiki-row {
 .page-views-chart span{flex:1;min-width:3px;background:var(--accent,#0f666b);border-radius:2px 2px 0 0;opacity:.75}
 .page-viewers{margin:0;padding-left:16px;max-height:160px;overflow:auto}
 
+/* page tree drag and drop */
+.page-entry[draggable="true"]{cursor:grab}
+.page-entry.page-dragging{opacity:.45}
+.page-entry[data-drop="before"]{box-shadow:inset 0 2px 0 var(--accent,#0f666b)}
+.page-entry[data-drop="after"]{box-shadow:inset 0 -2px 0 var(--accent,#0f666b)}
+.page-entry[data-drop="inside"]>.page-row{outline:2px dashed var(--accent,#0f666b);outline-offset:-2px}
+

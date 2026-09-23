@@ -13,6 +13,7 @@ import { clearWorkspaceState, refreshWorkspaceTools, renderWorkspaceTools } from
 import { shareToken, state } from "./state.js";
 import type { CloudDocumentResponse, CloudNavigationItem, CloudPageTemplate, CloudSiteResponse, CloudTrashItem } from "./types.js";
 import { absoluteUrl, copyText, emptyState, errorMessage, formatDate, iconButton, promptName, setBusy, setCloudStatus, shortId, slug } from "./util.js";
+import { installPageRowReordering } from "./page-tree.js";
 import { spaceLabel, spaceListArchivedParam } from "./spaces.js";
 import { refreshWorkManagement } from "./work.js";
 
@@ -729,6 +730,7 @@ function pageRow(page: CloudDocumentResponse, depth = 0): HTMLElement {
   const move = iconButton("Move", `Move ${page.title}`, () => void movePage(page.id));
   move.disabled = state.busy || !canEditSite();
   row.append(button, move);
+  installPageRowReordering(row, button, page);
   return row;
 }
 

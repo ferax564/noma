@@ -201,3 +201,49 @@ test("page views are deduplicated per viewer, anonymous for share links, and rol
     await harness.close();
   }
 });
+
+interface TreeNode {
+  id: string;
+  title: string;
+  children: TreeNode[];
+}
+
+test("page moves honour sibling positions, including appending past the end", async () => {
+  const harness = await startCloudServer("noma-tree-order-");
+  const { base } = harness;
+  try {
+    const ada = await createCloudUser(base, "Ada Lovelace");
+    const space = await json<SpaceResponse>(`${base}/api/sites`, { method: "POST", token: ada.token, body: { title: "Tree", documentIds: [] } });
+    const pages: Record<string, string> = {};
+    for (const title of ["A", "B", "C", "D"]) {
+      pages[title] = (await json<CloudDocumentResponse>(`${base}/api/sites/${space.id}/documents`, { method: "POST", token: ada.token, body: { source: `# ${title}\n\nPage ${title}.\n` } })).id;
+    }
+    const move = (title: string, parent: string | null, position: number) =>
+      json(`${base}/api/sites/${space.id}/documents/${pages[title]}/parent`, { method: "PUT", token: ada.token, body: { parentId: parent ? pages[parent] : null, position } });
+    const shape = async () => {
+      const tree = await json<{ pages: TreeNode[] }>(`${base}/api/sites/${space.id}/tree`, { token: ada.token });
+      const render = (nodes: TreeNode[]): string => nodes.map((node) => (node.children.length ? `${node.title}(${render(node.children)})` : node.title)).join(",");
+      return render(tree.pages);
+    };
+    await move("A", null, 99);
+    assert.equal(await shape(), "B,C,D,A");
+    await move("D", null, 0);
+    assert.equal(await shape(), "D,B,C,A");
+    await move("C", "B", 0);
+    assert.equal(await shape(), "D,B(C),A");
+    await move("A", "B", 0);
+    assert.equal(await shape(), "D,B(A,C)");
+    await move("C", "B", 0);
+    assert.equal(await shape(), "D,B(C,A)");
+    await move("A", null, 2);
+    assert.equal(await shape(), "D,B(C),A");
+    await move("D", "C", 5);
+    assert.equal(await shape(), "B(C(D)),A");
+    await move("B", null, 1);
+    assert.equal(await shape(), "A,B(C(D))");
+    await json(`${base}/api/sites/${space.id}/documents/${pages.B}/parent`, { method: "PUT", token: ada.token, body: { parentId: pages.D, position: 0 }, expectedStatus: 400 });
+    await json(`${base}/api/sites/${space.id}/documents/${pages.B}/parent`, { method: "PUT", token: ada.token, body: { parentId: null, position: -1 }, expectedStatus: 400 });
+  } finally {
+    await harness.close();
+  }
+});

@@ -717,8 +717,18 @@ async function movePage(
     const rest = documentIds.filter((id) => id !== documentId);
     const siblings = rest.filter((id) => parents[id] === parents[documentId] && !config.store.isTrashed("document", id));
     const before = siblings[input.position];
-    const insertAt = before === undefined ? documentIds.indexOf(documentId) : rest.indexOf(before);
-    documentIds = before === undefined ? documentIds : [...rest.slice(0, insertAt), documentId, ...rest.slice(insertAt)];
+    const last = siblings.at(-1);
+    if (before !== undefined) {
+      const insertAt = rest.indexOf(before);
+      documentIds = [...rest.slice(0, insertAt), documentId, ...rest.slice(insertAt)];
+    } else if (last !== undefined) {
+      const lastSubtree = new Set([last, ...pageDescendants(parents, last)]);
+      let insertAt = rest.indexOf(last) + 1;
+      for (let index = 0; index < rest.length; index++) {
+        if (lastSubtree.has(rest[index]!)) insertAt = Math.max(insertAt, index + 1);
+      }
+      documentIds = [...rest.slice(0, insertAt), documentId, ...rest.slice(insertAt)];
+    }
   }
   const record: CloudSiteRecord = {
     ...site,

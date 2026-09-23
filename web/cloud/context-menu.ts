@@ -4,6 +4,7 @@ import { copyLlmContext } from "./knowledge.js";
 import { renderChrome, setViewMode } from "./layout.js";
 import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage, deleteFolder, loadSite, movePage, movePageToFolder, movePageUnder, pageFolder, renameFolder, runAfterSelectPage, runWithLoadedSite, sameFolder, saveCurrentSite, selectPage, toggleFavorite, trashPage, trashSite } from "./navigation.js";
 import { pageAncestors } from "./page-meta.js";
+import { canMoveDown, canMoveUp, canOutdent, indentPage, movePageDown, movePageUp, outdentPage } from "./page-tree.js";
 import { canCreatePage, canEditPage, canEditSite, canEditSiteRecord } from "./permissions.js";
 import { deletePreviewSection, insertPreviewBlockAfter, previewElementBlockId } from "./preview.js";
 import { state } from "./state.js";
@@ -184,6 +185,30 @@ export function showPageContextMenu(event: MouseEvent, page: CloudDocumentRespon
       label: "Move under page...",
       disabled: !canEditSite(),
       action: () => void movePageUnder(page.id),
+    },
+    {
+      label: "Move up",
+      hint: "Alt+↑",
+      disabled: !canEditSite() || !canMoveUp(page.id),
+      action: () => void movePageUp(page.id),
+    },
+    {
+      label: "Move down",
+      hint: "Alt+↓",
+      disabled: !canEditSite() || !canMoveDown(page.id),
+      action: () => void movePageDown(page.id),
+    },
+    {
+      label: "Indent",
+      hint: "Alt+→",
+      disabled: !canEditSite() || !canMoveUp(page.id),
+      action: () => void indentPage(page.id),
+    },
+    {
+      label: "Outdent",
+      hint: "Alt+←",
+      disabled: !canEditSite() || !canOutdent(page.id),
+      action: () => void outdentPage(page.id),
     },
     {
       label: "Move to folder...",

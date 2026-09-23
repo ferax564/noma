@@ -370,6 +370,23 @@ GET  /api/sites/<site-id>/popular?days=30&limit=10
 last view) only when the caller is a signed-in editor or owner of the page.
 `popular` ranks the space's non-trashed pages by views, then unique viewers.
 
+## Reorder the page tree
+
+Editors can drag a page in the rail and drop it on another page: the top edge
+drops it before that page, the bottom edge after it, and the middle makes it a
+child. The same moves are available without a mouse:
+
+| Move | Keyboard (focused page) | Context menu |
+|---|---|---|
+| Up among siblings | Alt+↑ | Move up |
+| Down among siblings | Alt+↓ | Move down |
+| Indent under the page above | Alt+→ | Indent |
+| Outdent next to its parent | Alt+← | Outdent |
+
+All of these call `PUT /api/sites/<site-id>/documents/<page-id>/parent` with
+`parentId` and `position` (the index among the new siblings). A `position` at
+or past the end appends the page after the last sibling and its subpages.
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.
