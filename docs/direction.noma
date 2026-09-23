@@ -18,7 +18,7 @@ to a collaborator who has never heard of the project.
 ## The one-liner
 
 ::callout{tone="tip"}
-**Noma is proof-before-apply docs for AI agents.**
+**Noma is the wiki for the agentic-AI era: a Confluence-class team wiki whose pages agents can safely edit.**
 ::
 
 ## The longer version
@@ -305,19 +305,29 @@ Core Noma absorbs directives that are **shape-stable, domain-neutral, and useful
 
 This stance means the core stays small, the validator's per-block rule set stays bounded, and the ecosystem can grow without forcing every downstream tool to switch over a sprawling union.
 
-## What NOT to build (yet)
+## Product direction: the wiki for the agentic-AI era
 
-::risk{id="scope-creep" severity="high" owner="ferax564"}
-The following are out of scope for v1. Each one would slow the format
-work that matters more.
+::decision{id="wiki-direction" status="accepted" owner="ferax564" date="2026-09-23"}
+Noma is a Confluence-class team wiki whose source of truth is plain-text
+`.noma`. Humans get spaces, a page tree, labels, comments, history, search,
+permissions, a block editor, attachments, and realtime co-editing. Agents get
+scoped context, stable block IDs, and a proof → human approval → hash-checked
+apply loop. The format and Noma Cloud ship as one product.
+::
 
-- visual / WYSIWYG editor
-- realtime collaboration
-- plugin marketplace
-- enterprise auth/permissions
-- multi-tenant enterprise cloud platform
-- complex CSS theming engine
-- a Markdown-to-Noma converter (Noma → Markdown is the supported direction)
+What makes Noma different from Confluence is not a longer feature list:
+
+- **Plain-text source of truth.** Every page is reviewable `.noma`, diffable in Git, and portable.
+- **Block-level agent edits.** Agents patch one claim, table, or task by ID instead of rewriting pages.
+- **Proof before apply.** Every agent change carries a validation proof and needs a human who is not the requester to approve it.
+- **Cited answers.** Ask Noma cites exact blocks and versions, or abstains.
+- **Self-maintaining knowledge.** Trust, freshness, and recipes let agents find stale pages and propose fixes.
+
+::risk{id="scope-creep" severity="medium" owner="ferax564"}
+Still out of scope: a plugin marketplace, a complex CSS theming engine,
+non-wiki Atlassian clones (whiteboards, databases), and any editor,
+importer, or agent path that cannot round-trip through `.noma` source with
+stable IDs.
 ::
 
 ## See also

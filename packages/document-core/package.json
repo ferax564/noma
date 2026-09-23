@@ -1,6 +1,6 @@
 {
   "name": "@ferax564/noma-document-core",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "AST, parser, validation, source patches, serialization",
   "type": "module",
   "main": "src/index.ts",
@@ -28,7 +28,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@ferax564/noma-cli": "0.17.0"
+    "@ferax564/noma-cli": "0.18.0"
   },
   "engines": {
     "node": ">=20"

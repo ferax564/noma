@@ -1,0 +1,19 @@
+# Broken macros
+
+::include
+::
+
+::include{block="nowhere"}
+::
+
+::include{page="Another page"}
+::
+
+::issue{key="not-a-key"}
+::
+
+::issues{project="x" status="later"}
+::
+
+::page-properties-report
+::

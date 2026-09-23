@@ -1,106 +1,237 @@
 """Minimal native Noma parser — enough to collect canonical IDs/aliases and to
-locate directive blocks by source span for the seed patch ops.
+locate directive blocks and list items by source span for the seed patch ops.
 
 This is a *partial second implementation* of the Noma format, written from the
 spec and the conformance fixtures rather than from the TypeScript source. It is
 deliberately small: it covers the frozen surface the conformance corpus exercises
-for the seed (heading-ID derivation + aliasing, explicit section/directive IDs,
-frontmatter aliases, code-fence suppression, and directive nesting by colon depth).
+for the seed (frontmatter detection, heading-ID derivation + aliasing, explicit
+section/directive IDs, frontmatter aliases, code-fence suppression, attribute
+quoting and escapes, and directive nesting by colon depth).
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Optional
 
-HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
-# A directive open: one or more colons, a name, optional `{...}` attribute block.
-DIRECTIVE_OPEN_RE = re.compile(r"^(:{2,})([A-Za-z][\w-]*)\s*(\{.*\})?\s*$")
+HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+# Trailing `{...}` on a heading; only an attribute list if it tokenises strictly.
+HEADING_ATTRS_RE = re.compile(r"^(.+?)\s+\{([^}]*)\}$")
+# A directive open: two or more colons, a (possibly namespaced) name, optional `{...}`.
+DIRECTIVE_OPEN_RE = re.compile(
+    r"^(:{2,})\s*([A-Za-z_][\w-]*(?:::[A-Za-z_][\w-]*)*)\s*(\{.*\})?\s*$"
+)
 # A directive close: only colons.
-DIRECTIVE_CLOSE_RE = re.compile(r"^:{2,}\s*$")
-# Trailing `{...}` attribute block on a heading.
-HEADING_ATTRS_RE = re.compile(r"^(.*?)\s*\{(.*)\}\s*$")
+DIRECTIVE_CLOSE_RE = re.compile(r"^(:{2,})\s*$")
+FENCE_OPEN_RE = re.compile(r"^(`{3,})([^`]*)$|^(~{3,})(.*)$")
+FENCE_CLOSE_RE = re.compile(r"^(`{3,}|~{3,})\s*$")
+LIST_ITEM_RE = re.compile(r"^(\s*(?:[-*]|\d+\.)\s+)(.*)$")
+INLINE_ID_RE = re.compile(r"^\{#([A-Za-z][\w:./-]*)\}\s*")
+FRONTMATTER_KEY_RE = re.compile(r"""^[\w"'][\w\s"'.-]*:(?:\s|$)""")
+ATTR_KEY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
+ATTR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+MAX_FENCE_COLONS = 64
+
+# Unicode `Script=Inherited` ranges (combining marks, variation selectors,
+# joiners) — stripped from slugs after NFC, as the reference implementation does.
+_INHERITED_RANGES = (
+    (0x0300, 0x036F), (0x0485, 0x0486), (0x064B, 0x0655), (0x0670, 0x0670),
+    (0x0951, 0x0954), (0x1AB0, 0x1ACE), (0x1CD0, 0x1CD2), (0x1CD4, 0x1CE0),
+    (0x1CE2, 0x1CE8), (0x1CED, 0x1CED), (0x1CF4, 0x1CF4), (0x1CF8, 0x1CF9),
+    (0x1DC0, 0x1DFF), (0x200C, 0x200D), (0x20D0, 0x20F0), (0x302A, 0x302D),
+    (0x3099, 0x309A), (0xFE00, 0xFE0F), (0xFE20, 0xFE2D), (0x101FD, 0x101FD),
+    (0x102E0, 0x102E0), (0x1133B, 0x1133B), (0x1CF00, 0x1CF46), (0x1D167, 0x1D169),
+    (0x1D17B, 0x1D182), (0x1D185, 0x1D18B), (0x1D1AA, 0x1D1AD), (0xE0100, 0xE01EF),
+)
+
+
+def _is_inherited(ch: str) -> bool:
+    cp = ord(ch)
+    return any(lo <= cp <= hi for lo, hi in _INHERITED_RANGES)
+
+
+def _is_latin(ch: str) -> bool:
+    return "LATIN" in unicodedata.name(ch, "")
+
+
+def _slug_char(ch: str) -> str:
+    if ch.isspace() or ch == "-":
+        return ch
+    if unicodedata.category(ch)[0] not in "LNM":
+        return ""
+    if _is_latin(ch) and not ("a" <= ch <= "z"):
+        return ""
+    return ch
 
 
 def slugify(title: str) -> str:
-    """Deterministic heading-slug derivation: lowercase, non-alphanumerics to
-    single hyphens, trimmed. Matches the reference implementation for the ASCII
-    titles in the conformance corpus."""
-    # Strip inline markdown emphasis/code markers before slugging.
-    text = re.sub(r"[*`_]", "", title)
-    slug = re.sub(r"[^a-z0-9]+", "-", text.strip().lower())
-    return slug.strip("-")
+    """Heading slug: letters and numbers of any script, lowercased, whitespace
+    runs become `-`. Latin letters lose diacritics; Latin letters with no ASCII
+    decomposition (`ß`, `ø`) are dropped so Latin-script slugs stay stable."""
+    text = unicodedata.normalize("NFKD", title.lower())
+    text = re.sub("[\u0300-\u036f]", "", text)
+    text = unicodedata.normalize("NFC", text)
+    text = "".join(ch for ch in text if not _is_inherited(ch))
+    text = "".join(_slug_char(ch) for ch in text).strip()
+    text = re.sub(r"\s+", "-", text)
+    text = re.sub(r"-+", "-", text)
+    return text.strip("-")
+
+
+def heading_slug(title: str) -> str:
+    """Auto ID for a heading: its slug, or `section` when the slug is empty."""
+    return slugify(title) or "section"
+
+
+# ---------------------------------------------------------------- attributes
+
+
+@dataclass
+class AttrToken:
+    key: str
+    value: Optional[str]
+    quoted: bool
+    start: int
+    end: int
+
+
+def _scan_quoted(s: str, start: int, quote: str) -> Optional[tuple[str, int]]:
+    value = ""
+    j = start
+    while j < len(s):
+        c = s[j]
+        if c == quote:
+            return value, j + 1
+        if quote == '"' and c == "\\" and j + 1 < len(s) and s[j + 1] in ('"', "\\"):
+            value += s[j + 1]
+            j += 2
+            continue
+        value += c
+        j += 1
+    return None
+
+
+def tokenize_attrs(inner: str, strict: bool = False) -> Optional[list[AttrToken]]:
+    """Tokenise an attribute list body. Double-quoted values accept `\\"` and
+    `\\\\` escapes; other backslashes are literal. Single-quoted values are raw.
+    Lenient mode skips stray characters; strict mode returns None on them."""
+    tokens: list[AttrToken] = []
+    i = 0
+    n = len(inner)
+
+    def at_boundary(k: int) -> bool:
+        return k >= n or inner[k].isspace()
+
+    while i < n:
+        if inner[i].isspace():
+            i += 1
+            continue
+        m = ATTR_KEY_RE.match(inner, i)
+        if not m:
+            if strict:
+                return None
+            i += 1
+            continue
+        start = i
+        key = m.group(0)
+        i = m.end()
+        if i >= n or inner[i] != "=":
+            if strict and not at_boundary(i):
+                return None
+            tokens.append(AttrToken(key, None, False, start, i))
+            continue
+        vstart = i + 1
+        quote = inner[vstart] if vstart < n else ""
+        if quote in ('"', "'"):
+            scanned = _scan_quoted(inner, vstart + 1, quote)
+            if scanned is not None:
+                value, nxt = scanned
+                if strict and not at_boundary(nxt):
+                    return None
+                tokens.append(AttrToken(key, value, True, start, nxt))
+                i = nxt
+                continue
+        bare = re.match(r"\S+", inner[vstart:])
+        if not bare:
+            if strict:
+                return None
+            tokens.append(AttrToken(key, None, False, start, i))
+            continue
+        tokens.append(AttrToken(key, bare.group(0), False, start, vstart + bare.end()))
+        i = vstart + bare.end()
+    return tokens
+
+
+def _coerce(raw: str) -> object:
+    if raw == "true":
+        return True
+    if raw == "false":
+        return False
+    if re.fullmatch(r"-?\d+", raw):
+        return int(raw)
+    if re.fullmatch(r"-?\d+\.\d+", raw):
+        return float(raw)
+    return raw
+
+
+def _token_value(tok: AttrToken) -> object:
+    if tok.value is None:
+        return True
+    if tok.quoted or tok.key == "id":
+        return tok.value
+    return _coerce(tok.value)
 
 
 def parse_attrs(body: str) -> list[tuple[str, object, bool]]:
     """Parse a `{...}` attribute body into ordered (key, value, is_flag) tuples.
 
-    - key="quoted string"  -> str value
-    - key=bareword         -> str value
-    - key=1.5 / key=3      -> numeric value
-    - key=true / key=false -> bool value
-    - flag                 -> (flag, True, is_flag=True)
+    - key="quoted" / key='quoted' -> str (never coerced; `\\"` and `\\\\` escapes)
+    - key=bareword                -> str
+    - key=3 / key=0.82            -> number (unquoted only)
+    - key=true / key=false        -> bool (unquoted only)
+    - id=anything                 -> str (ids are never coerced)
+    - flag                        -> (flag, True, is_flag=True)
     """
-    attrs: list[tuple[str, object, bool]] = []
-    tokens = _split_attr_tokens(body)
-    for tok in tokens:
-        if "=" in tok:
-            key, raw = tok.split("=", 1)
-            key = key.strip()
-            raw = raw.strip()
-            attrs.append((key, _coerce(raw), False))
-        else:
-            attrs.append((tok.strip(), True, True))
-    return attrs
+    return [
+        (tok.key, _token_value(tok), tok.value is None)
+        for tok in tokenize_attrs(body.strip()) or []
+    ]
 
 
-def _split_attr_tokens(body: str) -> list[str]:
-    tokens: list[str] = []
-    cur = ""
-    in_quote = False
-    for ch in body:
-        if ch == '"':
-            in_quote = not in_quote
-            cur += ch
-        elif ch.isspace() and not in_quote:
-            if cur:
-                tokens.append(cur)
-                cur = ""
-        else:
-            cur += ch
-    if cur:
-        tokens.append(cur)
-    return [t for t in tokens if t]
+def split_heading_attrs(text: str) -> tuple[str, Optional[list[tuple[str, object, bool]]]]:
+    """Split heading text into title and trailing attributes. The braces count
+    as attributes only when they tokenise strictly with a `key=value` pair."""
+    trimmed = text.strip()
+    m = HEADING_ATTRS_RE.match(trimmed)
+    if not m:
+        return trimmed, None
+    tokens = tokenize_attrs(m.group(2), strict=True)
+    if not tokens or not any(t.value is not None for t in tokens):
+        return trimmed, None
+    return m.group(1).strip(), [(t.key, _token_value(t), t.value is None) for t in tokens]
 
 
-def _coerce(raw: str) -> object:
-    if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
-        return raw[1:-1]
-    if raw in ("true", "false"):
-        return raw == "true"
-    try:
-        if re.fullmatch(r"-?\d+", raw):
-            return int(raw)
-        return float(raw)
-    except ValueError:
-        return raw
+def serialize_attr(key: str, value: object) -> str:
+    """Serialise one attribute so the parser reads back the same value."""
+    if value is True:
+        return key
+    if value is False:
+        return f"{key}=false"
+    if isinstance(value, float):
+        return f"{key}={format_number(value)}"
+    if isinstance(value, int):
+        return f"{key}={value}"
+    s = str(value)
+    if '"' in s and "'" not in s:
+        return f"{key}='{s}'"
+    escaped = re.sub(r'\\(?=[\\"]|$)', r"\\\\", s).replace('"', '\\"')
+    return f'{key}="{escaped}"'
 
 
 def serialize_attrs(attrs: list[tuple[str, object, bool]]) -> str:
-    parts: list[str] = []
-    for key, value, is_flag in attrs:
-        if is_flag:
-            parts.append(key)
-        elif isinstance(value, str):
-            parts.append(f'{key}="{value}"')
-        elif isinstance(value, bool):
-            parts.append(f"{key}={'true' if value else 'false'}")
-        elif isinstance(value, float):
-            parts.append(f"{key}={format_number(value)}")
-        else:
-            parts.append(f"{key}={value}")
-    return " ".join(parts)
+    return " ".join(key if is_flag else serialize_attr(key, value) for key, value, is_flag in attrs)
 
 
 def format_number(value: float) -> str:
@@ -109,14 +240,51 @@ def format_number(value: float) -> str:
     return repr(value)
 
 
+# ---------------------------------------------------------------- fences
+
+
+@dataclass
+class CodeFence:
+    char: str
+    length: int
+
+
+def match_code_fence_open(line: str) -> Optional[CodeFence]:
+    m = FENCE_OPEN_RE.match(line)
+    if not m:
+        return None
+    marker = m.group(1) or m.group(3) or ""
+    return CodeFence(marker[0], len(marker))
+
+
+def is_code_fence_close(line: str, fence: CodeFence) -> bool:
+    m = FENCE_CLOSE_RE.match(line)
+    return bool(m) and m.group(1)[0] == fence.char and len(m.group(1)) >= fence.length
+
+
+def find_code_fence_close(lines: list[str], start: int, end: int, fence: CodeFence) -> int:
+    j = start
+    while j < end and not is_code_fence_close(lines[j], fence):
+        j += 1
+    return j
+
+
+# ---------------------------------------------------------------- tree
+
+
 @dataclass
 class Block:
-    """A directive block with its source span (0-based, inclusive line indices)."""
+    """A directive block with its source span (0-based, inclusive line indices).
+
+    For an unclosed block `closed` is False and `close_line` is the last line of
+    the range it swallowed."""
 
     name: str
     attrs: list[tuple[str, object, bool]]
     open_line: int
     close_line: int
+    colons: int = 2
+    closed: bool = True
     children: list["Block"] = field(default_factory=list)
 
     @property
@@ -140,6 +308,15 @@ class Heading:
     id: str
     aliases: list[str]
     line: int
+    explicit: bool = False
+    top_level: bool = True
+
+
+@dataclass
+class ListItem:
+    id: str
+    line: int
+    marker: str
 
 
 @dataclass
@@ -149,6 +326,7 @@ class Document:
     frontmatter_aliases: list[str]
     blocks: list[Block]
     headings: list[Heading]
+    list_items: list[ListItem] = field(default_factory=list)
 
 
 def parse(source: str) -> Document:
@@ -156,96 +334,143 @@ def parse(source: str) -> Document:
     raw = source[:-1] if trailing_newline else source
     lines = raw.split("\n") if raw != "" else []
 
-    i = 0
-    frontmatter_aliases: list[str] = []
-    if lines and lines[0].strip() == "---":
-        j = 1
-        fm: list[str] = []
-        while j < len(lines) and lines[j].strip() != "---":
-            fm.append(lines[j])
-            j += 1
-        frontmatter_aliases = _parse_frontmatter_aliases(fm)
-        i = j + 1 if j < len(lines) else j
-
-    root: list[Block] = []
+    start, frontmatter_aliases = _frontmatter(lines)
     headings: list[Heading] = []
-    stack: list[Block] = []
-    in_code = False
+    list_items: list[ListItem] = []
+    blocks = _parse_blocks(lines, start, len(lines), 0, headings, list_items)
 
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-
-        if stripped.startswith("```"):
-            in_code = not in_code
-            i += 1
+    seen: set[str] = set()
+    for heading in headings:
+        if heading.explicit or not heading.top_level:
             continue
-        if in_code:
-            i += 1
-            continue
-
-        open_m = DIRECTIVE_OPEN_RE.match(line)
-        if open_m and not _is_pure_close(line):
-            attrs_body = open_m.group(3)[1:-1] if open_m.group(3) else ""
-            block = Block(
-                name=open_m.group(2),
-                attrs=parse_attrs(attrs_body),
-                open_line=i,
-                close_line=i,
-            )
-            (stack[-1].children if stack else root).append(block)
-            stack.append(block)
-            i += 1
-            continue
-
-        if DIRECTIVE_CLOSE_RE.match(line) and stack:
-            stack[-1].close_line = i
-            stack.pop()
-            i += 1
-            continue
-
-        head_m = HEADING_RE.match(line)
-        if head_m and not stack_in_code(stack):
-            level = len(head_m.group(1))
-            title, hid, haliases = _heading_id(head_m.group(2))
-            headings.append(Heading(level=level, id=hid, aliases=haliases, line=i))
-            i += 1
-            continue
-
-        i += 1
+        if heading.id in seen:
+            n = 2
+            while f"{heading.id}-{n}" in seen:
+                n += 1
+            heading.id = f"{heading.id}-{n}"
+        seen.add(heading.id)
 
     return Document(
         lines=lines,
         trailing_newline=trailing_newline,
         frontmatter_aliases=frontmatter_aliases,
-        blocks=root,
+        blocks=blocks,
         headings=headings,
+        list_items=list_items,
     )
 
 
-def stack_in_code(_stack: list[Block]) -> bool:
-    return False
+def _parse_blocks(
+    lines: list[str],
+    start: int,
+    end: int,
+    parent_colons: int,
+    headings: list[Heading],
+    list_items: list[ListItem],
+) -> list[Block]:
+    out: list[Block] = []
+    i = start
+    while i < end:
+        line = lines[i]
+        open_m = DIRECTIVE_OPEN_RE.match(line)
+        if open_m:
+            colons = len(open_m.group(1))
+            if colons <= MAX_FENCE_COLONS and (colons > parent_colons or parent_colons == 0):
+                block, i = _parse_directive(lines, i, end, open_m, headings, list_items)
+                out.append(block)
+                continue
+            i += 1
+            continue
+        if DIRECTIVE_CLOSE_RE.match(line):
+            i += 1
+            continue
+        head_m = HEADING_RE.match(line)
+        if head_m:
+            title, attrs = split_heading_attrs(head_m.group(2))
+            hid: Optional[str] = None
+            aliases: list[str] = []
+            for key, value, _flag in attrs or []:
+                if key == "id" and isinstance(value, str) and value:
+                    hid = value
+                elif key == "aliases" and isinstance(value, str):
+                    aliases = [a.strip() for a in re.split(r"[ ,]+", value) if a.strip()]
+            headings.append(
+                Heading(
+                    level=len(head_m.group(1)),
+                    id=hid if hid is not None else heading_slug(title),
+                    aliases=aliases,
+                    line=i,
+                    explicit=hid is not None,
+                    top_level=parent_colons == 0,
+                )
+            )
+            i += 1
+            continue
+        fence = match_code_fence_open(line)
+        if fence:
+            close = find_code_fence_close(lines, i + 1, end, fence)
+            i = close + 1 if close < end else end
+            continue
+        item_m = LIST_ITEM_RE.match(line)
+        if item_m:
+            id_m = INLINE_ID_RE.match(item_m.group(2))
+            if id_m:
+                list_items.append(ListItem(id=id_m.group(1), line=i, marker=item_m.group(1)))
+        i += 1
+    return out
 
 
-def _is_pure_close(line: str) -> bool:
-    return DIRECTIVE_CLOSE_RE.match(line) is not None
+def _parse_directive(
+    lines: list[str],
+    i: int,
+    end: int,
+    open_m: re.Match,
+    headings: list[Heading],
+    list_items: list[ListItem],
+) -> tuple[Block, int]:
+    colons = len(open_m.group(1))
+    close = -1
+    j = i + 1
+    while j < end:
+        fence = match_code_fence_open(lines[j])
+        if fence:
+            j = find_code_fence_close(lines, j + 1, end, fence) + 1
+            continue
+        close_m = DIRECTIVE_CLOSE_RE.match(lines[j])
+        if close_m and len(close_m.group(1)) == colons:
+            close = j
+            break
+        j += 1
+    inner_end = end if close == -1 else close
+    attrs_body = open_m.group(3)[1:-1] if open_m.group(3) else ""
+    block = Block(
+        name=open_m.group(2),
+        attrs=parse_attrs(attrs_body),
+        open_line=i,
+        close_line=close if close != -1 else end - 1,
+        colons=colons,
+        closed=close != -1,
+    )
+    block.children = _parse_blocks(lines, i + 1, inner_end, colons, headings, list_items)
+    return block, (close + 1 if close != -1 else end)
 
 
-def _heading_id(rest: str) -> tuple[str, str, list[str]]:
-    aliases: list[str] = []
-    hid: Optional[str] = None
-    title = rest
-    m = HEADING_ATTRS_RE.match(rest)
-    if m:
-        title = m.group(1)
-        for key, value, _flag in parse_attrs(m.group(2)):
-            if key == "id" and isinstance(value, str):
-                hid = value
-            elif key == "aliases" and isinstance(value, str):
-                aliases = [a.strip() for a in re.split(r"[ ,]+", value) if a.strip()]
-    if hid is None:
-        hid = slugify(title)
-    return title, hid, aliases
+def _frontmatter(lines: list[str]) -> tuple[int, list[str]]:
+    """A leading `---` pair is frontmatter when it holds blank text or YAML
+    mapping lines; otherwise it is a thematic break followed by content."""
+    if not lines or lines[0].strip() != "---":
+        return 0, []
+    for j in range(1, len(lines)):
+        if lines[j].strip() != "---":
+            continue
+        body = lines[1:j]
+        first = next((ln for ln in body if ln.strip() and not ln.strip().startswith("#")), None)
+        if all(not ln.strip() for ln in body):
+            return j + 1, []
+        if first is None or not (FRONTMATTER_KEY_RE.match(first) or first.lstrip().startswith("{")):
+            return 0, []
+        return j + 1, _parse_frontmatter_aliases(body)
+    return 0, []
 
 
 def _parse_frontmatter_aliases(fm_lines: list[str]) -> list[str]:

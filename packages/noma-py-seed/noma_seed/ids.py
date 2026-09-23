@@ -28,6 +28,8 @@ def collect_ids(source: str) -> dict:
         collect_block_events(block)
     for heading in doc.headings:
         events.append((heading.line, "heading", heading))
+    for item in doc.list_items:
+        events.append((item.line, "item", item))
 
     events.sort(key=lambda e: e[0])
 
@@ -43,6 +45,8 @@ def collect_ids(source: str) -> dict:
                 if node.aliases:
                     aliases.setdefault(node.id, [])
                     aliases[node.id].extend(node.aliases)
+        elif kind == "item":
+            canonical.append(node.id)
         else:  # heading
             canonical.append(node.id)
             extra = list(node.aliases)

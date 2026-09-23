@@ -1,0 +1,16 @@
+# Fences
+
+```c++
+::claim{id="not-a-claim-1"}
+::
+```
+
+~~~
+::claim{id="not-a-claim-2"}
+~~~
+
+````md
+```
+::claim{id="not-a-claim-3"}
+```
+````

@@ -79,7 +79,10 @@ export type PatchErrorCode =
   | "sha_mismatch"
   | "pre_validation_blocked"
   | "op_list_aborted"
-  | "unsupported_op";
+  | "unsupported_op"
+  | "invalid_attribute_key"
+  | "invalid_attribute_value"
+  | "unbalanced_fence_content";
 
 export type BlockSummary = {
   id?: string;

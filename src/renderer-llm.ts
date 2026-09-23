@@ -9,8 +9,26 @@ import {
   type ComputedEvalContext,
 } from "./computed.js";
 import { inlineToPlain } from "./inline.js";
+import {
+  childrenRequest,
+  flattenChildPages,
+  includeLabel,
+  includeRequest,
+  type IncludeTrail,
+  initialIncludeTrail,
+  issueKeyFromNode,
+  issueLine,
+  issuesRequest,
+  type MacroResolvers,
+  pagePropertiesEntries,
+  pagePropertiesReportRequest,
+  propertiesReportColumns,
+  propertyValue,
+  resolveIncludeStep,
+  unavailableMessage,
+} from "./macros.js";
 
-export interface RenderLlmOptions {
+export interface RenderLlmOptions extends MacroResolvers {
   /**
    * When set, ::memory directives whose `last_seen` attribute is older than
    * `days` from `now` are omitted from the output, AND ::memory_index body
@@ -36,6 +54,8 @@ interface RenderCtx extends RenderLlmOptions {
   selectSet: Set<string>;
   excludeSet: Set<string>;
   computed: ComputedEvalContext;
+  includeTrail: IncludeTrail;
+  rootDoc: DocumentNode;
 }
 
 const STALE_OPT_IN_TYPES = new Set(["project", "reference"]);
@@ -51,6 +71,8 @@ export function renderLlm(doc: DocumentNode, options: RenderLlmOptions = {}): st
     selectSet: normalizeSelectors(options.select),
     excludeSet: normalizeSelectors(options.exclude),
     computed: buildComputedEvalContext(doc),
+    includeTrail: initialIncludeTrail(options.documentId),
+    rootDoc: doc,
   };
   const out: string[] = [];
   if (doc.meta.title) out.push(`# ${String(doc.meta.title)}`);
@@ -214,6 +236,7 @@ function emitDirective(
   if (node.name === "memory" && opts.excludeStale && isStale(node, opts.excludeStale)) {
     return;
   }
+  if (emitMacro(node, out, depth, opts)) return;
   const tag = node.name.toUpperCase();
   const attrs = Object.entries(node.attrs)
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
@@ -242,6 +265,92 @@ function emitDirective(
   }
   out.push(`[/${tag}]`);
   out.push("");
+}
+
+function emitMacro(node: DirectiveNode, out: string[], depth: number, opts: RenderCtx): boolean {
+  const open = (extra: string[] = []): void => {
+    const attrs = Object.entries(node.attrs).map(([k, v]) => `${k}=${JSON.stringify(v)}`);
+    out.push(`[${[node.name.toUpperCase(), ...attrs, ...extra].join(" ")}]`);
+  };
+  const close = (): void => {
+    out.push(`[/${node.name.toUpperCase()}]`);
+    out.push("");
+  };
+  switch (node.name) {
+    case "include": {
+      const step = resolveIncludeStep(node, opts, opts.includeTrail, opts.rootDoc);
+      if (step.status === "ok") {
+        const { resolved } = step;
+        const target = resolved.excerpt ? "excerpt" : resolved.blockId ?? "page";
+        const source = resolved.documentId || "this-page";
+        out.push(`<!-- included from ${source}:${target}@${resolved.hash.slice(0, 12)} -->`);
+        const inner: RenderCtx = { ...opts, includeTrail: step.trail };
+        for (const child of resolved.nodes) emit(child, out, depth + 1, inner, true);
+        out.push(`<!-- /included from ${source}:${target} -->`);
+        out.push("");
+        return true;
+      }
+      open();
+      const label = includeLabel(step.status === "unresolved" ? step.request : includeRequest(node, opts.includeTrail.documentId));
+      out.push(step.status === "unresolved" ? unavailableMessage("unresolved", label) : unavailableMessage(step.status, label, step.message));
+      close();
+      return true;
+    }
+    case "children": {
+      const resolution = opts.resolveChildren?.(childrenRequest(node, opts.includeTrail.documentId));
+      if (!resolution) return false;
+      open();
+      if (resolution.status !== "ok") out.push(unavailableMessage(resolution.status, "The child page list", resolution.message));
+      else if (resolution.pages.length === 0) out.push("No child pages.");
+      else for (const line of flattenChildPages(resolution.pages, 0)) out.push(`- ${line}`);
+      close();
+      return true;
+    }
+    case "issue": {
+      const key = issueKeyFromNode(node);
+      const resolution = key ? opts.resolveIssue?.(key) : undefined;
+      if (!resolution) return false;
+      open();
+      out.push(resolution.status === "ok" ? issueLine(resolution.issue) : unavailableMessage(resolution.status, `Issue ${key}`, resolution.message));
+      close();
+      return true;
+    }
+    case "issues": {
+      const request = issuesRequest(node);
+      const resolution = request ? opts.resolveIssues?.(request) : undefined;
+      if (!request || !resolution) return false;
+      open();
+      if (resolution.status !== "ok") out.push(unavailableMessage(resolution.status, `Issues in ${request.project}`, resolution.message));
+      else if (resolution.issues.length === 0) out.push(`No matching issues in ${resolution.project}.`);
+      else for (const issue of resolution.issues) out.push(`- ${issueLine(issue)}`);
+      close();
+      return true;
+    }
+    case "page-properties": {
+      open();
+      for (const [key, value] of pagePropertiesEntries(node)) out.push(`${inlineToPlain(key)}: ${inlineToPlain(value)}`);
+      close();
+      return true;
+    }
+    case "page-properties-report": {
+      const request = pagePropertiesReportRequest(node, opts.includeTrail.documentId);
+      const resolution = request ? opts.resolvePagePropertiesReport?.(request) : undefined;
+      if (!request || !resolution) return false;
+      open();
+      if (resolution.status !== "ok") out.push(unavailableMessage(resolution.status, "The page properties report", resolution.message));
+      else {
+        const columns = propertiesReportColumns(resolution.rows);
+        for (const row of resolution.rows) {
+          const values = columns.map((column) => `${column}=${JSON.stringify(inlineToPlain(propertyValue(row, column)))}`);
+          out.push(`- ${row.title}${values.length > 0 ? ` (${values.join(", ")})` : ""}`);
+        }
+      }
+      close();
+      return true;
+    }
+    default:
+      return false;
+  }
 }
 
 function emitComputedSummary(node: DirectiveNode, out: string[], opts: RenderCtx): void {
@@ -348,7 +457,7 @@ function isStale(
   const t = Date.parse(ls);
   if (Number.isNaN(t)) return false;
   const type = typeof node.attrs.type === "string" ? node.attrs.type : "";
-  const expired = node.attrs.expired === true;
+  const expired = node.attrs.expired === true || node.attrs.expired === "true";
   if (!STALE_OPT_IN_TYPES.has(type) && !expired) return false;
   return cfg.now.getTime() - t > cfg.days * 24 * 60 * 60 * 1000;
 }

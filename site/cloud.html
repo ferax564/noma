@@ -16,20 +16,25 @@
 <div class="cloud-shell">
   <header class="cloud-topbar">
     <a class="cloud-brand" href="cloud.html"><span class="cloud-brand-mark"></span>Noma Cloud</a>
-    <label class="top-field" for="cloudUserName">User
-      <input id="cloudUserName" type="text" autocomplete="name" />
-    </label>
-    <label class="top-field top-secret-field" for="cloudInvitationCode">Invitation
-      <input id="cloudInvitationCode" type="password" autocomplete="one-time-code" placeholder="Invitation code" />
-    </label>
-    <button id="newUserButton" type="button">Register</button>
-    <label class="top-field top-secret-field" for="cloudUserToken">Token
-      <input id="cloudUserToken" type="password" autocomplete="off" placeholder="Existing user token" />
-    </label>
-    <button id="loginUserButton" type="button">Log In</button>
-    <button id="logoutUserButton" type="button" disabled>Sign Out</button>
-    <button id="copyUserIdButton" type="button" disabled>Copy User ID</button>
-    <button id="copyUserTokenButton" type="button" disabled>Copy Token</button>
+    <div id="authControls" class="topbar-group auth-controls">
+      <label class="top-field" for="cloudUserName">User
+        <input id="cloudUserName" type="text" autocomplete="name" />
+      </label>
+      <label class="top-field top-secret-field" for="cloudInvitationCode">Invitation
+        <input id="cloudInvitationCode" type="password" autocomplete="one-time-code" placeholder="Invitation code" />
+      </label>
+      <button id="newUserButton" type="button">Register</button>
+      <label class="top-field top-secret-field" for="cloudUserToken">Token
+        <input id="cloudUserToken" type="password" autocomplete="off" placeholder="Existing user token" />
+      </label>
+      <button id="loginUserButton" type="button">Log In</button>
+    </div>
+    <div id="accountControls" class="topbar-group account-controls" hidden>
+      <span id="accountChip" class="account-chip"><span id="accountAvatar" class="account-avatar" aria-hidden="true"></span><span id="accountName"></span></span>
+      <button id="copyUserIdButton" type="button" disabled>Copy User ID</button>
+      <button id="copyUserTokenButton" type="button" disabled title="Create a personal access token for scripts and agents">Create API Token</button>
+      <button id="logoutUserButton" type="button" disabled>Sign Out</button>
+    </div>
     <button id="themeToggleButton" type="button" aria-pressed="false">Dark</button>
     <span id="cloudStatus" class="cloud-status" aria-live="polite">Starting</span>
   </header>
@@ -38,13 +43,41 @@
     <div class="rail-search" role="search">
       <label for="globalSearchInput">Search</label>
       <div class="rail-search-row">
-        <input id="globalSearchInput" type="search" placeholder="Find pages and blocks" autocomplete="off" />
+        <input id="globalSearchInput" type="search" placeholder="Search: label:how-to author:@ada &quot;exact phrase&quot;" autocomplete="off" />
         <button id="searchButton" type="button">Go</button>
       </div>
       <select id="searchScopeSelect" aria-label="Search scope">
         <option value="site">Current space</option>
         <option value="all">All spaces</option>
       </select>
+      <div id="searchFilterBar" class="search-filter-bar">
+        <select id="searchTypeFilter" aria-label="Filter results by type">
+          <option value="">Any type</option>
+          <option value="page">Pages</option>
+          <option value="section">Sections</option>
+          <option value="paragraph">Paragraphs</option>
+          <option value="claim">Claims</option>
+          <option value="decision">Decisions</option>
+          <option value="evidence">Evidence</option>
+          <option value="risk">Risks</option>
+          <option value="code">Code</option>
+          <option value="table">Tables</option>
+        </select>
+        <select id="searchUpdatedFilter" aria-label="Filter results by last update">
+          <option value="">Any time</option>
+          <option value="1">Past day</option>
+          <option value="7">Past week</option>
+          <option value="30">Past month</option>
+          <option value="365">Past year</option>
+        </select>
+        <input id="searchLabelFilter" type="text" list="searchLabelOptions" placeholder="Label" autocomplete="off" aria-label="Filter results by label" />
+        <datalist id="searchLabelOptions"></datalist>
+        <select id="searchAuthorFilter" aria-label="Filter results by author">
+          <option value="">Anyone</option>
+          <option value="me">Me</option>
+        </select>
+      </div>
+      <div id="searchFilterChips" class="search-filter-chips" aria-label="Active search filters"></div>
       <div id="searchResults" class="search-results"></div>
     </div>
     <div class="rail-head">
@@ -56,7 +89,10 @@
       <button id="saveSpaceButton" type="button">Save Space</button>
     </div>
     <div class="rail-section">
-      <div class="rail-section-title">Spaces</div>
+      <div class="rail-section-title rail-section-title-row">
+        <span>Spaces</span>
+        <label class="space-archived-toggle" for="spaceShowArchivedInput"><input id="spaceShowArchivedInput" type="checkbox" /> Archived</label>
+      </div>
       <div id="siteList" class="site-list"></div>
     </div>
     <div class="rail-section pages-section">
@@ -65,6 +101,7 @@
         <button id="newPageButton" type="button">New Page</button>
         <button id="newFolderButton" type="button">New Folder</button>
         <button id="importPageButton" type="button">Import</button>
+        <button id="confluenceImportButton" type="button" aria-label="Import from Confluence">Confluence</button>
         <input id="importPageInput" type="file" accept=".noma,.md,.markdown,text/plain,text/markdown" hidden />
       </div>
       <label class="rail-template-field" for="pageTemplateSelect">Page template
@@ -73,8 +110,19 @@
       <div id="pageList" class="page-list"></div>
     </div>
     <div class="rail-section">
+      <div class="rail-section-title rail-section-title-row">
+        <span>My tasks</span>
+        <button id="myTasksRefreshButton" type="button" aria-label="Refresh my tasks">Refresh</button>
+      </div>
+      <div id="myTasksList" class="navigation-list task-list"></div>
+    </div>
+    <div class="rail-section">
       <div class="rail-section-title">Favorites</div>
       <div id="favoriteList" class="navigation-list"></div>
+    </div>
+    <div class="rail-section">
+      <div class="rail-section-title">Popular in this space</div>
+      <div id="popularPagesList" class="navigation-list"></div>
     </div>
     <div class="rail-section">
       <div class="rail-section-title">Recent</div>
@@ -92,15 +140,24 @@
   <main class="editor-shell">
     <section class="page-header" aria-label="Current page">
       <div class="page-title-group">
+        <nav id="pageBreadcrumbs" class="page-breadcrumbs" aria-label="Page location"></nav>
+        <div id="pageViewsPanel" class="page-views-panel" aria-live="polite" hidden></div>
         <input id="pageTitleInput" class="page-title-input" type="text" aria-label="Page title" />
         <div class="page-meta">
           <span id="roleBadge" class="meta-badge">viewer</span>
+          <button id="restrictionBadge" class="meta-badge restriction-badge" type="button" hidden>Unrestricted</button>
           <span id="dirtyBadge" class="meta-badge">saved</span>
           <span id="updatedText" class="updated-text"></span>
+          <button id="pageViewsButton" class="page-views-button" type="button" aria-label="Page views" hidden>0 views</button>
+          <span id="visualLiveBadge" class="meta-badge visual-live-badge" hidden>local</span>
+          <span id="visualPresence" class="visual-presence" aria-label="People on this page" hidden></span>
+          <span id="pageLabels" class="page-labels" aria-label="Page labels"></span>
+          <button id="addLabelButton" class="label-add" type="button" aria-label="Add label">+ Label</button>
         </div>
       </div>
       <div class="page-actions">
         <div class="view-switch" role="group" aria-label="View mode">
+          <button id="visualViewButton" type="button" data-view-mode="visual">Visual</button>
           <button id="sourceViewButton" type="button" data-view-mode="source">Source</button>
           <button id="splitViewButton" type="button" data-view-mode="split">Split</button>
           <button id="previewViewButton" type="button" data-view-mode="preview">Preview</button>
@@ -110,15 +167,48 @@
           <button id="savePageButton" type="button">Save</button>
           <button id="reloadPageButton" type="button">Reload</button>
           <button id="favoritePageButton" type="button" aria-pressed="false">Favorite</button>
-          <button id="copyPageLinkButton" type="button" aria-label="Copy page link">Page</button>
-          <button id="copyArtifactLinkButton" type="button" aria-label="Copy rendered artifact link">Artifact</button>
-          <button id="copySiteLinkButton" type="button" aria-label="Copy space link">Space</button>
-          <button id="openPublishedSiteButton" type="button" aria-label="Open published space">Published</button>
+          <button id="watchPageButton" type="button" aria-pressed="false">Watch</button>
         </div>
+        <details id="pageMoreMenu" class="page-more-menu">
+          <summary aria-label="Share and export this page">Share &amp; export</summary>
+          <div class="page-more-items">
+          <button id="copyPageLinkButton" type="button" aria-label="Copy page link">Copy page link</button>
+          <button id="copyArtifactLinkButton" type="button" aria-label="Copy rendered artifact link">Copy artifact link</button>
+          <button id="copySiteLinkButton" type="button" aria-label="Copy space link">Copy space link</button>
+          <button id="openPublishedSiteButton" type="button" aria-label="Open published space">Open published space</button>
+          <button id="templateSaveButton" type="button" aria-label="Save page as template">Save as template</button>
+          <select id="exportFormatSelect" class="export-format-select" aria-label="Export">
+            <option value="">Export…</option>
+            <optgroup label="This page">
+              <option value="page:pdf">PDF</option>
+              <option value="page:docx">Word (.docx)</option>
+              <option value="page:markdown">Markdown</option>
+              <option value="page:html">HTML</option>
+              <option value="page:noma">Noma source</option>
+            </optgroup>
+            <optgroup label="This space">
+              <option value="site:site-zip" data-export-scope="site">HTML site (.zip)</option>
+              <option value="site:noma-zip" data-export-scope="site">Noma sources (.zip)</option>
+            </optgroup>
+          </select>
+          </div>
+        </details>
+        <details id="aiMenu" class="ai-menu">
+          <summary id="aiMenuButton" aria-label="AI actions for this page">AI</summary>
+          <div id="aiMenuItems" class="ai-menu-items" role="menu">
+            <button id="aiSummarizeButton" type="button" role="menuitem">Summarize</button>
+            <button id="aiDraftButton" type="button" role="menuitem">Draft changes…</button>
+            <button id="aiRefreshButton" type="button" role="menuitem">Refresh from sources…</button>
+            <div id="aiMenuStatus" class="ai-menu-status"></div>
+          </div>
+        </details>
       </div>
     </section>
 
     <section id="documentGrid" class="document-grid" aria-label="Document editor">
+      <div id="visualPane" class="visual-pane">
+        <div id="visualEditor" class="visual-editor"></div>
+      </div>
       <div class="editor-pane">
         <div class="pane-label">Noma Source</div>
         <textarea id="sourceInput" class="source-input" spellcheck="false" aria-label="Noma source"></textarea>
@@ -140,7 +230,10 @@
       <label class="stack-field" for="askNomaInput">Question across permitted knowledge
         <textarea id="askNomaInput" class="compact-textarea" placeholder="What is our current deployment policy?"></textarea>
       </label>
-      <button id="askNomaButton" type="button">Ask with citations</button>
+      <div class="ai-ask-row">
+        <button id="askNomaButton" type="button">Ask with citations</button>
+        <label class="ai-toggle" for="aiGenerateToggle"><input id="aiGenerateToggle" type="checkbox" /> Generate answer</label>
+      </div>
       <div id="askNomaStatus" class="panel-status"></div>
       <div id="askNomaResult" class="knowledge-answer"></div>
       <div class="knowledge-columns">
@@ -155,6 +248,56 @@
       </div>
       <h3>Scoped agents</h3>
       <div id="agentDirectoryList" class="collaboration-list"></div>
+    </section>
+
+    <section class="inspector-section space-settings">
+      <div class="inspector-heading-row">
+        <h2>Space settings</h2>
+        <span id="spaceArchivedBadge" class="meta-badge" data-state="warning" hidden>archived</span>
+      </div>
+      <div class="work-create-grid">
+        <label class="stack-field" for="spaceKeyInput">Key
+          <input id="spaceKeyInput" type="text" maxlength="10" autocomplete="off" placeholder="ENG" />
+        </label>
+        <label class="stack-field" for="spaceIconInput">Icon
+          <input id="spaceIconInput" type="text" maxlength="16" autocomplete="off" placeholder="📘" />
+        </label>
+      </div>
+      <label class="stack-field" for="spaceDescriptionInput">Description
+        <textarea id="spaceDescriptionInput" class="compact-textarea" maxlength="2000"></textarea>
+      </label>
+      <label class="stack-field" for="spaceHomeSelect">Home page
+        <select id="spaceHomeSelect"></select>
+      </label>
+      <div class="button-row">
+        <button id="spaceSettingsSaveButton" type="button">Save settings</button>
+        <button id="spaceArchiveButton" type="button">Archive space</button>
+      </div>
+      <div id="spaceSettingsStatus" class="panel-status"></div>
+      <div id="webhookSection" class="work-subsection" hidden>
+        <h3>Webhooks</h3>
+        <label class="stack-field" for="webhookUrlInput">Payload URL
+          <input id="webhookUrlInput" type="url" autocomplete="off" placeholder="https://hooks.example.com/noma" />
+        </label>
+        <fieldset id="webhookEvents" class="webhook-events">
+          <legend>Events</legend>
+          <label class="webhook-event" for="webhookEventPagecreated"><input id="webhookEventPagecreated" type="checkbox" value="page.created" checked /> page.created</label>
+          <label class="webhook-event" for="webhookEventPageupdated"><input id="webhookEventPageupdated" type="checkbox" value="page.updated" checked /> page.updated</label>
+          <label class="webhook-event" for="webhookEventPagedeleted"><input id="webhookEventPagedeleted" type="checkbox" value="page.deleted" /> page.deleted</label>
+          <label class="webhook-event" for="webhookEventCommentcreated"><input id="webhookEventCommentcreated" type="checkbox" value="comment.created" /> comment.created</label>
+          <label class="webhook-event" for="webhookEventLabelchanged"><input id="webhookEventLabelchanged" type="checkbox" value="label.changed" /> label.changed</label>
+          <label class="webhook-event" for="webhookEventTaskcompleted"><input id="webhookEventTaskcompleted" type="checkbox" value="task.completed" /> task.completed</label>
+        </fieldset>
+        <label class="stack-field" for="webhookFormatSelect">Format
+          <select id="webhookFormatSelect">
+            <option value="json">JSON (signed)</option>
+            <option value="slack">Slack incoming webhook</option>
+          </select>
+        </label>
+        <button id="webhookCreateButton" type="button">Add webhook</button>
+        <div id="webhookStatus" class="panel-status"></div>
+        <div id="webhookList" class="collaboration-list"></div>
+      </div>
     </section>
 
     <section class="inspector-section">
@@ -200,6 +343,19 @@
       <div id="accessList" class="collaboration-list"></div>
     </section>
 
+    <section class="inspector-section attachments-section" aria-label="Page attachments">
+      <div class="inspector-heading-row">
+        <h2>Attachments</h2>
+        <div class="button-row">
+          <button id="attachmentsRefreshButton" type="button" aria-label="Refresh attachments">Refresh</button>
+          <button id="attachmentsUploadButton" type="button">Upload</button>
+        </div>
+      </div>
+      <input id="attachmentsFileInput" type="file" multiple hidden />
+      <div id="attachmentsList" class="collaboration-list"></div>
+      <div id="attachmentsStatus" class="panel-status"></div>
+    </section>
+
     <section class="inspector-section">
       <div class="inspector-heading-row">
         <h2>Notifications</h2>
@@ -209,6 +365,22 @@
         </div>
       </div>
       <div id="notificationList" class="collaboration-list"></div>
+      <details id="notificationSettings" class="notification-settings">
+        <summary>Notification settings</summary>
+        <label class="stack-field" for="notificationEmailInput">Email address
+          <input id="notificationEmailInput" type="email" autocomplete="email" placeholder="you@example.com" />
+        </label>
+        <div id="notificationChannelList" class="notification-channels"></div>
+        <label class="stack-field" for="notificationDigestSelect">Email digest of unread notifications
+          <select id="notificationDigestSelect">
+            <option value="off">Off</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </label>
+        <button id="notificationSettingsSaveButton" type="button">Save settings</button>
+        <div id="notificationSettingsStatus" class="panel-status"></div>
+      </details>
     </section>
 
     <section class="inspector-section">
@@ -220,8 +392,12 @@
         <input id="commentBlockIdInput" type="text" autocomplete="off" />
       </label>
       <label class="stack-field" for="commentBodyInput">Page comment
-        <textarea id="commentBodyInput" class="compact-textarea" placeholder="Use @{user-id} to mention someone"></textarea>
+        <textarea id="commentBodyInput" class="compact-textarea" placeholder="Type @ to mention someone"></textarea>
       </label>
+      <div class="comment-quote-row">
+        <span id="commentQuoteStatus" class="panel-status comment-quote-status">Select text in the preview to quote it</span>
+        <button id="commentQuoteClearButton" type="button" aria-label="Stop quoting the selected text" hidden>Clear quote</button>
+      </div>
       <button id="addCommentButton" type="button">Add Comment</button>
       <div id="commentList" class="collaboration-list"></div>
       <div id="commentStatus" class="panel-status"></div>
@@ -284,6 +460,7 @@
       </div>
       <div id="historyList" class="history-list"></div>
       <div id="historyStatus" class="panel-status"></div>
+      <div id="revisionDiffOutput" class="revision-diff" aria-live="polite" hidden></div>
     </section>
 
     <section class="inspector-section">
@@ -396,6 +573,35 @@
       <div id="workStatus" class="panel-status"></div>
     </section>
 
+    <section id="aiAssistantSection" class="inspector-section ai-assistant">
+      <h2>AI assistant</h2>
+      <div id="aiAssistantStatus" class="panel-status"></div>
+      <div id="aiAssistantOutput" class="ai-assistant-output"></div>
+    </section>
+
+    <section id="aiMaintenanceSection" class="inspector-section ai-maintenance">
+      <details id="aiMaintenanceDetails">
+      <summary><h2>Space maintenance</h2></summary>
+      <p class="ai-maintenance-help">Sweeps this space for pages past their review date, conflicting claims, and broken links. AI drafts are proposals that still need another collaborator's approval.</p>
+      <label class="ai-toggle" for="aiMaintenanceEnabled"><input id="aiMaintenanceEnabled" type="checkbox" /> Scheduled sweeps</label>
+      <label class="ai-toggle" for="aiMaintenanceRefresh"><input id="aiMaintenanceRefresh" type="checkbox" /> Draft AI refresh proposals</label>
+      <div class="ai-maintenance-fields">
+        <label class="stack-field" for="aiMaintenanceInterval">Every (hours)
+          <input id="aiMaintenanceInterval" type="number" min="1" max="720" value="24" />
+        </label>
+        <label class="stack-field" for="aiMaintenanceLimit">Drafts per sweep
+          <input id="aiMaintenanceLimit" type="number" min="0" max="20" value="3" />
+        </label>
+      </div>
+      <div class="button-row">
+        <button id="aiMaintenanceSaveButton" type="button">Save settings</button>
+        <button id="aiMaintenanceRunButton" type="button">Run sweep now</button>
+      </div>
+      <div id="aiMaintenanceStatus" class="panel-status"></div>
+      <div id="aiMaintenanceItems" class="collaboration-list"></div>
+      </details>
+    </section>
+
     <section class="inspector-section">
       <h2>Agent Review</h2>
       <textarea id="patchInput" class="patch-input" spellcheck="false" aria-label="Agent patch operations">[
@@ -433,6 +639,105 @@
     </section>
   </aside>
 </div>
+<dialog id="restrictionsDialog" class="restrictions-dialog" aria-labelledby="restrictionsTitle">
+  <div class="restrictions-body">
+    <h2 id="restrictionsTitle">Restrictions</h2>
+    <p id="restrictionsSummary" class="restrictions-summary"></p>
+    <p id="restrictionsInherited" class="restrictions-inherited" hidden></p>
+    <fieldset class="restrictions-group">
+      <legend>Who can view</legend>
+      <div id="restrictionsViewList" class="restrictions-chips"></div>
+    </fieldset>
+    <fieldset class="restrictions-group">
+      <legend>Who can edit</legend>
+      <div id="restrictionsEditList" class="restrictions-chips"></div>
+    </fieldset>
+    <div class="restrictions-add">
+      <select id="restrictionsKindSelect" aria-label="Restriction kind">
+        <option value="view">Can view</option>
+        <option value="edit">Can edit</option>
+      </select>
+      <input id="restrictionsPrincipalInput" type="text" list="restrictionsPrincipalOptions" autocomplete="off" placeholder="User or group" aria-label="User or group to add" />
+      <datalist id="restrictionsPrincipalOptions"></datalist>
+      <button id="restrictionsAddButton" type="button">Add</button>
+    </div>
+    <div id="restrictionsStatus" class="panel-status"></div>
+    <div class="restrictions-actions">
+      <button id="restrictionsClearButton" type="button">Remove all</button>
+      <span class="restrictions-spacer"></span>
+      <button id="restrictionsCancelButton" type="button">Cancel</button>
+      <button id="restrictionsSaveButton" type="button" class="primary-action">Save</button>
+    </div>
+  </div>
+</dialog>
+<dialog id="confluenceImportDialog" class="wiki-dialog" aria-labelledby="confluenceImportTitle">
+  <form id="confluenceImportForm" class="wiki-dialog-form">
+    <h2 id="confluenceImportTitle">Import from Confluence</h2>
+    <label class="wiki-dialog-field">Source
+      <select id="confluenceImportMode">
+        <option value="cloud">Confluence Cloud (API token)</option>
+        <option value="datacenter">Confluence Data Center (personal access token)</option>
+        <option value="export">XML space export (.zip or entities.xml)</option>
+        <option value="bundle">JSON page bundle</option>
+      </select>
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="cloud datacenter">Site URL
+      <input id="confluenceImportBaseUrl" type="url" placeholder="https://your-team.atlassian.net" autocomplete="url" />
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="cloud datacenter">Space key
+      <input id="confluenceImportSpaceKey" type="text" placeholder="ENG" autocomplete="off" />
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="cloud">Atlassian account email
+      <input id="confluenceImportEmail" type="email" autocomplete="username" />
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="cloud datacenter">Token
+      <input id="confluenceImportToken" type="password" autocomplete="off" />
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="export bundle">File
+      <input id="confluenceImportFile" type="file" />
+    </label>
+    <label class="wiki-dialog-check"><input id="confluenceImportOverwrite" type="checkbox" /> Replace pages edited in Noma since the last import</label>
+    <div id="confluenceImportStatus" class="panel-status" role="status"></div>
+    <div class="wiki-dialog-actions">
+      <button id="confluenceImportCancel" type="button">Close</button>
+      <button id="confluenceImportStart" type="submit">Start import</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="templateSaveDialog" class="wiki-dialog" aria-labelledby="templateSaveTitle">
+  <form id="templateSaveForm" class="wiki-dialog-form">
+    <h2 id="templateSaveTitle">Save page as template</h2>
+    <label class="wiki-dialog-field">Name
+      <input id="templateSaveName" type="text" maxlength="120" required />
+    </label>
+    <label class="wiki-dialog-field">Description
+      <input id="templateSaveDescription" type="text" maxlength="400" />
+    </label>
+    <label class="wiki-dialog-field">Available in
+      <select id="templateSaveScope">
+        <option value="site">This space</option>
+        <option value="workspace">Whole workspace (admins)</option>
+      </select>
+    </label>
+    <div id="templateSaveStatus" class="panel-status" role="status"></div>
+    <div class="wiki-dialog-actions">
+      <button id="templateSaveCancel" type="button">Cancel</button>
+      <button type="submit">Save template</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="templateVariablesDialog" class="wiki-dialog" aria-labelledby="templateVariablesTitle">
+  <form id="templateVariablesForm" class="wiki-dialog-form">
+    <h2 id="templateVariablesTitle">New page</h2>
+    <div id="templateVariablesFields"></div>
+    <div class="wiki-dialog-actions">
+      <button id="templateVariablesCancel" type="button">Cancel</button>
+      <button type="submit">Create page</button>
+    </div>
+  </form>
+</dialog>
 <script src="assets/cloud-app.js"></script>
 </body>
 </html>

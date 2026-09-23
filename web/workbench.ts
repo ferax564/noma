@@ -936,8 +936,9 @@ async function initializeCloud(): Promise<void> {
   cloudLoading = true;
   renderCloudStatus();
   try {
-    await fetchCloudJson<{ ok: boolean }>("/api/status");
+    const status = await fetchCloudJson<{ ok: boolean; user?: { id: string; name: string; tokenPreview?: string } }>("/api/status");
     cloudAvailable = true;
+    if (!cloudUser && status.user) cloudUser = { id: status.user.id, name: status.user.name, token: "", tokenPreview: status.user.tokenPreview };
     if (!cloudUser && !cloudShareToken) await createCloudUser({ silent: true });
     if (cloudDocumentId) {
       await loadCloudDocument(cloudDocumentId);
@@ -1146,6 +1147,10 @@ async function createCloudUser(options: { silent?: boolean } = {}): Promise<void
 
 async function copyCloudUserToken(): Promise<void> {
   if (!cloudUser) return;
+  if (!cloudUser.token) {
+    showTransientStatus("Signed in with a browser session; create an API token in Noma Cloud instead");
+    return;
+  }
   await copyText(cloudUser.token, "Copied cloud user token");
 }
 
@@ -1187,10 +1192,13 @@ function roleRank(role: CloudRole): number {
 async function fetchCloudJson<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("accept", "application/json");
-  if (cloudUser) headers.set("authorization", `Bearer ${cloudUser.token}`);
+  if (cloudUser?.token) headers.set("authorization", `Bearer ${cloudUser.token}`);
+  const csrf = /(?:^|;\s*)noma_csrf=([^;]+)/.exec(document.cookie)?.[1];
+  if (csrf && !cloudUser?.token && (init?.method ?? "GET").toUpperCase() !== "GET") headers.set("x-noma-csrf", decodeURIComponent(csrf));
   if (cloudShareToken) headers.set("x-noma-share-token", cloudShareToken);
   const response = await fetch(url, {
     ...init,
+    credentials: "same-origin",
     headers,
   });
   if (!response.ok) {
@@ -2118,7 +2126,7 @@ function proofPlaceholderDocument(payload: SharedProofPayload | null): string {
   </main></html>`;
 }
 
-function proofStatusMessage(proof: WorkbenchProof): string {
+function proofStatusMessage(proof: Omit<WorkbenchProof, "html">): string {
   if (proof.status === "fail") return "Patch simulation did not produce a writable post-document.";
   if (proof.status === "warn") return "Patch simulation produced a writable post-document with warnings to review.";
   return "Patch simulation produced a writable post-document with no validation errors.";
@@ -2414,11 +2422,11 @@ function commitPreviewEdit(element: HTMLElement): void {
 
   const kind = element.dataset.nomaEditable;
   const line = positiveInt(element.dataset.nomaLine);
-  const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
   if (!isPreviewEditKind(kind) || line === undefined) {
     showTransientStatus("Rendered edit cannot sync", "warning");
     return;
   }
+  const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
 
   const replacement = previewSourceReplacement(kind, line, endLine, nextText);
   if (replacement === null) {
@@ -2568,8 +2576,8 @@ function jumpToLine(line: number): void {
   const lines = sourceInput.value.split("\n");
   const clamped = Math.max(1, Math.min(line, lines.length));
   let start = 0;
-  for (let i = 0; i < clamped - 1; i++) start += lines[i].length + 1;
-  const end = start + lines[clamped - 1].length;
+  for (let i = 0; i < clamped - 1; i++) start += (lines[i] ?? "").length + 1;
+  const end = start + (lines[clamped - 1] ?? "").length;
   sourceInput.focus();
   sourceInput.setSelectionRange(start, end);
 }

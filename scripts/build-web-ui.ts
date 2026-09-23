@@ -10,6 +10,7 @@ const builds = [
   {
     entryPoint: "web/cloud-app.ts",
     outfile: resolve("site/assets/cloud-app.js"),
+    minify: true,
   },
   {
     entryPoint: "web/enterprise-collab.ts",
@@ -28,7 +29,7 @@ for (const item of builds) {
     platform: "browser",
     target: "es2022",
     sourcemap: false,
-    minify: false,
+    minify: "minify" in item && item.minify,
     loader: {
       ".css": "text",
       ".noma": "text",

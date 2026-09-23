@@ -41,16 +41,28 @@ src/                       TypeScript core — parser, AST, renderers, validator
   docx-*.ts                Word review-loop sync (control data, comments, tracked changes)
   ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
   verify.ts                Conformance fixture runner (`noma verify`)
-  cloud-server.ts          Noma Cloud HTTP server (renders with escape hatches OFF)
+  cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
+  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render
   cloud-db.ts              SQLite persistence for Noma Cloud
+  cloud-blobs.ts           Content-addressed attachment blob store (local disk; S3-ready interface)
+  cloud-llm.ts             LLM provider layer for Cloud AI (Claude Messages API over fetch, fake provider, pricing)
+  cloud-git-sync.ts        `noma cloud export-space|sync` — two-way space ↔ .noma directory sync
+  cloud-collab.ts          Live co-editing relay for the Cloud Visual editor (Yjs rooms, checkpoints back to .noma, presence)
+  editor-model.ts          Visual editor document model — .noma ↔ ProseMirror-style block tree (round-trips stable IDs)
+  editor-yjs.ts            Yjs binding for the editor model (shared by browser and collab relay)
+  macros.ts                Wiki macros (::include/excerpt/children/issue/issues/page-properties) — pure resolver contracts
+  confluence-storage.ts    Confluence storage format → .noma converter with loss report
+  confluence-import.ts     Confluence space import (live API, XML export, JSON bundle) into Cloud spaces
+  zip.ts                   Dependency-free bounded ZIP reader/writer (imports and space exports)
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
-  enterprise.ts            Enterprise public barrel (Docs / Visuals / Work kernel)
+  cloud.ts                 Noma Cloud public barrel (`@ferax564/noma-cli/cloud` subpath; loads better-sqlite3)
+  enterprise.ts            Enterprise public barrel (`@ferax564/noma-cli/enterprise` subpath; Docs / Visuals / Work kernel)
   enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM host, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops, Yjs, Atlassian, AWS, security review, paid-pilot
   paperdom-*.ts            Vendored PaperDOM kernel from github.com/ferax564/paperDOM (pinned MIT extract)
   paperdom-pin.ts          PaperDOM source commit pin
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
-  index.ts                 Public library exports (npm package surface)
+  index.ts                 Lean core library exports (root npm entry; no cloud/enterprise/native deps)
 bin/noma.mjs               Node CLI shim
 apps/                      Enterprise HTTP, worker, and Docs/Visuals/Work shell entry points
 packages/
@@ -61,7 +73,8 @@ packages/
   lsp-server/              @ferax564/noma-lsp — diagnostics, symbols, definition, completion over stdio
   document-core/, document-ui/, platform/, work/, knowledge/, connectors/, contracts/, paperdom-core/, paperdom-react/, paperdom-io/  Enterprise extraction boundaries re-exporting the CLI kernel
 schemas/                   JSON Schemas — ast, patch-op, patch-transaction, capability, transcript, changeset, enterprise-resource (`noma schema <name>`)
-web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts, enterprise-collab.ts (esbuild via build:web-ui)
+web/                       Browser bundles — workbench.ts (editor + proof panel), cloud-app.ts, enterprise-collab.ts (esbuild via build:web-ui; typecheck:web)
+  cloud/                   Noma Cloud app modules — main (listeners + boot), state (shared `state` object), dom, api, navigation, editor, preview, drafts, history, collaboration, work, knowledge, page-meta, wiki, layout, context-menu, …
 themes/                    default.css + dark.css HTML themes
 examples/                  Demo .noma files — agent-plan, tech-doc, research-thesis, word-review-loop, interactive-projection, …
   conformance/             Golden-file conformance suite (valid/invalid/patch/patch-error fixtures) — `npm run verify:conformance` gates CI
@@ -90,6 +103,7 @@ test/                      node:test suites — parser, patch, validator, roundt
 action.yml                 Reusable GitHub Action — validate/render/proof .noma artifacts in CI (strict by default)
 infra/                     AWS/EU CloudFormation reference (eu-central-1, KMS, RDS, S3, Secrets Manager)
 Dockerfile, ezkeel.yaml    Noma Cloud container build + deployment config
+tsconfig.web.json          Browser typecheck config for web/ (DOM libs, bundler resolution) — `npm run typecheck:web`
 dist/                      Build output (gitignored). GH Pages deploys this.
 PLAN.md                    Full product vision (do NOT delete). §23 = direction. §24 = shipped tracker per release.
 CHANGELOG.md               Keep-a-Changelog format. Add to [Unreleased] as you ship.
@@ -142,10 +156,14 @@ The parser is a hand-written recursive descent over a line-based tokenizer. It i
 Block fence depth is tracked by counting leading colons. A `:::card` inside a `::grid` is valid; a stray `:::` at top level is a parse error.
 
 Attribute parsing supports:
-- `key="quoted value"`
+- `key="quoted value"` / `key='quoted value'` — always a string, never coerced (`version="1.10"` stays `"1.10"`)
 - `key=bareword`
-- `key=0.82` (numeric coerced)
+- `key=0.82`, `key=true` — only **unquoted** values are coerced to numbers/booleans
 - `flag` (boolean true)
+- `id` is never coerced (`id=2024` and `id="2024"` are both the string `"2024"`)
+- inside double quotes, `\"` is a literal `"` and `\\` a literal `\`; any other backslash is kept as written. Writers use `serializeAttr` (in `src/parser.ts`) so values round-trip.
+
+Code fences are three or more backticks or tildes with any info string (first word = `lang`); a fence closes only on the same character with at least the opening length (`matchCodeFenceOpen` / `isCodeFenceClose`, shared by parser, patch, and fmt).
 
 Inline content is **not** fully parsed at parser time — it is stored as a string and parsed lazily by renderers. This keeps the AST small and lets different renderers handle inline markup their own way (HTML escapes, LLM strips formatting).
 
@@ -181,16 +199,22 @@ Adding a *new node variant* (like `table`) is the heavier path: AST union update
 5. Add an example to `examples/` or extend an existing one.
 6. Update `docs/spec.noma` block-type tables.
 
-## What NOT to Do (Yet)
+## Product Direction (2026-09)
 
-Per `PLAN.md` § 17 — these are out of scope for the MVP. Don't be tempted:
-- visual editor / WYSIWYG
-- realtime collaboration
-- plugin marketplace
-- enterprise auth/permissions
-- cloud platform
-- complex CSS theming engine
-- a Markdown-to-Noma converter (one-way for now, Noma → Markdown only)
+Noma is **the wiki for the agentic-AI era** — a Confluence-class team wiki
+(spaces, page tree, labels, comments, history, permissions, search) whose
+source of truth is plain-text `.noma`, so AI agents can read scoped context
+and edit individual blocks by stable ID behind a proof → human approval →
+hash-checked apply loop. The format and the hosted wiki (Noma Cloud) are one
+product. WYSIWYG block editing, realtime co-editing, attachments, enterprise
+auth, and Confluence import are **in scope** for Cloud.
+
+Still out of scope:
+- a plugin marketplace
+- a complex CSS theming engine
+- feature-for-feature clones of non-wiki Atlassian products (whiteboards, databases)
+- anything that makes the `.noma` source lossy or non-reviewable — every editor,
+  importer, and agent path must round-trip through source with stable IDs
 
 ## Useful Commands
 

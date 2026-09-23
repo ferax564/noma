@@ -1,1 +1,1 @@
-export { EnterpriseWorkspace } from "@ferax564/noma-cli";
+export { EnterpriseWorkspace } from "@ferax564/noma-cli/enterprise";

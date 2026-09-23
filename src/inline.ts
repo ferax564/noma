@@ -29,7 +29,41 @@ export function isBlockReferenceWikilinkTarget(target: string): boolean {
   return BLOCK_REFERENCE_WIKILINK_RE.test(target);
 }
 
-export function inlineToHtml(src: string): string {
+const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:", "tel:", "att:"]);
+
+/** `att:<id>` / `att:<filename>` names a file attached to the current Noma Cloud page. */
+export const ATTACHMENT_URL_PREFIX = "att:";
+
+export interface InlineHtmlOptions {
+  /**
+   * Maps an `att:` reference (without the prefix) to a URL. Unresolved references
+   * render as `#`. Without a resolver, `att:` hrefs are left as-is.
+   */
+  resolveAttachment?: (ref: string) => string | undefined;
+}
+
+/** Resolves an `att:` href through `resolveAttachment`, or applies `safeHref` to anything else. */
+export function resolveHref(href: string, resolveAttachment?: (ref: string) => string | undefined): string {
+  if (resolveAttachment && href.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
+    return resolveAttachment(href.slice(ATTACHMENT_URL_PREFIX.length)) ?? "#";
+  }
+  return safeHref(href);
+}
+
+/**
+ * Neutralises script-capable URLs (`javascript:`, `vbscript:`, `data:`, …) before
+ * they reach an `href`. Relative paths, fragments, and http(s)/mailto/tel pass
+ * through unchanged, as do `att:` attachment references (resolved by Cloud renderers);
+ * anything else becomes `#`.
+ */
+export function safeHref(href: string): string {
+  const normalized = href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
+  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized)?.[1];
+  if (!scheme) return href;
+  return SAFE_URL_SCHEMES.has(`${scheme}:`) ? href : "#";
+}
+
+export function inlineToHtml(src: string, options: InlineHtmlOptions = {}): string {
   let text = escapeHtml(src);
 
   // Code spans go first AND get placeholdered so subsequent inline rules
@@ -49,7 +83,12 @@ export function inlineToHtml(src: string): string {
   text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
   text = text.replace(
     MARKDOWN_LINK_RE,
-    (_m, label, href) => `<a href="${escapeAttr(href)}">${unescapeMarkdownLinkLabel(label)}</a>`,
+    (_m, label, href: string) => {
+      const target = options.resolveAttachment && href.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)
+        ? resolveHref(unescapeHtmlEntities(href), options.resolveAttachment)
+        : safeHref(href);
+      return `<a href="${escapeAttr(target)}">${unescapeMarkdownLinkLabel(label)}</a>`;
+    },
   );
   text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
   // CommonMark: a single newline inside a paragraph is a soft line break
@@ -61,6 +100,10 @@ export function inlineToHtml(src: string): string {
   const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
   text = text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
   return text;
+}
+
+function unescapeHtmlEntities(value: string): string {
+  return value.replace(/&(amp|lt|gt|quot|#39);/g, (_m, name: string) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[name] ?? "");
 }
 
 export function inlineToPlain(src: string): string {
