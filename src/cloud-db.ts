@@ -61,6 +61,16 @@ export interface CloudDocumentRevision {
 
 export type CloudDocumentRevisionSummary = Omit<CloudDocumentRevision, "source">;
 
+/** Persisted state of a visual-editor collaboration room (see `src/cloud-collab.ts`). */
+export interface CloudCollabRoomState {
+  documentId: string;
+  state?: Uint8Array;
+  baseSource?: string;
+  baseHash?: string;
+  updatedAt?: string;
+  updates: Uint8Array[];
+}
+
 export interface CloudSearchResult {
   documentId: string;
   siteId?: string;
@@ -1609,7 +1619,7 @@ export class NomaCloudDatabase {
       }
       this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
       if (type === "document") {
-        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "attachments", "page_restrictions", "import_sources"]) {
+        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "attachments", "page_restrictions", "import_sources", "collab_rooms", "collab_updates"]) {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
         this.db.prepare("DELETE FROM search_index WHERE document_id = ?").run(id);
@@ -2942,6 +2952,81 @@ export class NomaCloudDatabase {
       )
       .run();
   }
+  // --- visual-collab store methods -------------------------------------------------------------
+
+  /** Persisted live-editing state for a document, or undefined when no room was ever opened. */
+  readCollabRoom(documentId: string): CloudCollabRoomState | undefined {
+    const row = this.db
+      .prepare("SELECT state, base_source, base_hash, updated_at FROM collab_rooms WHERE document_id = ?")
+      .get(documentId) as { state: Buffer; base_source: string; base_hash: string; updated_at: string } | undefined;
+    const updates = (this.db
+      .prepare("SELECT update_blob FROM collab_updates WHERE document_id = ? ORDER BY seq")
+      .all(documentId) as Array<{ update_blob: Buffer }>).map((item) => new Uint8Array(item.update_blob));
+    if (!row && updates.length === 0) return undefined;
+    return {
+      documentId,
+      state: row ? new Uint8Array(row.state) : undefined,
+      baseSource: row?.base_source,
+      baseHash: row?.base_hash,
+      updatedAt: row?.updated_at,
+      updates,
+    };
+  }
+
+  /** Durably append one live update; returns its sequence number. Called before the update is acknowledged. */
+  appendCollabUpdate(documentId: string, update: Uint8Array, actorId: string, createdAt: string): number {
+    const append = this.db.transaction((): number => {
+      const next = this.db
+        .prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM collab_updates WHERE document_id = ?")
+        .get(documentId) as { seq: number };
+      this.db
+        .prepare("INSERT INTO collab_updates (document_id, seq, update_blob, actor_id, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(documentId, next.seq, Buffer.from(update), actorId, createdAt);
+      return next.seq;
+    });
+    return append();
+  }
+
+  /** Replace the room with a compacted state and drop the updates it subsumes. */
+  writeCollabSnapshot(documentId: string, state: Uint8Array, baseSource: string, baseHash: string, updatedAt: string): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO collab_rooms (document_id, state, base_source, base_hash, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(document_id) DO UPDATE SET
+             state = excluded.state,
+             base_source = excluded.base_source,
+             base_hash = excluded.base_hash,
+             updated_at = excluded.updated_at`,
+        )
+        .run(documentId, Buffer.from(state), baseSource, baseHash, updatedAt);
+      this.db.prepare("DELETE FROM collab_updates WHERE document_id = ?").run(documentId);
+    })();
+  }
+
+  /** Number of updates persisted since the last snapshot. */
+  collabPendingUpdateCount(documentId: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM collab_updates WHERE document_id = ?").get(documentId) as { n: number };
+    return row.n;
+  }
+
+  /** Author of the most recent human update still pending in a room (used to attribute crash-recovered edits). */
+  lastCollabActor(documentId: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT actor_id FROM collab_updates WHERE document_id = ? AND actor_id != 'system' AND actor_id NOT LIKE 'share:%' ORDER BY seq DESC LIMIT 1")
+      .get(documentId) as { actor_id: string } | undefined;
+    return row?.actor_id;
+  }
+
+  deleteCollabRoom(documentId: string): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM collab_rooms WHERE document_id = ?").run(documentId);
+      this.db.prepare("DELETE FROM collab_updates WHERE document_id = ?").run(documentId);
+    })();
+  }
+
+  // --- end visual-collab store methods ---------------------------------------------------------
 
   query(user: CloudUserRecord, query: CloudDbQuery): CloudDbQueryResult {
     switch (query.resource) {
@@ -3444,6 +3529,26 @@ export class NomaCloudDatabase {
       CREATE INDEX IF NOT EXISTS idx_import_jobs_site ON import_jobs(site_id, status, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_import_sources_document ON import_sources(document_id);
       -- end page templates & Confluence import
+      -- visual-collab: live Yjs rooms for the visual editor. collab_rooms holds the compacted
+      -- state plus the .noma source it was last reconciled with; collab_updates holds updates
+      -- persisted before they are acknowledged, until the next checkpoint compacts them.
+      CREATE TABLE IF NOT EXISTS collab_rooms (
+        document_id TEXT PRIMARY KEY,
+        state BLOB NOT NULL,
+        base_source TEXT NOT NULL,
+        base_hash TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS collab_updates (
+        document_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        update_blob BLOB NOT NULL,
+        actor_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (document_id, seq)
+      );
+      -- end visual-collab
 
       CREATE INDEX IF NOT EXISTS idx_permissions_user ON permissions(user_id, resource_type, resource_id);
       CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token_hash);

@@ -9,7 +9,7 @@ import { setCurrentPage } from "./editor.js";
 import { refreshKnowledgeWorkspace, renderSearchResults } from "./knowledge.js";
 import { renderChrome } from "./layout.js";
 import { confirmDiscardDirty, createStarterWorkspace, loadSite, loadStandaloneDocument, refreshNavigationItems, refreshSites, refreshTemplates, refreshTrash, renderNavigationList, renderTrashList } from "./navigation.js";
-import { readCloudId, shareToken, state } from "./state.js";
+import { readCloudId, shareToken, state, storedUserViewMode } from "./state.js";
 import type { CloudAuthResponse, CloudPersonalAccessTokenResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
 import { copyText, errorMessage, setBusy, setCloudStatus } from "./util.js";
 import { refreshWorkManagement, renderWorkManagement } from "./work.js";
@@ -58,6 +58,7 @@ async function openInitialWorkspace(): Promise<void> {
 function applySessionUser(statusUser: CloudStatusResponse["user"]): void {
   if (statusUser) {
     state.cloudUser = { id: statusUser.id, name: statusUser.name, tokenPreview: statusUser.tokenPreview };
+    state.viewMode = storedUserViewMode(state.cloudUser.id) ?? state.viewMode;
     cloudUserNameInput.value = statusUser.name;
     return;
   }
@@ -197,6 +198,7 @@ export async function loginCloudUser(): Promise<void> {
 
 function activateCloudUser(user: CloudUserSession, csrfToken: string | undefined): void {
   state.cloudUser = { id: user.id, name: user.name, tokenPreview: user.tokenPreview };
+  state.viewMode = storedUserViewMode(state.cloudUser.id) ?? state.viewMode;
   rememberCsrfToken(csrfToken);
   cloudUserNameInput.value = user.name;
 }

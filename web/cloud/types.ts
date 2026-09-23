@@ -6,7 +6,7 @@ export type CloudRole = "viewer" | "editor" | "owner";
 
 export type PanelState = "ok" | "warning" | "error";
 
-export type ViewMode = "source" | "split" | "preview";
+export type ViewMode = "visual" | "source" | "split" | "preview";
 
 export type ThemeMode = "light" | "dark";
 

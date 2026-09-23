@@ -113,8 +113,16 @@ export function readCloudId(value: string | null): string | undefined {
 }
 
 function readViewMode(): ViewMode {
-  const stored = localStorage.getItem(viewModeStorageKey);
-  return stored === "source" || stored === "preview" ? stored : "split";
+  return storedViewMode(localStorage.getItem(viewModeStorageKey)) ?? "visual";
+}
+
+/** The Visual/Source/Split/Preview choice this user last made on this browser, if any. */
+export function storedUserViewMode(userId: string): ViewMode | undefined {
+  return storedViewMode(localStorage.getItem(`${viewModeStorageKey}:${userId}`));
+}
+
+function storedViewMode(value: string | null): ViewMode | undefined {
+  return value === "source" || value === "preview" || value === "split" || value === "visual" ? value : undefined;
 }
 
 function readPanelsOpen(): boolean {

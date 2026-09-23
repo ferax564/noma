@@ -18,12 +18,14 @@ import { renderTemplateToolsChrome } from "./templates.js";
 import { state } from "./state.js";
 import type { ViewMode } from "./types.js";
 import { clamp, formatDate, setCloudStatus } from "./util.js";
+import { renderVisualChrome } from "./visual.js";
 import { renderWorkManagement } from "./work.js";
 
 export function setViewMode(mode: ViewMode): void {
   state.viewMode = mode;
   if (mode === "preview") state.panelsOpen = false;
   localStorage.setItem(viewModeStorageKey, state.viewMode);
+  if (state.cloudUser) localStorage.setItem(`${viewModeStorageKey}:${state.cloudUser.id}`, state.viewMode);
   localStorage.setItem(panelsOpenStorageKey, state.panelsOpen ? "true" : "false");
   renderChrome();
   renderCurrent();
@@ -123,6 +125,7 @@ export function renderChrome(): void {
   renderPatchProposals();
   renderAccessManagement();
   renderKnowledgeWorkspace();
+  renderVisualChrome();
 }
 
 export function applyPreviewPaperWidth(previewDoc: Document): void {

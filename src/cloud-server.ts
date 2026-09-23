@@ -8,6 +8,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type BlobStore, LocalDiskBlobStore } from "./cloud-blobs.js";
+import { attachCloudCollab, type CloudCollabOptions } from "./cloud-collab.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
 import { createLlmProviderFromEnv, type LlmProvider } from "./cloud-llm.js";
 import { CloudKnowledgePlatform } from "./cloud-platform.js";
@@ -108,6 +109,8 @@ export interface NomaCloudServerOptions {
   /** Maximum Confluence import upload size in bytes (default 50 MB). */
   importMaxBytes?: number;
   now?: () => Date;
+  /** Live co-editing relay tuning (checkpoint coalescing, permission re-check cadence). */
+  collab?: CloudCollabOptions;
   /** Generative AI settings; environment variables fill anything left unset. */
   ai?: NomaCloudAiOptions;
 }
@@ -141,6 +144,12 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
       sendJson(res, status, { error: message, ...(error instanceof HttpError ? error.details : {}) });
     });
   });
+  const collab = attachCloudCollab(server, config, options.collab);
+  const closeServer = server.close.bind(server);
+  server.close = ((callback?: (error?: Error) => void) => {
+    void collab.shutdown();
+    return closeServer(callback);
+  }) as Server["close"];
   server.on("close", () => {
     stopMaintenance();
     platform.close();

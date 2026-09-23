@@ -4,7 +4,7 @@ import { installCloudAi } from "./ai.js";
 import { addComment, addGroupMember, createGroup, inviteCollaborator, inviteGroup, readAllNotifications, refreshAccessManagement, refreshActivity, refreshApprovals, refreshComments, refreshGroups, refreshNotifications, requestApproval } from "./collaboration.js";
 import { panelsOpenStorageKey, themeStorageKey } from "./constants.js";
 import { closeContextMenu, showSourceContextMenu } from "./context-menu.js";
-import { addCommentButton, addGroupMemberButton, addIssueCommentButton, addIssueLinkButton, addLabelButton, applyPatchButton, askNomaButton, askNomaInput, cloudUserNameInput, completeSprintButton, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, createIssueButton, createProjectButton, createSprintButton, discardDraftButton, favoritePageButton, globalSearchInput, importPageButton, importPageInput, inviteGroupButton, inviteUserButton, issueFilterSelect, issueSearchInput, loginUserButton, logoutUserButton, manageGroupSelect, mergeDraftButton, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTitleInput, previewFrame, previewViewButton, proposePatchButton, readAllNotificationsButton, recoverDraftButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshHistoryButton, refreshKnowledgeButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, refreshWorkButton, reloadPageButton, requestApprovalButton, savePageButton, saveSpaceButton, searchButton, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, startSprintButton, themeToggleButton, togglePanelsButton, watchPageButton, workProjectSelect } from "./dom.js";
+import { addCommentButton, addGroupMemberButton, addIssueCommentButton, addIssueLinkButton, addLabelButton, applyPatchButton, askNomaButton, askNomaInput, cloudUserNameInput, completeSprintButton, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, createIssueButton, createProjectButton, createSprintButton, discardDraftButton, favoritePageButton, globalSearchInput, importPageButton, importPageInput, inviteGroupButton, inviteUserButton, issueFilterSelect, issueSearchInput, loginUserButton, logoutUserButton, manageGroupSelect, mergeDraftButton, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTitleInput, previewFrame, previewViewButton, proposePatchButton, readAllNotificationsButton, recoverDraftButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshHistoryButton, refreshKnowledgeButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, refreshWorkButton, reloadPageButton, requestApprovalButton, savePageButton, saveSpaceButton, searchButton, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, startSprintButton, visualViewButton, themeToggleButton, togglePanelsButton, watchPageButton, workProjectSelect } from "./dom.js";
 import { discardCurrentLocalDraft, mergeLocalDraft, persistLocalDraft, recoverLocalDraft } from "./drafts.js";
 import { markDirty, reloadCurrentPage, renderCurrent, saveCurrentPage, scheduleRender, syncTitleFromSource } from "./editor.js";
 import { refreshHistory } from "./history.js";
@@ -20,6 +20,7 @@ import { createApiToken, createCloudUser, initializeCloud, loginCloudUser, logou
 import { installTemplateTools } from "./templates.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
+import { visualSourceTyped } from "./visual.js";
 import { addWorkIssueComment, addWorkIssueLink, createWorkIssue, createWorkProject, createWorkSprint, loadWorkProject, refreshWorkManagement, renderWorkBoard, updateWorkSprint } from "./work.js";
 
 applyThemeMode();
@@ -220,10 +221,10 @@ function bindEvents(): void {
     setCloudStatus("Offline — your draft remains editable and cached locally", "warning");
   });
 
-  for (const button of [sourceViewButton, splitViewButton, previewViewButton]) {
+  for (const button of [visualViewButton, sourceViewButton, splitViewButton, previewViewButton]) {
     button.addEventListener("click", () => {
       const mode = button.dataset.viewMode;
-      setViewMode(mode === "source" || mode === "preview" ? mode : "split");
+      setViewMode(mode === "source" || mode === "preview" || mode === "visual" ? mode : "split");
     });
   }
 
@@ -234,6 +235,7 @@ function bindEvents(): void {
   });
 
   sourceInput.addEventListener("input", () => {
+    visualSourceTyped();
     markDirty();
     persistLocalDraft();
     syncTitleFromSource();

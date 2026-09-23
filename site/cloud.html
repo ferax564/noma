@@ -100,12 +100,15 @@
           <button id="restrictionBadge" class="meta-badge restriction-badge" type="button" hidden>Unrestricted</button>
           <span id="dirtyBadge" class="meta-badge">saved</span>
           <span id="updatedText" class="updated-text"></span>
+          <span id="visualLiveBadge" class="meta-badge visual-live-badge" hidden>local</span>
+          <span id="visualPresence" class="visual-presence" aria-label="People on this page" hidden></span>
           <span id="pageLabels" class="page-labels" aria-label="Page labels"></span>
           <button id="addLabelButton" class="label-add" type="button" aria-label="Add label">+ Label</button>
         </div>
       </div>
       <div class="page-actions">
         <div class="view-switch" role="group" aria-label="View mode">
+          <button id="visualViewButton" type="button" data-view-mode="visual">Visual</button>
           <button id="sourceViewButton" type="button" data-view-mode="source">Source</button>
           <button id="splitViewButton" type="button" data-view-mode="split">Split</button>
           <button id="previewViewButton" type="button" data-view-mode="preview">Preview</button>
@@ -149,6 +152,9 @@
     </section>
 
     <section id="documentGrid" class="document-grid" aria-label="Document editor">
+      <div id="visualPane" class="visual-pane">
+        <div id="visualEditor" class="visual-editor"></div>
+      </div>
       <div class="editor-pane">
         <div class="pane-label">Noma Source</div>
         <textarea id="sourceInput" class="source-input" spellcheck="false" aria-label="Noma source"></textarea>

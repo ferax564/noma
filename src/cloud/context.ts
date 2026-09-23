@@ -51,6 +51,8 @@ export interface CloudServerConfig {
   /** Live attachment bytes allowed per space (or per user for pages outside any space). */
   attachmentQuotaBytes: number;
   ai: CloudAiConfig;
+  /** Called after every successful document write (live-editing rooms merge external changes here). */
+  onDocumentWritten?: (record: CloudDocumentRecord) => void;
 }
 
 /** Generative AI settings. Without a provider every AI feature degrades to extractive behaviour. */
@@ -342,7 +344,10 @@ export async function readUser(config: CloudServerConfig, id: string): Promise<C
 }
 
 export async function writeDocument(config: CloudServerConfig, record: CloudDocumentRecord, expectedHash?: string): Promise<void> {
-  if (config.store.writeDocument(record, expectedHash)) return;
+  if (config.store.writeDocument(record, expectedHash)) {
+    config.onDocumentWritten?.(record);
+    return;
+  }
   const current = config.store.readDocument(record.id);
   throw new HttpError(409, "Document changed while the update was being applied", {
     code: "document_conflict",

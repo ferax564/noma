@@ -5,6 +5,7 @@ import { HttpError } from "./http.js";
 import { routeAgentGateway, routeAgents, routeConnectors, routeRecipes } from "./routes-agents.js";
 import { routeAttachments } from "./routes-attachments.js";
 import { routeAi, routeDocumentAi, routeSiteAi } from "./routes-ai.js";
+import { routeCollab } from "./routes-collab.js";
 import { routeDatabase } from "./routes-database.js";
 import { routeDocuments } from "./routes-documents.js";
 import { routeEnterprise } from "./routes-enterprise.js";
@@ -83,6 +84,7 @@ export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, A
   ["ai", (req, res, url, parts, config, principal) => routeAi(req, res, url, parts, config, principal)],
   ["macros", (req, res, _url, parts, config, principal) => routeMacros(req, res, parts, config, principal)],
   ["import", (req, res, url, parts, config, principal) => routeImport(req, res, url, parts, config, principal)],
+  ["collab", (req, res, _url, parts, config, principal) => routeCollab(req, res, parts, config, principal)],
 ]);
 
 /** `/api/sites/:id/{ai,maintenance,sync-manifest}` live in their feature modules; everything else is `routeSites`. */

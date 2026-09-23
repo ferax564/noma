@@ -1918,4 +1918,377 @@ button.wiki-row {
 #templateVariablesFields {
   display: grid;
   gap: 0.75rem;
+
+/* visual-editor */
+.visual-pane {
+  display: none;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.cloud-shell[data-view-mode="visual"] .document-grid {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 10px clamp(10px, 4vw, 48px);
+}
+
+.cloud-shell[data-view-mode="visual"] .editor-pane,
+.cloud-shell[data-view-mode="visual"] .preview-pane,
+.cloud-shell[data-view-mode="visual"] .split-resize-handle {
+  display: none;
+}
+
+.cloud-shell[data-view-mode="visual"] .visual-pane {
+  display: block;
+  width: min(100%, 1040px);
+  justify-self: center;
+}
+
+.visual-editor-surface {
+  min-height: 60vh;
+  padding: 36px clamp(18px, 5vw, 56px) 80px;
+  color: var(--ink);
+  font-size: 0.98rem;
+  line-height: 1.6;
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.visual-editor-surface h1,
+.visual-editor-surface h2,
+.visual-editor-surface h3,
+.visual-editor-surface h4 {
+  position: relative;
+  line-height: 1.25;
+  margin: 1.2em 0 0.4em;
+}
+
+.visual-editor-surface h1 { font-size: 1.9rem; }
+.visual-editor-surface h2 { font-size: 1.4rem; }
+.visual-editor-surface h3 { font-size: 1.15rem; }
+
+.visual-editor-surface :is(h1, h2, h3, h4, h5, h6)[data-id]:hover::after {
+  content: "#" attr(data-id);
+  position: absolute;
+  right: 0;
+  top: 0.2em;
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+  font-weight: 500;
+}
+
+.visual-editor-surface p { margin: 0.5em 0; }
+
+.visual-editor-surface blockquote {
+  margin: 0.6em 0;
+  padding: 0.2em 0.9em;
+  border-left: 3px solid var(--rule-strong);
+  color: var(--muted);
+}
+
+.visual-editor-surface pre {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--code);
+  color: var(--code-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.visual-editor-surface pre.nv-code[data-lang]::before {
+  content: attr(data-lang);
+  float: right;
+  color: var(--faint);
+  font-size: 0.64rem;
+}
+
+.visual-editor-surface code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86em;
+}
+
+.visual-editor-surface :not(pre) > code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+
+.visual-editor-surface a { color: var(--accent); }
+
+.visual-editor-surface li.nv-task {
+  list-style: none;
+  margin-left: -1.3em;
+}
+
+.visual-editor-surface li.nv-task > input { margin-right: 0.45em; }
+
+.visual-editor-surface table.nv-table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  width: 100%;
+}
+
+.visual-editor-surface table.nv-table td,
+.visual-editor-surface table.nv-table th {
+  border: 1px solid var(--rule);
+  padding: 5px 8px;
+  vertical-align: top;
+  min-width: 3em;
+}
+
+.visual-editor-surface table.nv-table th { background: var(--panel-2); }
+.visual-editor-surface .selectedCell { background: var(--selected-bg); }
+
+.visual-editor-surface hr {
+  border: 0;
+  border-top: 1px solid var(--rule-strong);
+  margin: 1.2em 0;
+}
+
+.nv-directive,
+.nv-text-directive,
+.nv-raw {
+  margin: 0.8em 0;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.nv-directive-header,
+.nv-raw-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.7rem;
+  user-select: none;
+}
+
+.nv-directive-name {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.nv-directive-attrs {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.nv-directive-edit {
+  font-size: 0.66rem;
+  padding: 1px 6px;
+}
+
+.nv-directive-body { padding: 2px 14px; }
+
+.nv-kind-callout {
+  border-left: 4px solid var(--accent);
+  background: var(--selected-bg);
+}
+
+.nv-kind-callout[data-tone="warning"],
+.nv-kind-callout[data-tone="caution"],
+.nv-kind-callout[data-tone="danger"] {
+  border-left-color: var(--warn);
+  background: var(--warning-bg);
+}
+
+.nv-kind-semantic { border-left: 4px solid var(--accent-2); }
+.nv-kind-semantic[data-name="decision"] { border-left-color: var(--ok); }
+.nv-kind-semantic[data-name="risk"] { border-left-color: var(--error); }
+
+.nv-kind-chip {
+  display: inline-flex;
+  margin-right: 6px;
+  border-style: dashed;
+}
+
+.nv-kind-chip .nv-directive-header { border-bottom: 0; }
+
+.nv-kind-figure .nv-directive-body { font-style: italic; color: var(--muted); }
+
+.nv-text-directive pre { margin: 0; border-radius: 0 0 8px 8px; }
+
+.nv-text-directive-note {
+  padding: 2px 10px;
+  color: var(--faint);
+  font-size: 0.64rem;
+}
+
+.nv-raw-source {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  resize: vertical;
+}
+
+.nv-wikilink {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--selected-bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.nv-math-inline {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  color: var(--accent-2);
+}
+
+.visual-attr-editor {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel-2);
+}
+
+.visual-attr-editor[hidden] { display: none; }
+
+.visual-attr-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 160px) 1fr;
+  gap: 6px;
+}
+
+.visual-attr-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.visual-slash-menu,
+.visual-toolbar {
+  position: fixed;
+  z-index: 60;
+  border: 1px solid var(--context-border);
+  border-radius: 8px;
+  background: var(--context-bg);
+  box-shadow: var(--context-shadow);
+}
+
+.visual-slash-menu {
+  display: grid;
+  width: 260px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.visual-slash-item {
+  display: flex;
+  justify-content: space-between;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.visual-slash-item[aria-selected="true"],
+.visual-slash-item:hover {
+  background: var(--context-hover);
+  color: var(--context-hover-ink);
+}
+
+.visual-slash-hint {
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+}
+
+.visual-toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+}
+
+.visual-toolbar button {
+  min-width: 28px;
+  padding: 2px 7px;
+  border: 0;
+  background: transparent;
+}
+
+.visual-toolbar button[aria-pressed="true"] {
+  background: var(--primary-bg);
+  color: #ffffff;
+}
+
+.visual-toolbar button[hidden] { display: none; }
+
+.visual-presence {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 4px;
+}
+
+.visual-presence[hidden] { display: none; }
+
+.visual-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: -4px;
+  border: 2px solid var(--panel);
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 0.56rem;
+  font-weight: 700;
+}
+
+.visual-live-badge[hidden] { display: none; }
+
+.ProseMirror-yjs-cursor {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+
+.ProseMirror-yjs-cursor > div {
+  position: absolute;
+  top: -1.1em;
+  left: -1px;
+  padding: 0 3px;
+  border-radius: 3px 3px 3px 0;
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.ProseMirror-selectednode { outline: 2px solid var(--focus-ring); }
+.ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
+.ProseMirror-gapcursor::after { content: ""; display: block; position: absolute; top: -2px; width: 20px; border-top: 1px solid var(--ink); }
+.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+
+@media (max-width: 900px) {
+  .cloud-shell[data-view-mode="visual"] .document-grid {
+    grid-template-rows: minmax(620px, 80vh);
+  }
 }
