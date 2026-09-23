@@ -2,7 +2,7 @@
 import { addComment, addGroupMember, createGroup, inviteCollaborator, inviteGroup, readAllNotifications, refreshAccessManagement, refreshActivity, refreshApprovals, refreshComments, refreshGroups, refreshNotifications, requestApproval } from "./collaboration.js";
 import { panelsOpenStorageKey, themeStorageKey } from "./constants.js";
 import { closeContextMenu, showSourceContextMenu } from "./context-menu.js";
-import { addCommentButton, addGroupMemberButton, addIssueCommentButton, addIssueLinkButton, addLabelButton, applyPatchButton, askNomaButton, askNomaInput, cloudUserNameInput, completeSprintButton, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, createIssueButton, createProjectButton, createSprintButton, discardDraftButton, favoritePageButton, globalSearchInput, importPageButton, importPageInput, inviteGroupButton, inviteUserButton, issueFilterSelect, issueSearchInput, loginUserButton, logoutUserButton, manageGroupSelect, mergeDraftButton, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTitleInput, previewFrame, previewViewButton, proposePatchButton, readAllNotificationsButton, recoverDraftButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshHistoryButton, refreshKnowledgeButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, refreshWorkButton, reloadPageButton, requestApprovalButton, savePageButton, saveSpaceButton, searchButton, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, startSprintButton, themeToggleButton, togglePanelsButton, watchPageButton, workProjectSelect } from "./dom.js";
+import { addCommentButton, addGroupMemberButton, commentBodyInput, addIssueCommentButton, addIssueLinkButton, addLabelButton, applyPatchButton, askNomaButton, askNomaInput, cloudUserNameInput, completeSprintButton, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, createIssueButton, createProjectButton, createSprintButton, discardDraftButton, favoritePageButton, globalSearchInput, importPageButton, importPageInput, inviteGroupButton, inviteUserButton, issueFilterSelect, issueSearchInput, loginUserButton, logoutUserButton, manageGroupSelect, mergeDraftButton, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTitleInput, previewFrame, previewViewButton, proposePatchButton, readAllNotificationsButton, recoverDraftButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshHistoryButton, refreshKnowledgeButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, refreshWorkButton, reloadPageButton, requestApprovalButton, savePageButton, saveSpaceButton, searchButton, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, startSprintButton, themeToggleButton, togglePanelsButton, watchPageButton, workProjectSelect } from "./dom.js";
 import { discardCurrentLocalDraft, mergeLocalDraft, persistLocalDraft, recoverLocalDraft } from "./drafts.js";
 import { markDirty, reloadCurrentPage, renderCurrent, saveCurrentPage, scheduleRender, syncTitleFromSource } from "./editor.js";
 import { refreshHistory } from "./history.js";
@@ -11,6 +11,7 @@ import { applyThemeMode, handleSplitResizeKeydown, renderChrome, setViewMode, st
 import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage, createStarterWorkspace, importPage, openPublishedSite, refreshTrash, replaceFirstHeading, saveCurrentSite, toggleFavorite } from "./navigation.js";
 import { addLabel, toggleWatch } from "./page-meta.js";
 import { installPreviewEditing } from "./preview.js";
+import { attachMentionPicker, decoratePreviewMentions } from "./mentions.js";
 import { bindSearchFilters } from "./search-filters.js";
 import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
 import { state } from "./state.js";
@@ -252,4 +253,7 @@ function bindEvents(): void {
   splitResizeHandle.addEventListener("keydown", (event) => handleSplitResizeKeydown(event));
 
   previewFrame.addEventListener("load", () => installPreviewEditing());
+  previewFrame.addEventListener("load", () => decoratePreviewMentions(previewFrame.contentDocument));
+  attachMentionPicker(commentBodyInput);
+  attachMentionPicker(sourceInput);
 }

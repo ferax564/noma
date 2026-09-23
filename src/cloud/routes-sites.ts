@@ -28,6 +28,7 @@ import {
   type SourceInspection,
   updateDocument,
 } from "./records.js";
+import { afterDocumentSaved } from "./page-hooks.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import {
   routeDocumentApprovals,
@@ -171,7 +172,7 @@ async function routeSiteDocuments(
     const access = requireRecordAccess(config, site, principal, "editor");
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
-    const document = await createDocument(config, input, user, site.title);
+    const document = await createDocument(config, input, user, site.title, true);
     const now = config.now().toISOString();
     const documentIds = [...site.documentIds, document.id];
     const pageFolders = pageFolderMap(site.pageFolders, documentIds);
@@ -190,6 +191,7 @@ async function routeSiteDocuments(
       updatedBy: access.user?.id ?? site.updatedBy,
     };
     await writeSite(config, nextSite);
+    afterDocumentSaved(config, undefined, document, { user, name: user.name });
     sendJson(res, 201, documentResponse(document, requireRecordAccess(config, document, principal, "owner")));
     return;
   }

@@ -38,6 +38,7 @@ import {
   requireDocumentPrecondition,
   updateDocument,
 } from "./records.js";
+import { extractMentions, mentionNames } from "./mentions.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routePatchProposals } from "./routes-patch.js";
@@ -221,7 +222,7 @@ export async function routeDocumentComments(
   const access = inheritedAccess ?? requireRecordAccess(config, document, principal, "viewer");
   const user = requireUser(principal);
   if (!commentId && method === "GET") {
-    sendJson(res, 200, { comments: config.store.listComments(document.id) });
+    sendJson(res, 200, { comments: config.store.listComments(document.id).map((comment) => commentWithMentions(config, user, comment)) });
     return;
   }
   if (!commentId && method === "POST") {
@@ -254,7 +255,7 @@ export async function routeDocumentComments(
       blockId,
       line,
     });
-    sendJson(res, 201, config.store.readComment(comment.id));
+    sendJson(res, 201, commentWithMentions(config, user, config.store.readComment(comment.id)!));
     return;
   }
   if (commentId && action === "resolve" && method === "POST") {
@@ -385,9 +386,8 @@ function notifyCommentParticipants(
   actor: CloudUserRecord,
 ): void {
   const recipients = new Map<string, CloudNotification["type"]>();
-  for (const match of comment.body.matchAll(/@\{([A-Za-z0-9_-]{8,80})\}/g)) {
-    const userId = match[1];
-    if (userId && userId !== actor.id && config.store.documentAccessRole(userId, document.id)) recipients.set(userId, "mention");
+  for (const userId of extractMentions(comment.body)) {
+    if (userId !== actor.id && config.store.documentAccessRole(userId, document.id)) recipients.set(userId, "mention");
   }
   if (comment.parentId) {
     const parent = config.store.readComment(comment.parentId);
@@ -406,6 +406,10 @@ function notifyCommentParticipants(
       document.id,
     );
   }
+}
+
+function commentWithMentions(config: CloudServerConfig, user: CloudUserRecord, comment: CloudComment): CloudComment & { mentions: Array<{ id: string; name: string }> } {
+  return { ...comment, mentions: mentionNames(config, user, comment.body, comment.documentId) };
 }
 
 function approvalStatusInput(value: unknown): Exclude<CloudApprovalStatus, "pending"> {

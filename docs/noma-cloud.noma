@@ -267,6 +267,30 @@ GET /api/search?q=deploy+label:how-to+author:@ada+"blue green"
 GET /api/knowledge/search?q=rollback&space=ENG&type=decision&updatedAfter=2026-06-01
 ```
 
+## Mentions
+
+Type `@` in a comment box or in the source editor to open the mention picker.
+It searches only people who share at least one space with you, so the picker
+never exposes the whole user directory. Choosing someone inserts the stable
+source form `@{user-id}`; comments and the paper preview display it as
+`@Name`, while the source keeps the ID so renames never break a mention.
+
+- A mention in a **comment** notifies the mentioned user if they can open the page.
+- A mention in **page source** notifies on save, but only for mentions that were
+  not already in the previous version, and only for users who can open the page.
+  Mentions inside fenced code blocks are ignored.
+- Comment responses carry a `mentions` array of `{id, name}` for display.
+
+```text
+GET /api/users?q=<name prefix>&document=<optional page id>&limit=10
+GET /api/users?ids=<id,id,...>&document=<optional page id>
+```
+
+`q` returns `{id, name}` for co-members of your spaces (plus yourself);
+`document=` narrows the list to people who can open that page. `ids=` resolves
+display names for mentions and returns only people you share a space with, or
+people who can open the given page.
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

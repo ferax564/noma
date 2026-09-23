@@ -25,6 +25,7 @@ import {
 } from "./context.js";
 import { headerValue, HttpError, sha256Hex } from "./http.js";
 import { optionalString } from "./input.js";
+import { afterDocumentSaved } from "./page-hooks.js";
 
 export interface SourceInspection {
   hash: string;
@@ -57,6 +58,7 @@ export async function createDocument(
   input: Record<string, unknown>,
   user: CloudUserRecord,
   spaceTitle = "Noma Workspace",
+  deferSaveHooks = false,
 ): Promise<CloudDocumentRecord> {
   const id = uniqueId(config);
   const template = optionalString(input.templateId)
@@ -85,6 +87,7 @@ export async function createDocument(
   await writeDocument(config, record);
   config.store.setWatch(user.id, "document", record.id, now);
   recordActivity(config, user, "document.created", "document", record.id, { title: record.title });
+  if (!deferSaveHooks) afterDocumentSaved(config, undefined, record, { user, name: user.name });
   return record;
 }
 
@@ -108,6 +111,7 @@ export async function updateDocument(
   if (access.user) recordActivity(config, access.user, "document.updated", "document", record.id, { hash: record.hash });
   if (record.hash !== existing.hash || record.title !== existing.title) notifyPageWatchers(config, record, access);
   if (access.user) config.store.setWatch(access.user.id, "document", record.id, record.updatedAt);
+  afterDocumentSaved(config, existing, record, { ...(access.user ? { user: access.user } : {}), name: access.user?.name ?? "A share-link editor" });
   return record;
 }
 

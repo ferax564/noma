@@ -7,6 +7,7 @@ import { renderChrome } from "./layout.js";
 import { loadSite, loadStandaloneDocument, selectPage } from "./navigation.js";
 import { canEditPage, canManagePermissions, selectedInviteRole } from "./permissions.js";
 import { readCloudId, state } from "./state.js";
+import { mentionDisplay } from "./mentions.js";
 import type { CloudActivityEvent, CloudApproval, CloudCollaboratorGrant, CloudComment, CloudGroup, CloudGroupGrant, CloudNotification, CloudRole, CloudShareGrant, CloudShareResponse } from "./types.js";
 import { actionButton, emptyState, errorMessage, formatDate, setBusy, setCloudStatus, setPanelStatus, shortId } from "./util.js";
 
@@ -305,7 +306,7 @@ function renderComments(): void {
       .join(" · ");
     const row = collaborationRow(
       `${comment.parentId ? "↳ " : ""}${comment.createdByName}${comment.resolvedAt ? " · resolved" : ""}`,
-      comment.body,
+      mentionDisplay(comment.body, comment.mentions),
       `${target ? `${target} · ` : ""}${formatDate(comment.createdAt)}`,
     );
     const actions = collaborationActions();

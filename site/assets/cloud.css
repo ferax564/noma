@@ -1558,3 +1558,10 @@ button.wiki-row {
 .search-filter-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 4px 2px 9px;background:var(--accent-soft,#e6f0ee);color:var(--accent,#0f666b);font-size:.74rem;font-weight:650}
 .search-filter-chip button{border:0;background:transparent;color:inherit;padding:0 4px;min-height:0;cursor:pointer;font-size:.9rem;line-height:1}
 
+/* mentions */
+.mention-picker{position:fixed;z-index:60;display:grid;max-height:240px;overflow:auto;border:1px solid var(--line,#d9ded8);border-radius:8px;background:var(--panel,#fffefa);box-shadow:0 18px 40px -24px rgba(20,24,30,.5);padding:4px}
+.mention-picker[hidden]{display:none}
+.mention-option{justify-content:flex-start;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:6px;font-size:.84rem}
+.mention-option[aria-selected="true"],.mention-option:hover{background:var(--accent-soft,#e6f0ee);color:var(--accent,#0f666b)}
+.mention-picker-empty{padding:6px 10px;font-size:.8rem;color:var(--muted,#5c6670)}
+

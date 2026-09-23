@@ -45,7 +45,7 @@ export type ApiRouteHandler = (
 
 /** Resource name → handler. Adding an API resource is one entry here. */
 export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, ApiRouteHandler>([
-  ["users", (req, res, _url, parts, config, principal) => routeUsers(req, res, parts, config, principal)],
+  ["users", (req, res, url, parts, config, principal) => routeUsers(req, res, url, parts, config, principal)],
   ["documents", (req, res, _url, parts, config, principal) => routeDocuments(req, res, parts, config, principal)],
   ["sites", (req, res, url, parts, config, principal) => routeSites(req, res, url, parts, config, principal)],
   ["db", (req, res, _url, parts, config, principal) => routeDatabase(req, res, parts, config, principal)],

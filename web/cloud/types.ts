@@ -110,6 +110,7 @@ export interface CloudComment {
   createdByName: string;
   createdAt: string;
   resolvedAt?: string;
+  mentions?: Array<{ id: string; name: string }>;
 }
 
 export interface CloudNotification {

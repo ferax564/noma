@@ -1854,6 +1854,50 @@ export class NomaCloudDatabase {
     return new Set(rows.map((row) => row.id));
   }
 
+  // --- wiki experience: people directory ----------------------------------------------
+
+  /**
+   * Users who share at least one non-trashed space with `userId` (directly or through a group),
+   * plus the caller. Matches `q` against name prefix/substring or exact ID. This is the mention
+   * picker's directory, so it never lists the whole workspace.
+   */
+  coMemberUsers(userId: string, q: string, limit: number, documentId?: string): Array<{ id: string; name: string }> {
+    const pattern = likePattern(q.toLowerCase());
+    const rows = this.db
+      .prepare(
+        `WITH ${visibleResourcesCtes},
+         members AS (
+           SELECT ? AS user_id
+           UNION
+           SELECT p.user_id FROM permissions p
+           JOIN visible_sites vs ON p.resource_type = 'site' AND p.resource_id = vs.id
+           WHERE NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'site' AND t.resource_id = vs.id)
+           UNION
+           SELECT gm.user_id FROM group_permissions gp
+           JOIN visible_sites vs ON gp.resource_type = 'site' AND gp.resource_id = vs.id
+           JOIN group_members gm ON gm.group_id = gp.group_id
+           WHERE NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'site' AND t.resource_id = vs.id)
+         )
+         SELECT u.id, u.name FROM users u
+         JOIN members m ON m.user_id = u.id
+         WHERE (lower(u.name) LIKE ? ESCAPE '\\' OR u.id = ?)
+         ORDER BY CASE WHEN lower(u.name) LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END, lower(u.name), u.id
+         LIMIT ?`,
+      )
+      .all(userId, userId, pattern, q, `${likePattern(q.toLowerCase()).slice(1)}`, documentId ? 200 : limit) as Array<{ id: string; name: string }>;
+    const filtered = documentId ? rows.filter((row) => this.documentAccessRole(row.id, documentId)) : rows;
+    return filtered.slice(0, limit);
+  }
+
+  /** Display names for `ids` restricted to the caller's co-members (and, with `documentId`, anyone who can see that page). */
+  userNames(callerId: string, ids: string[], documentId?: string): Array<{ id: string; name: string }> {
+    if (ids.length === 0) return [];
+    const coMembers = new Set(this.coMemberUsers(callerId, "", 10_000).map((row) => row.id));
+    const marks = ids.map(() => "?").join(", ");
+    const rows = this.db.prepare(`SELECT id, name FROM users WHERE id IN (${marks}) ORDER BY lower(name), id`).all(...ids) as Array<{ id: string; name: string }>;
+    return rows.filter((row) => coMembers.has(row.id) || (documentId !== undefined && this.documentAccessRole(row.id, documentId) !== undefined));
+  }
+
   private filteredPages(user: CloudUserRecord, request: CloudSearchRequest): CloudSearchResult[] {
     const documentFilter = searchDocumentFilterSql(request.filters, "d.id");
     const blockTypes = (request.filters.types ?? []).filter((type) => type !== "page");
