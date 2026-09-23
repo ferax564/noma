@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-09-23
+
 ### Added
 
 - **Generative AI on the trust loop, stale-knowledge maintenance, and Git-native spaces (Noma Cloud):** a provider layer (`src/cloud-llm.ts`: Claude Messages API over `fetch` with timeouts, retries, refusal handling, and server-side fallbacks, plus a deterministic fake provider) gated by enterprise `modelAllowlist`/zero-retention policy and per-user and per-agent budgets charged to a per-user system agent. It adds generative Ask (`mode: "generative"`) that sends only retrieved blocks, validates every `[doc:block@hash]` citation, and abstains otherwise, and page actions (`/api/documents/<id>/ai/summarize|draft|refresh`, `/api/sites/<id>/ai/draft-page`) whose output is schema-validated, proofed, and stored only as proposals that another collaborator must approve. Per-space maintenance sweeps (`/api/sites/<id>/maintenance`, in-process scheduler, `apps/worker/cloud-maintenance.ts`) track stale, conflicting, and broken-link items and can draft rate-limited refresh proposals. `GET /api/sites/<id>/sync-manifest` and `noma cloud export-space|sync` mirror a space as `.noma` files with hash-based two-way sync and `.noma.conflict` files. Without a configured model, every AI feature falls back to extractive behaviour and reports `ai_unavailable`. The Cloud UI gains a Generate answer toggle with linked citations, a page-header AI menu, and space maintenance settings.

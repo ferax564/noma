@@ -2199,6 +2199,16 @@ A whole-repo review lives in `docs/review-2026-09.md`. It covers security, code 
 - **Security.** Adds `safeHref` for rendered URLs. Workspace admin comes from an explicit allowlist or the first registered user. SCIM bindings are immutable. Adding a page to a space requires page owner. Agent grants are capped by the owner's current access. Hosted proofs no longer inline files. Artifacts get a CSP `sandbox`.
 - **Wiki essentials.** Pages form a tree per space, with breadcrumbs, a move API that rejects cycles, and create-as-child. Pages carry labels. Page and space watchers get `page_updated` notifications. A revision diff API has a block-level summary. Owners can purge the trash, subject to legal holds. The Cloud UI covers all of these, and the database schema is now v8.
 
+### §24.44 — v0.18.0 the wiki for the agentic-AI era (2026-09-23)
+
+This release implements every finding and roadmap item in `docs/review-2026-09.md`.
+
+- **Wiki.** Adds attachments with a content-addressed blob store and inherited page restrictions enforced on every read path. Adds `::include`/`::excerpt`/`::children`/`::issue(s)`/`::page-properties` macros, plus Confluence import from the live API, XML export, or a JSON bundle. Adds workspace and space templates with blueprint variables, and PDF/DOCX/Markdown/zip export. Adds search filters and query syntax, @mentions, and comment edit, delete, reactions, and quote anchors. Adds space keys, home pages, and archiving; page analytics; drag-and-drop tree reordering; tracked inline tasks with My tasks; signed outbound webhooks; and email notification preferences and digests.
+- **Editing.** A Visual block editor (ProseMirror) maps 1:1 to Noma blocks, and every block round-trips byte-for-byte through `src/editor-model.ts`. Live co-editing runs over a persist-before-ack Yjs relay with presence. Checkpoints become normal revisions, and agent/API writes are merged into live rooms.
+- **AI.** Generative Ask validates its citations and abstains when evidence is weak. Summarize, draft, and refresh-from-sources produce proofed patch proposals that need independent approval. Stale-knowledge sweeps and `noma cloud export-space|sync` for Git-native spaces round this out.
+- **Security.** Adds HttpOnly cookie sessions with CSRF protection and scoped, expiring PATs. Admin fails closed in production. Per-request work is bounded, backup import is atomic, and legacy JSON is moved after import. Enterprise Yjs uses header/subprotocol auth with eviction and compaction.
+- **Core and packaging.** Fixes quoted-attribute coercion, forgiving frontmatter, Unicode slugs, and fence variants. Patch ops that would inject structure are now rejected, and a seeded property round-trip suite covers these paths. The root npm entry is lean, with the `/cloud` and `/enterprise` subpaths, and Puppeteer is an optional peer. PR CI renders examples and docs and typechecks `web/`.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can

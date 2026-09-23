@@ -15,7 +15,7 @@
  * to actually write the narrative.
  */
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
@@ -154,6 +154,14 @@ function bumpJsonVersion(path: string, version: string): void {
   writeFileSync(path, read(path).replace(/"version":\s*"\d+\.\d+\.\d+"/, `"version": "${version}"`));
 }
 
+/** Every npm workspace manifest; lockstep packages share the CLI version and pin it exactly. */
+function workspaceManifests(): string[] {
+  return readdirSync("packages")
+    .map((name) => `packages/${name}/package.json`)
+    .filter((path) => existsSync(path))
+    .sort();
+}
+
 function nextPatch(version: string): string {
   const [major, minor, patch] = version.split(".").map(Number);
   return `${major}.${minor}.${patch + 1}`;
@@ -170,14 +178,9 @@ function bump(version: string): number {
   const today = new Date().toISOString().slice(0, 10);
 
   bumpJsonVersion("package.json", version);
-  bumpJsonVersion("packages/mcp-server/package.json", version);
-  bumpJsonVersion("packages/lsp-server/package.json", version);
   bumpJsonVersion("packages/agent-sdk/package.json", agentSdkVersion);
-  for (const path of [
-    "packages/mcp-server/package.json",
-    "packages/agent-sdk/package.json",
-    "packages/lsp-server/package.json",
-  ]) {
+  for (const path of workspaceManifests()) {
+    if (path !== "packages/agent-sdk/package.json" && packageVersion(path) === previous) bumpJsonVersion(path, version);
     writeFileSync(
       path,
       read(path).replace(/"@ferax564\/noma-cli":\s*"\d+\.\d+\.\d+"/, `"@ferax564/noma-cli": "${version}"`),

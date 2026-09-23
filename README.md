@@ -373,7 +373,7 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.17.0 technical-preview release candidate, not yet tagged, published, or deployed. The v1 source/patch freeze remains unchanged; the candidate combines the unpublished v0.16 conformance/spec work with the experimental Noma Cloud agent-human platform, atomic conflict checks, launch-boundary permission hardening, verified portable backups, full release gates, and an operator launch runbook. See [`CHANGELOG.md`](CHANGELOG.md), `PLAN.md` §24.34–§24.39, and [`docs/runbooks/cloud-launch.md`](docs/runbooks/cloud-launch.md).
+**Status:** v0.18.0 — Noma Cloud becomes a Confluence-class wiki for the agentic-AI era. Spaces now have a page tree, labels, watching, version diffs, attachments, page restrictions, wiki macros and transclusion, Confluence import, templates, PDF/DOCX export, search filters, @mentions, inline tasks, webhooks, and email digests. A Visual block editor with live co-editing and presence round-trips through `.noma` source with stable block IDs. Generative Ask and AI page actions run inside the proof → independent approval → hash-checked apply loop, backed by stale-knowledge sweeps and Git-native space sync. Security is hardened with cookie sessions, CSRF protection, scoped personal access tokens, and a fail-closed production admin. The core parser and patch engine gain property-tested fixes, and the npm root entry is lean, with the `/cloud` and `/enterprise` subpaths. See [`CHANGELOG.md`](CHANGELOG.md), `PLAN.md` §24.43–§24.44, and [`docs/review-2026-09.md`](docs/review-2026-09.md).
 
 ## License
 
