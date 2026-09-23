@@ -163,7 +163,7 @@
     return element;
   }
 
-  // ../../../node_modules/js-yaml/dist/js-yaml.mjs
+  // node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
