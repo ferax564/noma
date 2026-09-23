@@ -9,6 +9,7 @@ import { renderDraftRecovery } from "./drafts.js";
 import { currentPageEndpoint, focusBlock, focusSourceLine, markDirty, renderCurrent, setCurrentPage, syncTitleFromSource } from "./editor.js";
 import { loadSite, loadStandaloneDocument, replacePage } from "./navigation.js";
 import { canEditPage } from "./permissions.js";
+import { applySearchFilterParams, hasSearchFilterSelection, renderSearchFilterChips, type SearchQueryEcho } from "./search-filters.js";
 import { state } from "./state.js";
 import type { AgentInboxItem, AskNomaResponse, CloudDocumentResponse, CloudPatchProposal, CloudSearchResult, KnowledgeCitation, KnowledgeHealthItem, PanelState, ScopedAgentSummary } from "./types.js";
 import { actionButton, copyText, emptyState, errorMessage, formatDate, setCloudStatus, setPanelStatus, shortId } from "./util.js";
@@ -16,8 +17,9 @@ import { selectWorkIssue } from "./work.js";
 
 export async function searchCloud(): Promise<void> {
   const q = globalSearchInput.value.trim();
-  if (!q || !state.cloudUser) {
+  if ((!q && !hasSearchFilterSelection()) || !state.cloudUser) {
     state.cloudSearchResults = [];
+    renderSearchFilterChips(undefined);
     renderSearchResults();
     return;
   }
@@ -25,8 +27,10 @@ export async function searchCloud(): Promise<void> {
   try {
     const params = new URLSearchParams({ q });
     if (searchScopeSelect.value === "site" && state.currentSite) params.set("site", state.currentSite.id);
-    const response = await fetchCloudJson<{ results: CloudSearchResult[] }>(`/api/knowledge/search?${params.toString()}`);
+    applySearchFilterParams(params);
+    const response = await fetchCloudJson<{ results: CloudSearchResult[]; filters?: SearchQueryEcho }>(`/api/knowledge/search?${params.toString()}`);
     state.cloudSearchResults = response.results;
+    renderSearchFilterChips(response.filters);
     setCloudStatus(`${state.cloudSearchResults.length} search result${state.cloudSearchResults.length === 1 ? "" : "s"}`, "ok");
   } catch (error) {
     state.cloudSearchResults = [];
@@ -39,7 +43,7 @@ export async function searchCloud(): Promise<void> {
 
 export function renderSearchResults(): void {
   searchResults.textContent = "";
-  if (!globalSearchInput.value.trim()) return;
+  if (!globalSearchInput.value.trim() && !hasSearchFilterSelection()) return;
   if (state.cloudSearchResults.length === 0) {
     searchResults.append(emptyState("No matches"));
     return;

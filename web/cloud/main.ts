@@ -11,6 +11,7 @@ import { applyThemeMode, handleSplitResizeKeydown, renderChrome, setViewMode, st
 import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage, createStarterWorkspace, importPage, openPublishedSite, refreshTrash, replaceFirstHeading, saveCurrentSite, toggleFavorite } from "./navigation.js";
 import { addLabel, toggleWatch } from "./page-meta.js";
 import { installPreviewEditing } from "./preview.js";
+import { bindSearchFilters } from "./search-filters.js";
 import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
@@ -92,6 +93,7 @@ function bindEvents(): void {
       renderSearchResults();
     }
   });
+  bindSearchFilters(() => void searchCloud());
   globalSearchInput.addEventListener("input", () => {
     searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
     if (!globalSearchInput.value.trim()) {

@@ -38,13 +38,41 @@
     <div class="rail-search" role="search">
       <label for="globalSearchInput">Search</label>
       <div class="rail-search-row">
-        <input id="globalSearchInput" type="search" placeholder="Find pages and blocks" autocomplete="off" />
+        <input id="globalSearchInput" type="search" placeholder="Search: label:how-to author:@ada &quot;exact phrase&quot;" autocomplete="off" />
         <button id="searchButton" type="button">Go</button>
       </div>
       <select id="searchScopeSelect" aria-label="Search scope">
         <option value="site">Current space</option>
         <option value="all">All spaces</option>
       </select>
+      <div id="searchFilterBar" class="search-filter-bar">
+        <select id="searchTypeFilter" aria-label="Filter results by type">
+          <option value="">Any type</option>
+          <option value="page">Pages</option>
+          <option value="section">Sections</option>
+          <option value="paragraph">Paragraphs</option>
+          <option value="claim">Claims</option>
+          <option value="decision">Decisions</option>
+          <option value="evidence">Evidence</option>
+          <option value="risk">Risks</option>
+          <option value="code">Code</option>
+          <option value="table">Tables</option>
+        </select>
+        <select id="searchUpdatedFilter" aria-label="Filter results by last update">
+          <option value="">Any time</option>
+          <option value="1">Past day</option>
+          <option value="7">Past week</option>
+          <option value="30">Past month</option>
+          <option value="365">Past year</option>
+        </select>
+        <input id="searchLabelFilter" type="text" list="searchLabelOptions" placeholder="Label" autocomplete="off" aria-label="Filter results by label" />
+        <datalist id="searchLabelOptions"></datalist>
+        <select id="searchAuthorFilter" aria-label="Filter results by author">
+          <option value="">Anyone</option>
+          <option value="me">Me</option>
+        </select>
+      </div>
+      <div id="searchFilterChips" class="search-filter-chips" aria-label="Active search filters"></div>
       <div id="searchResults" class="search-results"></div>
     </div>
     <div class="rail-head">

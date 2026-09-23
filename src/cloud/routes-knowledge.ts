@@ -54,6 +54,14 @@ import {
   updateDocument,
 } from "./records.js";
 import { cloudProofRecord, createCloudPatchProof, patchOpsInput } from "./routes-patch.js";
+import {
+  hasSearchFilterTerms,
+  mergeSearchParams,
+  type ParsedSearchQuery,
+  parseSearchQuery,
+  resolveSearchFilters,
+  searchQueryResponse,
+} from "./search-query.js";
 
 export async function routeAskNoma(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig, principal: Principal): Promise<void> {
   if ((req.method ?? "GET") !== "POST") throw new HttpError(405, "Method not allowed");
@@ -90,14 +98,9 @@ export async function routeKnowledge(
     const query = (url.searchParams.get("q") ?? "").trim().slice(0, 1_000);
     const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
     const agentId = optionalString(url.searchParams.get("agent"));
-    const results = config.platform.search({
-      principalId: agentId ?? user.id,
-      query,
-      documents: knowledgeDocuments(config, user, siteId, agentId),
-      now: config.now().toISOString(),
-      limit: boundedInteger(numberQuery(url.searchParams.get("limit")), 25, 1, 100, "limit"),
-    });
-    sendJson(res, 200, { query, mode: "hybrid", results });
+    const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 25, 1, 100, "limit");
+    const parsed = mergeSearchParams(parseSearchQuery(query), url.searchParams);
+    sendJson(res, 200, filteredKnowledgeSearch(config, user, parsed, query, limit, siteId, agentId));
     return;
   }
   if (action === "trust") {
@@ -364,6 +367,55 @@ export async function routeRealtime(req: IncomingMessage, res: ServerResponse, u
     return;
   }
   throw new HttpError(405, "Method not allowed");
+}
+
+/**
+ * Hybrid search narrowed by the query language. Document-level filters restrict the permitted
+ * corpus before retrieval; `type:` maps to block content types, phrases must appear verbatim, and
+ * `type:page` keeps the best block per page. A filter-only query lists matching pages instead.
+ */
+function filteredKnowledgeSearch(
+  config: CloudServerConfig,
+  user: CloudUserRecord,
+  parsed: ParsedSearchQuery,
+  query: string,
+  limit: number,
+  siteId: string | undefined,
+  agentId: string | undefined,
+): Record<string, unknown> {
+  let documents = knowledgeDocuments(config, user, siteId, agentId);
+  const filters = resolveSearchFilters(config, user, parsed);
+  if (hasSearchFilterTerms(parsed)) {
+    const allowed = config.store.filteredDocumentIds(user, filters);
+    documents = documents.filter((access) => allowed.has(access.document.id));
+  }
+  if (!parsed.text) {
+    const permitted = new Set(documents.map((access) => access.document.id));
+    const results = hasSearchFilterTerms(parsed)
+      ? config.store
+          .searchFiltered(user, { words: [], phrases: [], ...(siteId ? { siteId } : {}), filters, limit: Math.min(limit * 4, 400) })
+          .filter((result) => permitted.has(result.documentId))
+          .slice(0, limit)
+      : [];
+    return { query, mode: "filter", filters: searchQueryResponse(parsed), results };
+  }
+  const blockTypes = parsed.types.filter((type) => type !== "page");
+  const pageOnly = parsed.types.includes("page");
+  const phrases = parsed.phrases.map((phrase) => phrase.toLowerCase().replace(/\s+/g, " "));
+  const candidates = config.platform.search({
+    principalId: agentId ?? user.id,
+    query: parsed.text,
+    documents,
+    now: config.now().toISOString(),
+    limit: pageOnly || phrases.length ? Math.min(limit * 8, 800) : limit,
+    ...(blockTypes.length ? { contentTypes: blockTypes } : {}),
+  });
+  const seen = new Set<string>();
+  const results = candidates
+    .filter((result) => phrases.every((phrase) => result.exactSource.toLowerCase().replace(/\s+/g, " ").includes(phrase)))
+    .filter((result) => !pageOnly || (seen.has(result.documentId) ? false : (seen.add(result.documentId), true)))
+    .slice(0, limit);
+  return { query, mode: "hybrid", filters: searchQueryResponse(parsed), results };
 }
 
 export function knowledgeDocuments(config: CloudServerConfig, user: CloudUserRecord, siteId?: string, agentId?: string): KnowledgeDocumentAccess[] {

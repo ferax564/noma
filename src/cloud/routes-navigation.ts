@@ -17,6 +17,7 @@ import {
   resourceIdInput,
   resourceTypeInput,
 } from "./input.js";
+import { mergeSearchParams, parseSearchQuery, resolveSearchFilters, searchQueryResponse } from "./search-query.js";
 
 export function routeSearch(
   req: IncomingMessage,
@@ -27,10 +28,13 @@ export function routeSearch(
 ): void {
   if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
   const user = requireUser(principal);
-  const q = (url.searchParams.get("q") ?? "").trim().slice(0, 200);
+  const q = (url.searchParams.get("q") ?? "").trim().slice(0, 500);
   const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
   const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 25, 1, 100, "limit");
-  sendJson(res, 200, { q, results: config.store.search(user, q, siteId, limit) });
+  const parsed = mergeSearchParams(parseSearchQuery(q), url.searchParams);
+  const filters = resolveSearchFilters(config, user, parsed);
+  const results = config.store.searchFiltered(user, { words: parsed.words, phrases: parsed.phrases, ...(siteId ? { siteId } : {}), filters, limit });
+  sendJson(res, 200, { q, query: searchQueryResponse(parsed), results });
 }
 
 export async function routeNavigation(

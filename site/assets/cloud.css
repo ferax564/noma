@@ -1549,3 +1549,12 @@ button.wiki-row {
 .revision-diff-blocks {
   color: var(--muted);
 }
+
+/* search filters */
+.search-filter-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:6px}
+.search-filter-bar select,.search-filter-bar input{min-width:0;width:100%;font-size:.8rem}
+.search-filter-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.search-filter-chips:empty{display:none}
+.search-filter-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 4px 2px 9px;background:var(--accent-soft,#e6f0ee);color:var(--accent,#0f666b);font-size:.74rem;font-weight:650}
+.search-filter-chip button{border:0;background:transparent;color:inherit;padding:0 4px;min-height:0;cursor:pointer;font-size:.9rem;line-height:1}
+

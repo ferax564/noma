@@ -240,6 +240,33 @@ GET    /api/documents/<id>/revisions/<n>/diff?against=<m>
 DELETE /api/trash/<document|site>/<id>
 ```
 
+## Search filters and query syntax
+
+Both search endpoints accept a small query language inside `q`, and the same
+filters as query parameters. Filters narrow the permitted corpus before
+ranking, so results never widen beyond the caller's access.
+
+| Filter | In `q` | Parameter | Matches |
+|---|---|---|---|
+| Label | `label:how-to` | `label=how-to` | Pages carrying the label; repeat for AND. |
+| Author | `author:@ada`, `author:me` | `author=<name or user ID>` | Pages created or updated by the user, including any saved revision. |
+| Space | `space:ENG` | `space=<key, ID, slug, or title>` | Pages in that space. |
+| Updated | `after:2026-01-01`, `before:2026-07-01` | `updatedAfter=`, `updatedBefore=` | Last update on or after / strictly before the instant. |
+| Type | `type:page`, `type:claim`, `type:section` | `type=` | `page` keeps the best block per page; anything else matches a block type or directive name. |
+| Phrase | `"exact phrase"` | | The words must appear together, in order. |
+
+A query made only of filters (for example `label:how-to space:ENG`) lists the
+matching pages, most recently updated first. Unknown `key:value` tokens are
+searched as plain text. `/api/knowledge/search` returns `mode: "filter"` for
+filter-only queries and echoes the interpreted filters as `filters` so clients
+can render chips. The Cloud search panel has type, date, label, and author
+dropdowns plus removable chips for filters typed into the box.
+
+```text
+GET /api/search?q=deploy+label:how-to+author:@ada+"blue green"
+GET /api/knowledge/search?q=rollback&space=ENG&type=decision&updatedAfter=2026-06-01
+```
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

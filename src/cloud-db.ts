@@ -74,6 +74,26 @@ export interface CloudSearchResult {
   access: { role: CloudRole };
 }
 
+/** Document- and block-level search filters; every present filter must match. */
+export interface CloudSearchFilters {
+  labels?: string[];
+  authorIds?: string[];
+  siteIds?: string[];
+  updatedAfter?: string;
+  updatedBefore?: string;
+  /** `page` collapses results to one per document; other values match a node type or directive name. */
+  types?: string[];
+  includeArchived?: boolean;
+}
+
+export interface CloudSearchRequest {
+  words: string[];
+  phrases: string[];
+  siteId?: string;
+  filters: CloudSearchFilters;
+  limit: number;
+}
+
 export interface CloudNavigationItem {
   resourceType: CloudResourceType;
   resourceId: string;
@@ -961,55 +981,7 @@ export class NomaCloudDatabase {
   }
 
   search(user: CloudUserRecord, q: string, siteId?: string, limit = 25): CloudSearchResult[] {
-    const query = fullTextQuery(q);
-    if (!query) return [];
-    const params: unknown[] = [user.id, query];
-    const siteFilter = siteId
-      ? "AND EXISTS (SELECT 1 FROM site_documents filter_sd WHERE filter_sd.site_id = ? AND filter_sd.document_id = search_index.document_id)"
-      : "";
-    if (siteId) params.push(siteId);
-    params.push(limit);
-    const rows = this.db
-      .prepare(
-        `WITH ${visibleResourcesCtes}
-         SELECT
-           search_index.document_id,
-           (SELECT sd.site_id FROM site_documents sd WHERE sd.document_id = search_index.document_id ORDER BY sd.position LIMIT 1) AS site_id,
-           search_index.document_title,
-           search_index.block_id,
-           b.node_type,
-           b.directive_name,
-           b.title,
-           snippet(search_index, 4, '', '', ' … ', 18) AS excerpt,
-           b.line,
-           bm25(search_index, 2.5, 1.5, 1.0) AS rank,
-           visible_docs.rank AS access_rank
-         FROM search_index
-         JOIN blocks b ON b.row_key = search_index.row_key
-         JOIN visible_docs ON visible_docs.id = search_index.document_id
-         WHERE search_index MATCH ?
-           AND NOT EXISTS (
-             SELECT 1 FROM trashed_resources t
-             WHERE t.resource_type = 'document' AND t.resource_id = search_index.document_id
-           )
-           ${siteFilter}
-         ORDER BY rank, search_index.document_id, b.ordinal
-         LIMIT ?`,
-      )
-      .all(...params) as SearchResultRow[];
-    return rows.map((row) => ({
-      documentId: row.document_id,
-      ...(row.site_id ? { siteId: row.site_id } : {}),
-      documentTitle: row.document_title,
-      ...(row.block_id ? { blockId: row.block_id } : {}),
-      nodeType: row.node_type,
-      ...(row.directive_name ? { directiveName: row.directive_name } : {}),
-      ...(row.title ? { title: row.title } : {}),
-      excerpt: row.excerpt,
-      ...(row.line === null ? {} : { line: row.line }),
-      rank: row.rank,
-      access: { role: rankToRole(row.access_rank) },
-    }));
+    return this.searchFiltered(user, { words: [q], phrases: [], ...(siteId ? { siteId } : {}), filters: {}, limit });
   }
 
   recordRecent(userId: string, resourceType: CloudResourceType, resourceId: string, viewedAt: string): void {
@@ -1803,6 +1775,134 @@ export class NomaCloudDatabase {
       )
       .all(documentId) as PatchProposalRow[];
     return rows.map(cloudPatchProposal);
+  }
+
+  // --- wiki experience: search filters -------------------------------------------------
+
+  /** Full-text block search narrowed by filters; a filter-only request lists matching pages. */
+  searchFiltered(user: CloudUserRecord, request: CloudSearchRequest): CloudSearchResult[] {
+    const match = fullTextMatch(request.words, request.phrases);
+    const pageOnly = request.filters.types?.includes("page") ?? false;
+    const blockTypes = (request.filters.types ?? []).filter((type) => type !== "page");
+    const documentFilter = searchDocumentFilterSql(request.filters, "search_index.document_id");
+    if (!match) {
+      if (!hasSearchFilters(request.filters)) return [];
+      return this.filteredPages(user, request);
+    }
+    const params: unknown[] = [user.id, match, ...documentFilter.params];
+    const clauses = [...documentFilter.clauses];
+    if (request.siteId) {
+      clauses.push("EXISTS (SELECT 1 FROM site_documents filter_sd WHERE filter_sd.site_id = ? AND filter_sd.document_id = search_index.document_id)");
+      params.push(request.siteId);
+    }
+    if (blockTypes.length) {
+      const marks = blockTypes.map(() => "?").join(", ");
+      clauses.push(`(b.directive_name IN (${marks}) OR b.node_type IN (${marks}))`);
+      params.push(...blockTypes, ...blockTypes);
+    }
+    params.push(pageOnly ? Math.min(request.limit * 8, 800) : request.limit);
+    const rows = this.db
+      .prepare(
+        `WITH ${visibleResourcesCtes}
+         SELECT
+           search_index.document_id,
+           (SELECT sd.site_id FROM site_documents sd WHERE sd.document_id = search_index.document_id ORDER BY sd.position LIMIT 1) AS site_id,
+           search_index.document_title,
+           search_index.block_id,
+           b.node_type,
+           b.directive_name,
+           b.title,
+           snippet(search_index, 4, '', '', ' … ', 18) AS excerpt,
+           b.line,
+           bm25(search_index, 2.5, 1.5, 1.0) AS rank,
+           visible_docs.rank AS access_rank
+         FROM search_index
+         JOIN blocks b ON b.row_key = search_index.row_key
+         JOIN visible_docs ON visible_docs.id = search_index.document_id
+         WHERE search_index MATCH ?
+           AND NOT EXISTS (
+             SELECT 1 FROM trashed_resources t
+             WHERE t.resource_type = 'document' AND t.resource_id = search_index.document_id
+           )
+           ${clauses.map((clause) => `AND ${clause}`).join("\n           ")}
+         ORDER BY rank, search_index.document_id, b.ordinal
+         LIMIT ?`,
+      )
+      .all(...params) as SearchResultRow[];
+    const results = rows.map(searchResult);
+    if (!pageOnly) return results;
+    const seen = new Set<string>();
+    return results
+      .filter((result) => (seen.has(result.documentId) ? false : (seen.add(result.documentId), true)))
+      .map((result) => ({ ...result, nodeType: "page" }))
+      .slice(0, request.limit);
+  }
+
+  /** Visible, non-trashed document IDs matching the document-level filters (labels, authors, spaces, dates). */
+  filteredDocumentIds(user: CloudUserRecord, filters: CloudSearchFilters, limit = 10_000): Set<string> {
+    const documentFilter = searchDocumentFilterSql(filters, "d.id");
+    const rows = this.db
+      .prepare(
+        `WITH ${visibleResourcesCtes}
+         SELECT d.id FROM documents d
+         JOIN visible_docs ON visible_docs.id = d.id
+         WHERE NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'document' AND t.resource_id = d.id)
+           ${documentFilter.clauses.map((clause) => `AND ${clause}`).join(" ")}
+         LIMIT ?`,
+      )
+      .all(user.id, ...documentFilter.params, limit) as Array<{ id: string }>;
+    return new Set(rows.map((row) => row.id));
+  }
+
+  private filteredPages(user: CloudUserRecord, request: CloudSearchRequest): CloudSearchResult[] {
+    const documentFilter = searchDocumentFilterSql(request.filters, "d.id");
+    const blockTypes = (request.filters.types ?? []).filter((type) => type !== "page");
+    const typeMarks = blockTypes.map(() => "?").join(", ");
+    const blockSelect = blockTypes.length
+      ? `(SELECT row_key FROM blocks fb WHERE fb.document_id = d.id AND (fb.directive_name IN (${typeMarks}) OR fb.node_type IN (${typeMarks})) ORDER BY fb.ordinal LIMIT 1)`
+      : "(SELECT row_key FROM blocks fb WHERE fb.document_id = d.id AND fb.node_type = 'paragraph' ORDER BY fb.ordinal LIMIT 1)";
+    const blockParams = blockTypes.length ? [...blockTypes, ...blockTypes] : [];
+    const clauses = [...documentFilter.clauses];
+    const params: unknown[] = [user.id, ...blockParams, ...documentFilter.params];
+    if (request.siteId) {
+      clauses.push("EXISTS (SELECT 1 FROM site_documents filter_sd WHERE filter_sd.site_id = ? AND filter_sd.document_id = d.id)");
+      params.push(request.siteId);
+    }
+    if (blockTypes.length) {
+      clauses.push(`${blockSelect} IS NOT NULL`);
+      params.push(...blockParams);
+    }
+    params.push(request.limit);
+    const rows = this.db
+      .prepare(
+        `WITH ${visibleResourcesCtes},
+         matches AS (
+           SELECT d.id, d.title, d.updated_at, visible_docs.rank AS access_rank, ${blockSelect} AS row_key
+           FROM documents d
+           JOIN visible_docs ON visible_docs.id = d.id
+           WHERE NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'document' AND t.resource_id = d.id)
+             ${clauses.map((clause) => `AND ${clause}`).join(" ")}
+           ORDER BY d.updated_at DESC, d.id
+           LIMIT ?
+         )
+         SELECT
+           m.id AS document_id,
+           (SELECT sd.site_id FROM site_documents sd WHERE sd.document_id = m.id ORDER BY sd.position LIMIT 1) AS site_id,
+           m.title AS document_title,
+           b.block_id,
+           COALESCE(b.node_type, 'page') AS node_type,
+           b.directive_name,
+           b.title,
+           substr(COALESCE(b.text, ''), 1, 200) AS excerpt,
+           b.line,
+           0 AS rank,
+           m.access_rank
+         FROM matches m
+         LEFT JOIN blocks b ON b.row_key = m.row_key
+         ORDER BY m.updated_at DESC, m.id`,
+      )
+      .all(...params) as SearchResultRow[];
+    return rows.map((row) => (blockTypes.length ? searchResult(row) : { ...searchResult(row), nodeType: "page" }));
   }
 
   query(user: CloudUserRecord, query: CloudDbQuery): CloudDbQueryResult {
@@ -2929,4 +3029,71 @@ function rankToRole(rank: number): CloudRole {
 
 function likePattern(value: string): string {
   return `%${value.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
+}
+
+function searchResult(row: SearchResultRow): CloudSearchResult {
+  return {
+    documentId: row.document_id,
+    ...(row.site_id ? { siteId: row.site_id } : {}),
+    documentTitle: row.document_title,
+    ...(row.block_id ? { blockId: row.block_id } : {}),
+    nodeType: row.node_type,
+    ...(row.directive_name ? { directiveName: row.directive_name } : {}),
+    ...(row.title ? { title: row.title } : {}),
+    excerpt: row.excerpt,
+    ...(row.line === null ? {} : { line: row.line }),
+    rank: row.rank,
+    access: { role: rankToRole(row.access_rank) },
+  };
+}
+
+/** FTS5 MATCH expression: prefix-matched words AND exact phrases; empty when nothing searchable remains. */
+function fullTextMatch(words: string[], phrases: string[]): string {
+  const terms = [fullTextQuery(words.join(" "))];
+  for (const phrase of phrases) {
+    const parts = phrase
+      .normalize("NFKC")
+      .split(/[^\p{L}\p{N}_]+/u)
+      .filter(Boolean)
+      .slice(0, 16);
+    if (parts.length) terms.push(`"${parts.join(" ").replaceAll('"', '""')}"`);
+  }
+  return terms.filter(Boolean).join(" AND ");
+}
+
+function hasSearchFilters(filters: CloudSearchFilters): boolean {
+  return Boolean(
+    filters.labels?.length || filters.authorIds?.length || filters.siteIds?.length || filters.updatedAfter || filters.updatedBefore || filters.types?.length,
+  );
+}
+
+/** SQL clauses (joined with AND by the caller) restricting `documentColumn` to documents matching the filters. */
+function searchDocumentFilterSql(filters: CloudSearchFilters, documentColumn: string): { clauses: string[]; params: unknown[] } {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  for (const label of filters.labels ?? []) {
+    clauses.push(`EXISTS (SELECT 1 FROM document_labels fl WHERE fl.document_id = ${documentColumn} AND fl.label = ?)`);
+    params.push(label);
+  }
+  if (filters.authorIds?.length) {
+    const marks = filters.authorIds.map(() => "?").join(", ");
+    clauses.push(
+      `EXISTS (SELECT 1 FROM documents fa WHERE fa.id = ${documentColumn} AND (fa.created_by IN (${marks}) OR fa.updated_by IN (${marks})
+        OR EXISTS (SELECT 1 FROM document_revisions fr WHERE fr.document_id = fa.id AND fr.created_by IN (${marks}))))`,
+    );
+    params.push(...filters.authorIds, ...filters.authorIds, ...filters.authorIds);
+  }
+  if (filters.siteIds?.length) {
+    clauses.push(`EXISTS (SELECT 1 FROM site_documents fs WHERE fs.document_id = ${documentColumn} AND fs.site_id IN (${filters.siteIds.map(() => "?").join(", ")}))`);
+    params.push(...filters.siteIds);
+  }
+  if (filters.updatedAfter) {
+    clauses.push(`EXISTS (SELECT 1 FROM documents fu WHERE fu.id = ${documentColumn} AND fu.updated_at >= ?)`);
+    params.push(filters.updatedAfter);
+  }
+  if (filters.updatedBefore) {
+    clauses.push(`EXISTS (SELECT 1 FROM documents fu WHERE fu.id = ${documentColumn} AND fu.updated_at < ?)`);
+    params.push(filters.updatedBefore);
+  }
+  return { clauses, params };
 }
