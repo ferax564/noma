@@ -861,7 +861,7 @@ Verify the primary source, update the citation metadata, and leave unrelated blo
 
 export function replaceFirstHeading(source: string, title: string): string {
   if (/^#\s+.+$/m.test(source)) {
-    return source.replace(/^#\s+(.+?)(\s+\{[^}]*\})?\s*$/m, (_match, _oldTitle: string, attrs: string | undefined) => {
+    return source.replace(/^#[ \t]+(.+?)([ \t]+\{[^}\n]*\})?[ \t]*$/m, (_match, _oldTitle: string, attrs: string | undefined) => {
       return `# ${title}${attrs ?? ""}`;
     });
   }

@@ -19,6 +19,7 @@ import { previewDocument, previewError } from "./preview.js";
 import { state } from "./state.js";
 import type { CloudDocumentResponse } from "./types.js";
 import { emptyState, errorMessage, formatDate, iconButton, setBusy, setCloudStatus, setPanelStatus } from "./util.js";
+import { syncVisualEditor } from "./visual.js";
 import { renderWikiPanel } from "./wiki.js";
 
 export async function saveCurrentPage(): Promise<void> {
@@ -162,6 +163,7 @@ export function renderCurrent(): void {
   renderDiagnostics();
   renderOutline();
   renderWikiPanel();
+  syncVisualEditor();
   renderChrome();
 }
 

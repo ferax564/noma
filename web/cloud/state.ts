@@ -132,8 +132,9 @@ export function readCloudId(value: string | null): string | undefined {
 }
 
 function readViewMode(): ViewMode {
-  const stored = localStorage.getItem(viewModeStorageKey);
-  return stored === "source" || stored === "preview" ? stored : "split";
+  const user = readCloudUser();
+  const stored = (user ? localStorage.getItem(`${viewModeStorageKey}:${user.id}`) : null) ?? localStorage.getItem(viewModeStorageKey);
+  return stored === "source" || stored === "preview" || stored === "split" || stored === "visual" ? stored : "visual";
 }
 
 function readPanelsOpen(): boolean {

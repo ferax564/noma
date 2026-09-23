@@ -481,6 +481,7 @@ Use the view switch in the page header when the workspace feels too dense:
 
 | Mode | Use it for |
 |---|---|
+| Visual | Edit the page as formatted blocks, with live co-editing. The default for new users; each user's last choice is remembered. |
 | Source | Give the `.noma` editor the full writing canvas. |
 | Split | Keep source and rendered preview side by side. |
 | Preview | Hide the source pane and side panels so the paper/artifact becomes the main surface. |
@@ -501,6 +502,59 @@ Mouse editing is available in Preview mode:
 | Click **+ Text** on the selected-block toolbar | Insert a new paragraph after the selected block. |
 | Drag the paper edge | Resize the preview paper width for reading and screenshots. |
 | Drag the divider in Split mode | Resize the source and preview panes. |
+
+## Visual editing and live co-editing
+
+Visual mode is a block editor over the same `.noma` source. Each Noma block
+maps to one editor block: headings keep their stable IDs and aliases, lists
+keep `{#id}` item markers and `[ ]` task state, tables stay pipe tables, and
+directives become cards with an **Attributes** editor. Callouts, claims,
+evidence, decisions, and figures get styled cards. `::math` and
+`::diagram{kind="mermaid"}` are edited as code. `toc`, `children`, and
+`include` show as chips. Blocks the editor cannot represent, such as datasets,
+plots, and controls, are shown as raw Noma source and round-trip unchanged.
+
+Saving writes source, not editor state. Blocks you did not touch are copied
+from the saved source byte for byte, so a visual edit changes only the lines of
+the blocks you edited. Renaming a heading keeps its old ID as an explicit
+`{id="…"}`. New claims, decisions, figures, and risks get a deterministic ID
+such as `decision-1`. Switch to Source at any time to see the exact text.
+
+| Input | Result |
+|---|---|
+| `/` | Block menu: headings, lists, task list, table, code, quote, callout, warning, decision, claim, evidence, figure, math, mermaid, table of contents, child pages, include, divider, raw Noma |
+| `## `, `- `, `1. `, `[ ] `, `> `, three backticks, `---` | Markdown shortcuts |
+| `**bold**`, `*em*`, backtick code, `[[id]]` | Inline shortcuts |
+| Select text | Floating toolbar: bold, italic, code, link, block link, heading level; table row and column buttons inside tables |
+| Paste HTML or Markdown | Converted through the Markdown ingest pipeline; scripts, styles, and unsafe links are dropped |
+| Ctrl/Cmd+S, Ctrl/Cmd+B/I/E/K, Shift+Enter, Tab in tables | Save, marks, link, line break, next cell |
+
+When the page has no unsaved source draft and the server is reachable, Visual
+mode joins the page's live room. Everyone editing the page sees the others'
+changes as they type, their cursors with names and colours, and their avatars
+in the page header. If the socket cannot connect, Visual mode keeps working on
+your device and you save as usual. Typing in the raw Source pane pauses live
+editing until that draft is saved, because a source draft is saved the classic
+way with a hash check.
+
+Live edits become normal page history. The server writes a checkpoint
+revision at most once per 30 seconds of activity, and again when the last
+editor leaves. Changes made outside the room, such as an applied agent patch,
+an API `PUT`, or a restored version, are merged into the live document block
+by block. People editing live keep their changes, and nobody overwrites the
+agent.
+
+| Route | Behaviour |
+|---|---|
+| `GET /api/collab/documents/<id>` | Room status for viewers and above: `live`, connected `clients` (name, colour, role), `pendingUpdates`, and the source `hash`. |
+| WebSocket `/api/collab/documents/<id>` | Live room. The first frame is `{"type":"hello","clientId":<yjs id>,"token"?,"share"?}`, or a bearer or share header. Viewers and viewer links are read-only. Editors write. The access-gate cookie is honoured. Cross-origin sockets are refused. |
+
+Every update is stored in SQLite before it is acknowledged, applied, and
+broadcast. A checkpoint compacts the stored updates. Access is checked on
+connect, after every change to the page record (for example, a collaborator is
+removed or a share link is revoked), and on a timer. Revoked users and trashed
+pages are disconnected. The server replaces each cursor's name and colour with
+the identity it knows, so nobody can pose as someone else.
 
 ## Link pages like Obsidian
 
