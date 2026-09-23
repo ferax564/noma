@@ -1,0 +1,18 @@
+{
+  "wiki-macros": {
+    "startLine": 1,
+    "endLine": 26
+  },
+  "summary": {
+    "startLine": 3,
+    "endLine": 5
+  },
+  "policy": {
+    "startLine": 7,
+    "endLine": 9
+  },
+  "props": {
+    "startLine": 23,
+    "endLine": 26
+  }
+}
