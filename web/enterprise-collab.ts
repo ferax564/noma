@@ -7,8 +7,9 @@ const params = new URLSearchParams(window.location.search);
 const token = params.get("token") ?? "";
 const documentId = params.get("documentId") ?? "";
 const status = document.getElementById("status");
-const mount = document.getElementById("editor");
-if (!mount) throw new Error("missing #editor");
+const mountElement = document.getElementById("editor");
+if (!mountElement) throw new Error("missing #editor");
+const mount: HTMLElement = mountElement;
 
 const ydoc = new Y.Doc();
 let editor: Editor | undefined;

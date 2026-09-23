@@ -2118,7 +2118,7 @@ function proofPlaceholderDocument(payload: SharedProofPayload | null): string {
   </main></html>`;
 }
 
-function proofStatusMessage(proof: WorkbenchProof): string {
+function proofStatusMessage(proof: Omit<WorkbenchProof, "html">): string {
   if (proof.status === "fail") return "Patch simulation did not produce a writable post-document.";
   if (proof.status === "warn") return "Patch simulation produced a writable post-document with warnings to review.";
   return "Patch simulation produced a writable post-document with no validation errors.";
@@ -2414,11 +2414,11 @@ function commitPreviewEdit(element: HTMLElement): void {
 
   const kind = element.dataset.nomaEditable;
   const line = positiveInt(element.dataset.nomaLine);
-  const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
   if (!isPreviewEditKind(kind) || line === undefined) {
     showTransientStatus("Rendered edit cannot sync", "warning");
     return;
   }
+  const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
 
   const replacement = previewSourceReplacement(kind, line, endLine, nextText);
   if (replacement === null) {
@@ -2568,8 +2568,8 @@ function jumpToLine(line: number): void {
   const lines = sourceInput.value.split("\n");
   const clamped = Math.max(1, Math.min(line, lines.length));
   let start = 0;
-  for (let i = 0; i < clamped - 1; i++) start += lines[i].length + 1;
-  const end = start + lines[clamped - 1].length;
+  for (let i = 0; i < clamped - 1; i++) start += (lines[i] ?? "").length + 1;
+  const end = start + (lines[clamped - 1] ?? "").length;
   sourceInput.focus();
   sourceInput.setSelectionRange(start, end);
 }
