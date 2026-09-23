@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { NomaTools } from "../src/tools.js";
 import { NomaSystemError } from "../src/errors.js";
+import type { PatchErrorCode } from "../src/types.js";
 
 let tools: NomaTools;
 
@@ -112,6 +113,21 @@ test("patchBlock throws NomaSystemError on book manifest path", async () => {
     () => tools.patchBlock(yml, { op: "delete_block", id: "x" }),
     (e: unknown) => e instanceof NomaSystemError && /unsupported_op/.test((e as Error).message),
   );
+});
+
+test("patchBlock surfaces the structure-safety error codes", async () => {
+  const path = scratchDoc(`::claim{id="c1"}\nbody\n::\n\n::claim{id="c2"}\nb\n::\n`);
+  const cases: Array<[Parameters<NomaTools["patchBlock"]>[1], PatchErrorCode]> = [
+    [{ op: "update_attribute", id: "c1", key: "bad key", value: "v" }, "invalid_attribute_key"],
+    [{ op: "update_attribute", id: "c1", key: "note", value: "a\n::" }, "invalid_attribute_value"],
+    [{ op: "replace_body", id: "c1", content: "x\n::\n\n::claim{id=\"evil\"}" }, "unbalanced_fence_content"],
+  ];
+  for (const [op, code] of cases) {
+    const res = await tools.patchBlock(path, op);
+    assert.equal(res.ok, false, code);
+    if (!res.ok) assert.equal(res.code, code);
+  }
+  assert.equal(readFileSync(path, "utf8"), `::claim{id="c1"}\nbody\n::\n\n::claim{id="c2"}\nb\n::\n`);
 });
 
 test("patchBlock returns sha_mismatch when expectedSha disagrees with file", async () => {
