@@ -1,4 +1,4 @@
-import { applyCrdtOps, type CrdtOp } from "./enterprise-crdt.js";
+import { applyBlockOps, type BlockOp } from "./enterprise-merge.js";
 import { EnterpriseError, type ActorContext } from "./enterprise-contracts.js";
 import { createTestOidc, EnterpriseWorkspace } from "./enterprise-workspace.js";
 import { resetIdentitySequence } from "./stable-identity.js";
@@ -255,7 +255,7 @@ export function runPerformanceProfile(): PerformanceProfile {
         clientId: "perf",
         clientSeq: i + 1,
         lastAckedSeq: i,
-        ops: [{ kind: "replace_paragraph", blockId: "intro", content: `perf ${i}` } satisfies CrdtOp],
+        ops: [{ kind: "replace_paragraph", blockId: "intro", content: `perf ${i}` } satisfies BlockOp],
       });
       saveSamples.push(performance.now() - start);
       const issueStart = performance.now();
@@ -282,6 +282,6 @@ export function runPerformanceProfile(): PerformanceProfile {
   };
 }
 
-export function applyCrdtPreview(source: string, ops: CrdtOp[]): string {
-  return applyCrdtOps(source, ops);
+export function applyCrdtPreview(source: string, ops: BlockOp[]): string {
+  return applyBlockOps(source, ops);
 }

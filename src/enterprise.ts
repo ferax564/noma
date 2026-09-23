@@ -21,6 +21,9 @@ export {
 export type { PaperDocument, PaperElement, VisualCommand } from "./enterprise-paperdom.js";
 export { editorToNoma, nomaToEditor, visualRoundTrip, EDITOR_SCHEMA_VERSION } from "./enterprise-adapter.js";
 export { runEnterpriseReleaseDemonstration, TEST_REPORT_SOURCE } from "./enterprise-demo.js";
+export { applyBlockOps, blockOpsConflict, blockOpTarget, detectBlockConflicts, mergeBlockEdits } from "./enterprise-merge.js";
+export type { BlockEditSet, BlockMergeConflict, BlockMergeResult, BlockOp } from "./enterprise-merge.js";
+/** @deprecated Block-level merge aliases; use the `enterprise-merge` names. */
 export { applyCrdtOps, crdtOpsConflict } from "./enterprise-crdt.js";
 export { parseConfluenceStorage, parseJiraIssue, nextCutoverStage, assertSafeImportUrl } from "./enterprise-connectors.js";
 export { evaluateRagFixture, summarizeRagEvals } from "./enterprise-knowledge.js";
@@ -56,14 +59,19 @@ export {
   YJS_FRAGMENT,
   applyYjsUpdate,
   attachEnterpriseYjs,
+  compactYjsUpdates,
   encodeYjsState,
   enterpriseCollabHtml,
+  extractYjsToken,
   listenEnterpriseCollab,
   loadYjsDocument,
   persistYjsUpdate,
   yjsFragmentText,
   yjsPersistedCount,
+  YJS_BEARER_PREFIX,
+  YJS_SUBPROTOCOL,
 } from "./enterprise-yjs.js";
+export type { EnterpriseYjsOptions, EnterpriseYjsRelay, PersistYjsOptions, PresenceEntry, YjsPersistHooks } from "./enterprise-yjs.js";
 export {
   atlassianFetch,
   fetchConfluencePage,
