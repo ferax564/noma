@@ -39,6 +39,7 @@ import { renderDocumentHtml } from "./render.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics } from "./routes-analytics.js";
 import { routeDocumentTasks } from "./routes-tasks.js";
+import { emitPageWebhookEvent } from "./webhooks.js";
 import { routeComments } from "./routes-comments.js";
 import { routePatchProposals } from "./routes-patch.js";
 
@@ -429,6 +430,9 @@ async function routeDocumentLabels(
   }
   const labels = config.store.replaceDocumentLabels(document.id, next, actor, now);
   if (access.user) recordActivity(config, access.user, "document.labeled", "document", document.id, { labels });
+  const added = labels.filter((label) => !current.includes(label));
+  const removed = current.filter((label) => !labels.includes(label));
+  if (added.length || removed.length) emitPageWebhookEvent(config, "label.changed", document, access.user, { labels, added, removed });
   sendJson(res, 200, { documentId: document.id, labels });
 }
 

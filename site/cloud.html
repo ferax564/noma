@@ -229,6 +229,30 @@
         <button id="spaceArchiveButton" type="button">Archive space</button>
       </div>
       <div id="spaceSettingsStatus" class="panel-status"></div>
+      <div id="webhookSection" class="work-subsection" hidden>
+        <h3>Webhooks</h3>
+        <label class="stack-field" for="webhookUrlInput">Payload URL
+          <input id="webhookUrlInput" type="url" autocomplete="off" placeholder="https://hooks.example.com/noma" />
+        </label>
+        <fieldset id="webhookEvents" class="webhook-events">
+          <legend>Events</legend>
+          <label class="webhook-event" for="webhookEventPagecreated"><input id="webhookEventPagecreated" type="checkbox" value="page.created" checked /> page.created</label>
+          <label class="webhook-event" for="webhookEventPageupdated"><input id="webhookEventPageupdated" type="checkbox" value="page.updated" checked /> page.updated</label>
+          <label class="webhook-event" for="webhookEventPagedeleted"><input id="webhookEventPagedeleted" type="checkbox" value="page.deleted" /> page.deleted</label>
+          <label class="webhook-event" for="webhookEventCommentcreated"><input id="webhookEventCommentcreated" type="checkbox" value="comment.created" /> comment.created</label>
+          <label class="webhook-event" for="webhookEventLabelchanged"><input id="webhookEventLabelchanged" type="checkbox" value="label.changed" /> label.changed</label>
+          <label class="webhook-event" for="webhookEventTaskcompleted"><input id="webhookEventTaskcompleted" type="checkbox" value="task.completed" /> task.completed</label>
+        </fieldset>
+        <label class="stack-field" for="webhookFormatSelect">Format
+          <select id="webhookFormatSelect">
+            <option value="json">JSON (signed)</option>
+            <option value="slack">Slack incoming webhook</option>
+          </select>
+        </label>
+        <button id="webhookCreateButton" type="button">Add webhook</button>
+        <div id="webhookStatus" class="panel-status"></div>
+        <div id="webhookList" class="collaboration-list"></div>
+      </div>
     </section>
 
     <section class="inspector-section">

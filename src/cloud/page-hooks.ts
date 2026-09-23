@@ -5,7 +5,8 @@
 import type { CloudDocumentRecord, CloudUserRecord } from "../cloud-db.js";
 import type { CloudServerConfig } from "./context.js";
 import { notifySourceMentions } from "./mentions.js";
-import { indexPageTasks } from "./tasks.js";
+import { displayTaskText, indexPageTasks } from "./tasks.js";
+import { emitPageWebhookEvent } from "./webhooks.js";
 
 export interface PageSaveActor {
   user?: CloudUserRecord;
@@ -21,5 +22,11 @@ export function afterDocumentSaved(
 ): void {
   if (previous && previous.source === record.source) return;
   notifySourceMentions(config, record, previous?.source, actor.user?.id, actor.name);
-  indexPageTasks(config, record, actor.user?.id, actor.name);
+  const tasks = indexPageTasks(config, record, actor.user?.id, actor.name);
+  emitPageWebhookEvent(config, previous ? "page.updated" : "page.created", record, actor.user, previous ? { previousHash: previous.hash } : undefined);
+  for (const task of tasks.completed) {
+    emitPageWebhookEvent(config, "task.completed", record, actor.user, {
+      task: { id: task.taskId, title: displayTaskText(task.text), assigneeId: task.assigneeId ?? null, dueDate: task.dueDate ?? null, completedAt: task.completedAt ?? null },
+    });
+  }
 }

@@ -23,6 +23,7 @@ import { publicUser } from "./cloud/records.js";
 import { renderDocumentHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
 import { routeApi } from "./cloud/router.js";
 import { recordPageView } from "./cloud/routes-analytics.js";
+import { runQueueDrain } from "./cloud/webhooks.js";
 import {
   isCloudAppShell,
   redirectWithCloudAccessCookie,
@@ -93,6 +94,11 @@ export interface NomaCloudServerOptions {
    */
   adminUserIds?: string[];
   now?: () => Date;
+  /**
+   * How often the in-process queue (webhook deliveries, email digests) drains, in ms.
+   * Defaults to `NOMA_CLOUD_QUEUE_INTERVAL_MS` or 5000; 0 disables the timer.
+   */
+  queueIntervalMs?: number;
 }
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
@@ -141,7 +147,11 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
       sendJson(res, status, { error: message, ...(error instanceof HttpError ? error.details : {}) });
     });
   });
+  const queueIntervalMs = options.queueIntervalMs ?? Number(process.env.NOMA_CLOUD_QUEUE_INTERVAL_MS ?? 5_000);
+  const queueTimer = queueIntervalMs > 0 ? setInterval(() => void runQueueDrain(config), queueIntervalMs) : undefined;
+  queueTimer?.unref();
   server.on("close", () => {
+    if (queueTimer) clearInterval(queueTimer);
     platform.close();
     store.close();
   });

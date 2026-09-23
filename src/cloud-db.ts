@@ -432,6 +432,38 @@ export interface CloudPageTaskChanges {
   reopened: CloudPageTask[];
 }
 
+export const cloudWebhookEvents = ["page.created", "page.updated", "page.deleted", "comment.created", "label.changed", "task.completed"] as const;
+export type CloudWebhookEvent = (typeof cloudWebhookEvents)[number];
+export type CloudWebhookFormat = "json" | "slack";
+export type CloudWebhookDeliveryStatus = "pending" | "delivered" | "failed";
+
+export interface CloudWebhook {
+  id: string;
+  siteId: string;
+  url: string;
+  events: CloudWebhookEvent[];
+  format: CloudWebhookFormat;
+  /** HMAC-SHA256 signing secret; never returned by the API after creation. */
+  secret: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CloudWebhookDelivery {
+  id: string;
+  webhookId: string;
+  siteId: string;
+  event: string;
+  payload: Record<string, unknown>;
+  status: CloudWebhookDeliveryStatus;
+  attempts: number;
+  nextAttemptAt: string;
+  responseStatus?: number;
+  lastError?: string;
+  createdAt: string;
+  deliveredAt?: string;
+}
+
 export interface CloudWatch {
   userId: string;
   resourceType: CloudResourceType;
@@ -565,6 +597,32 @@ interface PageTaskRow {
   updated_at: string;
   completed_at: string | null;
   completed_by: string | null;
+}
+
+interface WebhookRow {
+  id: string;
+  site_id: string;
+  url: string;
+  events_json: string;
+  format: CloudWebhookFormat;
+  secret: string;
+  created_by: string;
+  created_at: string;
+}
+
+interface WebhookDeliveryRow {
+  id: string;
+  webhook_id: string;
+  site_id: string;
+  event: string;
+  payload_json: string;
+  status: CloudWebhookDeliveryStatus;
+  attempts: number;
+  next_attempt_at: string;
+  response_status: number | null;
+  last_error: string | null;
+  created_at: string;
+  delivered_at: string | null;
 }
 
 interface NotificationRow {
@@ -1191,6 +1249,8 @@ export class NomaCloudDatabase {
         }
       } else {
         this.db.prepare("DELETE FROM site_documents WHERE site_id = ?").run(id);
+        this.db.prepare("DELETE FROM webhook_deliveries WHERE site_id = ?").run(id);
+        this.db.prepare("DELETE FROM space_webhooks WHERE site_id = ?").run(id);
       }
       return removed;
     });
@@ -2217,6 +2277,84 @@ export class NomaCloudDatabase {
     }));
   }
 
+  // --- wiki experience: outbound webhooks -----------------------------------------------
+
+  insertWebhook(webhook: CloudWebhook): void {
+    this.db
+      .prepare("INSERT INTO space_webhooks (id, site_id, url, events_json, format, secret, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(webhook.id, webhook.siteId, webhook.url, JSON.stringify(webhook.events), webhook.format, webhook.secret, webhook.createdBy, webhook.createdAt);
+  }
+
+  listWebhooks(siteId: string): CloudWebhook[] {
+    return (this.db.prepare("SELECT * FROM space_webhooks WHERE site_id = ? ORDER BY created_at, id").all(siteId) as WebhookRow[]).map(cloudWebhook);
+  }
+
+  readWebhook(id: string): CloudWebhook | undefined {
+    const row = this.db.prepare("SELECT * FROM space_webhooks WHERE id = ?").get(id) as WebhookRow | undefined;
+    return row ? cloudWebhook(row) : undefined;
+  }
+
+  deleteWebhook(id: string): boolean {
+    const remove = this.db.transaction((): boolean => {
+      this.db.prepare("DELETE FROM webhook_deliveries WHERE webhook_id = ?").run(id);
+      return this.db.prepare("DELETE FROM space_webhooks WHERE id = ?").run(id).changes > 0;
+    });
+    return remove();
+  }
+
+  /** Space IDs that contain the page (a page can live in several spaces). */
+  siteIdsForDocument(documentId: string): string[] {
+    return (this.db.prepare("SELECT site_id FROM site_documents WHERE document_id = ? ORDER BY position").all(documentId) as Array<{ site_id: string }>).map((row) => row.site_id);
+  }
+
+  enqueueWebhookDelivery(delivery: Omit<CloudWebhookDelivery, "status" | "attempts" | "responseStatus" | "lastError" | "deliveredAt">): void {
+    this.db
+      .prepare(
+        `INSERT INTO webhook_deliveries (id, webhook_id, site_id, event, payload_json, status, attempts, next_attempt_at, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+      )
+      .run(delivery.id, delivery.webhookId, delivery.siteId, delivery.event, JSON.stringify(delivery.payload), delivery.nextAttemptAt, delivery.createdAt);
+  }
+
+  /**
+   * Claims up to `limit` due deliveries with a lease so concurrent drainers (the in-process timer
+   * and an external worker) never send the same delivery twice at once.
+   */
+  claimDueWebhookDeliveries(now: string, leaseUntil: string, limit: number): CloudWebhookDelivery[] {
+    const claim = this.db.transaction((): CloudWebhookDelivery[] => {
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM webhook_deliveries
+           WHERE status = 'pending' AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)
+           ORDER BY next_attempt_at, created_at LIMIT ?`,
+        )
+        .all(now, now, limit) as WebhookDeliveryRow[];
+      const lease = this.db.prepare("UPDATE webhook_deliveries SET lease_until = ? WHERE id = ?");
+      for (const row of rows) lease.run(leaseUntil, row.id);
+      return rows.map(cloudWebhookDelivery);
+    });
+    return claim();
+  }
+
+  completeWebhookDelivery(id: string, result: { status: CloudWebhookDeliveryStatus; attempts: number; nextAttemptAt: string; responseStatus?: number; lastError?: string; deliveredAt?: string }): void {
+    this.db
+      .prepare(
+        `UPDATE webhook_deliveries
+         SET status = ?, attempts = ?, next_attempt_at = ?, lease_until = NULL, response_status = ?, last_error = ?, delivered_at = ?
+         WHERE id = ?`,
+      )
+      .run(result.status, result.attempts, result.nextAttemptAt, result.responseStatus ?? null, result.lastError ?? null, result.deliveredAt ?? null, id);
+  }
+
+  listWebhookDeliveries(webhookId: string, limit: number): CloudWebhookDelivery[] {
+    return (this.db.prepare("SELECT * FROM webhook_deliveries WHERE webhook_id = ? ORDER BY created_at DESC, id DESC LIMIT ?").all(webhookId, limit) as WebhookDeliveryRow[]).map(cloudWebhookDelivery);
+  }
+
+  /** Drops finished deliveries older than `before`, keeping the log bounded. */
+  pruneWebhookDeliveries(before: string): number {
+    return this.db.prepare("DELETE FROM webhook_deliveries WHERE status <> 'pending' AND created_at < ?").run(before).changes;
+  }
+
   // --- wiki experience: people directory ----------------------------------------------
 
   /**
@@ -2658,6 +2796,36 @@ export class NomaCloudDatabase {
         PRIMARY KEY (document_id, task_id)
       );
       CREATE INDEX IF NOT EXISTS idx_page_tasks_assignee ON page_tasks(assignee_id, status, due_date);
+
+      -- outbound webhooks
+      CREATE TABLE IF NOT EXISTS space_webhooks (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        events_json TEXT NOT NULL,
+        format TEXT NOT NULL CHECK (format IN ('json', 'slack')),
+        secret TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_webhooks_site ON space_webhooks(site_id);
+      CREATE TABLE IF NOT EXISTS webhook_deliveries (
+        id TEXT PRIMARY KEY,
+        webhook_id TEXT NOT NULL,
+        site_id TEXT NOT NULL,
+        event TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'delivered', 'failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT NOT NULL,
+        lease_until TEXT,
+        response_status INTEGER,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        delivered_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_due ON webhook_deliveries(status, next_attempt_at);
+      CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_hook ON webhook_deliveries(webhook_id, created_at DESC);
 
       -- page analytics
       CREATE TABLE IF NOT EXISTS page_views (
@@ -3584,5 +3752,35 @@ function pageTask(row: PageTaskRow): CloudPageTask {
     updatedAt: row.updated_at,
     ...(row.completed_at ? { completedAt: row.completed_at } : {}),
     ...(row.completed_by ? { completedBy: row.completed_by } : {}),
+  };
+}
+
+function cloudWebhook(row: WebhookRow): CloudWebhook {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    url: row.url,
+    events: parseRecord<CloudWebhookEvent[]>(row.events_json),
+    format: row.format,
+    secret: row.secret,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
+}
+
+function cloudWebhookDelivery(row: WebhookDeliveryRow): CloudWebhookDelivery {
+  return {
+    id: row.id,
+    webhookId: row.webhook_id,
+    siteId: row.site_id,
+    event: row.event,
+    payload: parseRecord<Record<string, unknown>>(row.payload_json),
+    status: row.status,
+    attempts: row.attempts,
+    nextAttemptAt: row.next_attempt_at,
+    ...(row.response_status === null ? {} : { responseStatus: row.response_status }),
+    ...(row.last_error ? { lastError: row.last_error } : {}),
+    createdAt: row.created_at,
+    ...(row.delivered_at ? { deliveredAt: row.delivered_at } : {}),
   };
 }

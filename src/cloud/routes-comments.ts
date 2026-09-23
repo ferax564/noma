@@ -22,6 +22,7 @@ import { decodePathSegment, HttpError, readJsonBody, sendJson } from "./http.js"
 import { boundedInteger, optionalRecord, optionalString, stringInput } from "./input.js";
 import { extractMentions, mentionNames } from "./mentions.js";
 import { documentHasBlock } from "./records.js";
+import { emitPageWebhookEvent } from "./webhooks.js";
 
 /** Reactions are a fixed, small set so they render consistently and cannot carry arbitrary text. */
 export const commentReactionEmoji = ["👍", "👎", "😄", "🎉", "😕", "❤️", "🚀", "👀"] as const;
@@ -156,6 +157,9 @@ function createComment(config: CloudServerConfig, user: CloudUserRecord, documen
   config.store.writeComment(comment);
   if (anchor) config.store.setCommentAnchor(comment.id, anchor);
   notifyCommentParticipants(config, document, comment, user);
+  emitPageWebhookEvent(config, "comment.created", document, user, {
+    comment: { id: comment.id, body: comment.body, ...(comment.parentId ? { parentId: comment.parentId } : {}), ...(blockId ? { blockId } : {}), ...(anchor ? { quote: anchor.quote } : {}) },
+  });
   recordActivity(config, user, parentId ? "comment.replied" : "comment.created", "document", document.id, {
     commentId: comment.id,
     blockId,

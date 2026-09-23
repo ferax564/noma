@@ -33,6 +33,7 @@ import { afterDocumentSaved } from "./page-hooks.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics, routeSitePopular } from "./routes-analytics.js";
 import { routeDocumentTasks } from "./routes-tasks.js";
+import { routeSiteWebhooks } from "./routes-webhooks.js";
 import {
   routeDocumentApprovals,
   routeDocumentComments,
@@ -126,6 +127,11 @@ export async function routeSites(
 
   if (suffix === "watch") {
     routeWatch(req, res, config, principal, site, "site");
+    return;
+  }
+
+  if (suffix === "webhooks") {
+    await routeSiteWebhooks(req, res, parts[4], parts[5], config, principal, site);
     return;
   }
 

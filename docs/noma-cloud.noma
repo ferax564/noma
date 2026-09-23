@@ -426,6 +426,52 @@ Task responses include `title` (text without the mention or due marker),
 `blockHash`. Tasks on trashed pages, and on pages that live only in archived
 spaces, are left out of `/api/tasks`.
 
+## Outbound webhooks
+
+Space owners can send space events to other systems. Each webhook has a
+target URL, a list of events, a format, and a signing secret.
+
+| Event | Sent when |
+|---|---|
+| `page.created` | A page is created in the space. |
+| `page.updated` | A page's source changes, by a person or an applied agent patch. |
+| `page.deleted` | A page is moved to trash. |
+| `comment.created` | Someone comments on or replies to a page. |
+| `label.changed` | A page's labels change (`labels`, `added`, `removed`). |
+| `task.completed` | An inline task is checked off (`task`). |
+
+Deliveries are JSON with `id`, `event`, `createdAt`, `space`, `page`, `actor`,
+and event data. Each request carries `x-noma-event`, `x-noma-delivery`,
+`x-noma-timestamp`, and `x-noma-signature: sha256=<hex>`, the HMAC-SHA256 of
+`<timestamp>.<raw body>` with the webhook secret. The secret is returned only
+when the webhook is created; pass your own `secret` (16–256 characters) or let
+Noma generate one. With `format: "slack"` the body is `{"text": "..."}` for a
+Slack incoming webhook.
+
+Deliveries are queued in SQLite and sent by an in-process timer
+(`NOMA_CLOUD_QUEUE_INTERVAL_MS`, default 5000; `0` disables it) or by one run of
+`npx tsx apps/worker/cloud-queue.ts`. Any 2xx response is success. Other
+responses and network errors retry after 30s, 1m, 2m, and so on, up to 6 hours
+apart, for 8 attempts in total; after that the delivery is marked `failed`.
+Retries reuse the delivery ID so receivers can deduplicate.
+
+**SSRF protection.** Webhook URLs must be `http` or `https` without
+credentials. URLs pointing at loopback, private (RFC 1918), link-local
+(including cloud metadata), CGNAT, multicast, or unique-local IPv6 addresses are
+rejected, and every delivery re-checks the resolved addresses before
+connecting, so DNS rebinding cannot reach internal hosts. Set
+`NOMA_CLOUD_ALLOW_PRIVATE_WEBHOOKS=1` only for on-premises targets.
+
+```text
+GET    /api/sites/<site-id>/webhooks
+POST   /api/sites/<site-id>/webhooks                 {"url": "https://...", "events": ["page.updated"], "format": "json", "secret": "optional"}
+GET    /api/sites/<site-id>/webhooks/<webhook-id>
+DELETE /api/sites/<site-id>/webhooks/<webhook-id>
+GET    /api/sites/<site-id>/webhooks/<webhook-id>/deliveries?limit=50
+```
+
+The Space settings panel has a Webhooks section for owners.
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

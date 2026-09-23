@@ -9,6 +9,7 @@ import {
   requireUser,
 } from "./context.js";
 import { decodePathSegment, HttpError, readJsonBody, sendJson } from "./http.js";
+import { emitPageWebhookEvent } from "./webhooks.js";
 import {
   boundedInteger,
   labelInput,
@@ -103,6 +104,8 @@ export async function routeTrash(
     await requireResourceAccess(config, principal, resourceType, resourceId, resourceType === "site" ? "owner" : "editor", true);
     config.store.trashResource(resourceType, resourceId, config.now().toISOString(), user.id);
     config.store.removeFavorite(user.id, resourceType, resourceId);
+    const trashedDocument = resourceType === "document" ? config.store.readDocument(resourceId) : undefined;
+    if (trashedDocument) emitPageWebhookEvent(config, "page.deleted", trashedDocument, user);
     recordActivity(config, user, `${resourceType}.trashed`, resourceType, resourceId);
     sendJson(res, 200, { ok: true, resourceType, resourceId });
     return;

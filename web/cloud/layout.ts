@@ -11,6 +11,7 @@ import { canCreatePage, canEditPage, canEditSite, canManagePermissions, currentP
 import { renderWorkspaceTools } from "./session.js";
 import { renderSpaceSettings } from "./spaces.js";
 import { renderPopularPages } from "./analytics.js";
+import { renderWebhooksPanel } from "./webhooks.js";
 import { state } from "./state.js";
 import type { ViewMode } from "./types.js";
 import { clamp, formatDate, setCloudStatus } from "./util.js";
@@ -115,6 +116,7 @@ export function renderChrome(): void {
   renderKnowledgeWorkspace();
   renderSpaceSettings();
   renderPopularPages();
+  renderWebhooksPanel();
 }
 
 export function applyPreviewPaperWidth(previewDoc: Document): void {
