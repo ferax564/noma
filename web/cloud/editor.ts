@@ -19,6 +19,7 @@ import { previewDocument, previewError } from "./preview.js";
 import { state } from "./state.js";
 import type { CloudDocumentResponse } from "./types.js";
 import { emptyState, errorMessage, formatDate, iconButton, setBusy, setCloudStatus, setPanelStatus } from "./util.js";
+import { refreshMyTasks } from "./tasks.js";
 import { renderWikiPanel } from "./wiki.js";
 
 export async function saveCurrentPage(): Promise<void> {
@@ -42,6 +43,10 @@ export async function saveCurrentPage(): Promise<void> {
     });
     replacePage(saved);
     state.currentPage = saved;
+    if (saved.source !== sourceInput.value) {
+      sourceInput.value = saved.source;
+      renderCurrent();
+    }
     state.savedPageSource = saved.source;
     state.savedPageHash = saved.hash;
     state.savedPageTitle = saved.title;
@@ -51,7 +56,7 @@ export async function saveCurrentPage(): Promise<void> {
     syncTitleFromSource();
     setCloudStatus("Saved page", "ok");
     updateAddress();
-    await Promise.all([refreshHistory({ silent: true }), refreshApprovals(), refreshActivity()]);
+    await Promise.all([refreshHistory({ silent: true }), refreshApprovals(), refreshActivity(), refreshMyTasks()]);
   } catch (error) {
     if (error instanceof CloudRequestError && error.status === 409) {
       setCloudStatus("This page changed elsewhere. Your draft is preserved; reload to review the latest saved version.", "error");

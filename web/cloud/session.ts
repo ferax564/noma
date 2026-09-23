@@ -8,6 +8,7 @@ import { setCurrentPage } from "./editor.js";
 import { refreshKnowledgeWorkspace, renderSearchResults } from "./knowledge.js";
 import { renderChrome } from "./layout.js";
 import { confirmDiscardDirty, createStarterWorkspace, loadSite, loadStandaloneDocument, refreshNavigationItems, refreshSites, refreshTemplates, refreshTrash, renderNavigationList, renderTrashList } from "./navigation.js";
+import { refreshMyTasks } from "./tasks.js";
 import { readCloudId, shareToken, state } from "./state.js";
 import type { CloudAuthResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
 import { errorMessage, setBusy, setCloudStatus } from "./util.js";
@@ -128,9 +129,11 @@ export async function refreshWorkspaceTools(): Promise<void> {
     renderCollaborationPanels();
     renderWorkManagement();
     renderAccessManagement();
+    void refreshMyTasks();
     return;
   }
   await Promise.all([
+    refreshMyTasks(),
     refreshTemplates(),
     refreshNavigationItems(),
     refreshTrash(),

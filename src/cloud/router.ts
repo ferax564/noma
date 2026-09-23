@@ -27,6 +27,7 @@ import {
   routeTrash,
 } from "./routes-navigation.js";
 import { routeSites } from "./routes-sites.js";
+import { routeTasks } from "./routes-tasks.js";
 import { routeUsers } from "./routes-users.js";
 import { guardArchivedSpaceWrite } from "./spaces.js";
 import { routeProjects } from "./routes-work.js";
@@ -72,6 +73,7 @@ export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, A
   ["offline", (req, res, _url, parts, config, principal) => routeOffline(req, res, parts, config, principal)],
   ["realtime", (req, res, url, parts, config, principal) => routeRealtime(req, res, url, parts, config, principal)],
   ["enterprise", (req, res, _url, parts, config, principal) => routeEnterprise(req, res, parts, config, principal)],
+  ["tasks", (req, res, url, _parts, config, principal) => routeTasks(req, res, url, config, principal)],
 ]);
 
 export async function routeApi(

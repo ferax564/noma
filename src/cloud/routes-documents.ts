@@ -38,6 +38,7 @@ import {
 import { renderDocumentHtml } from "./render.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics } from "./routes-analytics.js";
+import { routeDocumentTasks } from "./routes-tasks.js";
 import { routeComments } from "./routes-comments.js";
 import { routePatchProposals } from "./routes-patch.js";
 
@@ -112,6 +113,11 @@ export async function routeDocuments(
     return;
   }
 
+  if (suffix === "tasks") {
+    await routeDocumentTasks(req, res, parts[4], config, principal, record);
+    return;
+  }
+
   if (suffix === "views" || suffix === "analytics") {
     await routeDocumentAnalytics(req, res, suffix, config, principal, record);
     return;
@@ -153,7 +159,7 @@ export async function routeDocuments(
     const access = requireRecordAccess(config, record, principal, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
     requireDocumentPrecondition(req, record, input);
-    const updated = await updateDocument(config, record, input, access);
+    const updated = await updateDocument(config, record, input, access, { assignTaskIds: true });
     sendJson(res, 200, documentResponse(updated, requireRecordAccess(config, updated, principal, "viewer")));
     return;
   }

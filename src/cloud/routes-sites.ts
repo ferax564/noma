@@ -32,6 +32,7 @@ import {
 import { afterDocumentSaved } from "./page-hooks.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics, routeSitePopular } from "./routes-analytics.js";
+import { routeDocumentTasks } from "./routes-tasks.js";
 import {
   routeDocumentApprovals,
   routeDocumentComments,
@@ -245,6 +246,11 @@ async function routeSiteDocuments(
     return;
   }
 
+  if (parts[5] === "tasks") {
+    await routeDocumentTasks(req, res, parts[6], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
+    return;
+  }
+
   if (parts[5] === "views" || parts[5] === "analytics") {
     await routeDocumentAnalytics(req, res, parts[5], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
     return;
@@ -281,7 +287,7 @@ async function routeSiteDocuments(
     const input = await readJsonBody(req, config.maxBodyBytes);
     const document = await readDocument(config, docId);
     requireDocumentPrecondition(req, document, input);
-    const updated = await updateDocument(config, document, input, access);
+    const updated = await updateDocument(config, document, input, access, { assignTaskIds: true });
     sendJson(res, 200, documentResponse(updated, access));
     return;
   }

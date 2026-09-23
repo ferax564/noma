@@ -1600,3 +1600,8 @@ button.wiki-row {
 .page-entry[data-drop="after"]{box-shadow:inset 0 -2px 0 var(--accent,#0f666b)}
 .page-entry[data-drop="inside"]>.page-row{outline:2px dashed var(--accent,#0f666b);outline-offset:-2px}
 
+/* inline tasks */
+.task-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:6px}
+.task-row input[type="checkbox"]{width:16px;height:16px;margin:0}
+.task-overdue .row-meta{color:#a4573c;font-weight:650}
+

@@ -16,6 +16,7 @@ import { attachMentionPicker, decoratePreviewMentions } from "./mentions.js";
 import { bindSearchFilters } from "./search-filters.js";
 import { bindSpaceSettings } from "./spaces.js";
 import { bindPageAnalytics } from "./analytics.js";
+import { bindTasks, decoratePreviewTasks } from "./tasks.js";
 import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
@@ -100,6 +101,7 @@ function bindEvents(): void {
   bindSearchFilters(() => void searchCloud());
   bindSpaceSettings();
   bindPageAnalytics();
+  bindTasks();
   globalSearchInput.addEventListener("input", () => {
     searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
     if (!globalSearchInput.value.trim()) {
@@ -260,6 +262,7 @@ function bindEvents(): void {
   previewFrame.addEventListener("load", () => installPreviewEditing());
   previewFrame.addEventListener("load", () => decoratePreviewMentions(previewFrame.contentDocument));
   previewFrame.addEventListener("load", () => installCommentSelectionCapture(previewFrame.contentDocument));
+  previewFrame.addEventListener("load", () => decoratePreviewTasks(previewFrame.contentDocument));
   attachMentionPicker(commentBodyInput);
   attachMentionPicker(sourceInput);
 }

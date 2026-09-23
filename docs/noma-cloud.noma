@@ -387,6 +387,45 @@ All of these call `PUT /api/sites/<site-id>/documents/<page-id>/parent` with
 `parentId` and `position` (the index among the new siblings). A `position` at
 or past the end appends the page after the last sibling and its subpages.
 
+## Inline tasks
+
+A top-level list item that starts with a checkbox is a tracked task:
+
+```noma
+- [ ] Draft the launch plan @{user-id} due:2026-10-01
+- [x] Book the room
+```
+
+- The first mention is the assignee; `due:YYYY-MM-DD` is the due date.
+- When a person saves a page (create, or `PUT` the page), every checkbox item
+  without an ID gets a stable marker in the source, for example
+  `- {#task-k3v9x2ab} [ ] Draft the launch plan …`. The marker never changes
+  afterwards, so the task keeps its identity when its text is edited or moved.
+  Agent patches are never rewritten; their new tasks get IDs on the next human save.
+- Every save re-indexes the page's tasks. People newly assigned a task get a
+  `task_assigned` notification if they can open the page.
+- Completing a task flips only that list item's checkbox through a block-level
+  `replace_body` patch. Pass the task's `blockHash` as `baseHash` so a task
+  that changed since you loaded it returns `409 task_changed` instead of being
+  overwritten. Editors can complete any task; a viewer can complete tasks
+  assigned to them.
+
+The rail's **My tasks** list shows your open tasks across spaces, overdue ones
+highlighted, with a checkbox to complete them. In the preview, task checkboxes
+are clickable once the page is saved.
+
+```text
+GET  /api/tasks?assignee=me|any|<user-id>&status=open|done|all&site=<id>&document=<id>&limit=100
+GET  /api/documents/<id>/tasks
+GET  /api/documents/<id>/tasks/<task-id>
+POST /api/documents/<id>/tasks/<task-id>        {"done": true, "baseHash": "<blockHash>"}
+```
+
+Task responses include `title` (text without the mention or due marker),
+`status`, `assigneeId`, `dueDate`, `overdue`, `completedAt`, `completedBy`, and
+`blockHash`. Tasks on trashed pages, and on pages that live only in archived
+spaces, are left out of `/api/tasks`.
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

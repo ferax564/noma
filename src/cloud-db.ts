@@ -142,7 +142,7 @@ export interface CloudCommentReaction {
   createdAt: string;
 }
 
-export type CloudNotificationType = "mention" | "comment" | "approval_requested" | "approval_updated" | "page_updated";
+export type CloudNotificationType = "mention" | "comment" | "approval_requested" | "approval_updated" | "page_updated" | "task_assigned";
 
 export const cloudNotificationTypes: readonly CloudNotificationType[] = [
   "mention",
@@ -150,6 +150,7 @@ export const cloudNotificationTypes: readonly CloudNotificationType[] = [
   "approval_requested",
   "approval_updated",
   "page_updated",
+  "task_assigned",
 ];
 
 export interface CloudNotification {
@@ -393,6 +394,44 @@ export interface CloudPopularPage {
   lastViewedAt: string;
 }
 
+export type CloudPageTaskStatus = "open" | "done";
+
+/** An inline `- {#id} [ ] text @{user} due:YYYY-MM-DD` task indexed from page source. */
+export interface CloudPageTask {
+  documentId: string;
+  taskId: string;
+  text: string;
+  status: CloudPageTaskStatus;
+  assigneeId?: string;
+  dueDate?: string;
+  line: number;
+  updatedAt: string;
+  completedAt?: string;
+  completedBy?: string;
+}
+
+export interface CloudPageTaskListItem extends CloudPageTask {
+  documentTitle: string;
+  siteId?: string;
+  assigneeName?: string;
+  access: { role: CloudRole };
+}
+
+export interface CloudPageTaskFilter {
+  assigneeId?: string;
+  status?: CloudPageTaskStatus;
+  siteId?: string;
+  documentId?: string;
+  dueBefore?: string;
+  limit: number;
+}
+
+export interface CloudPageTaskChanges {
+  assigned: CloudPageTask[];
+  completed: CloudPageTask[];
+  reopened: CloudPageTask[];
+}
+
 export interface CloudWatch {
   userId: string;
   resourceType: CloudResourceType;
@@ -513,6 +552,19 @@ interface CommentRow {
   deleted_at?: string | null;
   deleted_by?: string | null;
   anchor_json?: string | null;
+}
+
+interface PageTaskRow {
+  document_id: string;
+  task_id: string;
+  text: string;
+  status: CloudPageTaskStatus;
+  assignee_id: string | null;
+  due_date: string | null;
+  line: number;
+  updated_at: string;
+  completed_at: string | null;
+  completed_by: string | null;
 }
 
 interface NotificationRow {
@@ -1127,7 +1179,7 @@ export class NomaCloudDatabase {
       this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
       if (type === "document") {
         this.db.prepare("DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE document_id = ?)").run(id);
-        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "page_views"]) {
+        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "page_views", "page_tasks"]) {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
         this.db.prepare("DELETE FROM search_index WHERE document_id = ?").run(id);
@@ -2072,6 +2124,99 @@ export class NomaCloudDatabase {
     return rows.map((row) => ({ documentId: row.document_id, title: row.title, views: row.views, uniqueViewers: row.unique_viewers, lastViewedAt: row.last_viewed_at }));
   }
 
+  // --- wiki experience: inline tasks ----------------------------------------------------
+
+  /**
+   * Replaces a page's task index with `tasks` and reports what changed: tasks whose assignee is
+   * new, and tasks that moved between open and done. `actorId` is stamped on completions.
+   */
+  replacePageTasks(documentId: string, tasks: Array<Omit<CloudPageTask, "updatedAt" | "completedAt" | "completedBy">>, actorId: string | undefined, at: string): CloudPageTaskChanges {
+    const replace = this.db.transaction((): CloudPageTaskChanges => {
+      const previous = new Map(this.listPageTasks(documentId).map((task) => [task.taskId, task]));
+      const changes: CloudPageTaskChanges = { assigned: [], completed: [], reopened: [] };
+      this.db.prepare("DELETE FROM page_tasks WHERE document_id = ?").run(documentId);
+      const insert = this.db.prepare(
+        `INSERT INTO page_tasks (document_id, task_id, text, status, assignee_id, due_date, line, updated_at, completed_at, completed_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const task of tasks) {
+        const before = previous.get(task.taskId);
+        const unchanged = before && before.text === task.text && before.status === task.status && before.assigneeId === task.assigneeId && before.dueDate === task.dueDate;
+        const completedAt = task.status === "done" ? (before?.status === "done" ? before.completedAt : at) : undefined;
+        const completedBy = task.status === "done" ? (before?.status === "done" ? before.completedBy : actorId) : undefined;
+        const row: CloudPageTask = {
+          ...task,
+          updatedAt: unchanged ? before.updatedAt : at,
+          ...(completedAt ? { completedAt } : {}),
+          ...(completedBy ? { completedBy } : {}),
+        };
+        insert.run(documentId, row.taskId, row.text, row.status, row.assigneeId ?? null, row.dueDate ?? null, row.line, row.updatedAt, row.completedAt ?? null, row.completedBy ?? null);
+        if (row.assigneeId && row.assigneeId !== before?.assigneeId) changes.assigned.push(row);
+        if (before && before.status !== row.status) (row.status === "done" ? changes.completed : changes.reopened).push(row);
+      }
+      return changes;
+    });
+    return replace();
+  }
+
+  listPageTasks(documentId: string): CloudPageTask[] {
+    const rows = this.db.prepare("SELECT * FROM page_tasks WHERE document_id = ? ORDER BY line, task_id").all(documentId) as PageTaskRow[];
+    return rows.map(pageTask);
+  }
+
+  readPageTask(documentId: string, taskId: string): CloudPageTask | undefined {
+    const row = this.db.prepare("SELECT * FROM page_tasks WHERE document_id = ? AND task_id = ?").get(documentId, taskId) as PageTaskRow | undefined;
+    return row ? pageTask(row) : undefined;
+  }
+
+  /** Tasks on pages the user can see, excluding trashed pages and pages only in archived spaces. */
+  listVisibleTasks(user: CloudUserRecord, filter: CloudPageTaskFilter): CloudPageTaskListItem[] {
+    const params: unknown[] = [user.id];
+    const clauses = ["NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'document' AND t.resource_id = pt.document_id)", archivedDocumentSql("pt.document_id")];
+    if (filter.assigneeId) {
+      clauses.push("pt.assignee_id = ?");
+      params.push(filter.assigneeId);
+    }
+    if (filter.status) {
+      clauses.push("pt.status = ?");
+      params.push(filter.status);
+    }
+    if (filter.siteId) {
+      clauses.push("EXISTS (SELECT 1 FROM site_documents fs WHERE fs.site_id = ? AND fs.document_id = pt.document_id)");
+      params.push(filter.siteId);
+    }
+    if (filter.documentId) {
+      clauses.push("pt.document_id = ?");
+      params.push(filter.documentId);
+    }
+    if (filter.dueBefore) {
+      clauses.push("pt.due_date IS NOT NULL AND pt.due_date < ?");
+      params.push(filter.dueBefore);
+    }
+    params.push(filter.limit);
+    const rows = this.db
+      .prepare(
+        `WITH ${visibleResourcesCtes}
+         SELECT pt.*, d.title AS document_title, u.name AS assignee_name, visible_docs.rank AS access_rank,
+           (SELECT sd.site_id FROM site_documents sd WHERE sd.document_id = pt.document_id ORDER BY sd.position LIMIT 1) AS site_id
+         FROM page_tasks pt
+         JOIN documents d ON d.id = pt.document_id
+         JOIN visible_docs ON visible_docs.id = pt.document_id
+         LEFT JOIN users u ON u.id = pt.assignee_id
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY CASE pt.status WHEN 'open' THEN 0 ELSE 1 END, pt.due_date IS NULL, pt.due_date, d.title, pt.line
+         LIMIT ?`,
+      )
+      .all(...params) as Array<PageTaskRow & { document_title: string; assignee_name: string | null; access_rank: number; site_id: string | null }>;
+    return rows.map((row) => ({
+      ...pageTask(row),
+      documentTitle: row.document_title,
+      ...(row.site_id ? { siteId: row.site_id } : {}),
+      ...(row.assignee_name ? { assigneeName: row.assignee_name } : {}),
+      access: { role: rankToRole(row.access_rank) },
+    }));
+  }
+
   // --- wiki experience: people directory ----------------------------------------------
 
   /**
@@ -2326,7 +2471,7 @@ export class NomaCloudDatabase {
       CREATE TABLE IF NOT EXISTS notifications (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
-        type TEXT NOT NULL CHECK (type IN ('mention', 'comment', 'approval_requested', 'approval_updated', 'page_updated')),
+        type TEXT NOT NULL CHECK (type IN ('mention', 'comment', 'approval_requested', 'approval_updated', 'page_updated', 'task_assigned')),
         title TEXT NOT NULL,
         body TEXT NOT NULL,
         resource_type TEXT CHECK (resource_type IN ('document', 'site')),
@@ -2498,6 +2643,22 @@ export class NomaCloudDatabase {
         PRIMARY KEY (comment_id, user_id, emoji)
       );
 
+      -- inline tasks
+      CREATE TABLE IF NOT EXISTS page_tasks (
+        document_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open', 'done')),
+        assignee_id TEXT,
+        due_date TEXT,
+        line INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT,
+        completed_by TEXT,
+        PRIMARY KEY (document_id, task_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_tasks_assignee ON page_tasks(assignee_id, status, due_date);
+
       -- page analytics
       CREATE TABLE IF NOT EXISTS page_views (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2563,7 +2724,7 @@ export class NomaCloudDatabase {
   /** SQLite cannot alter a CHECK constraint, so older databases rebuild the notifications table once. */
   private migrateNotificationTypes(): void {
     const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'notifications'").get() as { sql: string } | undefined;
-    if (!row || row.sql.includes("'page_updated'")) return;
+    if (!row || cloudNotificationTypes.every((type) => row.sql.includes(`'${type}'`))) return;
     const allowed = cloudNotificationTypes.map((type) => `'${type}'`).join(", ");
     this.db.transaction(() => {
       this.db.exec(`
@@ -3409,4 +3570,19 @@ function searchDocumentFilterSql(filters: CloudSearchFilters, documentColumn: st
     params.push(filters.updatedBefore);
   }
   return { clauses, params };
+}
+
+function pageTask(row: PageTaskRow): CloudPageTask {
+  return {
+    documentId: row.document_id,
+    taskId: row.task_id,
+    text: row.text,
+    status: row.status,
+    ...(row.assignee_id ? { assigneeId: row.assignee_id } : {}),
+    ...(row.due_date ? { dueDate: row.due_date } : {}),
+    line: row.line,
+    updatedAt: row.updated_at,
+    ...(row.completed_at ? { completedAt: row.completed_at } : {}),
+    ...(row.completed_by ? { completedBy: row.completed_by } : {}),
+  };
 }

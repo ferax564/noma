@@ -27,6 +27,7 @@ import { headerValue, HttpError, sha256Hex } from "./http.js";
 import { optionalString } from "./input.js";
 import { afterDocumentSaved } from "./page-hooks.js";
 import { requirePageWritable } from "./spaces.js";
+import { assignTaskIds } from "./tasks.js";
 
 export interface SourceInspection {
   hash: string;
@@ -67,7 +68,7 @@ export async function createDocument(
     : undefined;
   if (input.templateId !== undefined && !template) throw new HttpError(400, "Unknown page template");
   const requestedTitle = optionalString(input.title) ?? template?.title ?? "Untitled document";
-  const source = sourceFromCreateInput(input, requestedTitle, spaceTitle);
+  const source = assignTaskIds(sourceFromCreateInput(input, requestedTitle, spaceTitle));
   inspectSource(source, id);
   const now = config.now().toISOString();
   const record: CloudDocumentRecord = {
@@ -97,9 +98,11 @@ export async function updateDocument(
   existing: CloudDocumentRecord,
   input: Record<string, unknown>,
   access: AccessContext,
+  options: { assignTaskIds?: boolean } = {},
 ): Promise<CloudDocumentRecord> {
   requirePageWritable(config, existing.id);
-  const source = input.source === undefined ? existing.source : sourceFromInput(input);
+  const submitted = input.source === undefined ? existing.source : sourceFromInput(input);
+  const source = options.assignTaskIds && input.source !== undefined ? assignTaskIds(submitted) : submitted;
   inspectSource(source, existing.id);
   const record: CloudDocumentRecord = {
     ...existing,
