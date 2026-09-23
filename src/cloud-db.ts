@@ -1313,7 +1313,7 @@ function cloudHealthItem(row: HealthItemRow): CloudHealthItemRecord {
 }
 // end cloud-ai record types
 
-const schemaVersion = "8";
+const schemaVersion = "9";
 
 const roleRank: Record<CloudRole, number> = {
   viewer: 1,
