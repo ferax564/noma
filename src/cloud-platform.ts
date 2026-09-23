@@ -586,6 +586,50 @@ export class CloudKnowledgePlatform {
     return this.list<AgentRun>("agent_run").filter((run) => run.agentId === agentId);
   }
 
+  /**
+   * Creates or refreshes the per-user system agent behind Cloud AI features. Unlike `createAgent` it
+   * does not gate on the model allowlist, because the AI runtime re-checks enterprise policy on every call.
+   * Spend already recorded is kept.
+   */
+  upsertSystemAgent(agent: CloudAgentIdentity): CloudAgentIdentity {
+    const existing = this.readAgent(agent.id);
+    if (existing && existing.createdBy !== agent.createdBy) throw new Error("System agent ID belongs to another user");
+    const next: CloudAgentIdentity = existing
+      ? { ...existing, name: agent.name, description: agent.description, modelPolicy: agent.modelPolicy, capabilities: agent.capabilities, budgetUsd: agent.budgetUsd, updatedAt: agent.updatedAt }
+      : agent;
+    if (existing && JSON.stringify({ ...existing, updatedAt: "" }) === JSON.stringify({ ...next, updatedAt: "" })) return existing;
+    this.put("agent", next.id, next, { ownerId: next.createdBy, updatedAt: next.updatedAt });
+    if (!existing) this.audit(next.createdBy, "agent.created", "agent", next.id, { system: true, modelPolicy: next.modelPolicy, budgetUsd: next.budgetUsd }, next.createdAt);
+    return next;
+  }
+
+  /** Records one completed model call as an agent run and adds its cost to the agent's spend. */
+  recordAgentUsage(input: { runId: string; agentId: string; triggeredBy: string; trigger: AgentRun["trigger"]; documentId?: string; costUsd: number; startedAt: string; completedAt: string; output: Record<string, unknown> }): AgentRun {
+    const agent = this.readAgent(input.agentId);
+    if (!agent) throw new Error("Agent not found");
+    const run: AgentRun = {
+      id: input.runId,
+      agentId: input.agentId,
+      triggeredBy: input.triggeredBy,
+      trigger: input.trigger,
+      ...(input.documentId ? { documentId: input.documentId } : {}),
+      status: "completed",
+      requestedCapabilities: ["read_doc"],
+      startedAt: input.startedAt,
+      completedAt: input.completedAt,
+      costUsd: input.costUsd,
+      output: input.output,
+    };
+    const transaction = this.db.transaction(() => {
+      const current = this.readAgent(input.agentId) ?? agent;
+      this.put("agent_run", run.id, run, { ownerId: run.agentId, documentId: run.documentId, updatedAt: input.completedAt });
+      this.put("agent", current.id, { ...current, spentUsd: round(current.spentUsd + input.costUsd, 6), updatedAt: input.completedAt }, { ownerId: current.createdBy, updatedAt: input.completedAt });
+    });
+    transaction();
+    this.audit(input.triggeredBy, "agent.run_completed", "agent", input.agentId, { runId: run.id, costUsd: input.costUsd, ...input.output }, input.completedAt);
+    return run;
+  }
+
   putConnector(connector: KnowledgeConnector): KnowledgeConnector {
     const policy = this.enterprisePolicy();
     if (!policy.connectorAllowlist.includes(connector.kind)) throw new Error(`Connector is not allowed: ${connector.kind}`);
