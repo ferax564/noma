@@ -7,6 +7,8 @@ import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } f
 import { loadFrontmatterYaml } from "./parser.js";
 import { CHILDREN_SORTS, ISSUE_STATUSES, issueKeyFromNode, issuesRequest } from "./macros.js";
 import { collectTableIdentityStrings } from "./stable-identity.js";
+import { DECK_ASPECTS, isSlideLayout, SLIDE_LAYOUTS } from "./slides.js";
+import { parseStyleTokens, STYLE_TOKENS } from "./style-tokens.js";
 
 export interface ValidateOptions {
   /**
@@ -179,6 +181,10 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
   memory: new Set(["memory", "memory_index"]),
 };
 
+const DECK_DIRECTIVES = ["deck", "slide", "notes"];
+
+for (const name of ["technical", "research"]) PROFILES[name] = new Set([...PROFILES[name]!, ...DECK_DIRECTIVES]);
+
 const technicalProfile = PROFILES.technical!;
 const researchProfile = PROFILES.research!;
 const memoryProfile = PROFILES.memory!;
@@ -205,6 +211,27 @@ PROFILES.adr = new Set([
   "state_change",
 ]);
 PROFILES.spec = new Set([...technicalProfile, ...researchProfile]);
+PROFILES.presentation = new Set([
+  ...minimalProfile,
+  ...DECK_DIRECTIVES,
+  "hero",
+  "grid",
+  "card",
+  "columns",
+  "callout",
+  "note",
+  "tip",
+  "warning",
+  "figure",
+  "plot",
+  "diagram",
+  "dataset",
+  "metric",
+  "claim",
+  "evidence",
+  "decision",
+  "risk",
+]);
 
 const MEMORY_TYPES = new Set(["user", "feedback", "project", "reference"]);
 const ISO_DATE_RE =
@@ -881,6 +908,8 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     });
   }
 
+  validateDecksAndStyleTokens(doc.children, undefined, diagnostics);
+
   const ignore = options.ignoreRules;
   if (ignore && ignore.length > 0) {
     const known = collectRuleCodes();
@@ -973,7 +1002,60 @@ const KNOWN_RULES = [
   "issues-invalid-project",
   "issues-invalid-status",
   "page-properties-report-missing-label",
+  "unknown-style-token",
+  "slide-outside-deck",
+  "slide-unknown-layout",
+  "notes-outside-slide",
+  "deck-unknown-aspect",
 ];
+
+/**
+ * Structural rules for presentations and the style-token vocabulary:
+ * `::slide` lives directly in a `::deck`, `::notes` directly in a `::slide`,
+ * layouts/aspects come from fixed sets, and `class=` holds only known tokens.
+ */
+function validateDecksAndStyleTokens(nodes: Node[], parent: DirectiveNode | undefined, diagnostics: Diagnostic[]): void {
+  for (const node of nodes) {
+    if (node.type === "directive" && !suppressed(node)) {
+      const at = { pos: node.pos, nodeId: node.id };
+      const { unknown } = parseStyleTokens(node.attrs.class);
+      if (unknown.length > 0) {
+        diagnostics.push({
+          severity: "warning",
+          code: "unknown-style-token",
+          message: `Unknown style token${unknown.length === 1 ? "" : "s"} ${unknown.map((t) => `"${t}"`).join(", ")} in \`class=\` (dropped when rendering). Known tokens: ${[...STYLE_TOKENS].join(", ")}.`,
+          ...at,
+        });
+      }
+      if (node.name === "slide") {
+        if (parent?.name !== "deck") {
+          diagnostics.push({ severity: "error", code: "slide-outside-deck", message: "::slide must be a direct child of a ::deck.", ...at });
+        }
+        if (node.attrs.layout !== undefined && !isSlideLayout(node.attrs.layout)) {
+          diagnostics.push({
+            severity: "warning",
+            code: "slide-unknown-layout",
+            message: `Unknown slide layout "${String(node.attrs.layout)}"; rendering as "content". Known: ${SLIDE_LAYOUTS.join(", ")}.`,
+            ...at,
+          });
+        }
+      }
+      if (node.name === "notes" && parent?.name !== "slide") {
+        diagnostics.push({ severity: "warning", code: "notes-outside-slide", message: "::notes is speaker notes and belongs directly inside a ::slide.", ...at });
+      }
+      if (node.name === "deck" && node.attrs.aspect !== undefined && !(typeof node.attrs.aspect === "string" && DECK_ASPECTS[node.attrs.aspect])) {
+        diagnostics.push({
+          severity: "warning",
+          code: "deck-unknown-aspect",
+          message: `Unknown deck aspect "${String(node.attrs.aspect)}"; using 16:9. Known: ${Object.keys(DECK_ASPECTS).join(", ")}.`,
+          ...at,
+        });
+      }
+    }
+    const children = "children" in node && Array.isArray(node.children) ? (node.children as Node[]) : [];
+    if (children.length > 0) validateDecksAndStyleTokens(children, node.type === "directive" ? node : parent, diagnostics);
+  }
+}
 
 function validateMacroNode(
   node: DirectiveNode,

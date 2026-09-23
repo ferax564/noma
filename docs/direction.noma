@@ -330,6 +330,19 @@ importer, or agent path that cannot round-trip through `.noma` source with
 stable IDs.
 ::
 
+## Composition and presentations
+
+::decision{id="lego-composition" status="proposed" owner="ferax564" date="2026-09-23"}
+`.noma` stays the only source of truth, and HTML is its projection. Freedom
+comes from composition, not from raw markup. Directives are the components,
+attributes are their props, and fenced nesting composes them. A closed
+`class="..."` style-token vocabulary works as the utility layer. Space-level
+component kits come next. Presentations are a surface of the same source:
+`::deck` / `::slide` flow decks live inside pages, and PaperDOM canvas decks
+are keyed back to their blocks by ID. The full reasoning is in
+`docs/strategy-2026-09.md`.
+::
+
 ## See also
 
 - `PLAN.md` — full vision, including §23 refinements

@@ -1,6 +1,8 @@
 import yaml from "js-yaml";
 import type { Attrs, DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
+import { deckAspect, deckSlides, findDecks, slideLayout, slideParts } from "./slides.js";
+import { styleTokenClassNames } from "./style-tokens.js";
 import {
   bodyFieldText,
   buildComputedEvalContext,
@@ -15,7 +17,7 @@ import {
   type ComputedEvalContext,
 } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
-import { ATTACHMENT_URL_PREFIX, escapeAttr, escapeHtml, type InlineHtmlOptions, inlineToHtml, resolveHref, safeHref, splitDelimitedRow, splitPipeRow } from "./inline.js";
+import { ATTACHMENT_URL_PREFIX, escapeAttr, escapeHtml, type InlineHtmlOptions, inlineToHtml, inlineToPlain, resolveHref, safeHref, splitDelimitedRow, splitPipeRow } from "./inline.js";
 import {
   type ChildPageRef,
   childrenRequest,
@@ -393,6 +395,7 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
   const diagramKinds = resolveDiagramKinds(doc);
   const diagramFoot = allowExternalAssets ? diagramScripts(diagramKinds) : "";
   const computedFoot = ctx.interactive && usesComputedRuntime(doc) ? COMPUTED_RUNTIME_FOOT : "";
+  const deckFoot = ctx.interactive && findDecks(doc).length > 0 ? DECK_RUNTIME_FOOT : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -407,7 +410,7 @@ ${styleHead}${mathHead}
 <body>
 <main class="noma-doc">
 ${body}
-</main>${mathFoot}${diagramFoot}${computedFoot}
+</main>${mathFoot}${diagramFoot}${computedFoot}${deckFoot}
 </body>
 </html>`;
 }
@@ -510,6 +513,64 @@ document.querySelectorAll(".noma-plotly").forEach((el) => {
     Plotly.newPlot(el, spec.data || [], spec.layout || {}, Object.assign({ responsive: true }, spec.config || {}));
   } catch (e) { el.textContent = String(e); }
 });
+</script>`;
+
+/**
+ * Presenter for `::deck`: "Present" shows one slide at a time in fullscreen.
+ * Arrow keys / PageUp / PageDown / Space navigate, Escape exits, and the
+ * current slide is mirrored to the URL hash so a link opens on that slide.
+ */
+const DECK_RUNTIME_FOOT = `
+<script>
+(function () {
+  function slidesOf(deck) {
+    return Array.prototype.slice.call(deck.querySelectorAll(".noma-slide")).filter(function (s) { return s.getAttribute("data-hidden") !== "true"; });
+  }
+  function show(deck, index) {
+    var slides = slidesOf(deck);
+    if (!slides.length) return;
+    var next = Math.max(0, Math.min(slides.length - 1, index));
+    slides.forEach(function (s, i) { s.classList.toggle("noma-slide-current", i === next); });
+    deck.setAttribute("data-current", String(next));
+    if (slides[next].id && history.replaceState) history.replaceState(null, "", "#" + slides[next].id);
+  }
+  function stop(deck) {
+    deck.classList.remove("noma-presenting");
+    document.documentElement.classList.remove("noma-presenting-root");
+    slidesOf(deck).forEach(function (s) { s.classList.remove("noma-slide-current"); });
+  }
+  function start(deck, index) {
+    deck.classList.add("noma-presenting");
+    document.documentElement.classList.add("noma-presenting-root");
+    show(deck, index);
+    if (deck.requestFullscreen) deck.requestFullscreen().catch(function () {});
+  }
+  document.addEventListener("click", function (event) {
+    var button = event.target && event.target.closest && event.target.closest("[data-noma-deck-present]");
+    if (!button) return;
+    var deck = button.closest(".noma-deck");
+    if (!deck) return;
+    var hash = location.hash.slice(1);
+    var slides = slidesOf(deck);
+    var at = slides.findIndex(function (s) { return s.id === hash; });
+    start(deck, at < 0 ? 0 : at);
+  });
+  document.addEventListener("keydown", function (event) {
+    var deck = document.querySelector(".noma-deck.noma-presenting");
+    if (!deck) return;
+    var current = Number(deck.getAttribute("data-current") || "0");
+    if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") { event.preventDefault(); show(deck, current + 1); }
+    else if (event.key === "ArrowLeft" || event.key === "PageUp") { event.preventDefault(); show(deck, current - 1); }
+    else if (event.key === "Home") show(deck, 0);
+    else if (event.key === "End") show(deck, slidesOf(deck).length - 1);
+    else if (event.key === "Escape") { stop(deck); if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function () {}); }
+  });
+  document.addEventListener("fullscreenchange", function () {
+    if (document.fullscreenElement) return;
+    var deck = document.querySelector(".noma-deck.noma-presenting");
+    if (deck) stop(deck);
+  });
+})();
 </script>`;
 
 const COMPUTED_RUNTIME_FOOT = `
@@ -974,11 +1035,28 @@ function cssLength(value: unknown): string | undefined {
 }
 
 function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
+  return withStyleTokens(renderDirectiveBlock(node, ctx), styleTokenClassNames(node.attrs));
+}
+
+/** Adds style-token classes to the block's outermost element (its first tag). */
+function withStyleTokens(html: string, classes: string[]): string {
+  if (classes.length === 0) return html;
+  const open = /^(\s*<[a-zA-Z][a-zA-Z0-9-]*)([^>]*)>/.exec(html);
+  if (!open) return html;
+  const [whole, tagStart, rest = ""] = open;
+  const classAttr = /\sclass="([^"]*)"/.exec(rest);
+  const merged = classAttr
+    ? rest.replace(classAttr[0], ` class="${classAttr[1]} ${classes.join(" ")}"`)
+    : ` class="${classes.join(" ")}"${rest}`;
+  return `${tagStart}${merged}>${html.slice(whole.length)}`;
+}
+
+function renderDirectiveBlock(node: DirectiveNode, ctx: RenderCtx): string {
   const name = node.name;
   const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
   const variant = variantAttr(node);
   const dataAttrs = Object.entries(node.attrs)
-    .filter(([k]) => k !== "id")
+    .filter(([k]) => k !== "id" && k !== "class")
     .map(([k, v]) => ` data-${escapeAttr(k)}="${escapeAttr(String(v))}"`)
     .join("");
 
@@ -1041,6 +1119,15 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
 
     case "hero":
       return `<section class="noma-hero"${idAttr}>${renderChildren(node, ctx)}</section>`;
+
+    case "deck":
+      return renderDeck(node, idAttr, ctx);
+
+    case "slide":
+      return renderSlide(node, idAttr, ctx, 0, 0);
+
+    case "notes":
+      return renderSlideNotes(node, idAttr, ctx);
 
     case "page_setup":
       return renderPageSetup(node, idAttr + dataAttrs);
@@ -1344,6 +1431,34 @@ function renderPagePropertiesReportMacro(node: DirectiveNode, idAttr: string, ct
     })
     .join("\n");
   return `<table class="noma-table noma-page-properties-report"${idAttr}>\n<thead><tr>${head}</tr></thead>\n<tbody>\n${rows}\n</tbody>\n</table>`;
+}
+
+function renderDeck(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {
+  const slides = deckSlides(node);
+  const title = attrValueText(node.attrs, "title");
+  const aspect = deckAspect(node);
+  const others = node.children.filter((child) => !(child.type === "directive" && child.name === "slide"));
+  const slidesHtml = slides.map((slide, index) => withStyleTokens(renderSlide(slide, slide.id ? ` id="${escapeAttr(slide.id)}"` : "", ctx, index + 1, slides.length), styleTokenClassNames(slide.attrs))).join("\n");
+  const extra = others.map((child) => renderNode(child, ctx)).join("\n");
+  const count = `${slides.length} slide${slides.length === 1 ? "" : "s"}`;
+  const bar = `<header class="noma-deck-bar">${title ? `<strong class="noma-deck-title">${inlineToHtml(title, ctx.inline)}</strong>` : ""}<span class="noma-deck-count">${count}</span>${ctx.interactive ? `<button type="button" class="noma-deck-present" data-noma-deck-present>Present</button>` : ""}</header>`;
+  return `<section class="noma-deck"${idAttr} data-aspect="${escapeAttr(aspect)}" style="--noma-deck-ratio: ${aspect.replace(":", " / ")};" aria-roledescription="slide deck"${title ? ` aria-label="${escapeAttr(title)}"` : ""}>${bar}<div class="noma-deck-slides">${slidesHtml}</div>${extra}</section>`;
+}
+
+function renderSlide(node: DirectiveNode, idAttr: string, ctx: RenderCtx, index: number, total: number): string {
+  const parts = slideParts(node);
+  const layout = slideLayout(node);
+  const label = [index > 0 ? `Slide ${index} of ${total}` : "Slide", parts.title ? inlineToPlain(parts.title) : ""].filter(Boolean).join(": ");
+  const titleHtml = parts.title ? `<h2 class="noma-slide-title"${parts.titleId ? ` id="${escapeAttr(parts.titleId)}"` : ""}>${inlineToHtml(parts.title, ctx.inline)}</h2>` : "";
+  const body = parts.body.map((child) => renderNode(child, ctx)).join("\n") || (node.children.length === 0 && node.body ? `<p>${inlineToHtml(node.body, ctx.inline)}</p>` : "");
+  const notes = parts.notes.map((n) => renderDirective(n, ctx)).join("\n");
+  const hidden = node.attrs.hidden === true ? ` data-hidden="true"` : "";
+  const indexAttr = index > 0 ? ` data-slide-index="${index}"` : "";
+  return `<article class="noma-slide noma-slide--${escapeAttr(layout)}"${idAttr}${indexAttr}${hidden} data-layout="${escapeAttr(layout)}" aria-roledescription="slide" aria-label="${escapeAttr(label)}"><div class="noma-slide-frame">${titleHtml}<div class="noma-slide-body">${body}</div></div>${notes}</article>`;
+}
+
+function renderSlideNotes(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {
+  return `<details class="noma-slide-notes"${idAttr}><summary>Speaker notes</summary>${renderChildren(node, ctx)}</details>`;
 }
 
 function renderGenericDirective(node: DirectiveNode, idAndAttrs: string, ctx: RenderCtx): string {

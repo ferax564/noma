@@ -60,3 +60,14 @@ test("hosted PaperDOM strips client actors and rejects stale revisions", () => {
   assert.equal(PAPERDOM_UPSTREAM_LICENSE, "MIT");
   assert.match(PAPERDOM_UPSTREAM_COMMIT, /^[a-f0-9]{40}$/);
 });
+
+test("paperDomHtmlExport escapes element text, ids, and the title", () => {
+  const doc = createUpstreamPaperDocument("xss", `<img src=x onerror=alert(1)>`);
+  const hostile = {
+    ...doc,
+    pages: [{ ...doc.pages[0]!, id: `p"><script>`, elements: [{ id: "t", type: "text", name: "t", frame: { x: 0, y: 0, w: 10, h: 10, rotation: 0 }, z: 1, style: {}, content: { text: "<script>alert(1)</script>" } }] }],
+  } as unknown as Parameters<typeof paperDomHtmlExport>[0];
+  const html = paperDomHtmlExport(hostile);
+  assert.doesNotMatch(html, /<script>|<img/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});

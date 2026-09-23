@@ -192,8 +192,31 @@ section, paragraph, list, list_item, quote, code, thematic_break
 ### Layout blocks
 
 ```
-hero, grid, card, callout, columns, tabs, accordion, sidebar, button, page_setup, header, footer, toc, pagebreak
+hero, grid, card, callout, columns, tabs, accordion, sidebar, button, page_setup, header, footer, toc, pagebreak, deck, slide, notes
 ```
+
+**Style tokens (`class=`).** Any directive may carry `class="..."` with space-separated tokens from a closed vocabulary. Tokens compose like utility classes, but they cannot inject CSS, scripts, or arbitrary layout. HTML emits each known token as `n-<token>` on the block's outer element. Unknown words are dropped when rendering, and the validator reports them as `unknown-style-token`. Other targets ignore tokens.
+
+| Group | Tokens |
+|---|---|
+| tone | `tone-neutral`, `tone-accent`, `tone-info`, `tone-success`, `tone-warning`, `tone-danger` |
+| surface | `plain`, `outline`, `filled`, `elevated`, `muted`, `inverse` |
+| emphasis | `lead`, `subtle`, `emphasis`, `mono` |
+| size | `text-sm`, `text-lg`, `text-xl`, `text-2xl` |
+| align | `align-start`, `align-center`, `align-end` |
+| spacing | `tight`, `roomy` |
+| span | `span-2`, `span-3`, `span-full` (inside a grid) |
+| layout | `stack`, `row`, `center-v` |
+| media | `print-only`, `screen-only`, `hide-in-slides`, `slides-only` |
+
+**Decks and slides.** `::deck{id="..." title="..." aspect="16:9|4:3|1:1"}` holds `:::slide` children. `:::slide{id="..." title="..." layout="..."}` is one slide. Its layout is one of `title`, `section`, `content` (the default), `two-column`, `statement`, `quote`, `media`, or `blank`. If a slide has no `title=`, a leading heading becomes the title. Put speaker notes in a `::::notes` block inside the slide. `hidden` skips a slide when presenting. `transition="fade|slide"` is carried into PaperDOM. Each slide is an ordinary block with a stable ID, so agents patch one slide or bullet without rewriting the deck. The validator enforces that `::slide` sits directly in a `::deck` (`slide-outside-deck`, error). It also warns on `notes-outside-slide`, `slide-unknown-layout`, and `deck-unknown-aspect`.
+
+The targets render decks as follows:
+
+- **HTML** renders the slides as scaled frames inside the document. A **Present** button opens a fullscreen presenter: arrow keys, Space, PageUp/PageDown, Home, and End navigate, and Escape exits. The current slide is written to the URL hash.
+- **Markdown** renders each slide as a `##` section followed by `---`.
+- **LLM** output keeps `[SLIDE ...]` / `[NOTES]` markers.
+- **`--to paperdom`** exports the deck as a PaperDOM canvas document.
 
 `::page_setup{size="Letter|A4|Legal" orientation="portrait|landscape" margin="12mm"}` controls print geometry. DOCX uses the first page setup as the initial section geometry; later `::page_setup` blocks emit native Word section breaks and subsequent Word table columns, dataset tables, and grid/columns layouts size from the active page width and margins. HTML emits an `@page` rule for browser printing. Per-side margins use `margin_top`, `margin_right`, `margin_bottom`, and `margin_left`; lengths accept `in`, `mm`, `cm`, and `pt`.
 
@@ -584,6 +607,8 @@ The default validator detects:
 - **macro checks** — `::include` with no `page=`, `block=`, or `excerpt` (error), a same-page `block=` that does not exist (`broken-reference`), `page=` targets that cannot be checked in single-file mode or do not match a page when the host passes `pageExists` (`include-unknown-page`, warning), invalid `::issue` keys and `::issues` projects (errors), unknown `::issues` statuses and out-of-range `::children` options (warnings), `::page-properties-report` without `label=` (error), and more than one `::excerpt` per page (warning).
 - **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, malformed tracked-revision `change_request` blocks, `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days), and `[[wikilinks]]` inside a `memory`-profile document that resolve to a non-`::memory` target.
 
+- **presentation and style checks** — `::slide` outside a `::deck` (`slide-outside-deck`, error). Warnings for `::notes` outside a `::slide`, unknown slide layouts or deck aspects, and `class=` words outside the style-token vocabulary (`unknown-style-token`).
+
 Per-block opt-out: add the `noverify` flag attribute to silence rules on a single block (e.g. rhetorical claims that aren't expected to carry their own evidence chain).
 
 ```noma
@@ -634,6 +659,7 @@ Built-in profiles:
 | `research-memo`         | Living research memos                     | Alias of `research`, plus claims should carry `confidence=`.                                                                                                                                                                                                                                  |
 | `investment-thesis`     | Living investment theses                  | Alias of `research`, plus claims should carry `confidence=`.                                                                                                                                                                                                                                  |
 | `adr`                   | Architecture decision records             | Minimal + decision/review directives. Expects at least one `::decision` or `::adr`; each `::decision` / `::adr` should carry `status=`, `owner=`, and `date=` or `decided_at=`.                                                                                                               |
+| `presentation`          | Slide decks                               | minimal + `deck`, `slide`, `notes`, `hero`, `grid`, `card`, `columns`, callouts, `figure`, `plot`, `diagram`, `dataset`, `metric`, `claim`, `evidence`, `decision`, `risk`. `technical` and `research` also allow `deck` / `slide` / `notes`. |
 | `spec`                  | Product/technical specs                   | Union of `technical` and `research`, for specs that mix requirements, code examples, risks, open questions, and agent tasks.                                                                                                                                                                  |
 | `memory` / `agent-memory` | Agent memory stores (per-project, per-user) | `memory`, `memory_index` only. Strict: each `::memory` must declare `id` + `type` (one of `user`, `feedback`, `project`, `reference`). `confidence` must be a number in `[0, 1]`; `last_seen` must be an ISO date.                                                                            |
 
@@ -785,7 +811,8 @@ Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 | `pdf`    | stable  | HTML → Chromium print via Puppeteer. Requires `--out <file.pdf>`              |
 | `docx`   | experimental | WordprocessingML package for Word / Google Docs handoff. Requires `--out <file.docx>` |
 | `epub`   | planned |                                                                               |
-| `slides` | planned |                                                                               |
+| `paperdom` | experimental | `::deck` → PaperDOM canvas JSON (pages = slides, element ids `<slide-id>--<part>`). `--deck <id>` picks a deck; a document without a deck converts one section per slide |
+| `slides` | planned | Standalone presenter page; today decks present from the `html` target |
 
 **Watch mode (v0.15).** `noma render|check|export <file> --watch` re-runs the
 command whenever the document's directory changes (debounced; output files and

@@ -6,6 +6,17 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Presentations in `.noma`:** `::deck{aspect="16:9|4:3|1:1"}` holds `:::slide{layout="title|section|content|two-column|statement|quote|media|blank"}` children, with speaker notes in `::::notes`. If a slide has no `title=`, a leading heading becomes the title. HTML shows the slides as scaled frames in the page, and a **Present** button opens a fullscreen presenter with keyboard navigation and a URL-hash deep link to the current slide. Markdown writes one `##` section per slide, and LLM output keeps `[SLIDE]` markers. New `presentation` profile; `technical` and `research` also allow decks. Example: `examples/deck.noma`.
+- **Noma → PaperDOM bridge:** `noma render <file> --to paperdom [--deck <id>]` and `renderPaperDom()` export a deck as a PaperDOM canvas document that the vendored kernel validates. Each page id is the slide's block ID, and each element id is `<slide-id>--<part>`. Titles, bullets, numbered lists, tables, speaker notes, transitions, and hidden slides are carried over. A document without a deck converts one section per slide.
+- **Style tokens (`class=`):** any directive can carry a closed, themed vocabulary of composable tokens (`tone-*`, `outline`/`filled`/`elevated`, `lead`, `text-*`, `align-*`, `span-*`, `stack`/`row`, `print-only`/`slides-only`, …). HTML emits them as `n-<token>` classes, and the default and dark themes style them. Unknown words are dropped and reported by the new `unknown-style-token` warning.
+- **Validator:** `slide-outside-deck` (error), plus warnings for `notes-outside-slide`, `slide-unknown-layout`, `deck-unknown-aspect`, and `unknown-style-token`.
+
+### Fixed
+
+- `paperDomHtmlExport` now escapes element text, page and element ids, and the document title. Before this fix, a PaperDOM document could inject markup into the exported HTML.
+
 ## [0.18.0] — 2026-09-23
 
 ### Added

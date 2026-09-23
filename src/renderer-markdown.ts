@@ -40,7 +40,7 @@ interface RenderCtx {
 const INTERNAL_META_KEYS = new Set(["filename"]);
 const ESCAPE_HATCHES = new Set(["html", "svg", "script"]);
 const CODE_DIRECTIVES = new Set(["code", "code_cell", "output", "query", "example"]);
-const LAYOUT_CONTAINERS = new Set(["grid", "columns", "tabs", "accordion", "hero"]);
+const LAYOUT_CONTAINERS = new Set(["grid", "columns", "tabs", "accordion", "hero", "deck"]);
 const VERBATIM_DIRECTIVES = new Set(["dataset", "diagram", "plotly"]);
 
 export function renderMarkdown(doc: DocumentNode, options: MarkdownRenderOptions = {}): string {
@@ -160,6 +160,10 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx, depth: number): st
     return wrapDirective(node, renderCallout(node, ctx, depth), ctx);
   }
 
+  if (node.name === "slide" || node.name === "notes") {
+    return wrapDirective(node, renderSlideMarkdown(node, ctx, depth), ctx);
+  }
+
   if (node.name === "card" || node.name === "tab" || node.name === "sidebar") {
     return wrapDirective(node, renderTitledContainer(node, ctx, depth), ctx);
   }
@@ -191,6 +195,18 @@ function renderCallout(node: DirectiveNode, ctx: RenderCtx, depth: number): stri
   const lines = [admonition ? `[!${admonition}]` : undefined, title ? `**${renderInline(title, ctx)}**` : undefined, body]
     .filter((line): line is string => Boolean(line && line.trim()));
   return lines.map((line) => quoteMarkdown(line)).join("\n");
+}
+
+function renderSlideMarkdown(node: DirectiveNode, ctx: RenderCtx, depth: number): string {
+  if (node.name === "notes") {
+    return quoteMarkdown(joinBlocks(["**Speaker notes**", renderDirectiveContent(node, ctx, depth)]));
+  }
+  const title = attrText(node, "title");
+  return joinBlocks([
+    title ? `## ${renderInline(title, ctx)}` : "",
+    renderDirectiveContent(node, ctx, depth),
+    "---",
+  ]);
 }
 
 function renderTitledContainer(node: DirectiveNode, ctx: RenderCtx, depth: number): string {

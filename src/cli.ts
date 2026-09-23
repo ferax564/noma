@@ -9,6 +9,7 @@ import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
 import { renderMarkdown } from "./renderer-markdown.js";
+import { renderPaperDom } from "./renderer-paperdom.js";
 import { renderDocx } from "./renderer-docx.js";
 import { extractDocxControlData } from "./docx-control-data.js";
 import { syncControlDefaultsFromDocx } from "./docx-control-sync.js";
@@ -61,12 +62,14 @@ Usage:
   noma --version                             Print the CLI version
 
 Render options:
-  --to <html|llm|json|noma|markdown|md|site|pdf|docx>
+  --to <html|llm|json|noma|markdown|md|site|pdf|docx|paperdom>
                             Target format (default: html). 'site' renders
                             a book manifest as a multi-page HTML site.
   --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
+  --deck <id>               paperdom: export this ::deck (default: the first;
+                            documents without a deck convert section-per-slide)
   --theme <name>            HTML theme: default | dark (default: default)
   --css <path>              Append custom CSS to standalone HTML/site/PDF output
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
@@ -162,6 +165,7 @@ interface CliArgs {
   out?: string;
   standalone: boolean;
   title?: string;
+  deck?: string;
   help: boolean;
   op?: string;
   opsFile?: string;
@@ -234,6 +238,8 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--title") {
       args.title = argv[++i];
+    } else if (a === "--deck") {
+      args.deck = argv[++i];
       i++;
     } else if (a === "--theme") {
       args.theme = argv[++i] ?? "default";
@@ -972,6 +978,15 @@ async function run(argv: string[]): Promise<void> {
         case "markdown":
         case "md": {
           output(renderMarkdown(doc), args.out);
+          return;
+        }
+        case "paperdom": {
+          try {
+            output(`${JSON.stringify(renderPaperDom(doc, args.deck ? { deck: args.deck } : {}), null, 2)}\n`, args.out);
+          } catch (error) {
+            process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.exit(2);
+          }
           return;
         }
         default:

@@ -1285,6 +1285,26 @@ yet" to in scope. Still out: a plugin marketplace, a complex CSS theming
 engine, non-wiki Atlassian clones, and any path that cannot round-trip
 through `.noma` with stable IDs. `docs/direction.noma` mirrors this section.
 
+### 23.20 Composition over markup; presentations as a surface (2026-09-23)
+
+`.noma` stays the only canonical source, and HTML is a class-based projection
+of it, never a stored format. Authors get HTML's "Lego" composition model this
+way:
+
+- directives are components
+- attributes are props
+- fences nest blocks
+- a closed `class=` style-token vocabulary is the utility layer
+- space-level component kits come next
+
+Presentations are a surface of the same source. `::deck` / `::slide` flow
+decks are patchable by ID and present in the browser. PaperDOM canvas decks
+are exported from `.noma` with element IDs keyed to their owning blocks, and
+text sync back to `.noma` and embeds come next. Free CSS, HTML as source, and
+a second visual model stay out. `docs/strategy-2026-09.md` holds the
+competitor analysis and the phased plan, and `docs/direction.noma` mirrors
+this section.
+
 ## 24. Shipped Tracker
 
 This section closes the loop between the plan and the code. As §23 items

@@ -1,0 +1,75 @@
+---
+title: Noma — Knowledge for the Agentic Era
+author: ferax564
+date: 2026-09-23
+profile: presentation
+---
+
+# Noma — Knowledge for the Agentic Era
+
+A slide deck is just another block. Every slide has a stable ID, so an agent
+can patch one bullet without touching the rest of the deck, and the same
+source renders as a web deck (press **Present**), Markdown, LLM context, or a
+PaperDOM canvas document (`noma render examples/deck.noma --to paperdom`).
+
+::deck{id="pitch" title="Noma pitch" aspect="16:9" accent="#b9522a"}
+:::slide{id="pitch-cover" layout="title"}
+## The wiki your agents can safely edit {id="pitch-cover-title"}
+
+Plain-text source · stable block IDs · proof before every write
+:::
+
+:::slide{id="pitch-problem" title="Knowledge bases were built for humans only"}
+- Notion and Confluence store pages as opaque rich-text trees
+- Agents rewrite whole pages, so every AI edit is a review nightmare
+- Nobody can tell which paragraph is stale, cited, or approved
+
+::::notes
+Open with the pain: an agent "helpfully" rewrote the onboarding page and
+nobody noticed the broken runbook link for two weeks.
+::::
+:::
+
+:::slide{id="pitch-model" title="One source, composed like Lego" layout="two-column"}
+::::card{title="Blocks" class="tone-info filled"}
+Typed blocks — claim, decision, risk, card, slide — each with a stable ID.
+::::
+
+::::card{title="Tokens" class="tone-accent outline"}
+A closed style vocabulary (`tone-*`, `elevated`, `span-2`) instead of free CSS.
+::::
+:::
+
+:::slide{id="pitch-loop" title="Agents propose, humans approve"}
+| Step | What happens |
+|---|---|
+| Scope | Agent reads only the blocks it needs |
+| Proof | Patch is simulated, validated, and hashed |
+| Approve | A person accepts the diff |
+| Apply | Hash-checked write to the exact block |
+:::
+
+:::slide{id="pitch-statement" layout="statement" class="tone-accent"}
+Every edit is a reviewable diff against a stable block.
+:::
+
+:::slide{id="pitch-quote" layout="quote"}
+"We stopped asking whether the wiki is current — the stale-knowledge sweep tells us."
+:::
+::
+
+## How to author a deck
+
+::grid{columns=3 compact}
+:::card{title="Deck" class="elevated"}
+`::deck{aspect="16:9" title="..."}` wraps the slides.
+:::
+
+:::card{title="Slide" class="elevated"}
+`:::slide{layout="title|section|content|two-column|statement|quote|media|blank"}`
+:::
+
+:::card{title="Notes" class="elevated"}
+`::::notes` inside a slide holds speaker notes; they never appear on the slide.
+:::
+::
