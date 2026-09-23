@@ -40,9 +40,12 @@ export async function initializeCloud(): Promise<void> {
 }
 
 async function openInitialWorkspace(): Promise<void> {
-  const requestedSite = readCloudId(query.get("site")) ?? readCloudId(localStorage.getItem(activeSiteStorageKey));
-  const requestedDoc = readCloudId(query.get("doc")) ?? readCloudId(localStorage.getItem(activeDocumentStorageKey));
+  const linkedDoc = readCloudId(query.get("doc"));
+  const linkedSite = readCloudId(query.get("site"));
   await refreshSites({ silent: true });
+  const linkedDocSite = linkedDoc && !linkedSite ? state.sites.find((site) => site.documentIds.includes(linkedDoc))?.id : undefined;
+  const requestedSite = linkedSite ?? (linkedDoc ? linkedDocSite : readCloudId(localStorage.getItem(activeSiteStorageKey)));
+  const requestedDoc = linkedDoc ?? readCloudId(localStorage.getItem(activeDocumentStorageKey));
   if (requestedSite) {
     await loadSite(requestedSite, requestedDoc);
   } else if (requestedDoc) {
