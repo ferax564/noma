@@ -214,9 +214,10 @@ test("visual mode inserts blocks from the slash menu and markdown shortcuts with
   assert.match(pasted, /## Pasted Section \{id="pasted-section"\}\n\nHello \*\*world\*\* and \[bad link\]\(#\)\n\n- one\n- two/);
   assert.equal(await page.evaluate(() => (window as unknown as { pwned?: boolean }).pwned), undefined);
   assert.equal(await page.$eval("#dirtyBadge", (badge) => badge.textContent), "unsaved");
-  await page.keyboard.down("Control");
+  const saveModifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.down(saveModifier);
   await page.keyboard.press("s");
-  await page.keyboard.up("Control");
+  await page.keyboard.up(saveModifier);
   await waitForText(page, "#cloudStatus", "Saved page");
   const documentId = new URL(page.url()).searchParams.get("doc");
   const session = await sessionToken(page);
