@@ -28,7 +28,9 @@ import {
   type SourceInspection,
   updateDocument,
 } from "./records.js";
+import { documentSummary } from "./macros.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
+import { routeSiteExport } from "./routes-export.js";
 import {
   routeDocumentApprovals,
   routeDocumentComments,
@@ -122,6 +124,11 @@ export async function routeSites(
     return;
   }
 
+  if (suffix === "export") {
+    await routeSiteExport(req, res, url, config, principal, site);
+    return;
+  }
+
   if (suffix) throw new HttpError(404, "Unknown site route");
 
   if (method === "GET") {
@@ -171,7 +178,7 @@ async function routeSiteDocuments(
     const access = requireRecordAccess(config, site, principal, "editor");
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
-    const document = await createDocument(config, input, user, site.title);
+    const document = await createDocument(config, input, user, site.title, site.id);
     const now = config.now().toISOString();
     const documentIds = [...site.documentIds, document.id];
     const pageFolders = pageFolderMap(site.pageFolders, documentIds);
@@ -537,6 +544,8 @@ interface CloudPageTreeNode {
   id: string;
   title: string;
   updatedAt: string;
+  /** Plain text of the page's `::excerpt`, when it has one. */
+  summary?: string;
   folder?: string;
   children: CloudPageTreeNode[];
 }
@@ -594,7 +603,15 @@ function sitePageTree(config: CloudServerConfig, site: CloudSiteRecord): CloudPa
     if (config.store.isTrashed("document", id)) continue;
     const document = config.store.readDocument(id);
     if (!document) continue;
-    nodes.set(id, { id, title: document.title, updatedAt: document.updatedAt, ...(folders[id] ? { folder: folders[id] } : {}), children: [] });
+    const summary = documentSummary(document);
+    nodes.set(id, {
+      id,
+      title: document.title,
+      updatedAt: document.updatedAt,
+      ...(summary ? { summary } : {}),
+      ...(folders[id] ? { folder: folders[id] } : {}),
+      children: [],
+    });
   }
   const roots: CloudPageTreeNode[] = [];
   for (const [id, node] of nodes) {

@@ -9,6 +9,12 @@ export interface AtlassianAuth {
   apiToken?: string;
   personalAccessToken?: string;
   edition: AtlassianEdition;
+  /**
+   * Skip the private-address URL check, for self-hosted Data Center on a
+   * private network. The caller's `http` transport is then responsible for
+   * any network policy.
+   */
+  allowPrivateHosts?: boolean;
 }
 
 export interface AtlassianHttp {
@@ -25,7 +31,7 @@ export async function atlassianFetch(
   attempt = 0,
 ): Promise<Response> {
   const url = new URL(path, auth.baseUrl.endsWith("/") ? auth.baseUrl : `${auth.baseUrl}/`).toString();
-  assertSafeImportUrl(url);
+  if (!auth.allowPrivateHosts) assertSafeImportUrl(url);
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
   if (auth.edition === "cloud") {

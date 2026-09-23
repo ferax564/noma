@@ -66,6 +66,10 @@ export interface CloudPageTemplate {
   description: string;
   category: string;
   source: string;
+  scope?: "built-in" | "workspace" | "site";
+  siteId?: string;
+  variables?: Array<{ name: string; label: string; default?: string; required: boolean }>;
+  editable?: boolean;
 }
 
 export interface CloudSearchResult {

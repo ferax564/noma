@@ -346,6 +346,68 @@ export interface CloudDbQueryResult {
   rows: Array<Record<string, unknown>>;
 }
 
+export interface CloudTemplateVariable {
+  name: string;
+  label: string;
+  default?: string;
+  required: boolean;
+}
+
+export type CloudPageTemplateScope = "workspace" | "site";
+
+export interface CloudPageTemplateRecord {
+  id: string;
+  scope: CloudPageTemplateScope;
+  siteId?: string;
+  name: string;
+  description: string;
+  category: string;
+  source: string;
+  variables: CloudTemplateVariable[];
+  createdBy: string;
+  updatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CloudImportSourceKind = "confluence-cloud" | "confluence-datacenter" | "confluence-export" | "confluence-bundle";
+export type CloudImportJobStatus = "queued" | "running" | "succeeded" | "failed";
+
+export interface CloudImportProgress {
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+}
+
+export interface CloudImportJob {
+  id: string;
+  siteId: string;
+  createdBy: string;
+  source: CloudImportSourceKind;
+  status: CloudImportJobStatus;
+  spaceKey?: string;
+  progress: CloudImportProgress;
+  result?: Record<string, unknown>;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+}
+
+export interface CloudImportSource {
+  siteId: string;
+  sourceSystem: string;
+  sourceId: string;
+  documentId: string;
+  sourceVersion?: string;
+  importedHash: string;
+  importedAt: string;
+}
+
 export interface DocumentSummary extends Omit<CloudDocumentRecord, "source"> {
   currentRole?: CloudRole;
 }
@@ -369,6 +431,80 @@ interface CloudDatabaseOptions {
   dataDir: string;
   usersDir: string;
   sitesDir: string;
+}
+
+interface PageTemplateRow {
+  id: string;
+  scope: CloudPageTemplateScope;
+  site_id: string | null;
+  name: string;
+  description: string;
+  category: string;
+  source: string;
+  variables_json: string;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function pageTemplateRecord(row: PageTemplateRow): CloudPageTemplateRecord {
+  return {
+    id: row.id,
+    scope: row.scope,
+    ...(row.site_id ? { siteId: row.site_id } : {}),
+    name: row.name,
+    description: row.description,
+    category: row.category,
+    source: row.source,
+    variables: JSON.parse(row.variables_json) as CloudTemplateVariable[],
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+interface ImportJobRow {
+  id: string;
+  site_id: string;
+  created_by: string;
+  source: CloudImportSourceKind;
+  status: CloudImportJobStatus;
+  space_key: string | null;
+  progress_json: string;
+  result_json: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+}
+
+function importJob(row: ImportJobRow): CloudImportJob {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    createdBy: row.created_by,
+    source: row.source,
+    status: row.status,
+    ...(row.space_key ? { spaceKey: row.space_key } : {}),
+    progress: JSON.parse(row.progress_json) as CloudImportProgress,
+    ...(row.result_json ? { result: JSON.parse(row.result_json) as Record<string, unknown> } : {}),
+    ...(row.error ? { error: row.error } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(row.finished_at ? { finishedAt: row.finished_at } : {}),
+  };
+}
+
+interface ImportSourceRow {
+  site_id: string;
+  source_system: string;
+  source_id: string;
+  document_id: string;
+  source_version: string | null;
+  imported_hash: string;
+  imported_at: string;
 }
 
 interface RecordJsonRow {
@@ -1096,7 +1232,7 @@ export class NomaCloudDatabase {
       }
       this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
       if (type === "document") {
-        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels"]) {
+        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "import_sources"]) {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
         this.db.prepare("DELETE FROM search_index WHERE document_id = ?").run(id);
@@ -1108,6 +1244,9 @@ export class NomaCloudDatabase {
         }
       } else {
         this.db.prepare("DELETE FROM site_documents WHERE site_id = ?").run(id);
+        for (const owned of ["page_templates", "import_jobs", "import_sources"]) {
+          this.db.prepare(`DELETE FROM ${owned} WHERE site_id = ?`).run(id);
+        }
       }
       return removed;
     });
@@ -1805,6 +1944,148 @@ export class NomaCloudDatabase {
     return rows.map(cloudPatchProposal);
   }
 
+  // -- wiki macros, page templates, and Confluence import --------------------
+
+  /** Sites whose page list contains the document, in insertion order. */
+  siteIdsForDocument(documentId: string): string[] {
+    return (
+      this.db
+        .prepare("SELECT site_id FROM site_documents WHERE document_id = ? ORDER BY position, site_id")
+        .all(documentId) as Array<{ site_id: string }>
+    ).map((row) => row.site_id);
+  }
+
+  /** Non-trashed documents whose title matches case-insensitively, most recently updated first. */
+  documentIdsByTitle(title: string, limit = 20): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT d.id FROM documents d
+           WHERE lower(d.title) = lower(?)
+             AND NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'document' AND t.resource_id = d.id)
+           ORDER BY d.updated_at DESC, d.id
+           LIMIT ?`,
+        )
+        .all(title.trim(), limit) as Array<{ id: string }>
+    ).map((row) => row.id);
+  }
+
+  listPageTemplates(siteIds: string[]): CloudPageTemplateRecord[] {
+    const placeholders = siteIds.map(() => "?").join(", ");
+    const siteClause = siteIds.length > 0 ? `OR (scope = 'site' AND site_id IN (${placeholders}))` : "";
+    return (
+      this.db
+        .prepare(`SELECT * FROM page_templates WHERE scope = 'workspace' ${siteClause} ORDER BY scope DESC, lower(name), id LIMIT 500`)
+        .all(...siteIds) as PageTemplateRow[]
+    ).map(pageTemplateRecord);
+  }
+
+  readPageTemplate(id: string): CloudPageTemplateRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM page_templates WHERE id = ?").get(id) as PageTemplateRow | undefined;
+    return row ? pageTemplateRecord(row) : undefined;
+  }
+
+  writePageTemplate(template: CloudPageTemplateRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO page_templates
+           (id, scope, site_id, name, description, category, source, variables_json, created_by, updated_by, created_at, updated_at)
+         VALUES (@id, @scope, @siteId, @name, @description, @category, @source, @variablesJson, @createdBy, @updatedBy, @createdAt, @updatedAt)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           description = excluded.description,
+           category = excluded.category,
+           source = excluded.source,
+           variables_json = excluded.variables_json,
+           updated_by = excluded.updated_by,
+           updated_at = excluded.updated_at`,
+      )
+      .run({ ...template, siteId: template.siteId ?? null, variablesJson: JSON.stringify(template.variables) });
+  }
+
+  deletePageTemplate(id: string): boolean {
+    return this.db.prepare("DELETE FROM page_templates WHERE id = ?").run(id).changes > 0;
+  }
+
+  createImportJob(job: CloudImportJob): void {
+    this.db
+      .prepare(
+        `INSERT INTO import_jobs (id, site_id, created_by, source, status, space_key, progress_json, result_json, error, created_at, updated_at, finished_at)
+         VALUES (@id, @siteId, @createdBy, @source, @status, @spaceKey, @progressJson, NULL, NULL, @createdAt, @updatedAt, NULL)`,
+      )
+      .run({ ...job, spaceKey: job.spaceKey ?? null, progressJson: JSON.stringify(job.progress) });
+  }
+
+  updateImportJob(id: string, patch: Partial<Pick<CloudImportJob, "status" | "progress" | "result" | "error" | "spaceKey" | "finishedAt">>, updatedAt: string): void {
+    const current = this.readImportJob(id);
+    if (!current) return;
+    const next = { ...current, ...patch };
+    this.db
+      .prepare(
+        `UPDATE import_jobs SET status = ?, space_key = ?, progress_json = ?, result_json = ?, error = ?, finished_at = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(
+        next.status,
+        next.spaceKey ?? null,
+        JSON.stringify(next.progress),
+        next.result ? JSON.stringify(next.result) : null,
+        next.error ?? null,
+        next.finishedAt ?? null,
+        updatedAt,
+        id,
+      );
+  }
+
+  readImportJob(id: string): CloudImportJob | undefined {
+    const row = this.db.prepare("SELECT * FROM import_jobs WHERE id = ?").get(id) as ImportJobRow | undefined;
+    return row ? importJob(row) : undefined;
+  }
+
+  countActiveImportJobs(siteId: string): number {
+    return (this.db.prepare("SELECT COUNT(*) AS count FROM import_jobs WHERE site_id = ? AND status IN ('queued', 'running')").get(siteId) as { count: number }).count;
+  }
+
+  readImportSource(siteId: string, sourceSystem: string, sourceId: string): CloudImportSource | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM import_sources WHERE site_id = ? AND source_system = ? AND source_id = ?")
+      .get(siteId, sourceSystem, sourceId) as ImportSourceRow | undefined;
+    return row
+      ? {
+          siteId: row.site_id,
+          sourceSystem: row.source_system,
+          sourceId: row.source_id,
+          documentId: row.document_id,
+          ...(row.source_version ? { sourceVersion: row.source_version } : {}),
+          importedHash: row.imported_hash,
+          importedAt: row.imported_at,
+        }
+      : undefined;
+  }
+
+  writeImportSource(source: CloudImportSource): void {
+    this.db
+      .prepare(
+        `INSERT INTO import_sources (site_id, source_system, source_id, document_id, source_version, imported_hash, imported_at)
+         VALUES (@siteId, @sourceSystem, @sourceId, @documentId, @sourceVersion, @importedHash, @importedAt)
+         ON CONFLICT(site_id, source_system, source_id) DO UPDATE SET
+           document_id = excluded.document_id,
+           source_version = excluded.source_version,
+           imported_hash = excluded.imported_hash,
+           imported_at = excluded.imported_at`,
+      )
+      .run({ ...source, sourceVersion: source.sourceVersion ?? null });
+  }
+
+  /** Jobs cannot survive a restart (they run in-process), so any left unfinished are marked failed on open. */
+  private failInterruptedImportJobs(): void {
+    this.db
+      .prepare(
+        `UPDATE import_jobs SET status = 'failed', error = 'Interrupted by a server restart', finished_at = updated_at
+         WHERE status IN ('queued', 'running')`,
+      )
+      .run();
+  }
+
   query(user: CloudUserRecord, query: CloudDbQuery): CloudDbQueryResult {
     switch (query.resource) {
       case "documents":
@@ -2127,6 +2408,54 @@ export class NomaCloudDatabase {
         PRIMARY KEY (user_id, resource_type, resource_id)
       );
 
+      -- page templates & Confluence import
+      CREATE TABLE IF NOT EXISTS page_templates (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK (scope IN ('workspace', 'site')),
+        site_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT 'general',
+        source TEXT NOT NULL,
+        variables_json TEXT NOT NULL DEFAULT '[]',
+        created_by TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK ((scope = 'site') = (site_id IS NOT NULL))
+      );
+
+      CREATE TABLE IF NOT EXISTS import_jobs (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('confluence-cloud', 'confluence-datacenter', 'confluence-export', 'confluence-bundle')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+        space_key TEXT,
+        progress_json TEXT NOT NULL DEFAULT '{}',
+        result_json TEXT,
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        finished_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS import_sources (
+        site_id TEXT NOT NULL,
+        source_system TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        document_id TEXT NOT NULL,
+        source_version TEXT,
+        imported_hash TEXT NOT NULL,
+        imported_at TEXT NOT NULL,
+        PRIMARY KEY (site_id, source_system, source_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_page_templates_scope ON page_templates(scope, site_id, lower(name));
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_site ON import_jobs(site_id, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_import_sources_document ON import_sources(document_id);
+      -- end page templates & Confluence import
+
       CREATE INDEX IF NOT EXISTS idx_permissions_user ON permissions(user_id, resource_type, resource_id);
       CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token_hash);
       CREATE INDEX IF NOT EXISTS idx_site_documents_document ON site_documents(document_id, site_id);
@@ -2163,6 +2492,7 @@ export class NomaCloudDatabase {
       CREATE INDEX IF NOT EXISTS idx_watchers_resource ON watchers(resource_type, resource_id, user_id);
     `);
     this.migrateNotificationTypes();
+    this.failInterruptedImportJobs();
     this.db.exec(`
       INSERT OR IGNORE INTO document_revisions
         (document_id, revision, title, source, hash, created_at, created_by)

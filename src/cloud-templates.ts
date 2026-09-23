@@ -189,8 +189,174 @@ Verify the primary source and leave unrelated blocks unchanged.
 export function instantiateCloudPageTemplate(templateId: string, title: string, spaceTitle: string): string {
   const template = cloudPageTemplates.find((candidate) => candidate.id === templateId);
   if (!template) throw new Error(`Unknown page template: ${templateId}`);
-  return template.source
-    .replaceAll("{{title}}", title.trim() || "Untitled Page")
-    .replaceAll("{{title_id}}", slugify(title) || "untitled-page")
-    .replaceAll("{{space}}", spaceTitle.trim() || "this workspace");
+  return instantiateTemplateSource(template.source, builtInTemplateValues(title, spaceTitle));
+}
+
+/** A blueprint variable declared by a user or space template. */
+export interface TemplateVariableSpec {
+  name: string;
+  label: string;
+  default?: string;
+  required: boolean;
+}
+
+/** Placeholders every template may use without declaring them. */
+export const RESERVED_TEMPLATE_VARIABLES: readonly string[] = ["title", "title_id", "space", "date", "author"];
+
+const PLACEHOLDER_RE = /\{\{\s*([A-Za-z][A-Za-z0-9_]{0,39})\s*\}\}/g;
+export const TEMPLATE_VARIABLE_NAME_RE = /^[a-z][a-z0-9_]{0,39}$/;
+export const MAX_TEMPLATE_VALUE_LENGTH = 500;
+
+export function builtInTemplateValues(title: string, spaceTitle: string, extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    title: title.trim() || "Untitled Page",
+    title_id: slugify(title) || "untitled-page",
+    space: spaceTitle.trim() || "this workspace",
+    ...extra,
+  };
+}
+
+/** Placeholder names used in a template source, in first-use order. */
+export function templatePlaceholders(source: string): string[] {
+  const names: string[] = [];
+  for (const match of source.matchAll(PLACEHOLDER_RE)) {
+    const name = match[1]!;
+    if (!names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+const ZWSP = "\u200b";
+const STRUCTURAL_LINE_RE: Array<[string, RegExp]> = [
+  ["fence", /^```/],
+  ["directive-close", /^:{2,}\s*$/],
+  ["directive", /^:{2,}\s*[a-zA-Z_]/],
+  ["heading", /^#{1,6}\s+\S/],
+  ["thematic", /^(?:-{3,}|\*{3,}|_{3,})\s*$/],
+  ["list", /^[-*+]\s+/],
+  ["ordered", /^\d+\.\s+/],
+  ["quote", /^>/],
+  ["table", /^\s*\|/],
+];
+const HEADING_ATTRS_RE = /\s+\{[^}]+\}\s*$/;
+
+function lineKind(line: string): string {
+  const trimmed = line.trimStart();
+  for (const [kind, re] of STRUCTURAL_LINE_RE) {
+    if (re.test(trimmed)) return kind;
+  }
+  return "text";
+}
+
+/**
+ * Fill `{{name}}` placeholders so a value can never change the document's
+ * structure: values become single-line, attribute values cannot close their
+ * quotes or brace block, YAML values are quoted, and a value that would turn a
+ * line into a heading, list, directive, fence, or attribute block is guarded
+ * with a zero-width space. Unknown placeholders are left as written.
+ */
+export function instantiateTemplateSource(source: string, values: Record<string, string>): string {
+  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  let inFrontmatter = lines[0]?.trim() === "---";
+  let inFence = false;
+  return lines
+    .map((line, index) => {
+      if (index > 0 && inFrontmatter && line.trim() === "---") {
+        inFrontmatter = false;
+        return line;
+      }
+      if (!inFrontmatter && /^```/.test(line.trimStart())) {
+        inFence = !inFence;
+        if (!line.includes("{{")) return line;
+      }
+      if (!line.includes("{{")) return line;
+      const context: LineContext = inFrontmatter && index > 0 ? "yaml" : inFence ? "code" : "noma";
+      return fillLine(line, values, context);
+    })
+    .join("\n");
+}
+
+type LineContext = "noma" | "yaml" | "code";
+
+function fillLine(line: string, values: Record<string, string>, context: LineContext): string {
+  const neutral = line.replace(PLACEHOLDER_RE, (match, name: string) => (name in values ? "x" : match));
+  const attrSpan = context === "noma" ? attributeSpan(neutral, line) : undefined;
+  let out = "";
+  let last = 0;
+  for (const match of line.matchAll(PLACEHOLDER_RE)) {
+    const name = match[1]!;
+    const start = match.index ?? 0;
+    out += line.slice(last, start);
+    last = start + match[0].length;
+    const raw = values[name];
+    if (raw === undefined) {
+      out += match[0];
+      continue;
+    }
+    const value = singleLine(raw);
+    if (context === "yaml") out += yamlValue(value, quoteBefore(line, 0, start));
+    else if (attrSpan && start > attrSpan.start && start < attrSpan.end) out += attributeValue(value, quoteBefore(line, attrSpan.start, start));
+    else out += value;
+  }
+  out += line.slice(last);
+  if (context === "yaml") return out;
+  const neutralKind = lineKind(neutral);
+  const outKind = lineKind(out);
+  const changesStructure = context === "code" ? outKind === "fence" && neutralKind !== "fence" : outKind !== neutralKind;
+  if (changesStructure) out =`${leadingWhitespace(out)}${ZWSP}${out.trimStart()}`;
+  if (neutralKind === "heading" && !HEADING_ATTRS_RE.test(neutral) && HEADING_ATTRS_RE.test(out)) out = `${out.trimEnd()}${ZWSP}`;
+  return out;
+}
+
+/** Character span of the `{...}` attribute block on a directive-open or heading line. */
+function attributeSpan(neutral: string, line: string): { start: number; end: number } | undefined {
+  const trimmed = line.trimStart();
+  const offset = line.length - trimmed.length;
+  if (/^:{2,}\s*[a-zA-Z_]/.test(trimmed)) {
+    const start = line.indexOf("{", offset);
+    const end = line.lastIndexOf("}");
+    return start >= 0 && end > start ? { start, end } : undefined;
+  }
+  if (/^#{1,6}\s/.test(trimmed) && HEADING_ATTRS_RE.test(neutral)) {
+    const start = line.lastIndexOf(" {") + 1;
+    const end = line.lastIndexOf("}");
+    return start > 0 && end > start ? { start, end } : undefined;
+  }
+  return undefined;
+}
+
+function quoteBefore(line: string, from: number, to: number): '"' | "'" | undefined {
+  let quote: '"' | "'" | undefined;
+  for (let index = from; index < to; index++) {
+    const char = line[index];
+    if (char !== '"' && char !== "'") continue;
+    if (!quote) quote = char;
+    else if (quote === char) quote = undefined;
+  }
+  return quote;
+}
+
+function attributeValue(value: string, quote: '"' | "'" | undefined): string {
+  const unbraced = value.replace(/[{}]/g, "");
+  if (quote === '"') return unbraced.replace(/"/g, "'");
+  if (quote === "'") return unbraced.replace(/'/g, "\u2019");
+  return unbraced.replace(/[\s"'=]+/g, "-");
+}
+
+function yamlValue(value: string, quote: '"' | "'" | undefined): string {
+  if (quote === '"') return JSON.stringify(value).slice(1, -1);
+  if (quote === "'") return value.replace(/'/g, "''");
+  return JSON.stringify(value);
+}
+
+function singleLine(value: string): string {
+  return value
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, MAX_TEMPLATE_VALUE_LENGTH);
+}
+
+function leadingWhitespace(line: string): string {
+  return line.slice(0, line.length - line.trimStart().length);
 }

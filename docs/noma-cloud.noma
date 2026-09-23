@@ -170,8 +170,9 @@ The left rail provides workspace navigation beyond the page tree:
 | Control | Behavior |
 |---|---|
 | Search | Hybrid lexical, local-embedding, typed-block, graph, trust, and freshness search over visible source blocks. Results preserve the exact source span, version hash, and access decision and open the matching page and source line. |
-| Page template | Starts a new page from blank, meeting-notes, decision-record, project-overview, technical-spec, or research-paper structure. |
+| Page template | Starts a new page from a built-in template (blank, meeting-notes, decision-record, project-overview, technical-spec, research-paper), a workspace template, or a template of the current space. Blueprints with variables open a form first. |
 | Import | Uploads `.noma`, `.md`, `.markdown`, or plain text into the current space. Markdown intake pins stable heading IDs. |
+| Confluence | Imports a whole Confluence space into the current space. See [[wiki-macros-templates-import-export]]. |
 | Favorite | Adds the current page to a per-user Favorites list. Spaces can be favorited from their context menu. |
 | Recent | Tracks the pages and spaces opened by the current user. |
 | Trash | Lists pages and spaces moved out of active navigation and restores them without losing source or document history. |
@@ -203,6 +204,147 @@ POST   /api/trash/site/<id>/restore
 When creating a page through `/api/documents` or
 `/api/sites/<site-id>/documents`, send `templateId` instead of `source`, or
 send `format: "markdown"` with Markdown source for server-side intake.
+
+## Wiki macros, templates, import, and export {id="wiki-macros-templates-import-export"}
+
+### Wiki macros
+
+Pages can pull in live content with wiki macros. They are directives, so the
+source stays reviewable and agents can patch around them by block ID:
+
+| Macro | What it shows |
+|---|---|
+| `::include{page="Title or id" block="block-id"}` | One block of another page (or of this page, without `page=`). Without `block=` it includes the whole page. |
+| `::include{page="..." excerpt}` | The other page's `::excerpt`. |
+| `::excerpt` | Marks this page's summary. The page tree and search results show it as `summary`. |
+| `::children{depth=2 sort="title"}` | Child pages from the space tree, with links and summaries. `sort` is `position`, `title`, or `updated`. |
+| `::issue{key="ENG-12"}` | A live card for a tracker issue: status, assignee, summary. |
+| `::issues{project="ENG" status="in_progress"}` | A table of matching issues. |
+| `::page-properties` / `::page-properties-report{label="adr"}` | A key/value table, and a report of the properties of every page with that label in the space. |
+
+Macros resolve when a page is rendered (`/d/<id>`, `/s/<id>`,
+`/api/documents/<id>/html` and `/llm`, exports) and in the editor preview. Every
+lookup is checked against the viewer. A page the viewer cannot open renders a
+"You do not have access" placeholder and nothing from it. A trashed or unknown
+page renders "not found". Includes nest at most three levels, and an include
+cycle renders a placeholder instead of recursing. At most 200 lookups run per
+render.
+
+The editor preview renders unsaved source in the browser, so it asks the server
+in one batch:
+
+```text
+POST /api/macros/resolve
+{ "documentId": "<page id>", "requests": [
+    { "kind": "include", "page": "Handbook", "block": "policy" },
+    { "kind": "children", "documentId": "<page id>", "depth": 1, "sort": "title" },
+    { "kind": "issue", "key": "ENG-12" },
+    { "kind": "issues", "project": "ENG", "status": "todo", "limit": 20 },
+    { "kind": "page-properties-report", "label": "adr" } ] }
+```
+
+The response has one result per request (`status` is `ok`, `missing`,
+`forbidden`, or `unavailable`). Included blocks come back as AST nodes with
+their IDs and line positions removed. At most 50 requests are answered per call,
+and every `documentId` / `fromDocumentId` must be a page the caller can view.
+
+### Templates and blueprints
+
+Besides the built-in templates, a workspace can hold **workspace templates**
+(managed by workspace admins) and **space templates** (managed by editors of
+that space). A template is `.noma` source with `{{variable}}` placeholders. It
+can use `title`, `title_id`, `space`, `date`, and `author` without declaring
+them. Any other variable must be declared with a `name`, a `label`, an optional
+`default`, and `required`. A template that uses an undeclared placeholder is
+rejected.
+
+```text
+GET    /api/templates?site=<optional-site-id>   built-ins + workspace + that space's templates
+GET    /api/templates/<id>
+POST   /api/templates                           { scope: "workspace"|"site", siteId?, name, description?, category?, source | fromDocumentId, variables? }
+PUT    /api/templates/<id>
+DELETE /api/templates/<id>
+```
+
+`fromDocumentId` saves an existing page as a template ("Save as template" in
+the page toolbar). The page's first heading becomes
+`# {{title}} {id="{{title_id}}"}`, so each new page gets its own title and ID.
+To create a page from a blueprint, send `templateId` and `variables` to
+`POST /api/sites/<id>/documents`. Space templates can only be used inside their
+own space. Missing required variables return `400` with a `missing` list.
+
+Values are filled in so they cannot change the page's structure. Values become
+one line. Inside attributes, quotes and braces are neutralised. In YAML
+frontmatter, values are quoted. If a value would turn a line into a heading,
+list, directive, fence, or attribute block, a zero-width space is placed in
+front of it so it stays plain text.
+
+### Import from Confluence
+
+`POST /api/import/confluence` imports a whole Confluence space into an existing
+Noma space. The caller needs editor access to that space. The request returns
+`202` with a job, and the import runs in the background:
+
+```text
+POST /api/import/confluence   { siteId, deployment: "cloud", baseUrl, email, apiToken, spaceKey, overwrite? }
+POST /api/import/confluence   { siteId, deployment: "datacenter", baseUrl, pat, spaceKey, overwrite? }
+POST /api/import/confluence?site=<id>&overwrite=false   (body: XML space export .zip, or entities.xml)
+POST /api/import/confluence   { siteId, archiveBase64 } | { siteId, entitiesXml } | { siteId, bundle }
+GET  /api/import/jobs/<job-id>
+```
+
+- **Live import** reads every current page of the space through the Confluence
+  Cloud v2 REST API (email + API token) or the Data Center REST API (personal
+  access token), following pagination. Credentials are used for that one job
+  and never stored or returned. The target must be `https` and resolve to a
+  public address. Redirects are refused. Set
+  `NOMA_CLOUD_IMPORT_ALLOW_PRIVATE_HOSTS=1` only for a self-hosted Data Center
+  on a private network.
+- **XML space export** accepts the ZIP from *Space settings → Export space →
+  XML*, or its `entities.xml`. Only current pages are imported: historical
+  versions, drafts, and deleted pages are skipped. XML entities are never
+  expanded. An HTML export is rejected with a hint to export XML instead.
+  Uploads are capped by `NOMA_CLOUD_IMPORT_MAX_BYTES` (default 50 MB).
+- **JSON bundle** (`format: "noma-confluence-bundle"`) takes pages with `id`,
+  `title`, `parentId`, `storage` (storage-format XHTML), and `labels`.
+
+Storage format becomes `.noma`: headings (shifted one level under the page
+title, with explicit IDs), paragraphs, lists, task lists, tables, code and
+noformat blocks, info/note/warning/tip/panel callouts, expand sections, status
+lozenges, page links (as `[[wikilinks]]`), images (as `::figure`), and the
+excerpt, include, excerpt-include, children, Jira-issue, page-properties, and
+page-properties-report macros (as the Noma macros above). Other macros are kept
+as readable text in a `::confluence_macro` block and counted in the job's `loss`
+report. Attachments are not copied. Figures link to the original Confluence
+download URL (or `attachments/<pageId>/<file>` for file exports), and the job
+result says how many attachment links there are.
+
+Each page keeps its Confluence ID, space, URL, author, dates, and version in
+frontmatter (`source: confluence`). The parent/child hierarchy becomes the
+space's page tree, and Confluence labels become page labels. Re-importing is
+idempotent: pages are matched by Confluence page ID. Unchanged pages are left
+alone, and changed pages get a new revision. A page edited in Noma since the
+last import is skipped unless `overwrite: true`. The job status reports
+`total`, `processed`, `created`, `updated`, `unchanged`, `skipped`, and
+`failed` counts, with a per-page result list. Only the job's creator or an
+editor of the space can read it. Only one import per space runs at a time.
+Jobs interrupted by a server restart are marked failed.
+
+### Export
+
+`GET /api/documents/<id>/export?to=` downloads one page as `pdf`, `docx`,
+`markdown`, `html`, `noma`, `llm`, or `json`. Macros are resolved for the
+viewer. HTML and PDF render with escape hatches and external assets off. PDF
+export needs Puppeteer and its Chrome build on the server. Without them it
+returns `501` with `code: "pdf_unavailable"`. At most two PDF exports run at
+once.
+
+`GET /api/sites/<id>/export?to=site-zip` downloads the space as a static HTML
+site: an `index.html` page tree plus one page per document, with child-page
+links rewritten to the exported files. `?to=noma-zip` downloads the `.noma`
+sources, a `manifest.json` (IDs, titles, parents, folders, labels, hashes), and
+a `book.noma.yml` manifest, so `noma render book.noma.yml --to site` works
+offline. The page toolbar's **Export** menu offers both.
 
 ## Page tree, labels, watching, and version diffs
 
@@ -704,9 +846,11 @@ These routes are generated from the same saved source:
 | `/cloud.html?doc=<id>` | Editable or readonly single-page shell. |
 | `/d/<id>` | Rendered single-page artifact. |
 | `/s/<id>` | Rendered workspace site. |
-| `/api/documents/<id>/export?to=html` | HTML export for one document. |
-| `/api/documents/<id>/export?to=llm` | LLM context export for one document. |
-| `/api/documents/<id>/export?to=json` | JSON AST export for one document. |
+| `/api/documents/<id>/html` | Rendered HTML for one document (inline, macros resolved). |
+| `/api/documents/<id>/llm` | LLM context for one document, with included content and provenance comments. |
+| `/api/documents/<id>/json` | JSON AST for one document. |
+| `/api/documents/<id>/export?to=<format>` | Download one document as `pdf`, `docx`, `markdown`, `html`, `noma`, `llm`, or `json`. |
+| `/api/sites/<id>/export?to=<format>` | Download a whole space as a static HTML site (`site-zip`) or as `.noma` sources (`noma-zip`). |
 
 ## Query the DB API
 

@@ -12,6 +12,7 @@ import { diagnosticsList, diagnosticsSummary, draftRecoveryStatus, historyStatus
 import { clearLocalDraft, persistLocalDraft, readLocalDraft } from "./drafts.js";
 import { refreshHistory, renderHistory } from "./history.js";
 import { renderChrome } from "./layout.js";
+import { clearMacroCache, flushMacroRequests, previewMacroResolvers } from "./macros.js";
 import { confirmDiscardDirty, pageFolder, recordRecent, replacePage, sourceTitle, updateAddress } from "./navigation.js";
 import { refreshPageMeta } from "./page-meta.js";
 import { canEditPage } from "./permissions.js";
@@ -47,6 +48,7 @@ export async function saveCurrentPage(): Promise<void> {
     state.savedPageTitle = saved.title;
     state.dirty = false;
     clearLocalDraft(saved.id);
+    clearMacroCache();
     state.pendingLocalDraft = undefined;
     syncTitleFromSource();
     setCloudStatus("Saved page", "ok");
@@ -137,7 +139,9 @@ export function renderCurrent(): void {
   try {
     const doc = parse(source, { filename: `${state.currentPage?.id ?? "draft"}.noma` });
     const diagnostics = validate(doc);
+    const macros = previewMacroResolvers();
     const body = renderHtml(doc, {
+      ...macros,
       standalone: false,
       allowEscapeHatches: false,
       externalAssets: false,
@@ -147,9 +151,10 @@ export function renderCurrent(): void {
     state.renderState = {
       doc,
       diagnostics,
-      llm: renderLlm(doc),
+      llm: renderLlm(doc, macros),
     };
     previewFrame.srcdoc = previewDocument(body);
+    flushMacroRequests(renderCurrent);
   } catch (error) {
     state.renderState = {
       doc: null,

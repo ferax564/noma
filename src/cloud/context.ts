@@ -32,6 +32,10 @@ export interface CloudServerConfig {
   rateLimiter: CloudRateLimiter;
   trustProxy: boolean;
   adminUserIds: string[];
+  /** Let Confluence imports reach private/loopback hosts (tests, on-prem Data Center). Default false. */
+  importAllowPrivateHosts?: boolean;
+  /** Upper bound for Confluence import uploads, in bytes. */
+  importMaxBytes?: number;
   now: () => Date;
   store: NomaCloudDatabase;
   platform: CloudKnowledgePlatform;
@@ -327,7 +331,7 @@ export function requireWorkspaceOwner(config: CloudServerConfig, user: CloudUser
   if (!isWorkspaceAdmin(config, user)) throw new HttpError(403, "Workspace owner access is required");
 }
 
-function isWorkspaceAdmin(config: CloudServerConfig, user: CloudUserRecord): boolean {
+export function isWorkspaceAdmin(config: CloudServerConfig, user: CloudUserRecord): boolean {
   if (config.adminUserIds.length > 0) return config.adminUserIds.includes(user.id);
   return config.store.firstRegisteredUserId() === user.id;
 }

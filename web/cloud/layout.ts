@@ -3,12 +3,15 @@ import { renderAccessManagement, renderCollaborationPanels, selectedGroupManaged
 import { panelsOpenStorageKey, previewPaperWidthStorageKey, splitSourceRatioStorageKey, viewModeStorageKey } from "./constants.js";
 import { addCommentButton, addGroupMemberButton, applyPatchButton, approvalNoteInput, approvalReviewerInput, cloudInvitationCodeInput, cloudUserNameInput, cloudUserTokenInput, commentBlockIdInput, commentBodyInput, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, dirtyBadge, documentGrid, favoritePageButton, globalSearchInput, groupMemberIdInput, groupMemberRoleSelect, importPageButton, inviteGroupButton, inviteGroupSelect, inviteUserButton, loginUserButton, logoutUserButton, manageGroupSelect, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTemplateSelect, pageTitleInput, previewViewButton, proposePatchButton, readAllNotificationsButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, reloadPageButton, requestApprovalButton, roleBadge, savePageButton, saveSpaceButton, searchButton, searchScopeSelect, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, themeToggleButton, togglePanelsButton, updatedText } from "./dom.js";
 import { renderCurrent } from "./editor.js";
+import { renderExportChrome } from "./export.js";
 import { renderHistory } from "./history.js";
+import { renderConfluenceImportChrome } from "./import.js";
 import { renderKnowledgeWorkspace, renderPatchProposals } from "./knowledge.js";
 import { renderNavigation } from "./navigation.js";
 import { renderPageMeta } from "./page-meta.js";
 import { canCreatePage, canEditPage, canEditSite, canManagePermissions, currentPageRole, roleRank } from "./permissions.js";
 import { renderWorkspaceTools } from "./session.js";
+import { renderTemplateToolsChrome } from "./templates.js";
 import { state } from "./state.js";
 import type { ViewMode } from "./types.js";
 import { clamp, formatDate, setCloudStatus } from "./util.js";
@@ -47,6 +50,9 @@ export function renderChrome(): void {
   newFolderButton.disabled = state.busy || !canEditSite();
   importPageButton.disabled = state.busy || !canCreatePage();
   pageTemplateSelect.disabled = state.busy || !canCreatePage() || state.pageTemplates.length === 0;
+  renderConfluenceImportChrome();
+  renderTemplateToolsChrome();
+  renderExportChrome();
   globalSearchInput.disabled = state.busy || !state.cloudUser;
   searchScopeSelect.disabled = state.busy || !state.cloudUser;
   searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();

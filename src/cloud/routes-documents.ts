@@ -14,6 +14,7 @@ import type {
 } from "../cloud-db.js";
 import { parse } from "../parser.js";
 import { lineDiff } from "../proof.js";
+import { renderLlm } from "../renderer-llm.js";
 import {
   type AccessContext,
   type CloudServerConfig,
@@ -38,8 +39,10 @@ import {
   requireDocumentPrecondition,
   updateDocument,
 } from "./records.js";
+import { cloudMacroResolvers } from "./macros.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
+import { routeDocumentExport } from "./routes-export.js";
 import { routePatchProposals } from "./routes-patch.js";
 
 export async function routeDocuments(
@@ -118,9 +121,14 @@ export async function routeDocuments(
     return;
   }
 
+  if (suffix === "export") {
+    await routeDocumentExport(req, res, new URL(req.url ?? "/", "http://noma.local"), config, principal, record);
+    return;
+  }
+
   if (suffix === "html" && method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, cloudMacroResolvers(config, principal, record.id)), "text/html; charset=utf-8");
     return;
   }
 
@@ -132,7 +140,8 @@ export async function routeDocuments(
 
   if (suffix === "llm" && method === "GET") {
     requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, inspectSource(record.source, record.id).llm, "text/plain; charset=utf-8");
+    const doc = parse(record.source, { filename: `${record.id}.noma` });
+    sendText(res, 200, renderLlm(doc, cloudMacroResolvers(config, principal, record.id)), "text/plain; charset=utf-8");
     return;
   }
 

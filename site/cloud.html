@@ -65,6 +65,7 @@
         <button id="newPageButton" type="button">New Page</button>
         <button id="newFolderButton" type="button">New Folder</button>
         <button id="importPageButton" type="button">Import</button>
+        <button id="confluenceImportButton" type="button" aria-label="Import from Confluence">Confluence</button>
         <input id="importPageInput" type="file" accept=".noma,.md,.markdown,text/plain,text/markdown" hidden />
       </div>
       <label class="rail-template-field" for="pageTemplateSelect">Page template
@@ -118,6 +119,21 @@
           <button id="copyArtifactLinkButton" type="button" aria-label="Copy rendered artifact link">Artifact</button>
           <button id="copySiteLinkButton" type="button" aria-label="Copy space link">Space</button>
           <button id="openPublishedSiteButton" type="button" aria-label="Open published space">Published</button>
+          <button id="templateSaveButton" type="button" aria-label="Save page as template">Save as template</button>
+          <select id="exportFormatSelect" class="export-format-select" aria-label="Export">
+            <option value="">Export…</option>
+            <optgroup label="This page">
+              <option value="page:pdf">PDF</option>
+              <option value="page:docx">Word (.docx)</option>
+              <option value="page:markdown">Markdown</option>
+              <option value="page:html">HTML</option>
+              <option value="page:noma">Noma source</option>
+            </optgroup>
+            <optgroup label="This space">
+              <option value="site:site-zip" data-export-scope="site">HTML site (.zip)</option>
+              <option value="site:noma-zip" data-export-scope="site">Noma sources (.zip)</option>
+            </optgroup>
+          </select>
         </div>
       </div>
     </section>
@@ -438,6 +454,74 @@
     </section>
   </aside>
 </div>
+<dialog id="confluenceImportDialog" class="wiki-dialog" aria-labelledby="confluenceImportTitle">
+  <form id="confluenceImportForm" class="wiki-dialog-form">
+    <h2 id="confluenceImportTitle">Import from Confluence</h2>
+    <label class="wiki-dialog-field">Source
+      <select id="confluenceImportMode">
+        <option value="cloud">Confluence Cloud (API token)</option>
+        <option value="datacenter">Confluence Data Center (personal access token)</option>
+        <option value="export">XML space export (.zip or entities.xml)</option>
+        <option value="bundle">JSON page bundle</option>
+      </select>
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="cloud datacenter">Site URL
+      <input id="confluenceImportBaseUrl" type="url" placeholder="https://your-team.atlassian.net" autocomplete="url" />
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="cloud datacenter">Space key
+      <input id="confluenceImportSpaceKey" type="text" placeholder="ENG" autocomplete="off" />
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="cloud">Atlassian account email
+      <input id="confluenceImportEmail" type="email" autocomplete="username" />
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="cloud datacenter">Token
+      <input id="confluenceImportToken" type="password" autocomplete="off" />
+    </label>
+    <label class="wiki-dialog-field" data-import-mode="export bundle">File
+      <input id="confluenceImportFile" type="file" />
+    </label>
+    <label class="wiki-dialog-check"><input id="confluenceImportOverwrite" type="checkbox" /> Replace pages edited in Noma since the last import</label>
+    <div id="confluenceImportStatus" class="panel-status" role="status"></div>
+    <div class="wiki-dialog-actions">
+      <button id="confluenceImportCancel" type="button">Close</button>
+      <button id="confluenceImportStart" type="submit">Start import</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="templateSaveDialog" class="wiki-dialog" aria-labelledby="templateSaveTitle">
+  <form id="templateSaveForm" class="wiki-dialog-form">
+    <h2 id="templateSaveTitle">Save page as template</h2>
+    <label class="wiki-dialog-field">Name
+      <input id="templateSaveName" type="text" maxlength="120" required />
+    </label>
+    <label class="wiki-dialog-field">Description
+      <input id="templateSaveDescription" type="text" maxlength="400" />
+    </label>
+    <label class="wiki-dialog-field">Available in
+      <select id="templateSaveScope">
+        <option value="site">This space</option>
+        <option value="workspace">Whole workspace (admins)</option>
+      </select>
+    </label>
+    <div id="templateSaveStatus" class="panel-status" role="status"></div>
+    <div class="wiki-dialog-actions">
+      <button id="templateSaveCancel" type="button">Cancel</button>
+      <button type="submit">Save template</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="templateVariablesDialog" class="wiki-dialog" aria-labelledby="templateVariablesTitle">
+  <form id="templateVariablesForm" class="wiki-dialog-form">
+    <h2 id="templateVariablesTitle">New page</h2>
+    <div id="templateVariablesFields"></div>
+    <div class="wiki-dialog-actions">
+      <button id="templateVariablesCancel" type="button">Cancel</button>
+      <button type="submit">Create page</button>
+    </div>
+  </form>
+</dialog>
 <script src="assets/cloud-app.js"></script>
 </body>
 </html>
