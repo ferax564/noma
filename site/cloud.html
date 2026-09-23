@@ -84,7 +84,10 @@
       <button id="saveSpaceButton" type="button">Save Space</button>
     </div>
     <div class="rail-section">
-      <div class="rail-section-title">Spaces</div>
+      <div class="rail-section-title rail-section-title-row">
+        <span>Spaces</span>
+        <label class="space-archived-toggle" for="spaceShowArchivedInput"><input id="spaceShowArchivedInput" type="checkbox" /> Archived</label>
+      </div>
       <div id="siteList" class="site-list"></div>
     </div>
     <div class="rail-section pages-section">
@@ -187,6 +190,32 @@
       </div>
       <h3>Scoped agents</h3>
       <div id="agentDirectoryList" class="collaboration-list"></div>
+    </section>
+
+    <section class="inspector-section space-settings">
+      <div class="inspector-heading-row">
+        <h2>Space settings</h2>
+        <span id="spaceArchivedBadge" class="meta-badge" data-state="warning" hidden>archived</span>
+      </div>
+      <div class="work-create-grid">
+        <label class="stack-field" for="spaceKeyInput">Key
+          <input id="spaceKeyInput" type="text" maxlength="10" autocomplete="off" placeholder="ENG" />
+        </label>
+        <label class="stack-field" for="spaceIconInput">Icon
+          <input id="spaceIconInput" type="text" maxlength="16" autocomplete="off" placeholder="📘" />
+        </label>
+      </div>
+      <label class="stack-field" for="spaceDescriptionInput">Description
+        <textarea id="spaceDescriptionInput" class="compact-textarea" maxlength="2000"></textarea>
+      </label>
+      <label class="stack-field" for="spaceHomeSelect">Home page
+        <select id="spaceHomeSelect"></select>
+      </label>
+      <div class="button-row">
+        <button id="spaceSettingsSaveButton" type="button">Save settings</button>
+        <button id="spaceArchiveButton" type="button">Archive space</button>
+      </div>
+      <div id="spaceSettingsStatus" class="panel-status"></div>
     </section>
 
     <section class="inspector-section">

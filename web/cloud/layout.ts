@@ -9,6 +9,7 @@ import { renderNavigation } from "./navigation.js";
 import { renderPageMeta } from "./page-meta.js";
 import { canCreatePage, canEditPage, canEditSite, canManagePermissions, currentPageRole, roleRank } from "./permissions.js";
 import { renderWorkspaceTools } from "./session.js";
+import { renderSpaceSettings } from "./spaces.js";
 import { state } from "./state.js";
 import type { ViewMode } from "./types.js";
 import { clamp, formatDate, setCloudStatus } from "./util.js";
@@ -111,6 +112,7 @@ export function renderChrome(): void {
   renderPatchProposals();
   renderAccessManagement();
   renderKnowledgeWorkspace();
+  renderSpaceSettings();
 }
 
 export function applyPreviewPaperWidth(previewDoc: Document): void {

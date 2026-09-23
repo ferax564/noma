@@ -385,10 +385,8 @@ function filteredKnowledgeSearch(
 ): Record<string, unknown> {
   let documents = knowledgeDocuments(config, user, siteId, agentId);
   const filters = resolveSearchFilters(config, user, parsed);
-  if (hasSearchFilterTerms(parsed)) {
-    const allowed = config.store.filteredDocumentIds(user, filters);
-    documents = documents.filter((access) => allowed.has(access.document.id));
-  }
+  const allowed = config.store.filteredDocumentIds(user, filters);
+  documents = documents.filter((access) => allowed.has(access.document.id));
   if (!parsed.text) {
     const permitted = new Set(documents.map((access) => access.document.id));
     const results = hasSearchFilterTerms(parsed)

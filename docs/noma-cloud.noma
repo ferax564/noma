@@ -319,6 +319,33 @@ DELETE /api/documents/<id>/comments/<comment-id>/reactions/<emoji>
 
 The same routes exist under `/api/sites/<site-id>/documents/<page-id>/comments`.
 
+## Space keys, home pages, and archiving
+
+Every new space gets a unique uppercase **key** (2–10 letters or digits,
+starting with a letter). Pass `key` when creating a space, or Noma derives one
+from the title (`Engineering Handbook` → `EH`, then `EH2`). Keys are unique
+across the workspace; a clash returns `409 space_key_taken`. Only space owners
+can change a key. Search accepts keys in `space:ENG`.
+
+| Setting | Behavior |
+|---|---|
+| `description` | Up to 2,000 characters, shown under the title on the published space. |
+| `icon` | An emoji or up to 8 plain characters shown beside the title. |
+| `homeDocumentId` | A page in the space. The app opens it when you enter the space, and `/s/<id>` renders it first. |
+| Archive | Owners archive a space to make it read-only. Archived spaces are hidden from `GET /api/sites` unless `?archived=include` (or `only`) and their pages are left out of search unless the query says `archived:include` or names the space. Every write to the space or to a page that lives only in archived spaces returns `409 space_archived`; reading, watching, and unarchiving still work. |
+
+The **Space settings** panel edits these fields; the Spaces rail has an
+**Archived** toggle to list archived spaces.
+
+```text
+POST /api/sites                       {"title": "Engineering", "key": "ENG", "description": "...", "icon": "🛠️", "documentIds": []}
+PUT  /api/sites/<site-id>             {"key": "BUILD", "description": "...", "icon": null, "homeDocumentId": "<page-id>"}
+GET  /api/sites?archived=exclude|include|only
+POST /api/sites/<site-id>/archive
+POST /api/sites/<site-id>/unarchive
+GET  /s/<site-id>
+```
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

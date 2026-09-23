@@ -13,13 +13,14 @@ import { clearWorkspaceState, refreshWorkspaceTools, renderWorkspaceTools } from
 import { shareToken, state } from "./state.js";
 import type { CloudDocumentResponse, CloudNavigationItem, CloudPageTemplate, CloudSiteResponse, CloudTrashItem } from "./types.js";
 import { absoluteUrl, copyText, emptyState, errorMessage, formatDate, iconButton, promptName, setBusy, setCloudStatus, shortId, slug } from "./util.js";
+import { spaceLabel, spaceListArchivedParam } from "./spaces.js";
 import { refreshWorkManagement } from "./work.js";
 
 export async function refreshSites(options: { silent?: boolean } = {}): Promise<void> {
   if (!state.cloudUser) return;
   if (!options.silent) setBusy(true, "Loading spaces", "warning");
   try {
-    const response = await fetchCloudJson<{ sites: CloudSiteResponse[] }>("/api/sites");
+    const response = await fetchCloudJson<{ sites: CloudSiteResponse[] }>(`/api/sites${spaceListArchivedParam()}`);
     state.sites = response.sites.map(normalizeSite);
   } finally {
     if (!options.silent) setBusy(false);
@@ -158,7 +159,8 @@ export async function loadSite(siteId: string, preferredDocumentId?: string): Pr
     state.pages = site.documents ?? [];
     siteTitleInput.value = state.currentSite.title;
     localStorage.setItem(activeSiteStorageKey, state.currentSite.id);
-    const selected = preferredDocumentId ? state.pages.find((page) => page.id === preferredDocumentId) : undefined;
+    const preferred = preferredDocumentId ?? state.currentSite.homeDocumentId ?? undefined;
+    const selected = preferred ? state.pages.find((page) => page.id === preferred) : undefined;
     setCurrentPage(selected ?? state.pages[0]);
     updateAddress();
     if (state.cloudUser) await Promise.all([refreshSites({ silent: true }), refreshWorkManagement(), refreshAccessManagement()]);
@@ -621,8 +623,9 @@ export function renderNavigation(): void {
       button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
       const title = button.querySelector<HTMLElement>(".row-title");
       const meta = button.querySelector<HTMLElement>(".row-meta");
-      if (title) title.textContent = site.title;
-      if (meta) meta.textContent = `${site.documentIds.length} page${site.documentIds.length === 1 ? "" : "s"} / ${site.access?.role ?? site.currentRole ?? "viewer"}`;
+      if (title) title.textContent = spaceLabel(site);
+      if (meta) meta.textContent = `${site.documentIds.length} page${site.documentIds.length === 1 ? "" : "s"} / ${site.access?.role ?? site.currentRole ?? "viewer"}${site.archived ? " / archived" : ""}`;
+      if (site.archived) button.dataset.archived = "true";
       button.addEventListener("click", () => {
         void loadSite(site.id);
       });

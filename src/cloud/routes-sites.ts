@@ -11,6 +11,7 @@ import {
   readDocument,
   readSite,
   recordActivity,
+  requireAccessRole,
   requireNotTrashed,
   requireRecordAccess,
   requireUser,
@@ -37,6 +38,7 @@ import {
   routeWatch,
 } from "./routes-documents.js";
 import { routePatchProposals } from "./routes-patch.js";
+import { applySpaceSettings, deriveSpaceKey, setSpaceArchived, spaceSettingsInput, writeSiteWithKey } from "./spaces.js";
 
 interface WikiPageSummary {
   id: string;
@@ -71,13 +73,15 @@ export async function routeSites(
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
     const record = await createSite(config, input, user, principal);
-    sendJson(res, 201, siteResponse(record, requireRecordAccess(config, record, principal, "owner")));
+    sendJson(res, 201, siteResponse(config, record, requireRecordAccess(config, record, principal, "owner")));
     return;
   }
 
   if (!id && method === "GET") {
     const user = requireUser(principal);
-    sendJson(res, 200, { sites: await listSites(config, user) });
+    const archived = url.searchParams.get("archived") ?? "exclude";
+    if (archived !== "exclude" && archived !== "include" && archived !== "only") throw new HttpError(400, "archived must be exclude, include, or only");
+    sendJson(res, 200, { sites: await listSites(config, user, archived) });
     return;
   }
 
@@ -123,12 +127,19 @@ export async function routeSites(
     return;
   }
 
+  if (suffix === "archive" || suffix === "unarchive") {
+    if (method !== "POST") throw new HttpError(405, "Method not allowed");
+    const updated = await setSpaceArchived(suffix, config, principal, site);
+    sendJson(res, 200, siteResponse(config, updated, requireRecordAccess(config, updated, principal, "viewer")));
+    return;
+  }
+
   if (suffix) throw new HttpError(404, "Unknown site route");
 
   if (method === "GET") {
     const access = requireRecordAccess(config, site, principal, "viewer");
     if (access.user) config.store.recordRecent(access.user.id, "site", site.id, config.now().toISOString());
-    const response = siteResponse(site, access);
+    const response = siteResponse(config, site, access);
     if (url.searchParams.get("include") === "documents") {
       sendJson(res, 200, {
         ...response,
@@ -144,7 +155,7 @@ export async function routeSites(
     const access = requireRecordAccess(config, site, principal, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const updated = await updateSite(config, site, input, access, principal);
-    sendJson(res, 200, siteResponse(updated, requireRecordAccess(config, updated, principal, "viewer")));
+    sendJson(res, 200, siteResponse(config, updated, requireRecordAccess(config, updated, principal, "viewer")));
     return;
   }
 
@@ -219,7 +230,7 @@ async function routeSiteDocuments(
     const access = requireRecordAccess(config, site, principal, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const updated = await movePage(config, site, docId, input, access);
-    sendJson(res, 200, { site: siteResponse(updated, access), pages: sitePageTree(config, updated) });
+    sendJson(res, 200, { site: siteResponse(config, updated, access), pages: sitePageTree(config, updated) });
     return;
   }
 
@@ -324,11 +335,13 @@ async function createSite(
   const pageFolders = pageFolderMap(input.pageFolders, documentIds);
   await requireDocumentEditAccess(config, documentIds, principal);
   const now = config.now().toISOString();
+  const settings = spaceSettingsInput(config, input, documentIds, undefined);
   const record: CloudSiteRecord = {
     version: 1,
     id,
     title,
     slug: cloudSlug(title, id),
+    key: settings.key ?? deriveSpaceKey(config, title),
     documentIds,
     folders: normalizeSiteFolders(folderList(input.folders), pageFolders),
     pageFolders,
@@ -342,9 +355,10 @@ async function createSite(
     },
     shareLinks: [],
   };
-  await writeSite(config, record);
-  recordActivity(config, user, "site.created", "site", record.id, { title: record.title });
-  return record;
+  const created = applySpaceSettings(record, settings);
+  await writeSiteWithKey(config, created);
+  recordActivity(config, user, "site.created", "site", created.id, { title: created.title, key: created.key });
+  return created;
 }
 
 async function updateSite(
@@ -361,7 +375,9 @@ async function updateSite(
   const addedDocumentIds = documentIds.filter((id) => !existing.documentIds.includes(id));
   await requireDocumentEditAccess(config, addedDocumentIds, principal);
   const normalizedFolders = normalizeSiteFolders(folders, pageFolders);
-  const record: CloudSiteRecord = {
+  const settings = spaceSettingsInput(config, input, documentIds, existing.id);
+  if (settings.key !== undefined && settings.key !== existing.key) requireAccessRole(access, "owner");
+  const updated: CloudSiteRecord = {
     ...existing,
     title,
     slug: optionalString(input.slug)?.slice(0, 80) ?? cloudSlug(title, existing.slug),
@@ -372,7 +388,8 @@ async function updateSite(
     updatedAt: config.now().toISOString(),
     updatedBy: access.user?.id ?? `share:${access.share?.id ?? "unknown"}`,
   };
-  await writeSite(config, record);
+  const record = applySpaceSettings(updated, settings);
+  await writeSiteWithKey(config, record);
   if (access.user) recordActivity(config, access.user, "site.updated", "site", record.id, { title: record.title });
   return record;
 }
@@ -388,8 +405,9 @@ async function requireDocumentEditAccess(config: CloudServerConfig, ids: string[
   }
 }
 
-async function listSites(config: CloudServerConfig, user: CloudUserRecord): Promise<Array<Record<string, unknown>>> {
-  return config.store.listSites(user).map((record) => ({
+async function listSites(config: CloudServerConfig, user: CloudUserRecord, archived: "exclude" | "include" | "only"): Promise<Array<Record<string, unknown>>> {
+  const sites = config.store.listSites(user).filter((record) => (archived === "include" ? true : archived === "only" ? Boolean(record.archivedAt) : !record.archivedAt));
+  return sites.map((record) => ({
     version: record.version,
     id: record.id,
     title: record.title,
@@ -398,6 +416,7 @@ async function listSites(config: CloudServerConfig, user: CloudUserRecord): Prom
     folders: record.folders,
     pageFolders: record.pageFolders,
     pageParents: record.pageParents ?? {},
+    ...spaceFields(config, record),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     createdBy: record.createdBy,
@@ -406,7 +425,7 @@ async function listSites(config: CloudServerConfig, user: CloudUserRecord): Prom
   }));
 }
 
-function siteResponse(record: CloudSiteRecord, access: AccessContext): Record<string, unknown> {
+function siteResponse(config: CloudServerConfig, record: CloudSiteRecord, access: AccessContext): Record<string, unknown> {
   const pageFolders = pageFolderMap(record.pageFolders, record.documentIds);
   return {
     version: record.version,
@@ -417,11 +436,25 @@ function siteResponse(record: CloudSiteRecord, access: AccessContext): Record<st
     folders: normalizeSiteFolders(record.folders ?? [], pageFolders),
     pageFolders,
     pageParents: pageParentMap(record.pageParents, record.documentIds),
+    ...spaceFields(config, record),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     createdBy: record.createdBy,
     updatedBy: record.updatedBy,
     access: accessResponse(access),
+  };
+}
+
+function spaceFields(config: CloudServerConfig, record: CloudSiteRecord): Record<string, unknown> {
+  const home = record.homeDocumentId && record.documentIds.includes(record.homeDocumentId) && !config.store.isTrashed("document", record.homeDocumentId) ? record.homeDocumentId : undefined;
+  return {
+    key: record.key ?? null,
+    description: record.description ?? "",
+    icon: record.icon ?? "",
+    homeDocumentId: home ?? null,
+    archived: Boolean(record.archivedAt),
+    archivedAt: record.archivedAt ?? null,
+    archivedBy: record.archivedBy ?? null,
   };
 }
 

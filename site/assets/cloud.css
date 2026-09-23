@@ -1580,3 +1580,8 @@ button.wiki-row {
 .comment-quote-row{display:flex;align-items:center;gap:6px;margin:4px 0}
 .comment-quote-status{flex:1;font-size:.76rem}
 
+/* spaces */
+.space-archived-toggle{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:600;text-transform:none;letter-spacing:0}
+.site-row[data-archived="true"]{opacity:.68}
+.site-row[data-archived="true"] .row-title{font-style:italic}
+

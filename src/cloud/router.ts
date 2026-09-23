@@ -28,6 +28,7 @@ import {
 } from "./routes-navigation.js";
 import { routeSites } from "./routes-sites.js";
 import { routeUsers } from "./routes-users.js";
+import { guardArchivedSpaceWrite } from "./spaces.js";
 import { routeProjects } from "./routes-work.js";
 
 /**
@@ -83,5 +84,6 @@ export async function routeApi(
   const parts = url.pathname.split("/").filter(Boolean);
   const handler = apiRoutes.get(parts[1] ?? "");
   if (!handler) throw new HttpError(404, "Unknown API resource");
+  guardArchivedSpaceWrite(req, parts, config, principal);
   await handler(req, res, url, parts, config, principal);
 }

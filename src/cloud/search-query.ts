@@ -132,6 +132,7 @@ export function resolveSearchFilters(config: CloudServerConfig, user: CloudUserR
     const sites = config.store.listSites(user);
     filters.siteIds = [...new Set(parsed.spaces.flatMap((value) => resolveSpace(sites, value)))];
     if (filters.siteIds.length === 0) filters.siteIds = ["\u0000none"];
+    if (sites.some((site) => site.archivedAt && filters.siteIds?.includes(site.id))) filters.includeArchived = true;
   }
   return filters;
 }
@@ -149,10 +150,10 @@ function resolveAuthor(users: CloudUserRecord[], caller: CloudUserRecord, value:
     .map((candidate) => candidate.id);
 }
 
-function resolveSpace(sites: Array<{ id: string; title: string; slug: string }>, value: string): string[] {
+function resolveSpace(sites: Array<{ id: string; title: string; slug: string; key?: string }>, value: string): string[] {
   const needle = value.trim().toLowerCase();
   return sites
-    .filter((site) => site.id === value || site.slug.toLowerCase() === needle || site.title.toLowerCase() === needle)
+    .filter((site) => site.id === value || site.key?.toLowerCase() === needle || site.slug.toLowerCase() === needle || site.title.toLowerCase() === needle)
     .map((site) => site.id);
 }
 

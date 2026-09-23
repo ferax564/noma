@@ -14,15 +14,15 @@ function cloudRole(value: unknown): CloudRole {
 }
 
 export function canEditPage(): boolean {
-  return roleRank(currentPageRole()) >= roleRank("editor");
+  return !state.currentSite?.archived && roleRank(currentPageRole()) >= roleRank("editor");
 }
 
 export function canCreatePage(): boolean {
-  return Boolean(state.cloudAvailable && state.cloudUser && state.currentSite && roleRank(state.currentSite.access?.role ?? "viewer") >= roleRank("editor"));
+  return Boolean(state.cloudAvailable && state.cloudUser && state.currentSite && !state.currentSite.archived && roleRank(state.currentSite.access?.role ?? "viewer") >= roleRank("editor"));
 }
 
 export function canEditSite(): boolean {
-  return Boolean(state.cloudAvailable && state.cloudUser && state.currentSite && roleRank(state.currentSite.access?.role ?? "viewer") >= roleRank("editor"));
+  return Boolean(state.cloudAvailable && state.cloudUser && state.currentSite && !state.currentSite.archived && roleRank(state.currentSite.access?.role ?? "viewer") >= roleRank("editor"));
 }
 
 export function canManagePermissions(): boolean {

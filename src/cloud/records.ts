@@ -26,6 +26,7 @@ import {
 import { headerValue, HttpError, sha256Hex } from "./http.js";
 import { optionalString } from "./input.js";
 import { afterDocumentSaved } from "./page-hooks.js";
+import { requirePageWritable } from "./spaces.js";
 
 export interface SourceInspection {
   hash: string;
@@ -97,6 +98,7 @@ export async function updateDocument(
   input: Record<string, unknown>,
   access: AccessContext,
 ): Promise<CloudDocumentRecord> {
+  requirePageWritable(config, existing.id);
   const source = input.source === undefined ? existing.source : sourceFromInput(input);
   inspectSource(source, existing.id);
   const record: CloudDocumentRecord = {

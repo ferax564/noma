@@ -24,7 +24,9 @@ export function renderDocumentHtml(record: CloudDocumentRecord, access?: AccessC
 
 export async function renderSiteHtml(config: CloudServerConfig, site: CloudSiteRecord, access: AccessContext): Promise<string> {
   const visibleIds = site.documentIds.filter((id) => !config.store.isTrashed("document", id));
-  const documents = await Promise.all(visibleIds.map((id) => readDocument(config, id)));
+  const homeId = site.homeDocumentId && visibleIds.includes(site.homeDocumentId) ? site.homeDocumentId : undefined;
+  const orderedIds = homeId ? [homeId, ...visibleIds.filter((id) => id !== homeId)] : visibleIds;
+  const documents = await Promise.all(orderedIds.map((id) => readDocument(config, id)));
   const articles = documents
     .map((record) => {
       const doc = parse(record.source, { filename: `${record.id}.noma` });
@@ -34,7 +36,8 @@ export async function renderSiteHtml(config: CloudServerConfig, site: CloudSiteR
         externalAssets: false,
         interactive: false,
       });
-      return `<article class="site-doc" id="${escapeAttr(record.id)}"><header><h2>${escapeHtml(record.title)}</h2><a href="#${escapeAttr(record.id)}">Copy link</a></header>${body}</article>`;
+      const home = record.id === homeId ? ' data-home="true"' : "";
+      return `<article class="site-doc" id="${escapeAttr(record.id)}"${home}><header><h2>${escapeHtml(record.title)}</h2><a href="#${escapeAttr(record.id)}">Copy link</a></header>${body}</article>`;
     })
     .join("\n");
   const nav = documents
@@ -63,14 +66,15 @@ main{padding:30px;max-width:980px}.meta{color:#5c6670;font-size:.85rem;margin-bo
 .noma-research-head,.noma-block-head,.noma-technical-head,.noma-comment-head,.noma-review-meta-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}.noma-tag{display:inline-flex;align-items:center;border-radius:999px;background:#e9f1ee;color:#0f666b;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:4px 9px}
 .noma-confidence{width:140px;height:5px;border-radius:999px;background:#e4e1d8;overflow:hidden}.noma-confidence-bar{height:100%;background:linear-gradient(90deg,#a4573c,#2f6fa7)}
 .noma-meta{color:#5c6670;font-size:.85rem;margin-top:10px}.noma-meta-key{color:#20242a;font-weight:720}.noma-block-body>*:first-child{margin-top:0}.noma-block-body>*:last-child{margin-bottom:0}
+.space-description{font-size:1.02rem;color:#3a434c;max-width:76ch;margin:0 0 22px}
 .noma-task{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;margin:12px 0}.noma-task input{margin-top:.28em}
 @media(max-width:760px){.shell{display:block}nav{position:static;height:auto}.site-doc{padding:16px}main{padding:18px}}
 </style>
 </head>
 <body>
 <div class="shell">
-<nav><h1>${escapeHtml(site.title)}</h1>${nav}</nav>
-<main><p class="meta">Noma Cloud site · ${escapeHtml(access.role)} access · updated ${escapeHtml(site.updatedAt)}</p>${articles}</main>
+<nav><h1>${site.icon ? `${escapeHtml(site.icon)} ` : ""}${escapeHtml(site.title)}</h1>${nav}</nav>
+<main><p class="meta">Noma Cloud site${site.key ? ` · ${escapeHtml(site.key)}` : ""} · ${escapeHtml(access.role)} access · updated ${escapeHtml(site.updatedAt)}${site.archivedAt ? " · archived (read-only)" : ""}</p>${site.description ? `<p class="space-description">${escapeHtml(site.description)}</p>` : ""}${articles}</main>
 </div>
 </body>
 </html>`;

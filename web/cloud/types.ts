@@ -308,6 +308,11 @@ export interface CloudSiteResponse {
   id: string;
   title: string;
   slug: string;
+  key?: string | null;
+  description?: string;
+  icon?: string;
+  homeDocumentId?: string | null;
+  archived?: boolean;
   documentIds: string[];
   folders?: string[];
   pageFolders?: Record<string, string>;

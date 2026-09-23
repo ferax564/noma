@@ -337,6 +337,16 @@ export interface CloudSiteRecord {
   pageFolders?: Record<string, string>;
   /** Page tree: child document ID → parent document ID, both members of `documentIds`. */
   pageParents?: Record<string, string>;
+  /** Unique uppercase space key (2–10 chars), e.g. `ENG`. */
+  key?: string;
+  description?: string;
+  /** Emoji or short text shown beside the space title. */
+  icon?: string;
+  /** Page shown at the space root (`/s/<id>`); must be one of `documentIds`. */
+  homeDocumentId?: string;
+  /** Archived spaces are read-only and hidden from default lists. */
+  archivedAt?: string;
+  archivedBy?: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -996,6 +1006,7 @@ export class NomaCloudDatabase {
              record_json = excluded.record_json`,
         )
         .run({ ...next, documentIdsJson: JSON.stringify(next.documentIds), payload });
+      this.db.prepare("UPDATE sites SET space_key = ?, archived_at = ? WHERE id = ?").run(next.key ?? null, next.archivedAt ?? null, next.id);
       this.replacePermissions("site", next.id, next.permissions);
       this.replaceShares("site", next.id, next.shareLinks);
       this.replaceSiteDocuments(next);
@@ -1934,6 +1945,26 @@ export class NomaCloudDatabase {
     return (this.db.prepare("SELECT COUNT(*) AS count FROM comment_reactions WHERE comment_id = ?").get(commentId) as { count: number }).count;
   }
 
+  // --- wiki experience: spaces ----------------------------------------------------------
+
+  /** Site ID that owns `key` (case-insensitive), if any. */
+  siteIdForKey(key: string): string | undefined {
+    const row = this.db.prepare("SELECT id FROM sites WHERE space_key = ?").get(key.toUpperCase()) as { id: string } | undefined;
+    return row?.id;
+  }
+
+  /** True when the page belongs to at least one space and every space it belongs to is archived. */
+  isDocumentArchived(documentId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT
+           EXISTS (SELECT 1 FROM site_documents sd JOIN sites s ON s.id = sd.site_id WHERE sd.document_id = ? AND s.archived_at IS NOT NULL) AS archived,
+           EXISTS (SELECT 1 FROM site_documents sd JOIN sites s ON s.id = sd.site_id WHERE sd.document_id = ? AND s.archived_at IS NULL) AS live`,
+      )
+      .get(documentId, documentId) as { archived: number; live: number };
+    return row.archived === 1 && row.live === 0;
+  }
+
   // --- wiki experience: people directory ----------------------------------------------
 
   /**
@@ -2397,6 +2428,7 @@ export class NomaCloudDatabase {
     `);
     this.migrateNotificationTypes();
     this.migrateCommentColumns();
+    this.migrateSpaceColumns();
     this.db.exec(`
       INSERT OR IGNORE INTO document_revisions
         (document_id, revision, title, source, hash, created_at, created_by)
@@ -2441,6 +2473,17 @@ export class NomaCloudDatabase {
     for (const [name, type] of [["edited_at", "TEXT"], ["deleted_at", "TEXT"], ["deleted_by", "TEXT"], ["anchor_json", "TEXT"]] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE comments ADD COLUMN ${name} ${type}`);
     }
+  }
+
+  /** Adds indexed space key / archive columns (mirrors of the site record) to older databases. */
+  private migrateSpaceColumns(): void {
+    const columns = new Set((this.db.prepare("PRAGMA table_info(sites)").all() as Array<{ name: string }>).map((column) => column.name));
+    if (!columns.has("space_key")) this.db.exec("ALTER TABLE sites ADD COLUMN space_key TEXT");
+    if (!columns.has("archived_at")) this.db.exec("ALTER TABLE sites ADD COLUMN archived_at TEXT");
+    this.db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_space_key ON sites(space_key) WHERE space_key IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_sites_archived ON sites(archived_at);
+    `);
   }
 
   private importLegacyJsonOnce(): void {
@@ -3207,6 +3250,11 @@ function fullTextMatch(words: string[], phrases: string[]): string {
   return terms.filter(Boolean).join(" AND ");
 }
 
+function archivedDocumentSql(documentColumn: string): string {
+  return `NOT (EXISTS (SELECT 1 FROM site_documents fad JOIN sites fas ON fas.id = fad.site_id WHERE fad.document_id = ${documentColumn} AND fas.archived_at IS NOT NULL)
+    AND NOT EXISTS (SELECT 1 FROM site_documents fld JOIN sites fls ON fls.id = fld.site_id WHERE fld.document_id = ${documentColumn} AND fls.archived_at IS NULL))`;
+}
+
 function hasSearchFilters(filters: CloudSearchFilters): boolean {
   return Boolean(
     filters.labels?.length || filters.authorIds?.length || filters.siteIds?.length || filters.updatedAfter || filters.updatedBefore || filters.types?.length,
@@ -3215,7 +3263,7 @@ function hasSearchFilters(filters: CloudSearchFilters): boolean {
 
 /** SQL clauses (joined with AND by the caller) restricting `documentColumn` to documents matching the filters. */
 function searchDocumentFilterSql(filters: CloudSearchFilters, documentColumn: string): { clauses: string[]; params: unknown[] } {
-  const clauses: string[] = [];
+  const clauses: string[] = filters.includeArchived ? [] : [archivedDocumentSql(documentColumn)];
   const params: unknown[] = [];
   for (const label of filters.labels ?? []) {
     clauses.push(`EXISTS (SELECT 1 FROM document_labels fl WHERE fl.document_id = ${documentColumn} AND fl.label = ?)`);
