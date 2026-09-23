@@ -41,7 +41,8 @@ src/                       TypeScript core — parser, AST, renderers, validator
   docx-*.ts                Word review-loop sync (control data, comments, tracked changes)
   ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
   verify.ts                Conformance fixture runner (`noma verify`)
-  cloud-server.ts          Noma Cloud HTTP server (renders with escape hatches OFF)
+  cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
+  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render
   cloud-db.ts              SQLite persistence for Noma Cloud
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
