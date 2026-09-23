@@ -119,6 +119,7 @@ test("two browsers co-edit one page in Visual mode and see each other's edits an
   await bobPage.locator("#cloudUserToken").fill(bob.token);
   await bobPage.locator("#loginUserButton").click();
   await waitForText(bobPage, "#cloudStatus", "Logged in");
+  await bobPage.evaluate(() => localStorage.removeItem("noma.cloud.activeSite.v1"));
   await bobPage.goto(`${origin}/cloud.html?doc=${documentId}`, { waitUntil: "networkidle0" });
   await waitForText(bobPage, "#visualLiveBadge", "live");
 
