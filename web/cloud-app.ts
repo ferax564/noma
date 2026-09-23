@@ -549,7 +549,7 @@ let groupGrants: CloudGroupGrant[] = [];
 let shareGrants: CloudShareGrant[] = [];
 let activeFolder = "";
 let dirty = false;
-let renderTimer: ReturnType<typeof window.setTimeout> | undefined;
+let renderTimer: number | undefined;
 let renderState: RenderState = emptyRenderState();
 let viewMode: ViewMode = readViewMode();
 let panelsOpen = readPanelsOpen();
@@ -1205,7 +1205,7 @@ function renderAgentDirectory(): void {
   }
 }
 
-function knowledgePanelRow(titleText: string, metaText: string, state: PanelState): HTMLElement {
+function knowledgePanelRow(titleText: string, metaText: string, state: PanelState | "info"): HTMLElement {
   const row = document.createElement("button");
   row.type = "button";
   row.className = "collaboration-row";
@@ -3028,9 +3028,10 @@ function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   savedPageHash = page.hash;
   savedPageTitle = page.title;
   pendingLocalDraft = readLocalDraft(page.id);
-  const recoverable = pendingLocalDraft?.baseHash === page.hash;
-  pageTitleInput.value = recoverable ? pendingLocalDraft.title : page.title;
-  sourceInput.value = recoverable ? pendingLocalDraft.source : page.source;
+  const recoverableDraft = pendingLocalDraft?.baseHash === page.hash ? pendingLocalDraft : undefined;
+  const recoverable = recoverableDraft !== undefined;
+  pageTitleInput.value = recoverableDraft ? recoverableDraft.title : page.title;
+  sourceInput.value = recoverableDraft ? recoverableDraft.source : page.source;
   activeFolder = pageFolder(page.id);
   dirty = Boolean(recoverable);
   localStorage.setItem(activeDocumentStorageKey, page.id);
@@ -3976,7 +3977,9 @@ function showPageContextMenu(event: MouseEvent, page: CloudDocumentResponse): vo
     {
       label: isCurrent ? "Focus page" : "Open page",
       hint: page.access?.role ?? currentSite?.access?.role ?? "viewer",
-      action: () => selectPage(page.id),
+      action: () => {
+        selectPage(page.id);
+      },
     },
     {
       label: "Open in preview",
@@ -5121,11 +5124,11 @@ function commitPreviewEdit(element: HTMLElement): void {
 
   const kind = element.dataset.nomaEditable;
   const line = positiveInt(element.dataset.nomaLine);
-  const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
   if (!isPreviewEditKind(kind) || line === undefined) {
     setCloudStatus("Rendered edit cannot sync", "warning");
     return;
   }
+  const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
 
   const replacement = previewSourceReplacement(kind, line, endLine, nextText);
   if (replacement === null) {

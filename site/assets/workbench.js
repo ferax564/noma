@@ -197,7 +197,7 @@
     return `"${cell.replace(/"/g, '""')}"`;
   }
 
-  // node_modules/js-yaml/dist/js-yaml.mjs
+  // ../../../node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
@@ -12305,11 +12305,11 @@ body { background: #ffffff; }`,
     if (nextText === originalText) return;
     const kind = element.dataset.nomaEditable;
     const line = positiveInt(element.dataset.nomaLine);
-    const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
     if (!isPreviewEditKind(kind) || line === void 0) {
       showTransientStatus("Rendered edit cannot sync", "warning");
       return;
     }
+    const endLine = positiveInt(element.dataset.nomaEndLine) ?? line;
     const replacement = previewSourceReplacement(kind, line, endLine, nextText);
     if (replacement === null) {
       showTransientStatus("Rendered edit cannot sync", "warning");
@@ -12427,8 +12427,8 @@ body { background: #ffffff; }`,
     const lines = sourceInput.value.split("\n");
     const clamped = Math.max(1, Math.min(line, lines.length));
     let start = 0;
-    for (let i = 0; i < clamped - 1; i++) start += lines[i].length + 1;
-    const end = start + lines[clamped - 1].length;
+    for (let i = 0; i < clamped - 1; i++) start += (lines[i] ?? "").length + 1;
+    const end = start + (lines[clamped - 1] ?? "").length;
     sourceInput.focus();
     sourceInput.setSelectionRange(start, end);
   }
