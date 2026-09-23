@@ -32,9 +32,18 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: 'npm'
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - run: npm ci
 
+      - name: Install Python SDK test dependencies
+        run: python -m pip install -e 'packages/agent-sdk-py[test]'
+
       - run: npx tsc --noEmit
+      - name: Web bundle typecheck
+        run: npm run typecheck:web --if-present
       - run: npm run lint
       - run: npm test
       - run: npm run verify:conformance
@@ -47,3 +56,15 @@ jobs:
         run: npm test -w @ferax564/noma-mcp-server
       - name: LSP server tests
         run: npm test -w @ferax564/noma-lsp
+      - name: Python agent SDK tests
+        run: npm run test:python-sdk
+      - name: Python seed conformance tests
+        run: npm run test:python-seed
+
+      # Iron Rule 5: examples and docs must render. One matrix leg is enough.
+      - name: Render examples
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: npm run render:examples
+      - name: Render docs
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: npm run render:docs
