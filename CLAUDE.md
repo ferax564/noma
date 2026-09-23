@@ -181,16 +181,22 @@ Adding a *new node variant* (like `table`) is the heavier path: AST union update
 5. Add an example to `examples/` or extend an existing one.
 6. Update `docs/spec.noma` block-type tables.
 
-## What NOT to Do (Yet)
+## Product Direction (2026-09)
 
-Per `PLAN.md` § 17 — these are out of scope for the MVP. Don't be tempted:
-- visual editor / WYSIWYG
-- realtime collaboration
-- plugin marketplace
-- enterprise auth/permissions
-- cloud platform
-- complex CSS theming engine
-- a Markdown-to-Noma converter (one-way for now, Noma → Markdown only)
+Noma is **the wiki for the agentic-AI era** — a Confluence-class team wiki
+(spaces, page tree, labels, comments, history, permissions, search) whose
+source of truth is plain-text `.noma`, so AI agents can read scoped context
+and edit individual blocks by stable ID behind a proof → human approval →
+hash-checked apply loop. The format and the hosted wiki (Noma Cloud) are one
+product. WYSIWYG block editing, realtime co-editing, attachments, enterprise
+auth, and Confluence import are **in scope** for Cloud.
+
+Still out of scope:
+- a plugin marketplace
+- a complex CSS theming engine
+- feature-for-feature clones of non-wiki Atlassian products (whiteboards, databases)
+- anything that makes the `.noma` source lossy or non-reviewable — every editor,
+  importer, and agent path must round-trip through source with stable IDs
 
 ## Useful Commands
 

@@ -1273,6 +1273,18 @@ Realtime cursors, multi-tenant enterprise auth, billing, and organization-scale
 permissions are later product work. They must not weaken the source/artifact/
 agent contract or turn `.noma` into an opaque database-only format.
 
+### 23.19 Direction update — the wiki for the agentic-AI era (2026-09-23)
+
+Noma is a Confluence-class team wiki whose source of truth is plain-text
+`.noma`. Humans get spaces, a page tree, labels, comments, history, search,
+permissions, a block editor, attachments, and realtime co-editing. Agents get
+scoped context, stable block IDs, and proof → human approval → hash-checked
+apply. The format and Noma Cloud are one product, so WYSIWYG block editing,
+realtime co-editing, enterprise auth, and Confluence import move from "not
+yet" to in scope. Still out: a plugin marketplace, a complex CSS theming
+engine, non-wiki Atlassian clones, and any path that cannot round-trip
+through `.noma` with stable IDs. `docs/direction.noma` mirrors this section.
+
 ## 24. Shipped Tracker
 
 This section closes the loop between the plan and the code. As §23 items

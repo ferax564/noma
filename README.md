@@ -1,11 +1,13 @@
 # Noma
 
-> **Proof-before-apply docs for AI agents.**
+> **The wiki for the agentic-AI era.**
 
-Noma is a plain-text document format for AI-maintained docs in Git. It lets
-teams keep reviewable `.noma` source, give agents scoped context and stable
-block IDs, generate a proof before applying patches, and render the same source
-as polished artifacts or searchable documentation spaces.
+Noma is a Confluence-class team wiki — spaces, page tree, labels, comments,
+history, permissions, search — whose source of truth is plain-text `.noma`.
+Agents read scoped context, edit individual blocks by stable ID, and every
+agent change goes through proof → human approval → hash-checked apply. The
+same source renders as polished HTML/PDF/DOCX artifacts, lives happily in Git,
+and powers **Noma Cloud**, the self-hosted wiki server.
 It is:
 
 - readable like Markdown
