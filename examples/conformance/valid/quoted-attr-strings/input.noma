@@ -1,0 +1,7 @@
+::claim{id="2024" version="1.10" confidence=0.8}
+Quoted numbers stay strings.
+::
+
+::evidence{id="e1" for="2024"}
+Support.
+::

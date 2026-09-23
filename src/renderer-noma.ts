@@ -1,8 +1,7 @@
 import yaml from "js-yaml";
-import { slugify } from "./parser.js";
+import { headingSlug, serializeAttr, slugify, splitHeadingAttrs } from "./parser.js";
 import type {
   Attrs,
-  AttrValue,
   CodeNode,
   DirectiveNode,
   DocumentNode,
@@ -39,19 +38,20 @@ export function renderNoma(doc: DocumentNode, options: NomaRenderOptions = {}): 
       ([k]) => !stripInternal || !INTERNAL_META_KEYS.has(k),
     );
     if (metaEntries.length > 0) {
-      out.push("---");
-      out.push(yaml.dump(Object.fromEntries(metaEntries)).trimEnd());
-      out.push("---");
-      out.push("");
+      out.push(`---\n${yaml.dump(Object.fromEntries(metaEntries)).trimEnd()}\n---`);
     }
   }
 
   for (const child of doc.children) {
-    out.push(renderNode(child, 2, ctx));
-    out.push("");
+    // A leading `---` rule would be re-read as a frontmatter fence.
+    const leadingRule = out.length === 0 && child.type === "thematic_break";
+    const rendered = leadingRule ? "***" : renderNode(child, 2, ctx);
+    if (rendered.trim() !== "") out.push(rendered);
   }
 
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "\n");
+  // Blocks are separated by exactly one blank line. Blank lines *inside* a
+  // block (code content, quotes) are content and must not be collapsed.
+  return out.length === 0 ? "" : `${out.join("\n\n").replace(/\n+$/, "")}\n`;
 }
 
 interface RenderCtx {
@@ -118,16 +118,19 @@ function renderSection(node: SectionNode, colons: number, ctx: RenderCtx): strin
 }
 
 function headingAttrs(node: SectionNode, ctx: RenderCtx): string {
+  // A title that itself ends in `{key=value}` would be re-read as attributes,
+  // so pin its id explicitly to keep the braces in the title.
+  const titleLooksLikeAttrs = splitHeadingAttrs(node.title).attrs !== undefined;
   const explicitId =
-    node.id && node.id !== slugify(node.title) ? node.id : undefined;
+    node.id && (node.id !== headingSlug(node.title) || titleLooksLikeAttrs) ? node.id : undefined;
   // Drop aliases the parser/loader will re-derive (frontmatter list, filename
   // slug). Anything else came from explicit `{aliases="..."}` in source and
   // must be kept to round-trip.
   const aliases = (node.aliases ?? []).filter((a) => !ctx.regenAliases.has(a));
   const parts: string[] = [];
-  if (explicitId) parts.push(`id="${explicitId}"`);
+  if (explicitId) parts.push(serializeAttr("id", explicitId));
   if (aliases.length > 0) {
-    parts.push(`aliases="${aliases.join(",")}"`);
+    parts.push(serializeAttr("aliases", aliases.join(",")));
   }
   return parts.length > 0 ? `{${parts.join(" ")}}` : "";
 }
@@ -137,7 +140,9 @@ function renderParagraph(node: ParagraphNode): string {
 }
 
 function renderCode(node: CodeNode): string {
-  return withBlockId(node.id, "```" + (node.lang ?? "") + "\n" + node.content + "\n```");
+  const longestRun = Math.max(0, ...node.content.split("\n").map((l) => /^`*/.exec(l)?.[0].length ?? 0));
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  return withBlockId(node.id, fence + (node.lang ?? "") + "\n" + node.content + "\n" + fence);
 }
 
 function renderList(node: ListNode): string {
@@ -224,18 +229,4 @@ function serializeAttrs(attrs: Attrs): string {
   if (entries.length === 0) return "";
   const parts = entries.map(([k, v]) => serializeAttr(k, v));
   return `{${parts.join(" ")}}`;
-}
-
-function serializeAttr(key: string, value: AttrValue): string {
-  if (value === true) return key;
-  if (value === false) return `${key}=false`;
-  if (typeof value === "number") return `${key}=${value}`;
-  const s = String(value);
-  if (s.includes('"')) {
-    if (s.includes("'")) {
-      return `${key}="${s.replace(/"/g, '\\"')}"`;
-    }
-    return `${key}='${s}'`;
-  }
-  return `${key}="${s}"`;
 }

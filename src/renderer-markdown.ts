@@ -253,7 +253,7 @@ function renderFigure(node: DirectiveNode, ctx: RenderCtx, depth: number): strin
 }
 
 function renderTask(node: DirectiveNode, ctx: RenderCtx, depth: number): string {
-  const checked = node.attrs.done === true || attrText(node, "status") === "done";
+  const checked = node.attrs.done === true || node.attrs.done === "true" || attrText(node, "status") === "done";
   const body = renderDirectiveContent(node, ctx, depth).trim() || directiveTitle(node);
   const firstLine = body.split("\n")[0] ?? "";
   const rest = body.split("\n").slice(1).join("\n");
@@ -270,10 +270,10 @@ function renderTableDirective(node: DirectiveNode, ctx: RenderCtx): string {
   if (rows.length === 0) return renderVerbatimDirective(node);
   const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
   const header =
-    node.attrs.header === true
+    node.attrs.header === true || node.attrs.header === "true"
       ? normalizeRow(rows[0] ?? [], width)
       : Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
-  const bodyRows = node.attrs.header === true ? rows.slice(1) : rows;
+  const bodyRows = node.attrs.header === true || node.attrs.header === "true" ? rows.slice(1) : rows;
   return joinBlocks([
     attrText(node, "title", "caption") ? `**${renderInline(directiveTitle(node), ctx)}**` : "",
     renderMetadata(node),

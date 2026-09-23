@@ -348,7 +348,7 @@ function isStale(
   const t = Date.parse(ls);
   if (Number.isNaN(t)) return false;
   const type = typeof node.attrs.type === "string" ? node.attrs.type : "";
-  const expired = node.attrs.expired === true;
+  const expired = node.attrs.expired === true || node.attrs.expired === "true";
   if (!STALE_OPT_IN_TYPES.has(type) && !expired) return false;
   return cfg.now.getTime() - t > cfg.days * 24 * 60 * 60 * 1000;
 }
