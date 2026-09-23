@@ -40,7 +40,49 @@ class IdsTest(unittest.TestCase):
         self.assertEqual(collect_ids(src)["canonical"], ["demo"])
 
 
+class ParserRulesTest(unittest.TestCase):
+    def test_unicode_slugs_match_reference(self):
+        from noma_seed.parser import slugify
+
+        self.assertEqual(slugify("日本語"), "日本語")
+        self.assertEqual(slugify("Привет мир"), "привет-мир")
+        self.assertEqual(slugify("Café au lait"), "cafe-au-lait")
+        self.assertEqual(slugify("Straße"), "strae")
+        self.assertEqual(slugify("???"), "")
+
+    def test_empty_slug_falls_back_to_section(self):
+        self.assertEqual(collect_ids("# ???\n\n## !!!\n")["canonical"], ["section", "section-2"])
+
+    def test_quoted_values_stay_strings_and_escapes(self):
+        from noma_seed.parser import parse_attrs
+
+        attrs = {k: v for k, v, _ in parse_attrs('id=2024 v="1.10" n=3 t="a \\"b\\" \\\\ \\d"')}
+        self.assertEqual(attrs, {"id": "2024", "v": "1.10", "n": 3, "t": 'a "b" \\ \\d'})
+
+    def test_heading_braces_need_key_value(self):
+        self.assertEqual(collect_ids("# Set {a, b}\n")["canonical"], ["set-a-b"])
+        self.assertEqual(collect_ids('# Real {id="r"}\n')["canonical"], ["r"])
+
+    def test_leading_thematic_break_is_not_frontmatter(self):
+        src = "---\n\n# Kept\n\n---\n"
+        self.assertEqual(collect_ids(src)["canonical"], ["kept"])
+
+    def test_tilde_and_long_fences(self):
+        src = '~~~\n::a{id="x"}\n~~~\n\n````\n```\n::b{id="y"}\n```\n````\n'
+        self.assertEqual(collect_ids(src)["canonical"], [])
+
+
 class PatchTest(unittest.TestCase):
+    def test_crlf_preserved(self):
+        src = '::claim{id="x"}\r\nold\r\n::\r\n'
+        out = patch_source(src, {"op": "replace_body", "id": "x", "content": "a\nb"})
+        self.assertEqual(out, '::claim{id="x"}\r\na\r\nb\r\n::\r\n')
+
+    def test_update_attribute_keeps_other_tokens(self):
+        src = "::card{id=\"c\" tone=warning}\nb\n::\n"
+        out = patch_source(src, {"op": "update_attribute", "id": "c", "key": "note", "value": "it's \"x\""})
+        self.assertEqual(out, '::card{id="c" tone=warning note="it\'s \\"x\\""}\nb\n::\n')
+
     def test_update_attribute(self):
         src = '::claim{id="x" confidence=0.5}\nbody\n::\n'
         out = patch_source(src, {"op": "update_attribute", "id": "x", "key": "confidence", "value": 0.95})
