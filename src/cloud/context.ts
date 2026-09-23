@@ -35,6 +35,8 @@ export interface CloudServerConfig {
   now: () => Date;
   store: NomaCloudDatabase;
   platform: CloudKnowledgePlatform;
+  /** Called after every successful document write (live-editing rooms merge external changes here). */
+  onDocumentWritten?: (record: CloudDocumentRecord) => void;
 }
 
 export interface Principal {
@@ -231,7 +233,10 @@ export async function readUser(config: CloudServerConfig, id: string): Promise<C
 }
 
 export async function writeDocument(config: CloudServerConfig, record: CloudDocumentRecord, expectedHash?: string): Promise<void> {
-  if (config.store.writeDocument(record, expectedHash)) return;
+  if (config.store.writeDocument(record, expectedHash)) {
+    config.onDocumentWritten?.(record);
+    return;
+  }
   const current = config.store.readDocument(record.id);
   throw new HttpError(409, "Document changed while the update was being applied", {
     code: "document_conflict",

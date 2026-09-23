@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CloudServerConfig, Principal } from "./context.js";
 import { HttpError } from "./http.js";
 import { routeAgentGateway, routeAgents, routeConnectors, routeRecipes } from "./routes-agents.js";
+import { routeCollab } from "./routes-collab.js";
 import { routeDatabase } from "./routes-database.js";
 import { routeDocuments } from "./routes-documents.js";
 import { routeEnterprise } from "./routes-enterprise.js";
@@ -71,6 +72,7 @@ export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, A
   ["offline", (req, res, _url, parts, config, principal) => routeOffline(req, res, parts, config, principal)],
   ["realtime", (req, res, url, parts, config, principal) => routeRealtime(req, res, url, parts, config, principal)],
   ["enterprise", (req, res, _url, parts, config, principal) => routeEnterprise(req, res, parts, config, principal)],
+  ["collab", (req, res, _url, parts, config, principal) => routeCollab(req, res, parts, config, principal)],
 ]);
 
 export async function routeApi(
