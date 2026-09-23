@@ -6,6 +6,7 @@ import test from "node:test";
 import { prosemirrorJSONToYDoc, yXmlFragmentToProseMirrorRootNode } from "y-prosemirror";
 import WebSocket from "ws";
 import * as Y from "yjs";
+import { openNomaCloudDatabase } from "../src/cloud-db.js";
 import { createNomaCloudServer, type NomaCloudServerOptions } from "../src/cloud-server.js";
 import { canonicalEditorDoc, editorBlockKey, type EditorNode, nomaToEditorDoc } from "../src/editor-model.js";
 import { EDITOR_YJS_FRAGMENT, editorFragment, editorNodeToYElement, yDocFromNoma, yFragmentToEditorDoc } from "../src/editor-yjs.js";
@@ -34,6 +35,7 @@ interface JsonRequestOptions {
 
 interface Harness {
   base: string;
+  root: string;
   close: () => Promise<void>;
 }
 
@@ -57,6 +59,7 @@ async function startCloudServer(prefix: string, collab: NomaCloudServerOptions["
   assert.ok(address && typeof address === "object");
   return {
     base: `http://127.0.0.1:${address.port}`,
+    root,
     close: async () => {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
       await rm(root, { recursive: true, force: true });
@@ -367,4 +370,26 @@ test("collab status route enforces document access", async (t) => {
   const stranger = await createCloudUser(harness.base, "Stranger");
   await json(`${harness.base}/api/collab/documents/${doc.id}`, { token: stranger.token, expectedStatus: 403 });
   await json(`${harness.base}/api/collab/documents/${doc.id}`, { expectedStatus: 401 });
+});
+
+test("updates persisted before a crash are recovered and checkpointed to their author", async (t) => {
+  const { harness, owner, doc } = await setup("noma-collab-recover-", { checkpointIntervalMs: 200 });
+  t.after(() => harness.close());
+  const data = join(harness.root, "data");
+  const store = openNomaCloudDatabase({ dbPath: join(data, "noma-cloud.sqlite"), dataDir: join(data, "documents"), usersDir: join(data, "users"), sitesDir: join(data, "sites") });
+  const crashed = yDocFromNoma(SOURCE);
+  store.writeCollabSnapshot(doc.id, Y.encodeStateAsUpdate(crashed), SOURCE, doc.hash, new Date().toISOString());
+  const before = Y.encodeStateVector(crashed);
+  editorFragment(crashed).insert(editorFragment(crashed).length, [editorNodeToYElement({ type: "paragraph", content: [{ type: "text", text: "Acked before the crash." }] })]);
+  store.appendCollabUpdate(doc.id, Y.encodeStateAsUpdate(crashed, before), owner.id, new Date().toISOString());
+  store.close();
+
+  const client = await CollabTestClient.connect(harness.base, doc.id, { token: owner.token });
+  t.after(() => client.close());
+  assert.match(client.text(), /Acked before the crash\./);
+  await client.waitFor(() => client.frames.some((frame) => frame.type === "saved"), "recovery checkpoint");
+  const stored = await json<CloudDocument>(`${harness.base}/api/documents/${doc.id}`, { token: owner.token });
+  assert.equal(stored.source, `${SOURCE}\nAcked before the crash.\n`);
+  const revisions = await json<{ revisions: Array<{ createdBy: string }> }>(`${harness.base}/api/documents/${doc.id}/revisions`, { token: owner.token });
+  assert.equal(revisions.revisions[0]?.createdBy, owner.id);
 });

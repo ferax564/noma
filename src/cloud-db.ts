@@ -1874,6 +1874,14 @@ export class NomaCloudDatabase {
     return row.n;
   }
 
+  /** Author of the most recent human update still pending in a room (used to attribute crash-recovered edits). */
+  lastCollabActor(documentId: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT actor_id FROM collab_updates WHERE document_id = ? AND actor_id != 'system' AND actor_id NOT LIKE 'share:%' ORDER BY seq DESC LIMIT 1")
+      .get(documentId) as { actor_id: string } | undefined;
+    return row?.actor_id;
+  }
+
   deleteCollabRoom(documentId: string): void {
     this.db.transaction(() => {
       this.db.prepare("DELETE FROM collab_rooms WHERE document_id = ?").run(documentId);

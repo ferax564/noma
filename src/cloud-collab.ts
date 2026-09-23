@@ -43,6 +43,10 @@ export interface CloudCollabOptions {
   maxClientsPerRoom?: number;
   /** Compact a room once this many bytes of updates are pending. Default 4 MiB. */
   compactAfterBytes?: number;
+  /** Refuse updates once a room's stored state would exceed this size. Default 16 × maxBodyBytes (at least 16 MiB). */
+  maxRoomBytes?: number;
+  /** Frames a socket may send per 10 seconds before it is disconnected. Default 1000. */
+  maxFramesPer10s?: number;
 }
 
 export const COLLAB_PATH_RE = /^\/api\/collab\/documents\/([A-Za-z0-9_-]{8,80})$/;
@@ -68,6 +72,8 @@ interface CollabClient {
   clientId: number;
   presence: CollabPresence;
   awareness?: Uint8Array;
+  windowStart: number;
+  windowFrames: number;
 }
 
 interface CollabRoom {
@@ -77,6 +83,7 @@ interface CollabRoom {
   baseSource: string;
   baseHash: string;
   pendingBytes: number;
+  snapshotBytes: number;
   dirty: boolean;
   lastEditor?: AccessContext;
   checkpointTimer?: NodeJS.Timeout;
@@ -105,6 +112,8 @@ export class CloudCollabHub {
   private readonly helloTimeoutMs: number;
   private readonly maxClientsPerRoom: number;
   private readonly compactAfterBytes: number;
+  private readonly maxRoomBytes: number;
+  private readonly maxFramesPer10s: number;
   private closed = false;
 
   constructor(private readonly config: CloudServerConfig, options: CloudCollabOptions = {}) {
@@ -112,6 +121,8 @@ export class CloudCollabHub {
     this.helloTimeoutMs = options.helloTimeoutMs ?? 5_000;
     this.maxClientsPerRoom = options.maxClientsPerRoom ?? 50;
     this.compactAfterBytes = options.compactAfterBytes ?? 4 * 1024 * 1024;
+    this.maxRoomBytes = options.maxRoomBytes ?? Math.max(16 * 1024 * 1024, config.maxBodyBytes * 16);
+    this.maxFramesPer10s = options.maxFramesPer10s ?? 1_000;
     this.wss = new WebSocketServer({ noServer: true, maxPayload: Math.max(64 * 1024, config.maxBodyBytes * 2) });
     this.permissionTimer = setInterval(() => this.recheckAll(), options.permissionCheckMs ?? 15_000);
     this.permissionTimer.unref();
@@ -251,7 +262,16 @@ export class CloudCollabHub {
         return undefined;
       }
     }
-    const client: CollabClient = { documentId, ws, principal, access, clientId, presence: presenceFor(access, clientId) };
+    const client: CollabClient = {
+      documentId,
+      ws,
+      principal,
+      access,
+      clientId,
+      presence: presenceFor(access, clientId),
+      windowStart: Date.now(),
+      windowFrames: 0,
+    };
     room.clients.add(client);
     send(ws, {
       type: "init",
@@ -274,6 +294,16 @@ export class CloudCollabHub {
   private handleMessage(client: CollabClient, message: ClientMessage): void {
     const room = this.rooms.get(client.documentId);
     if (!room || !room.clients.has(client)) return;
+    const now = Date.now();
+    if (now - client.windowStart > 10_000) {
+      client.windowStart = now;
+      client.windowFrames = 0;
+    }
+    client.windowFrames += 1;
+    if (client.windowFrames > this.maxFramesPer10s) {
+      client.ws.close(4429, "too many frames");
+      return;
+    }
     if (message.type === "ping") {
       send(client.ws, { type: "pong" });
       return;
@@ -293,6 +323,10 @@ export class CloudCollabHub {
         Y.decodeUpdate(update);
       } catch {
         send(client.ws, { type: "error", code: "bad_update", id, message: "update is not a valid Yjs update" });
+        return;
+      }
+      if (room.snapshotBytes + room.pendingBytes + update.byteLength > this.maxRoomBytes) {
+        send(client.ws, { type: "error", code: "room_full", id, message: "This page is too large to keep editing live; save and reload it" });
         return;
       }
       const actor = client.access.user?.id ?? `share:${client.access.share?.id ?? "unknown"}`;
@@ -350,6 +384,7 @@ export class CloudCollabHub {
     const existing = this.rooms.get(record.id);
     if (existing) return existing;
     const persisted = this.config.store.readCollabRoom(record.id);
+    const recoveredActor = persisted && persisted.updates.length > 0 ? this.config.store.lastCollabActor(record.id) : undefined;
     const doc = new Y.Doc();
     let baseSource = record.source;
     if (persisted?.state && persisted.baseSource !== undefined) {
@@ -366,8 +401,10 @@ export class CloudCollabHub {
       baseSource,
       baseHash: sha256Hex(baseSource),
       pendingBytes: 0,
+      snapshotBytes: 0,
       dirty: false,
       lastCheckpointAt: 0,
+      lastEditor: recoveredActor ? this.recoveredEditor(record, recoveredActor) : undefined,
     };
     doc.on("update", (update: Uint8Array, origin: unknown) => {
       if (origin !== SERVER_ORIGIN || !this.rooms.has(room.documentId)) return;
@@ -384,6 +421,17 @@ export class CloudCollabHub {
       this.scheduleCheckpoint(room);
     }
     return room;
+  }
+
+  /** Attribute edits recovered after a restart to their last author, if that person can still edit. */
+  private recoveredEditor(record: CloudDocumentRecord, actorId: string): AccessContext | undefined {
+    const user = this.config.store.readUser(actorId);
+    if (!user) return undefined;
+    try {
+      return requireRecordAccess(this.config, record, { user }, "editor");
+    } catch {
+      return undefined;
+    }
   }
 
   private derivedSource(room: CollabRoom): string {
@@ -473,7 +521,9 @@ export class CloudCollabHub {
   }
 
   private snapshot(room: CollabRoom): void {
-    this.config.store.writeCollabSnapshot(room.documentId, Y.encodeStateAsUpdate(room.doc), room.baseSource, room.baseHash, this.config.now().toISOString());
+    const state = Y.encodeStateAsUpdate(room.doc);
+    this.config.store.writeCollabSnapshot(room.documentId, state, room.baseSource, room.baseHash, this.config.now().toISOString());
+    room.snapshotBytes = state.byteLength;
     room.pendingBytes = 0;
   }
 

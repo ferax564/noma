@@ -95,6 +95,27 @@ test("editing one block changes only that block's lines across the corpus", () =
   }
 });
 
+test("inserting or deleting a block keeps every other block intact across the corpus", () => {
+  for (const file of corpus()) {
+    const doc = nomaToEditorDoc(file.source);
+    const keys = doc.content.map(editorBlockKey);
+    const middle = Math.floor(doc.content.length / 2);
+    if (doc.content[middle]?.type === "frontmatter" || doc.content.length < 2) continue;
+
+    const deleted = clone(doc);
+    deleted.content.splice(middle, 1);
+    const afterDelete = editorDocToNoma(deleted, file.source);
+    assert.deepEqual(nomaToEditorDoc(afterDelete).content.map(editorBlockKey), keys.filter((_, index) => index !== middle), `${file.name}: delete disturbed other blocks`);
+
+    const inserted = clone(doc);
+    inserted.content.splice(middle, 0, { type: "paragraph", content: [{ type: "text", text: "Inserted by the visual editor." }] });
+    const afterInsert = editorDocToNoma(inserted, file.source);
+    const reparsed = nomaToEditorDoc(afterInsert).content.map(editorBlockKey);
+    assert.deepEqual(reparsed.filter((key) => !key.includes("Inserted by the visual editor.")), keys, `${file.name}: insert disturbed other blocks`);
+    assert.deepEqual(ids(afterInsert), ids(file.source), `${file.name}: insert changed IDs`);
+  }
+});
+
 const sample = `---
 title: Visual sample
 ---

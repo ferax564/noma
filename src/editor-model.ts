@@ -783,18 +783,36 @@ function emitList(nodes: EditorNode[], original: ChunkList, ctx: SerializeContex
   const startLength = ctx.out.length;
   let oi = 0;
   let ni = 0;
+  let lastOriginal = -1;
+  let changedSinceLast = false;
+  const separatedFromPrevious = (gap: string[]): boolean => {
+    const previous = ctx.out.length > startLength ? ctx.out[ctx.out.length - 1] : undefined;
+    return previous === undefined || previous.trim() === "" || gap.some((line) => line.trim() === "");
+  };
   const flushRun = (oEnd: number, nEnd: number): void => {
     const oldRun = original.chunks.slice(oi, oEnd);
     const newRun = nodes.slice(ni, nEnd);
+    if (oldRun.length > newRun.length) changedSinceLast = true;
     newRun.forEach((node, k) => {
       const candidate = oldRun[k];
       const ref = candidate && sameKind(candidate.node, node) ? candidate : undefined;
-      emitNew(node, ref, ctx, parentColons, ctx.out.length === startLength);
+      const refIndex = oi + k;
+      const adjacent = ref !== undefined && lastOriginal === refIndex - 1 && !changedSinceLast;
+      const first = ctx.out.length === startLength;
+      let gap = ref ? ref.gap : first ? [] : [""];
+      if (!adjacent && !separatedFromPrevious(gap)) gap = [...gap, ""];
+      if (emitNew(node, ref, gap, ctx, parentColons) && ref) lastOriginal = refIndex;
+      else changedSinceLast = true;
     });
   };
   for (const [o, n] of pairs) {
     flushRun(o, n);
-    emitOriginalChunk(original.chunks[o]!, ctx);
+    const chunk = original.chunks[o]!;
+    const adjacent = lastOriginal === o - 1 && !changedSinceLast;
+    if (!adjacent && !separatedFromPrevious(chunk.prefixLines)) ctx.out.push("");
+    emitOriginalChunk(chunk, ctx);
+    lastOriginal = o;
+    changedSinceLast = false;
     oi = o + 1;
     ni = n + 1;
   }
@@ -814,19 +832,19 @@ function sameKind(a: EditorNode, b: EditorNode): boolean {
   return true;
 }
 
-function emitNew(node: EditorNode, ref: SourceChunk | undefined, ctx: SerializeContext, parentColons: number, first: boolean): void {
+function emitNew(node: EditorNode, ref: SourceChunk | undefined, gap: string[], ctx: SerializeContext, parentColons: number): boolean {
   const marker = uniqueMarker(node, ctx);
-  const gap = ref ? ref.gap : first ? [] : [""];
   const blockStart = ctx.out.length + gap.length + (marker !== null ? 1 : 0);
   const headingCount = ctx.headings.length;
   const block = serializeBlock(node, ref, ctx, parentColons, marker !== null, blockStart);
   if (block.length === 0) {
     ctx.headings.length = headingCount;
-    return;
+    return false;
   }
   ctx.out.push(...gap);
   if (marker !== null) ctx.out.push(marker);
   ctx.out.push(...block);
+  return true;
 }
 
 function uniqueMarker(node: EditorNode, ctx: SerializeContext): string | null {
