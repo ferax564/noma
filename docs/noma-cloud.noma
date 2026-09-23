@@ -240,6 +240,81 @@ GET    /api/documents/<id>/revisions/<n>/diff?against=<m>
 DELETE /api/trash/<document|site>/<id>
 ```
 
+## Attachments and images
+
+Pages can carry files: screenshots, PDFs, spreadsheets, and exports. Upload
+from the **Attachments** panel in the inspector, or drop or paste files straight
+into the source editor. Images are inserted at the cursor as a figure, and
+other files as a link:
+
+```text
+::figure{src="att:<attachment-id>" alt="Growth chart"}
+::
+
+Read the [spec](att:<attachment-id>) or refer to a file by name: [spec](att:spec.pdf).
+```
+
+The reference stays in the `.noma` source, so pages still round-trip
+through source with stable IDs. When Noma Cloud renders a page (the preview,
+`/d/<id>`, `/api/documents/<id>/html`, and the published `/s/<id>` site), it
+maps each `att:` reference to a short-lived signed URL. That URL is bound to
+the viewer and is checked again on every request. An `att:` reference resolves
+only against the same page's attachments, so one page cannot embed another
+page's files. A reference that does not resolve renders as a placeholder.
+
+| Behavior | Detail |
+|---|---|
+| Storage | Content-addressed blobs under `<storage root>/blobs/ab/cd/<sha256>`. Identical uploads share one blob. Uploads stream to a temp file and are renamed into place. The `BlobStore` interface in `src/cloud-blobs.ts` is where an S3-compatible driver plugs in. |
+| Limits | 25 MB per file (`NOMA_CLOUD_MAX_ATTACHMENT_BYTES`). 1 GB of live attachments per space, or per uploader for pages outside a space (`NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES`). Over the limit, the server returns `413` with code `attachment_too_large` or `attachment_quota_exceeded`. |
+| Content type | Taken from the file's magic bytes, not the declared type. Executables (PE, ELF, Mach-O, shebang scripts, and executable extensions) are rejected with `415`. Filenames lose directory parts and control characters. |
+| Serving | `x-content-type-options: nosniff`, CSP `sandbox`, and an ETag. PNG, JPEG, GIF, WebP, and PDF are served `inline`. Everything else downloads as an attachment. SVG, HTML, and XML are always sent as `application/octet-stream`. |
+| Permissions | Viewers of a page can list and download its attachments. This includes page share links and space share links that reach the page. Editors upload and delete. Page restrictions apply to attachments too. |
+| Lifecycle | Deleting an attachment hides it. Purging the page from trash removes its attachment rows and any blob that no other page still references. |
+| Search and backup | Filenames are indexed as `attachment` rows in `/api/search`. `/api/backup/export` embeds attachments, base64 encoded and hash-checked, up to 50 MB (pass `includeAttachments: false` to skip them). Import restores them for pages the importer can edit. |
+
+```text
+POST   /api/documents/<id>/attachments               raw body; content-type + x-filename headers
+GET    /api/documents/<id>/attachments
+DELETE /api/documents/<id>/attachments/<attachment-id>
+GET    /api/attachments/<attachment-id>              bearer/share access, or ?exp=&p=&sig= signed URL
+```
+
+Uploads send the raw file bytes. Multipart form bodies are rejected with `415`.
+
+## Page restrictions
+
+Space permissions decide who can reach a page. **Restrictions** can then narrow
+that group for a single page, like Confluence's view and edit restrictions.
+Open them from the lock badge in the page header, or from **Restrictions...**
+in the page's context menu.
+
+| Restriction | Effect |
+|---|---|
+| View | Only the listed users and groups can see the page. The page's own owners and workspace admins can always see it. Everyone else loses the page from every channel: direct reads, space listings, the page tree, breadcrumbs, wiki and backlinks, search, labels, recents and favorites, trash, activity, the DB API, Ask Noma and knowledge exports, agents, notifications, attachments, and the published `/s/<id>` site. |
+| Inherited view | View restrictions apply to every page below the restricted page, in any space's page tree. A child page is visible only if every restricted ancestor allows the viewer. |
+| Edit | Only the listed users and groups (plus page owners and admins) can edit. Everyone else who has access sees the page as a viewer. Edit restrictions apply to the page itself and are not inherited. |
+
+Restrictions never grant access. They only narrow grants that already exist.
+Share links, whether on the page or on its space, count as anonymous: they
+cannot open a view-restricted page, and an editor link on an edit-restricted
+page only gives view access. Agent grants are capped by the agent owner's
+access after restrictions. Signed attachment URLs stop working as soon as the
+viewer loses access.
+
+A space update from someone who cannot see a restricted page keeps that page
+where it is. Only the page's direct owners, owners of a space that contains it,
+and workspace admins can view or change its restrictions. A space owner can
+therefore always unlock a page, even one hidden from them.
+
+```text
+GET /api/documents/<id>/restrictions
+PUT /api/documents/<id>/restrictions   {"view": {"users": ["<user-id>"], "groups": ["<group-id>"]}, "edit": {"users": [], "groups": []}}
+```
+
+The response lists named principals, the restricted ancestors in `inherited`,
+and `canManage`. Tree nodes from `GET /api/sites/<id>/tree` carry
+`restrictions: {view, edit, inheritedView}` for the rail's lock icons.
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

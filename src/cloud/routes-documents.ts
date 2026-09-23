@@ -38,8 +38,11 @@ import {
   requireDocumentPrecondition,
   updateDocument,
 } from "./records.js";
+import { attachmentResolver } from "./attachments.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
+import { routeDocumentAttachments } from "./routes-attachments.js";
+import { routeDocumentRestrictions } from "./routes-restrictions.js";
 import { routePatchProposals } from "./routes-patch.js";
 
 export async function routeDocuments(
@@ -103,6 +106,16 @@ export async function routeDocuments(
     return;
   }
 
+  if (suffix === "attachments") {
+    await routeDocumentAttachments(req, res, parts[4], config, principal, record);
+    return;
+  }
+
+  if (suffix === "restrictions") {
+    await routeDocumentRestrictions(req, res, config, principal, record);
+    return;
+  }
+
   if (suffix === "comments") {
     await routeDocumentComments(req, res, parts[4], parts[5], config, principal, record);
     return;
@@ -120,7 +133,7 @@ export async function routeDocuments(
 
   if (suffix === "html" && method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access) }), "text/html; charset=utf-8");
     return;
   }
 
@@ -348,7 +361,7 @@ export async function routeDocumentApprovals(
       note: optionalString(input.note)?.slice(0, 4_000) ?? existing.note,
       updatedAt: now,
     });
-    writeNotification(
+    if (config.store.documentAccessRole(existing.requestedBy, document.id)) writeNotification(
       config,
       existing.requestedBy,
       "approval_updated",
@@ -396,6 +409,7 @@ function notifyCommentParticipants(
     recipients.set(document.createdBy, recipients.get(document.createdBy) ?? "comment");
   }
   for (const [userId, type] of recipients) {
+    if (!config.store.documentAccessRole(userId, document.id)) continue;
     writeNotification(
       config,
       userId,

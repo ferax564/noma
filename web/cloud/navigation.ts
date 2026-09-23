@@ -9,6 +9,7 @@ import { setCurrentPage } from "./editor.js";
 import { renderChrome } from "./layout.js";
 import { pageAncestors, pageParentId } from "./page-meta.js";
 import { canCreatePage, canEditSite, selectedShareRole } from "./permissions.js";
+import { restrictionIndicator } from "./restrictions.js";
 import { clearWorkspaceState, refreshWorkspaceTools, renderWorkspaceTools } from "./session.js";
 import { shareToken, state } from "./state.js";
 import type { CloudDocumentResponse, CloudNavigationItem, CloudPageTemplate, CloudSiteResponse, CloudTrashItem } from "./types.js";
@@ -720,6 +721,8 @@ function pageRow(page: CloudDocumentResponse, depth = 0): HTMLElement {
   const meta = button.querySelector<HTMLElement>(".row-meta");
   if (title) title.textContent = page.title;
   if (meta) meta.textContent = `${shortId(page.id)} / ${page.access?.role ?? state.currentSite?.access?.role ?? "viewer"}`;
+  const lock = restrictionIndicator(page.id);
+  if (lock) title?.append(lock);
   button.addEventListener("click", () => selectPage(page.id));
   row.addEventListener("contextmenu", (event) => showPageContextMenu(event, page));
 

@@ -66,6 +66,7 @@ export type {
   KnowledgeTrust,
   LegalHold,
   LlmWikiResult,
+  NomaBackupAttachment,
   NomaBackupBundle,
   NomaBackupFile,
   OfflineDraft,

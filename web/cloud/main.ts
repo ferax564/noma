@@ -1,4 +1,5 @@
 /** Noma Cloud browser app entry: wires event listeners and boots the app. */
+import { installAttachments } from "./attachments.js";
 import { addComment, addGroupMember, createGroup, inviteCollaborator, inviteGroup, readAllNotifications, refreshAccessManagement, refreshActivity, refreshApprovals, refreshComments, refreshGroups, refreshNotifications, requestApproval } from "./collaboration.js";
 import { panelsOpenStorageKey, themeStorageKey } from "./constants.js";
 import { closeContextMenu, showSourceContextMenu } from "./context-menu.js";
@@ -11,6 +12,7 @@ import { applyThemeMode, handleSplitResizeKeydown, renderChrome, setViewMode, st
 import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage, createStarterWorkspace, importPage, openPublishedSite, refreshTrash, replaceFirstHeading, saveCurrentSite, toggleFavorite } from "./navigation.js";
 import { addLabel, toggleWatch } from "./page-meta.js";
 import { installPreviewEditing } from "./preview.js";
+import { installRestrictions } from "./restrictions.js";
 import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
@@ -250,4 +252,6 @@ function bindEvents(): void {
   splitResizeHandle.addEventListener("keydown", (event) => handleSplitResizeKeydown(event));
 
   previewFrame.addEventListener("load", () => installPreviewEditing());
+  installAttachments();
+  installRestrictions();
 }

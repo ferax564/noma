@@ -15,7 +15,7 @@ import {
   type ComputedEvalContext,
 } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
-import { escapeAttr, escapeHtml, inlineToHtml, safeHref, splitDelimitedRow, splitPipeRow } from "./inline.js";
+import { ATTACHMENT_URL_PREFIX, escapeAttr, escapeHtml, type InlineHtmlOptions, inlineToHtml, resolveHref, safeHref, splitDelimitedRow, splitPipeRow } from "./inline.js";
 
 export interface HtmlRenderOptions {
   /** When true, wrap output in a full HTML document with the default theme. */
@@ -59,6 +59,11 @@ export interface HtmlRenderOptions {
    * editor previews and is disabled for normal publishing output.
    */
   sourcePositions?: boolean;
+  /**
+   * Maps `att:<ref>` references (figure `src`, link and button hrefs) to URLs. Noma Cloud passes a
+   * resolver scoped to the page's attachments; without one, `att:` figures render as a placeholder.
+   */
+  resolveAttachment?: (ref: string) => string | undefined;
 }
 
 export interface DatasetTable {
@@ -99,6 +104,8 @@ interface RenderCtx {
   captions: CaptionEntry[];
   computed: ComputedEvalContext;
   sourcePositions: boolean;
+  inline: InlineHtmlOptions;
+  resolveAttachment?: (ref: string) => string | undefined;
 }
 
 export function buildDatasetRegistry(doc: DocumentNode): Map<string, DatasetTable> {
@@ -337,6 +344,8 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
     captions: collectCaptionEntries(doc),
     computed: buildComputedEvalContext(doc),
     sourcePositions: options.sourcePositions === true,
+    inline: options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {},
+    ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
   };
   const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
   if (!options.standalone) return body;
@@ -808,7 +817,7 @@ function renderNode(node: Node, ctx: RenderCtx): string {
     case "section":
       return renderSection(node, ctx);
     case "paragraph":
-      return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content)}</p>`;
+      return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content, ctx.inline)}</p>`;
     case "code": {
       const langClass = node.lang ? ` class="lang-${escapeAttr(node.lang)}"` : "";
       return `<pre><code${langClass}>${escapeHtml(node.content)}</code></pre>`;
@@ -816,14 +825,14 @@ function renderNode(node: Node, ctx: RenderCtx): string {
     case "list": {
       const tag = node.ordered ? "ol" : "ul";
       const items = node.items
-        .map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content)}</li>`)
+        .map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content, ctx.inline)}</li>`)
         .join("\n");
       return `<${tag}>\n${items}\n</${tag}>`;
     }
     case "list_item":
-      return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content)}</li>`;
+      return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content, ctx.inline)}</li>`;
     case "quote":
-      return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content)}</blockquote>`;
+      return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content, ctx.inline)}</blockquote>`;
     case "thematic_break":
       return `<hr />`;
     case "table": {
@@ -838,7 +847,7 @@ function renderNode(node: Node, ctx: RenderCtx): string {
             cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
             colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : "",
           ].join("");
-          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</th>`;
+          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</th>`;
         })
         .join("");
       const body = node.rows
@@ -856,7 +865,7 @@ function renderNode(node: Node, ctx: RenderCtx): string {
                 cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
                 colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : "",
               ].join("");
-              return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</td>`;
+              return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</td>`;
             })
             .join("");
           return `<tr${trAttr}>${cells}</tr>`;
@@ -882,7 +891,7 @@ function renderSection(node: SectionNode, ctx: RenderCtx): string {
   const aliasAnchors = (node.aliases ?? [])
     .map((a) => `<a class="noma-alias" id="${escapeAttr(a)}" aria-hidden="true"></a>`)
     .join("");
-  const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title)}</h${node.level}>`;
+  const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title, ctx.inline)}</h${node.level}>`;
   const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
   return `<section${idAttr} data-level="${node.level}">\n${aliasAnchors}${heading}\n${inner}\n</section>`;
 }
@@ -1024,7 +1033,7 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
       return `<div class="noma-pagebreak"${idAttr} role="separator" aria-label="Page break"></div>`;
 
     case "button": {
-      const href = node.attrs.href ? safeHref(String(node.attrs.href)) : "#";
+      const href = node.attrs.href ? resolveHref(String(node.attrs.href), ctx.resolveAttachment) : "#";
       return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</a>`;
     }
 
@@ -1115,7 +1124,7 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
       return renderStateChange(node, idAttr, ctx);
 
     case "table":
-      return renderTableDirective(node, idAttr);
+      return renderTableDirective(node, idAttr, ctx);
 
     case "math": {
       const body = (node.body ?? "").trim();
@@ -1188,6 +1197,11 @@ function renderGenericDirective(node: DirectiveNode, idAndAttrs: string, ctx: Re
 }
 
 function renderFigureImage(src: string, alt: string, ctx: RenderCtx): string {
+  if (src.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
+    const url = ctx.resolveAttachment?.(src.slice(ATTACHMENT_URL_PREFIX.length));
+    if (url) return `<img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" loading="lazy" />`;
+    return `<aside class="noma-blocked-escape" data-kind="figure">[attachment not available: ${escapeHtml(src)}]</aside>`;
+  }
   if (ctx.externalAssets || /^data:image\//i.test(src)) {
     return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" />`;
   }
@@ -1458,7 +1472,7 @@ function renderBibliography(node: DirectiveNode, idAndAttrs: string, ctx: Render
   const intro = node.children.length > 0
     ? renderChildren(node, ctx)
     : node.body?.trim()
-      ? `<p>${inlineToHtml(node.body)}</p>`
+      ? `<p>${inlineToHtml(node.body, ctx.inline)}</p>`
       : "";
   const items = ctx.citations.length > 0
     ? ctx.citations.map((entry) => `<li>${renderCitationEntry(entry)}</li>`).join("\n")
@@ -1527,7 +1541,7 @@ function parseAlignSpec(raw: string, columns: number): (string | null)[] {
 
 const splitTableLine = splitPipeRow;
 
-function renderTableDirective(node: DirectiveNode, idAttr: string): string {
+function renderTableDirective(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {
   const body = node.body ?? "";
   const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return `<div class="noma-block noma-block-table"${idAttr}></div>`;
@@ -1543,7 +1557,7 @@ function renderTableDirective(node: DirectiveNode, idAttr: string): string {
   const renderCell = (tag: "th" | "td", cell: string, idx: number): string => {
     const a = align[idx];
     const styleAttr = a ? ` style="text-align: ${a}"` : "";
-    return `<${tag}${styleAttr}>${inlineToHtml(cell)}</${tag}>`;
+    return `<${tag}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</${tag}>`;
   };
 
   const head = headerRow
@@ -1947,7 +1961,7 @@ function computedBodyHtml(node: DirectiveNode, ctx: RenderCtx): string {
       "y_label",
       "yLabel",
     ]);
-    return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text)}</p></div>` : "";
+    return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text, ctx.inline)}</p></div>` : "";
   }
   const rendered = renderChildren(node, ctx);
   return rendered ? `<div class="noma-computed-body">${rendered}</div>` : "";
@@ -2775,7 +2789,7 @@ function formatNum(n: number): string {
 
 function renderChildren(node: DirectiveNode, ctx: RenderCtx): string {
   if (node.children.length === 0 && node.body !== undefined) {
-    return `<p>${inlineToHtml(node.body)}</p>`;
+    return `<p>${inlineToHtml(node.body, ctx.inline)}</p>`;
   }
   return node.children.map((c) => renderNode(c, ctx)).join("\n");
 }

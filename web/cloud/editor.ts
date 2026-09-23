@@ -14,6 +14,8 @@ import { refreshHistory, renderHistory } from "./history.js";
 import { renderChrome } from "./layout.js";
 import { confirmDiscardDirty, pageFolder, recordRecent, replacePage, sourceTitle, updateAddress } from "./navigation.js";
 import { refreshPageMeta } from "./page-meta.js";
+import { refreshAttachments, resolveAttachmentUrl } from "./attachments.js";
+import { refreshRestrictions } from "./restrictions.js";
 import { canEditPage } from "./permissions.js";
 import { previewDocument, previewError } from "./preview.js";
 import { state } from "./state.js";
@@ -129,6 +131,8 @@ export function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   void refreshHistory({ silent: true });
   void refreshPageCollaboration();
   void refreshPageMeta();
+  void refreshAttachments();
+  void refreshRestrictions();
   void recordRecent("document", page.id);
 }
 
@@ -143,6 +147,7 @@ export function renderCurrent(): void {
       externalAssets: false,
       interactive: false,
       sourcePositions: true,
+      resolveAttachment: resolveAttachmentUrl,
     });
     state.renderState = {
       doc,

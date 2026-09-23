@@ -6,10 +6,15 @@ import { extname, join, resolve, sep } from "node:path";
 import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
 import { parse } from "../parser.js";
 import { renderHtml } from "../renderer-html.js";
-import { type AccessContext, type CloudServerConfig, readDocument } from "./context.js";
+import { attachmentResolver } from "./attachments.js";
+import { type AccessContext, capAccessForDocument, type CloudServerConfig, readDocument } from "./context.js";
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
 
-export function renderDocumentHtml(record: CloudDocumentRecord, access?: AccessContext): string {
+export function renderDocumentHtml(
+  record: CloudDocumentRecord,
+  access?: AccessContext,
+  options: { resolveAttachment?: (ref: string) => string | undefined } = {},
+): string {
   const doc = parse(record.source, { filename: `${record.id}.noma` });
   const banner = access
     ? `<div class="noma-cloud-banner">Noma Cloud · ${escapeHtml(record.title)} · ${escapeHtml(access.role)} access</div>`
@@ -18,27 +23,32 @@ export function renderDocumentHtml(record: CloudDocumentRecord, access?: AccessC
     standalone: true,
     allowEscapeHatches: false,
     externalAssets: false,
+    ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
   });
   return banner ? html.replace("<body>", `<body>${banner}`) : html;
 }
 
 export async function renderSiteHtml(config: CloudServerConfig, site: CloudSiteRecord, access: AccessContext): Promise<string> {
-  const visibleIds = site.documentIds.filter((id) => !config.store.isTrashed("document", id));
-  const documents = await Promise.all(visibleIds.map((id) => readDocument(config, id)));
+  const visible = site.documentIds
+    .filter((id) => !config.store.isTrashed("document", id))
+    .map((id) => ({ id, access: capAccessForDocument(config, id, access) }))
+    .filter((entry): entry is { id: string; access: AccessContext } => entry.access !== undefined);
+  const documents = await Promise.all(visible.map(async (entry) => ({ record: await readDocument(config, entry.id), access: entry.access })));
   const articles = documents
-    .map((record) => {
+    .map(({ record, access: documentAccess }) => {
       const doc = parse(record.source, { filename: `${record.id}.noma` });
       const body = renderHtml(doc, {
         standalone: false,
         allowEscapeHatches: false,
         externalAssets: false,
         interactive: false,
+        resolveAttachment: attachmentResolver(config, record.id, documentAccess),
       });
       return `<article class="site-doc" id="${escapeAttr(record.id)}"><header><h2>${escapeHtml(record.title)}</h2><a href="#${escapeAttr(record.id)}">Copy link</a></header>${body}</article>`;
     })
     .join("\n");
   const nav = documents
-    .map((record) => `<a href="#${escapeAttr(record.id)}">${escapeHtml(record.title)}</a>`)
+    .map(({ record }) => `<a href="#${escapeAttr(record.id)}">${escapeHtml(record.title)}</a>`)
     .join("");
   return `<!doctype html>
 <html lang="en">

@@ -697,7 +697,12 @@ export class CloudKnowledgePlatform {
     };
   }
 
-  exportBackup(documents: CloudDocumentRecord[], exportedAt: string, git?: { repository: string; branch: string; pullRequestReview: boolean }): NomaBackupBundle {
+  exportBackup(
+    documents: CloudDocumentRecord[],
+    exportedAt: string,
+    git?: { repository: string; branch: string; pullRequestReview: boolean },
+    attachments: Array<NomaBackupAttachment & { data: string }> = [],
+  ): NomaBackupBundle {
     const files = [...documents].sort((left, right) => left.id.localeCompare(right.id)).map((document) => ({
       path: `documents/${document.id}.noma`,
       documentId: document.id,
@@ -706,8 +711,20 @@ export class CloudKnowledgePlatform {
       source: document.source.replace(/\r\n?/g, "\n"),
       updatedAt: document.updatedAt,
     }));
-    const manifest = { format: "noma-cloud-backup-v1" as const, exportedAt, files: files.map(({ source: _source, ...file }) => file), ...(git ? { git } : {}) };
-    return { manifest, files, digest: sha256Hex(`${JSON.stringify(manifest)}\n${files.map((file) => `${file.path}\n${file.source}`).join("\n")}`) };
+    const sortedAttachments = [...attachments].sort((left, right) => left.path.localeCompare(right.path));
+    const manifest = {
+      format: "noma-cloud-backup-v1" as const,
+      exportedAt,
+      files: files.map(({ source: _source, ...file }) => file),
+      ...(git ? { git } : {}),
+      ...(sortedAttachments.length > 0 ? { attachments: sortedAttachments.map(({ data: _data, ...attachment }) => attachment) } : {}),
+    };
+    return {
+      manifest,
+      files,
+      ...(sortedAttachments.length > 0 ? { attachments: sortedAttachments } : {}),
+      digest: sha256Hex(`${JSON.stringify(manifest)}\n${files.map((file) => `${file.path}\n${file.source}`).join("\n")}`),
+    };
   }
 
   planBackupImport(bundle: NomaBackupBundle, current: CloudDocumentRecord[]): BackupImportPlan {
@@ -1374,14 +1391,28 @@ export interface NomaBackupFile {
   updatedAt: string;
 }
 
+/** Attachment metadata in a backup manifest; the bytes travel base64-encoded in `bundle.attachments`. */
+export interface NomaBackupAttachment {
+  path: string;
+  id: string;
+  documentId: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  sha256: string;
+}
+
 export interface NomaBackupBundle {
   manifest: {
     format: "noma-cloud-backup-v1";
     exportedAt: string;
     files: Array<Omit<NomaBackupFile, "source">>;
+    /** Present only when the export carried attachments; covered by `digest` through the manifest. */
+    attachments?: NomaBackupAttachment[];
     git?: { repository: string; branch: string; pullRequestReview: boolean };
   };
   files: NomaBackupFile[];
+  attachments?: Array<NomaBackupAttachment & { data: string }>;
   digest: string;
 }
 

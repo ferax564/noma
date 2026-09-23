@@ -1549,3 +1549,151 @@ button.wiki-row {
 .revision-diff-blocks {
   color: var(--muted);
 }
+
+/* attachments */
+.attachment-row {
+  align-items: center;
+}
+
+.attachment-row .collaboration-copy strong {
+  overflow-wrap: anywhere;
+}
+
+.attachment-open {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 620;
+  text-decoration: none;
+}
+
+.attachment-open:hover {
+  background: var(--button-hover);
+}
+
+.source-input[data-attachment-drop="true"] {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+
+/* restrictions */
+.restriction-badge {
+  min-height: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 620;
+  line-height: inherit;
+  box-shadow: none;
+}
+
+.restriction-badge[data-state="restricted"] {
+  color: var(--warn);
+  border-color: rgba(144, 99, 39, 0.3);
+  background: var(--warning-bg);
+}
+
+.restriction-lock {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  color: var(--warn);
+  vertical-align: -1px;
+}
+
+.restriction-lock[data-kind="edit"] {
+  color: var(--muted);
+}
+
+.restrictions-dialog {
+  width: min(480px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--context-border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--context-shadow);
+}
+
+.restrictions-dialog::backdrop {
+  background: rgba(20, 28, 36, 0.36);
+}
+
+.restrictions-body {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.restrictions-body h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.restrictions-summary,
+.restrictions-inherited {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.restrictions-inherited {
+  color: var(--warn);
+}
+
+.restrictions-group {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+}
+
+.restrictions-group legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.restrictions-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 20px;
+}
+
+.restrictions-chip[data-type="group"] {
+  border-style: dashed;
+}
+
+.restrictions-empty {
+  color: var(--faint);
+  font-size: 0.72rem;
+}
+
+.restrictions-add {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.restrictions-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.restrictions-spacer {
+  flex: 1;
+}
+
+.restrictions-actions .primary-action:not(:disabled) {
+  border-color: rgba(18, 98, 104, 0.9);
+  background: var(--primary-bg);
+  color: #ffffff;
+}
