@@ -19,6 +19,11 @@ export interface AtlassianAuth {
    * opt it out of the SSRF denylist. Every other host is still checked.
    */
   trustedPrivateHosts?: string[];
+  /**
+   * Skip the private-address check entirely, for self-hosted Data Center on a
+   * private network. Origin pinning still applies.
+   */
+  allowPrivateHosts?: boolean;
 }
 
 export interface AtlassianHttp {
@@ -69,7 +74,7 @@ function assertAllowedUrl(auth: AtlassianAuth, url: string): void {
     throw new EnterpriseError("policy", "Atlassian URL scheme is not allowed", { protocol: parsed.protocol });
   }
   const trusted = (auth.trustedPrivateHosts ?? []).map((host) => host.toLowerCase());
-  if (!trusted.includes(parsed.hostname.toLowerCase())) assertSafeImportUrl(url);
+  if (!auth.allowPrivateHosts && !trusted.includes(parsed.hostname.toLowerCase())) assertSafeImportUrl(url);
   if (parsed.origin !== siteRoot(auth).origin) {
     throw new EnterpriseError("policy", "Atlassian request left the configured site", { origin: parsed.origin });
   }

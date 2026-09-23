@@ -1,0 +1,48 @@
+---
+title: Wiki macros
+description: Transclusion, child-page lists, live issue cards, and page properties in one page.
+---
+
+# Platform team home {id="platform-home"}
+
+::excerpt{id="home-summary"}
+The platform team owns the API gateway, the build pipeline, and the on-call rota.
+::
+
+::page-properties{id="home-properties"}
+| Owner | Platform team |
+| Status | Active |
+| Review cadence | Quarterly |
+::
+
+## Working agreements {id="working-agreements"}
+
+::note{id="review-policy"}
+Every production change needs one reviewer from outside the author's squad.
+::
+
+The review policy also appears on the release checklist. It is the same block,
+included from here, so there is one source of truth:
+
+::include{block="review-policy"}
+::
+
+## Pulled from other pages {id="pulled-from-other-pages"}
+
+In Noma Cloud these macros resolve against the space and the issue tracker,
+using the viewer's permissions. Rendered on their own, they show a placeholder.
+
+::include{page="Incident handbook" excerpt noverify}
+::
+
+::children{depth=2 sort="title"}
+::
+
+::issue{key="PLAT-42"}
+::
+
+::issues{project="PLAT" status="in_progress" limit=10}
+::
+
+::page-properties-report{label="adr"}
+::

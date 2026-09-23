@@ -90,3 +90,41 @@ export async function writePdfFromHtml(
     }
   }
 }
+
+export class PdfUnavailableError extends Error {}
+
+/**
+ * Render untrusted HTML to a PDF buffer with JavaScript disabled and every
+ * network request blocked, so the page can only use what is inlined. Throws
+ * `PdfUnavailableError` when Puppeteer or its browser is not installed.
+ */
+export async function renderPdfBuffer(html: string, options: PdfWriteOptions & { timeoutMs?: number } = {}): Promise<Buffer> {
+  const puppeteer = await import("puppeteer").catch((error: unknown) => {
+    throw new PdfUnavailableError(`PDF rendering requires Puppeteer (${error instanceof Error ? error.message : String(error)})`);
+  });
+  const browser = await puppeteer.default.launch({ headless: true, args: ["--no-sandbox"] }).catch((error: unknown) => {
+    throw new PdfUnavailableError(`PDF rendering could not start a browser (${error instanceof Error ? error.message : String(error)})`);
+  });
+  try {
+    const page = await browser.newPage();
+    const timeout = options.timeoutMs ?? 30_000;
+    page.setDefaultTimeout(timeout);
+    await page.setJavaScriptEnabled(false);
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      if (request.url().startsWith("data:")) void request.continue();
+      else void request.abort("blockedbyclient");
+    });
+    await page.setContent(html, { waitUntil: "load", timeout });
+    await page.emulateMediaType("print");
+    const pdf = await page.pdf({
+      format: (options.pageSize ?? "A4") as PaperFormat,
+      printBackground: options.printBackground !== false,
+      margin: options.margin ?? DEFAULT_MARGIN,
+      timeout,
+    });
+    return Buffer.from(pdf);
+  } finally {
+    await browser.close();
+  }
+}

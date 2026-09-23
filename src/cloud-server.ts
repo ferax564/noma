@@ -23,6 +23,7 @@ import {
 import { decodePathSegment, headerValue, HttpError, sendJson, sendText, sha256Hex } from "./cloud/http.js";
 import { selfUser } from "./cloud/records.js";
 import { attachmentResolver } from "./cloud/attachments.js";
+import { cloudMacroResolvers } from "./cloud/macros.js";
 import { renderDocumentHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
 import { runDueMaintenance, startMaintenanceScheduler } from "./cloud/routes-maintenance.js";
 import { routeApi } from "./cloud/router.js";
@@ -102,6 +103,10 @@ export interface NomaCloudServerOptions {
   attachmentQuotaBytes?: number;
   /** Attachment blob storage; defaults to content-addressed files under `<storage root>/blobs`. */
   blobStore?: BlobStore;
+  /** Allow Confluence imports from private/loopback hosts (tests, on-prem Data Center). */
+  importAllowPrivateHosts?: boolean;
+  /** Maximum Confluence import upload size in bytes (default 50 MB). */
+  importMaxBytes?: number;
   now?: () => Date;
   /** Generative AI settings; environment variables fill anything left unset. */
   ai?: NomaCloudAiOptions;
@@ -192,6 +197,8 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     trustProxy: options.trustProxy ?? enabledEnvironmentFlag("NOMA_CLOUD_TRUST_PROXY"),
     adminUserIds,
     production,
+    importAllowPrivateHosts: options.importAllowPrivateHosts ?? enabledEnvironmentFlag("NOMA_CLOUD_IMPORT_ALLOW_PRIVATE_HOSTS"),
+    importMaxBytes: positiveInteger(options.importMaxBytes ?? Number(process.env.NOMA_CLOUD_IMPORT_MAX_BYTES ?? 50_000_000), "importMaxBytes"),
     now,
     store,
     platform,
@@ -389,7 +396,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     const record = await readDocument(config, id);
     requireNotTrashed(config, "document", id);
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access) }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
     return;
   }
 
@@ -398,7 +405,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     const site = await readSite(config, id);
     requireNotTrashed(config, "site", id);
     const access = requireRecordAccess(config, site, principal, "viewer");
-    sendText(res, 200, await renderSiteHtml(config, site, access), "text/html; charset=utf-8");
+    sendText(res, 200, await renderSiteHtml(config, site, access, principal), "text/html; charset=utf-8");
     return;
   }
 

@@ -1454,3 +1454,53 @@ body.noma-space-body ol.noma-site-toc {
 .noma-math-inline {
   display: inline;
 }
+
+/* Wiki macros: ::include, ::children, ::issue(s), ::page-properties, unresolved placeholders */
+.noma-include {
+  border-left: 3px solid var(--noma-rule);
+  padding: 0.1rem 0 0.1rem 0.9rem;
+  margin: 1rem 0;
+}
+.noma-include-source {
+  color: var(--noma-muted);
+  font: 0.75rem/1.4 var(--noma-font-sans);
+  margin-bottom: 0.35rem;
+}
+.noma-macro-placeholder {
+  border: 1px dashed var(--noma-rule);
+  border-radius: var(--noma-radius);
+  color: var(--noma-muted);
+  font: 0.85rem/1.45 var(--noma-font-sans);
+  margin: 1rem 0;
+  padding: 0.6rem 0.8rem;
+}
+.noma-macro-forbidden, .noma-macro-cycle, .noma-macro-depth { border-color: var(--noma-risk); }
+.noma-children ul { margin: 0.4rem 0; }
+.noma-children-summary { color: var(--noma-muted); font-size: 0.9em; }
+.noma-issue-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--noma-rule);
+  border-radius: var(--noma-radius);
+  background: var(--noma-card-bg);
+  font: 0.9rem/1.4 var(--noma-font-sans);
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+}
+.noma-issue-key { font-weight: 700; }
+.noma-issue-status {
+  border-radius: 999px;
+  background: var(--noma-claim-soft);
+  color: var(--noma-claim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.55rem;
+  text-transform: uppercase;
+}
+.noma-issue-status[data-status="done"] { background: var(--noma-evidence-soft); color: var(--noma-evidence); }
+.noma-issue-assignee, .noma-issue-meta { color: var(--noma-muted); }
+.noma-issue-meta span + span::before { content: " · "; }
+.noma-page-properties th[scope="row"] { width: 30%; }

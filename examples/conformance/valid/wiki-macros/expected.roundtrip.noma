@@ -1,0 +1,26 @@
+# Wiki macros
+
+::excerpt{id="summary"}
+A page that uses wiki macros.
+::
+
+::note{id="policy"}
+Every change needs review.
+::
+
+::include{block="policy"}
+::
+
+::children{depth=2 sort="title"}
+::
+
+::issue{key="ENG-12"}
+::
+
+::issues{project="ENG" status="in_progress"}
+::
+
+::page-properties{id="props"}
+| Owner | Ada |
+| Status | Draft |
+::

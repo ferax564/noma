@@ -305,6 +305,34 @@ w_{i,t} = \frac{\sigma_\text{target}}{\hat\sigma_{i,t-1}}
 
 Force-disable assets with `--math=none` (or `meta.math: false`); force-enable with `--math=katex`.
 
+### Wiki macros
+
+```
+include, excerpt, children, issue, issues, page-properties, page-properties-report
+```
+
+Wiki macros pull live data from outside the page: other pages, the page tree, and the issue tracker. They are ordinary directives, so the source stays plain text and round-trips unchanged. Renderers stay pure: the host passes optional resolver callbacks in the render options (`resolveInclude`, `resolveChildren`, `resolveIssue`, `resolveIssues`, `resolvePagePropertiesReport`, plus the host page's `documentId`). Without a resolver, a macro renders a clear placeholder that says it resolves in Noma Cloud.
+
+| Macro | Attributes | Renders |
+|---|---|---|
+| `::include` | `page=` (document ID or title), `block=` (block ID or alias), `excerpt` flag | The target block, the target page's excerpt, or the whole page, framed with its source link. Without `page=`, the block comes from the same page. |
+| `::excerpt` | `id=` | Its body, inline in the page. It is also the page summary used by `::include{excerpt}`, `::children`, the page tree, and search results. The first excerpt on a page wins. |
+| `::children` | `depth=` (1 to 5), `sort=` (`position`, `title`, or `updated`) | The page's child pages from the space page tree, with links and excerpt summaries. |
+| `::issue` | `key="PROJ-12"` | A live issue card: key, summary, status, assignee. |
+| `::issues` | `project="PROJ"`, `status=` (`backlog`, `todo`, `in_progress`, `in_review`, `done`), `limit=` | A table of matching issues. |
+| `::page-properties` | none | A key/value table from two-column pipe rows or `Key: value` lines. |
+| `::page-properties-report` | `label=`, `limit=` | A table of pages with that label in the same space, one column per property key. |
+
+Included content is rendered with its IDs and source positions removed, so it never collides with the host page's IDs or editor line map. Includes nest at most three levels; a page or block that is already being included renders a `cycle` placeholder instead of recursing. In Noma Cloud every lookup is checked against the viewer: a page the viewer cannot open renders a `forbidden` placeholder, and a trashed or unknown target renders `missing`. The LLM renderer inlines resolved content between provenance comments, `<!-- included from <doc>:<block>@<hash> -->` … `<!-- /included from <doc>:<block> -->`, where `<hash>` is the first 12 hex characters of the target page's content hash. Markdown and DOCX exports from Noma Cloud expand macros into plain paragraphs, lists, and tables first (`expandMacros`).
+
+```noma
+::include{page="Engineering Handbook" block="review-policy"}
+::
+
+::issues{project="ENG" status="in_progress"}
+::
+```
+
 ### Escape hatches
 
 ```
@@ -553,6 +581,7 @@ Renderers exhaustively switch on `type`. Adding a new variant is a typed change:
 The default validator detects:
 
 - **errors** — frontmatter that is not valid YAML (`invalid-frontmatter`), duplicate IDs, references (`for=`, `[[id]]`) pointing to unknown IDs, `plot` blocks with no `data=` or `dataset=`, `::memory` blocks missing `type=` / `id=` or carrying an invalid `type` / `confidence` / `last_seen`.
+- **macro checks** — `::include` with no `page=`, `block=`, or `excerpt` (error), a same-page `block=` that does not exist (`broken-reference`), `page=` targets that cannot be checked in single-file mode or do not match a page when the host passes `pageExists` (`include-unknown-page`, warning), invalid `::issue` keys and `::issues` projects (errors), unknown `::issues` statuses and out-of-range `::children` options (warnings), `::page-properties-report` without `label=` (error), and more than one `::excerpt` per page (warning).
 - **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, malformed tracked-revision `change_request` blocks, `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days), and `[[wikilinks]]` inside a `memory`-profile document that resolve to a non-`::memory` target.
 
 Per-block opt-out: add the `noverify` flag attribute to silence rules on a single block (e.g. rhetorical claims that aren't expected to carry their own evidence chain).

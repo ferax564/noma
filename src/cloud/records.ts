@@ -5,7 +5,6 @@
 import type { IncomingMessage } from "node:http";
 import { type Diagnostic, walk } from "../ast.js";
 import type { CloudDocumentRecord, CloudUserRecord } from "../cloud-db.js";
-import { cloudPageTemplates, instantiateCloudPageTemplate } from "../cloud-templates.js";
 import { convertMarkdownToNoma } from "../ingest-markdown.js";
 import { slugify, parse } from "../parser.js";
 import { renderJson } from "../renderer-json.js";
@@ -25,6 +24,7 @@ import {
 } from "./context.js";
 import { headerValue, HttpError, sha256Hex } from "./http.js";
 import { optionalString } from "./input.js";
+import { resolveCreateTemplate } from "./templates.js";
 
 export interface SourceInspection {
   hash: string;
@@ -57,14 +57,12 @@ export async function createDocument(
   input: Record<string, unknown>,
   user: CloudUserRecord,
   spaceTitle = "Noma Workspace",
+  siteId?: string,
 ): Promise<CloudDocumentRecord> {
   const id = uniqueId(config);
-  const template = optionalString(input.templateId)
-    ? cloudPageTemplates.find((candidate) => candidate.id === optionalString(input.templateId))
-    : undefined;
-  if (input.templateId !== undefined && !template) throw new HttpError(400, "Unknown page template");
+  const template = resolveCreateTemplate(config, input.templateId, siteId);
   const requestedTitle = optionalString(input.title) ?? template?.title ?? "Untitled document";
-  const source = sourceFromCreateInput(input, requestedTitle, spaceTitle);
+  const source = template ? template.instantiate(requestedTitle, spaceTitle, input.variables, user) : sourceFromCreateInput(input);
   inspectSource(source, id);
   const now = config.now().toISOString();
   const record: CloudDocumentRecord = {
@@ -164,15 +162,7 @@ function sourceFromInput(input: Record<string, unknown>): string {
   return input.source;
 }
 
-function sourceFromCreateInput(input: Record<string, unknown>, title: string, spaceTitle: string): string {
-  const templateId = optionalString(input.templateId);
-  if (templateId) {
-    try {
-      return instantiateCloudPageTemplate(templateId, title, spaceTitle);
-    } catch (error) {
-      throw new HttpError(400, error instanceof Error ? error.message : "Unknown page template");
-    }
-  }
+function sourceFromCreateInput(input: Record<string, unknown>): string {
   const source = sourceFromInput(input);
   const format = optionalString(input.format)?.toLowerCase() ?? "noma";
   if (format === "noma") return source.replace(/\r\n?/g, "\n");

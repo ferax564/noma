@@ -1,4 +1,4 @@
-/** Workspace-wide listings: search, navigation, templates, trash, labels, notifications, activity. */
+/** Workspace-wide listings: search, navigation, trash, labels, notifications, activity. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { cloudPageTemplates } from "../cloud-templates.js";
 import { collectAttachmentGarbage } from "./attachments.js";
@@ -10,6 +10,7 @@ import {
   requireUser,
 } from "./context.js";
 import { decodePathSegment, HttpError, readJsonBody, sendJson } from "./http.js";
+import { documentSummary } from "./macros.js";
 import {
   boundedInteger,
   labelInput,
@@ -31,7 +32,20 @@ export function routeSearch(
   const q = (url.searchParams.get("q") ?? "").trim().slice(0, 200);
   const siteId = optionalCloudId(url.searchParams.get("site"), "Site");
   const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 25, 1, 100, "limit");
-  sendJson(res, 200, { q, results: config.store.search(user, q, siteId, limit) });
+  const results = config.store.search(user, q, siteId, limit);
+  const summaries = new Map<string, string | undefined>();
+  for (const result of results) {
+    if (summaries.has(result.documentId)) continue;
+    const record = config.store.readDocument(result.documentId);
+    summaries.set(result.documentId, record ? documentSummary(record) : undefined);
+  }
+  sendJson(res, 200, {
+    q,
+    results: results.map((result) => {
+      const summary = summaries.get(result.documentId);
+      return summary ? { ...result, summary } : result;
+    }),
+  });
 }
 
 export async function routeNavigation(
@@ -71,12 +85,6 @@ export async function routeNavigation(
     return;
   }
   throw new HttpError(404, "Unknown navigation route");
-}
-
-export function routeTemplates(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig, principal: Principal): void {
-  if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
-  requireUser(principal);
-  sendJson(res, 200, { templates: cloudPageTemplates, count: cloudPageTemplates.length, storage: "built-in" });
 }
 
 export async function routeTrash(

@@ -10,6 +10,8 @@ import { routeDocuments } from "./routes-documents.js";
 import { routeEnterprise } from "./routes-enterprise.js";
 import { routeSyncManifest } from "./routes-git-sync.js";
 import { routeGroups } from "./routes-groups.js";
+import { routeImport } from "./routes-import.js";
+import { routeMacros } from "./routes-macros.js";
 import {
   routeAgentInbox,
   routeAskNoma,
@@ -26,12 +28,12 @@ import {
   routeNavigation,
   routeNotifications,
   routeSearch,
-  routeTemplates,
   routeTrash,
 } from "./routes-navigation.js";
 import { routeSiteMaintenance } from "./routes-maintenance.js";
 import { routeSites } from "./routes-sites.js";
 import { routeTokens } from "./routes-tokens.js";
+import { routeTemplates } from "./routes-templates.js";
 import { routeUsers } from "./routes-users.js";
 import { routeProjects } from "./routes-work.js";
 
@@ -56,7 +58,7 @@ export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, A
   ["db", (req, res, _url, parts, config, principal) => routeDatabase(req, res, parts, config, principal)],
   ["search", (req, res, url, _parts, config, principal) => routeSearch(req, res, url, config, principal)],
   ["navigation", (req, res, _url, parts, config, principal) => routeNavigation(req, res, parts, config, principal)],
-  ["templates", (req, res, _url, _parts, config, principal) => routeTemplates(req, res, config, principal)],
+  ["templates", (req, res, url, parts, config, principal) => routeTemplates(req, res, url, parts, config, principal)],
   ["trash", (req, res, _url, parts, config, principal) => routeTrash(req, res, parts, config, principal)],
   ["labels", (req, res, url, parts, config, principal) => routeLabels(req, res, url, parts, config, principal)],
   ["notifications", (req, res, _url, parts, config, principal) => routeNotifications(req, res, parts, config, principal)],
@@ -79,6 +81,8 @@ export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, A
   ["tokens", (req, res, url, parts, config, principal) => routeTokens(req, res, url, parts, config, principal)],
   ["attachments", (req, res, url, parts, config, principal) => routeAttachments(req, res, url, parts, config, principal)],
   ["ai", (req, res, url, parts, config, principal) => routeAi(req, res, url, parts, config, principal)],
+  ["macros", (req, res, _url, parts, config, principal) => routeMacros(req, res, parts, config, principal)],
+  ["import", (req, res, url, parts, config, principal) => routeImport(req, res, url, parts, config, principal)],
 ]);
 
 /** `/api/sites/:id/{ai,maintenance,sync-manifest}` live in their feature modules; everything else is `routeSites`. */

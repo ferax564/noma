@@ -5,21 +5,24 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
 import { parse } from "../parser.js";
+import type { MacroResolvers } from "../macros.js";
 import { renderHtml } from "../renderer-html.js";
 import { attachmentResolver } from "./attachments.js";
-import { type AccessContext, capAccessForDocument, type CloudServerConfig, readDocument } from "./context.js";
+import { type AccessContext, capAccessForDocument, type CloudServerConfig, type Principal, readDocument } from "./context.js";
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
+import { cloudMacroResolvers, cloudPageHref } from "./macros.js";
 
 export function renderDocumentHtml(
   record: CloudDocumentRecord,
   access?: AccessContext,
-  options: { resolveAttachment?: (ref: string) => string | undefined } = {},
+  options: { resolveAttachment?: (ref: string) => string | undefined; macros?: MacroResolvers } = {},
 ): string {
   const doc = parse(record.source, { filename: `${record.id}.noma` });
   const banner = access
     ? `<div class="noma-cloud-banner">Noma Cloud · ${escapeHtml(record.title)} · ${escapeHtml(access.role)} access</div>`
     : "";
   const html = renderHtml(doc, {
+    ...options.macros,
     standalone: true,
     allowEscapeHatches: false,
     externalAssets: false,
@@ -28,16 +31,24 @@ export function renderDocumentHtml(
   return banner ? html.replace("<body>", `<body>${banner}`) : html;
 }
 
-export async function renderSiteHtml(config: CloudServerConfig, site: CloudSiteRecord, access: AccessContext): Promise<string> {
+export async function renderSiteHtml(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  access: AccessContext,
+  principal: Principal = {},
+): Promise<string> {
   const visible = site.documentIds
     .filter((id) => !config.store.isTrashed("document", id))
     .map((id) => ({ id, access: capAccessForDocument(config, id, access) }))
     .filter((entry): entry is { id: string; access: AccessContext } => entry.access !== undefined);
   const documents = await Promise.all(visible.map(async (entry) => ({ record: await readDocument(config, entry.id), access: entry.access })));
+  const onSite = new Set(visible.map((entry) => entry.id));
+  const pageHref = (id: string): string => (onSite.has(id) ? `#${id}` : cloudPageHref(id));
   const articles = documents
     .map(({ record, access: documentAccess }) => {
       const doc = parse(record.source, { filename: `${record.id}.noma` });
       const body = renderHtml(doc, {
+        ...cloudMacroResolvers(config, principal, record.id, { pageHref }),
         standalone: false,
         allowEscapeHatches: false,
         externalAssets: false,

@@ -1853,4 +1853,69 @@ button.wiki-row {
 
 .ai-maintenance > details[open] > summary {
   margin-bottom: 8px;
+
+/* wiki macros, templates, Confluence import, export */
+.export-format-select {
+  max-width: 9.5rem;
+}
+
+.wiki-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 3rem);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 30px 80px -40px rgba(20, 24, 30, 0.6);
+}
+
+.wiki-dialog::backdrop {
+  background: rgba(20, 24, 30, 0.35);
+}
+
+.wiki-dialog-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem 1.4rem;
+}
+
+.wiki-dialog-form h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.wiki-dialog-field {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.wiki-dialog-field[hidden] {
+  display: none;
+}
+
+.wiki-dialog-field input,
+.wiki-dialog-field select {
+  font: inherit;
+  font-weight: 400;
+}
+
+.wiki-dialog-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+}
+
+.wiki-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+#templateVariablesFields {
+  display: grid;
+  gap: 0.75rem;
 }

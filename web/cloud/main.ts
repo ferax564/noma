@@ -12,14 +12,20 @@ import { applyAgentPatch, askNoma, copyLlmContext, proposeAgentPatch, refreshKno
 import { applyThemeMode, handleSplitResizeKeydown, renderChrome, setViewMode, startSplitResize } from "./layout.js";
 import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage, createStarterWorkspace, importPage, openPublishedSite, refreshTrash, replaceFirstHeading, saveCurrentSite, toggleFavorite } from "./navigation.js";
 import { addLabel, toggleWatch } from "./page-meta.js";
+import { installExportMenu } from "./export.js";
+import { installConfluenceImport } from "./import.js";
 import { installPreviewEditing } from "./preview.js";
 import { installRestrictions } from "./restrictions.js";
 import { createApiToken, createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
+import { installTemplateTools } from "./templates.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
 import { addWorkIssueComment, addWorkIssueLink, createWorkIssue, createWorkProject, createWorkSprint, loadWorkProject, refreshWorkManagement, renderWorkBoard, updateWorkSprint } from "./work.js";
 
 applyThemeMode();
+installConfluenceImport();
+installTemplateTools();
+installExportMenu();
 cloudUserNameInput.value = state.cloudUser?.name ?? "Noma collaborator";
 bindEvents();
 renderChrome();
