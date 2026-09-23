@@ -72,11 +72,20 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
   await waitForText(page, "#favoriteList", "Research Paper Draft");
   assert.equal(await page.$eval("#favoritePageButton", (button) => button.getAttribute("aria-pressed")), "true");
 
-  const session = await page.evaluate((storageKey) => {
-    const stored = localStorage.getItem(storageKey);
-    if (!stored) throw new Error("Cloud user session was not stored");
-    return JSON.parse(stored) as BrowserSession;
-  }, "noma.cloud.user.v1");
+  assert.equal(await page.evaluate((storageKey) => localStorage.getItem(storageKey), "noma.cloud.user.v1"), null);
+  const session = await page.evaluate(async () => {
+    const csrf = /(?:^|;\s*)noma_csrf=([^;]+)/.exec(document.cookie)?.[1];
+    if (!csrf) throw new Error("Cloud session CSRF cookie was not set");
+    const me = (await (await fetch("/api/users/me")).json()) as { id: string; name: string };
+    const created = await fetch("/api/tokens", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-noma-csrf": decodeURIComponent(csrf) },
+      body: JSON.stringify({ name: "Browser QA automation", scopes: ["read", "write"] }),
+    });
+    if (!created.ok) throw new Error(`Could not create a personal access token: ${created.status}`);
+    const pat = (await created.json()) as { token: string };
+    return { id: me.id, name: me.name, token: pat.token } satisfies BrowserSession;
+  });
   const documentId = new URL(page.url()).searchParams.get("doc");
   assert.ok(documentId);
   await requestJson(`${origin}/api/agents`, session.token, {

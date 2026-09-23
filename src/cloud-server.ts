@@ -19,7 +19,7 @@ import {
   resolvePrincipal,
 } from "./cloud/context.js";
 import { decodePathSegment, headerValue, HttpError, sendJson, sendText, sha256Hex } from "./cloud/http.js";
-import { publicUser } from "./cloud/records.js";
+import { selfUser } from "./cloud/records.js";
 import { renderDocumentHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
 import { routeApi } from "./cloud/router.js";
 import {
@@ -30,6 +30,7 @@ import {
   routeAuth,
   sendCloudAccessDenied,
 } from "./cloud/routes-auth.js";
+import { enforceRequestAuthorization, requestAddress } from "./cloud/security.js";
 
 export type {
   CloudDbQuery,
@@ -103,7 +104,8 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
   const accessTokenHash = cloudAccessTokenHash(options);
   const invitationCodeHash = cloudInvitationCodeHash(options);
   const ssoTrustedHeaderHash = cleanSecret(options.ssoTrustedHeaderSecret ?? process.env.NOMA_CLOUD_SSO_TRUST_SECRET);
-  validateProductionSecurity(options, accessTokenHash, invitationCodeHash);
+  const production = options.production ?? process.env.NODE_ENV === "production";
+  validateProductionSecurity(options, production, accessTokenHash, invitationCodeHash);
   const now = options.now ?? (() => new Date());
   const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir });
   const platform = new CloudKnowledgePlatform(dbPath);
@@ -124,10 +126,15 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     ),
     trustProxy: options.trustProxy ?? enabledEnvironmentFlag("NOMA_CLOUD_TRUST_PROXY"),
     adminUserIds: options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean),
+    production,
     now,
     store,
     platform,
   };
+
+  if (production && config.adminUserIds.length === 0) {
+    console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
+  }
 
   const server = createServer((req, res) => {
     void routeRequest(req, res, config).catch((error: unknown) => {
@@ -149,10 +156,10 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
 
 function validateProductionSecurity(
   options: NomaCloudServerOptions,
+  production: boolean,
   accessTokenHash: string | undefined,
   invitationCodeHash: string | undefined,
 ): void {
-  const production = options.production ?? process.env.NODE_ENV === "production";
   if (!production) return;
   const allowOpenAccess = options.allowOpenAccess ?? enabledEnvironmentFlag("NOMA_CLOUD_ALLOW_OPEN_ACCESS");
   const allowOpenRegistration = options.allowOpenRegistration ?? enabledEnvironmentFlag("NOMA_CLOUD_ALLOW_OPEN_REGISTRATION");
@@ -220,7 +227,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     return;
   }
 
-  if (url.pathname.startsWith("/api/")) enforceRateLimit(req, res, url, config);
+  if (url.pathname.startsWith("/api/") || url.searchParams.has("access")) enforceRateLimit(req, res, url, config);
 
   if (url.pathname.startsWith("/api/auth/")) {
     await routeAuth(req, res, url.pathname.split("/").filter(Boolean), config);
@@ -240,6 +247,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
   }
 
   const principal = await resolvePrincipal(config, req, url);
+  enforceRequestAuthorization(req, url, principal);
 
   if (url.pathname === "/api/status" && method === "GET") {
     const enterprisePolicy = config.platform.enterprisePolicy();
@@ -293,7 +301,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
         ],
       },
       maxBodyBytes: config.maxBodyBytes,
-      user: principal.user ? publicUser(principal.user) : undefined,
+      user: principal.user ? selfUser(principal.user) : undefined,
     });
     return;
   }
@@ -330,8 +338,9 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
 }
 
 function enforceRateLimit(req: IncomingMessage, res: ServerResponse, url: URL, config: CloudServerConfig): void {
-  const auth = url.pathname.startsWith("/api/auth/") || (url.pathname === "/api/users" && req.method === "POST");
-  const address = clientAddress(req, config.trustProxy);
+  const auth =
+    url.pathname.startsWith("/api/auth/") || (url.pathname === "/api/users" && req.method === "POST") || url.searchParams.has("access");
+  const address = requestAddress(req, config.trustProxy);
   const result = config.rateLimiter.consume(`${address}:${auth ? "auth" : "api"}`, auth, config.now().getTime());
   res.setHeader("x-ratelimit-limit", String(result.limit));
   res.setHeader("x-ratelimit-remaining", String(result.remaining));
@@ -340,14 +349,6 @@ function enforceRateLimit(req: IncomingMessage, res: ServerResponse, url: URL, c
   const retryAfter = Math.max(1, Math.ceil((result.resetAt - config.now().getTime()) / 1000));
   res.setHeader("retry-after", String(retryAfter));
   throw new HttpError(429, "Too many requests", { code: "rate_limit_exceeded", retryAfter });
-}
-
-function clientAddress(req: IncomingMessage, trustProxy: boolean): string {
-  if (trustProxy) {
-    const forwarded = headerValue(req, "x-forwarded-for")?.split(",")[0]?.trim();
-    if (forwarded) return forwarded;
-  }
-  return req.socket.remoteAddress ?? "unknown";
 }
 
 const mainPath = process.argv[1] ? resolve(process.argv[1]) : "";

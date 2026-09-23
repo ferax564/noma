@@ -11,7 +11,7 @@ import { applyThemeMode, handleSplitResizeKeydown, renderChrome, setViewMode, st
 import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage, createStarterWorkspace, importPage, openPublishedSite, refreshTrash, replaceFirstHeading, saveCurrentSite, toggleFavorite } from "./navigation.js";
 import { addLabel, toggleWatch } from "./page-meta.js";
 import { installPreviewEditing } from "./preview.js";
-import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
+import { createApiToken, createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
 import { addWorkIssueComment, addWorkIssueLink, createWorkIssue, createWorkProject, createWorkSprint, loadWorkProject, refreshWorkManagement, renderWorkBoard, updateWorkSprint } from "./work.js";
@@ -39,7 +39,7 @@ function bindEvents(): void {
   });
 
   logoutUserButton.addEventListener("click", () => {
-    logoutCloudUser();
+    void logoutCloudUser();
   });
 
   copyUserIdButton.addEventListener("click", () => {
@@ -47,7 +47,7 @@ function bindEvents(): void {
   });
 
   copyUserTokenButton.addEventListener("click", () => {
-    if (state.cloudUser) void copyText(state.cloudUser.token, "Copied user token");
+    void createApiToken();
   });
 
   themeToggleButton.addEventListener("click", () => {

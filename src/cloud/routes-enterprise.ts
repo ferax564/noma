@@ -14,6 +14,7 @@ import {
 } from "./input.js";
 import { connectorKinds } from "./routes-agents.js";
 import { platformInput } from "./routes-knowledge.js";
+import { pageQuery, requestUrl } from "./security.js";
 
 export async function routeEnterprise(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
   const user = requireUser(principal);
@@ -52,7 +53,8 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
     return;
   }
   if (action === "scim" && method === "GET") {
-    sendJson(res, 200, { identities: config.platform.listScimIdentities() });
+    const page = pageQuery(requestUrl(req));
+    sendJson(res, 200, { identities: config.platform.listScimIdentities(page), ...page });
     return;
   }
   if (action === "scim" && method === "POST") {
@@ -82,7 +84,8 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
     return;
   }
   if (action === "legal-holds" && method === "GET") {
-    sendJson(res, 200, { holds: config.platform.listLegalHolds() });
+    const page = pageQuery(requestUrl(req));
+    sendJson(res, 200, { holds: config.platform.listLegalHolds(page), ...page });
     return;
   }
   if (action === "legal-holds" && method === "POST") {

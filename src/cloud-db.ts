@@ -1,6 +1,6 @@
 import DatabaseConstructor from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Node } from "./ast.js";
 import { parse } from "./parser.js";
@@ -352,6 +352,65 @@ export interface DocumentSummary extends Omit<CloudDocumentRecord, "source"> {
 
 export interface SiteSummary extends CloudSiteRecord {
   currentRole?: CloudRole;
+}
+
+export type CloudTokenScope = "read" | "write" | "admin";
+
+export const cloudTokenScopes: readonly CloudTokenScope[] = ["read", "write", "admin"];
+
+/** A browser session backed by the HttpOnly `noma_session` cookie. Only hashes of the cookie and CSRF secrets are stored. */
+export interface CloudAuthSession {
+  id: string;
+  userId: string;
+  scopes: CloudTokenScope[];
+  source: "user_token" | "register" | "pat" | "sso";
+  patId?: string;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  userAgent?: string;
+  ip?: string;
+  revokedAt?: string;
+}
+
+/** A named, scoped, revocable personal access token (`noma_pat_…`). The raw token is shown once and stored hashed. */
+export interface CloudPersonalAccessToken {
+  id: string;
+  userId: string;
+  name: string;
+  tokenPreview: string;
+  scopes: CloudTokenScope[];
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
+
+interface AuthSessionRow {
+  id: string;
+  user_id: string;
+  csrf_hash: string;
+  scopes_json: string;
+  source: CloudAuthSession["source"];
+  pat_id: string | null;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  user_agent: string | null;
+  ip: string | null;
+  revoked_at: string | null;
+}
+
+interface PersonalAccessTokenRow {
+  id: string;
+  user_id: string;
+  name: string;
+  token_preview: string;
+  scopes_json: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
 }
 
 interface LegacyCloudDocumentRecord {
@@ -1814,9 +1873,141 @@ export class NomaCloudDatabase {
       case "blocks":
         return { resource: query.resource, limit: query.limit, offset: query.offset, rows: this.queryBlocks(user, query) };
       case "users":
-        return { resource: query.resource, limit: query.limit, offset: query.offset, rows: this.queryUsers(query) };
+        return { resource: query.resource, limit: query.limit, offset: query.offset, rows: this.queryUsers(user, query) };
     }
   }
+
+  // auth-hardening: sessions, personal access tokens, and transactional writes
+
+  /** Runs `operation` inside one SQLite transaction; any throw rolls every write back. */
+  runInTransaction<T>(operation: () => T): T {
+    return this.db.transaction(operation)();
+  }
+
+  createAuthSession(session: CloudAuthSession, secretHash: string, csrfHash: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO auth_sessions
+           (id, secret_hash, csrf_hash, user_id, scopes_json, source, pat_id, created_at, last_seen_at, expires_at, user_agent, ip)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        session.id,
+        secretHash,
+        csrfHash,
+        session.userId,
+        JSON.stringify(session.scopes),
+        session.source,
+        session.patId ?? null,
+        session.createdAt,
+        session.lastSeenAt,
+        session.expiresAt,
+        session.userAgent ?? null,
+        session.ip ?? null,
+      );
+  }
+
+  /** Active (unrevoked, unexpired) session for a cookie secret hash, with the stored CSRF hash. */
+  findAuthSession(secretHash: string, now: string): { session: CloudAuthSession; csrfHash: string } | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM auth_sessions WHERE secret_hash = ? AND revoked_at IS NULL AND expires_at > ?")
+      .get(secretHash, now) as AuthSessionRow | undefined;
+    return row ? { session: authSession(row), csrfHash: row.csrf_hash } : undefined;
+  }
+
+  touchAuthSession(id: string, lastSeenAt: string): void {
+    this.db.prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE id = ?").run(lastSeenAt, id);
+  }
+
+  setAuthSessionCsrf(id: string, csrfHash: string): void {
+    this.db.prepare("UPDATE auth_sessions SET csrf_hash = ? WHERE id = ?").run(csrfHash, id);
+  }
+
+  listAuthSessions(userId: string, now: string, limit: number, offset: number): CloudAuthSession[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM auth_sessions
+         WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?
+         ORDER BY last_seen_at DESC, id LIMIT ? OFFSET ?`,
+      )
+      .all(userId, now, limit, offset) as AuthSessionRow[];
+    return rows.map(authSession);
+  }
+
+  revokeAuthSession(userId: string, id: string, revokedAt: string): boolean {
+    return this.db
+      .prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL")
+      .run(revokedAt, id, userId).changes > 0;
+  }
+
+  /** Revokes every active session of a user except `exceptId`; returns how many were revoked. */
+  revokeUserAuthSessions(userId: string, revokedAt: string, exceptId?: string): number {
+    return this.db
+      .prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND id IS NOT ?")
+      .run(revokedAt, userId, exceptId ?? null).changes;
+  }
+
+  /** Deletes sessions that expired or were revoked before `before`, keeping the table bounded. */
+  purgeAuthSessions(before: string): number {
+    return this.db
+      .prepare("DELETE FROM auth_sessions WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)")
+      .run(before, before).changes;
+  }
+
+  createPersonalAccessToken(token: CloudPersonalAccessToken, tokenHash: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO personal_access_tokens
+           (id, user_id, name, token_hash, token_preview, scopes_json, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(token.id, token.userId, token.name, tokenHash, token.tokenPreview, JSON.stringify(token.scopes), token.createdAt, token.expiresAt ?? null);
+  }
+
+  /** Any token with this hash, including revoked or expired ones, so callers can report why it is rejected. */
+  findPersonalAccessToken(tokenHash: string): CloudPersonalAccessToken | undefined {
+    const row = this.db.prepare("SELECT * FROM personal_access_tokens WHERE token_hash = ?").get(tokenHash) as PersonalAccessTokenRow | undefined;
+    return row ? personalAccessToken(row) : undefined;
+  }
+
+  readPersonalAccessToken(id: string): CloudPersonalAccessToken | undefined {
+    const row = this.db.prepare("SELECT * FROM personal_access_tokens WHERE id = ?").get(id) as PersonalAccessTokenRow | undefined;
+    return row ? personalAccessToken(row) : undefined;
+  }
+
+  listPersonalAccessTokens(userId: string, limit: number, offset: number): CloudPersonalAccessToken[] {
+    const rows = this.db
+      .prepare("SELECT * FROM personal_access_tokens WHERE user_id = ? ORDER BY created_at DESC, id LIMIT ? OFFSET ?")
+      .all(userId, limit, offset) as PersonalAccessTokenRow[];
+    return rows.map(personalAccessToken);
+  }
+
+  countActivePersonalAccessTokens(userId: string, now: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM personal_access_tokens
+         WHERE user_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)`,
+      )
+      .get(userId, now) as { count: number };
+    return row.count;
+  }
+
+  /** Revokes a token and every browser session that was opened with it. */
+  revokePersonalAccessToken(userId: string, id: string, revokedAt: string): boolean {
+    return this.runInTransaction(() => {
+      const changed = this.db
+        .prepare("UPDATE personal_access_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL")
+        .run(revokedAt, id, userId).changes > 0;
+      if (changed) this.db.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE pat_id = ? AND revoked_at IS NULL").run(revokedAt, id);
+      return changed;
+    });
+  }
+
+  touchPersonalAccessToken(id: string, lastUsedAt: string): void {
+    this.db.prepare("UPDATE personal_access_tokens SET last_used_at = ? WHERE id = ?").run(lastUsedAt, id);
+  }
+
+  // end auth-hardening
 
   private applySchema(): void {
     this.db.exec(`
@@ -2164,6 +2355,41 @@ export class NomaCloudDatabase {
     `);
     this.migrateNotificationTypes();
     this.db.exec(`
+      -- auth-hardening: cookie sessions and personal access tokens
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        secret_hash TEXT NOT NULL UNIQUE,
+        csrf_hash TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('user_token', 'register', 'pat', 'sso')),
+        pat_id TEXT,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        user_agent TEXT,
+        ip TEXT,
+        revoked_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, revoked_at, expires_at);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_pat ON auth_sessions(pat_id);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
+      CREATE TABLE IF NOT EXISTS personal_access_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        token_preview TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        last_used_at TEXT,
+        revoked_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_personal_access_tokens_user ON personal_access_tokens(user_id, created_at DESC);
+      -- end auth-hardening
+    `);
+    this.db.exec(`
       INSERT OR IGNORE INTO document_revisions
         (document_id, revision, title, source, hash, created_at, created_by)
       SELECT id, 1, title, source, hash, created_at, created_by
@@ -2221,6 +2447,37 @@ export class NomaCloudDatabase {
         .run();
     });
     importRecords();
+    this.moveImportedLegacyJson();
+  }
+
+  /**
+   * Moves legacy `*.json` records out of the data directories once they live in SQLite, so the
+   * server never reads (or inlines) them again. Runs once per database, including databases that
+   * imported before this step existed.
+   */
+  private moveImportedLegacyJson(): void {
+    const moved = this.db.prepare("SELECT value FROM meta WHERE key = 'legacy_json_moved'").get() as { value: string } | undefined;
+    if (moved) return;
+    const sources: Array<[string, string]> = [
+      ["documents", this.options.dataDir],
+      ["users", this.options.usersDir],
+      ["sites", this.options.sitesDir],
+    ];
+    const pending = sources.map(([label, dir]) => [label, dir, legacyJsonFileNames(dir)] as const).filter(([, , names]) => names.length > 0);
+    let destination: string | undefined;
+    if (pending.length > 0) {
+      destination = join(dirname(this.options.dataDir), `legacy-imported-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+      for (const [label, dir, names] of pending) {
+        const target = join(destination, label);
+        mkdirSync(target, { recursive: true });
+        for (const name of names) moveFile(join(dir, name), join(target, name));
+      }
+      removeDirectoryIfEmpty(this.options.usersDir);
+      removeDirectoryIfEmpty(this.options.sitesDir);
+    }
+    this.db
+      .prepare("INSERT INTO meta (key, value) VALUES ('legacy_json_moved', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(destination ?? "none");
   }
 
   private replacePermissions(resourceType: "document" | "site", resourceId: string, permissions: Record<string, CloudPermission>): void {
@@ -2459,7 +2716,7 @@ export class NomaCloudDatabase {
     return rows.map(blockQueryRow);
   }
 
-  private queryUsers(query: CloudDbQuery): Array<Record<string, unknown>> {
+  private queryUsers(viewer: CloudUserRecord, query: CloudDbQuery): Array<Record<string, unknown>> {
     const params: unknown[] = [];
     const filters: string[] = [];
     if (query.q) {
@@ -2473,7 +2730,7 @@ export class NomaCloudDatabase {
       ORDER BY lower(name), id
       LIMIT ? OFFSET ?`;
     const rows = this.db.prepare(sql).all(...params) as RecordJsonRow[];
-    return rows.map((row) => publicUser(parseRecord<CloudUserRecord>(row.record_json)));
+    return rows.map((row) => publicUser(parseRecord<CloudUserRecord>(row.record_json), viewer.id));
   }
 }
 
@@ -2779,6 +3036,33 @@ function nodeSearchText(node: Node): string {
   }
 }
 
+function legacyJsonFileNames(dir: string): string[] {
+  try {
+    return readdirSync(dir).filter((name) => name.endsWith(".json"));
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && String(error.code) === "ENOENT") return [];
+    throw error;
+  }
+}
+
+function moveFile(from: string, to: string): void {
+  try {
+    renameSync(from, to);
+  } catch (error) {
+    if (!(typeof error === "object" && error !== null && "code" in error && String(error.code) === "EXDEV")) throw error;
+    copyFileSync(from, to);
+    unlinkSync(from);
+  }
+}
+
+function removeDirectoryIfEmpty(dir: string): void {
+  try {
+    if (readdirSync(dir).length === 0) rmdirSync(dir);
+  } catch {
+    return;
+  }
+}
+
 function legacyJsonRecords<T>(dir: string): T[] {
   try {
     return readdirSync(dir)
@@ -2913,14 +3197,49 @@ function blockQueryRow(row: BlockQueryRow): Record<string, unknown> {
   };
 }
 
-function publicUser(user: CloudUserRecord): Record<string, unknown> {
+function publicUser(user: CloudUserRecord, viewerId: string): Record<string, unknown> {
   return {
     id: user.id,
     name: user.name,
-    tokenPreview: user.tokenPreview,
+    ...(user.id === viewerId ? { tokenPreview: user.tokenPreview } : {}),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+function authSession(row: AuthSessionRow): CloudAuthSession {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    scopes: parseScopes(row.scopes_json),
+    source: row.source,
+    ...(row.pat_id ? { patId: row.pat_id } : {}),
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+    expiresAt: row.expires_at,
+    ...(row.user_agent ? { userAgent: row.user_agent } : {}),
+    ...(row.ip ? { ip: row.ip } : {}),
+    ...(row.revoked_at ? { revokedAt: row.revoked_at } : {}),
+  };
+}
+
+function personalAccessToken(row: PersonalAccessTokenRow): CloudPersonalAccessToken {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    tokenPreview: row.token_preview,
+    scopes: parseScopes(row.scopes_json),
+    createdAt: row.created_at,
+    ...(row.expires_at ? { expiresAt: row.expires_at } : {}),
+    ...(row.last_used_at ? { lastUsedAt: row.last_used_at } : {}),
+    ...(row.revoked_at ? { revokedAt: row.revoked_at } : {}),
+  };
+}
+
+function parseScopes(json: string): CloudTokenScope[] {
+  const parsed = JSON.parse(json) as unknown;
+  return Array.isArray(parsed) ? cloudTokenScopes.filter((scope) => parsed.includes(scope)) : [];
 }
 
 function rankToRole(rank: number): CloudRole {

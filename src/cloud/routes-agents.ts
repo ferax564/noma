@@ -52,6 +52,7 @@ import {
   patchReviewDecision,
   stalePatchProposal,
 } from "./routes-patch.js";
+import { pageQuery, requestUrl } from "./security.js";
 
 export async function routeAgents(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
   const user = requireUser(principal);
@@ -60,7 +61,8 @@ export async function routeAgents(req: IncomingMessage, res: ServerResponse, par
   const action = parts[3];
   const childId = parts[4];
   if (!agentId && method === "GET") {
-    sendJson(res, 200, { agents: config.platform.listAgents().filter((agent) => agent.createdBy === user.id) });
+    const page = pageQuery(requestUrl(req));
+    sendJson(res, 200, { agents: config.platform.listAgents(user.id, page).filter((agent) => agent.createdBy === user.id), ...page });
     return;
   }
   if (!agentId && method === "POST") {
@@ -110,7 +112,8 @@ export async function routeAgents(req: IncomingMessage, res: ServerResponse, par
     return;
   }
   if (action === "runs" && !childId && method === "GET") {
-    sendJson(res, 200, { runs: config.platform.listAgentRuns(agent.id) });
+    const page = pageQuery(requestUrl(req));
+    sendJson(res, 200, { runs: config.platform.listAgentRuns(agent.id, page), ...page });
     return;
   }
   if (action === "runs" && !childId && method === "POST") {

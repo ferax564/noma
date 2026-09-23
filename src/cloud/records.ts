@@ -130,14 +130,21 @@ export function accessResponse(access: AccessContext): Record<string, unknown> {
   return {
     role: access.role,
     via: access.via,
-    user: access.user ? publicUser(access.user) : undefined,
+    user: access.user ? selfUser(access.user) : undefined,
     shareId: access.share?.id,
     groupId: access.groupId,
   };
 }
 
-export function publicUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash"> {
-  const { tokenHash, ...out } = user;
+/** A user as other users see it: no token hash and no token preview. */
+export function publicUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash" | "tokenPreview"> {
+  const { tokenHash: _tokenHash, tokenPreview: _tokenPreview, ...out } = user;
+  return out;
+}
+
+/** A user as they see themselves: includes the legacy token preview, never the hash. */
+export function selfUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash"> {
+  const { tokenHash: _tokenHash, ...out } = user;
   return out;
 }
 
@@ -235,7 +242,7 @@ function userName(value: unknown): string {
   return name ? name.slice(0, 80) : "Noma collaborator";
 }
 
-function notifyPageWatchers(config: CloudServerConfig, document: CloudDocumentRecord, access: AccessContext): void {
+export function notifyPageWatchers(config: CloudServerConfig, document: CloudDocumentRecord, access: AccessContext): void {
   const actorId = access.user?.id;
   const actorName = access.user?.name ?? "A share-link editor";
   for (const userId of config.store.documentWatchers(document.id)) {

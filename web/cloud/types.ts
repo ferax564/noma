@@ -22,13 +22,21 @@ export interface AccessInfo {
 export interface CloudUserSession {
   id: string;
   name: string;
-  token: string;
   tokenPreview?: string;
 }
 
 export interface CloudAuthResponse {
   ok: boolean;
   user?: CloudUserSession;
+  csrfToken?: string;
+}
+
+export interface CloudPersonalAccessTokenResponse {
+  id: string;
+  name: string;
+  scopes: string[];
+  expiresAt?: string;
+  token: string;
 }
 
 export interface CloudStatusResponse {

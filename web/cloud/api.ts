@@ -1,5 +1,6 @@
-/** HTTP client for the Noma Cloud API (auth headers, JSON errors). */
-import { shareToken, state } from "./state.js";
+/** HTTP client for the Noma Cloud API (cookie session + CSRF header, share token, JSON errors). */
+import { csrfHeaderName, currentCsrfToken, isMutatingMethod } from "./auth.js";
+import { shareToken } from "./state.js";
 import type { CloudErrorPayload } from "./types.js";
 
 export class CloudRequestError extends Error {
@@ -12,10 +13,12 @@ export class CloudRequestError extends Error {
 export async function fetchCloudJson<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("accept", "application/json");
-  if (state.cloudUser) headers.set("authorization", `Bearer ${state.cloudUser.token}`);
+  const csrf = currentCsrfToken();
+  if (csrf && isMutatingMethod(init?.method)) headers.set(csrfHeaderName, csrf);
   if (shareToken) headers.set("x-noma-share-token", shareToken);
   const response = await fetch(url, {
     ...init,
+    credentials: "same-origin",
     headers,
   });
   if (!response.ok) {

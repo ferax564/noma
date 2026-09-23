@@ -12,12 +12,14 @@ import type {
   CloudRole,
   CloudShareLink,
   CloudSiteRecord,
+  CloudTokenScope,
   CloudUserRecord,
   NomaCloudDatabase,
 } from "../cloud-db.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
 import { assertCloudId } from "./input.js";
+import { resolveSessionUser, resolveTokenUser } from "./security.js";
 
 export interface CloudServerConfig {
   dataDir: string;
@@ -32,6 +34,8 @@ export interface CloudServerConfig {
   rateLimiter: CloudRateLimiter;
   trustProxy: boolean;
   adminUserIds: string[];
+  /** Production mode: enterprise admin routes fail closed when `adminUserIds` is empty. */
+  production?: boolean;
   now: () => Date;
   store: NomaCloudDatabase;
   platform: CloudKnowledgePlatform;
@@ -41,6 +45,16 @@ export interface Principal {
   user?: CloudUserRecord;
   userTokenHash?: string;
   shareTokenHash?: string;
+  /** How `user` was authenticated and what it may do; absent for anonymous or share-link-only requests. */
+  auth?: PrincipalAuth;
+}
+
+export interface PrincipalAuth {
+  method: "legacy_token" | "pat" | "session";
+  scopes: CloudTokenScope[];
+  sessionId?: string;
+  patId?: string;
+  csrfHash?: string;
 }
 
 export interface AccessContext {
@@ -106,7 +120,17 @@ export async function resolvePrincipal(config: CloudServerConfig, req: IncomingM
   const principal: Principal = {};
   if (userToken) {
     principal.userTokenHash = sha256Hex(userToken);
-    principal.user = await findUserByToken(config, principal.userTokenHash);
+    const resolved = resolveTokenUser(config, userToken);
+    if (resolved) {
+      principal.user = resolved.user;
+      principal.auth = resolved.auth;
+    }
+  } else {
+    const resolved = resolveSessionUser(config, req);
+    if (resolved) {
+      principal.user = resolved.user;
+      principal.auth = resolved.auth;
+    }
   }
   if (shareToken) principal.shareTokenHash = sha256Hex(shareToken);
   return principal;
@@ -329,5 +353,10 @@ export function requireWorkspaceOwner(config: CloudServerConfig, user: CloudUser
 
 function isWorkspaceAdmin(config: CloudServerConfig, user: CloudUserRecord): boolean {
   if (config.adminUserIds.length > 0) return config.adminUserIds.includes(user.id);
+  if (config.production) {
+    throw new HttpError(403, "Workspace administration is disabled: set NOMA_CLOUD_ADMIN_USER_IDS to the admin user IDs", {
+      code: "admin_not_configured",
+    });
+  }
   return config.store.firstRegisteredUserId() === user.id;
 }

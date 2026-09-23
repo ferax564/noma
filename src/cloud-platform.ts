@@ -216,8 +216,18 @@ const defaultEnterprisePolicy: EnterprisePolicy = {
   updatedBy: "system",
 };
 
+/** One page of a platform listing. */
+export interface PlatformPage {
+  limit: number;
+  offset: number;
+}
+
+const indexedBlockCacheSize = 512;
+const maxDocumentsIndexedPerCall = 250;
+
 export class CloudKnowledgePlatform {
   private readonly db: SqliteDatabase;
+  private readonly indexedBlockCache = new Map<string, { versionHash: string; blocks: IndexedBlock[] }>();
 
   constructor(dbPath: string) {
     this.db = new DatabaseConstructor(dbPath);
@@ -242,6 +252,7 @@ export class CloudKnowledgePlatform {
       updatedAt: trust.updatedAt,
     });
     this.db.prepare("DELETE FROM cloud_platform_records WHERE kind = 'rag_document' AND id = ?").run(trust.documentId);
+    this.indexedBlockCache.delete(trust.documentId);
     this.audit(trust.updatedBy, "trust.updated", "block", `${trust.documentId}:${trust.blockId}`, { ...trust }, trust.updatedAt);
     return trust;
   }
@@ -251,26 +262,75 @@ export class CloudKnowledgePlatform {
   }
 
   listTrust(documentIds: string[]): KnowledgeTrust[] {
-    const allowed = new Set(documentIds);
-    return this.list<KnowledgeTrust>("trust").filter((record) => allowed.has(record.documentId));
+    return this.db
+      .prepare("SELECT data_json FROM cloud_platform_records WHERE kind = 'trust' AND document_id IN (SELECT value FROM json_each(?)) ORDER BY updated_at DESC, id")
+      .all(JSON.stringify(documentIds))
+      .map((row) => JSON.parse((row as PlatformRow).data_json) as KnowledgeTrust);
   }
 
-  indexDocuments(documents: KnowledgeDocumentAccess[], now: string, force = false): number {
+  /**
+   * Indexes documents whose content hash changed since they were last indexed. At most
+   * `maxDocuments` documents are parsed per call so one request cannot parse a whole workspace;
+   * the rest are picked up by later calls and are left out of results until then.
+   */
+  indexDocuments(documents: KnowledgeDocumentAccess[], now: string, force = false, maxDocuments = maxDocumentsIndexedPerCall): number {
     const transaction = this.db.transaction(() => {
       let count = 0;
+      let parsed = 0;
       for (const access of documents) {
+        if (!force && this.indexedBlockCache.get(access.document.id)?.versionHash === access.document.hash) continue;
         const indexed = this.get<{ versionHash: string }>("rag_document", access.document.id);
         if (!force && indexed?.versionHash === access.document.hash) continue;
+        if (parsed >= maxDocuments) continue;
+        parsed += 1;
         this.db.prepare("DELETE FROM cloud_platform_records WHERE kind = 'rag_block' AND document_id = ?").run(access.document.id);
-        for (const block of indexDocument(access.document, this.listTrust([access.document.id]), now)) {
+        const blocks = indexDocument(access.document, this.listTrust([access.document.id]), now);
+        for (const block of blocks) {
           this.put("rag_block", block.id, block, { documentId: block.documentId, updatedAt: now });
           count += 1;
         }
         this.put("rag_document", access.document.id, { id: access.document.id, versionHash: access.document.hash, indexedAt: now }, { documentId: access.document.id, updatedAt: now });
+        this.cacheIndexedBlocks(access.document.id, access.document.hash, blocks);
       }
       return count;
     });
     return transaction();
+  }
+
+  /** Current-version indexed blocks for the given documents, served from an LRU keyed by document hash. */
+  private indexedBlocks(documents: KnowledgeDocumentAccess[]): IndexedBlock[] {
+    const blocks: IndexedBlock[] = [];
+    const select = this.db.prepare("SELECT data_json FROM cloud_platform_records WHERE kind = 'rag_block' AND document_id = ?");
+    for (const { document } of documents) {
+      const cached = this.indexedBlockCache.get(document.id);
+      if (cached?.versionHash === document.hash) {
+        this.indexedBlockCache.delete(document.id);
+        this.indexedBlockCache.set(document.id, cached);
+        blocks.push(...cached.blocks);
+        continue;
+      }
+      const loaded = sortIndexedBlocks(
+        select
+          .all(document.id)
+          .map((row) => JSON.parse((row as PlatformRow).data_json) as IndexedBlock)
+          .filter((block) => block.versionHash === document.hash),
+      );
+      if (this.get<{ versionHash: string }>("rag_document", document.id)?.versionHash === document.hash) {
+        this.cacheIndexedBlocks(document.id, document.hash, loaded);
+      }
+      blocks.push(...loaded);
+    }
+    return blocks;
+  }
+
+  private cacheIndexedBlocks(documentId: string, versionHash: string, blocks: IndexedBlock[]): void {
+    this.indexedBlockCache.delete(documentId);
+    this.indexedBlockCache.set(documentId, { versionHash, blocks: sortIndexedBlocks(blocks) });
+    while (this.indexedBlockCache.size > indexedBlockCacheSize) {
+      const oldest = this.indexedBlockCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.indexedBlockCache.delete(oldest);
+    }
   }
 
   search(request: KnowledgeSearchRequest): KnowledgeRetrievalRecord[] {
@@ -281,8 +341,8 @@ export class CloudKnowledgePlatform {
     const queryEmbedding = embed(query);
     const queryTokens = tokens(query);
     const types = new Set(request.contentTypes ?? []);
-    const scored = this.list<IndexedBlock>("rag_block")
-      .filter((block) => accessByDocument.has(block.documentId) && (types.size === 0 || types.has(block.contentType)))
+    const scored = this.indexedBlocks(request.documents)
+      .filter((block) => types.size === 0 || types.has(block.contentType))
       .map((block): KnowledgeRetrievalRecord => {
         const access = accessByDocument.get(block.documentId)!;
         const lexical = lexicalScore(queryTokens, tokens(block.searchableText));
@@ -408,7 +468,7 @@ export class CloudKnowledgePlatform {
   health(documents: KnowledgeDocumentAccess[], now: string): KnowledgeHealthItem[] {
     this.indexDocuments(documents, now);
     const allowed = new Set(documents.map((item) => item.document.id));
-    const blocks = this.list<IndexedBlock>("rag_block").filter((block) => allowed.has(block.documentId));
+    const blocks = this.indexedBlocks(documents);
     const items: KnowledgeHealthItem[] = [];
     for (const block of blocks) {
       if (block.freshness.state !== "current") {
@@ -442,7 +502,7 @@ export class CloudKnowledgePlatform {
   wiki(documents: KnowledgeDocumentAccess[], now: string): LlmWikiResult {
     this.indexDocuments(documents, now);
     const allowed = new Set(documents.map((item) => item.document.id));
-    const blocks = this.list<IndexedBlock>("rag_block").filter((block) => allowed.has(block.documentId));
+    const blocks = this.indexedBlocks(documents);
     const links = knowledgeLinks(documents.map((item) => item.document));
     const existingPairs = new Set(links.filter((link) => link.toDocumentId).map((link) => `${link.fromDocumentId}:${link.toDocumentId}`));
     const suggestions = duplicatePairs(blocks)
@@ -530,8 +590,8 @@ export class CloudKnowledgePlatform {
     return this.get<CloudAgentIdentity>("agent", id);
   }
 
-  listAgents(): CloudAgentIdentity[] {
-    return this.list<CloudAgentIdentity>("agent");
+  listAgents(ownerId?: string, page?: PlatformPage): CloudAgentIdentity[] {
+    return this.list<CloudAgentIdentity>("agent", { ownerId }, page);
   }
 
   grantAgentAccess(access: AgentAccessGrant, actorId: string, now: string): AgentAccessGrant {
@@ -542,7 +602,7 @@ export class CloudKnowledgePlatform {
   }
 
   listAgentAccess(agentId: string): AgentAccessGrant[] {
-    return this.list<AgentAccessGrant>("agent_access").filter((access) => access.agentId === agentId);
+    return this.list<AgentAccessGrant>("agent_access", { ownerId: agentId }).filter((access) => access.agentId === agentId);
   }
 
   requireAgentAccess(agentId: string, resourceType: "document" | "site", resourceId: string, capability: string): AgentAccessGrant {
@@ -582,8 +642,8 @@ export class CloudKnowledgePlatform {
     return completed;
   }
 
-  listAgentRuns(agentId: string): AgentRun[] {
-    return this.list<AgentRun>("agent_run").filter((run) => run.agentId === agentId);
+  listAgentRuns(agentId: string, page?: PlatformPage): AgentRun[] {
+    return this.list<AgentRun>("agent_run", { ownerId: agentId }, page).filter((run) => run.agentId === agentId);
   }
 
   putConnector(connector: KnowledgeConnector): KnowledgeConnector {
@@ -650,7 +710,7 @@ export class CloudKnowledgePlatform {
   semanticCollections(documents: KnowledgeDocumentAccess[], now: string): SemanticCollection[] {
     this.indexDocuments(documents, now);
     const allowed = new Set(documents.map((item) => item.document.id));
-    const blocks = this.list<IndexedBlock>("rag_block").filter((block) => allowed.has(block.documentId));
+    const blocks = this.indexedBlocks(documents);
     const collection = (id: SemanticCollectionId, title: string, predicate: (block: IndexedBlock) => boolean): SemanticCollection => ({
       id,
       title,
@@ -687,7 +747,11 @@ export class CloudKnowledgePlatform {
 
   analytics(actorId: string, accessibleDocumentIds: string[]): AnalyticsSummary {
     const allowed = new Set(accessibleDocumentIds);
-    const events = this.list<AnalyticsEvent>("analytics").filter((event) => event.actorId === actorId || (event.documentId !== undefined && allowed.has(event.documentId)));
+    const events = this.db
+      .prepare("SELECT data_json FROM cloud_platform_records WHERE kind = 'analytics' AND (owner_id = ? OR document_id IN (SELECT value FROM json_each(?))) ORDER BY updated_at DESC, id")
+      .all(actorId, JSON.stringify([...allowed]))
+      .map((row) => JSON.parse((row as PlatformRow).data_json) as AnalyticsEvent)
+      .filter((event) => event.actorId === actorId || (event.documentId !== undefined && allowed.has(event.documentId)));
     const counts = Object.fromEntries(["no_result", "answer_generated", "citation_opened", "answer_rejected", "task_completed"].map((type) => [type, events.filter((event) => event.type === type).length])) as Record<AnalyticsEvent["type"], number>;
     return {
       counts,
@@ -736,8 +800,40 @@ export class CloudKnowledgePlatform {
     return draft;
   }
 
-  listOfflineDrafts(userId: string): OfflineDraft[] {
-    return this.list<OfflineDraft>("offline_draft").filter((draft) => draft.userId === userId);
+  listOfflineDrafts(userId: string, page?: PlatformPage): OfflineDraft[] {
+    return this.list<OfflineDraft>("offline_draft", { ownerId: userId }, page).filter((draft) => draft.userId === userId);
+  }
+
+  readOfflineDraft(userId: string, draftId: string): OfflineDraft | undefined {
+    const draft = this.get<OfflineDraft>("offline_draft", draftId);
+    return draft?.userId === userId ? draft : undefined;
+  }
+
+  countOfflineDrafts(userId: string): number {
+    return this.count("offline_draft", userId);
+  }
+
+  /** Analytics events recorded by `actorId` at or after `since`. */
+  countAnalyticsSince(actorId: string, since: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS count FROM cloud_platform_records WHERE kind = 'analytics' AND owner_id = ? AND created_at >= ?")
+      .get(actorId, since) as { count: number };
+    return row.count;
+  }
+
+  /** Drops an actor's analytics older than `before`, then trims to the newest `keep` events. */
+  pruneAnalytics(actorId: string, before: string, keep: number): number {
+    const expired = this.db
+      .prepare("DELETE FROM cloud_platform_records WHERE kind = 'analytics' AND owner_id = ? AND created_at < ?")
+      .run(actorId, before).changes;
+    const overflow = this.db
+      .prepare(
+        `DELETE FROM cloud_platform_records WHERE kind = 'analytics' AND owner_id = ? AND id NOT IN (
+           SELECT id FROM cloud_platform_records WHERE kind = 'analytics' AND owner_id = ? ORDER BY created_at DESC, id DESC LIMIT ?
+         )`,
+      )
+      .run(actorId, actorId, keep).changes;
+    return expired + overflow;
   }
 
   mergeOfflineDraft(draftId: string, currentSource: string, currentHash: string, now: string): OfflineMergeResult {
@@ -750,7 +846,7 @@ export class CloudKnowledgePlatform {
 
   recordRealtimeOperation(operation: RealtimeOperation): RealtimeOperation {
     if (operation.actorType !== "human") throw new Error("Realtime operations are reserved for humans; agents use asynchronous proof proposals");
-    const prior = this.list<RealtimeOperation>("realtime_operation").filter((item) => item.documentId === operation.documentId);
+    const prior = this.list<RealtimeOperation>("realtime_operation", { documentId: operation.documentId }).filter((item) => item.documentId === operation.documentId);
     const expectedSequence = prior.reduce((max, item) => Math.max(max, item.sequence), 0) + 1;
     if (operation.sequence !== expectedSequence) throw new Error(`Realtime sequence must be ${expectedSequence}`);
     this.put("realtime_operation", operation.id, operation, { ownerId: operation.userId, documentId: operation.documentId, updatedAt: operation.createdAt });
@@ -758,8 +854,11 @@ export class CloudKnowledgePlatform {
     return operation;
   }
 
-  realtimeOperations(documentId: string, afterSequence = 0): RealtimeOperation[] {
-    return this.list<RealtimeOperation>("realtime_operation").filter((operation) => operation.documentId === documentId && operation.sequence > afterSequence).sort((left, right) => left.sequence - right.sequence);
+  realtimeOperations(documentId: string, afterSequence = 0, limit = Number.POSITIVE_INFINITY): RealtimeOperation[] {
+    return this.list<RealtimeOperation>("realtime_operation", { documentId })
+      .filter((operation) => operation.documentId === documentId && operation.sequence > afterSequence)
+      .sort((left, right) => left.sequence - right.sequence)
+      .slice(0, limit);
   }
 
   enterprisePolicy(): EnterprisePolicy {
@@ -782,8 +881,8 @@ export class CloudKnowledgePlatform {
     return identity;
   }
 
-  listScimIdentities(): ScimIdentity[] {
-    return this.list<ScimIdentity>("scim_identity");
+  listScimIdentities(page?: PlatformPage): ScimIdentity[] {
+    return this.list<ScimIdentity>("scim_identity", {}, page);
   }
 
   putLegalHold(hold: LegalHold): LegalHold {
@@ -793,8 +892,8 @@ export class CloudKnowledgePlatform {
     return hold;
   }
 
-  listLegalHolds(): LegalHold[] {
-    return this.list<LegalHold>("legal_hold");
+  listLegalHolds(page?: PlatformPage): LegalHold[] {
+    return this.list<LegalHold>("legal_hold", {}, page);
   }
 
   exportAudit(actorId: string, accessibleResourceIds: string[]): AuditExport {
@@ -823,6 +922,7 @@ export class CloudKnowledgePlatform {
       this.db.prepare("DELETE FROM cloud_platform_records WHERE kind = ? AND id = ?").run(candidate.kind, candidate.id);
       deleted += 1;
     }
+    if (deleted > 0) this.indexedBlockCache.clear();
     return { deleted, protectedByLegalHold };
   }
 
@@ -870,8 +970,27 @@ export class CloudKnowledgePlatform {
     return row ? JSON.parse(row.data_json) as T : undefined;
   }
 
-  private list<T>(kind: PlatformKind): T[] {
-    return this.db.prepare("SELECT id, data_json FROM cloud_platform_records WHERE kind = ? ORDER BY updated_at DESC, id").all(kind).map((row) => JSON.parse((row as PlatformRow).data_json) as T);
+  private list<T>(kind: PlatformKind, filter: { ownerId?: string; documentId?: string } = {}, page?: PlatformPage): T[] {
+    const clauses = ["kind = ?"];
+    const params: Array<string | number> = [kind];
+    if (filter.ownerId !== undefined) {
+      clauses.push("owner_id = ?");
+      params.push(filter.ownerId);
+    }
+    if (filter.documentId !== undefined) {
+      clauses.push("document_id = ?");
+      params.push(filter.documentId);
+    }
+    if (page) params.push(page.limit, page.offset);
+    return this.db
+      .prepare(`SELECT id, data_json FROM cloud_platform_records WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC, id${page ? " LIMIT ? OFFSET ?" : ""}`)
+      .all(...params)
+      .map((row) => JSON.parse((row as PlatformRow).data_json) as T);
+  }
+
+  private count(kind: PlatformKind, ownerId: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM cloud_platform_records WHERE kind = ? AND owner_id = ?").get(kind, ownerId) as { count: number };
+    return row.count;
   }
 
   private audit(actorId: string, action: string, resourceType: string, resourceId: string, detail: Record<string, unknown>, createdAt: string): AuditRecord {
@@ -888,6 +1007,10 @@ export class CloudKnowledgePlatform {
       .run(record.id, record.actorId, record.action, record.resourceType, record.resourceId, JSON.stringify(record.detail), record.createdAt);
     return record;
   }
+}
+
+function sortIndexedBlocks(blocks: IndexedBlock[]): IndexedBlock[] {
+  return [...blocks].sort((left, right) => left.sourceSpan.line - right.sourceSpan.line || left.id.localeCompare(right.id));
 }
 
 function indexDocument(document: CloudDocumentRecord, trustRecords: KnowledgeTrust[], now: string): IndexedBlock[] {

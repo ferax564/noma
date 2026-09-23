@@ -114,7 +114,15 @@ missing. A deliberately public deployment can opt out explicitly with
 client address; deployments behind a trusted reverse proxy should set
 `NOMA_CLOUD_TRUST_PROXY=1`. `NOMA_CLOUD_RATE_LIMIT_MAX`,
 `NOMA_CLOUD_AUTH_RATE_LIMIT_MAX`, and `NOMA_CLOUD_RATE_LIMIT_WINDOW_MS` tune
-the defaults.
+the defaults. Every request that carries `?access=` -- including app-shell and
+static paths, not only `/api/*` -- counts against the stricter auth limiter,
+so the gate token cannot be brute-forced through `/cloud?access=<guess>`.
+
+Set `NOMA_CLOUD_ADMIN_USER_IDS` (comma-separated user IDs) in production. With
+`NODE_ENV=production` and no allowlist, the server still starts but every
+`/api/enterprise` route returns `403` with `code: "admin_not_configured"`
+(fail closed). Outside production the first user ever registered is the
+bootstrap workspace admin.
 
 Open the login page:
 
@@ -123,8 +131,62 @@ https://noma-cloud.apps.ezkeel.com/login.html
 ```
 
 The login form validates the cloud access token, sets an HttpOnly cookie, and
-can import an existing Noma user token into the browser. New user registration
-is blocked unless the registration form includes the invitation code.
+can exchange an existing Noma user token or personal access token for a browser
+session. New user registration is blocked unless the registration form includes
+the invitation code.
+
+### Browser sessions and CSRF
+
+The web app never stores a raw token in `localStorage`. Login
+(`POST /api/auth/session` with `userToken`), registration
+(`POST /api/auth/register`), and trusted SSO (`POST /api/auth/sso`) create a
+server-side session and set two cookies:
+
+- `noma_session` -- `HttpOnly; SameSite=Lax; Path=/; Max-Age=30 days`, plus
+  `Secure` everywhere except `localhost`/`127.0.0.1` over plain HTTP. Only the
+  SHA-256 of the cookie is stored, with user, scopes, created, last-seen,
+  expiry, user agent, and client address.
+- `noma_csrf` -- a readable double-submit token. Every cookie-authenticated
+  `POST`, `PUT`, `PATCH`, or `DELETE` must echo it in the `X-Noma-CSRF` header;
+  the server compares it with the hash bound to the session and otherwise
+  returns `403` with `code: "csrf_required"`. `GET /api/auth/session` also
+  returns the token (and re-issues one when the cookie was lost).
+
+Bearer tokens (`Authorization: Bearer ...` or `X-Noma-User-Token`) keep working
+for API clients and agents and need no CSRF header; when both are present the
+bearer token wins. A browser that still has a token from an earlier build
+exchanges it for a session on first load and deletes it from storage.
+
+```text
+GET    /api/auth/session            current principal, scopes, CSRF token
+GET    /api/auth/sessions           own active sessions (?limit=&offset=)
+DELETE /api/auth/sessions/<id>      revoke one of your sessions
+POST   /api/auth/logout             revoke the current session, clear cookies
+```
+
+### Personal access tokens
+
+Scripts and agents should use named personal access tokens instead of the
+legacy per-user token. A token is shown once at creation, starts with
+`noma_pat_`, and is stored only as a hash with a short preview.
+
+```text
+POST   /api/tokens                  {"name", "scopes": ["read"|"write"|"admin"], "expiresInDays"?: 1-365}
+GET    /api/tokens                  own tokens with preview, scopes, expiry, lastUsedAt, active
+DELETE /api/tokens/<id>             revoke; sessions opened with the token end too
+POST   /api/users/me/rotate-token   replace the legacy token; other sessions are revoked
+```
+
+`read` is implied by every token. A token without `write` gets `403`
+(`code: "insufficient_scope"`) on every mutating method except the read-only
+`POST /api/db/query`; `/api/enterprise` additionally needs `admin`. A token can
+only mint tokens within its own scopes, and rotating the legacy token needs
+`admin`. Expired or revoked tokens return `401` with `token_expired` or
+`token_revoked`. Signing in with a personal access token opens a session with
+the same scopes that ends no later than the token. Each user may hold 50 active
+tokens. The legacy token returned at registration still works with full scope,
+but it is deprecated for automation. In the app, **Create API Token** makes a
+read + write token that expires in 90 days and copies it once.
 
 API clients must send the gate token separately from the normal Noma user
 token:
@@ -358,7 +420,14 @@ document ID, with per-file hashes, one bundle digest, and optional repository,
 branch, and pull-request-review metadata. Import verifies every source hash,
 reports corrupt bundles and concurrent edits, and applies creates/updates only
 when the conflict plan is clean. Canonical content remains reconstructable
-plain `.noma` source.
+plain `.noma` source. Applying an import validates the whole bundle first
+(hashes, conflicts, free IDs for creates, editor access for updates) and then
+writes every document in one SQLite transaction, so a failure leaves nothing
+half-imported. The plan only describes documents you can read; if a create
+targets an ID that is already taken, or an update targets a page you cannot
+edit, the import fails with one uniform `409` (`code:
+"backup_ids_unavailable"`) that names no IDs. Bundles hold at most 1,000
+documents (`413`, `code: "backup_too_large"`).
 
 Noma Cloud is an installable PWA. The service worker caches the application
 shell, while each edit stores a full local draft containing base hash, base
@@ -367,9 +436,15 @@ base still matches is restored automatically. If the server changed, the UI
 offers explicit recover, three-way merge, or discard choices and renders
 conflict markers rather than overwriting either author.
 
+Server-side offline drafts are capped at 200 per user (`429`, `code:
+"offline_draft_quota_exceeded"`) and 1 MB of base plus draft source (`413`,
+`code: "offline_draft_too_large"`). Knowledge analytics accept 120 events per
+user per minute (`429`, `code: "analytics_rate_limited"`), and each user's
+events are kept for 90 days, up to 10,000.
+
 Realtime human operations use the same stable IDs, proof engine, expected
 hash, immutable document revisions, and ordered operation sequence as normal
-writes. The feed is pollable with `after=<sequence>`. Realtime operations reject
+writes. The feed is pollable with `after=<sequence>` and `limit` (default 500). Realtime operations reject
 agent actors; asynchronous proofed proposals remain the agent default.
 
 ```text
@@ -379,6 +454,18 @@ GET|POST /api/offline/drafts
 POST /api/offline/drafts/<draft-id>/merge
 GET|POST /api/realtime/documents/<document-id>/operations
 ```
+
+## Bounded work and pagination
+
+Knowledge endpoints (Ask Noma, knowledge search, health, LLM Wiki, semantic
+collections, agent inbox, analytics, backup export) read at most the 2,000
+most recently updated pages the caller can access. Parsed and indexed blocks
+are cached in memory by document ID and content hash, and at most 250 changed
+pages are re-parsed per request; later requests index the rest. Platform
+listings take `?limit=&offset=` and echo both in the response:
+`GET /api/agents`, `GET /api/agents/<id>/runs`, `GET /api/offline/drafts`,
+`GET /api/enterprise/scim`, `GET /api/enterprise/legal-holds`, `GET /api/tokens`,
+and `GET /api/auth/sessions`.
 
 ## Enterprise policy
 
@@ -781,8 +868,14 @@ Noma Cloud follows the same safety posture as the workbench:
 - request bodies have size limits
 - server-side render paths escape user source before artifact output
 - rendered links, buttons, datasets, and citations drop `javascript:`, `data:`, and other script-capable URL schemes
-- published artifacts are served with a CSP `sandbox`, so page scripts run on an opaque origin and cannot read the app's stored token
-- workspace-wide enterprise settings require a workspace admin: the IDs in `NOMA_CLOUD_ADMIN_USER_IDS`, or the first user ever registered when that is unset
+- published artifacts are served with a CSP `sandbox`, so page scripts run on an opaque origin
+- browser sessions live in an HttpOnly `noma_session` cookie; no raw token is kept in `localStorage`, and cookie-authenticated writes require the `X-Noma-CSRF` header
+- personal access tokens are hashed at rest, scoped (`read`, `write`, `admin`), expiring, and revocable; revoking one ends the sessions opened with it
+- token previews are visible only to their owner (`/api/users`, `/api/db/query`)
+- workspace-wide enterprise settings require a workspace admin: the IDs in `NOMA_CLOUD_ADMIN_USER_IDS`; production fails closed without it, and development falls back to the first user ever registered
+- `?access=` gate-token checks are rate limited on every path
+- backup imports are validated in full and written in one transaction without revealing which inaccessible IDs exist
+- legacy JSON records are moved out of the data directory to `legacy-imported-<timestamp>/` after their one-time SQLite import
 - adding an existing page to a space requires owner access on the page
 - agent grants never exceed the agent owner's current access
 - hosted patch proofs never read `::dataset{src=...}` files from the server
@@ -810,6 +903,9 @@ payload handling.
 | Invite is disabled | Only owners can invite collaborators. |
 | Published page is old | Save the page before copying/opening a published link. |
 | DB query returns empty results | Confirm the bearer token belongs to a user with access to the workspace or document. |
+| `403 csrf_required` from a script | Send a bearer token instead of the browser cookie, or echo the `noma_csrf` cookie in `X-Noma-CSRF`. |
+| `403 insufficient_scope` | The personal access token lacks `write` (mutations) or `admin` (`/api/enterprise`); create one with the needed scopes. |
+| `403 admin_not_configured` | Set `NOMA_CLOUD_ADMIN_USER_IDS` on the production server and restart it. |
 | A patch fails | Use a smaller patch op, verify the target ID in the outline, and fix validation errors before saving. |
 | A collaborator cannot edit | Invite their user ID as editor or create an editor share link. |
 
