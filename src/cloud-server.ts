@@ -22,6 +22,7 @@ import { decodePathSegment, headerValue, HttpError, sendJson, sendText, sha256He
 import { publicUser } from "./cloud/records.js";
 import { renderDocumentHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
 import { routeApi } from "./cloud/router.js";
+import { recordPageView } from "./cloud/routes-analytics.js";
 import {
   isCloudAppShell,
   redirectWithCloudAccessCookie,
@@ -308,6 +309,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     const record = await readDocument(config, id);
     requireNotTrashed(config, "document", id);
     const access = requireRecordAccess(config, record, principal, "viewer");
+    recordPageView(config, req, record, access);
     sendText(res, 200, renderDocumentHtml(record, access), "text/html; charset=utf-8");
     return;
   }

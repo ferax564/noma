@@ -133,3 +133,71 @@ test("older databases gain the space and comment columns on open", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+interface AnalyticsResponse {
+  totalViews: number;
+  uniqueViewers: number;
+  anonymousViews: number;
+  viewsByDay: Array<{ date: string; views: number; uniqueViewers: number }>;
+  viewers?: Array<{ userId: string; name: string; views: number }>;
+  viewersVisible: boolean;
+}
+
+test("page views are deduplicated per viewer, anonymous for share links, and roll up into popular pages", async () => {
+  const harness = await startCloudServer("noma-analytics-");
+  const { base, clock } = harness;
+  try {
+    const ada = await createCloudUser(base, "Ada Lovelace");
+    const bob = await createCloudUser(base, "Bob Builder");
+    const carl = await createCloudUser(base, "Carl Sagan");
+    const eve = await createCloudUser(base, "Eve Outsider");
+    const space = await json<SpaceResponse>(`${base}/api/sites`, { method: "POST", token: ada.token, body: { title: "Docs", documentIds: [] } });
+    await json(`${base}/api/sites/${space.id}/collaborators`, { method: "POST", token: ada.token, body: { userId: bob.id, role: "editor" } });
+    await json(`${base}/api/sites/${space.id}/collaborators`, { method: "POST", token: ada.token, body: { userId: carl.id, role: "viewer" } });
+    const guide = await json<CloudDocumentResponse>(`${base}/api/sites/${space.id}/documents`, { method: "POST", token: ada.token, body: { source: "# Guide\n\nRead me.\n" } });
+    const faq = await json<CloudDocumentResponse>(`${base}/api/sites/${space.id}/documents`, { method: "POST", token: ada.token, body: { source: "# FAQ\n\nQuestions.\n" } });
+    const share = await json<{ token: string }>(`${base}/api/documents/${guide.id}/shares`, { method: "POST", token: ada.token, body: { role: "viewer" } });
+
+    const view = async (token: string | undefined, id = guide.id, shareToken?: string) =>
+      json<{ recorded: boolean; views: number }>(`${base}/api/documents/${id}/views`, { method: "POST", ...(token ? { token } : {}), ...(shareToken ? { share: shareToken } : {}) });
+    assert.equal((await view(bob.token)).recorded, true);
+    assert.equal((await view(bob.token)).recorded, false, "a second view within 30 minutes is not counted");
+    clock.advance(31 * 60 * 1000);
+    assert.equal((await view(bob.token)).recorded, true);
+    assert.equal((await json<{ recorded: boolean }>(`${base}/api/sites/${space.id}/documents/${guide.id}/views`, { method: "POST", token: carl.token })).recorded, true);
+    assert.equal((await view(undefined, guide.id, share.token)).recorded, true);
+    assert.equal((await view(undefined, guide.id, share.token)).recorded, false);
+    await json(`${base}/api/documents/${guide.id}/views`, { method: "POST", token: eve.token, expectedStatus: 403 });
+    clock.advance(2 * 24 * 60 * 60 * 1000);
+    const rendered = await request<string>(`${base}/d/${guide.id}`, { token: ada.token });
+    assert.equal(rendered.status, 200);
+    await view(bob.token, faq.id);
+
+    const viewerStats = await json<AnalyticsResponse>(`${base}/api/documents/${guide.id}/analytics`, { token: carl.token });
+    assert.equal(viewerStats.totalViews, 5);
+    assert.equal(viewerStats.uniqueViewers, 3);
+    assert.equal(viewerStats.anonymousViews, 1);
+    assert.equal(viewerStats.viewers, undefined, "viewers are hidden from page viewers");
+    assert.equal(viewerStats.viewersVisible, false);
+    assert.deepEqual(viewerStats.viewsByDay.map((day) => [day.date, day.views]), [["2026-06-06", 4], ["2026-06-08", 1]]);
+    const shareStats = await json<AnalyticsResponse>(`${base}/api/documents/${guide.id}/analytics`, { share: share.token });
+    assert.equal(shareStats.viewers, undefined);
+
+    const ownerStats = await json<AnalyticsResponse>(`${base}/api/documents/${guide.id}/analytics`, { token: ada.token });
+    assert.deepEqual(ownerStats.viewers?.map((viewer) => [viewer.name, viewer.views]).sort(), [["Ada Lovelace", 1], ["Bob Builder", 2], ["Carl Sagan", 1]]);
+    const editorStats = await json<AnalyticsResponse>(`${base}/api/sites/${space.id}/documents/${guide.id}/analytics?days=1`, { token: bob.token });
+    assert.equal(editorStats.totalViews, 1, "days narrows the window");
+    assert.equal(editorStats.viewersVisible, true);
+    await json(`${base}/api/documents/${guide.id}/analytics?days=0`, { token: ada.token, expectedStatus: 400 });
+    await json(`${base}/api/documents/${guide.id}/analytics`, { token: eve.token, expectedStatus: 403 });
+
+    const popular = await json<{ pages: Array<{ documentId: string; views: number }> }>(`${base}/api/sites/${space.id}/popular`, { token: carl.token });
+    assert.deepEqual(popular.pages.map((page) => [page.documentId, page.views]), [[guide.id, 5], [faq.id, 1]]);
+    await json(`${base}/api/sites/${space.id}/popular`, { token: eve.token, expectedStatus: 403 });
+    await json(`${base}/api/trash/document/${faq.id}`, { method: "POST", token: ada.token });
+    const afterTrash = await json<{ pages: Array<{ documentId: string }> }>(`${base}/api/sites/${space.id}/popular`, { token: carl.token });
+    assert.deepEqual(afterTrash.pages.map((page) => page.documentId), [guide.id]);
+  } finally {
+    await harness.close();
+  }
+});

@@ -1585,3 +1585,11 @@ button.wiki-row {
 .site-row[data-archived="true"]{opacity:.68}
 .site-row[data-archived="true"] .row-title{font-style:italic}
 
+/* page analytics */
+.page-views-button{border:0;background:transparent;padding:0 4px;min-height:0;font-size:.78rem;color:var(--muted,#5c6670);text-decoration:underline dotted;cursor:pointer}
+.page-views-panel{position:absolute;z-index:40;margin-top:64px;max-width:340px;border:1px solid var(--line,#d9ded8);border-radius:8px;background:var(--panel,#fffefa);box-shadow:0 18px 40px -24px rgba(20,24,30,.5);padding:10px 12px;font-size:.8rem}
+.page-views-panel p{margin:0 0 8px}
+.page-views-chart{display:flex;align-items:flex-end;gap:2px;height:42px;margin-bottom:8px}
+.page-views-chart span{flex:1;min-width:3px;background:var(--accent,#0f666b);border-radius:2px 2px 0 0;opacity:.75}
+.page-viewers{margin:0;padding-left:16px;max-height:160px;overflow:auto}
+

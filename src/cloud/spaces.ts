@@ -109,6 +109,7 @@ export function requirePageWritable(config: CloudServerConfig, documentId: strin
 }
 
 const ARCHIVE_EXEMPT_SITE_SUFFIXES = new Set(["archive", "unarchive", "watch"]);
+const ARCHIVE_EXEMPT_PAGE_SUFFIXES = new Set(["watch", "views"]);
 
 /**
  * Router guard: rejects mutating requests against an archived space or a page that lives only in
@@ -122,11 +123,12 @@ export function guardArchivedSpaceWrite(req: IncomingMessage, parts: string[], c
   if (!validId(id)) return;
   if (resource === "sites") {
     if (suffix && ARCHIVE_EXEMPT_SITE_SUFFIXES.has(suffix)) return;
+    if (suffix === "documents" && parts[5] && ARCHIVE_EXEMPT_PAGE_SUFFIXES.has(parts[5])) return;
     const site = config.store.readSite(id);
     if (site?.archivedAt && canView(config, site, principal)) requireSpaceWritable(site);
     return;
   }
-  const documentId = resource === "documents" && suffix !== "watch" ? id : resource === "trash" && id === "document" && validId(parts[3]) && parts[4] === undefined ? parts[3] : undefined;
+  const documentId = resource === "documents" && !(suffix && ARCHIVE_EXEMPT_PAGE_SUFFIXES.has(suffix)) ? id : resource === "trash" && id === "document" && validId(parts[3]) && parts[4] === undefined ? parts[3] : undefined;
   if (!documentId) return;
   const document = config.store.readDocument(documentId);
   if (document && canView(config, document, principal)) requirePageWritable(config, documentId);

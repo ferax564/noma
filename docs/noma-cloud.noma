@@ -346,6 +346,30 @@ POST /api/sites/<site-id>/unarchive
 GET  /s/<site-id>
 ```
 
+## Page analytics
+
+The app sends a view beacon when a page opens, and opening a rendered page at
+`/d/<id>` counts as a view too. Views are deduplicated per viewer per page for
+30 minutes. Share-link views are anonymous: they are keyed by a hash of the
+link and client address, and never linked to a user. Views older than about
+400 days are pruned.
+
+The page header shows **N views** (last 30 days). Clicking it shows views per
+day and, for page editors and owners only, who viewed the page. The rail lists
+the most viewed pages of the current space.
+
+```text
+POST /api/documents/<id>/views
+GET  /api/documents/<id>/analytics?days=30
+GET  /api/sites/<site-id>/documents/<page-id>/analytics?days=30
+GET  /api/sites/<site-id>/popular?days=30&limit=10
+```
+
+`analytics` returns `totalViews`, `uniqueViewers` (signed-in people),
+`anonymousViews`, and `viewsByDay`. It includes `viewers` (name, view count,
+last view) only when the caller is a signed-in editor or owner of the page.
+`popular` ranks the space's non-trashed pages by views, then unique viewers.
+
 ## Ask Noma, trust, and knowledge health
 
 The **Ask Noma** inspector is retrieval-first rather than a generic chat box.

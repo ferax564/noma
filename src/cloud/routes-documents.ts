@@ -37,6 +37,7 @@ import {
 } from "./records.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
+import { routeDocumentAnalytics } from "./routes-analytics.js";
 import { routeComments } from "./routes-comments.js";
 import { routePatchProposals } from "./routes-patch.js";
 
@@ -108,6 +109,11 @@ export async function routeDocuments(
 
   if (suffix === "approvals") {
     await routeDocumentApprovals(req, res, parts[4], config, principal, record);
+    return;
+  }
+
+  if (suffix === "views" || suffix === "analytics") {
+    await routeDocumentAnalytics(req, res, suffix, config, principal, record);
     return;
   }
 

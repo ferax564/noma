@@ -369,6 +369,30 @@ export interface CloudLabeledDocument {
   access: { role: CloudRole };
 }
 
+export interface CloudPageViewStats {
+  documentId: string;
+  since: string;
+  totalViews: number;
+  uniqueViewers: number;
+  anonymousViews: number;
+  viewsByDay: Array<{ date: string; views: number; uniqueViewers: number }>;
+}
+
+export interface CloudPageViewer {
+  userId: string;
+  name: string;
+  views: number;
+  lastViewedAt: string;
+}
+
+export interface CloudPopularPage {
+  documentId: string;
+  title: string;
+  views: number;
+  uniqueViewers: number;
+  lastViewedAt: string;
+}
+
 export interface CloudWatch {
   userId: string;
   resourceType: CloudResourceType;
@@ -1103,7 +1127,7 @@ export class NomaCloudDatabase {
       this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
       if (type === "document") {
         this.db.prepare("DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE document_id = ?)").run(id);
-        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels"]) {
+        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "page_views"]) {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
         this.db.prepare("DELETE FROM search_index WHERE document_id = ?").run(id);
@@ -1965,6 +1989,89 @@ export class NomaCloudDatabase {
     return row.archived === 1 && row.live === 0;
   }
 
+  // --- wiki experience: page analytics --------------------------------------------------
+
+  /**
+   * Records a page view unless the same viewer already viewed the page within `dedupeMs`.
+   * `viewerKey` is a user ID for signed-in viewers or an opaque hash for anonymous share-link views.
+   * Views older than `retainDays` are pruned opportunistically.
+   */
+  recordPageView(view: { documentId: string; viewerKey: string; userId?: string; via: "user" | "share"; viewedAt: string }, dedupeMs: number, retainDays = 400): boolean {
+    const record = this.db.transaction((): boolean => {
+      const last = this.db
+        .prepare("SELECT viewed_at FROM page_views WHERE document_id = ? AND viewer_key = ? ORDER BY viewed_at DESC LIMIT 1")
+        .get(view.documentId, view.viewerKey) as { viewed_at: string } | undefined;
+      const now = Date.parse(view.viewedAt);
+      if (last && now - Date.parse(last.viewed_at) < dedupeMs) return false;
+      this.db
+        .prepare("INSERT INTO page_views (document_id, viewer_key, user_id, via, viewed_at) VALUES (?, ?, ?, ?, ?)")
+        .run(view.documentId, view.viewerKey, view.userId ?? null, view.via, view.viewedAt);
+      if (Math.random() < 0.01) {
+        this.db.prepare("DELETE FROM page_views WHERE viewed_at < ?").run(new Date(now - retainDays * 86_400_000).toISOString());
+      }
+      return true;
+    });
+    return record();
+  }
+
+  pageViewStats(documentId: string, since: string): CloudPageViewStats {
+    const totals = this.db
+      .prepare(
+        `SELECT COUNT(*) AS views,
+           COUNT(DISTINCT CASE WHEN user_id IS NOT NULL THEN user_id END) AS unique_users,
+           SUM(CASE WHEN user_id IS NULL THEN 1 ELSE 0 END) AS anonymous
+         FROM page_views WHERE document_id = ? AND viewed_at >= ?`,
+      )
+      .get(documentId, since) as { views: number; unique_users: number; anonymous: number | null };
+    const days = this.db
+      .prepare(
+        `SELECT substr(viewed_at, 1, 10) AS day, COUNT(*) AS views, COUNT(DISTINCT viewer_key) AS unique_viewers
+         FROM page_views WHERE document_id = ? AND viewed_at >= ?
+         GROUP BY day ORDER BY day`,
+      )
+      .all(documentId, since) as Array<{ day: string; views: number; unique_viewers: number }>;
+    return {
+      documentId,
+      since,
+      totalViews: totals.views,
+      uniqueViewers: totals.unique_users,
+      anonymousViews: totals.anonymous ?? 0,
+      viewsByDay: days.map((row) => ({ date: row.day, views: row.views, uniqueViewers: row.unique_viewers })),
+    };
+  }
+
+  pageViewers(documentId: string, since: string, limit = 100): CloudPageViewer[] {
+    const rows = this.db
+      .prepare(
+        `SELECT v.user_id, u.name, COUNT(*) AS views, MAX(v.viewed_at) AS last_viewed_at
+         FROM page_views v JOIN users u ON u.id = v.user_id
+         WHERE v.document_id = ? AND v.viewed_at >= ? AND v.user_id IS NOT NULL
+         GROUP BY v.user_id
+         ORDER BY last_viewed_at DESC, v.user_id
+         LIMIT ?`,
+      )
+      .all(documentId, since, limit) as Array<{ user_id: string; name: string; views: number; last_viewed_at: string }>;
+    return rows.map((row) => ({ userId: row.user_id, name: row.name, views: row.views, lastViewedAt: row.last_viewed_at }));
+  }
+
+  /** Most viewed, non-trashed pages of a space since `since`. */
+  popularPages(siteId: string, since: string, limit: number): CloudPopularPage[] {
+    const rows = this.db
+      .prepare(
+        `SELECT v.document_id, d.title, COUNT(*) AS views, COUNT(DISTINCT v.viewer_key) AS unique_viewers, MAX(v.viewed_at) AS last_viewed_at
+         FROM page_views v
+         JOIN site_documents sd ON sd.document_id = v.document_id AND sd.site_id = ?
+         JOIN documents d ON d.id = v.document_id
+         WHERE v.viewed_at >= ?
+           AND NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'document' AND t.resource_id = v.document_id)
+         GROUP BY v.document_id
+         ORDER BY views DESC, unique_viewers DESC, last_viewed_at DESC, v.document_id
+         LIMIT ?`,
+      )
+      .all(siteId, since, limit) as Array<{ document_id: string; title: string; views: number; unique_viewers: number; last_viewed_at: string }>;
+    return rows.map((row) => ({ documentId: row.document_id, title: row.title, views: row.views, uniqueViewers: row.unique_viewers, lastViewedAt: row.last_viewed_at }));
+  }
+
   // --- wiki experience: people directory ----------------------------------------------
 
   /**
@@ -2390,6 +2497,18 @@ export class NomaCloudDatabase {
         created_at TEXT NOT NULL,
         PRIMARY KEY (comment_id, user_id, emoji)
       );
+
+      -- page analytics
+      CREATE TABLE IF NOT EXISTS page_views (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id TEXT NOT NULL,
+        viewer_key TEXT NOT NULL,
+        user_id TEXT,
+        via TEXT NOT NULL CHECK (via IN ('user', 'share')),
+        viewed_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_views_document ON page_views(document_id, viewed_at);
+      CREATE INDEX IF NOT EXISTS idx_page_views_viewer ON page_views(document_id, viewer_key, viewed_at DESC);
 
       CREATE INDEX IF NOT EXISTS idx_permissions_user ON permissions(user_id, resource_type, resource_id);
       CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token_hash);

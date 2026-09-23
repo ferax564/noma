@@ -1,4 +1,5 @@
 /** Breadcrumbs, labels and watch state for the current page. */
+import { trackPageView } from "./analytics.js";
 import { fetchCloudJson } from "./api.js";
 import { addLabelButton, pageBreadcrumbs, pageLabels, revisionDiffOutput, watchPageButton } from "./dom.js";
 import { renderChrome } from "./layout.js";
@@ -12,6 +13,7 @@ export async function refreshPageMeta(): Promise<void> {
   state.currentWatching = false;
   revisionDiffOutput.hidden = true;
   const page = state.currentPage;
+  void trackPageView();
   if (!page || !state.cloudUser) {
     renderChrome();
     return;

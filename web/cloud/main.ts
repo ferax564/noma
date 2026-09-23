@@ -15,6 +15,7 @@ import { installCommentSelectionCapture } from "./comments.js";
 import { attachMentionPicker, decoratePreviewMentions } from "./mentions.js";
 import { bindSearchFilters } from "./search-filters.js";
 import { bindSpaceSettings } from "./spaces.js";
+import { bindPageAnalytics } from "./analytics.js";
 import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
@@ -98,6 +99,7 @@ function bindEvents(): void {
   });
   bindSearchFilters(() => void searchCloud());
   bindSpaceSettings();
+  bindPageAnalytics();
   globalSearchInput.addEventListener("input", () => {
     searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
     if (!globalSearchInput.value.trim()) {

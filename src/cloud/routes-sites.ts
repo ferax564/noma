@@ -31,6 +31,7 @@ import {
 } from "./records.js";
 import { afterDocumentSaved } from "./page-hooks.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
+import { routeDocumentAnalytics, routeSitePopular } from "./routes-analytics.js";
 import {
   routeDocumentApprovals,
   routeDocumentComments,
@@ -124,6 +125,11 @@ export async function routeSites(
 
   if (suffix === "watch") {
     routeWatch(req, res, config, principal, site, "site");
+    return;
+  }
+
+  if (suffix === "popular") {
+    routeSitePopular(req, res, config, principal, site);
     return;
   }
 
@@ -236,6 +242,11 @@ async function routeSiteDocuments(
 
   if (parts[5] === "comments") {
     await routeDocumentComments(req, res, parts[6], parts[7], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"), parts[8]);
+    return;
+  }
+
+  if (parts[5] === "views" || parts[5] === "analytics") {
+    await routeDocumentAnalytics(req, res, parts[5], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
     return;
   }
 

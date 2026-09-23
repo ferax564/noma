@@ -108,6 +108,10 @@
       <div id="favoriteList" class="navigation-list"></div>
     </div>
     <div class="rail-section">
+      <div class="rail-section-title">Popular in this space</div>
+      <div id="popularPagesList" class="navigation-list"></div>
+    </div>
+    <div class="rail-section">
       <div class="rail-section-title">Recent</div>
       <div id="recentList" class="navigation-list"></div>
     </div>
@@ -124,11 +128,13 @@
     <section class="page-header" aria-label="Current page">
       <div class="page-title-group">
         <nav id="pageBreadcrumbs" class="page-breadcrumbs" aria-label="Page location"></nav>
+        <div id="pageViewsPanel" class="page-views-panel" aria-live="polite" hidden></div>
         <input id="pageTitleInput" class="page-title-input" type="text" aria-label="Page title" />
         <div class="page-meta">
           <span id="roleBadge" class="meta-badge">viewer</span>
           <span id="dirtyBadge" class="meta-badge">saved</span>
           <span id="updatedText" class="updated-text"></span>
+          <button id="pageViewsButton" class="page-views-button" type="button" aria-label="Page views" hidden>0 views</button>
           <span id="pageLabels" class="page-labels" aria-label="Page labels"></span>
           <button id="addLabelButton" class="label-add" type="button" aria-label="Add label">+ Label</button>
         </div>
