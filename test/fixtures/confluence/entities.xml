@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE hibernate-generic [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<hibernate-generic datetime="2026-05-01 10:00:00">
+<object class="Space" package="com.atlassian.confluence.spaces">
+<id name="id">98305</id>
+<property name="name"><![CDATA[Operations]]></property>
+<property name="key"><![CDATA[OPS]]></property>
+</object>
+<object class="ConfluenceUserImpl" package="com.atlassian.confluence.user">
+<id name="key"><![CDATA[8a7f808a]]></id>
+<property name="name"><![CDATA[jdoe]]></property>
+<property name="lowerName"><![CDATA[jdoe]]></property>
+</object>
+<object class="Page" package="com.atlassian.confluence.pages">
+<id name="id">1001</id>
+<property name="title"><![CDATA[Runbooks]]></property>
+<property name="space" class="Space" package="com.atlassian.confluence.spaces"><id name="id">98305</id></property>
+<property name="position">0</property>
+<collection name="bodyContents" class="java.util.Collection"><element class="BodyContent" package="com.atlassian.confluence.core"><id name="id">5001</id></element></collection>
+<property name="version">3</property>
+<property name="creator" class="ConfluenceUserImpl" package="com.atlassian.confluence.user"><id name="key"><![CDATA[8a7f808a]]></id></property>
+<property name="creationDate">2026-01-02 09:15:00.000</property>
+<property name="lastModificationDate">2026-04-20 16:45:10.000</property>
+<property name="contentStatus"><![CDATA[current]]></property>
+</object>
+<object class="Page" package="com.atlassian.confluence.pages">
+<id name="id">1002</id>
+<property name="title"><![CDATA[Restart the API]]></property>
+<property name="parent" class="Page" package="com.atlassian.confluence.pages"><id name="id">1001</id></property>
+<property name="position">1</property>
+<collection name="bodyContents" class="java.util.Collection"><element class="BodyContent" package="com.atlassian.confluence.core"><id name="id">5002</id></element></collection>
+<property name="version">7</property>
+<property name="contentStatus"><![CDATA[current]]></property>
+</object>
+<object class="Page" package="com.atlassian.confluence.pages">
+<id name="id">1003</id>
+<property name="title"><![CDATA[Restart the API]]></property>
+<property name="originalVersion" class="Page" package="com.atlassian.confluence.pages"><id name="id">1002</id></property>
+<collection name="bodyContents" class="java.util.Collection"><element class="BodyContent" package="com.atlassian.confluence.core"><id name="id">5003</id></element></collection>
+<property name="version">6</property>
+<property name="contentStatus"><![CDATA[current]]></property>
+</object>
+<object class="Page" package="com.atlassian.confluence.pages">
+<id name="id">1004</id>
+<property name="title"><![CDATA[Deleted draft]]></property>
+<property name="contentStatus"><![CDATA[deleted]]></property>
+</object>
+<object class="BodyContent" package="com.atlassian.confluence.core">
+<id name="id">5001</id>
+<property name="body"><![CDATA[<p>All operational runbooks. Keep them short.</p><ac:structured-macro ac:name="children" ac:schema-version="2"><ac:parameter ac:name="sort">title</ac:parameter></ac:structured-macro><p>A literal </object> tag inside CDATA must not end the object.</p>]]></property>
+<property name="content" class="Page" package="com.atlassian.confluence.pages"><id name="id">1001</id></property>
+<property name="bodyType">2</property>
+</object>
+<object class="BodyContent" package="com.atlassian.confluence.core">
+<id name="id">5002</id>
+<property name="body"><![CDATA[<h2>Steps</h2><ol><li>Drain traffic</li><li>Run <code>systemctl restart api</code></li></ol><ac:structured-macro ac:name="warning"><ac:rich-text-body><p>Never restart both regions at once.</p></ac:rich-text-body></ac:structured-macro><p>&xxe; See <ac:link><ri:page ri:content-title="Runbooks" /></ac:link>.</p>]]></property>
+<property name="content" class="Page" package="com.atlassian.confluence.pages"><id name="id">1002</id></property>
+<property name="bodyType">2</property>
+</object>
+<object class="BodyContent" package="com.atlassian.confluence.core">
+<id name="id">5003</id>
+<property name="body"><![CDATA[<p>OLD VERSION TEXT</p>]]></property>
+<property name="content" class="Page" package="com.atlassian.confluence.pages"><id name="id">1003</id></property>
+</object>
+<object class="Label" package="com.atlassian.confluence.labels">
+<id name="id">7001</id>
+<property name="name"><![CDATA[runbook]]></property>
+<property name="namespace"><![CDATA[global]]></property>
+</object>
+<object class="Labelling" package="com.atlassian.confluence.labels">
+<id name="id">7101</id>
+<property name="label" class="Label" package="com.atlassian.confluence.labels"><id name="id">7001</id></property>
+<property name="content" class="Page" package="com.atlassian.confluence.pages"><id name="id">1002</id></property>
+</object>
+</hibernate-generic>

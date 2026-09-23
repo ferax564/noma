@@ -365,7 +365,9 @@ export function buildDueDigests(store: NomaCloudDatabase, now: Date, limit = 50)
     const user = store.readUser(due.userId);
     const periodMs = due.digest === "weekly" ? 7 * 86_400_000 : 86_400_000;
     const since = due.lastDigestAt ?? new Date(now.getTime() - periodMs).toISOString();
-    const notifications = user?.email ? store.unreadNotificationsSince(due.userId, since, 50) : [];
+    const notifications = user?.email
+      ? store.unreadNotificationsSince(due.userId, since, 200).filter((item) => item.resourceType !== "document" || !item.resourceId || store.documentAccessRole(due.userId, item.resourceId) !== undefined).slice(0, 50)
+      : [];
     if (user?.email && notifications.length > 0) {
       store.enqueueEmail({
         id: `em_${randomUUID().replace(/-/g, "")}`,

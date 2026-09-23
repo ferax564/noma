@@ -5,7 +5,6 @@
 import type { IncomingMessage } from "node:http";
 import { type Diagnostic, walk } from "../ast.js";
 import type { CloudDocumentRecord, CloudUserRecord } from "../cloud-db.js";
-import { cloudPageTemplates, instantiateCloudPageTemplate } from "../cloud-templates.js";
 import { convertMarkdownToNoma } from "../ingest-markdown.js";
 import { slugify, parse } from "../parser.js";
 import { renderJson } from "../renderer-json.js";
@@ -28,6 +27,7 @@ import { optionalString } from "./input.js";
 import { afterDocumentSaved } from "./page-hooks.js";
 import { requirePageWritable } from "./spaces.js";
 import { assignTaskIds } from "./tasks.js";
+import { resolveCreateTemplate } from "./templates.js";
 
 export interface SourceInspection {
   hash: string;
@@ -60,15 +60,13 @@ export async function createDocument(
   input: Record<string, unknown>,
   user: CloudUserRecord,
   spaceTitle = "Noma Workspace",
+  siteId?: string,
   deferSaveHooks = false,
 ): Promise<CloudDocumentRecord> {
   const id = uniqueId(config);
-  const template = optionalString(input.templateId)
-    ? cloudPageTemplates.find((candidate) => candidate.id === optionalString(input.templateId))
-    : undefined;
-  if (input.templateId !== undefined && !template) throw new HttpError(400, "Unknown page template");
+  const template = resolveCreateTemplate(config, input.templateId, siteId);
   const requestedTitle = optionalString(input.title) ?? template?.title ?? "Untitled document";
-  const source = assignTaskIds(sourceFromCreateInput(input, requestedTitle, spaceTitle));
+  const source = assignTaskIds(template ? template.instantiate(requestedTitle, spaceTitle, input.variables, user) : sourceFromCreateInput(input));
   inspectSource(source, id);
   const now = config.now().toISOString();
   const record: CloudDocumentRecord = {
@@ -139,21 +137,21 @@ export function accessResponse(access: AccessContext): Record<string, unknown> {
   return {
     role: access.role,
     via: access.via,
-    user: access.user ? publicUser(access.user) : undefined,
+    user: access.user ? selfUser(access.user) : undefined,
     shareId: access.share?.id,
     groupId: access.groupId,
   };
 }
 
-/** A user as other people may see it: no token hash and no email address. */
-export function publicUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash" | "email"> {
-  const { tokenHash, email, ...out } = user;
+/** A user as other users see it: no token hash, no token preview, and no email address. */
+export function publicUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash" | "tokenPreview" | "email"> {
+  const { tokenHash: _tokenHash, tokenPreview: _tokenPreview, email: _email, ...out } = user;
   return out;
 }
 
-/** The signed-in user's own profile, including their email address. */
+/** A user as they see themselves: includes the legacy token preview, never the hash. */
 export function selfUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHash"> {
-  const { tokenHash, ...out } = user;
+  const { tokenHash: _tokenHash, ...out } = user;
   return out;
 }
 
@@ -173,15 +171,7 @@ function sourceFromInput(input: Record<string, unknown>): string {
   return input.source;
 }
 
-function sourceFromCreateInput(input: Record<string, unknown>, title: string, spaceTitle: string): string {
-  const templateId = optionalString(input.templateId);
-  if (templateId) {
-    try {
-      return instantiateCloudPageTemplate(templateId, title, spaceTitle);
-    } catch (error) {
-      throw new HttpError(400, error instanceof Error ? error.message : "Unknown page template");
-    }
-  }
+function sourceFromCreateInput(input: Record<string, unknown>): string {
   const source = sourceFromInput(input);
   const format = optionalString(input.format)?.toLowerCase() ?? "noma";
   if (format === "noma") return source.replace(/\r\n?/g, "\n");
@@ -251,7 +241,7 @@ function userName(value: unknown): string {
   return name ? name.slice(0, 80) : "Noma collaborator";
 }
 
-function notifyPageWatchers(config: CloudServerConfig, document: CloudDocumentRecord, access: AccessContext): void {
+export function notifyPageWatchers(config: CloudServerConfig, document: CloudDocumentRecord, access: AccessContext): void {
   const actorId = access.user?.id;
   const actorName = access.user?.name ?? "A share-link editor";
   for (const userId of config.store.documentWatchers(document.id)) {

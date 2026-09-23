@@ -12,13 +12,17 @@ import type {
   CloudRole,
   CloudShareLink,
   CloudSiteRecord,
+  CloudTokenScope,
   CloudUserRecord,
   NomaCloudDatabase,
 } from "../cloud-db.js";
+import type { BlobStore } from "../cloud-blobs.js";
+import type { LlmProvider } from "../cloud-llm.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
 import { assertCloudId } from "./input.js";
 import { routeNotificationByPreference } from "./mail.js";
+import { resolveSessionUser, resolveTokenUser } from "./security.js";
 
 export interface CloudServerConfig {
   dataDir: string;
@@ -33,15 +37,52 @@ export interface CloudServerConfig {
   rateLimiter: CloudRateLimiter;
   trustProxy: boolean;
   adminUserIds: string[];
+  /** Production mode: enterprise admin routes fail closed when `adminUserIds` is empty. */
+  production?: boolean;
+  /** Let Confluence imports reach private/loopback hosts (tests, on-prem Data Center). Default false. */
+  importAllowPrivateHosts?: boolean;
+  /** Upper bound for Confluence import uploads, in bytes. */
+  importMaxBytes?: number;
   now: () => Date;
   store: NomaCloudDatabase;
   platform: CloudKnowledgePlatform;
+  blobs: BlobStore;
+  /** Largest single attachment upload, in bytes. */
+  maxAttachmentBytes: number;
+  /** Live attachment bytes allowed per space (or per user for pages outside any space). */
+  attachmentQuotaBytes: number;
+  ai: CloudAiConfig;
+  /** Called after every successful document write (live-editing rooms merge external changes here). */
+  onDocumentWritten?: (record: CloudDocumentRecord) => void;
+}
+
+/** Generative AI settings. Without a provider every AI feature degrades to extractive behaviour. */
+export interface CloudAiConfig {
+  provider?: LlmProvider;
+  /** Per-user spend cap over a rolling 30-day window, in USD. */
+  userBudgetUsd: number;
+  /** Lifetime budget of each user's system AI agent, in USD. */
+  agentBudgetUsd: number;
+  /** Lets AI refresh fetch sources on private/loopback hosts (tests and on-prem only). */
+  allowPrivateSourceHosts: boolean;
+  /** In-process maintenance scheduler tick; 0 disables the timer. */
+  maintenanceTickMs: number;
 }
 
 export interface Principal {
   user?: CloudUserRecord;
   userTokenHash?: string;
   shareTokenHash?: string;
+  /** How `user` was authenticated and what it may do; absent for anonymous or share-link-only requests. */
+  auth?: PrincipalAuth;
+}
+
+export interface PrincipalAuth {
+  method: "legacy_token" | "pat" | "session";
+  scopes: CloudTokenScope[];
+  sessionId?: string;
+  patId?: string;
+  csrfHash?: string;
 }
 
 export interface AccessContext {
@@ -107,7 +148,17 @@ export async function resolvePrincipal(config: CloudServerConfig, req: IncomingM
   const principal: Principal = {};
   if (userToken) {
     principal.userTokenHash = sha256Hex(userToken);
-    principal.user = await findUserByToken(config, principal.userTokenHash);
+    const resolved = resolveTokenUser(config, userToken);
+    if (resolved) {
+      principal.user = resolved.user;
+      principal.auth = resolved.auth;
+    }
+  } else {
+    const resolved = resolveSessionUser(config, req);
+    if (resolved) {
+      principal.user = resolved.user;
+      principal.auth = resolved.auth;
+    }
   }
   if (shareToken) principal.shareTokenHash = sha256Hex(shareToken);
   return principal;
@@ -195,11 +246,73 @@ function recordAccess(
 
   if (principal.shareTokenHash) {
     const share = record.shareLinks.find((item) => !item.revokedAt && item.tokenHash === principal.shareTokenHash);
-    if (share && (!best || roleRank[share.role] > roleRank[best.role])) {
-      best = { role: share.role, via: "share", user: principal.user, share };
-    }
+    const shareAccess = share ? capDocumentAccess(config, record, { role: share.role, via: "share", user: principal.user, share }) : undefined;
+    if (shareAccess && (!best || roleRank[shareAccess.role] > roleRank[best.role])) best = shareAccess;
   }
 
+  return best;
+}
+
+/**
+ * Narrows access that reached a document through a share link or a space by the page's
+ * restrictions. User grants from `store.resourceAccess` are already capped; share links are
+ * evaluated for the signed-in user when there is one, else as anonymous (never listed).
+ */
+export function capDocumentAccess(
+  config: CloudServerConfig,
+  record: CloudDocumentRecord | CloudSiteRecord,
+  access: AccessContext,
+): AccessContext | undefined {
+  if (!("source" in record)) return access;
+  return capAccessForDocument(config, record.id, access);
+}
+
+export function capAccessForDocument(config: CloudServerConfig, documentId: string, access: AccessContext): AccessContext | undefined {
+  const cap = config.store.documentRestrictionCap(access.user?.id, documentId);
+  if (cap === "hidden") return undefined;
+  if (cap === "viewer" && access.role !== "viewer") return { ...access, role: "viewer" };
+  return access;
+}
+
+/** Access to a page reached through a space: the space grant, narrowed by the page's restrictions. */
+export function siteDocumentAccess(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  documentId: string,
+  principal: Principal,
+): AccessContext | undefined {
+  if (!site.documentIds.includes(documentId)) return undefined;
+  const access = recordAccess(config, site, principal);
+  return access ? capAccessForDocument(config, documentId, access) : undefined;
+}
+
+/**
+ * Like `requireRecordAccess` for a page addressed through its space. Pages hidden by restrictions
+ * answer 404 so their existence does not leak through the space.
+ */
+export function requireSiteDocumentAccess(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  documentId: string,
+  principal: Principal,
+  minimum: CloudRole,
+): AccessContext {
+  requireRecordAccess(config, site, principal, "viewer");
+  const access = siteDocumentAccess(config, site, documentId, principal);
+  if (!access) throw new HttpError(404, "Document is not in this site");
+  requireAccessRole(access, minimum);
+  return access;
+}
+
+/** Best access to a document through its own grants/share links or any space that contains it. */
+export function documentAccessAnywhere(config: CloudServerConfig, document: CloudDocumentRecord, principal: Principal): AccessContext | undefined {
+  let best = recordAccess(config, document, principal);
+  for (const siteId of config.store.documentSiteIds(document.id)) {
+    if (config.store.isTrashed("site", siteId)) continue;
+    const site = config.store.readSite(siteId);
+    const access = site ? siteDocumentAccess(config, site, document.id, principal) : undefined;
+    if (access && (!best || roleRank[access.role] > roleRank[best.role])) best = access;
+  }
   return best;
 }
 
@@ -232,7 +345,10 @@ export async function readUser(config: CloudServerConfig, id: string): Promise<C
 }
 
 export async function writeDocument(config: CloudServerConfig, record: CloudDocumentRecord, expectedHash?: string): Promise<void> {
-  if (config.store.writeDocument(record, expectedHash)) return;
+  if (config.store.writeDocument(record, expectedHash)) {
+    config.onDocumentWritten?.(record);
+    return;
+  }
   const current = config.store.readDocument(record.id);
   throw new HttpError(409, "Document changed while the update was being applied", {
     code: "document_conflict",
@@ -330,8 +446,13 @@ export function requireWorkspaceOwner(config: CloudServerConfig, user: CloudUser
   if (!isWorkspaceAdmin(config, user)) throw new HttpError(403, "Workspace owner access is required");
 }
 
-/** Workspace admins: the `adminUserIds` allowlist, or the first registered user when it is empty. */
+/** Workspace admins: the `adminUserIds` allowlist, or (outside production) the first registered user when it is empty. */
 export function isWorkspaceAdmin(config: CloudServerConfig, user: CloudUserRecord): boolean {
   if (config.adminUserIds.length > 0) return config.adminUserIds.includes(user.id);
+  if (config.production) {
+    throw new HttpError(403, "Workspace administration is disabled: set NOMA_CLOUD_ADMIN_USER_IDS to the admin user IDs", {
+      code: "admin_not_configured",
+    });
+  }
   return config.store.firstRegisteredUserId() === user.id;
 }

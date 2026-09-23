@@ -44,7 +44,7 @@ import {
   parseJiraIssue,
   reconcileInventory,
 } from "./enterprise-connectors.js";
-import { applyCrdtOps, crdtOpsConflict, type CrdtOp } from "./enterprise-crdt.js";
+import { applyBlockOps, detectBlockConflicts, type BlockOp } from "./enterprise-merge.js";
 import { evaluateRagFixture, summarizeRagEvals, type RagEvalFixture } from "./enterprise-knowledge.js";
 import { buildRecipePlan } from "./enterprise-recipes.js";
 import { cumulativeFlowFromEvents, cycleTimeFromEvents, throughputFromEvents } from "./enterprise-reports.js";
@@ -385,61 +385,73 @@ export class EnterpriseWorkspace {
     return { hash, revision: draftRevision };
   }
 
+  /**
+   * Persist one client's block edits against the shared draft. The client
+   * names the last `seq` it saw (`lastAckedSeq`); every op persisted since
+   * then is the other side of a block-level three-way merge. Disjoint blocks
+   * merge; the same block changed to a different result is a `conflict`.
+   * Sequence allocation, the conflict check, and the draft write share one
+   * `BEGIN IMMEDIATE` transaction, so concurrent processes cannot interleave.
+   * `hooks` is a test seam; production callers omit it.
+   */
   persistCollaborativeUpdate(
     actor: ActorContext,
     input: {
       documentId: string;
       clientId: string;
       clientSeq: number;
-      ops: CrdtOp[];
+      ops: BlockOp[];
       lastAckedSeq?: number;
-      simulateLostAck?: boolean;
     },
+    hooks: { afterPersist?: (result: { seq: number; hash: string }) => void } = {},
   ): { seq: number; hash: string; replayed: boolean } {
-    const doc = this.documentRow(input.documentId, actor.tenantId);
+    this.documentRow(input.documentId, actor.tenantId);
     this.requireRole(actor, "document", input.documentId, "editor");
-    const existing = this.store.db
-      .prepare("SELECT seq, hash FROM crdt_updates WHERE document_id = ? AND client_id = ? AND client_seq = ?")
-      .get(input.documentId, input.clientId, input.clientSeq) as { seq: number; hash: string } | undefined;
-    if (existing) return { seq: existing.seq, hash: existing.hash, replayed: true };
-    const unseen = this.store.db
-      .prepare("SELECT ops_json FROM crdt_updates WHERE document_id = ? AND seq > ? ORDER BY seq")
-      .all(input.documentId, input.lastAckedSeq ?? 0) as Array<{ ops_json: string }>;
-    const unseenOps = unseen.flatMap((row) => JSON.parse(row.ops_json) as CrdtOp[]);
-    if (crdtOpsConflict(unseenOps, input.ops)) {
-      throw new EnterpriseError("conflict", "overlapping collaborative ops require explicit resolution");
-    }
-    const source = applyCrdtOps(doc.draft_source, input.ops);
-    const hash = sha256Hex(source);
-    const maxSeq = this.store.db.prepare("SELECT COALESCE(MAX(seq), 0) AS n FROM crdt_updates WHERE document_id = ?").get(input.documentId) as {
-      n: number;
-    };
-    const seq = maxSeq.n + 1;
-    const persist = this.store.db.transaction(() => {
-      this.store.db
-        .prepare(
-          `INSERT INTO crdt_updates(id, document_id, seq, client_id, client_seq, actor_id, ops_json, hash, persisted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(this.id(), input.documentId, seq, input.clientId, input.clientSeq, actor.principalId, JSON.stringify(input.ops), hash, this.now());
+    if (input.clientId === "yjs") throw new EnterpriseError("invalid", "clientId 'yjs' is reserved for the Yjs relay");
+    const db = this.store.db;
+    const persist = db.transaction((): { seq: number; hash: string; replayed: boolean } => {
+      const existing = db
+        .prepare("SELECT seq, hash FROM crdt_updates WHERE document_id = ? AND client_id = ? AND client_seq = ?")
+        .get(input.documentId, input.clientId, input.clientSeq) as { seq: number; hash: string } | undefined;
+      if (existing) return { seq: existing.seq, hash: existing.hash, replayed: true };
+      const unseen = db
+        .prepare("SELECT ops_json FROM crdt_updates WHERE document_id = ? AND seq > ? AND client_id <> 'yjs' ORDER BY seq")
+        .all(input.documentId, input.lastAckedSeq ?? 0) as Array<{ ops_json: string }>;
+      const unseenOps = unseen.flatMap((row) => JSON.parse(row.ops_json) as BlockOp[]);
+      const conflicts = detectBlockConflicts(unseenOps, input.ops);
+      if (conflicts.length > 0) {
+        throw new EnterpriseError("conflict", "the same block was changed concurrently to a different result", {
+          targets: conflicts.map((conflict) => conflict.target),
+        });
+      }
+      const current = this.documentRow(input.documentId, actor.tenantId);
+      const source = applyBlockOps(current.draft_source, input.ops);
+      const hash = sha256Hex(source);
+      const { n } = db.prepare("SELECT COALESCE(MAX(seq), 0) AS n FROM crdt_updates WHERE document_id = ?").get(input.documentId) as {
+        n: number;
+      };
+      const seq = n + 1;
+      db.prepare(
+        `INSERT INTO crdt_updates(id, document_id, seq, client_id, client_seq, actor_id, ops_json, hash, persisted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(this.id(), input.documentId, seq, input.clientId, input.clientSeq, actor.principalId, JSON.stringify(input.ops), hash, this.now());
       const editor = nomaToEditor(assignPersistentIdentities(parse(source), { factory: this.identityFactory }));
-      this.store.db
-        .prepare(
-          `UPDATE documents SET draft_source = ?, draft_hash = ?, draft_revision = draft_revision + 1, crdt_json = ?, updated_at = ? WHERE id = ?`,
-        )
-        .run(source, hash, JSON.stringify(editor), this.now(), input.documentId);
+      db.prepare(
+        `UPDATE documents SET draft_source = ?, draft_hash = ?, draft_revision = draft_revision + 1, crdt_json = ?, updated_at = ? WHERE id = ?`,
+      ).run(source, hash, JSON.stringify(editor), this.now(), input.documentId);
+      return { seq, hash, replayed: false };
     });
-    persist();
-    if (input.simulateLostAck) throw new EnterpriseError("invalid", "simulated lost ack");
-    return { seq, hash, replayed: false };
+    const result = persist.immediate();
+    if (!result.replayed) hooks.afterPersist?.(result);
+    return result;
   }
 
-  reconnectDraft(actor: ActorContext, documentId: string, lastAckedSeq: number): Array<{ seq: number; ops: CrdtOp[]; hash: string }> {
+  reconnectDraft(actor: ActorContext, documentId: string, lastAckedSeq: number): Array<{ seq: number; ops: BlockOp[]; hash: string }> {
     this.requireRole(actor, "document", documentId, "viewer");
     const rows = this.store.db
-      .prepare("SELECT seq, ops_json, hash FROM crdt_updates WHERE document_id = ? AND seq > ? ORDER BY seq")
+      .prepare("SELECT seq, ops_json, hash FROM crdt_updates WHERE document_id = ? AND seq > ? AND client_id <> 'yjs' ORDER BY seq")
       .all(documentId, lastAckedSeq) as Array<{ seq: number; ops_json: string; hash: string }>;
-    return rows.map((row) => ({ seq: row.seq, ops: JSON.parse(row.ops_json) as CrdtOp[], hash: row.hash }));
+    return rows.map((row) => ({ seq: row.seq, ops: JSON.parse(row.ops_json) as BlockOp[], hash: row.hash }));
   }
 
   publishDocument(actor: ActorContext, documentId: string): { revision: number; hash: string } {

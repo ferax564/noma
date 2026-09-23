@@ -114,7 +114,15 @@ missing. A deliberately public deployment can opt out explicitly with
 client address; deployments behind a trusted reverse proxy should set
 `NOMA_CLOUD_TRUST_PROXY=1`. `NOMA_CLOUD_RATE_LIMIT_MAX`,
 `NOMA_CLOUD_AUTH_RATE_LIMIT_MAX`, and `NOMA_CLOUD_RATE_LIMIT_WINDOW_MS` tune
-the defaults.
+the defaults. Every request that carries `?access=` -- including app-shell and
+static paths, not only `/api/*` -- counts against the stricter auth limiter,
+so the gate token cannot be brute-forced through `/cloud?access=<guess>`.
+
+Set `NOMA_CLOUD_ADMIN_USER_IDS` (comma-separated user IDs) in production. With
+`NODE_ENV=production` and no allowlist, the server still starts but every
+`/api/enterprise` route returns `403` with `code: "admin_not_configured"`
+(fail closed). Outside production the first user ever registered is the
+bootstrap workspace admin.
 
 Open the login page:
 
@@ -123,8 +131,62 @@ https://noma-cloud.apps.ezkeel.com/login.html
 ```
 
 The login form validates the cloud access token, sets an HttpOnly cookie, and
-can import an existing Noma user token into the browser. New user registration
-is blocked unless the registration form includes the invitation code.
+can exchange an existing Noma user token or personal access token for a browser
+session. New user registration is blocked unless the registration form includes
+the invitation code.
+
+### Browser sessions and CSRF
+
+The web app never stores a raw token in `localStorage`. Login
+(`POST /api/auth/session` with `userToken`), registration
+(`POST /api/auth/register`), and trusted SSO (`POST /api/auth/sso`) create a
+server-side session and set two cookies:
+
+- `noma_session` -- `HttpOnly; SameSite=Lax; Path=/; Max-Age=30 days`, plus
+  `Secure` everywhere except `localhost`/`127.0.0.1` over plain HTTP. Only the
+  SHA-256 of the cookie is stored, with user, scopes, created, last-seen,
+  expiry, user agent, and client address.
+- `noma_csrf` -- a readable double-submit token. Every cookie-authenticated
+  `POST`, `PUT`, `PATCH`, or `DELETE` must echo it in the `X-Noma-CSRF` header;
+  the server compares it with the hash bound to the session and otherwise
+  returns `403` with `code: "csrf_required"`. `GET /api/auth/session` also
+  returns the token (and re-issues one when the cookie was lost).
+
+Bearer tokens (`Authorization: Bearer ...` or `X-Noma-User-Token`) keep working
+for API clients and agents and need no CSRF header; when both are present the
+bearer token wins. A browser that still has a token from an earlier build
+exchanges it for a session on first load and deletes it from storage.
+
+```text
+GET    /api/auth/session            current principal, scopes, CSRF token
+GET    /api/auth/sessions           own active sessions (?limit=&offset=)
+DELETE /api/auth/sessions/<id>      revoke one of your sessions
+POST   /api/auth/logout             revoke the current session, clear cookies
+```
+
+### Personal access tokens
+
+Scripts and agents should use named personal access tokens instead of the
+legacy per-user token. A token is shown once at creation, starts with
+`noma_pat_`, and is stored only as a hash with a short preview.
+
+```text
+POST   /api/tokens                  {"name", "scopes": ["read"|"write"|"admin"], "expiresInDays"?: 1-365}
+GET    /api/tokens                  own tokens with preview, scopes, expiry, lastUsedAt, active
+DELETE /api/tokens/<id>             revoke; sessions opened with the token end too
+POST   /api/users/me/rotate-token   replace the legacy token; other sessions are revoked
+```
+
+`read` is implied by every token. A token without `write` gets `403`
+(`code: "insufficient_scope"`) on every mutating method except the read-only
+`POST /api/db/query`; `/api/enterprise` additionally needs `admin`. A token can
+only mint tokens within its own scopes, and rotating the legacy token needs
+`admin`. Expired or revoked tokens return `401` with `token_expired` or
+`token_revoked`. Signing in with a personal access token opens a session with
+the same scopes that ends no later than the token. Each user may hold 50 active
+tokens. The legacy token returned at registration still works with full scope,
+but it is deprecated for automation. In the app, **Create API Token** makes a
+read + write token that expires in 90 days and copies it once.
 
 API clients must send the gate token separately from the normal Noma user
 token:
@@ -170,8 +232,9 @@ The left rail provides workspace navigation beyond the page tree:
 | Control | Behavior |
 |---|---|
 | Search | Hybrid lexical, local-embedding, typed-block, graph, trust, and freshness search over visible source blocks. Results preserve the exact source span, version hash, and access decision and open the matching page and source line. |
-| Page template | Starts a new page from blank, meeting-notes, decision-record, project-overview, technical-spec, or research-paper structure. |
+| Page template | Starts a new page from a built-in template (blank, meeting-notes, decision-record, project-overview, technical-spec, research-paper), a workspace template, or a template of the current space. Blueprints with variables open a form first. |
 | Import | Uploads `.noma`, `.md`, `.markdown`, or plain text into the current space. Markdown intake pins stable heading IDs. |
+| Confluence | Imports a whole Confluence space into the current space. See [[wiki-macros-templates-import-export]]. |
 | Favorite | Adds the current page to a per-user Favorites list. Spaces can be favorited from their context menu. |
 | Recent | Tracks the pages and spaces opened by the current user. |
 | Trash | Lists pages and spaces moved out of active navigation and restores them without losing source or document history. |
@@ -203,6 +266,147 @@ POST   /api/trash/site/<id>/restore
 When creating a page through `/api/documents` or
 `/api/sites/<site-id>/documents`, send `templateId` instead of `source`, or
 send `format: "markdown"` with Markdown source for server-side intake.
+
+## Wiki macros, templates, import, and export {id="wiki-macros-templates-import-export"}
+
+### Wiki macros
+
+Pages can pull in live content with wiki macros. They are directives, so the
+source stays reviewable and agents can patch around them by block ID:
+
+| Macro | What it shows |
+|---|---|
+| `::include{page="Title or id" block="block-id"}` | One block of another page (or of this page, without `page=`). Without `block=` it includes the whole page. |
+| `::include{page="..." excerpt}` | The other page's `::excerpt`. |
+| `::excerpt` | Marks this page's summary. The page tree and search results show it as `summary`. |
+| `::children{depth=2 sort="title"}` | Child pages from the space tree, with links and summaries. `sort` is `position`, `title`, or `updated`. |
+| `::issue{key="ENG-12"}` | A live card for a tracker issue: status, assignee, summary. |
+| `::issues{project="ENG" status="in_progress"}` | A table of matching issues. |
+| `::page-properties` / `::page-properties-report{label="adr"}` | A key/value table, and a report of the properties of every page with that label in the space. |
+
+Macros resolve when a page is rendered (`/d/<id>`, `/s/<id>`,
+`/api/documents/<id>/html` and `/llm`, exports) and in the editor preview. Every
+lookup is checked against the viewer. A page the viewer cannot open renders a
+"You do not have access" placeholder and nothing from it. A trashed or unknown
+page renders "not found". Includes nest at most three levels, and an include
+cycle renders a placeholder instead of recursing. At most 200 lookups run per
+render.
+
+The editor preview renders unsaved source in the browser, so it asks the server
+in one batch:
+
+```text
+POST /api/macros/resolve
+{ "documentId": "<page id>", "requests": [
+    { "kind": "include", "page": "Handbook", "block": "policy" },
+    { "kind": "children", "documentId": "<page id>", "depth": 1, "sort": "title" },
+    { "kind": "issue", "key": "ENG-12" },
+    { "kind": "issues", "project": "ENG", "status": "todo", "limit": 20 },
+    { "kind": "page-properties-report", "label": "adr" } ] }
+```
+
+The response has one result per request (`status` is `ok`, `missing`,
+`forbidden`, or `unavailable`). Included blocks come back as AST nodes with
+their IDs and line positions removed. At most 50 requests are answered per call,
+and every `documentId` / `fromDocumentId` must be a page the caller can view.
+
+### Templates and blueprints
+
+Besides the built-in templates, a workspace can hold **workspace templates**
+(managed by workspace admins) and **space templates** (managed by editors of
+that space). A template is `.noma` source with `{{variable}}` placeholders. It
+can use `title`, `title_id`, `space`, `date`, and `author` without declaring
+them. Any other variable must be declared with a `name`, a `label`, an optional
+`default`, and `required`. A template that uses an undeclared placeholder is
+rejected.
+
+```text
+GET    /api/templates?site=<optional-site-id>   built-ins + workspace + that space's templates
+GET    /api/templates/<id>
+POST   /api/templates                           { scope: "workspace"|"site", siteId?, name, description?, category?, source | fromDocumentId, variables? }
+PUT    /api/templates/<id>
+DELETE /api/templates/<id>
+```
+
+`fromDocumentId` saves an existing page as a template ("Save as template" in
+the page toolbar). The page's first heading becomes
+`# {{title}} {id="{{title_id}}"}`, so each new page gets its own title and ID.
+To create a page from a blueprint, send `templateId` and `variables` to
+`POST /api/sites/<id>/documents`. Space templates can only be used inside their
+own space. Missing required variables return `400` with a `missing` list.
+
+Values are filled in so they cannot change the page's structure. Values become
+one line. Inside attributes, quotes and braces are neutralised. In YAML
+frontmatter, values are quoted. If a value would turn a line into a heading,
+list, directive, fence, or attribute block, a zero-width space is placed in
+front of it so it stays plain text.
+
+### Import from Confluence
+
+`POST /api/import/confluence` imports a whole Confluence space into an existing
+Noma space. The caller needs editor access to that space. The request returns
+`202` with a job, and the import runs in the background:
+
+```text
+POST /api/import/confluence   { siteId, deployment: "cloud", baseUrl, email, apiToken, spaceKey, overwrite? }
+POST /api/import/confluence   { siteId, deployment: "datacenter", baseUrl, pat, spaceKey, overwrite? }
+POST /api/import/confluence?site=<id>&overwrite=false   (body: XML space export .zip, or entities.xml)
+POST /api/import/confluence   { siteId, archiveBase64 } | { siteId, entitiesXml } | { siteId, bundle }
+GET  /api/import/jobs/<job-id>
+```
+
+- **Live import** reads every current page of the space through the Confluence
+  Cloud v2 REST API (email + API token) or the Data Center REST API (personal
+  access token), following pagination. Credentials are used for that one job
+  and never stored or returned. The target must be `https` and resolve to a
+  public address. Redirects are refused. Set
+  `NOMA_CLOUD_IMPORT_ALLOW_PRIVATE_HOSTS=1` only for a self-hosted Data Center
+  on a private network.
+- **XML space export** accepts the ZIP from *Space settings → Export space →
+  XML*, or its `entities.xml`. Only current pages are imported: historical
+  versions, drafts, and deleted pages are skipped. XML entities are never
+  expanded. An HTML export is rejected with a hint to export XML instead.
+  Uploads are capped by `NOMA_CLOUD_IMPORT_MAX_BYTES` (default 50 MB).
+- **JSON bundle** (`format: "noma-confluence-bundle"`) takes pages with `id`,
+  `title`, `parentId`, `storage` (storage-format XHTML), and `labels`.
+
+Storage format becomes `.noma`: headings (shifted one level under the page
+title, with explicit IDs), paragraphs, lists, task lists, tables, code and
+noformat blocks, info/note/warning/tip/panel callouts, expand sections, status
+lozenges, page links (as `[[wikilinks]]`), images (as `::figure`), and the
+excerpt, include, excerpt-include, children, Jira-issue, page-properties, and
+page-properties-report macros (as the Noma macros above). Other macros are kept
+as readable text in a `::confluence_macro` block and counted in the job's `loss`
+report. Attachments are not copied. Figures link to the original Confluence
+download URL (or `attachments/<pageId>/<file>` for file exports), and the job
+result says how many attachment links there are.
+
+Each page keeps its Confluence ID, space, URL, author, dates, and version in
+frontmatter (`source: confluence`). The parent/child hierarchy becomes the
+space's page tree, and Confluence labels become page labels. Re-importing is
+idempotent: pages are matched by Confluence page ID. Unchanged pages are left
+alone, and changed pages get a new revision. A page edited in Noma since the
+last import is skipped unless `overwrite: true`. The job status reports
+`total`, `processed`, `created`, `updated`, `unchanged`, `skipped`, and
+`failed` counts, with a per-page result list. Only the job's creator or an
+editor of the space can read it. Only one import per space runs at a time.
+Jobs interrupted by a server restart are marked failed.
+
+### Export
+
+`GET /api/documents/<id>/export?to=` downloads one page as `pdf`, `docx`,
+`markdown`, `html`, `noma`, `llm`, or `json`. Macros are resolved for the
+viewer. HTML and PDF render with escape hatches and external assets off. PDF
+export needs Puppeteer and its Chrome build on the server. Without them it
+returns `501` with `code: "pdf_unavailable"`. At most two PDF exports run at
+once.
+
+`GET /api/sites/<id>/export?to=site-zip` downloads the space as a static HTML
+site: an `index.html` page tree plus one page per document, with child-page
+links rewritten to the exported files. `?to=noma-zip` downloads the `.noma`
+sources, a `manifest.json` (IDs, titles, parents, folders, labels, hashes), and
+a `book.noma.yml` manifest, so `noma render book.noma.yml --to site` works
+offline. The page toolbar's **Export** menu offers both.
 
 ## Page tree, labels, watching, and version diffs
 
@@ -455,6 +659,11 @@ responses and network errors retry after 30s, 1m, 2m, and so on, up to 6 hours
 apart, for 8 attempts in total; after that the delivery is marked `failed`.
 Retries reuse the delivery ID so receivers can deduplicate.
 
+Pages under a view restriction (their own or an inherited one) never emit webhook
+events, so restricted titles and IDs do not leave the workspace. Search filters,
+the people directory, popular pages, My tasks, mention and task notifications,
+and digests all apply the same view restrictions as the page itself.
+
 **SSRF protection.** Webhook URLs must be `http` or `https` without
 credentials. URLs pointing at loopback, private (RFC 1918), link-local
 (including cloud metadata), CGNAT, multicast, or unique-local IPv6 addresses are
@@ -504,6 +713,81 @@ replies fail immediately.
 
 The Notifications panel has a **Notification settings** section for the email
 address, per-type channels, and the digest frequency.
+
+## Attachments and images
+
+Pages can carry files: screenshots, PDFs, spreadsheets, and exports. Upload
+from the **Attachments** panel in the inspector, or drop or paste files straight
+into the source editor. Images are inserted at the cursor as a figure, and
+other files as a link:
+
+```text
+::figure{src="att:<attachment-id>" alt="Growth chart"}
+::
+
+Read the [spec](att:<attachment-id>) or refer to a file by name: [spec](att:spec.pdf).
+```
+
+The reference stays in the `.noma` source, so pages still round-trip
+through source with stable IDs. When Noma Cloud renders a page (the preview,
+`/d/<id>`, `/api/documents/<id>/html`, and the published `/s/<id>` site), it
+maps each `att:` reference to a short-lived signed URL. That URL is bound to
+the viewer and is checked again on every request. An `att:` reference resolves
+only against the same page's attachments, so one page cannot embed another
+page's files. A reference that does not resolve renders as a placeholder.
+
+| Behavior | Detail |
+|---|---|
+| Storage | Content-addressed blobs under `<storage root>/blobs/ab/cd/<sha256>`. Identical uploads share one blob. Uploads stream to a temp file and are renamed into place. The `BlobStore` interface in `src/cloud-blobs.ts` is where an S3-compatible driver plugs in. |
+| Limits | 25 MB per file (`NOMA_CLOUD_MAX_ATTACHMENT_BYTES`). 1 GB of live attachments per space, or per uploader for pages outside a space (`NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES`). Over the limit, the server returns `413` with code `attachment_too_large` or `attachment_quota_exceeded`. |
+| Content type | Taken from the file's magic bytes, not the declared type. Executables (PE, ELF, Mach-O, shebang scripts, and executable extensions) are rejected with `415`. Filenames lose directory parts and control characters. |
+| Serving | `x-content-type-options: nosniff`, CSP `sandbox`, and an ETag. PNG, JPEG, GIF, WebP, and PDF are served `inline`. Everything else downloads as an attachment. SVG, HTML, and XML are always sent as `application/octet-stream`. |
+| Permissions | Viewers of a page can list and download its attachments. This includes page share links and space share links that reach the page. Editors upload and delete. Page restrictions apply to attachments too. |
+| Lifecycle | Deleting an attachment hides it. Purging the page from trash removes its attachment rows and any blob that no other page still references. |
+| Search and backup | Filenames are indexed as `attachment` rows in `/api/search`. `/api/backup/export` embeds attachments, base64 encoded and hash-checked, up to 50 MB (pass `includeAttachments: false` to skip them). Import restores them for pages the importer can edit. |
+
+```text
+POST   /api/documents/<id>/attachments               raw body; content-type + x-filename headers
+GET    /api/documents/<id>/attachments
+DELETE /api/documents/<id>/attachments/<attachment-id>
+GET    /api/attachments/<attachment-id>              bearer/share access, or ?exp=&p=&sig= signed URL
+```
+
+Uploads send the raw file bytes. Multipart form bodies are rejected with `415`.
+
+## Page restrictions
+
+Space permissions decide who can reach a page. **Restrictions** can then narrow
+that group for a single page, like Confluence's view and edit restrictions.
+Open them from the lock badge in the page header, or from **Restrictions...**
+in the page's context menu.
+
+| Restriction | Effect |
+|---|---|
+| View | Only the listed users and groups can see the page. The page's own owners and workspace admins can always see it. Everyone else loses the page from every channel: direct reads, space listings, the page tree, breadcrumbs, wiki and backlinks, search, labels, recents and favorites, trash, activity, the DB API, Ask Noma and knowledge exports, agents, notifications, attachments, and the published `/s/<id>` site. |
+| Inherited view | View restrictions apply to every page below the restricted page, in any space's page tree. A child page is visible only if every restricted ancestor allows the viewer. |
+| Edit | Only the listed users and groups (plus page owners and admins) can edit. Everyone else who has access sees the page as a viewer. Edit restrictions apply to the page itself and are not inherited. |
+
+Restrictions never grant access. They only narrow grants that already exist.
+Share links, whether on the page or on its space, count as anonymous: they
+cannot open a view-restricted page, and an editor link on an edit-restricted
+page only gives view access. Agent grants are capped by the agent owner's
+access after restrictions. Signed attachment URLs stop working as soon as the
+viewer loses access.
+
+A space update from someone who cannot see a restricted page keeps that page
+where it is. Only the page's direct owners, owners of a space that contains it,
+and workspace admins can view or change its restrictions. A space owner can
+therefore always unlock a page, even one hidden from them.
+
+```text
+GET /api/documents/<id>/restrictions
+PUT /api/documents/<id>/restrictions   {"view": {"users": ["<user-id>"], "groups": ["<group-id>"]}, "edit": {"users": [], "groups": []}}
+```
+
+The response lists named principals, the restricted ancestors in `inherited`,
+and `canManage`. Tree nodes from `GET /api/sites/<id>/tree` carry
+`restrictions: {view, edit, inheritedView}` for the rail's lock icons.
 
 ## Ask Noma, trust, and knowledge health
 
@@ -616,6 +900,169 @@ GET      /api/collections
 GET|POST /api/analytics
 ```
 
+## Generative AI on the trust loop
+
+Noma Cloud can call a language model, but model output never edits a page
+directly. Generated answers are checked against the retrieved blocks, and
+generated edits become proofed patch proposals that need a different
+collaborator to approve before a hash-checked apply.
+
+Configure a provider with environment variables. Without one, every AI
+feature falls back to the extractive behaviour above and reports
+`ai_unavailable` with a reason (`not_configured`, `model_not_allowed`,
+`zero_retention_required`, `user_budget_exhausted`, `agent_budget_exhausted`,
+`provider_error`, or `refused`).
+
+| Variable | Meaning |
+|---|---|
+| `ANTHROPIC_API_KEY` | Enables the Claude Messages API provider |
+| `NOMA_CLOUD_LLM_MODEL` | Model ID (default `claude-opus-5`) |
+| `NOMA_CLOUD_LLM_PROVIDER` | `anthropic`, `fake` (deterministic offline model), or `none` |
+| `NOMA_CLOUD_LLM_TIMEOUT_MS`, `NOMA_CLOUD_LLM_MAX_RETRIES` | Per-attempt timeout and retries on 408/409/429/5xx and network errors |
+| `NOMA_CLOUD_LLM_ZERO_RETENTION` | Operator attestation that the provider account has zero data retention |
+| `NOMA_CLOUD_LLM_FALLBACKS` | `off` disables server-side refusal fallbacks (on by default) |
+| `NOMA_CLOUD_LLM_EFFORT` | Optional `output_config.effort` (`low` to `max`) |
+| `NOMA_CLOUD_AI_USER_BUDGET_USD` | Per-user spend cap over a rolling 30 days (default 10) |
+| `NOMA_CLOUD_AI_AGENT_BUDGET_USD` | Budget of each user's system AI agent (default 25) |
+| `NOMA_CLOUD_AI_ALLOW_PRIVATE_SOURCES` | Lets refresh fetch private or loopback URLs (on-premises only) |
+
+Every call is charged to an agent identity: the caller's system agent
+`noma-ai-<user-id>` (listed under Scoped agents) or a user-owned agent passed
+as `agentId`. The call is refused before it is sent when the worst-case cost
+would exceed the user's or the agent's remaining budget. Each call is recorded
+as an agent run and in `GET /api/ai/usage`. Enterprise policy is checked on
+every call: once a workspace admin saves a policy, `modelAllowlist` must list
+the model (including a model that served a fallback), and
+`requireZeroRetentionModels` requires the zero-retention attestation. An
+untouched default policy allows the operator-configured model.
+
+- **Generative Ask.** `POST /api/ask` with `mode: "generative"` runs the same
+  permission-scoped retrieval, sends only the retrieved blocks to the model
+  as quoted data with their `doc:block@hash` references, and keeps only
+  citations that match a retrieved block and version. The answer abstains
+  when retrieval is weak, when the model abstains, or when citations fail
+  validation. Unverifiable citations are removed and listed in
+  `generation.invalidCitations`. Conflict detection is unchanged, and the UI
+  renders the answer as escaped text.
+- **Summarize.** `POST /api/documents/<id>/ai/summarize` returns a summary.
+  With `insert: true` it creates a proposal that adds or replaces an
+  `ai-summary` block.
+- **Draft changes.** `POST /api/documents/<id>/ai/draft` with an
+  `instruction`. The model returns patch operations. Each operation is
+  validated against `schemas/patch-op.schema.json` (`rename_id` is never
+  allowed, at most 30 operations) and proofed before a proposal is stored.
+- **Refresh from sources.** `POST /api/documents/<id>/ai/refresh` with
+  `sourceUrls`, `sourceDocumentIds`, or `connectorSourceIds` (up to five).
+  URLs are fetched with DNS-pinned private-address blocking, a size limit, and
+  a timeout. The proposal summary names the cited sources, and the proof
+  record keeps each source's content hash.
+- **Draft a page.** `POST /api/sites/<id>/ai/draft-page` with `title`,
+  `instruction`, and an optional `parentId` stores a page proposal. The page
+  is created only after another editor approves it and someone applies it.
+
+```text
+GET  /api/ai/status
+GET  /api/ai/usage
+POST /api/ask                                   {"mode": "generative"}
+POST /api/documents/<id>/ai/summarize           {"insert": true}
+POST /api/documents/<id>/ai/draft               {"instruction": "..."}
+POST /api/documents/<id>/ai/refresh             {"sourceUrls": ["https://..."]}
+POST /api/sites/<id>/ai/draft-page              {"title": "...", "instruction": "..."}
+GET  /api/sites/<id>/ai/page-proposals[/<proposal-id>]
+POST /api/sites/<id>/ai/page-proposals/<proposal-id>/review   {"decision": "approved"}
+POST /api/sites/<id>/ai/page-proposals/<proposal-id>/apply
+```
+
+The requesting user is recorded as the proposer, so they cannot approve their
+own AI draft. The proof record carries the system agent, model, instruction,
+and sources. In the app, the page header **AI** menu offers Summarize, Draft
+changes, and Refresh from sources. Results open in the Agent Review panel.
+The Ask panel's **Generate answer** toggle turns citations into links to the
+cited blocks.
+
+## Stale-knowledge maintenance
+
+Each space can run a maintenance sweep. The sweep turns knowledge-health
+findings into tracked items: blocks past `reviewBy` or with low freshness,
+conflicting claims, and broken wiki links. Items resolve when the finding
+disappears. When the space opts into AI refresh, the sweep also drafts refresh
+proposals for stale pages that record sources. Sources are trust `sourceOf`
+URLs and connector sources linked to the page. Drafts are limited by
+`maxProposalsPerRun`, and a page that already has a pending draft is skipped.
+
+Scheduled sweeps run as the editor who saved the settings, so they see only
+what that person can see and spend that person's AI budget. Manual runs use
+the caller and are limited to one per minute per space. An in-process timer
+(`NOMA_CLOUD_MAINTENANCE_TICK_MS`, default 15 minutes, `0` disables it) sweeps
+up to five due spaces per tick. Deployments that prefer cron can run
+`npx tsx apps/worker/cloud-maintenance.ts` with the same `NOMA_CLOUD_*`
+storage variables.
+
+```text
+GET|PUT /api/sites/<id>/maintenance      {"enabled", "aiRefresh", "intervalHours", "maxProposalsPerRun"}
+POST    /api/sites/<id>/maintenance/run
+GET     /api/sites/<id>/maintenance/items?status=open|resolved
+```
+
+## Git-native spaces
+
+A space can live in a Git repository as a directory of `.noma` files. The
+server publishes a manifest with page IDs, tree-derived paths, labels, and
+revision hashes:
+
+```text
+GET /api/sites/<id>/sync-manifest
+```
+
+The CLI uses a personal user token (`NOMA_CLOUD_TOKEN`) against a server
+(`NOMA_CLOUD_URL`):
+
+```bash
+noma cloud export-space --site <space-id> --out docs/space
+noma cloud sync --site <space-id> --dir docs/space [--pull-only|--push-only] [--dry-run] [--json]
+```
+
+Paths follow the page tree: a page is `<slug>.noma`, and its children sit in
+the `<slug>/` directory. The sync keys `cloudId`, `cloudHash` (the revision the
+file was last synced with), `cloudParent`, and `cloudLabels` are added to the
+file's frontmatter. They are removed again before upload, so the server source
+is byte-identical.
+
+The sync compares each file with `cloudHash`. Server-only changes are pulled.
+Local-only changes are pushed with `expectedHash`. New files without
+`cloudId` become pages under the page their directory maps to. When a page
+changed on both sides, the local file is kept, the server version is written
+next to it as `<file>.noma.conflict`, and the command exits with status 1.
+Resolve the conflict, set `cloudHash` to the server hash, and sync again.
+
+A scheduled GitHub Action keeps a repository and a space in step:
+
+```yaml
+name: Sync Noma space
+on:
+  schedule: [{ cron: "*/30 * * * *" }]
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npx -y @ferax564/noma-cli cloud sync --site "$SPACE_ID" --dir docs/space
+        env:
+          NOMA_CLOUD_URL: ${{ vars.NOMA_CLOUD_URL }}
+          NOMA_CLOUD_TOKEN: ${{ secrets.NOMA_CLOUD_TOKEN }}
+          SPACE_ID: ${{ vars.NOMA_SPACE_ID }}
+      - run: |
+          git config user.name "noma-sync"
+          git config user.email "noma-sync@users.noreply.github.com"
+          git add docs/space
+          git diff --cached --quiet || git commit -m "docs: sync Noma space"
+          git push
+```
+
 ## Portable backup, offline recovery, and realtime humans
 
 `POST /api/backup/export` produces a deterministic `.noma` bundle sorted by
@@ -623,7 +1070,14 @@ document ID, with per-file hashes, one bundle digest, and optional repository,
 branch, and pull-request-review metadata. Import verifies every source hash,
 reports corrupt bundles and concurrent edits, and applies creates/updates only
 when the conflict plan is clean. Canonical content remains reconstructable
-plain `.noma` source.
+plain `.noma` source. Applying an import validates the whole bundle first
+(hashes, conflicts, free IDs for creates, editor access for updates) and then
+writes every document in one SQLite transaction, so a failure leaves nothing
+half-imported. The plan only describes documents you can read; if a create
+targets an ID that is already taken, or an update targets a page you cannot
+edit, the import fails with one uniform `409` (`code:
+"backup_ids_unavailable"`) that names no IDs. Bundles hold at most 1,000
+documents (`413`, `code: "backup_too_large"`).
 
 Noma Cloud is an installable PWA. The service worker caches the application
 shell, while each edit stores a full local draft containing base hash, base
@@ -632,9 +1086,15 @@ base still matches is restored automatically. If the server changed, the UI
 offers explicit recover, three-way merge, or discard choices and renders
 conflict markers rather than overwriting either author.
 
+Server-side offline drafts are capped at 200 per user (`429`, `code:
+"offline_draft_quota_exceeded"`) and 1 MB of base plus draft source (`413`,
+`code: "offline_draft_too_large"`). Knowledge analytics accept 120 events per
+user per minute (`429`, `code: "analytics_rate_limited"`), and each user's
+events are kept for 90 days, up to 10,000.
+
 Realtime human operations use the same stable IDs, proof engine, expected
 hash, immutable document revisions, and ordered operation sequence as normal
-writes. The feed is pollable with `after=<sequence>`. Realtime operations reject
+writes. The feed is pollable with `after=<sequence>` and `limit` (default 500). Realtime operations reject
 agent actors; asynchronous proofed proposals remain the agent default.
 
 ```text
@@ -644,6 +1104,18 @@ GET|POST /api/offline/drafts
 POST /api/offline/drafts/<draft-id>/merge
 GET|POST /api/realtime/documents/<document-id>/operations
 ```
+
+## Bounded work and pagination
+
+Knowledge endpoints (Ask Noma, knowledge search, health, LLM Wiki, semantic
+collections, agent inbox, analytics, backup export) read at most the 2,000
+most recently updated pages the caller can access. Parsed and indexed blocks
+are cached in memory by document ID and content hash, and at most 250 changed
+pages are re-parsed per request; later requests index the rest. Platform
+listings take `?limit=&offset=` and echo both in the response:
+`GET /api/agents`, `GET /api/agents/<id>/runs`, `GET /api/offline/drafts`,
+`GET /api/enterprise/scim`, `GET /api/enterprise/legal-holds`, `GET /api/tokens`,
+and `GET /api/auth/sessions`.
 
 ## Enterprise policy
 
@@ -746,6 +1218,7 @@ Use the view switch in the page header when the workspace feels too dense:
 
 | Mode | Use it for |
 |---|---|
+| Visual | Edit the page as formatted blocks, with live co-editing. The default for new users; each user's last choice is remembered. |
 | Source | Give the `.noma` editor the full writing canvas. |
 | Split | Keep source and rendered preview side by side. |
 | Preview | Hide the source pane and side panels so the paper/artifact becomes the main surface. |
@@ -766,6 +1239,59 @@ Mouse editing is available in Preview mode:
 | Click **+ Text** on the selected-block toolbar | Insert a new paragraph after the selected block. |
 | Drag the paper edge | Resize the preview paper width for reading and screenshots. |
 | Drag the divider in Split mode | Resize the source and preview panes. |
+
+## Visual editing and live co-editing
+
+Visual mode is a block editor over the same `.noma` source. Each Noma block
+maps to one editor block: headings keep their stable IDs and aliases, lists
+keep `{#id}` item markers and `[ ]` task state, tables stay pipe tables, and
+directives become cards with an **Attributes** editor. Callouts, claims,
+evidence, decisions, and figures get styled cards. `::math` and
+`::diagram{kind="mermaid"}` are edited as code. `toc`, `children`, and
+`include` show as chips. Blocks the editor cannot represent, such as datasets,
+plots, and controls, are shown as raw Noma source and round-trip unchanged.
+
+Saving writes source, not editor state. Blocks you did not touch are copied
+from the saved source byte for byte, so a visual edit changes only the lines of
+the blocks you edited. Renaming a heading keeps its old ID as an explicit
+`{id="…"}`. New claims, decisions, figures, and risks get a deterministic ID
+such as `decision-1`. Switch to Source at any time to see the exact text.
+
+| Input | Result |
+|---|---|
+| `/` | Block menu: headings, lists, task list, table, code, quote, callout, warning, decision, claim, evidence, figure, math, mermaid, table of contents, child pages, include, divider, raw Noma |
+| `## `, `- `, `1. `, `[ ] `, `> `, three backticks, `---` | Markdown shortcuts |
+| `**bold**`, `*em*`, backtick code, `[[id]]` | Inline shortcuts |
+| Select text | Floating toolbar: bold, italic, code, link, block link, heading level; table row and column buttons inside tables |
+| Paste HTML or Markdown | Converted through the Markdown ingest pipeline; scripts, styles, and unsafe links are dropped |
+| Ctrl/Cmd+S, Ctrl/Cmd+B/I/E/K, Shift+Enter, Tab in tables | Save, marks, link, line break, next cell |
+
+When the page has no unsaved source draft and the server is reachable, Visual
+mode joins the page's live room. Everyone editing the page sees the others'
+changes as they type, their cursors with names and colours, and their avatars
+in the page header. If the socket cannot connect, Visual mode keeps working on
+your device and you save as usual. Typing in the raw Source pane pauses live
+editing until that draft is saved, because a source draft is saved the classic
+way with a hash check.
+
+Live edits become normal page history. The server writes a checkpoint
+revision at most once per 30 seconds of activity, and again when the last
+editor leaves. Changes made outside the room, such as an applied agent patch,
+an API `PUT`, or a restored version, are merged into the live document block
+by block. People editing live keep their changes, and nobody overwrites the
+agent.
+
+| Route | Behaviour |
+|---|---|
+| `GET /api/collab/documents/<id>` | Room status for viewers and above: `live`, connected `clients` (name, colour, role), `pendingUpdates`, and the source `hash`. |
+| WebSocket `/api/collab/documents/<id>` | Live room. The first frame is `{"type":"hello","clientId":<yjs id>,"token"?,"share"?}`, or a bearer or share header. Viewers and viewer links are read-only. Editors write. The access-gate cookie is honoured. Cross-origin sockets are refused. |
+
+Every update is stored in SQLite before it is acknowledged, applied, and
+broadcast. A checkpoint compacts the stored updates. Access is checked on
+connect, after every change to the page record (for example, a collaborator is
+removed or a share link is revoked), and on a timer. Revoked users and trashed
+pages are disconnected. The server replaces each cursor's name and colour with
+the identity it knows, so nobody can pose as someone else.
 
 ## Link pages like Obsidian
 
@@ -969,9 +1495,11 @@ These routes are generated from the same saved source:
 | `/cloud.html?doc=<id>` | Editable or readonly single-page shell. |
 | `/d/<id>` | Rendered single-page artifact. |
 | `/s/<id>` | Rendered workspace site. |
-| `/api/documents/<id>/export?to=html` | HTML export for one document. |
-| `/api/documents/<id>/export?to=llm` | LLM context export for one document. |
-| `/api/documents/<id>/export?to=json` | JSON AST export for one document. |
+| `/api/documents/<id>/html` | Rendered HTML for one document (inline, macros resolved). |
+| `/api/documents/<id>/llm` | LLM context for one document, with included content and provenance comments. |
+| `/api/documents/<id>/json` | JSON AST for one document. |
+| `/api/documents/<id>/export?to=<format>` | Download one document as `pdf`, `docx`, `markdown`, `html`, `noma`, `llm`, or `json`. |
+| `/api/sites/<id>/export?to=<format>` | Download a whole space as a static HTML site (`site-zip`) or as `.noma` sources (`noma-zip`). |
 
 ## Query the DB API
 
@@ -1046,8 +1574,14 @@ Noma Cloud follows the same safety posture as the workbench:
 - request bodies have size limits
 - server-side render paths escape user source before artifact output
 - rendered links, buttons, datasets, and citations drop `javascript:`, `data:`, and other script-capable URL schemes
-- published artifacts are served with a CSP `sandbox`, so page scripts run on an opaque origin and cannot read the app's stored token
-- workspace-wide enterprise settings require a workspace admin: the IDs in `NOMA_CLOUD_ADMIN_USER_IDS`, or the first user ever registered when that is unset
+- published artifacts are served with a CSP `sandbox`, so page scripts run on an opaque origin
+- browser sessions live in an HttpOnly `noma_session` cookie; no raw token is kept in `localStorage`, and cookie-authenticated writes require the `X-Noma-CSRF` header
+- personal access tokens are hashed at rest, scoped (`read`, `write`, `admin`), expiring, and revocable; revoking one ends the sessions opened with it
+- token previews are visible only to their owner (`/api/users`, `/api/db/query`)
+- workspace-wide enterprise settings require a workspace admin: the IDs in `NOMA_CLOUD_ADMIN_USER_IDS`; production fails closed without it, and development falls back to the first user ever registered
+- `?access=` gate-token checks are rate limited on every path
+- backup imports are validated in full and written in one transaction without revealing which inaccessible IDs exist
+- legacy JSON records are moved out of the data directory to `legacy-imported-<timestamp>/` after their one-time SQLite import
 - adding an existing page to a space requires owner access on the page
 - agent grants never exceed the agent owner's current access
 - hosted patch proofs never read `::dataset{src=...}` files from the server
@@ -1075,6 +1609,9 @@ payload handling.
 | Invite is disabled | Only owners can invite collaborators. |
 | Published page is old | Save the page before copying/opening a published link. |
 | DB query returns empty results | Confirm the bearer token belongs to a user with access to the workspace or document. |
+| `403 csrf_required` from a script | Send a bearer token instead of the browser cookie, or echo the `noma_csrf` cookie in `X-Noma-CSRF`. |
+| `403 insufficient_scope` | The personal access token lacks `write` (mutations) or `admin` (`/api/enterprise`); create one with the needed scopes. |
+| `403 admin_not_configured` | Set `NOMA_CLOUD_ADMIN_USER_IDS` on the production server and restart it. |
 | A patch fails | Use a smaller patch op, verify the target ID in the outline, and fix validation errors before saving. |
 | A collaborator cannot edit | Invite their user ID as editor or create an editor share link. |
 

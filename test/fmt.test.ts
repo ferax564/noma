@@ -60,3 +60,25 @@ test("fmt preserves alignment markers", () => {
   const out = formatSource(src);
   assert.match(out, /\|\s*:-+\s*\|\s*:-+:\s*\|\s*-+:\s*\|/);
 });
+
+const MISALIGNED = "| a | bb |\n| --- | --- |\n| 1 | 2 |";
+
+test("fmt skips tables inside tilde fences and fences with info strings", () => {
+  for (const open of ["~~~", "~~~~ text", "```c++", "```js title=\"x\""]) {
+    const close = open.startsWith("~") ? open.split(" ")[0]! : "```";
+    const src = `${open}\n${MISALIGNED}\n${close}\n`;
+    assert.equal(formatSource(src), src, open);
+  }
+});
+
+test("fmt keeps a long backtick fence open across shorter inner fences", () => {
+  const src = `\`\`\`\`md\n\`\`\`\n${MISALIGNED}\n\`\`\`\n${MISALIGNED}\n\`\`\`\`\n`;
+  assert.equal(formatSource(src), src);
+});
+
+test("fmt formats tables again after a fence closes", () => {
+  const src = `~~~\n${MISALIGNED}\n~~~\n\n${MISALIGNED}\n`;
+  const out = formatSource(src);
+  assert.ok(out.startsWith(`~~~\n${MISALIGNED}\n~~~\n\n`));
+  assert.match(out, /\| a {3}\| bb {2}\|/);
+});

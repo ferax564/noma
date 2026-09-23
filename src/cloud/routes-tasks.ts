@@ -76,7 +76,7 @@ export async function routeDocumentTasks(
   const baseHash = input.baseHash === undefined ? undefined : typeof input.baseHash === "string" ? input.baseHash : "";
   if (baseHash !== undefined && !/^[a-f0-9]{8,64}$/.test(baseHash)) throw new HttpError(400, "baseHash must be 8-64 lowercase hex characters");
   const item = [...walk(parse(document.source, { filename: `${document.id}.noma` }))].find((node) => node.type === "list_item" && node.id === taskId);
-  const content = item?.type === "list_item" ? toggledTaskContent(taskId, item.content, input.done) : undefined;
+  const content = item?.type === "list_item" ? toggledTaskContent(item.content, input.done) : undefined;
   if (!content) throw new HttpError(409, "The task is no longer a checkbox item in the page source", { code: "task_changed" });
   if ((task.status === "done") === input.done && item?.type === "list_item" && (/^\[[xX]\]/.test(item.content.trim()) === input.done)) {
     sendJson(res, 200, { ...taskResponse(task, taskBlockHashes(document.source), today), changed: false });

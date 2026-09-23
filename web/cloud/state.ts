@@ -1,5 +1,5 @@
 /** Shared mutable app state. ES module bindings cannot be reassigned by importers, so every mutable value lives on the exported `state` object. */
-import { panelsOpenStorageKey, previewPaperWidthStorageKey, query, splitSourceRatioStorageKey, themeStorageKey, userStorageKey, viewModeStorageKey } from "./constants.js";
+import { panelsOpenStorageKey, previewPaperWidthStorageKey, query, splitSourceRatioStorageKey, themeStorageKey, viewModeStorageKey } from "./constants.js";
 import type { AgentInboxItem, AskNomaResponse, CloudActivityEvent, CloudApproval, CloudCollaboratorGrant, CloudComment, CloudDocumentResponse, CloudDocumentRevisionSummary, CloudGroup, CloudGroupGrant, CloudIssue, CloudIssueDetail, CloudNavigationItem, CloudNotification, CloudPageTemplate, CloudPatchProposal, CloudProject, CloudSearchResult, CloudShareGrant, CloudSiteResponse, CloudSprint, CloudTrashItem, CloudUserSession, KnowledgeHealthItem, LocalOfflineDraft, RenderState, ScopedAgentSummary, ThemeMode, ViewMode } from "./types.js";
 import { clamp } from "./util.js";
 
@@ -55,7 +55,7 @@ export interface CloudAppState {
 export const state: CloudAppState = {
   cloudAvailable: false,
   busy: false,
-  cloudUser: readCloudUser(),
+  cloudUser: undefined,
   sites: [],
   currentSite: undefined,
   pages: [],
@@ -103,25 +103,6 @@ export const state: CloudAppState = {
 
 export const shareToken = readShareToken();
 
-function readCloudUser(): CloudUserSession | undefined {
-  const stored = localStorage.getItem(userStorageKey);
-  if (!stored) return undefined;
-  try {
-    const parsed = JSON.parse(stored) as Partial<CloudUserSession>;
-    if (parsed.id && parsed.name && parsed.token) {
-      return {
-        id: parsed.id,
-        name: parsed.name,
-        token: parsed.token,
-        tokenPreview: parsed.tokenPreview,
-      };
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
-}
-
 function readShareToken(): string | undefined {
   const token = query.get("share");
   return token && /^ns_[A-Za-z0-9_-]{16,}$/.test(token) ? token : undefined;
@@ -132,8 +113,16 @@ export function readCloudId(value: string | null): string | undefined {
 }
 
 function readViewMode(): ViewMode {
-  const stored = localStorage.getItem(viewModeStorageKey);
-  return stored === "source" || stored === "preview" ? stored : "split";
+  return storedViewMode(localStorage.getItem(viewModeStorageKey)) ?? "visual";
+}
+
+/** The Visual/Source/Split/Preview choice this user last made on this browser, if any. */
+export function storedUserViewMode(userId: string): ViewMode | undefined {
+  return storedViewMode(localStorage.getItem(`${viewModeStorageKey}:${userId}`));
+}
+
+function storedViewMode(value: string | null): ViewMode | undefined {
+  return value === "source" || value === "preview" || value === "split" || value === "visual" ? value : undefined;
 }
 
 function readPanelsOpen(): boolean {

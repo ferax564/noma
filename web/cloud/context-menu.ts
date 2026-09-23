@@ -7,6 +7,7 @@ import { pageAncestors } from "./page-meta.js";
 import { canMoveDown, canMoveUp, canOutdent, indentPage, movePageDown, movePageUp, outdentPage } from "./page-tree.js";
 import { canCreatePage, canEditPage, canEditSite, canEditSiteRecord } from "./permissions.js";
 import { deletePreviewSection, insertPreviewBlockAfter, previewElementBlockId } from "./preview.js";
+import { openRestrictionsDialog } from "./restrictions.js";
 import { state } from "./state.js";
 import type { CloudDocumentResponse, CloudSiteResponse, ContextMenuAction, WikiResolvedLink } from "./types.js";
 import { copyText, positiveInt, setCloudStatus } from "./util.js";
@@ -233,6 +234,11 @@ export function showPageContextMenu(event: MouseEvent, page: CloudDocumentRespon
     {
       label: "Copy page ID",
       action: () => void copyText(page.id, "Copied page ID"),
+    },
+    {
+      label: "Restrictions...",
+      disabled: !state.cloudUser,
+      action: () => void openRestrictionsDialog(page.id, page.title),
     },
     {
       label: favorite ? "Remove from favorites" : "Add to favorites",

@@ -12,6 +12,7 @@ import type {
 } from "../cloud-db.js";
 import { parse } from "../parser.js";
 import { lineDiff } from "../proof.js";
+import { renderLlm } from "../renderer-llm.js";
 import {
   type AccessContext,
   type CloudServerConfig,
@@ -35,12 +36,17 @@ import {
   requireDocumentPrecondition,
   updateDocument,
 } from "./records.js";
+import { attachmentResolver } from "./attachments.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics } from "./routes-analytics.js";
 import { routeDocumentTasks } from "./routes-tasks.js";
 import { emitPageWebhookEvent } from "./webhooks.js";
 import { routeComments } from "./routes-comments.js";
+import { routeDocumentAttachments } from "./routes-attachments.js";
+import { routeDocumentRestrictions } from "./routes-restrictions.js";
+import { cloudMacroResolvers } from "./macros.js";
+import { routeDocumentExport } from "./routes-export.js";
 import { routePatchProposals } from "./routes-patch.js";
 
 export async function routeDocuments(
@@ -104,6 +110,16 @@ export async function routeDocuments(
     return;
   }
 
+  if (suffix === "attachments") {
+    await routeDocumentAttachments(req, res, parts[4], config, principal, record);
+    return;
+  }
+
+  if (suffix === "restrictions") {
+    await routeDocumentRestrictions(req, res, config, principal, record);
+    return;
+  }
+
   if (suffix === "comments") {
     await routeDocumentComments(req, res, parts[4], parts[5], config, principal, record, undefined, parts[6]);
     return;
@@ -129,9 +145,14 @@ export async function routeDocuments(
     return;
   }
 
+  if (suffix === "export") {
+    await routeDocumentExport(req, res, new URL(req.url ?? "/", "http://noma.local"), config, principal, record);
+    return;
+  }
+
   if (suffix === "html" && method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
     return;
   }
 
@@ -143,7 +164,8 @@ export async function routeDocuments(
 
   if (suffix === "llm" && method === "GET") {
     requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, inspectSource(record.source, record.id).llm, "text/plain; charset=utf-8");
+    const doc = parse(record.source, { filename: `${record.id}.noma` });
+    sendText(res, 200, renderLlm(doc, cloudMacroResolvers(config, principal, record.id)), "text/plain; charset=utf-8");
     return;
   }
 
@@ -304,7 +326,7 @@ export async function routeDocumentApprovals(
       note: optionalString(input.note)?.slice(0, 4_000) ?? existing.note,
       updatedAt: now,
     });
-    writeNotification(
+    if (config.store.documentAccessRole(existing.requestedBy, document.id)) writeNotification(
       config,
       existing.requestedBy,
       "approval_updated",

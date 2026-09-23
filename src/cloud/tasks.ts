@@ -88,11 +88,11 @@ export function displayTaskText(text: string): string {
   return text.replace(/@\{[A-Za-z0-9_-]{8,80}\}/g, "").replace(DUE_RE, " ").replace(/\s+/g, " ").trim().slice(0, 240);
 }
 
-/** New list-item content for a checkbox toggle, keeping the `{#id}` marker and task text intact. */
-export function toggledTaskContent(taskId: string, content: string, done: boolean): string | undefined {
+/** New list-item body for a checkbox toggle; `replace_body` keeps the item's `{#id}` marker itself. */
+export function toggledTaskContent(content: string, done: boolean): string | undefined {
   const match = TASK_CONTENT_RE.exec(content.trim());
   if (!match) return undefined;
-  return `{#${taskId}} [${done ? "x" : " "}] ${match[2]!.trim()}`;
+  return `[${done ? "x" : " "}] ${match[2]!.trim()}`;
 }
 
 function newTaskId(): string {

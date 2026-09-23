@@ -25,8 +25,9 @@ export interface ParseOptions {
 }
 
 const FRONTMATTER_RE = /^---\s*$/;
-const HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
-const FENCE_RE = /^```(\w*)\s*$/;
+const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+const HEADING_ATTRS_RE = /^(.+?)\s+\{([^}]*)\}$/;
+const FENCE_OPEN_RE = /^(`{3,})([^`]*)$|^(~{3,})(.*)$/;
 const DIRECTIVE_OPEN_RE = /^(:{2,})\s*([a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)\s*(\{.*\})?\s*$/;
 const DIRECTIVE_CLOSE_RE = /^(:{2,})\s*$/;
 const LIST_RE = /^([-*])\s+(.+)$/;
@@ -109,21 +110,47 @@ function extractFrontmatter(lines: string[]): {
   startLine: number;
   endLine: number;
 } {
-  if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) {
-    return { meta: {}, raw: "", startLine: 0, endLine: 0 };
-  }
+  const none = { meta: {}, raw: "", startLine: 0, endLine: 0 };
+  if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) return none;
   for (let i = 1; i < lines.length; i++) {
-    if (FRONTMATTER_RE.test(lines[i] ?? "")) {
-      const raw = lines.slice(1, i).join("\n");
-      const parsed = yaml.load(raw);
-      const meta =
-        parsed && typeof parsed === "object" && !Array.isArray(parsed)
-          ? (parsed as Record<string, unknown>)
-          : {};
-      return { meta, raw, startLine: i + 1, endLine: i + 1 };
+    if (!FRONTMATTER_RE.test(lines[i] ?? "")) continue;
+    const raw = lines.slice(1, i).join("\n");
+    const block = { raw, startLine: i + 1, endLine: i + 1 };
+    const result = loadFrontmatterYaml(raw);
+    if (result.ok) {
+      const parsed = result.value;
+      // Blank frontmatter is still frontmatter; comment-only "YAML" between
+      // two rules is far more likely a `# heading` framed by thematic breaks.
+      if (parsed === null || parsed === undefined) return raw.trim() === "" ? { meta: {}, ...block } : none;
+      if (typeof parsed === "object" && !Array.isArray(parsed)) {
+        return { meta: parsed as Record<string, unknown>, ...block };
+      }
+      return none;
     }
+    // Broken YAML that still looks like `key: value` lines is an authoring
+    // mistake in real frontmatter: keep it (the validator reports
+    // `invalid-frontmatter`). Anything else is a thematic break plus prose.
+    return looksLikeYamlMapping(raw) ? { meta: {}, ...block } : none;
   }
-  return { meta: {}, raw: "", startLine: 0, endLine: 0 };
+  return none;
+}
+
+/**
+ * Loads frontmatter YAML without throwing. Exposed so the validator can
+ * report the exact YAML error for a frontmatter block the parser kept.
+ */
+export function loadFrontmatterYaml(raw: string): { ok: true; value: unknown } | { ok: false; error: string } {
+  try {
+    return { ok: true, value: yaml.load(raw) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message.split("\n")[0] ?? message };
+  }
+}
+
+function looksLikeYamlMapping(raw: string): boolean {
+  const first = raw.split("\n").find((line) => line.trim() !== "" && !line.trim().startsWith("#"));
+  return first !== undefined && /^[\w"'][\w\s"'.-]*:(?:\s|$)/.test(first);
 }
 
 function splitIdList(raw: string | undefined): string[] | undefined {
@@ -221,13 +248,14 @@ function parseBlocks(
     const heading = matchOnce(HEADING_RE, line);
     if (heading) {
       const level = heading[1]!.length;
-      const title = heading[2]!.trim();
-      const headingAttrs = heading[3] ? parseAttrs(`{${heading[3]}}`) : {};
+      const split = splitHeadingAttrs(heading[2]!);
+      const title = split.title;
+      const headingAttrs = split.attrs ?? {};
       const explicitId =
-        typeof headingAttrs.id === "string" ? headingAttrs.id : undefined;
+        typeof headingAttrs.id === "string" && headingAttrs.id !== "" ? headingAttrs.id : undefined;
       const section: SectionNode & { _idIsExplicit?: boolean } = {
         type: "section",
-        id: explicitId ?? slugify(title),
+        id: explicitId ?? headingSlug(title),
         level,
         title,
         children: [],
@@ -248,19 +276,17 @@ function parseBlocks(
       continue;
     }
 
-    const fence = matchOnce(FENCE_RE, line);
+    const fence = matchCodeFenceOpen(line);
     if (fence) {
-      const lang = fence[1] || undefined;
       const start = i + 1;
-      let end = start;
-      while (end < to && !FENCE_RE.test(lines[end] ?? "")) end++;
+      const end = findCodeFenceClose(lines, start, to, fence);
       const content = lines.slice(start, end).join("\n");
       const closed = end < to;
       out.push(
         applyPendingId(
           {
             type: "code",
-            lang,
+            lang: fence.lang,
             content,
             pos: { line: i + 1, column: 1 },
             endLine: closed ? end + 1 : end,
@@ -365,7 +391,7 @@ function parseBlocks(
       if (
         cur.trim() === "" ||
         HEADING_RE.test(cur) ||
-        FENCE_RE.test(cur) ||
+        matchCodeFenceOpen(cur) !== null ||
         DIRECTIVE_OPEN_RE.test(cur) ||
         DIRECTIVE_CLOSE_RE.test(cur) ||
         STABLE_ID_LINE_RE.test(cur) ||
@@ -398,10 +424,9 @@ function parseDirective(
 
   let close = -1;
   for (let j = i + 1; j < to; j++) {
-    const fence = matchOnce(FENCE_RE, lines[j] ?? "");
+    const fence = matchCodeFenceOpen(lines[j] ?? "");
     if (fence) {
-      j++;
-      while (j < to && !FENCE_RE.test(lines[j] ?? "")) j++;
+      j = findCodeFenceClose(lines, j + 1, to, fence);
       continue;
     }
     const m = matchOnce(DIRECTIVE_CLOSE_RE, lines[j] ?? "");
@@ -483,25 +508,168 @@ function parseTable(
   return { node, next: j };
 }
 
-function parseAttrs(raw: string): Attrs {
-  const attrs: Attrs = {};
-  if (!raw) return attrs;
-  const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
-  if (!inner) return attrs;
+/**
+ * An opening code fence: three or more backticks (the info string may not
+ * contain backticks) or three or more tildes. `lang` is the first word of the
+ * info string, so ```` ```c++ ```` and ```` ```js title="x" ```` both fence.
+ */
+export interface CodeFence {
+  char: "`" | "~";
+  length: number;
+  lang?: string;
+}
 
-  const re = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s]+)))?/g;
-  for (const m of inner.matchAll(re)) {
-    const key = m[1]!;
-    if (m[2] === undefined) {
-      attrs[key] = true;
+export function matchCodeFenceOpen(line: string): CodeFence | null {
+  const m = FENCE_OPEN_RE.exec(line);
+  if (!m) return null;
+  const marker = m[1] ?? m[3] ?? "";
+  const lang = (m[2] ?? m[4] ?? "").trim().split(/\s+/)[0];
+  return { char: marker[0] === "~" ? "~" : "`", length: marker.length, ...(lang ? { lang } : {}) };
+}
+
+/** A closing fence uses the opener's character, is at least as long, and carries no info string. */
+export function isCodeFenceClose(line: string, open: CodeFence): boolean {
+  const m = /^(`{3,}|~{3,})\s*$/.exec(line);
+  return m !== null && m[1]![0] === open.char && m[1]!.length >= open.length;
+}
+
+/** Index of the closing fence line in `[from, to)`, or `to` when the fence is unclosed. */
+export function findCodeFenceClose(lines: string[], from: number, to: number, open: CodeFence): number {
+  let j = from;
+  while (j < to && !isCodeFenceClose(lines[j] ?? "", open)) j++;
+  return j;
+}
+
+const ATTR_KEY_RE = /^[a-zA-Z_][\w-]*/;
+
+/** Attribute names accepted by the attribute grammar (`key`, `data-x`, `_y`). */
+export const ATTR_NAME_RE = /^[a-zA-Z_][\w-]*$/;
+
+interface AttrToken {
+  key: string;
+  value?: string;
+  quoted: boolean;
+}
+
+/**
+ * Tokenises an attribute list body (without braces). Double-quoted values
+ * accept `\"` and `\\` escapes; every other backslash is literal. Single-
+ * quoted values are raw. In lenient mode stray characters are skipped (the
+ * parser is forgiving); in strict mode they make the whole list invalid.
+ */
+function tokenizeAttrs(inner: string, strict: boolean): AttrToken[] | null {
+  const tokens: AttrToken[] = [];
+  let i = 0;
+  const atBoundary = (at: number) => at >= inner.length || /\s/.test(inner[at]!);
+  while (i < inner.length) {
+    if (/\s/.test(inner[i]!)) {
+      i++;
       continue;
     }
-    const quoted = m[3] ?? m[4];
-    const bare = m[5];
-    const value = quoted !== undefined ? quoted : (bare ?? "");
-    attrs[key] = coerce(value);
+    const keyMatch = ATTR_KEY_RE.exec(inner.slice(i));
+    if (!keyMatch) {
+      if (strict) return null;
+      i++;
+      continue;
+    }
+    const key = keyMatch[0];
+    i += key.length;
+    if (inner[i] !== "=") {
+      if (strict && !atBoundary(i)) return null;
+      tokens.push({ key, quoted: false });
+      continue;
+    }
+    const valueStart = i + 1;
+    const quote = inner[valueStart];
+    if (quote === '"' || quote === "'") {
+      const scanned = scanQuoted(inner, valueStart + 1, quote);
+      if (scanned) {
+        if (strict && !atBoundary(scanned.next)) return null;
+        tokens.push({ key, value: scanned.value, quoted: true });
+        i = scanned.next;
+        continue;
+      }
+    }
+    const bare = /^\S+/.exec(inner.slice(valueStart));
+    if (!bare) {
+      if (strict) return null;
+      tokens.push({ key, quoted: false });
+      continue;
+    }
+    tokens.push({ key, value: bare[0], quoted: false });
+    i = valueStart + bare[0].length;
+  }
+  return tokens;
+}
+
+function scanQuoted(s: string, from: number, quote: string): { value: string; next: number } | null {
+  let value = "";
+  for (let j = from; j < s.length; j++) {
+    const c = s[j]!;
+    if (c === quote) return { value, next: j + 1 };
+    if (quote === '"' && c === "\\" && (s[j + 1] === '"' || s[j + 1] === "\\")) {
+      value += s[j + 1];
+      j++;
+      continue;
+    }
+    value += c;
+  }
+  return null;
+}
+
+function tokensToAttrs(tokens: AttrToken[]): Attrs {
+  const attrs: Attrs = {};
+  for (const t of tokens) {
+    if (t.value === undefined) attrs[t.key] = true;
+    else if (t.quoted || t.key === "id") attrs[t.key] = t.value;
+    else attrs[t.key] = coerce(t.value);
   }
   return attrs;
+}
+
+/**
+ * Parses a `{...}` attribute list. Only unquoted barewords are coerced
+ * (`n=3`, `x=0.82`, `on=true`); quoted values are always strings, and `id`
+ * is never coerced because IDs are strings.
+ */
+export function parseAttrs(raw: string): Attrs {
+  if (!raw) return {};
+  const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
+  if (!inner) return {};
+  return tokensToAttrs(tokenizeAttrs(inner, false) ?? []);
+}
+
+/**
+ * Splits a heading's text into title and trailing `{...}` attributes. The
+ * braces count as attributes only when they tokenise cleanly and contain at
+ * least one `key=value` pair, so `# Set {a, b}` keeps its braces.
+ */
+export function splitHeadingAttrs(text: string): { title: string; attrs?: Attrs; rawAttrs?: string } {
+  const trimmed = text.trim();
+  const m = HEADING_ATTRS_RE.exec(trimmed);
+  if (!m) return { title: trimmed };
+  const tokens = tokenizeAttrs(m[2]!, true);
+  if (!tokens || !tokens.some((t) => t.value !== undefined)) return { title: trimmed };
+  return { title: m[1]!.trim(), attrs: tokensToAttrs(tokens), rawAttrs: m[2]! };
+}
+
+/**
+ * Serialises one attribute so `parseAttrs` reads back the same value:
+ * numbers and booleans bare, strings quoted. A string with `"` but no `'`
+ * uses single quotes; otherwise double quotes, escaping `"` as `\"` and any
+ * backslash that would otherwise be read as an escape as `\\`.
+ */
+export function serializeAttr(key: string, value: AttrValue): string {
+  if (value === true) return key;
+  if (value === false) return `${key}=false`;
+  if (typeof value === "number") return `${key}=${value}`;
+  const s = String(value);
+  if (s.includes('"') && !s.includes("'")) return `${key}='${s}'`;
+  return `${key}="${escapeAttrValue(s)}"`;
+}
+
+function escapeAttrValue(s: string): string {
+  return s.replace(/\\(?=[\\"]|$)/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function coerce(v: string): AttrValue {
@@ -580,14 +748,28 @@ function foldSections(nodes: Node[]): Node[] {
   return root;
 }
 
+/**
+ * Deterministic heading slug. Letters and numbers of any script are kept and
+ * lowercased; whitespace becomes `-`. Latin letters are folded to ASCII by
+ * dropping diacritics, and Latin letters with no ASCII decomposition (`ß`,
+ * `ø`) are dropped as before, so existing Latin-script slugs never change.
+ */
 export function slugify(input: string): string {
   return input
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9\s-]/g, "")
+    .normalize("NFC")
+    .replace(/\p{Script=Inherited}/gu, "")
+    .replace(/[^\p{L}\p{N}\p{M}\s-]/gu, "")
+    .replace(/\p{Script=Latin}/gu, (ch) => (ch >= "a" && ch <= "z" ? ch : ""))
     .trim()
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+/** The auto ID for a heading title: its slug, or `section` when the slug is empty. */
+export function headingSlug(title: string): string {
+  return slugify(title) || "section";
 }

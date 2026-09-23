@@ -3,10 +3,16 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CloudServerConfig, Principal } from "./context.js";
 import { HttpError } from "./http.js";
 import { routeAgentGateway, routeAgents, routeConnectors, routeRecipes } from "./routes-agents.js";
+import { routeAttachments } from "./routes-attachments.js";
+import { routeAi, routeDocumentAi, routeSiteAi } from "./routes-ai.js";
+import { routeCollab } from "./routes-collab.js";
 import { routeDatabase } from "./routes-database.js";
 import { routeDocuments } from "./routes-documents.js";
 import { routeEnterprise } from "./routes-enterprise.js";
+import { routeSyncManifest } from "./routes-git-sync.js";
 import { routeGroups } from "./routes-groups.js";
+import { routeImport } from "./routes-import.js";
+import { routeMacros } from "./routes-macros.js";
 import {
   routeAgentInbox,
   routeAskNoma,
@@ -23,11 +29,13 @@ import {
   routeNavigation,
   routeNotifications,
   routeSearch,
-  routeTemplates,
   routeTrash,
 } from "./routes-navigation.js";
+import { routeSiteMaintenance } from "./routes-maintenance.js";
 import { routeSites } from "./routes-sites.js";
 import { routeTasks } from "./routes-tasks.js";
+import { routeTokens } from "./routes-tokens.js";
+import { routeTemplates } from "./routes-templates.js";
 import { routeUsers } from "./routes-users.js";
 import { guardArchivedSpaceWrite } from "./spaces.js";
 import { routeProjects } from "./routes-work.js";
@@ -48,12 +56,12 @@ export type ApiRouteHandler = (
 /** Resource name → handler. Adding an API resource is one entry here. */
 export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, ApiRouteHandler>([
   ["users", (req, res, url, parts, config, principal) => routeUsers(req, res, url, parts, config, principal)],
-  ["documents", (req, res, _url, parts, config, principal) => routeDocuments(req, res, parts, config, principal)],
-  ["sites", (req, res, url, parts, config, principal) => routeSites(req, res, url, parts, config, principal)],
+  ["documents", (req, res, _url, parts, config, principal) => (parts[3] === "ai" ? routeDocumentAi(req, res, parts, config, principal) : routeDocuments(req, res, parts, config, principal))],
+  ["sites", (req, res, url, parts, config, principal) => routeSiteExtensions(req, res, url, parts, config, principal)],
   ["db", (req, res, _url, parts, config, principal) => routeDatabase(req, res, parts, config, principal)],
   ["search", (req, res, url, _parts, config, principal) => routeSearch(req, res, url, config, principal)],
   ["navigation", (req, res, _url, parts, config, principal) => routeNavigation(req, res, parts, config, principal)],
-  ["templates", (req, res, _url, _parts, config, principal) => routeTemplates(req, res, config, principal)],
+  ["templates", (req, res, url, parts, config, principal) => routeTemplates(req, res, url, parts, config, principal)],
   ["trash", (req, res, _url, parts, config, principal) => routeTrash(req, res, parts, config, principal)],
   ["labels", (req, res, url, parts, config, principal) => routeLabels(req, res, url, parts, config, principal)],
   ["notifications", (req, res, _url, parts, config, principal) => routeNotifications(req, res, parts, config, principal)],
@@ -74,7 +82,21 @@ export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, A
   ["realtime", (req, res, url, parts, config, principal) => routeRealtime(req, res, url, parts, config, principal)],
   ["enterprise", (req, res, _url, parts, config, principal) => routeEnterprise(req, res, parts, config, principal)],
   ["tasks", (req, res, url, _parts, config, principal) => routeTasks(req, res, url, config, principal)],
+  ["tokens", (req, res, url, parts, config, principal) => routeTokens(req, res, url, parts, config, principal)],
+  ["attachments", (req, res, url, parts, config, principal) => routeAttachments(req, res, url, parts, config, principal)],
+  ["ai", (req, res, url, parts, config, principal) => routeAi(req, res, url, parts, config, principal)],
+  ["macros", (req, res, _url, parts, config, principal) => routeMacros(req, res, parts, config, principal)],
+  ["import", (req, res, url, parts, config, principal) => routeImport(req, res, url, parts, config, principal)],
+  ["collab", (req, res, _url, parts, config, principal) => routeCollab(req, res, parts, config, principal)],
 ]);
+
+/** `/api/sites/:id/{ai,maintenance,sync-manifest}` live in their feature modules; everything else is `routeSites`. */
+const routeSiteExtensions: ApiRouteHandler = (req, res, url, parts, config, principal) => {
+  if (parts[2] && parts[3] === "ai") return routeSiteAi(req, res, parts, config, principal);
+  if (parts[2] && parts[3] === "maintenance") return routeSiteMaintenance(req, res, url, parts, config, principal);
+  if (parts[2] && parts[3] === "sync-manifest") return routeSyncManifest(req, res, parts, config, principal);
+  return routeSites(req, res, url, parts, config, principal);
+};
 
 export async function routeApi(
   req: IncomingMessage,

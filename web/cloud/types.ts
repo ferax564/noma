@@ -6,7 +6,7 @@ export type CloudRole = "viewer" | "editor" | "owner";
 
 export type PanelState = "ok" | "warning" | "error";
 
-export type ViewMode = "source" | "split" | "preview";
+export type ViewMode = "visual" | "source" | "split" | "preview";
 
 export type ThemeMode = "light" | "dark";
 
@@ -22,13 +22,21 @@ export interface AccessInfo {
 export interface CloudUserSession {
   id: string;
   name: string;
-  token: string;
   tokenPreview?: string;
 }
 
 export interface CloudAuthResponse {
   ok: boolean;
   user?: CloudUserSession;
+  csrfToken?: string;
+}
+
+export interface CloudPersonalAccessTokenResponse {
+  id: string;
+  name: string;
+  scopes: string[];
+  expiresAt?: string;
+  token: string;
 }
 
 export interface CloudStatusResponse {
@@ -66,6 +74,10 @@ export interface CloudPageTemplate {
   description: string;
   category: string;
   source: string;
+  scope?: "built-in" | "workspace" | "site";
+  siteId?: string;
+  variables?: Array<{ name: string; label: string; default?: string; required: boolean }>;
+  editable?: boolean;
 }
 
 export interface CloudSearchResult {
@@ -249,6 +261,9 @@ export interface AskNomaResponse {
   confidence: { score: number; label: "low" | "medium" | "high" };
   citations: KnowledgeCitation[];
   conflicts: Array<{ concept: string; reason: string }>;
+  mode?: "extractive" | "generative";
+  ai?: { available: boolean; reason?: string };
+  generation?: { model?: string; abstainedReason?: string; invalidCitations?: string[] };
 }
 
 export interface KnowledgeHealthItem {

@@ -1,0 +1,1 @@
+[{"code":"include-missing-target","severity":"error"},{"code":"include-unknown-page","severity":"warning"},{"code":"issue-invalid-key","severity":"error"},{"code":"issues-invalid-project","severity":"error"},{"code":"issues-invalid-status","severity":"warning"},{"code":"page-properties-report-missing-label","severity":"error"},{"code":"broken-reference","severity":"error"}]

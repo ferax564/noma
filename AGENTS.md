@@ -44,14 +44,25 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
   cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render
   cloud-db.ts              SQLite persistence for Noma Cloud
+  cloud-blobs.ts           Content-addressed attachment blob store (local disk; S3-ready interface)
+  cloud-llm.ts             LLM provider layer for Cloud AI (Claude Messages API over fetch, fake provider, pricing)
+  cloud-git-sync.ts        `noma cloud export-space|sync` — two-way space ↔ .noma directory sync
+  cloud-collab.ts          Live co-editing relay for the Cloud Visual editor (Yjs rooms, checkpoints back to .noma, presence)
+  editor-model.ts          Visual editor document model — .noma ↔ ProseMirror-style block tree (round-trips stable IDs)
+  editor-yjs.ts            Yjs binding for the editor model (shared by browser and collab relay)
+  macros.ts                Wiki macros (::include/excerpt/children/issue/issues/page-properties) — pure resolver contracts
+  confluence-storage.ts    Confluence storage format → .noma converter with loss report
+  confluence-import.ts     Confluence space import (live API, XML export, JSON bundle) into Cloud spaces
+  zip.ts                   Dependency-free bounded ZIP reader/writer (imports and space exports)
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates
-  enterprise.ts            Enterprise public barrel (Docs / Visuals / Work kernel)
+  cloud.ts                 Noma Cloud public barrel (`@ferax564/noma-cli/cloud` subpath; loads better-sqlite3)
+  enterprise.ts            Enterprise public barrel (`@ferax564/noma-cli/enterprise` subpath; Docs / Visuals / Work kernel)
   enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM host, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops, Yjs, Atlassian, AWS, security review, paid-pilot
   paperdom-*.ts            Vendored PaperDOM kernel from github.com/ferax564/paperDOM (pinned MIT extract)
   paperdom-pin.ts          PaperDOM source commit pin
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
-  index.ts                 Public library exports (npm package surface)
+  index.ts                 Lean core library exports (root npm entry; no cloud/enterprise/native deps)
 bin/noma.mjs               Node CLI shim
 apps/                      Enterprise HTTP, worker, and Docs/Visuals/Work shell entry points
 packages/
@@ -145,10 +156,14 @@ The parser is a hand-written recursive descent over a line-based tokenizer. It i
 Block fence depth is tracked by counting leading colons. A `:::card` inside a `::grid` is valid; a stray `:::` at top level is a parse error.
 
 Attribute parsing supports:
-- `key="quoted value"`
+- `key="quoted value"` / `key='quoted value'` — always a string, never coerced (`version="1.10"` stays `"1.10"`)
 - `key=bareword`
-- `key=0.82` (numeric coerced)
+- `key=0.82`, `key=true` — only **unquoted** values are coerced to numbers/booleans
 - `flag` (boolean true)
+- `id` is never coerced (`id=2024` and `id="2024"` are both the string `"2024"`)
+- inside double quotes, `\"` is a literal `"` and `\\` a literal `\`; any other backslash is kept as written. Writers use `serializeAttr` (in `src/parser.ts`) so values round-trip.
+
+Code fences are three or more backticks or tildes with any info string (first word = `lang`); a fence closes only on the same character with at least the opening length (`matchCodeFenceOpen` / `isCodeFenceClose`, shared by parser, patch, and fmt).
 
 Inline content is **not** fully parsed at parser time — it is stored as a string and parsed lazily by renderers. This keeps the AST small and lets different renderers handle inline markup their own way (HTML escapes, LLM strips formatting).
 

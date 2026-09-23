@@ -9,8 +9,10 @@ import { setCurrentPage } from "./editor.js";
 import { renderChrome } from "./layout.js";
 import { pageAncestors, pageParentId } from "./page-meta.js";
 import { canCreatePage, canEditSite, selectedShareRole } from "./permissions.js";
+import { restrictionIndicator } from "./restrictions.js";
 import { clearWorkspaceState, refreshWorkspaceTools, renderWorkspaceTools } from "./session.js";
 import { shareToken, state } from "./state.js";
+import { promptTemplateVariables } from "./templates.js";
 import type { CloudDocumentResponse, CloudNavigationItem, CloudPageTemplate, CloudSiteResponse, CloudTrashItem } from "./types.js";
 import { absoluteUrl, copyText, emptyState, errorMessage, formatDate, iconButton, promptName, setBusy, setCloudStatus, shortId, slug } from "./util.js";
 import { installPageRowReordering } from "./page-tree.js";
@@ -31,13 +33,14 @@ export async function refreshSites(options: { silent?: boolean } = {}): Promise<
 
 export async function refreshTemplates(): Promise<void> {
   const selected = pageTemplateSelect.value;
-  const response = await fetchCloudJson<{ templates: CloudPageTemplate[] }>("/api/templates");
+  const siteQuery = state.currentSite ? `?site=${encodeURIComponent(state.currentSite.id)}` : "";
+  const response = await fetchCloudJson<{ templates: CloudPageTemplate[] }>(`/api/templates${siteQuery}`);
   state.pageTemplates = response.templates;
   pageTemplateSelect.textContent = "";
   for (const template of state.pageTemplates) {
     const option = document.createElement("option");
     option.value = template.id;
-    option.textContent = `${template.title} · ${template.category}`;
+    option.textContent = `${template.title} · ${template.scope === "site" ? "space" : template.scope === "workspace" ? "workspace" : template.category}`;
     option.title = template.description;
     pageTemplateSelect.append(option);
   }
@@ -164,7 +167,7 @@ export async function loadSite(siteId: string, preferredDocumentId?: string): Pr
     const selected = preferred ? state.pages.find((page) => page.id === preferred) : undefined;
     setCurrentPage(selected ?? state.pages[0]);
     updateAddress();
-    if (state.cloudUser) await Promise.all([refreshSites({ silent: true }), refreshWorkManagement(), refreshAccessManagement()]);
+    if (state.cloudUser) await Promise.all([refreshSites({ silent: true }), refreshWorkManagement(), refreshAccessManagement(), refreshTemplates()]);
   } finally {
     setBusy(false);
     renderChrome();
@@ -242,6 +245,8 @@ export async function createPage(folder = state.activeFolder, parentId?: string)
   const normalizedFolder = normalizeFolderName(folder);
   const template = selectedPageTemplate();
   const title = promptName(normalizedFolder ? `Page title in ${normalizedFolder}` : "Page title", template?.title ?? "Untitled Page");
+  const variables = await promptTemplateVariables(template);
+  if (!variables) return;
   setBusy(true, "Creating page", "warning");
   try {
     const page = await fetchCloudJson<CloudDocumentResponse>(`/api/sites/${encodeURIComponent(state.currentSite.id)}/documents`, {
@@ -250,6 +255,7 @@ export async function createPage(folder = state.activeFolder, parentId?: string)
       body: JSON.stringify({
         title,
         templateId: template?.id ?? "blank",
+        ...(Object.keys(variables).length > 0 ? { variables } : {}),
         folder: normalizedFolder,
         ...(parentId ? { parentId } : {}),
       }),
@@ -724,6 +730,8 @@ function pageRow(page: CloudDocumentResponse, depth = 0): HTMLElement {
   const meta = button.querySelector<HTMLElement>(".row-meta");
   if (title) title.textContent = page.title;
   if (meta) meta.textContent = `${shortId(page.id)} / ${page.access?.role ?? state.currentSite?.access?.role ?? "viewer"}`;
+  const lock = restrictionIndicator(page.id);
+  if (lock) title?.append(lock);
   button.addEventListener("click", () => selectPage(page.id));
   row.addEventListener("contextmenu", (event) => showPageContextMenu(event, page));
 
@@ -866,7 +874,7 @@ Verify the primary source, update the citation metadata, and leave unrelated blo
 
 export function replaceFirstHeading(source: string, title: string): string {
   if (/^#\s+.+$/m.test(source)) {
-    return source.replace(/^#\s+(.+?)(\s+\{[^}]*\})?\s*$/m, (_match, _oldTitle: string, attrs: string | undefined) => {
+    return source.replace(/^#[ \t]+(.+?)([ \t]+\{[^}\n]*\})?[ \t]*$/m, (_match, _oldTitle: string, attrs: string | undefined) => {
       return `# ${title}${attrs ?? ""}`;
     });
   }

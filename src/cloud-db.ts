@@ -1,6 +1,7 @@
 import DatabaseConstructor from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Node } from "./ast.js";
 import { parse } from "./parser.js";
@@ -61,6 +62,16 @@ export interface CloudDocumentRevision {
 }
 
 export type CloudDocumentRevisionSummary = Omit<CloudDocumentRevision, "source">;
+
+/** Persisted state of a visual-editor collaboration room (see `src/cloud-collab.ts`). */
+export interface CloudCollabRoomState {
+  documentId: string;
+  state?: Uint8Array;
+  baseSource?: string;
+  baseHash?: string;
+  updatedAt?: string;
+  updates: Uint8Array[];
+}
 
 export interface CloudSearchResult {
   documentId: string;
@@ -502,6 +513,31 @@ export interface CloudWatch {
   watchedAt: string;
 }
 
+export interface CloudAttachment {
+  id: string;
+  documentId: string;
+  sha256: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  uploadedBy: string;
+  uploadedByName?: string;
+  createdAt: string;
+  deletedAt?: string;
+}
+
+export type CloudRestrictionKind = "view" | "edit";
+
+export interface CloudRestrictionPrincipals {
+  users: string[];
+  groups: string[];
+}
+
+export type CloudPageRestrictions = Record<CloudRestrictionKind, CloudRestrictionPrincipals>;
+
+/** How page restrictions narrow a principal's space/page grant: hide the page, or cap it at viewer. */
+export type CloudRestrictionCap = "hidden" | "viewer";
+
 export type CloudDbQueryResource = "documents" | "sites" | "blocks" | "users";
 
 export interface CloudDbQuery {
@@ -521,12 +557,133 @@ export interface CloudDbQueryResult {
   rows: Array<Record<string, unknown>>;
 }
 
+export interface CloudTemplateVariable {
+  name: string;
+  label: string;
+  default?: string;
+  required: boolean;
+}
+
+export type CloudPageTemplateScope = "workspace" | "site";
+
+export interface CloudPageTemplateRecord {
+  id: string;
+  scope: CloudPageTemplateScope;
+  siteId?: string;
+  name: string;
+  description: string;
+  category: string;
+  source: string;
+  variables: CloudTemplateVariable[];
+  createdBy: string;
+  updatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CloudImportSourceKind = "confluence-cloud" | "confluence-datacenter" | "confluence-export" | "confluence-bundle";
+export type CloudImportJobStatus = "queued" | "running" | "succeeded" | "failed";
+
+export interface CloudImportProgress {
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+}
+
+export interface CloudImportJob {
+  id: string;
+  siteId: string;
+  createdBy: string;
+  source: CloudImportSourceKind;
+  status: CloudImportJobStatus;
+  spaceKey?: string;
+  progress: CloudImportProgress;
+  result?: Record<string, unknown>;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+}
+
+export interface CloudImportSource {
+  siteId: string;
+  sourceSystem: string;
+  sourceId: string;
+  documentId: string;
+  sourceVersion?: string;
+  importedHash: string;
+  importedAt: string;
+}
+
 export interface DocumentSummary extends Omit<CloudDocumentRecord, "source"> {
   currentRole?: CloudRole;
 }
 
 export interface SiteSummary extends CloudSiteRecord {
   currentRole?: CloudRole;
+}
+
+export type CloudTokenScope = "read" | "write" | "admin";
+
+export const cloudTokenScopes: readonly CloudTokenScope[] = ["read", "write", "admin"];
+
+/** A browser session backed by the HttpOnly `noma_session` cookie. Only hashes of the cookie and CSRF secrets are stored. */
+export interface CloudAuthSession {
+  id: string;
+  userId: string;
+  scopes: CloudTokenScope[];
+  source: "user_token" | "register" | "pat" | "sso";
+  patId?: string;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  userAgent?: string;
+  ip?: string;
+  revokedAt?: string;
+}
+
+/** A named, scoped, revocable personal access token (`noma_pat_…`). The raw token is shown once and stored hashed. */
+export interface CloudPersonalAccessToken {
+  id: string;
+  userId: string;
+  name: string;
+  tokenPreview: string;
+  scopes: CloudTokenScope[];
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
+
+interface AuthSessionRow {
+  id: string;
+  user_id: string;
+  csrf_hash: string;
+  scopes_json: string;
+  source: CloudAuthSession["source"];
+  pat_id: string | null;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  user_agent: string | null;
+  ip: string | null;
+  revoked_at: string | null;
+}
+
+interface PersonalAccessTokenRow {
+  id: string;
+  user_id: string;
+  name: string;
+  token_preview: string;
+  scopes_json: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
 }
 
 interface LegacyCloudDocumentRecord {
@@ -544,6 +701,97 @@ interface CloudDatabaseOptions {
   dataDir: string;
   usersDir: string;
   sitesDir: string;
+  /** Workspace admins, who bypass page restrictions. Empty means the first registered user. */
+  adminUserIds?: string[];
+  /** When false (production), an empty `adminUserIds` means no admin rather than the first registered user. */
+  bootstrapFirstUserAdmin?: boolean;
+}
+
+interface AttachmentRow {
+  id: string;
+  document_id: string;
+  sha256: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  uploaded_by: string;
+  uploaded_by_name: string | null;
+  created_at: string;
+  deleted_at: string | null;
+}
+
+interface PageTemplateRow {
+  id: string;
+  scope: CloudPageTemplateScope;
+  site_id: string | null;
+  name: string;
+  description: string;
+  category: string;
+  source: string;
+  variables_json: string;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function pageTemplateRecord(row: PageTemplateRow): CloudPageTemplateRecord {
+  return {
+    id: row.id,
+    scope: row.scope,
+    ...(row.site_id ? { siteId: row.site_id } : {}),
+    name: row.name,
+    description: row.description,
+    category: row.category,
+    source: row.source,
+    variables: JSON.parse(row.variables_json) as CloudTemplateVariable[],
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+interface ImportJobRow {
+  id: string;
+  site_id: string;
+  created_by: string;
+  source: CloudImportSourceKind;
+  status: CloudImportJobStatus;
+  space_key: string | null;
+  progress_json: string;
+  result_json: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+}
+
+function importJob(row: ImportJobRow): CloudImportJob {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    createdBy: row.created_by,
+    source: row.source,
+    status: row.status,
+    ...(row.space_key ? { spaceKey: row.space_key } : {}),
+    progress: JSON.parse(row.progress_json) as CloudImportProgress,
+    ...(row.result_json ? { result: JSON.parse(row.result_json) as Record<string, unknown> } : {}),
+    ...(row.error ? { error: row.error } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(row.finished_at ? { finishedAt: row.finished_at } : {}),
+  };
+}
+
+interface ImportSourceRow {
+  site_id: string;
+  source_system: string;
+  source_id: string;
+  document_id: string;
+  source_version: string | null;
+  imported_hash: string;
+  imported_at: string;
 }
 
 interface RecordJsonRow {
@@ -855,6 +1103,216 @@ interface BlockIndexRow {
   ordinal: number;
 }
 
+// cloud-ai record types
+export interface CloudAiUsageRecord {
+  id: string;
+  userId: string;
+  agentId: string;
+  feature: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  siteId?: string;
+  documentId?: string;
+  createdAt: string;
+}
+
+export interface CloudAiPageProposal {
+  id: string;
+  siteId: string;
+  parentId?: string;
+  title: string;
+  source: string;
+  sourceHash: string;
+  instruction: string;
+  proposedBy: string;
+  agentId: string;
+  model: string;
+  citations: Array<{ documentId: string; blockId: string; versionHash: string }>;
+  diagnostics: unknown[];
+  status: CloudPatchProposalStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  documentId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CloudSiteMaintenanceSettings {
+  siteId: string;
+  enabled: boolean;
+  aiRefresh: boolean;
+  intervalHours: number;
+  maxProposalsPerRun: number;
+  /** User whose access scopes the sweep and whose AI budget pays for refresh drafts. */
+  runAs: string;
+  updatedBy: string;
+  updatedAt: string;
+  lastRunAt?: string;
+}
+
+export interface CloudHealthItemRecord {
+  id: string;
+  siteId: string;
+  kind: string;
+  severity: "info" | "warning" | "error";
+  documentId?: string;
+  blockId?: string;
+  message: string;
+  evidence: Record<string, unknown>;
+  status: "open" | "resolved";
+  proposalId?: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt?: string;
+}
+
+export interface CloudMaintenanceRun {
+  id: string;
+  siteId: string;
+  trigger: "manual" | "scheduled";
+  status: "running" | "completed" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  itemsOpen: number;
+  itemsResolved: number;
+  proposalsCreated: number;
+  detail: Record<string, unknown>;
+}
+
+interface AiUsageRow {
+  id: string;
+  user_id: string;
+  agent_id: string;
+  feature: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  site_id: string | null;
+  document_id: string | null;
+  created_at: string;
+}
+
+interface AiPageProposalRow {
+  id: string;
+  site_id: string;
+  parent_id: string | null;
+  title: string;
+  source: string;
+  source_hash: string;
+  instruction: string;
+  proposed_by: string;
+  agent_id: string;
+  model: string;
+  citations_json: string;
+  diagnostics_json: string;
+  status: CloudPatchProposalStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  document_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SiteMaintenanceRow {
+  site_id: string;
+  enabled: number;
+  ai_refresh: number;
+  interval_hours: number;
+  max_proposals_per_run: number;
+  run_as: string;
+  updated_by: string;
+  updated_at: string;
+  last_run_at: string | null;
+}
+
+interface HealthItemRow {
+  id: string;
+  site_id: string;
+  kind: string;
+  severity: string;
+  document_id: string | null;
+  block_id: string | null;
+  message: string;
+  evidence_json: string;
+  status: string;
+  proposal_id: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+}
+
+interface MaintenanceRunRow {
+  id: string;
+  site_id: string;
+  trigger: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  items_open: number;
+  items_resolved: number;
+  proposals_created: number;
+  detail_json: string;
+}
+
+function cloudAiPageProposal(row: AiPageProposalRow): CloudAiPageProposal {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    ...(row.parent_id ? { parentId: row.parent_id } : {}),
+    title: row.title,
+    source: row.source,
+    sourceHash: row.source_hash,
+    instruction: row.instruction,
+    proposedBy: row.proposed_by,
+    agentId: row.agent_id,
+    model: row.model,
+    citations: parseRecord<CloudAiPageProposal["citations"]>(row.citations_json),
+    diagnostics: parseRecord<unknown[]>(row.diagnostics_json),
+    status: row.status,
+    ...(row.reviewed_by ? { reviewedBy: row.reviewed_by } : {}),
+    ...(row.reviewed_at ? { reviewedAt: row.reviewed_at } : {}),
+    ...(row.document_id ? { documentId: row.document_id } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function cloudSiteMaintenance(row: SiteMaintenanceRow): CloudSiteMaintenanceSettings {
+  return {
+    siteId: row.site_id,
+    enabled: row.enabled === 1,
+    aiRefresh: row.ai_refresh === 1,
+    intervalHours: row.interval_hours,
+    maxProposalsPerRun: row.max_proposals_per_run,
+    runAs: row.run_as,
+    updatedBy: row.updated_by,
+    updatedAt: row.updated_at,
+    ...(row.last_run_at ? { lastRunAt: row.last_run_at } : {}),
+  };
+}
+
+function cloudHealthItem(row: HealthItemRow): CloudHealthItemRecord {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    kind: row.kind,
+    severity: row.severity === "error" || row.severity === "warning" ? row.severity : "info",
+    ...(row.document_id ? { documentId: row.document_id } : {}),
+    ...(row.block_id ? { blockId: row.block_id } : {}),
+    message: row.message,
+    evidence: parseRecord<Record<string, unknown>>(row.evidence_json),
+    status: row.status === "resolved" ? "resolved" : "open",
+    ...(row.proposal_id ? { proposalId: row.proposal_id } : {}),
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    ...(row.resolved_at ? { resolvedAt: row.resolved_at } : {}),
+  };
+}
+// end cloud-ai record types
+
 const schemaVersion = "8";
 
 const roleRank: Record<CloudRole, number> = {
@@ -868,6 +1326,51 @@ const rankRole: Record<number, CloudRole> = {
   2: "editor",
   3: "owner",
 };
+
+/**
+ * Page restrictions for the user in `current_user`. `view_denied` holds every page the user cannot
+ * see: pages whose view restriction does not list them, plus every descendant of such a page in any
+ * space's page tree. `edit_denied` holds pages whose edit restriction does not list them. Direct
+ * page owners are exempt on their own page; workspace admins are exempt everywhere.
+ */
+const pageRestrictionCtes = `restriction_admin(exempt) AS (
+  SELECT CASE WHEN json_array_length(noma_workspace_admin_ids()) > 0
+    THEN EXISTS (SELECT 1 FROM json_each(noma_workspace_admin_ids()) admin JOIN current_user cu ON cu.user_id = admin.value)
+    WHEN noma_bootstrap_first_user_admin() = 0 THEN 0
+    ELSE EXISTS (SELECT 1 FROM current_user cu WHERE cu.user_id = (SELECT id FROM users ORDER BY created_at, rowid LIMIT 1))
+  END
+),
+restriction_allowed(document_id, kind) AS (
+  SELECT pr.document_id, pr.kind
+  FROM page_restrictions pr
+  JOIN current_user cu ON pr.principal_type = 'user' AND pr.principal_id = cu.user_id
+  UNION
+  SELECT pr.document_id, pr.kind
+  FROM page_restrictions pr
+  JOIN group_members gm ON pr.principal_type = 'group' AND pr.principal_id = gm.group_id
+  JOIN current_user cu ON cu.user_id = gm.user_id
+  UNION
+  SELECT p.resource_id, kinds.kind
+  FROM permissions p
+  JOIN current_user cu ON cu.user_id = p.user_id
+  CROSS JOIN (SELECT 'view' AS kind UNION ALL SELECT 'edit') kinds
+  WHERE p.resource_type = 'document' AND p.role = 'owner'
+),
+view_denied(document_id) AS (
+  SELECT document_id FROM (
+    SELECT document_id FROM page_restrictions WHERE kind = 'view'
+    EXCEPT
+    SELECT document_id FROM restriction_allowed WHERE kind = 'view'
+  )
+  WHERE NOT (SELECT exempt FROM restriction_admin)
+  UNION
+  SELECT pp.document_id FROM page_parents pp JOIN view_denied vd ON pp.parent_id = vd.document_id
+),
+edit_denied(document_id) AS (
+  SELECT document_id FROM page_restrictions WHERE kind = 'edit'
+  EXCEPT
+  SELECT document_id FROM restriction_allowed WHERE kind = 'edit'
+)`;
 
 const visibleResourcesCtes = `current_user(user_id) AS (VALUES (?)),
 visible_sites AS (
@@ -892,7 +1395,7 @@ visible_sites AS (
   )
   GROUP BY id
 ),
-visible_docs AS (
+granted_docs AS (
   SELECT id, MAX(rank) AS rank
   FROM (
     SELECT d.id AS id,
@@ -917,6 +1420,19 @@ visible_docs AS (
     JOIN visible_sites ON visible_sites.id = sd.site_id
   )
   GROUP BY id
+),
+${pageRestrictionCtes},
+visible_docs AS (
+  SELECT g.id,
+    CASE
+      WHEN g.rank > 1
+        AND NOT (SELECT exempt FROM restriction_admin)
+        AND g.id IN (SELECT document_id FROM edit_denied)
+      THEN 1
+      ELSE g.rank
+    END AS rank
+  FROM granted_docs g
+  WHERE g.id NOT IN (SELECT document_id FROM view_denied)
 )`;
 
 export class NomaCloudDatabase {
@@ -928,6 +1444,8 @@ export class NomaCloudDatabase {
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.db.pragma("busy_timeout = 5000");
+    this.db.function("noma_workspace_admin_ids", { deterministic: false }, () => JSON.stringify(this.options.adminUserIds ?? []));
+    this.db.function("noma_bootstrap_first_user_admin", { deterministic: false }, () => (this.options.bootstrapFirstUserAdmin === false ? 0 : 1));
     this.applySchema();
     this.importLegacyJsonOnce();
   }
@@ -1048,7 +1566,11 @@ export class NomaCloudDatabase {
         resourceId,
       ) as Array<{ role: CloudRole; via: "user" | "group"; group_id: string | null }>;
     const row = rows[0];
-    return row ? { role: row.role, via: row.via, ...(row.group_id ? { groupId: row.group_id } : {}) } : undefined;
+    if (!row) return undefined;
+    const cap = resourceType === "document" ? this.documentRestrictionCap(userId, resourceId) : undefined;
+    if (cap === "hidden") return undefined;
+    const role = cap === "viewer" ? "viewer" : row.role;
+    return { role, via: row.via, ...(row.group_id ? { groupId: row.group_id } : {}) };
   }
 
   listDocumentRevisions(id: string): CloudDocumentRevisionSummary[] {
@@ -1190,6 +1712,7 @@ export class NomaCloudDatabase {
       this.replacePermissions("site", next.id, next.permissions);
       this.replaceShares("site", next.id, next.shareLinks);
       this.replaceSiteDocuments(next);
+      this.replacePageParents(next);
     });
     write(record);
   }
@@ -1283,10 +1806,11 @@ export class NomaCloudDatabase {
       this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
       if (type === "document") {
         this.db.prepare("DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE document_id = ?)").run(id);
-        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "page_views", "page_tasks"]) {
+        for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "page_views", "page_tasks", "attachments", "page_restrictions", "import_sources", "collab_rooms", "collab_updates"]) {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
         this.db.prepare("DELETE FROM search_index WHERE document_id = ?").run(id);
+        this.db.prepare("DELETE FROM knowledge_health_items WHERE document_id = ?").run(id);
         this.db.prepare("DELETE FROM site_documents WHERE document_id = ?").run(id);
         for (const row of this.db.prepare("SELECT id FROM sites").all() as Array<{ id: string }>) {
           const site = this.readSite(row.id);
@@ -1297,6 +1821,11 @@ export class NomaCloudDatabase {
         this.db.prepare("DELETE FROM site_documents WHERE site_id = ?").run(id);
         this.db.prepare("DELETE FROM webhook_deliveries WHERE site_id = ?").run(id);
         this.db.prepare("DELETE FROM space_webhooks WHERE site_id = ?").run(id);
+
+        this.db.prepare("DELETE FROM page_parents WHERE site_id = ?").run(id);
+        for (const owned of ["ai_page_proposals", "site_maintenance", "knowledge_health_items", "maintenance_runs", "page_templates", "import_jobs", "import_sources"]) {
+          this.db.prepare(`DELETE FROM ${owned} WHERE site_id = ?`).run(id);
+        }
       }
       return removed;
     });
@@ -2348,11 +2877,6 @@ export class NomaCloudDatabase {
     return remove();
   }
 
-  /** Space IDs that contain the page (a page can live in several spaces). */
-  siteIdsForDocument(documentId: string): string[] {
-    return (this.db.prepare("SELECT site_id FROM site_documents WHERE document_id = ? ORDER BY position").all(documentId) as Array<{ site_id: string }>).map((row) => row.site_id);
-  }
-
   enqueueWebhookDelivery(delivery: Omit<CloudWebhookDelivery, "status" | "attempts" | "responseStatus" | "lastError" | "deliveredAt">): void {
     this.db
       .prepare(
@@ -2591,6 +3115,701 @@ export class NomaCloudDatabase {
     return rows.map((row) => (blockTypes.length ? searchResult(row) : { ...searchResult(row), nodeType: "page" }));
   }
 
+  // ---- attachments ----
+
+  insertAttachment(attachment: Omit<CloudAttachment, "uploadedByName" | "deletedAt">): void {
+    this.db
+      .prepare(
+        `INSERT INTO attachments (id, document_id, sha256, filename, content_type, size, uploaded_by, created_at)
+         VALUES (@id, @documentId, @sha256, @filename, @contentType, @size, @uploadedBy, @createdAt)`,
+      )
+      .run(attachment);
+  }
+
+  /** Reads an attachment row, including soft-deleted ones; callers decide whether deleted rows are usable. */
+  readAttachment(id: string): CloudAttachment | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT a.*, u.name AS uploaded_by_name FROM attachments a
+         LEFT JOIN users u ON u.id = a.uploaded_by
+         WHERE a.id = ?`,
+      )
+      .get(id) as AttachmentRow | undefined;
+    return row ? cloudAttachment(row) : undefined;
+  }
+
+  listAttachments(documentId: string, limit = 500): CloudAttachment[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT a.*, u.name AS uploaded_by_name FROM attachments a
+           LEFT JOIN users u ON u.id = a.uploaded_by
+           WHERE a.document_id = ? AND a.deleted_at IS NULL
+           ORDER BY a.created_at, a.rowid
+           LIMIT ?`,
+        )
+        .all(documentId, limit) as AttachmentRow[]
+    ).map(cloudAttachment);
+  }
+
+  markAttachmentDeleted(id: string, deletedAt: string): boolean {
+    return this.db.prepare("UPDATE attachments SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL").run(deletedAt, id).changes > 0;
+  }
+
+  /** Bytes of live attachments on pages in the space; each upload counts even when its blob is shared. */
+  siteAttachmentBytes(siteId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(a.size), 0) AS bytes FROM attachments a
+         JOIN site_documents sd ON sd.document_id = a.document_id
+         WHERE sd.site_id = ? AND a.deleted_at IS NULL`,
+      )
+      .get(siteId) as { bytes: number };
+    return row.bytes;
+  }
+
+  /** Bytes of live attachments a user uploaded to pages that belong to no space. */
+  unspacedAttachmentBytes(userId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(a.size), 0) AS bytes FROM attachments a
+         WHERE a.uploaded_by = ? AND a.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM site_documents sd WHERE sd.document_id = a.document_id)`,
+      )
+      .get(userId) as { bytes: number };
+    return row.bytes;
+  }
+
+  documentSiteIds(documentId: string): string[] {
+    return (this.db.prepare("SELECT site_id FROM site_documents WHERE document_id = ? ORDER BY position, site_id").all(documentId) as Array<{ site_id: string }>).map(
+      (row) => row.site_id,
+    );
+  }
+
+  /** Every blob hash a document's attachments point at, including soft-deleted attachments. */
+  attachmentBlobHashes(documentId: string): string[] {
+    return (this.db.prepare("SELECT DISTINCT sha256 FROM attachments WHERE document_id = ?").all(documentId) as Array<{ sha256: string }>).map((row) => row.sha256);
+  }
+
+  isBlobReferenced(sha256: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 AS found FROM attachments WHERE sha256 = ? LIMIT 1").get(sha256));
+  }
+
+  /** Re-indexes a document's attachment filenames into `blocks`/`search_index` as `attachment` rows. */
+  reindexAttachments(documentId: string): void {
+    const document = this.db.prepare("SELECT title FROM documents WHERE id = ?").get(documentId) as { title: string } | undefined;
+    if (!document) return;
+    this.db.transaction(() => this.indexAttachmentBlocks(documentId, document.title))();
+  }
+
+  /** HMAC key for signed attachment URLs; created once per database so signatures survive restarts. */
+  attachmentSigningKey(): string {
+    const read = () => this.db.prepare("SELECT value FROM meta WHERE key = 'attachment_signing_key'").get() as { value: string } | undefined;
+    const existing = read();
+    if (existing) return existing.value;
+    this.db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('attachment_signing_key', ?)").run(randomBytes(32).toString("hex"));
+    return read()!.value;
+  }
+
+  private indexAttachmentBlocks(documentId: string, documentTitle: string): void {
+    const stale = this.db.prepare("SELECT row_key FROM blocks WHERE document_id = ? AND node_type = 'attachment'").all(documentId) as Array<{ row_key: string }>;
+    const deleteSearch = this.db.prepare("DELETE FROM search_index WHERE row_key = ?");
+    for (const row of stale) deleteSearch.run(row.row_key);
+    this.db.prepare("DELETE FROM blocks WHERE document_id = ? AND node_type = 'attachment'").run(documentId);
+    const insert = this.db.prepare(
+      `INSERT INTO blocks
+        (row_key, document_id, block_id, aliases_json, node_type, directive_name, title, text, line, depth, ordinal)
+       VALUES (?, ?, ?, '[]', 'attachment', NULL, ?, ?, NULL, 0, ?)`,
+    );
+    const searchInsert = this.db.prepare("INSERT INTO search_index (row_key, document_id, document_title, block_id, text) VALUES (?, ?, ?, ?, ?)");
+    this.listAttachments(documentId).forEach((attachment, index) => {
+      const rowKey = `${documentId}:attachment:${attachment.id}`;
+      const blockId = `att:${attachment.id}`;
+      const text = `${attachment.filename} ${attachment.contentType}`;
+      insert.run(rowKey, documentId, blockId, attachment.filename, text, 1_000_000 + index);
+      searchInsert.run(rowKey, documentId, documentTitle, blockId, `${attachment.filename}\n${text}`);
+    });
+  }
+
+  // ---- page restrictions ----
+
+  readPageRestrictions(documentId: string): CloudPageRestrictions {
+    const restrictions: CloudPageRestrictions = { view: { users: [], groups: [] }, edit: { users: [], groups: [] } };
+    const rows = this.db
+      .prepare("SELECT kind, principal_type, principal_id FROM page_restrictions WHERE document_id = ? ORDER BY kind, principal_type, principal_id")
+      .all(documentId) as Array<{ kind: CloudRestrictionKind; principal_type: "user" | "group"; principal_id: string }>;
+    for (const row of rows) restrictions[row.kind][row.principal_type === "user" ? "users" : "groups"].push(row.principal_id);
+    return restrictions;
+  }
+
+  replacePageRestrictions(documentId: string, restrictions: CloudPageRestrictions, addedBy: string, addedAt: string): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM page_restrictions WHERE document_id = ?").run(documentId);
+      const insert = this.db.prepare(
+        `INSERT OR IGNORE INTO page_restrictions (document_id, kind, principal_type, principal_id, added_by, added_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      for (const kind of ["view", "edit"] as const) {
+        for (const userId of restrictions[kind].users) insert.run(documentId, kind, "user", userId, addedBy, addedAt);
+        for (const groupId of restrictions[kind].groups) insert.run(documentId, kind, "group", groupId, addedBy, addedAt);
+      }
+    })();
+  }
+
+  /**
+   * How page restrictions narrow `userId`'s access to a document (`undefined` = share-link or
+   * anonymous access, which no restriction lists). A view restriction on the page or on any ancestor
+   * in any space's page tree hides it; an edit restriction on the page itself caps it at viewer.
+   */
+  documentRestrictionCap(userId: string | undefined, documentId: string): CloudRestrictionCap | undefined {
+    const rows = this.db
+      .prepare(
+        `WITH ancestry(id, depth) AS (
+           SELECT ?, 0
+           UNION
+           SELECT pp.parent_id, a.depth + 1 FROM page_parents pp JOIN ancestry a ON pp.document_id = a.id WHERE a.depth < 256
+         )
+         SELECT DISTINCT pr.document_id, pr.kind
+         FROM page_restrictions pr
+         JOIN ancestry a ON a.id = pr.document_id
+         WHERE pr.kind = 'view' OR a.depth = 0
+         ORDER BY pr.kind DESC`,
+      )
+      .all(documentId) as Array<{ document_id: string; kind: CloudRestrictionKind }>;
+    if (rows.length === 0) return undefined;
+    if (userId && this.isWorkspaceAdmin(userId)) return undefined;
+    let cap: CloudRestrictionCap | undefined;
+    for (const row of rows) {
+      if (userId && this.restrictionAllows(userId, row.document_id, row.kind)) continue;
+      if (row.kind === "view") return "hidden";
+      cap = "viewer";
+    }
+    return cap;
+  }
+
+  /** Per page: whether it carries its own view/edit restrictions and whether an ancestor restricts viewing. */
+  pageRestrictionFlags(documentIds: string[]): Map<string, { view: boolean; edit: boolean; inheritedView: boolean }> {
+    const flags = new Map<string, { view: boolean; edit: boolean; inheritedView: boolean }>();
+    if (documentIds.length === 0) return flags;
+    const rows = this.db
+      .prepare(
+        `WITH ancestry(doc, id, depth) AS (
+           SELECT value, value, 0 FROM json_each(?)
+           UNION
+           SELECT a.doc, pp.parent_id, a.depth + 1 FROM page_parents pp JOIN ancestry a ON pp.document_id = a.id WHERE a.depth < 256
+         )
+         SELECT a.doc, pr.kind, MIN(a.depth) AS depth
+         FROM ancestry a JOIN page_restrictions pr ON pr.document_id = a.id
+         GROUP BY a.doc, pr.kind, a.depth = 0`,
+      )
+      .all(JSON.stringify(documentIds)) as Array<{ doc: string; kind: CloudRestrictionKind; depth: number }>;
+    for (const row of rows) {
+      const entry = flags.get(row.doc) ?? { view: false, edit: false, inheritedView: false };
+      if (row.depth === 0) entry[row.kind] = true;
+      else if (row.kind === "view") entry.inheritedView = true;
+      flags.set(row.doc, entry);
+    }
+    return flags;
+  }
+
+  /** Ancestor pages (in any space's tree) that carry their own view restrictions, nearest first. */
+  restrictedAncestors(documentId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `WITH ancestry(id, depth) AS (
+             SELECT ?, 0
+             UNION
+             SELECT pp.parent_id, a.depth + 1 FROM page_parents pp JOIN ancestry a ON pp.document_id = a.id WHERE a.depth < 256
+           )
+           SELECT a.id, MIN(a.depth) AS depth FROM ancestry a
+           WHERE a.depth > 0 AND EXISTS (SELECT 1 FROM page_restrictions pr WHERE pr.document_id = a.id AND pr.kind = 'view')
+           GROUP BY a.id
+           ORDER BY depth, a.id`,
+        )
+        .all(documentId) as Array<{ id: string }>
+    ).map((row) => row.id);
+  }
+
+  /** Workspace admins bypass page restrictions: the configured allowlist, or else the first registered user. */
+  isWorkspaceAdmin(userId: string): boolean {
+    const admins = this.options.adminUserIds ?? [];
+    if (admins.length > 0) return admins.includes(userId);
+    return this.options.bootstrapFirstUserAdmin !== false && this.firstRegisteredUserId() === userId;
+  }
+
+  isDirectDocumentOwner(userId: string, documentId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare("SELECT 1 AS found FROM permissions WHERE resource_type = 'document' AND resource_id = ? AND user_id = ? AND role = 'owner'")
+        .get(documentId, userId),
+    );
+  }
+
+  private restrictionAllows(userId: string, documentId: string, kind: CloudRestrictionKind): boolean {
+    if (this.isDirectDocumentOwner(userId, documentId)) return true;
+    return Boolean(
+      this.db
+        .prepare(
+          `SELECT 1 AS found FROM page_restrictions pr
+           WHERE pr.document_id = ? AND pr.kind = ?
+             AND ((pr.principal_type = 'user' AND pr.principal_id = ?)
+               OR (pr.principal_type = 'group' AND pr.principal_id IN (SELECT group_id FROM group_members WHERE user_id = ?)))
+           LIMIT 1`,
+        )
+        .get(documentId, kind, userId, userId),
+    );
+  }
+
+  private replacePageParents(site: CloudSiteRecord): void {
+    this.db.prepare("DELETE FROM page_parents WHERE site_id = ?").run(site.id);
+    const members = new Set(site.documentIds);
+    const insert = this.db.prepare("INSERT INTO page_parents (site_id, document_id, parent_id) VALUES (?, ?, ?)");
+    for (const [child, parent] of Object.entries(site.pageParents ?? {})) {
+      if (child !== parent && members.has(child) && members.has(parent)) insert.run(site.id, child, parent);
+    }
+  }
+
+  private rebuildPageParents(): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM page_parents").run();
+      for (const row of this.db.prepare("SELECT id FROM sites").all() as Array<{ id: string }>) {
+        const site = this.readSite(row.id);
+        if (site) this.replacePageParents(site);
+      }
+    })();
+  }
+  // cloud-ai: AI usage, drafted pages, and maintenance
+
+  writeAiUsage(usage: CloudAiUsageRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO ai_usage (id, user_id, agent_id, feature, model, input_tokens, output_tokens, cost_usd, site_id, document_id, created_at)
+         VALUES (@id, @userId, @agentId, @feature, @model, @inputTokens, @outputTokens, @costUsd, @siteId, @documentId, @createdAt)`,
+      )
+      .run({ ...usage, siteId: usage.siteId ?? null, documentId: usage.documentId ?? null });
+  }
+
+  /** Total AI spend by one user since `since` (ISO timestamp). */
+  aiSpendSince(userId: string, since: string): number {
+    const row = this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS total FROM ai_usage WHERE user_id = ? AND created_at >= ?").get(userId, since) as { total: number };
+    return row.total;
+  }
+
+  listAiUsage(userId: string, limit = 50): CloudAiUsageRecord[] {
+    const rows = this.db.prepare("SELECT * FROM ai_usage WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?").all(userId, limit) as AiUsageRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      agentId: row.agent_id,
+      feature: row.feature,
+      model: row.model,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      costUsd: row.cost_usd,
+      ...(row.site_id ? { siteId: row.site_id } : {}),
+      ...(row.document_id ? { documentId: row.document_id } : {}),
+      createdAt: row.created_at,
+    }));
+  }
+
+  writeAiPageProposal(proposal: CloudAiPageProposal): void {
+    this.db
+      .prepare(
+        `INSERT INTO ai_page_proposals
+          (id, site_id, parent_id, title, source, source_hash, instruction, proposed_by, agent_id, model, citations_json,
+           diagnostics_json, status, reviewed_by, reviewed_at, document_id, created_at, updated_at)
+         VALUES
+          (@id, @siteId, @parentId, @title, @source, @sourceHash, @instruction, @proposedBy, @agentId, @model, @citationsJson,
+           @diagnosticsJson, @status, @reviewedBy, @reviewedAt, @documentId, @createdAt, @updatedAt)
+         ON CONFLICT(id) DO UPDATE SET
+           status = excluded.status,
+           reviewed_by = excluded.reviewed_by,
+           reviewed_at = excluded.reviewed_at,
+           document_id = excluded.document_id,
+           updated_at = excluded.updated_at`,
+      )
+      .run({
+        id: proposal.id,
+        siteId: proposal.siteId,
+        parentId: proposal.parentId ?? null,
+        title: proposal.title,
+        source: proposal.source,
+        sourceHash: proposal.sourceHash,
+        instruction: proposal.instruction,
+        proposedBy: proposal.proposedBy,
+        agentId: proposal.agentId,
+        model: proposal.model,
+        citationsJson: JSON.stringify(proposal.citations),
+        diagnosticsJson: JSON.stringify(proposal.diagnostics),
+        status: proposal.status,
+        reviewedBy: proposal.reviewedBy ?? null,
+        reviewedAt: proposal.reviewedAt ?? null,
+        documentId: proposal.documentId ?? null,
+        createdAt: proposal.createdAt,
+        updatedAt: proposal.updatedAt,
+      });
+  }
+
+  readAiPageProposal(id: string): CloudAiPageProposal | undefined {
+    const row = this.db.prepare("SELECT * FROM ai_page_proposals WHERE id = ?").get(id) as AiPageProposalRow | undefined;
+    return row ? cloudAiPageProposal(row) : undefined;
+  }
+
+  listAiPageProposals(siteId: string, limit = 100): CloudAiPageProposal[] {
+    const rows = this.db.prepare("SELECT * FROM ai_page_proposals WHERE site_id = ? ORDER BY created_at DESC, id DESC LIMIT ?").all(siteId, limit) as AiPageProposalRow[];
+    return rows.map(cloudAiPageProposal);
+  }
+
+  readSiteMaintenance(siteId: string): CloudSiteMaintenanceSettings | undefined {
+    const row = this.db.prepare("SELECT * FROM site_maintenance WHERE site_id = ?").get(siteId) as SiteMaintenanceRow | undefined;
+    return row ? cloudSiteMaintenance(row) : undefined;
+  }
+
+  writeSiteMaintenance(settings: CloudSiteMaintenanceSettings): void {
+    this.db
+      .prepare(
+        `INSERT INTO site_maintenance (site_id, enabled, ai_refresh, interval_hours, max_proposals_per_run, run_as, updated_by, updated_at, last_run_at)
+         VALUES (@siteId, @enabled, @aiRefresh, @intervalHours, @maxProposalsPerRun, @runAs, @updatedBy, @updatedAt, @lastRunAt)
+         ON CONFLICT(site_id) DO UPDATE SET
+           enabled = excluded.enabled,
+           ai_refresh = excluded.ai_refresh,
+           interval_hours = excluded.interval_hours,
+           max_proposals_per_run = excluded.max_proposals_per_run,
+           run_as = excluded.run_as,
+           updated_by = excluded.updated_by,
+           updated_at = excluded.updated_at,
+           last_run_at = excluded.last_run_at`,
+      )
+      .run({
+        siteId: settings.siteId,
+        enabled: settings.enabled ? 1 : 0,
+        aiRefresh: settings.aiRefresh ? 1 : 0,
+        intervalHours: settings.intervalHours,
+        maxProposalsPerRun: settings.maxProposalsPerRun,
+        runAs: settings.runAs,
+        updatedBy: settings.updatedBy,
+        updatedAt: settings.updatedAt,
+        lastRunAt: settings.lastRunAt ?? null,
+      });
+  }
+
+  /** Enabled, non-trashed spaces whose last sweep is older than their interval, oldest first. */
+  listDueSiteMaintenance(now: string, limit: number): CloudSiteMaintenanceSettings[] {
+    const rows = this.db
+      .prepare(
+        `SELECT m.* FROM site_maintenance m
+         WHERE m.enabled = 1
+           AND NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'site' AND t.resource_id = m.site_id)
+           AND (m.last_run_at IS NULL OR datetime(m.last_run_at, '+' || m.interval_hours || ' hours') <= datetime(?))
+         ORDER BY COALESCE(m.last_run_at, '') ASC LIMIT ?`,
+      )
+      .all(now, limit) as SiteMaintenanceRow[];
+    return rows.map(cloudSiteMaintenance);
+  }
+
+  listHealthItems(siteId: string, status?: CloudHealthItemRecord["status"], limit = 500): CloudHealthItemRecord[] {
+    const rows = (status
+      ? this.db.prepare("SELECT * FROM knowledge_health_items WHERE site_id = ? AND status = ? ORDER BY last_seen_at DESC, id LIMIT ?").all(siteId, status, limit)
+      : this.db.prepare("SELECT * FROM knowledge_health_items WHERE site_id = ? ORDER BY last_seen_at DESC, id LIMIT ?").all(siteId, limit)) as HealthItemRow[];
+    return rows.map(cloudHealthItem);
+  }
+
+  writeHealthItem(item: CloudHealthItemRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO knowledge_health_items
+          (id, site_id, kind, severity, document_id, block_id, message, evidence_json, status, proposal_id, first_seen_at, last_seen_at, resolved_at)
+         VALUES
+          (@id, @siteId, @kind, @severity, @documentId, @blockId, @message, @evidenceJson, @status, @proposalId, @firstSeenAt, @lastSeenAt, @resolvedAt)
+         ON CONFLICT(id) DO UPDATE SET
+           severity = excluded.severity,
+           message = excluded.message,
+           evidence_json = excluded.evidence_json,
+           status = excluded.status,
+           proposal_id = excluded.proposal_id,
+           last_seen_at = excluded.last_seen_at,
+           resolved_at = excluded.resolved_at`,
+      )
+      .run({
+        id: item.id,
+        siteId: item.siteId,
+        kind: item.kind,
+        severity: item.severity,
+        documentId: item.documentId ?? null,
+        blockId: item.blockId ?? null,
+        message: item.message,
+        evidenceJson: JSON.stringify(item.evidence),
+        status: item.status,
+        proposalId: item.proposalId ?? null,
+        firstSeenAt: item.firstSeenAt,
+        lastSeenAt: item.lastSeenAt,
+        resolvedAt: item.resolvedAt ?? null,
+      });
+  }
+
+  writeMaintenanceRun(run: CloudMaintenanceRun): void {
+    this.db
+      .prepare(
+        `INSERT INTO maintenance_runs (id, site_id, trigger, status, started_at, finished_at, items_open, items_resolved, proposals_created, detail_json)
+         VALUES (@id, @siteId, @trigger, @status, @startedAt, @finishedAt, @itemsOpen, @itemsResolved, @proposalsCreated, @detailJson)
+         ON CONFLICT(id) DO UPDATE SET
+           status = excluded.status,
+           finished_at = excluded.finished_at,
+           items_open = excluded.items_open,
+           items_resolved = excluded.items_resolved,
+           proposals_created = excluded.proposals_created,
+           detail_json = excluded.detail_json`,
+      )
+      .run({
+        id: run.id,
+        siteId: run.siteId,
+        trigger: run.trigger,
+        status: run.status,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt ?? null,
+        itemsOpen: run.itemsOpen,
+        itemsResolved: run.itemsResolved,
+        proposalsCreated: run.proposalsCreated,
+        detailJson: JSON.stringify(run.detail),
+      });
+  }
+
+  listMaintenanceRuns(siteId: string, limit = 20): CloudMaintenanceRun[] {
+    const rows = this.db.prepare("SELECT * FROM maintenance_runs WHERE site_id = ? ORDER BY started_at DESC, id DESC LIMIT ?").all(siteId, limit) as MaintenanceRunRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      siteId: row.site_id,
+      trigger: row.trigger === "scheduled" ? "scheduled" : "manual",
+      status: row.status === "completed" || row.status === "failed" ? row.status : "running",
+      startedAt: row.started_at,
+      ...(row.finished_at ? { finishedAt: row.finished_at } : {}),
+      itemsOpen: row.items_open,
+      itemsResolved: row.items_resolved,
+      proposalsCreated: row.proposals_created,
+      detail: parseRecord<Record<string, unknown>>(row.detail_json),
+    }));
+  }
+
+  // end cloud-ai
+
+  // -- wiki macros, page templates, and Confluence import --------------------
+
+  /** Sites whose page list contains the document, in insertion order. */
+  siteIdsForDocument(documentId: string): string[] {
+    return (
+      this.db
+        .prepare("SELECT site_id FROM site_documents WHERE document_id = ? ORDER BY position, site_id")
+        .all(documentId) as Array<{ site_id: string }>
+    ).map((row) => row.site_id);
+  }
+
+  /** Non-trashed documents whose title matches case-insensitively, most recently updated first. */
+  documentIdsByTitle(title: string, limit = 20): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT d.id FROM documents d
+           WHERE lower(d.title) = lower(?)
+             AND NOT EXISTS (SELECT 1 FROM trashed_resources t WHERE t.resource_type = 'document' AND t.resource_id = d.id)
+           ORDER BY d.updated_at DESC, d.id
+           LIMIT ?`,
+        )
+        .all(title.trim(), limit) as Array<{ id: string }>
+    ).map((row) => row.id);
+  }
+
+  listPageTemplates(siteIds: string[]): CloudPageTemplateRecord[] {
+    const placeholders = siteIds.map(() => "?").join(", ");
+    const siteClause = siteIds.length > 0 ? `OR (scope = 'site' AND site_id IN (${placeholders}))` : "";
+    return (
+      this.db
+        .prepare(`SELECT * FROM page_templates WHERE scope = 'workspace' ${siteClause} ORDER BY scope DESC, lower(name), id LIMIT 500`)
+        .all(...siteIds) as PageTemplateRow[]
+    ).map(pageTemplateRecord);
+  }
+
+  readPageTemplate(id: string): CloudPageTemplateRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM page_templates WHERE id = ?").get(id) as PageTemplateRow | undefined;
+    return row ? pageTemplateRecord(row) : undefined;
+  }
+
+  writePageTemplate(template: CloudPageTemplateRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO page_templates
+           (id, scope, site_id, name, description, category, source, variables_json, created_by, updated_by, created_at, updated_at)
+         VALUES (@id, @scope, @siteId, @name, @description, @category, @source, @variablesJson, @createdBy, @updatedBy, @createdAt, @updatedAt)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           description = excluded.description,
+           category = excluded.category,
+           source = excluded.source,
+           variables_json = excluded.variables_json,
+           updated_by = excluded.updated_by,
+           updated_at = excluded.updated_at`,
+      )
+      .run({ ...template, siteId: template.siteId ?? null, variablesJson: JSON.stringify(template.variables) });
+  }
+
+  deletePageTemplate(id: string): boolean {
+    return this.db.prepare("DELETE FROM page_templates WHERE id = ?").run(id).changes > 0;
+  }
+
+  createImportJob(job: CloudImportJob): void {
+    this.db
+      .prepare(
+        `INSERT INTO import_jobs (id, site_id, created_by, source, status, space_key, progress_json, result_json, error, created_at, updated_at, finished_at)
+         VALUES (@id, @siteId, @createdBy, @source, @status, @spaceKey, @progressJson, NULL, NULL, @createdAt, @updatedAt, NULL)`,
+      )
+      .run({ ...job, spaceKey: job.spaceKey ?? null, progressJson: JSON.stringify(job.progress) });
+  }
+
+  updateImportJob(id: string, patch: Partial<Pick<CloudImportJob, "status" | "progress" | "result" | "error" | "spaceKey" | "finishedAt">>, updatedAt: string): void {
+    const current = this.readImportJob(id);
+    if (!current) return;
+    const next = { ...current, ...patch };
+    this.db
+      .prepare(
+        `UPDATE import_jobs SET status = ?, space_key = ?, progress_json = ?, result_json = ?, error = ?, finished_at = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(
+        next.status,
+        next.spaceKey ?? null,
+        JSON.stringify(next.progress),
+        next.result ? JSON.stringify(next.result) : null,
+        next.error ?? null,
+        next.finishedAt ?? null,
+        updatedAt,
+        id,
+      );
+  }
+
+  readImportJob(id: string): CloudImportJob | undefined {
+    const row = this.db.prepare("SELECT * FROM import_jobs WHERE id = ?").get(id) as ImportJobRow | undefined;
+    return row ? importJob(row) : undefined;
+  }
+
+  countActiveImportJobs(siteId: string): number {
+    return (this.db.prepare("SELECT COUNT(*) AS count FROM import_jobs WHERE site_id = ? AND status IN ('queued', 'running')").get(siteId) as { count: number }).count;
+  }
+
+  readImportSource(siteId: string, sourceSystem: string, sourceId: string): CloudImportSource | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM import_sources WHERE site_id = ? AND source_system = ? AND source_id = ?")
+      .get(siteId, sourceSystem, sourceId) as ImportSourceRow | undefined;
+    return row
+      ? {
+          siteId: row.site_id,
+          sourceSystem: row.source_system,
+          sourceId: row.source_id,
+          documentId: row.document_id,
+          ...(row.source_version ? { sourceVersion: row.source_version } : {}),
+          importedHash: row.imported_hash,
+          importedAt: row.imported_at,
+        }
+      : undefined;
+  }
+
+  writeImportSource(source: CloudImportSource): void {
+    this.db
+      .prepare(
+        `INSERT INTO import_sources (site_id, source_system, source_id, document_id, source_version, imported_hash, imported_at)
+         VALUES (@siteId, @sourceSystem, @sourceId, @documentId, @sourceVersion, @importedHash, @importedAt)
+         ON CONFLICT(site_id, source_system, source_id) DO UPDATE SET
+           document_id = excluded.document_id,
+           source_version = excluded.source_version,
+           imported_hash = excluded.imported_hash,
+           imported_at = excluded.imported_at`,
+      )
+      .run({ ...source, sourceVersion: source.sourceVersion ?? null });
+  }
+
+  /** Jobs cannot survive a restart (they run in-process), so any left unfinished are marked failed on open. */
+  private failInterruptedImportJobs(): void {
+    this.db
+      .prepare(
+        `UPDATE import_jobs SET status = 'failed', error = 'Interrupted by a server restart', finished_at = updated_at
+         WHERE status IN ('queued', 'running')`,
+      )
+      .run();
+  }
+  // --- visual-collab store methods -------------------------------------------------------------
+
+  /** Persisted live-editing state for a document, or undefined when no room was ever opened. */
+  readCollabRoom(documentId: string): CloudCollabRoomState | undefined {
+    const row = this.db
+      .prepare("SELECT state, base_source, base_hash, updated_at FROM collab_rooms WHERE document_id = ?")
+      .get(documentId) as { state: Buffer; base_source: string; base_hash: string; updated_at: string } | undefined;
+    const updates = (this.db
+      .prepare("SELECT update_blob FROM collab_updates WHERE document_id = ? ORDER BY seq")
+      .all(documentId) as Array<{ update_blob: Buffer }>).map((item) => new Uint8Array(item.update_blob));
+    if (!row && updates.length === 0) return undefined;
+    return {
+      documentId,
+      state: row ? new Uint8Array(row.state) : undefined,
+      baseSource: row?.base_source,
+      baseHash: row?.base_hash,
+      updatedAt: row?.updated_at,
+      updates,
+    };
+  }
+
+  /** Durably append one live update; returns its sequence number. Called before the update is acknowledged. */
+  appendCollabUpdate(documentId: string, update: Uint8Array, actorId: string, createdAt: string): number {
+    const append = this.db.transaction((): number => {
+      const next = this.db
+        .prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM collab_updates WHERE document_id = ?")
+        .get(documentId) as { seq: number };
+      this.db
+        .prepare("INSERT INTO collab_updates (document_id, seq, update_blob, actor_id, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(documentId, next.seq, Buffer.from(update), actorId, createdAt);
+      return next.seq;
+    });
+    return append();
+  }
+
+  /** Replace the room with a compacted state and drop the updates it subsumes. */
+  writeCollabSnapshot(documentId: string, state: Uint8Array, baseSource: string, baseHash: string, updatedAt: string): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO collab_rooms (document_id, state, base_source, base_hash, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(document_id) DO UPDATE SET
+             state = excluded.state,
+             base_source = excluded.base_source,
+             base_hash = excluded.base_hash,
+             updated_at = excluded.updated_at`,
+        )
+        .run(documentId, Buffer.from(state), baseSource, baseHash, updatedAt);
+      this.db.prepare("DELETE FROM collab_updates WHERE document_id = ?").run(documentId);
+    })();
+  }
+
+  /** Number of updates persisted since the last snapshot. */
+  collabPendingUpdateCount(documentId: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM collab_updates WHERE document_id = ?").get(documentId) as { n: number };
+    return row.n;
+  }
+
+  /** Author of the most recent human update still pending in a room (used to attribute crash-recovered edits). */
+  lastCollabActor(documentId: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT actor_id FROM collab_updates WHERE document_id = ? AND actor_id != 'system' AND actor_id NOT LIKE 'share:%' ORDER BY seq DESC LIMIT 1")
+      .get(documentId) as { actor_id: string } | undefined;
+    return row?.actor_id;
+  }
+
+  deleteCollabRoom(documentId: string): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM collab_rooms WHERE document_id = ?").run(documentId);
+      this.db.prepare("DELETE FROM collab_updates WHERE document_id = ?").run(documentId);
+    })();
+  }
+
+  // --- end visual-collab store methods ---------------------------------------------------------
+
   query(user: CloudUserRecord, query: CloudDbQuery): CloudDbQueryResult {
     switch (query.resource) {
       case "documents":
@@ -2600,9 +3819,141 @@ export class NomaCloudDatabase {
       case "blocks":
         return { resource: query.resource, limit: query.limit, offset: query.offset, rows: this.queryBlocks(user, query) };
       case "users":
-        return { resource: query.resource, limit: query.limit, offset: query.offset, rows: this.queryUsers(query) };
+        return { resource: query.resource, limit: query.limit, offset: query.offset, rows: this.queryUsers(user, query) };
     }
   }
+
+  // auth-hardening: sessions, personal access tokens, and transactional writes
+
+  /** Runs `operation` inside one SQLite transaction; any throw rolls every write back. */
+  runInTransaction<T>(operation: () => T): T {
+    return this.db.transaction(operation)();
+  }
+
+  createAuthSession(session: CloudAuthSession, secretHash: string, csrfHash: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO auth_sessions
+           (id, secret_hash, csrf_hash, user_id, scopes_json, source, pat_id, created_at, last_seen_at, expires_at, user_agent, ip)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        session.id,
+        secretHash,
+        csrfHash,
+        session.userId,
+        JSON.stringify(session.scopes),
+        session.source,
+        session.patId ?? null,
+        session.createdAt,
+        session.lastSeenAt,
+        session.expiresAt,
+        session.userAgent ?? null,
+        session.ip ?? null,
+      );
+  }
+
+  /** Active (unrevoked, unexpired) session for a cookie secret hash, with the stored CSRF hash. */
+  findAuthSession(secretHash: string, now: string): { session: CloudAuthSession; csrfHash: string } | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM auth_sessions WHERE secret_hash = ? AND revoked_at IS NULL AND expires_at > ?")
+      .get(secretHash, now) as AuthSessionRow | undefined;
+    return row ? { session: authSession(row), csrfHash: row.csrf_hash } : undefined;
+  }
+
+  touchAuthSession(id: string, lastSeenAt: string): void {
+    this.db.prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE id = ?").run(lastSeenAt, id);
+  }
+
+  setAuthSessionCsrf(id: string, csrfHash: string): void {
+    this.db.prepare("UPDATE auth_sessions SET csrf_hash = ? WHERE id = ?").run(csrfHash, id);
+  }
+
+  listAuthSessions(userId: string, now: string, limit: number, offset: number): CloudAuthSession[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM auth_sessions
+         WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?
+         ORDER BY last_seen_at DESC, id LIMIT ? OFFSET ?`,
+      )
+      .all(userId, now, limit, offset) as AuthSessionRow[];
+    return rows.map(authSession);
+  }
+
+  revokeAuthSession(userId: string, id: string, revokedAt: string): boolean {
+    return this.db
+      .prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL")
+      .run(revokedAt, id, userId).changes > 0;
+  }
+
+  /** Revokes every active session of a user except `exceptId`; returns how many were revoked. */
+  revokeUserAuthSessions(userId: string, revokedAt: string, exceptId?: string): number {
+    return this.db
+      .prepare("UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND id IS NOT ?")
+      .run(revokedAt, userId, exceptId ?? null).changes;
+  }
+
+  /** Deletes sessions that expired or were revoked before `before`, keeping the table bounded. */
+  purgeAuthSessions(before: string): number {
+    return this.db
+      .prepare("DELETE FROM auth_sessions WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)")
+      .run(before, before).changes;
+  }
+
+  createPersonalAccessToken(token: CloudPersonalAccessToken, tokenHash: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO personal_access_tokens
+           (id, user_id, name, token_hash, token_preview, scopes_json, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(token.id, token.userId, token.name, tokenHash, token.tokenPreview, JSON.stringify(token.scopes), token.createdAt, token.expiresAt ?? null);
+  }
+
+  /** Any token with this hash, including revoked or expired ones, so callers can report why it is rejected. */
+  findPersonalAccessToken(tokenHash: string): CloudPersonalAccessToken | undefined {
+    const row = this.db.prepare("SELECT * FROM personal_access_tokens WHERE token_hash = ?").get(tokenHash) as PersonalAccessTokenRow | undefined;
+    return row ? personalAccessToken(row) : undefined;
+  }
+
+  readPersonalAccessToken(id: string): CloudPersonalAccessToken | undefined {
+    const row = this.db.prepare("SELECT * FROM personal_access_tokens WHERE id = ?").get(id) as PersonalAccessTokenRow | undefined;
+    return row ? personalAccessToken(row) : undefined;
+  }
+
+  listPersonalAccessTokens(userId: string, limit: number, offset: number): CloudPersonalAccessToken[] {
+    const rows = this.db
+      .prepare("SELECT * FROM personal_access_tokens WHERE user_id = ? ORDER BY created_at DESC, id LIMIT ? OFFSET ?")
+      .all(userId, limit, offset) as PersonalAccessTokenRow[];
+    return rows.map(personalAccessToken);
+  }
+
+  countActivePersonalAccessTokens(userId: string, now: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM personal_access_tokens
+         WHERE user_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)`,
+      )
+      .get(userId, now) as { count: number };
+    return row.count;
+  }
+
+  /** Revokes a token and every browser session that was opened with it. */
+  revokePersonalAccessToken(userId: string, id: string, revokedAt: string): boolean {
+    return this.runInTransaction(() => {
+      const changed = this.db
+        .prepare("UPDATE personal_access_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL")
+        .run(revokedAt, id, userId).changes > 0;
+      if (changed) this.db.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE pat_id = ? AND revoked_at IS NULL").run(revokedAt, id);
+      return changed;
+    });
+  }
+
+  touchPersonalAccessToken(id: string, lastUsedAt: string): void {
+    this.db.prepare("UPDATE personal_access_tokens SET last_used_at = ? WHERE id = ?").run(lastUsedAt, id);
+  }
+
+  // end auth-hardening
 
   private applySchema(): void {
     this.db.exec(`
@@ -3007,6 +4358,74 @@ export class NomaCloudDatabase {
       CREATE INDEX IF NOT EXISTS idx_page_views_document ON page_views(document_id, viewed_at);
       CREATE INDEX IF NOT EXISTS idx_page_views_viewer ON page_views(document_id, viewer_key, viewed_at DESC);
 
+      -- page templates & Confluence import
+      CREATE TABLE IF NOT EXISTS page_templates (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK (scope IN ('workspace', 'site')),
+        site_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT 'general',
+        source TEXT NOT NULL,
+        variables_json TEXT NOT NULL DEFAULT '[]',
+        created_by TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK ((scope = 'site') = (site_id IS NOT NULL))
+      );
+
+      CREATE TABLE IF NOT EXISTS import_jobs (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('confluence-cloud', 'confluence-datacenter', 'confluence-export', 'confluence-bundle')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+        space_key TEXT,
+        progress_json TEXT NOT NULL DEFAULT '{}',
+        result_json TEXT,
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        finished_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS import_sources (
+        site_id TEXT NOT NULL,
+        source_system TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        document_id TEXT NOT NULL,
+        source_version TEXT,
+        imported_hash TEXT NOT NULL,
+        imported_at TEXT NOT NULL,
+        PRIMARY KEY (site_id, source_system, source_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_page_templates_scope ON page_templates(scope, site_id, lower(name));
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_site ON import_jobs(site_id, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_import_sources_document ON import_sources(document_id);
+      -- end page templates & Confluence import
+      -- visual-collab: live Yjs rooms for the visual editor. collab_rooms holds the compacted
+      -- state plus the .noma source it was last reconciled with; collab_updates holds updates
+      -- persisted before they are acknowledged, until the next checkpoint compacts them.
+      CREATE TABLE IF NOT EXISTS collab_rooms (
+        document_id TEXT PRIMARY KEY,
+        state BLOB NOT NULL,
+        base_source TEXT NOT NULL,
+        base_hash TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS collab_updates (
+        document_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        update_blob BLOB NOT NULL,
+        actor_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (document_id, seq)
+      );
+      -- end visual-collab
+
       CREATE INDEX IF NOT EXISTS idx_permissions_user ON permissions(user_id, resource_type, resource_id);
       CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token_hash);
       CREATE INDEX IF NOT EXISTS idx_site_documents_document ON site_documents(document_id, site_id);
@@ -3041,10 +4460,161 @@ export class NomaCloudDatabase {
       CREATE INDEX IF NOT EXISTS idx_patch_proposals_issue ON patch_proposals(issue_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_document_labels_label ON document_labels(label, document_id);
       CREATE INDEX IF NOT EXISTS idx_watchers_resource ON watchers(resource_type, resource_id, user_id);
+
+      -- attachments
+      CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL,
+        sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+        filename TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        size INTEGER NOT NULL CHECK (size >= 0),
+        uploaded_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_attachments_document ON attachments(document_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_attachments_sha256 ON attachments(sha256);
+      CREATE INDEX IF NOT EXISTS idx_attachments_uploader ON attachments(uploaded_by, deleted_at);
+
+      -- page restrictions
+      CREATE TABLE IF NOT EXISTS page_restrictions (
+        document_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('view', 'edit')),
+        principal_type TEXT NOT NULL CHECK (principal_type IN ('user', 'group')),
+        principal_id TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (document_id, kind, principal_type, principal_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_restrictions_principal ON page_restrictions(principal_type, principal_id, kind);
+      CREATE TABLE IF NOT EXISTS page_parents (
+        site_id TEXT NOT NULL,
+        document_id TEXT NOT NULL,
+        parent_id TEXT NOT NULL,
+        PRIMARY KEY (site_id, document_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_parents_parent ON page_parents(parent_id, document_id);
+      CREATE INDEX IF NOT EXISTS idx_page_parents_document ON page_parents(document_id, parent_id);
+      -- cloud-ai: AI usage accounting, drafted-page proposals, and stale-knowledge maintenance
+      CREATE TABLE IF NOT EXISTS ai_usage (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        feature TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        cost_usd REAL NOT NULL,
+        site_id TEXT,
+        document_id TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS ai_page_proposals (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        parent_id TEXT,
+        title TEXT NOT NULL,
+        source TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        instruction TEXT NOT NULL,
+        proposed_by TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        citations_json TEXT NOT NULL,
+        diagnostics_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'applied')),
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        document_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS site_maintenance (
+        site_id TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL,
+        ai_refresh INTEGER NOT NULL,
+        interval_hours INTEGER NOT NULL,
+        max_proposals_per_run INTEGER NOT NULL,
+        run_as TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_run_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS knowledge_health_items (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        document_id TEXT,
+        block_id TEXT,
+        message TEXT NOT NULL,
+        evidence_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
+        proposal_id TEXT,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        resolved_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS maintenance_runs (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        items_open INTEGER NOT NULL DEFAULT 0,
+        items_resolved INTEGER NOT NULL DEFAULT 0,
+        proposals_created INTEGER NOT NULL DEFAULT 0,
+        detail_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_ai_page_proposals_site ON ai_page_proposals(site_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_knowledge_health_items_site ON knowledge_health_items(site_id, status, last_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_maintenance_runs_site ON maintenance_runs(site_id, started_at DESC);
+      -- end cloud-ai
     `);
+    this.rebuildPageParents();
     this.migrateNotificationTypes();
     this.migrateCommentColumns();
     this.migrateSpaceColumns();
+
+    this.failInterruptedImportJobs();
+    this.db.exec(`
+      -- auth-hardening: cookie sessions and personal access tokens
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        secret_hash TEXT NOT NULL UNIQUE,
+        csrf_hash TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('user_token', 'register', 'pat', 'sso')),
+        pat_id TEXT,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        user_agent TEXT,
+        ip TEXT,
+        revoked_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, revoked_at, expires_at);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_pat ON auth_sessions(pat_id);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
+      CREATE TABLE IF NOT EXISTS personal_access_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        token_preview TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        last_used_at TEXT,
+        revoked_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_personal_access_tokens_user ON personal_access_tokens(user_id, created_at DESC);
+      -- end auth-hardening
+    `);
     this.db.exec(`
       INSERT OR IGNORE INTO document_revisions
         (document_id, revision, title, source, hash, created_at, created_by)
@@ -3122,6 +4692,37 @@ export class NomaCloudDatabase {
         .run();
     });
     importRecords();
+    this.moveImportedLegacyJson();
+  }
+
+  /**
+   * Moves legacy `*.json` records out of the data directories once they live in SQLite, so the
+   * server never reads (or inlines) them again. Runs once per database, including databases that
+   * imported before this step existed.
+   */
+  private moveImportedLegacyJson(): void {
+    const moved = this.db.prepare("SELECT value FROM meta WHERE key = 'legacy_json_moved'").get() as { value: string } | undefined;
+    if (moved) return;
+    const sources: Array<[string, string]> = [
+      ["documents", this.options.dataDir],
+      ["users", this.options.usersDir],
+      ["sites", this.options.sitesDir],
+    ];
+    const pending = sources.map(([label, dir]) => [label, dir, legacyJsonFileNames(dir)] as const).filter(([, , names]) => names.length > 0);
+    let destination: string | undefined;
+    if (pending.length > 0) {
+      destination = join(dirname(this.options.dataDir), `legacy-imported-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+      for (const [label, dir, names] of pending) {
+        const target = join(destination, label);
+        mkdirSync(target, { recursive: true });
+        for (const name of names) moveFile(join(dir, name), join(target, name));
+      }
+      removeDirectoryIfEmpty(this.options.usersDir);
+      removeDirectoryIfEmpty(this.options.sitesDir);
+    }
+    this.db
+      .prepare("INSERT INTO meta (key, value) VALUES ('legacy_json_moved', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(destination ?? "none");
   }
 
   private replacePermissions(resourceType: "document" | "site", resourceId: string, permissions: Record<string, CloudPermission>): void {
@@ -3192,6 +4793,7 @@ export class NomaCloudDatabase {
       );
       searchInsert.run(row.rowKey, row.documentId, document.title, row.blockId ?? "", [row.title, row.text].filter(Boolean).join("\n"));
     }
+    this.indexAttachmentBlocks(document.id, document.title);
   }
 
   private rebuildSearchIndexOnce(): void {
@@ -3314,7 +4916,13 @@ export class NomaCloudDatabase {
       ORDER BY s.updated_at DESC, s.id
       LIMIT ? OFFSET ?`;
     const rows = this.db.prepare(sql).all(...params) as RecordJsonRankRow[];
-    return rows.map((row) => siteQueryRow(parseRecord<CloudSiteRecord>(row.record_json), rankToRole(row.rank)));
+    return rows.map((row) => {
+      const site = parseRecord<CloudSiteRecord>(row.record_json);
+      const visible = site.documentIds.filter((id) => this.documentRestrictionCap(user.id, id) !== "hidden");
+      const keep = new Set(visible);
+      const pageFolders = Object.fromEntries(Object.entries(site.pageFolders ?? {}).filter(([id]) => keep.has(id)));
+      return siteQueryRow({ ...site, documentIds: visible, pageFolders }, rankToRole(row.rank));
+    });
   }
 
   private queryBlocks(user: CloudUserRecord, query: CloudDbQuery): Array<Record<string, unknown>> {
@@ -3360,7 +4968,7 @@ export class NomaCloudDatabase {
     return rows.map(blockQueryRow);
   }
 
-  private queryUsers(query: CloudDbQuery): Array<Record<string, unknown>> {
+  private queryUsers(viewer: CloudUserRecord, query: CloudDbQuery): Array<Record<string, unknown>> {
     const params: unknown[] = [];
     const filters: string[] = [];
     if (query.q) {
@@ -3374,7 +4982,7 @@ export class NomaCloudDatabase {
       ORDER BY lower(name), id
       LIMIT ? OFFSET ?`;
     const rows = this.db.prepare(sql).all(...params) as RecordJsonRow[];
-    return rows.map((row) => publicUser(parseRecord<CloudUserRecord>(row.record_json)));
+    return rows.map((row) => publicUser(parseRecord<CloudUserRecord>(row.record_json), viewer.id));
   }
 }
 
@@ -3449,6 +5057,21 @@ function withoutSitePage(site: CloudSiteRecord, documentId: string): CloudSiteRe
     else if (removedParent) pageParents[child] = removedParent;
   }
   return { ...site, documentIds, pageFolders, pageParents };
+}
+
+function cloudAttachment(row: AttachmentRow): CloudAttachment {
+  return {
+    id: row.id,
+    documentId: row.document_id,
+    sha256: row.sha256,
+    filename: row.filename,
+    contentType: row.content_type,
+    size: row.size,
+    uploadedBy: row.uploaded_by,
+    ...(row.uploaded_by_name ? { uploadedByName: row.uploaded_by_name } : {}),
+    createdAt: row.created_at,
+    ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
+  };
 }
 
 function cloudNotification(row: NotificationRow): CloudNotification {
@@ -3684,6 +5307,33 @@ function nodeSearchText(node: Node): string {
   }
 }
 
+function legacyJsonFileNames(dir: string): string[] {
+  try {
+    return readdirSync(dir).filter((name) => name.endsWith(".json"));
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && String(error.code) === "ENOENT") return [];
+    throw error;
+  }
+}
+
+function moveFile(from: string, to: string): void {
+  try {
+    renameSync(from, to);
+  } catch (error) {
+    if (!(typeof error === "object" && error !== null && "code" in error && String(error.code) === "EXDEV")) throw error;
+    copyFileSync(from, to);
+    unlinkSync(from);
+  }
+}
+
+function removeDirectoryIfEmpty(dir: string): void {
+  try {
+    if (readdirSync(dir).length === 0) rmdirSync(dir);
+  } catch {
+    return;
+  }
+}
+
 function legacyJsonRecords<T>(dir: string): T[] {
   try {
     return readdirSync(dir)
@@ -3818,14 +5468,49 @@ function blockQueryRow(row: BlockQueryRow): Record<string, unknown> {
   };
 }
 
-function publicUser(user: CloudUserRecord): Record<string, unknown> {
+function publicUser(user: CloudUserRecord, viewerId: string): Record<string, unknown> {
   return {
     id: user.id,
     name: user.name,
-    tokenPreview: user.tokenPreview,
+    ...(user.id === viewerId ? { tokenPreview: user.tokenPreview } : {}),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+function authSession(row: AuthSessionRow): CloudAuthSession {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    scopes: parseScopes(row.scopes_json),
+    source: row.source,
+    ...(row.pat_id ? { patId: row.pat_id } : {}),
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+    expiresAt: row.expires_at,
+    ...(row.user_agent ? { userAgent: row.user_agent } : {}),
+    ...(row.ip ? { ip: row.ip } : {}),
+    ...(row.revoked_at ? { revokedAt: row.revoked_at } : {}),
+  };
+}
+
+function personalAccessToken(row: PersonalAccessTokenRow): CloudPersonalAccessToken {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    tokenPreview: row.token_preview,
+    scopes: parseScopes(row.scopes_json),
+    createdAt: row.created_at,
+    ...(row.expires_at ? { expiresAt: row.expires_at } : {}),
+    ...(row.last_used_at ? { lastUsedAt: row.last_used_at } : {}),
+    ...(row.revoked_at ? { revokedAt: row.revoked_at } : {}),
+  };
+}
+
+function parseScopes(json: string): CloudTokenScope[] {
+  const parsed = JSON.parse(json) as unknown;
+  return Array.isArray(parsed) ? cloudTokenScopes.filter((scope) => parsed.includes(scope)) : [];
 }
 
 function rankToRole(rank: number): CloudRole {

@@ -6,6 +6,7 @@ import { extractWikilinks } from "../inline.js";
 import { parse } from "../parser.js";
 import {
   type AccessContext,
+  capAccessForDocument,
   type CloudServerConfig,
   type Principal,
   readDocument,
@@ -14,6 +15,7 @@ import {
   requireAccessRole,
   requireNotTrashed,
   requireRecordAccess,
+  requireSiteDocumentAccess,
   requireUser,
   uniqueId,
   writeSite,
@@ -30,8 +32,10 @@ import {
   updateDocument,
 } from "./records.js";
 import { afterDocumentSaved } from "./page-hooks.js";
+import { documentSummary } from "./macros.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics, routeSitePopular } from "./routes-analytics.js";
+import { routeSiteExport } from "./routes-export.js";
 import { routeDocumentTasks } from "./routes-tasks.js";
 import { routeSiteWebhooks } from "./routes-webhooks.js";
 import {
@@ -121,7 +125,7 @@ export async function routeSites(
   if (suffix === "tree") {
     if (method !== "GET") throw new HttpError(405, "Method not allowed");
     const access = requireRecordAccess(config, site, principal, "viewer");
-    sendJson(res, 200, { siteId: site.id, title: site.title, pages: sitePageTree(config, site), access: accessResponse(access) });
+    sendJson(res, 200, { siteId: site.id, title: site.title, pages: sitePageTree(config, site, access), access: accessResponse(access) });
     return;
   }
 
@@ -144,6 +148,11 @@ export async function routeSites(
     if (method !== "POST") throw new HttpError(405, "Method not allowed");
     const updated = await setSpaceArchived(suffix, config, principal, site);
     sendJson(res, 200, siteResponse(config, updated, requireRecordAccess(config, updated, principal, "viewer")));
+    return;
+  }
+
+  if (suffix === "export") {
+    await routeSiteExport(req, res, url, config, principal, site);
     return;
   }
 
@@ -196,14 +205,16 @@ async function routeSiteDocuments(
     const access = requireRecordAccess(config, site, principal, "editor");
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
-    const document = await createDocument(config, input, user, site.title, true);
+    const document = await createDocument(config, input, user, site.title, site.id, true);
     const now = config.now().toISOString();
     const documentIds = [...site.documentIds, document.id];
     const pageFolders = pageFolderMap(site.pageFolders, documentIds);
     const folder = optionalFolderName(input.folder);
     if (folder) pageFolders[document.id] = folder;
     const parentId = optionalCloudId(input.parentId, "Parent document");
-    if (parentId && !site.documentIds.includes(parentId)) throw new HttpError(400, "parentId must be a page in this site");
+    if (parentId && (!site.documentIds.includes(parentId) || !capAccessForDocument(config, parentId, access))) {
+      throw new HttpError(400, "parentId must be a page in this site");
+    }
     const pageParents = { ...pageParentMap(site.pageParents, documentIds), ...(parentId ? { [document.id]: parentId } : {}) };
     const nextSite: CloudSiteRecord = {
       ...site,
@@ -226,44 +237,45 @@ async function routeSiteDocuments(
   requireNotTrashed(config, "document", docId);
 
   if (parts[5] === "revisions") {
-    const access = requireRecordAccess(config, site, principal, "viewer");
+    const access = requireSiteDocumentAccess(config, site, docId, principal, "viewer");
     await routeDocumentRevisions(req, res, parts[6], parts[7], config, await readDocument(config, docId), access);
     return;
   }
 
   if (parts[5] === "breadcrumbs") {
     if (method !== "GET") throw new HttpError(405, "Method not allowed");
-    requireRecordAccess(config, site, principal, "viewer");
-    sendJson(res, 200, { breadcrumbs: pageBreadcrumbs(config, site, docId) });
+    const access = requireSiteDocumentAccess(config, site, docId, principal, "viewer");
+    sendJson(res, 200, { breadcrumbs: pageBreadcrumbs(config, site, docId, access) });
     return;
   }
 
   if (parts[5] === "parent") {
     if (method !== "PUT") throw new HttpError(405, "Method not allowed");
     const access = requireRecordAccess(config, site, principal, "editor");
+    requireSiteDocumentAccess(config, site, docId, principal, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const updated = await movePage(config, site, docId, input, access);
-    sendJson(res, 200, { site: siteResponse(config, updated, access), pages: sitePageTree(config, updated) });
+    sendJson(res, 200, { site: siteResponse(config, updated, access), pages: sitePageTree(config, updated, access) });
     return;
   }
 
   if (parts[5] === "comments") {
-    await routeDocumentComments(req, res, parts[6], parts[7], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"), parts[8]);
+    await routeDocumentComments(req, res, parts[6], parts[7], config, principal, await readDocument(config, docId), requireSiteDocumentAccess(config, site, docId, principal, "viewer"), parts[8]);
     return;
   }
 
   if (parts[5] === "tasks") {
-    await routeDocumentTasks(req, res, parts[6], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
+    await routeDocumentTasks(req, res, parts[6], config, principal, await readDocument(config, docId), requireSiteDocumentAccess(config, site, docId, principal, "viewer"));
     return;
   }
 
   if (parts[5] === "views" || parts[5] === "analytics") {
-    await routeDocumentAnalytics(req, res, parts[5], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
+    await routeDocumentAnalytics(req, res, parts[5], config, principal, await readDocument(config, docId), requireSiteDocumentAccess(config, site, docId, principal, "viewer"));
     return;
   }
 
   if (parts[5] === "approvals") {
-    await routeDocumentApprovals(req, res, parts[6], config, principal, await readDocument(config, docId), requireRecordAccess(config, site, principal, "viewer"));
+    await routeDocumentApprovals(req, res, parts[6], config, principal, await readDocument(config, docId), requireSiteDocumentAccess(config, site, docId, principal, "viewer"));
     return;
   }
 
@@ -276,20 +288,20 @@ async function routeSiteDocuments(
       config,
       principal,
       await readDocument(config, docId),
-      requireRecordAccess(config, site, principal, "viewer"),
+      requireSiteDocumentAccess(config, site, docId, principal, "viewer"),
     );
     return;
   }
 
   if (method === "GET") {
-    const access = requireRecordAccess(config, site, principal, "viewer");
+    const access = requireSiteDocumentAccess(config, site, docId, principal, "viewer");
     if (access.user) config.store.recordRecent(access.user.id, "document", docId, config.now().toISOString());
     sendJson(res, 200, documentResponse(await readDocument(config, docId), access));
     return;
   }
 
   if (method === "PUT" || method === "PATCH") {
-    const access = requireRecordAccess(config, site, principal, "editor");
+    const access = requireSiteDocumentAccess(config, site, docId, principal, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const document = await readDocument(config, docId);
     requireDocumentPrecondition(req, document, input);
@@ -306,8 +318,11 @@ async function siteDocumentResponses(
   site: CloudSiteRecord,
   access: AccessContext,
 ): Promise<Array<Record<string, unknown> & SourceInspection>> {
-  const visibleIds = site.documentIds.filter((id) => !config.store.isTrashed("document", id));
-  return Promise.all(visibleIds.map(async (id) => documentResponse(await readDocument(config, id), access)));
+  const visible = site.documentIds
+    .filter((id) => !config.store.isTrashed("document", id))
+    .map((id) => ({ id, access: capAccessForDocument(config, id, access) }))
+    .filter((entry): entry is { id: string; access: AccessContext } => entry.access !== undefined);
+  return Promise.all(visible.map(async (entry) => documentResponse(await readDocument(config, entry.id), entry.access)));
 }
 
 async function routeSiteWiki(
@@ -320,8 +335,8 @@ async function routeSiteWiki(
   const method = req.method ?? "GET";
   if (method !== "GET") throw new HttpError(405, "Method not allowed");
   const access = requireRecordAccess(config, site, principal, "viewer");
-  const visibleIds = site.documentIds.filter((id) => !config.store.isTrashed("document", id));
-  const documents = await Promise.all(visibleIds.map((id) => readDocument(config, id)));
+  const visibleIds = visibleSitePageIds(config, site, access);
+  const documents = await Promise.all(site.documentIds.filter((id) => visibleIds.has(id)).map((id) => readDocument(config, id)));
   const pages = documents.map(wikiPageSummary);
   const links = buildWikiLinks(documents);
   const backlinks = new Map<string, WikiLinkSummary[]>();
@@ -392,9 +407,26 @@ async function updateSite(
   principal: Principal,
 ): Promise<CloudSiteRecord> {
   const title = optionalString(input.title)?.slice(0, 120) ?? existing.title;
-  const documentIds = input.documentIds === undefined ? existing.documentIds : documentIdList(input.documentIds);
+  const hiddenIds = existing.documentIds.filter((id) => !visibleSitePageIds(config, existing, access).has(id));
+  const requestedIds = input.documentIds === undefined ? existing.documentIds : documentIdList(input.documentIds);
+  const documentIds = [...requestedIds.filter((id) => !hiddenIds.includes(id)), ...hiddenIds];
   const folders = input.folders === undefined ? existing.folders ?? [] : folderList(input.folders);
-  const pageFolders = input.pageFolders === undefined ? existing.pageFolders ?? {} : pageFolderMap(input.pageFolders, documentIds);
+  const pageFolders = {
+    ...(input.pageFolders === undefined ? existing.pageFolders ?? {} : pageFolderMap(input.pageFolders, documentIds)),
+    ...hiddenEntries(existing.pageFolders, hiddenIds),
+  };
+  const requestedParents = input.pageParents === undefined ? existing.pageParents : input.pageParents;
+  const pageParents = requestedParents && typeof requestedParents === "object" && !Array.isArray(requestedParents)
+    ? {
+        ...Object.fromEntries(
+          Object.entries(requestedParents as Record<string, unknown>).filter(
+            ([child, parent]) =>
+              !hiddenIds.includes(child) && (typeof parent !== "string" || !hiddenIds.includes(parent) || existing.pageParents?.[child] === parent),
+          ),
+        ),
+        ...hiddenEntries(existing.pageParents, hiddenIds),
+      }
+    : requestedParents;
   const addedDocumentIds = documentIds.filter((id) => !existing.documentIds.includes(id));
   await requireDocumentEditAccess(config, addedDocumentIds, principal);
   const normalizedFolders = normalizeSiteFolders(folders, pageFolders);
@@ -407,7 +439,7 @@ async function updateSite(
     documentIds,
     folders: normalizedFolders,
     pageFolders: pageFolderMap(pageFolders, documentIds),
-    pageParents: pageParentMap(input.pageParents === undefined ? existing.pageParents : input.pageParents, documentIds),
+    pageParents: pageParentMap(pageParents, documentIds),
     updatedAt: config.now().toISOString(),
     updatedBy: access.user?.id ?? `share:${access.share?.id ?? "unknown"}`,
   };
@@ -430,36 +462,57 @@ async function requireDocumentEditAccess(config: CloudServerConfig, ids: string[
 
 async function listSites(config: CloudServerConfig, user: CloudUserRecord, archived: "exclude" | "include" | "only"): Promise<Array<Record<string, unknown>>> {
   const sites = config.store.listSites(user).filter((record) => (archived === "include" ? true : archived === "only" ? Boolean(record.archivedAt) : !record.archivedAt));
-  return sites.map((record) => ({
+  return sites.map((record) => {
+    const visible = visibleSitePageIds(config, record, { role: record.currentRole ?? "viewer", via: "user", user });
+    return {
     version: record.version,
     id: record.id,
     title: record.title,
     slug: record.slug,
-    documentIds: record.documentIds,
+    documentIds: record.documentIds.filter((id) => visible.has(id)),
     folders: record.folders,
-    pageFolders: record.pageFolders,
-    pageParents: record.pageParents ?? {},
-    ...spaceFields(config, record),
+    pageFolders: onlyKeys(record.pageFolders ?? {}, visible),
+    pageParents: onlyKeys(record.pageParents ?? {}, visible),
+    ...spaceFields(config, record, visible),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     createdBy: record.createdBy,
     updatedBy: record.updatedBy,
     currentRole: record.currentRole,
-  }));
+    };
+  });
+}
+
+/**
+ * Pages of a space the caller may see: page restrictions (own or inherited) hide the rest from
+ * every space listing, tree, wiki, and published view.
+ */
+export function visibleSitePageIds(config: CloudServerConfig, site: CloudSiteRecord, access: AccessContext): Set<string> {
+  return new Set(site.documentIds.filter((id) => capAccessForDocument(config, id, access) !== undefined));
+}
+
+function onlyKeys<T>(record: Record<string, T>, keep: Set<string>): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).filter(([key]) => keep.has(key)));
+}
+
+function hiddenEntries(record: Record<string, string> | undefined, hiddenIds: string[]): Record<string, string> {
+  return Object.fromEntries(Object.entries(record ?? {}).filter(([key]) => hiddenIds.includes(key)));
 }
 
 function siteResponse(config: CloudServerConfig, record: CloudSiteRecord, access: AccessContext): Record<string, unknown> {
-  const pageFolders = pageFolderMap(record.pageFolders, record.documentIds);
+  const visible = visibleSitePageIds(config, record, access);
+  const documentIds = record.documentIds.filter((id) => visible.has(id));
+  const pageFolders = pageFolderMap(onlyKeys(record.pageFolders ?? {}, visible), documentIds);
   return {
     version: record.version,
     id: record.id,
     title: record.title,
     slug: record.slug,
-    documentIds: record.documentIds,
+    documentIds,
     folders: normalizeSiteFolders(record.folders ?? [], pageFolders),
     pageFolders,
-    pageParents: pageParentMap(record.pageParents, record.documentIds),
-    ...spaceFields(config, record),
+    pageParents: pageParentMap(onlyKeys(record.pageParents ?? {}, visible), documentIds),
+    ...spaceFields(config, record, visible),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     createdBy: record.createdBy,
@@ -468,8 +521,8 @@ function siteResponse(config: CloudServerConfig, record: CloudSiteRecord, access
   };
 }
 
-function spaceFields(config: CloudServerConfig, record: CloudSiteRecord): Record<string, unknown> {
-  const home = record.homeDocumentId && record.documentIds.includes(record.homeDocumentId) && !config.store.isTrashed("document", record.homeDocumentId) ? record.homeDocumentId : undefined;
+function spaceFields(config: CloudServerConfig, record: CloudSiteRecord, visible: Set<string>): Record<string, unknown> {
+  const home = record.homeDocumentId && visible.has(record.homeDocumentId) && !config.store.isTrashed("document", record.homeDocumentId) ? record.homeDocumentId : undefined;
   return {
     key: record.key ?? null,
     description: record.description ?? "",
@@ -595,7 +648,10 @@ interface CloudPageTreeNode {
   id: string;
   title: string;
   updatedAt: string;
+  /** Plain text of the page's `::excerpt`, when it has one. */
+  summary?: string;
   folder?: string;
+  restrictions?: { view: boolean; edit: boolean; inheritedView: boolean };
   children: CloudPageTreeNode[];
 }
 
@@ -609,7 +665,7 @@ interface CloudBreadcrumb {
  * Validates a child → parent page map against the site's pages. Unknown IDs are
  * dropped (pages leave spaces), self-parents and cycles are rejected.
  */
-function pageParentMap(value: unknown, documentIds: string[]): Record<string, string> {
+export function pageParentMap(value: unknown, documentIds: string[]): Record<string, string> {
   if (value === undefined || value === null) return {};
   if (typeof value !== "object" || Array.isArray(value)) throw new HttpError(400, "pageParents must be an object");
   const allowed = new Set(documentIds);
@@ -634,7 +690,7 @@ function pageParentMap(value: unknown, documentIds: string[]): Record<string, st
 }
 
 /** Nearest ancestor that is still visible; trashed parents hand their children up. */
-function effectivePageParent(config: CloudServerConfig, parents: Record<string, string>, documentId: string): string | undefined {
+export function effectivePageParent(config: CloudServerConfig, parents: Record<string, string>, documentId: string): string | undefined {
   let parent = parents[documentId];
   const seen = new Set<string>();
   while (parent && config.store.isTrashed("document", parent) && !seen.has(parent)) {
@@ -644,15 +700,27 @@ function effectivePageParent(config: CloudServerConfig, parents: Record<string, 
   return parent;
 }
 
-function sitePageTree(config: CloudServerConfig, site: CloudSiteRecord): CloudPageTreeNode[] {
+function sitePageTree(config: CloudServerConfig, site: CloudSiteRecord, access: AccessContext): CloudPageTreeNode[] {
   const parents = pageParentMap(site.pageParents, site.documentIds);
   const folders = site.pageFolders ?? {};
+  const visible = visibleSitePageIds(config, site, access);
+  const flags = config.store.pageRestrictionFlags([...visible]);
   const nodes = new Map<string, CloudPageTreeNode>();
   for (const id of site.documentIds) {
-    if (config.store.isTrashed("document", id)) continue;
+    if (!visible.has(id) || config.store.isTrashed("document", id)) continue;
     const document = config.store.readDocument(id);
     if (!document) continue;
-    nodes.set(id, { id, title: document.title, updatedAt: document.updatedAt, ...(folders[id] ? { folder: folders[id] } : {}), children: [] });
+    const restrictions = flags.get(id);
+    const summary = documentSummary(document);
+    nodes.set(id, {
+      id,
+      title: document.title,
+      updatedAt: document.updatedAt,
+      ...(summary ? { summary } : {}),
+      ...(folders[id] ? { folder: folders[id] } : {}),
+      ...(restrictions ? { restrictions } : {}),
+      children: [],
+    });
   }
   const roots: CloudPageTreeNode[] = [];
   for (const [id, node] of nodes) {
@@ -664,12 +732,12 @@ function sitePageTree(config: CloudServerConfig, site: CloudSiteRecord): CloudPa
   return roots;
 }
 
-function pageBreadcrumbs(config: CloudServerConfig, site: CloudSiteRecord, documentId: string): CloudBreadcrumb[] {
+function pageBreadcrumbs(config: CloudServerConfig, site: CloudSiteRecord, documentId: string, access: AccessContext): CloudBreadcrumb[] {
   const parents = pageParentMap(site.pageParents, site.documentIds);
   const chain: CloudBreadcrumb[] = [];
   let cursor: string | undefined = documentId;
   while (cursor) {
-    const document = config.store.readDocument(cursor);
+    const document = capAccessForDocument(config, cursor, access) ? config.store.readDocument(cursor) : undefined;
     if (document) chain.unshift({ type: "document", id: document.id, title: document.title });
     cursor = effectivePageParent(config, parents, cursor);
   }
@@ -713,7 +781,9 @@ async function movePage(
   const parents = pageParentMap(site.pageParents, site.documentIds);
   const parentId = input.parentId === null ? undefined : optionalCloudId(input.parentId, "Parent document");
   if (parentId !== undefined) {
-    if (!site.documentIds.includes(parentId)) throw new HttpError(400, "parentId must be a page in this site");
+    if (!site.documentIds.includes(parentId) || !capAccessForDocument(config, parentId, access)) {
+      throw new HttpError(400, "parentId must be a page in this site");
+    }
     if (parentId === documentId || pageDescendants(parents, documentId).has(parentId)) {
       throw new HttpError(400, "A page cannot be moved under itself or its descendants");
     }
@@ -752,4 +822,29 @@ async function movePage(
   await writeSite(config, record);
   if (access.user) recordActivity(config, access.user, "document.moved", "site", site.id, { documentId, parentId: parentId ?? null });
   return record;
+}
+
+/** Adds an existing page to a space, optionally under `parentId`, keeping folders and the page tree consistent. */
+export async function attachPageToSite(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  documentId: string,
+  parentId: string | undefined,
+  access: AccessContext,
+): Promise<CloudSiteRecord> {
+  const documentIds = site.documentIds.includes(documentId) ? site.documentIds : [...site.documentIds, documentId];
+  const parent = parentId && site.documentIds.includes(parentId) && !config.store.isTrashed("document", parentId) ? parentId : undefined;
+  const pageParents = { ...pageParentMap(site.pageParents, documentIds), ...(parent ? { [documentId]: parent } : {}) };
+  const pageFolders = pageFolderMap(site.pageFolders, documentIds);
+  const next: CloudSiteRecord = {
+    ...site,
+    documentIds: parent ? placeAfterSubtree(documentIds, pageParents, documentId, parent) : documentIds,
+    folders: normalizeSiteFolders(site.folders ?? [], pageFolders),
+    pageFolders,
+    pageParents,
+    updatedAt: config.now().toISOString(),
+    updatedBy: access.user?.id ?? site.updatedBy,
+  };
+  await writeSite(config, next);
+  return next;
 }

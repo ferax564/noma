@@ -70,9 +70,13 @@ export function webhookUrlInput(value: unknown): string {
   return url.toString();
 }
 
-/** Queues `event` for every webhook in the page's spaces (or `siteIds`) that subscribes to it. */
+/**
+ * Queues `event` for every webhook in the page's spaces (or `siteIds`) that subscribes to it.
+ * Pages under a view restriction (their own or an ancestor's) never leave the workspace this way.
+ */
 export function emitWebhookEvent(config: CloudServerConfig, event: CloudWebhookEvent, siteIds: string[], context: WebhookEventContext): number {
   let queued = 0;
+  if (context.document && config.store.documentRestrictionCap(undefined, context.document.id) === "hidden") return 0;
   const createdAt = config.now().toISOString();
   for (const siteId of [...new Set(siteIds)]) {
     const site = config.store.readSite(siteId);

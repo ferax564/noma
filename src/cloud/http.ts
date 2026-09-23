@@ -73,7 +73,7 @@ const artifactContentSecurityPolicy = [
   "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline'",
   "font-src data:",
-  "img-src data:",
+  "img-src data: 'self'",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",

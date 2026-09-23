@@ -4,6 +4,8 @@ import { walk } from "./ast.js";
 import { computedDomainVars, controlDefaultNumber, formulaText, numericAttr as computedNumericAttr } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
 import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } from "./inline.js";
+import { loadFrontmatterYaml } from "./parser.js";
+import { CHILDREN_SORTS, ISSUE_STATUSES, issueKeyFromNode, issuesRequest } from "./macros.js";
 import { collectTableIdentityStrings } from "./stable-identity.js";
 
 export interface ValidateOptions {
@@ -30,6 +32,12 @@ export interface ValidateOptions {
    * Used by CI and Actions workflows for `noma check --profile technical-docs`.
    */
   profiles?: string[];
+  /**
+   * Answers whether an `::include{page=...}` target exists. Hosts with a page
+   * store (Noma Cloud) pass it; without it, `page=` targets cannot be checked
+   * and each one produces an `include-unknown-page` warning.
+   */
+  pageExists?: (page: string) => boolean;
 }
 
 const DEFAULT_STALE_DAYS = 365;
@@ -224,6 +232,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
   const computed = new Map<string, DirectiveNode>();
   const computedNodes: DirectiveNode[] = [];
   const adrNodes: DirectiveNode[] = [];
+  const excerpts: DirectiveNode[] = [];
 
   const aliasToNode = new Map<string, Node>();
   const declaredProfiles = readDeclaredProfiles(doc.meta, options.profiles);
@@ -248,6 +257,20 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     return any ? union : undefined;
   })();
   const profileLabel = declaredProfiles.join("+");
+
+  const frontmatter = doc.children[0];
+  if (frontmatter?.type === "frontmatter") {
+    const loaded = loadFrontmatterYaml(frontmatter.raw);
+    if (!loaded.ok) {
+      diagnostics.push({
+        severity: "error",
+        code: "invalid-frontmatter",
+        message: `Frontmatter is not valid YAML (${loaded.error}); its keys are ignored.`,
+        pos: frontmatter.pos,
+        ...(frontmatter.endLine !== undefined ? { endLine: frontmatter.endLine } : {}),
+      });
+    }
+  }
 
   const wikilinkRefs = new Set<string>();
   const collectWikilinks = (text: string, node: Node): void => {
@@ -385,6 +408,12 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
         nodeId: node.id,
       });
     }
+
+    if (node.name === "excerpt") excerpts.push(node);
+    if (!suppressed(node)) validateMacroNode(node, diagnostics, options, (target) => {
+      referenced.add(target);
+      refSites.push({ target, node, attrKey: "block" });
+    });
 
     if (node.name === "state_change" && !suppressed(node)) {
       const block = node.attrs.block;
@@ -842,6 +871,16 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     if (node?.endLine !== undefined) diagnostic.endLine = node.endLine;
   }
 
+  for (const extra of excerpts.slice(1)) {
+    diagnostics.push({
+      severity: "warning",
+      code: "excerpt-duplicate",
+      message: `Only the first ::excerpt on a page is used; "${extra.id ?? "excerpt"}" is ignored.`,
+      pos: extra.pos,
+      nodeId: extra.id,
+    });
+  }
+
   const ignore = options.ignoreRules;
   if (ignore && ignore.length > 0) {
     const known = collectRuleCodes();
@@ -881,6 +920,7 @@ function readDeclaredProfiles(meta: Record<string, unknown>, optionProfiles: str
 }
 
 const KNOWN_RULES = [
+  "invalid-frontmatter",
   "duplicate-id",
   "out-of-profile-directive",
   "unknown-profile",
@@ -925,14 +965,89 @@ const KNOWN_RULES = [
   "computed-unknown-dependency",
   "formula-parse-error",
   "computed-chain-too-deep",
+  "include-missing-target",
+  "include-unknown-page",
+  "excerpt-duplicate",
+  "children-invalid-option",
+  "issue-invalid-key",
+  "issues-invalid-project",
+  "issues-invalid-status",
+  "page-properties-report-missing-label",
 ];
+
+function validateMacroNode(
+  node: DirectiveNode,
+  diagnostics: Diagnostic[],
+  options: ValidateOptions,
+  referenceBlock: (target: string) => void,
+): void {
+  const at = { pos: node.pos, nodeId: node.id };
+  switch (node.name) {
+    case "include": {
+      const page = macroAttrText(node, "page");
+      const block = macroAttrText(node, "block");
+      const excerpt = node.attrs.excerpt === true;
+      if (!page && !block && !excerpt) {
+        diagnostics.push({ severity: "error", code: "include-missing-target", message: "::include needs `page=`, `block=`, or the `excerpt` flag.", ...at });
+        return;
+      }
+      if (!page) {
+        if (block) referenceBlock(block);
+        return;
+      }
+      if (options.pageExists?.(page)) return;
+      diagnostics.push({
+        severity: "warning",
+        code: "include-unknown-page",
+        message: options.pageExists
+          ? `::include page="${page}" does not match a page you can see.`
+          : `::include page="${page}" is resolved by Noma Cloud and cannot be checked in single-file mode.`,
+        ...at,
+      });
+      return;
+    }
+    case "children": {
+      const depth = typeof node.attrs.depth === "string" && /^\d+$/.test(node.attrs.depth) ? Number(node.attrs.depth) : node.attrs.depth;
+      const sort = node.attrs.sort;
+      if (depth !== undefined && !(typeof depth === "number" && Number.isInteger(depth) && depth >= 1 && depth <= 5)) {
+        diagnostics.push({ severity: "warning", code: "children-invalid-option", message: `::children depth="${String(depth)}" must be an integer from 1 to 5.`, ...at });
+      }
+      if (sort !== undefined && !(CHILDREN_SORTS as readonly unknown[]).includes(sort)) {
+        diagnostics.push({ severity: "warning", code: "children-invalid-option", message: `::children sort="${String(sort)}" must be one of ${CHILDREN_SORTS.join(", ")}.`, ...at });
+      }
+      return;
+    }
+    case "issue":
+      if (!issueKeyFromNode(node)) {
+        diagnostics.push({ severity: "error", code: "issue-invalid-key", message: `::issue needs key="PROJ-12" (project key, dash, number).`, ...at });
+      }
+      return;
+    case "issues": {
+      if (!issuesRequest(node)) {
+        diagnostics.push({ severity: "error", code: "issues-invalid-project", message: `::issues needs project="PROJ" (2-20 letters, digits, or underscores).`, ...at });
+      }
+      const status = node.attrs.status;
+      if (status !== undefined && !(ISSUE_STATUSES as readonly unknown[]).includes(status)) {
+        diagnostics.push({ severity: "warning", code: "issues-invalid-status", message: `::issues status="${String(status)}" must be one of ${ISSUE_STATUSES.join(", ")}.`, ...at });
+      }
+      return;
+    }
+    case "page-properties-report":
+      if (!macroAttrText(node, "label")) {
+        diagnostics.push({ severity: "error", code: "page-properties-report-missing-label", message: `::page-properties-report needs label="...".`, ...at });
+      }
+      return;
+    default:
+      return;
+  }
+}
 
 function collectRuleCodes(): Set<string> {
   return new Set(KNOWN_RULES);
 }
 
 function suppressed(node: DirectiveNode): boolean {
-  return node.attrs.noverify === true;
+  return node.attrs.noverify === true || node.attrs.noverify === "true";
 }
 
 function readFirstStringAttr(node: DirectiveNode, keys: string[]): string | undefined {
@@ -1238,4 +1353,10 @@ export function formatDiagnostics(diagnostics: Diagnostic[], filename?: string):
     lines.push(`${d.severity.toUpperCase()} [${d.code}] ${where}: ${d.message}`);
   }
   return lines.join("\n");
+}
+
+function macroAttrText(node: DirectiveNode, key: string): string | undefined {
+  const value = node.attrs[key];
+  if (typeof value === "number") return String(value);
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

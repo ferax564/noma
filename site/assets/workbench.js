@@ -29,14 +29,21 @@
   function isBlockReferenceWikilinkTarget(target) {
     return BLOCK_REFERENCE_WIKILINK_RE.test(target);
   }
-  var SAFE_URL_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:", "mailto:", "tel:"]);
+  var SAFE_URL_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:", "mailto:", "tel:", "att:"]);
+  var ATTACHMENT_URL_PREFIX = "att:";
+  function resolveHref(href, resolveAttachment) {
+    if (resolveAttachment && href.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
+      return resolveAttachment(href.slice(ATTACHMENT_URL_PREFIX.length)) ?? "#";
+    }
+    return safeHref(href);
+  }
   function safeHref(href) {
     const normalized = href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
     const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized)?.[1];
     if (!scheme) return href;
     return SAFE_URL_SCHEMES.has(`${scheme}:`) ? href : "#";
   }
-  function inlineToHtml(src) {
+  function inlineToHtml(src, options = {}) {
     let text = escapeHtml(src);
     const codeSpans = [];
     const PH_OPEN = String.fromCharCode(2);
@@ -51,7 +58,10 @@
     text = text.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
     text = text.replace(
       MARKDOWN_LINK_RE,
-      (_m, label, href) => `<a href="${escapeAttr(safeHref(href))}">${unescapeMarkdownLinkLabel(label)}</a>`
+      (_m, label, href) => {
+        const target = options.resolveAttachment && href.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX) ? resolveHref(unescapeHtmlEntities(href), options.resolveAttachment) : safeHref(href);
+        return `<a href="${escapeAttr(target)}">${unescapeMarkdownLinkLabel(label)}</a>`;
+      }
     );
     text = text.replace(WIKILINK_RE, (match, raw) => renderWikilinkHtml(match, raw));
     text = text.replace(/(?:  +|\\)\n/g, "<br />");
@@ -59,6 +69,9 @@
     const restoreRe = new RegExp(PH_OPEN + "(\\d+)" + PH_CLOSE, "g");
     text = text.replace(restoreRe, (_m, i) => codeSpans[Number(i)] ?? "");
     return text;
+  }
+  function unescapeHtmlEntities(value) {
+    return value.replace(/&(amp|lt|gt|quot|#39);/g, (_m, name) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[name] ?? "");
   }
   function inlineToPlain(src) {
     const codeSpans = [];
@@ -3280,8 +3293,9 @@
 
   // src/parser.ts
   var FRONTMATTER_RE = /^---\s*$/;
-  var HEADING_RE = /^(#{1,6})\s+(.+?)(?:\s+\{([^}]+)\})?\s*$/;
-  var FENCE_RE = /^```(\w*)\s*$/;
+  var HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+  var HEADING_ATTRS_RE = /^(.+?)\s+\{([^}]*)\}$/;
+  var FENCE_OPEN_RE = /^(`{3,})([^`]*)$|^(~{3,})(.*)$/;
   var DIRECTIVE_OPEN_RE = /^(:{2,})\s*([a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)\s*(\{.*\})?\s*$/;
   var DIRECTIVE_CLOSE_RE = /^(:{2,})\s*$/;
   var LIST_RE = /^([-*])\s+(.+)$/;
@@ -3337,18 +3351,36 @@
     if (aliases.size > 0) root.aliases = [...aliases];
   }
   function extractFrontmatter(lines) {
-    if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) {
-      return { meta: {}, raw: "", startLine: 0, endLine: 0 };
-    }
+    const none = { meta: {}, raw: "", startLine: 0, endLine: 0 };
+    if (lines.length === 0 || !FRONTMATTER_RE.test(lines[0] ?? "")) return none;
     for (let i = 1; i < lines.length; i++) {
-      if (FRONTMATTER_RE.test(lines[i] ?? "")) {
-        const raw = lines.slice(1, i).join("\n");
-        const parsed = yaml.load(raw);
-        const meta = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-        return { meta, raw, startLine: i + 1, endLine: i + 1 };
+      if (!FRONTMATTER_RE.test(lines[i] ?? "")) continue;
+      const raw = lines.slice(1, i).join("\n");
+      const block = { raw, startLine: i + 1, endLine: i + 1 };
+      const result = loadFrontmatterYaml(raw);
+      if (result.ok) {
+        const parsed = result.value;
+        if (parsed === null || parsed === void 0) return raw.trim() === "" ? { meta: {}, ...block } : none;
+        if (typeof parsed === "object" && !Array.isArray(parsed)) {
+          return { meta: parsed, ...block };
+        }
+        return none;
       }
+      return looksLikeYamlMapping(raw) ? { meta: {}, ...block } : none;
     }
-    return { meta: {}, raw: "", startLine: 0, endLine: 0 };
+    return none;
+  }
+  function loadFrontmatterYaml(raw) {
+    try {
+      return { ok: true, value: yaml.load(raw) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message.split("\n")[0] ?? message };
+    }
+  }
+  function looksLikeYamlMapping(raw) {
+    const first = raw.split("\n").find((line) => line.trim() !== "" && !line.trim().startsWith("#"));
+    return first !== void 0 && /^[\w"'][\w\s"'.-]*:(?:\s|$)/.test(first);
   }
   function splitIdList(raw) {
     if (!raw) return void 0;
@@ -3427,12 +3459,13 @@
       const heading = matchOnce(HEADING_RE, line);
       if (heading) {
         const level = heading[1].length;
-        const title = heading[2].trim();
-        const headingAttrs = heading[3] ? parseAttrs(`{${heading[3]}}`) : {};
-        const explicitId = typeof headingAttrs.id === "string" ? headingAttrs.id : void 0;
+        const split = splitHeadingAttrs(heading[2]);
+        const title = split.title;
+        const headingAttrs = split.attrs ?? {};
+        const explicitId = typeof headingAttrs.id === "string" && headingAttrs.id !== "" ? headingAttrs.id : void 0;
         const section = {
           type: "section",
-          id: explicitId ?? slugify(title),
+          id: explicitId ?? headingSlug(title),
           level,
           title,
           children: [],
@@ -3449,19 +3482,17 @@
         i++;
         continue;
       }
-      const fence = matchOnce(FENCE_RE, line);
+      const fence = matchCodeFenceOpen(line);
       if (fence) {
-        const lang = fence[1] || void 0;
         const start = i + 1;
-        let end = start;
-        while (end < to && !FENCE_RE.test(lines[end] ?? "")) end++;
+        const end = findCodeFenceClose(lines, start, to, fence);
         const content = lines.slice(start, end).join("\n");
         const closed = end < to;
         out.push(
           applyPendingId(
             {
               type: "code",
-              lang,
+              lang: fence.lang,
               content,
               pos: { line: i + 1, column: 1 },
               endLine: closed ? end + 1 : end
@@ -3554,7 +3585,7 @@
       while (i < to) {
         const cur = lines[i] ?? "";
         const next = lines[i + 1] ?? "";
-        if (cur.trim() === "" || HEADING_RE.test(cur) || FENCE_RE.test(cur) || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || STABLE_ID_LINE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
+        if (cur.trim() === "" || HEADING_RE.test(cur) || matchCodeFenceOpen(cur) !== null || DIRECTIVE_OPEN_RE.test(cur) || DIRECTIVE_CLOSE_RE.test(cur) || STABLE_ID_LINE_RE.test(cur) || THEMATIC_BREAK_RE.test(cur) || QUOTE_RE.test(cur) || LIST_RE.test(cur) || ORDERED_LIST_RE.test(cur) || TABLE_ROW_RE.test(cur) && TABLE_SEPARATOR_RE.test(next)) {
           break;
         }
         buf.push(cur);
@@ -3570,10 +3601,9 @@
     const attrs = parseAttrs(opener[3] ?? "");
     let close = -1;
     for (let j = i + 1; j < to; j++) {
-      const fence = matchOnce(FENCE_RE, lines[j] ?? "");
+      const fence = matchCodeFenceOpen(lines[j] ?? "");
       if (fence) {
-        j++;
-        while (j < to && !FENCE_RE.test(lines[j] ?? "")) j++;
+        j = findCodeFenceClose(lines, j + 1, to, fence);
         continue;
       }
       const m = matchOnce(DIRECTIVE_CLOSE_RE, lines[j] ?? "");
@@ -3639,24 +3669,115 @@
     if (cellIds.some((row) => row.some(Boolean))) node.cellIds = cellIds;
     return { node, next: j };
   }
-  function parseAttrs(raw) {
-    const attrs = {};
-    if (!raw) return attrs;
-    const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
-    if (!inner) return attrs;
-    const re = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s]+)))?/g;
-    for (const m of inner.matchAll(re)) {
-      const key = m[1];
-      if (m[2] === void 0) {
-        attrs[key] = true;
+  function matchCodeFenceOpen(line) {
+    const m = FENCE_OPEN_RE.exec(line);
+    if (!m) return null;
+    const marker = m[1] ?? m[3] ?? "";
+    const lang = (m[2] ?? m[4] ?? "").trim().split(/\s+/)[0];
+    return { char: marker[0] === "~" ? "~" : "`", length: marker.length, ...lang ? { lang } : {} };
+  }
+  function isCodeFenceClose(line, open) {
+    const m = /^(`{3,}|~{3,})\s*$/.exec(line);
+    return m !== null && m[1][0] === open.char && m[1].length >= open.length;
+  }
+  function findCodeFenceClose(lines, from, to, open) {
+    let j = from;
+    while (j < to && !isCodeFenceClose(lines[j] ?? "", open)) j++;
+    return j;
+  }
+  var ATTR_KEY_RE = /^[a-zA-Z_][\w-]*/;
+  var ATTR_NAME_RE = /^[a-zA-Z_][\w-]*$/;
+  function tokenizeAttrs(inner, strict) {
+    const tokens = [];
+    let i = 0;
+    const atBoundary = (at) => at >= inner.length || /\s/.test(inner[at]);
+    while (i < inner.length) {
+      if (/\s/.test(inner[i])) {
+        i++;
         continue;
       }
-      const quoted = m[3] ?? m[4];
-      const bare = m[5];
-      const value = quoted !== void 0 ? quoted : bare ?? "";
-      attrs[key] = coerce(value);
+      const keyMatch = ATTR_KEY_RE.exec(inner.slice(i));
+      if (!keyMatch) {
+        if (strict) return null;
+        i++;
+        continue;
+      }
+      const key = keyMatch[0];
+      i += key.length;
+      if (inner[i] !== "=") {
+        if (strict && !atBoundary(i)) return null;
+        tokens.push({ key, quoted: false });
+        continue;
+      }
+      const valueStart = i + 1;
+      const quote = inner[valueStart];
+      if (quote === '"' || quote === "'") {
+        const scanned = scanQuoted(inner, valueStart + 1, quote);
+        if (scanned) {
+          if (strict && !atBoundary(scanned.next)) return null;
+          tokens.push({ key, value: scanned.value, quoted: true });
+          i = scanned.next;
+          continue;
+        }
+      }
+      const bare = /^\S+/.exec(inner.slice(valueStart));
+      if (!bare) {
+        if (strict) return null;
+        tokens.push({ key, quoted: false });
+        continue;
+      }
+      tokens.push({ key, value: bare[0], quoted: false });
+      i = valueStart + bare[0].length;
+    }
+    return tokens;
+  }
+  function scanQuoted(s, from, quote) {
+    let value = "";
+    for (let j = from; j < s.length; j++) {
+      const c = s[j];
+      if (c === quote) return { value, next: j + 1 };
+      if (quote === '"' && c === "\\" && (s[j + 1] === '"' || s[j + 1] === "\\")) {
+        value += s[j + 1];
+        j++;
+        continue;
+      }
+      value += c;
+    }
+    return null;
+  }
+  function tokensToAttrs(tokens) {
+    const attrs = {};
+    for (const t of tokens) {
+      if (t.value === void 0) attrs[t.key] = true;
+      else if (t.quoted || t.key === "id") attrs[t.key] = t.value;
+      else attrs[t.key] = coerce(t.value);
     }
     return attrs;
+  }
+  function parseAttrs(raw) {
+    if (!raw) return {};
+    const inner = raw.replace(/^\{/, "").replace(/\}$/, "").trim();
+    if (!inner) return {};
+    return tokensToAttrs(tokenizeAttrs(inner, false) ?? []);
+  }
+  function splitHeadingAttrs(text) {
+    const trimmed = text.trim();
+    const m = HEADING_ATTRS_RE.exec(trimmed);
+    if (!m) return { title: trimmed };
+    const tokens = tokenizeAttrs(m[2], true);
+    if (!tokens || !tokens.some((t) => t.value !== void 0)) return { title: trimmed };
+    return { title: m[1].trim(), attrs: tokensToAttrs(tokens), rawAttrs: m[2] };
+  }
+  function serializeAttr(key, value) {
+    if (value === true) return key;
+    if (value === false) return `${key}=false`;
+    if (typeof value === "number") return `${key}=${value}`;
+    const s = String(value);
+    if (s.includes('"') && !s.includes("'")) return `${key}='${s}'`;
+    return `${key}="${escapeAttrValue(s)}"`;
+  }
+  function escapeAttrValue(s) {
+    return s.replace(/\\(?=[\\"]|$)/g, "\\\\").replace(/"/g, '\\"');
   }
   function coerce(v) {
     if (v === "true") return true;
@@ -3726,7 +3847,10 @@
     return root;
   }
   function slugify(input) {
-    return input.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    return input.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").normalize("NFC").replace(/\p{Script=Inherited}/gu, "").replace(/[^\p{L}\p{N}\p{M}\s-]/gu, "").replace(/\p{Script=Latin}/gu, (ch) => ch >= "a" && ch <= "z" ? ch : "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  }
+  function headingSlug(title) {
+    return slugify(title) || "section";
   }
 
   // src/hash.ts
@@ -3913,6 +4037,41 @@
         return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
     }
   }
+  var OP_ATTR_VALUE_FIELDS = {
+    update_attribute: ["value"],
+    add_comment: ["id", "target", "author", "initials", "date", "reply_to"],
+    resolve_comment: ["resolved_by", "resolved_at"],
+    add_footnote: ["id", "target", "label"],
+    add_endnote: ["id", "target", "label"],
+    add_change_request: ["id", "target", "action", "from", "to", "text", "author", "date"],
+    rename_id: ["to"]
+  };
+  var LINE_BREAK_RE = /[\r\n\u2028\u2029]/;
+  function validateOpSafety(op) {
+    const record = op;
+    if (op.op === "update_attribute" || op.op === "remove_attribute") {
+      if (!ATTR_NAME_RE.test(op.key)) {
+        throw new PatchError(
+          "invalid_attribute_key",
+          `attribute key ${JSON.stringify(op.key)} must match ${ATTR_NAME_RE.source}`,
+          op
+        );
+      }
+    }
+    for (const field of OP_ATTR_VALUE_FIELDS[op.op] ?? []) {
+      const value = record[field];
+      if (typeof value === "string" && LINE_BREAK_RE.test(value)) {
+        throw new PatchError(
+          "invalid_attribute_value",
+          `op "${op.op}" field "${field}" is written into an attribute list and must not contain line breaks`,
+          op
+        );
+      }
+    }
+    if (op.op === "update_heading" && LINE_BREAK_RE.test(op.title)) {
+      throw new PatchError("invalid_content", `heading title must be a single line`, op);
+    }
+  }
   function validateOpShape(op) {
     const requirements = OP_REQUIRED_FIELDS[op.op];
     if (!requirements) {
@@ -3932,6 +4091,7 @@
         op
       );
     }
+    validateOpSafety(op);
   }
   function findById(node, id) {
     if (node.id === id) return node;
@@ -4592,6 +4752,15 @@
   function applyToSource(source, op) {
     validateOpShape(op);
     verifyBaseHash(source, op);
+    if (!usesCrlf(source)) return dispatchSourceOp(source, op);
+    const patched = dispatchSourceOp(source.replace(/\r\n/g, "\n"), op);
+    return patched.replace(/\r?\n/g, "\r\n");
+  }
+  function usesCrlf(source) {
+    const lf = source.split("\n").length - 1;
+    return lf > 0 && source.split("\r\n").length - 1 === lf;
+  }
+  function dispatchSourceOp(source, op) {
     switch (op.op) {
       case "update_attribute":
         return applySrcUpdateAttr(source, op);
@@ -4664,32 +4833,76 @@
     const { node, start, end } = locate(source, op.id, op);
     const lines = source.split("\n");
     const bodyLines = op.content.replace(/\n+$/, "").split("\n");
+    if (node.type === "list_item") {
+      const line = lines[start - 1] ?? "";
+      const marker = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
+      const hasIdMarker = node.id !== void 0 && INLINE_STABLE_ID_RE.test(line.slice(marker.length));
+      const idPrefix = hasIdMarker ? `{#${node.id}} ` : "";
+      lines[start - 1] = `${marker}${idPrefix}${op.content.replace(/\n/g, " ")}`;
+      return lines.join("\n");
+    }
+    let from;
+    let count;
+    let replacement = bodyLines;
     if (isDirective(node)) {
       if (!isBodyOnlyDirective(node)) {
         throw new PatchError("invalid_content", `block "${op.id}" has child blocks; use replace_block`, op);
       }
-      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-      return lines.join("\n");
+      from = start;
+      count = fencedBodyLineCount(lines, start, end, isDirectiveCloserFor(lines[start - 1] ?? ""));
+    } else if (node.type === "code") {
+      const fence = matchCodeFenceOpen(lines[start - 1] ?? "");
+      from = start;
+      count = fencedBodyLineCount(lines, start, end, (line) => fence !== null && isCodeFenceClose(line, fence));
+    } else if (node.type === "paragraph") {
+      from = start - 1;
+      count = end - start + 1;
+    } else if (node.type === "quote") {
+      from = start - 1;
+      count = end - start + 1;
+      replacement = bodyLines.map((line) => line ? `> ${line}` : ">");
+    } else {
+      throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
     }
-    if (node.type === "paragraph") {
-      lines.splice(start - 1, end - start + 1, ...bodyLines);
-      return lines.join("\n");
+    lines.splice(from, count, ...replacement);
+    const patched = lines.join("\n");
+    assertContainedEdit(source, patched, from + 1, from + count, from + replacement.length, op);
+    return patched;
+  }
+  function isDirectiveCloserFor(openLine) {
+    const colons = openLine.match(/^\s*(:{2,})/)?.[1]?.length ?? 2;
+    return (line) => line.match(/^(:{2,})\s*$/)?.[1]?.length === colons;
+  }
+  function fencedBodyLineCount(lines, start, end, isCloser) {
+    if (end > start && isCloser(lines[end - 1] ?? "")) return end - start - 1;
+    let last = end - 1;
+    while (last >= start && (lines[last] ?? "").trim() === "") last--;
+    return Math.max(0, last - start + 1);
+  }
+  function assertContainedEdit(before, after, start, oldEnd, newEnd, op) {
+    const delta = newEnd - oldEnd;
+    const expected = outsideStructure(parse(before), start, oldEnd, delta);
+    const actual = outsideStructure(parse(after), start, newEnd, 0);
+    if (expected.length === actual.length && expected.every((sig, i) => sig === actual[i])) return;
+    throw new PatchError(
+      "unbalanced_fence_content",
+      `content for "${patchTargetId(op)}" changes document structure outside the target (unbalanced \`::\` or code fence?)`,
+      op
+    );
+  }
+  function outsideStructure(doc, start, end, delta) {
+    const out = [];
+    for (const node of walk(doc)) {
+      const line = node.pos?.line;
+      if (line === void 0) continue;
+      const endLine = node.endLine ?? line;
+      if (line >= start && endLine <= end) continue;
+      const from = line > end ? line + delta : line;
+      const to = endLine >= end ? endLine + delta : endLine;
+      const name = isDirective(node) ? node.name : "";
+      out.push(`${node.type}:${name}:${node.id ?? ""}:${from}:${to}`);
     }
-    if (node.type === "quote") {
-      const quoted = bodyLines.map((line) => line ? `> ${line}` : ">");
-      lines.splice(start - 1, end - start + 1, ...quoted);
-      return lines.join("\n");
-    }
-    if (node.type === "code") {
-      lines.splice(start, Math.max(0, end - start - 1), ...bodyLines);
-      return lines.join("\n");
-    }
-    if (node.type === "list_item") {
-      const marker = (lines[start - 1] ?? "").match(/^(\s*(?:[-*+]|\d+[.)])\s+)/)?.[1] ?? "- ";
-      lines[start - 1] = `${marker}${op.content.replace(/\n/g, " ")}`;
-      return lines.join("\n");
-    }
-    throw new PatchError("invalid_content", `block "${op.id}" does not have replaceable body text`, op);
+    return out;
   }
   function applySrcUpdateHeading(source, op) {
     const { node, start } = locate(source, op.id, op);
@@ -5726,13 +5939,14 @@
   function normalizeDirectiveFenceDepth(content, from, to) {
     if (from === to) return content;
     const delta = to - from;
-    let inFence = false;
+    let fence = null;
     return content.split("\n").map((line) => {
-      if (/^\s*```/.test(line)) {
-        inFence = !inFence;
+      if (fence) {
+        if (isCodeFenceClose(line, fence)) fence = null;
         return line;
       }
-      if (inFence) return line;
+      fence = matchCodeFenceOpen(line);
+      if (fence) return line;
       const match = line.match(/^(\s*)(:{2,})(.*)$/);
       if (!match) return line;
       const rest = match[3] ?? "";
@@ -5788,7 +6002,7 @@
   function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-  var ATTR_TOKEN_RE = /([a-zA-Z_][\w-]*)(?:=("([^"]*)"|'([^']*)'|([^\s}]+)))?/g;
+  var ATTR_TOKEN_RE = /([a-zA-Z_][\w-]*)(?:=("((?:[^"\\]|\\.)*)"|'([^']*)'|([^\s}]+)))?/g;
   function rewriteOpenLineAttr(line, key, value, op) {
     const openMatch = line.match(/^(\s*:{2,}\s*[a-zA-Z_][\w-]*(?:::[a-zA-Z_][\w-]*)*)(\s*\{)?(.*?)(\}\s*)?$/);
     if (!openMatch) {
@@ -5844,38 +6058,43 @@
     if (op.resolved_at) next = rewriteOpenLineAttr(next, "resolved_at", op.resolved_at, op);
     return next;
   }
+  var HEADING_LINE_RE = /^(#{1,6})(\s+)(.+?)\s*$/;
   function rewriteHeadingId(line, newId) {
-    const m = line.match(/^(#+\s+.+?)(?:\s+\{([^}]*)\})?\s*$/);
+    const m = line.match(HEADING_LINE_RE);
     if (!m) return line;
-    const head = m[1] ?? "";
-    const attrsInner = (m[2] ?? "").trim();
-    if (!attrsInner) return `${head} {id="${newId}"}`;
+    const head = `${m[1]}${m[2]}`;
+    const split = splitHeadingAttrs(m[3] ?? "");
+    const idAttr = serializeAttr("id", newId);
+    const attrsInner = (split.rawAttrs ?? "").trim();
+    if (!attrsInner) return `${head}${split.title} {${idAttr}}`;
     let replaced = false;
     const updated = attrsInner.replace(ATTR_TOKEN_RE, (full, k) => {
       if (k !== "id") return full;
       replaced = true;
-      return `id="${newId}"`;
+      return idAttr;
     });
-    if (!replaced) return `${head} {${attrsInner} id="${newId}"}`;
-    return `${head} {${updated.trim()}}`;
+    if (!replaced) return `${head}${split.title} {${attrsInner} ${idAttr}}`;
+    return `${head}${split.title} {${updated.trim()}}`;
   }
   function rewriteHeadingTitle(line, newTitle, stableId) {
-    const m = line.match(/^(#+)(\s+)(.*?)(?:\s+\{([^}]*)\})?\s*$/);
+    const m = line.match(HEADING_LINE_RE);
     if (!m) return line;
     const hashes = m[1] ?? "#";
     const space = m[2] ?? " ";
-    const attrsInner = (m[4] ?? "").trim();
-    const needsExplicitId = stableId && stableId.length > 0 && slugify(newTitle) !== stableId;
+    const attrsInner = (splitHeadingAttrs(m[3] ?? "").rawAttrs ?? "").trim();
+    const title = newTitle.trim();
+    const needsExplicitId = stableId !== void 0 && stableId.length > 0 && (headingSlug(title) !== stableId || splitHeadingAttrs(title).attrs !== void 0);
+    const idAttr = stableId ? serializeAttr("id", stableId) : "";
     if (!attrsInner) {
-      return needsExplicitId ? `${hashes}${space}${newTitle} {id="${stableId}"}` : `${hashes}${space}${newTitle}`;
+      return needsExplicitId ? `${hashes}${space}${title} {${idAttr}}` : `${hashes}${space}${title}`;
     }
     let hasId = false;
     attrsInner.replace(ATTR_TOKEN_RE, (_full, k) => {
       if (k === "id") hasId = true;
       return _full;
     });
-    const attrs = needsExplicitId && !hasId ? `${attrsInner} id="${stableId}"` : attrsInner;
-    return `${hashes}${space}${newTitle} {${attrs.trim()}}`;
+    const attrs = needsExplicitId && !hasId ? `${attrsInner} ${idAttr}` : attrsInner;
+    return `${hashes}${space}${title} {${attrs.trim()}}`;
   }
   function serializeCommentBlock(op) {
     if (!op.content.trim()) {
@@ -5911,15 +6130,7 @@ ${content}
     return source;
   }
   function serializeOneAttr(key, value) {
-    if (value === true) return key;
-    if (value === false) return `${key}=false`;
-    if (typeof value === "number") return `${key}=${value}`;
-    const s = String(value);
-    if (s.includes('"')) {
-      if (s.includes("'")) return `${key}="${s.replace(/"/g, '\\"')}"`;
-      return `${key}='${s}'`;
-    }
-    return `${key}="${s}"`;
+    return serializeAttr(key, value);
   }
 
   // src/formula.ts
@@ -6396,6 +6607,216 @@ ${content}
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
+  // src/macros.ts
+  var MAX_INCLUDE_DEPTH = 3;
+  var ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "done"];
+  var CHILDREN_SORTS = ["position", "title", "updated"];
+  function initialIncludeTrail(documentId) {
+    return { ...documentId ? { documentId } : {}, stack: documentId ? [includeKey(documentId)] : [] };
+  }
+  function includeKey(documentId, blockId, excerpt) {
+    return `${documentId}#${excerpt ? ":excerpt" : blockId ?? ""}`;
+  }
+  function resolveIncludeStep(node, resolvers, trail, rootDoc) {
+    const request = includeRequest(node, trail.documentId);
+    const samePage = !request.page && rootDoc !== void 0 && trail.documentId === resolvers.documentId;
+    if (!resolvers.resolveInclude && !samePage) return { status: "unresolved", request };
+    const depth = Math.max(0, trail.stack.length - (resolvers.documentId ? 1 : 0));
+    if (depth >= MAX_INCLUDE_DEPTH) return { status: "depth", message: `Includes nest at most ${MAX_INCLUDE_DEPTH} levels deep.` };
+    if (!request.page && !request.block && !request.excerpt) return { status: "missing", message: "::include needs page=, block=, or excerpt." };
+    const resolution = samePage ? samePageInclude(rootDoc, request, resolvers.documentId) : resolvers.resolveInclude(request);
+    if (resolution.status !== "ok") return resolution;
+    const key = includeKey(resolution.documentId, resolution.blockId, resolution.excerpt);
+    if (trail.stack.includes(key)) {
+      return { status: "cycle", message: `"${resolution.title}" is already being included.` };
+    }
+    const nextDocumentId = samePage ? resolvers.documentId : resolution.documentId;
+    return { status: "ok", resolved: resolution, trail: { ...nextDocumentId ? { documentId: nextDocumentId } : {}, stack: [...trail.stack, key] } };
+  }
+  function samePageInclude(doc, request, documentId) {
+    const nodes = extractIncludeNodes(doc, { block: request.block, excerpt: request.excerpt });
+    if (!nodes) return { status: "missing", message: request.excerpt ? "This page has no ::excerpt." : `This page has no block "${request.block ?? ""}".` };
+    return {
+      status: "ok",
+      documentId: documentId ?? "",
+      title: "this page",
+      ...request.block ? { blockId: request.block } : {},
+      ...request.excerpt ? { excerpt: true } : {},
+      hash: "same-page",
+      nodes,
+      ...request.block ? { href: `#${request.block}` } : {}
+    };
+  }
+  function includeRequest(node, fromDocumentId) {
+    const page = attrString(node, "page");
+    const block = attrString(node, "block");
+    return {
+      ...page ? { page } : {},
+      ...block ? { block } : {},
+      excerpt: node.attrs.excerpt === true || node.attrs.excerpt === "true",
+      ...fromDocumentId ? { fromDocumentId } : {}
+    };
+  }
+  function childrenRequest(node, documentId) {
+    const depth = Number(node.attrs.depth ?? 1);
+    const sort = String(node.attrs.sort ?? "position");
+    return {
+      ...documentId ? { documentId } : {},
+      depth: Number.isInteger(depth) ? Math.max(1, Math.min(5, depth)) : 1,
+      sort: CHILDREN_SORTS.includes(sort) ? sort : "position"
+    };
+  }
+  var ISSUE_KEY_RE = /^[A-Z][A-Z0-9_]{1,19}-\d{1,9}$/;
+  var PROJECT_KEY_RE = /^[A-Z][A-Z0-9_]{1,19}$/;
+  function issueKeyFromNode(node) {
+    const key = attrString(node, "key")?.toUpperCase();
+    return key && ISSUE_KEY_RE.test(key) ? key : void 0;
+  }
+  function issuesRequest(node) {
+    const project = attrString(node, "project")?.toUpperCase();
+    if (!project || !PROJECT_KEY_RE.test(project)) return void 0;
+    const status = attrString(node, "status");
+    const limit = Number(node.attrs.limit ?? 20);
+    return {
+      project,
+      ...status && ISSUE_STATUSES.includes(status) ? { status } : {},
+      limit: Number.isInteger(limit) ? Math.max(1, Math.min(50, limit)) : 20
+    };
+  }
+  function pagePropertiesReportRequest(node, fromDocumentId) {
+    const label = attrString(node, "label")?.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!label) return void 0;
+    const limit = Number(node.attrs.limit ?? 50);
+    return {
+      label,
+      limit: Number.isInteger(limit) ? Math.max(1, Math.min(200, limit)) : 50,
+      ...fromDocumentId ? { fromDocumentId } : {}
+    };
+  }
+  function pagePropertiesEntries(node) {
+    const entries = [];
+    const push = (key, value) => {
+      const cleanKey = key.trim();
+      if (cleanKey && entries.length < 100) entries.push([cleanKey, value.trim()]);
+    };
+    const tables = node.children.filter((child) => child.type === "table");
+    if (tables.length > 0) {
+      for (const table of tables) {
+        if (table.header.length >= 2) push(table.header[0] ?? "", table.header[1] ?? "");
+        for (const row of table.rows) push(row[0] ?? "", row[1] ?? "");
+      }
+      return entries;
+    }
+    for (const raw of (node.body ?? "").split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.startsWith("|")) {
+        if (/^\|?\s*:?-{3,}/.test(line)) continue;
+        const cells = splitPipeRow(line);
+        if (cells.length >= 2) push(cells[0] ?? "", cells[1] ?? "");
+        continue;
+      }
+      const colon = line.indexOf(":");
+      if (colon > 0) push(line.slice(0, colon), line.slice(colon + 1));
+    }
+    return entries;
+  }
+  function findExcerpt(doc) {
+    for (const node of walk(doc)) {
+      if (node.type === "directive" && node.name === "excerpt") return node;
+    }
+    return void 0;
+  }
+  function extractIncludeNodes(doc, target) {
+    let nodes;
+    if (target.excerpt) {
+      const excerpt = findExcerpt(doc);
+      if (!excerpt) return void 0;
+      nodes = excerpt.children.length > 0 ? excerpt.children : excerpt.body ? [paragraphNode(excerpt.body)] : [];
+    } else if (target.block) {
+      for (const node of walk(doc)) {
+        if (node.type === "document") continue;
+        if (node.id === target.block || node.aliases?.includes(target.block)) {
+          nodes = [node];
+          break;
+        }
+      }
+    } else {
+      nodes = doc.children.filter((child) => child.type !== "frontmatter");
+    }
+    return nodes?.map(stripNodeIdentity);
+  }
+  function stripNodeIdentity(node) {
+    return JSON.parse(
+      JSON.stringify(node, (key, value) => {
+        if (key === "id" || key === "aliases" || key === "pos" || key === "endLine") return void 0;
+        if (key === "columnIds" || key === "headerIds" || key === "rowIds" || key === "cellIds") return void 0;
+        return value;
+      })
+    );
+  }
+  function unavailableMessage(status, what, detail) {
+    const base = (() => {
+      switch (status) {
+        case "missing":
+          return `${what} not found`;
+        case "forbidden":
+          return `You do not have access to ${what}`;
+        case "cycle":
+          return `${what} skipped: include cycle`;
+        case "depth":
+          return `${what} skipped: includes are nested too deeply`;
+        case "unresolved":
+          return `${what} is resolved when this page is viewed in Noma Cloud`;
+        default:
+          return `${what} is unavailable`;
+      }
+    })();
+    return detail ? `${base}. ${detail}` : `${base}.`;
+  }
+  function includeLabel(request) {
+    const page = request.page ? `"${request.page}"` : "this page";
+    if (request.excerpt) return `Excerpt of ${page}`;
+    return request.block ? `Block "${request.block}" of ${page}` : `Page ${page}`;
+  }
+  function flattenChildPages(pages, depth) {
+    return pages.flatMap((page) => [
+      `${depth > 0 ? `${"\u2014 ".repeat(depth)}` : ""}${page.title}${page.summary ? ` \u2014 ${page.summary}` : ""}`,
+      ...flattenChildPages(page.children, depth + 1)
+    ]);
+  }
+  function issueLine(issue) {
+    const parts = [`${issue.key}: ${issue.summary}`, issue.status.replace(/_/g, " ")];
+    if (issue.assigneeName) parts.push(issue.assigneeName);
+    return parts.join(" \xB7 ");
+  }
+  function propertiesReportColumns(rows) {
+    const columns = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const row of rows) {
+      for (const [key] of row.properties) {
+        const normalized = key.toLowerCase();
+        if (seen.has(normalized) || columns.length >= 12) continue;
+        seen.add(normalized);
+        columns.push(key);
+      }
+    }
+    return columns;
+  }
+  function propertyValue(row, column) {
+    const normalized = column.toLowerCase();
+    return row.properties.find(([key]) => key.toLowerCase() === normalized)?.[1] ?? "";
+  }
+  function attrString(node, key) {
+    const value = node.attrs[key];
+    if (typeof value === "string") return value.trim() || void 0;
+    if (typeof value === "number") return String(value);
+    return void 0;
+  }
+  function paragraphNode(content) {
+    return { type: "paragraph", content };
+  }
+
   // src/renderer-html.ts
   function buildDatasetRegistry(doc) {
     const out = /* @__PURE__ */ new Map();
@@ -6602,7 +7023,12 @@ ${content}
       sections: collectSectionEntries(doc),
       captions: collectCaptionEntries(doc),
       computed: buildComputedEvalContext(doc),
-      sourcePositions: options.sourcePositions === true
+      sourcePositions: options.sourcePositions === true,
+      inline: options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {},
+      ...options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {},
+      macros: options,
+      includeTrail: initialIncludeTrail(options.documentId),
+      rootDoc: doc
     };
     const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
     if (!options.standalone) return body;
@@ -7051,22 +7477,22 @@ document.querySelectorAll(".noma-plotly").forEach((el) => {
       case "section":
         return renderSection(node, ctx);
       case "paragraph":
-        return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content)}</p>`;
+        return `<p${sourceEditAttrs(node, ctx, "paragraph")}>${inlineToHtml(node.content, ctx.inline)}</p>`;
       case "code": {
         const langClass = node.lang ? ` class="lang-${escapeAttr(node.lang)}"` : "";
         return `<pre><code${langClass}>${escapeHtml(node.content)}</code></pre>`;
       }
       case "list": {
         const tag = node.ordered ? "ol" : "ul";
-        const items = node.items.map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content)}</li>`).join("\n");
+        const items = node.items.map((item) => `  <li${sourceEditAttrs(item, ctx, "list_item")}>${inlineToHtml(item.content, ctx.inline)}</li>`).join("\n");
         return `<${tag}>
 ${items}
 </${tag}>`;
       }
       case "list_item":
-        return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content)}</li>`;
+        return `<li${sourceEditAttrs(node, ctx, "list_item")}>${inlineToHtml(node.content, ctx.inline)}</li>`;
       case "quote":
-        return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content)}</blockquote>`;
+        return `<blockquote${sourceEditAttrs(node, ctx, "quote")}>${inlineToHtml(node.content, ctx.inline)}</blockquote>`;
       case "thematic_break":
         return `<hr />`;
       case "table": {
@@ -7080,7 +7506,7 @@ ${items}
             cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
             colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
           ].join("");
-          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</th>`;
+          return `<th${idAttr}${data}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</th>`;
         }).join("");
         const body = node.rows.map((row, rowIndex) => {
           const rowId = node.rowIds?.[rowIndex];
@@ -7095,7 +7521,7 @@ ${items}
               cellId ? ` data-noma-cell-id="${escapeAttr(cellId)}"` : "",
               colId ? ` data-noma-column-id="${escapeAttr(colId)}"` : ""
             ].join("");
-            return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell)}</td>`;
+            return `<td${idAttr}${data}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</td>`;
           }).join("");
           return `<tr${trAttr}>${cells}</tr>`;
         }).join("\n");
@@ -7121,7 +7547,7 @@ ${body}
   function renderSection(node, ctx) {
     const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
     const aliasAnchors = (node.aliases ?? []).map((a) => `<a class="noma-alias" id="${escapeAttr(a)}" aria-hidden="true"></a>`).join("");
-    const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title)}</h${node.level}>`;
+    const heading = `<h${node.level}${sourceEditAttrs(node, ctx, "section", node.pos?.line)}>${inlineToHtml(node.title, ctx.inline)}</h${node.level}>`;
     const inner = node.children.map((c) => renderNode(c, ctx)).join("\n");
     return `<section${idAttr} data-level="${node.level}">
 ${aliasAnchors}${heading}
@@ -7144,9 +7570,9 @@ ${inner}
       node.attrs.min ?? node.attrs.min_width ?? node.attrs.minWidth ?? node.attrs.minColumnWidth ?? node.attrs["min-width"]
     );
     const gap = cssLength(node.attrs.gap);
-    if (node.attrs.wide === true || width === "wide") classes.push(`${baseClass}-wide`);
-    if (node.attrs.full === true || width === "full") classes.push(`${baseClass}-full`);
-    if (node.attrs.compact === true || node.attrs.dense === true) classes.push(`${baseClass}-compact`);
+    if (attrBool(node.attrs.wide) || width === "wide") classes.push(`${baseClass}-wide`);
+    if (attrBool(node.attrs.full) || width === "full") classes.push(`${baseClass}-full`);
+    if (attrBool(node.attrs.compact) || attrBool(node.attrs.dense)) classes.push(`${baseClass}-compact`);
     if (min) classes.push(`${baseClass}-auto`);
     const safeColumns = Number.isFinite(columns) ? Math.max(1, Math.min(12, Math.floor(columns))) : 2;
     const vars = [`--noma-cols: ${safeColumns}`];
@@ -7226,7 +7652,7 @@ ${inner}
       case "pagebreak":
         return `<div class="noma-pagebreak"${idAttr} role="separator" aria-label="Page break"></div>`;
       case "button": {
-        const href = node.attrs.href ? safeHref(String(node.attrs.href)) : "#";
+        const href = node.attrs.href ? resolveHref(String(node.attrs.href), ctx.resolveAttachment) : "#";
         return `<a class="noma-button" href="${escapeAttr(href)}"${idAttr}>${renderChildren(node, ctx) || escapeHtml(node.body ?? "")}</a>`;
       }
       case "figure": {
@@ -7289,7 +7715,7 @@ ${inner}
       case "state_change":
         return renderStateChange(node, idAttr, ctx);
       case "table":
-        return renderTableDirective(node, idAttr);
+        return renderTableDirective(node, idAttr, ctx);
       case "math": {
         const body = (node.body ?? "").trim();
         const display = node.attrs.display !== "inline";
@@ -7316,6 +7742,20 @@ ${inner}
         const cls = node.name === "endnote" ? "noma-endnote" : "noma-footnote";
         return `<aside class="${cls}"${idAttr}${dataAttrs}>${label}${renderChildren(node, ctx)}</aside>`;
       }
+      case "include":
+        return renderIncludeMacro(node, idAttr, ctx);
+      case "excerpt":
+        return `<div class="noma-excerpt"${idAttr}>${renderChildren(node, ctx)}</div>`;
+      case "children":
+        return renderChildrenMacro(node, idAttr, ctx);
+      case "issue":
+        return renderIssueMacro(node, idAttr, ctx);
+      case "issues":
+        return renderIssuesMacro(node, idAttr, ctx);
+      case "page-properties":
+        return renderPagePropertiesMacro(node, idAttr);
+      case "page-properties-report":
+        return renderPagePropertiesReportMacro(node, idAttr, ctx);
       case "html":
         return ctx.allowEscapeHatches ? `<div class="noma-raw-html"${idAttr}>${node.body ?? ""}</div>` : `<aside class="noma-blocked-escape" data-kind="html"${idAttr}>[raw HTML escape hatch disabled]</aside>`;
       case "svg":
@@ -7334,6 +7774,112 @@ ${inner}
         return renderGenericDirective(node, idAttr + dataAttrs, ctx);
     }
   }
+  function macroPlaceholder(kind, status, message, idAttr) {
+    return `<aside class="noma-macro-placeholder noma-macro-${escapeAttr(status)}" data-macro="${escapeAttr(kind)}" data-status="${escapeAttr(status)}"${idAttr} role="note">${escapeHtml(message)}</aside>`;
+  }
+  function renderIncludeMacro(node, idAttr, ctx) {
+    const step = resolveIncludeStep(node, ctx.macros, ctx.includeTrail, ctx.rootDoc);
+    if (step.status === "unresolved") {
+      return macroPlaceholder("include", "unresolved", unavailableMessage("unresolved", includeLabel(step.request)), idAttr);
+    }
+    if (step.status !== "ok") {
+      const label = includeLabel(includeRequest(node, ctx.includeTrail.documentId));
+      return macroPlaceholder("include", step.status, unavailableMessage(step.status, label, step.message), idAttr);
+    }
+    const { resolved } = step;
+    const innerCtx = { ...ctx, sourcePositions: false, includeTrail: step.trail };
+    const inner = resolved.nodes.map((child) => renderNode(child, innerCtx)).join("\n");
+    const source = resolved.href ? `<a href="${escapeAttr(safeHref(resolved.href))}">${escapeHtml(resolved.title)}</a>` : escapeHtml(resolved.title);
+    const what = resolved.excerpt ? "Excerpt from" : resolved.blockId ? "Included from" : "Included page";
+    const blockAttr = resolved.blockId ? ` data-include-block="${escapeAttr(resolved.blockId)}"` : "";
+    return `<div class="noma-include"${resolved.documentId ? ` data-include-document="${escapeAttr(resolved.documentId)}"` : ""}${blockAttr} data-include-hash="${escapeAttr(resolved.hash)}"${idAttr}><div class="noma-include-source">${what} ${source}</div>${inner}</div>`;
+  }
+  function renderChildPageList(pages) {
+    const items = pages.map((page) => {
+      const title = page.href ? `<a href="${escapeAttr(safeHref(page.href))}">${escapeHtml(page.title)}</a>` : escapeHtml(page.title);
+      const summary = page.summary ? ` <span class="noma-children-summary">${escapeHtml(page.summary)}</span>` : "";
+      const nested = page.children.length > 0 ? renderChildPageList(page.children) : "";
+      return `<li data-page-id="${escapeAttr(page.id)}">${title}${summary}${nested}</li>`;
+    }).join("");
+    return `<ul>${items}</ul>`;
+  }
+  function renderChildrenMacro(node, idAttr, ctx) {
+    const resolution = ctx.macros.resolveChildren?.(childrenRequest(node, ctx.includeTrail.documentId));
+    if (!resolution) return macroPlaceholder("children", "unresolved", unavailableMessage("unresolved", "The child page list"), idAttr);
+    if (resolution.status !== "ok") {
+      return macroPlaceholder("children", resolution.status, unavailableMessage(resolution.status, "The child page list", resolution.message), idAttr);
+    }
+    if (resolution.pages.length === 0) return `<nav class="noma-children noma-children-empty"${idAttr}><p>No child pages.</p></nav>`;
+    return `<nav class="noma-children" aria-label="Child pages"${idAttr}>${renderChildPageList(resolution.pages)}</nav>`;
+  }
+  function issueStatusPill(status) {
+    return `<span class="noma-issue-status" data-status="${escapeAttr(status)}">${escapeHtml(status.replace(/_/g, " "))}</span>`;
+  }
+  function issueKeyHtml(issue) {
+    const key = escapeHtml(issue.key);
+    return issue.href ? `<a class="noma-issue-key" href="${escapeAttr(safeHref(issue.href))}">${key}</a>` : `<span class="noma-issue-key">${key}</span>`;
+  }
+  function renderIssueMacro(node, idAttr, ctx) {
+    const key = issueKeyFromNode(node);
+    if (!key) return macroPlaceholder("issue", "missing", 'Issue macro needs key="PROJ-12".', idAttr);
+    const resolution = ctx.macros.resolveIssue?.(key);
+    if (!resolution) return macroPlaceholder("issue", "unresolved", unavailableMessage("unresolved", `Issue ${key}`), idAttr);
+    if (resolution.status !== "ok") {
+      return macroPlaceholder("issue", resolution.status, unavailableMessage(resolution.status, `Issue ${key}`, resolution.message), idAttr);
+    }
+    const issue = resolution.issue;
+    const meta = [issue.type, issue.priority].filter((value) => Boolean(value)).map((value) => `<span>${escapeHtml(value)}</span>`).join("");
+    return `<div class="noma-issue-card" data-issue-key="${escapeAttr(issue.key)}"${idAttr}>${issueKeyHtml(issue)} <span class="noma-issue-summary">${escapeHtml(issue.summary)}</span> ${issueStatusPill(issue.status)} <span class="noma-issue-assignee">${escapeHtml(issue.assigneeName ?? "Unassigned")}</span>${meta ? ` <span class="noma-issue-meta">${meta}</span>` : ""}</div>`;
+  }
+  function renderIssuesMacro(node, idAttr, ctx) {
+    const request = issuesRequest(node);
+    if (!request) return macroPlaceholder("issues", "missing", 'Issues macro needs project="PROJ".', idAttr);
+    const resolution = ctx.macros.resolveIssues?.(request);
+    const label = `Issues in ${request.project}`;
+    if (!resolution) return macroPlaceholder("issues", "unresolved", unavailableMessage("unresolved", label), idAttr);
+    if (resolution.status !== "ok") return macroPlaceholder("issues", resolution.status, unavailableMessage(resolution.status, label, resolution.message), idAttr);
+    if (resolution.issues.length === 0) return `<p class="noma-issues noma-issues-empty"${idAttr}>No matching issues in ${escapeHtml(resolution.project)}.</p>`;
+    const rows = resolution.issues.map(
+      (issue) => `<tr><td>${issueKeyHtml(issue)}</td><td>${escapeHtml(issue.summary)}</td><td>${issueStatusPill(issue.status)}</td><td>${escapeHtml(issue.assigneeName ?? "Unassigned")}</td></tr>`
+    ).join("\n");
+    return `<table class="noma-table noma-issues"${idAttr}>
+<thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Assignee</th></tr></thead>
+<tbody>
+${rows}
+</tbody>
+</table>`;
+  }
+  function renderPagePropertiesMacro(node, idAttr) {
+    const rows = pagePropertiesEntries(node).map(([key, value]) => `<tr><th scope="row">${inlineToHtml(key)}</th><td>${inlineToHtml(value)}</td></tr>`).join("\n");
+    return `<table class="noma-table noma-page-properties"${idAttr}>
+<tbody>
+${rows}
+</tbody>
+</table>`;
+  }
+  function renderPagePropertiesReportMacro(node, idAttr, ctx) {
+    const request = pagePropertiesReportRequest(node, ctx.includeTrail.documentId);
+    if (!request) return macroPlaceholder("page-properties-report", "missing", 'Page properties report needs label="...".', idAttr);
+    const resolution = ctx.macros.resolvePagePropertiesReport?.(request);
+    const label = `The page properties report for "${request.label}"`;
+    if (!resolution) return macroPlaceholder("page-properties-report", "unresolved", unavailableMessage("unresolved", label), idAttr);
+    if (resolution.status !== "ok") {
+      return macroPlaceholder("page-properties-report", resolution.status, unavailableMessage(resolution.status, label, resolution.message), idAttr);
+    }
+    if (resolution.rows.length === 0) return `<p class="noma-page-properties-report"${idAttr}>No pages labeled "${escapeHtml(request.label)}".</p>`;
+    const columns = propertiesReportColumns(resolution.rows);
+    const head = ["Page", ...columns].map((column) => `<th>${inlineToHtml(column)}</th>`).join("");
+    const rows = resolution.rows.map((row) => {
+      const title = row.href ? `<a href="${escapeAttr(safeHref(row.href))}">${escapeHtml(row.title)}</a>` : escapeHtml(row.title);
+      return `<tr><td>${title}</td>${columns.map((column) => `<td>${inlineToHtml(propertyValue(row, column))}</td>`).join("")}</tr>`;
+    }).join("\n");
+    return `<table class="noma-table noma-page-properties-report"${idAttr}>
+<thead><tr>${head}</tr></thead>
+<tbody>
+${rows}
+</tbody>
+</table>`;
+  }
   function renderGenericDirective(node, idAndAttrs, ctx) {
     const title = attrValueText(node.attrs, "title") ?? attrValueText(node.attrs, "caption");
     const titleHtml = title ? `<h3>${escapeHtml(title)}</h3>` : "";
@@ -7346,6 +7892,11 @@ ${inner}
 </aside>`;
   }
   function renderFigureImage(src, alt, ctx) {
+    if (src.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
+      const url = ctx.resolveAttachment?.(src.slice(ATTACHMENT_URL_PREFIX.length));
+      if (url) return `<img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}" loading="lazy" />`;
+      return `<aside class="noma-blocked-escape" data-kind="figure">[attachment not available: ${escapeHtml(src)}]</aside>`;
+    }
     if (ctx.externalAssets || /^data:image\//i.test(src)) {
       return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" />`;
     }
@@ -7384,7 +7935,7 @@ ${inner}
   function renderResearchBlock(node, ctx) {
     const idAttr = node.id ? ` id="${escapeAttr(node.id)}"` : "";
     const variant = variantAttr(node);
-    const confidence = typeof node.attrs.confidence === "number" ? node.attrs.confidence : void 0;
+    const confidence = numericAttr2(node.attrs, "confidence");
     const meta = researchMetaHtml(node);
     const confidenceBar = confidence !== void 0 ? `<div class="noma-confidence" title="confidence ${confidence}"><div class="noma-confidence-bar" style="width: ${Math.round(confidence * 100)}%"></div></div>` : "";
     const metaHtml = meta ? `<div class="noma-meta">${meta}</div>` : "";
@@ -7554,7 +8105,7 @@ ${entries || "<li>No sections found.</li>"}
   }
   function renderBibliography(node, idAndAttrs, ctx) {
     const title = stringAttr2(node.attrs, "title") ?? "Bibliography";
-    const intro = node.children.length > 0 ? renderChildren(node, ctx) : node.body?.trim() ? `<p>${inlineToHtml(node.body)}</p>` : "";
+    const intro = node.children.length > 0 ? renderChildren(node, ctx) : node.body?.trim() ? `<p>${inlineToHtml(node.body, ctx.inline)}</p>` : "";
     const items = ctx.citations.length > 0 ? ctx.citations.map((entry) => `<li>${renderCitationEntry(entry)}</li>`).join("\n") : "<li>No citations found.</li>";
     return `<section class="noma-bibliography"${idAndAttrs}>
   <h2>${escapeHtml(title)}</h2>
@@ -7612,7 +8163,7 @@ ${items}
     return out;
   }
   var splitTableLine = splitPipeRow;
-  function renderTableDirective(node, idAttr) {
+  function renderTableDirective(node, idAttr, ctx) {
     const body = node.body ?? "";
     const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return `<div class="noma-block noma-block-table"${idAttr}></div>`;
@@ -7625,7 +8176,7 @@ ${items}
     const renderCell = (tag, cell, idx) => {
       const a = align[idx];
       const styleAttr = a ? ` style="text-align: ${a}"` : "";
-      return `<${tag}${styleAttr}>${inlineToHtml(cell)}</${tag}>`;
+      return `<${tag}${styleAttr}>${inlineToHtml(cell, ctx.inline)}</${tag}>`;
     };
     const head = headerRow ? `<thead><tr>${headerRow.map((c, i) => renderCell("th", c, i)).join("")}</tr></thead>
 ` : "";
@@ -7659,7 +8210,7 @@ ${bodyRows}
 </aside>`;
   }
   function renderAgentTask(node, idAttr, ctx) {
-    const checked = node.attrs.done === true ? " checked" : "";
+    const checked = attrBool(node.attrs.done) ? " checked" : "";
     return `<div class="noma-agent-task"${idAttr}>
   <label><input type="checkbox" disabled${checked} /> <span class="noma-tag">${escapeHtml(node.name)}</span></label>
   <div class="noma-agent-body">${renderChildren(node, ctx)}</div>
@@ -7956,7 +8507,7 @@ ${bodyRows}
         "y_label",
         "yLabel"
       ]);
-      return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text)}</p></div>` : "";
+      return text ? `<div class="noma-computed-body"><p>${inlineToHtml(text, ctx.inline)}</p></div>` : "";
     }
     const rendered = renderChildren(node, ctx);
     return rendered ? `<div class="noma-computed-body">${rendered}</div>` : "";
@@ -8571,7 +9122,7 @@ ${bodyRows}
   }
   function renderChildren(node, ctx) {
     if (node.children.length === 0 && node.body !== void 0) {
-      return `<p>${inlineToHtml(node.body)}</p>`;
+      return `<p>${inlineToHtml(node.body, ctx.inline)}</p>`;
     }
     return node.children.map((c) => renderNode(c, ctx)).join("\n");
   }
@@ -8598,7 +9149,9 @@ ${bodyRows}
       excludedMemoryIds: computeExcludedMemoryIds(doc, options),
       selectSet: normalizeSelectors(options.select),
       excludeSet: normalizeSelectors(options.exclude),
-      computed: buildComputedEvalContext(doc)
+      computed: buildComputedEvalContext(doc),
+      includeTrail: initialIncludeTrail(options.documentId),
+      rootDoc: doc
     };
     const out = [];
     if (doc.meta.title) out.push(`# ${String(doc.meta.title)}`);
@@ -8732,6 +9285,7 @@ ${bodyRows}
     if (node.name === "memory" && opts.excludeStale && isStale(node, opts.excludeStale)) {
       return;
     }
+    if (emitMacro(node, out, depth, opts)) return;
     const tag = node.name.toUpperCase();
     const attrs = Object.entries(node.attrs).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ");
     out.push(`[${tag}${attrs ? " " + attrs : ""}]`);
@@ -8755,6 +9309,91 @@ ${bodyRows}
     }
     out.push(`[/${tag}]`);
     out.push("");
+  }
+  function emitMacro(node, out, depth, opts) {
+    const open = (extra = []) => {
+      const attrs = Object.entries(node.attrs).map(([k, v]) => `${k}=${JSON.stringify(v)}`);
+      out.push(`[${[node.name.toUpperCase(), ...attrs, ...extra].join(" ")}]`);
+    };
+    const close = () => {
+      out.push(`[/${node.name.toUpperCase()}]`);
+      out.push("");
+    };
+    switch (node.name) {
+      case "include": {
+        const step = resolveIncludeStep(node, opts, opts.includeTrail, opts.rootDoc);
+        if (step.status === "ok") {
+          const { resolved } = step;
+          const target = resolved.excerpt ? "excerpt" : resolved.blockId ?? "page";
+          const source = resolved.documentId || "this-page";
+          out.push(`<!-- included from ${source}:${target}@${resolved.hash.slice(0, 12)} -->`);
+          const inner = { ...opts, includeTrail: step.trail };
+          for (const child of resolved.nodes) emit(child, out, depth + 1, inner, true);
+          out.push(`<!-- /included from ${source}:${target} -->`);
+          out.push("");
+          return true;
+        }
+        open();
+        const label = includeLabel(step.status === "unresolved" ? step.request : includeRequest(node, opts.includeTrail.documentId));
+        out.push(step.status === "unresolved" ? unavailableMessage("unresolved", label) : unavailableMessage(step.status, label, step.message));
+        close();
+        return true;
+      }
+      case "children": {
+        const resolution = opts.resolveChildren?.(childrenRequest(node, opts.includeTrail.documentId));
+        if (!resolution) return false;
+        open();
+        if (resolution.status !== "ok") out.push(unavailableMessage(resolution.status, "The child page list", resolution.message));
+        else if (resolution.pages.length === 0) out.push("No child pages.");
+        else for (const line of flattenChildPages(resolution.pages, 0)) out.push(`- ${line}`);
+        close();
+        return true;
+      }
+      case "issue": {
+        const key = issueKeyFromNode(node);
+        const resolution = key ? opts.resolveIssue?.(key) : void 0;
+        if (!resolution) return false;
+        open();
+        out.push(resolution.status === "ok" ? issueLine(resolution.issue) : unavailableMessage(resolution.status, `Issue ${key}`, resolution.message));
+        close();
+        return true;
+      }
+      case "issues": {
+        const request = issuesRequest(node);
+        const resolution = request ? opts.resolveIssues?.(request) : void 0;
+        if (!request || !resolution) return false;
+        open();
+        if (resolution.status !== "ok") out.push(unavailableMessage(resolution.status, `Issues in ${request.project}`, resolution.message));
+        else if (resolution.issues.length === 0) out.push(`No matching issues in ${resolution.project}.`);
+        else for (const issue of resolution.issues) out.push(`- ${issueLine(issue)}`);
+        close();
+        return true;
+      }
+      case "page-properties": {
+        open();
+        for (const [key, value] of pagePropertiesEntries(node)) out.push(`${inlineToPlain(key)}: ${inlineToPlain(value)}`);
+        close();
+        return true;
+      }
+      case "page-properties-report": {
+        const request = pagePropertiesReportRequest(node, opts.includeTrail.documentId);
+        const resolution = request ? opts.resolvePagePropertiesReport?.(request) : void 0;
+        if (!request || !resolution) return false;
+        open();
+        if (resolution.status !== "ok") out.push(unavailableMessage(resolution.status, "The page properties report", resolution.message));
+        else {
+          const columns = propertiesReportColumns(resolution.rows);
+          for (const row of resolution.rows) {
+            const values = columns.map((column) => `${column}=${JSON.stringify(inlineToPlain(propertyValue(row, column)))}`);
+            out.push(`- ${row.title}${values.length > 0 ? ` (${values.join(", ")})` : ""}`);
+          }
+        }
+        close();
+        return true;
+      }
+      default:
+        return false;
+    }
   }
   function emitComputedSummary(node, out, opts) {
     const formula = formulaText(node);
@@ -8838,7 +9477,7 @@ ${bodyRows}
     const t = Date.parse(ls);
     if (Number.isNaN(t)) return false;
     const type2 = typeof node.attrs.type === "string" ? node.attrs.type : "";
-    const expired = node.attrs.expired === true;
+    const expired = node.attrs.expired === true || node.attrs.expired === "true";
     if (!STALE_OPT_IN_TYPES.has(type2) && !expired) return false;
     return cfg.now.getTime() - t > cfg.days * 24 * 60 * 60 * 1e3;
   }
@@ -9027,7 +9666,7 @@ $$`, ctx);
     ]);
   }
   function renderTask(node, ctx, depth) {
-    const checked = node.attrs.done === true || attrText(node, "status") === "done";
+    const checked = node.attrs.done === true || node.attrs.done === "true" || attrText(node, "status") === "done";
     const body = renderDirectiveContent(node, ctx, depth).trim() || directiveTitle(node);
     const firstLine = body.split("\n")[0] ?? "";
     const rest = body.split("\n").slice(1).join("\n");
@@ -9038,8 +9677,8 @@ $$`, ctx);
     const rows = (node.body ?? "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith("|")).map(splitPipeRow);
     if (rows.length === 0) return renderVerbatimDirective(node);
     const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
-    const header = node.attrs.header === true ? normalizeRow(rows[0] ?? [], width) : Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
-    const bodyRows = node.attrs.header === true ? rows.slice(1) : rows;
+    const header = node.attrs.header === true || node.attrs.header === "true" ? normalizeRow(rows[0] ?? [], width) : Array.from({ length: width }, (_value, index) => `Column ${index + 1}`);
+    const bodyRows = node.attrs.header === true || node.attrs.header === "true" ? rows.slice(1) : rows;
     return joinBlocks([
       attrText(node, "title", "caption") ? `**${renderInline(directiveTitle(node), ctx)}**` : "",
       renderMetadata(node),
@@ -9378,6 +10017,7 @@ ${fence}`;
     const computed = /* @__PURE__ */ new Map();
     const computedNodes = [];
     const adrNodes = [];
+    const excerpts = [];
     const aliasToNode = /* @__PURE__ */ new Map();
     const declaredProfiles = readDeclaredProfiles(doc.meta, options.profiles);
     const activeProfiles = new Set(declaredProfiles);
@@ -9401,6 +10041,19 @@ ${fence}`;
       return any ? union : void 0;
     })();
     const profileLabel = declaredProfiles.join("+");
+    const frontmatter = doc.children[0];
+    if (frontmatter?.type === "frontmatter") {
+      const loaded = loadFrontmatterYaml(frontmatter.raw);
+      if (!loaded.ok) {
+        diagnostics.push({
+          severity: "error",
+          code: "invalid-frontmatter",
+          message: `Frontmatter is not valid YAML (${loaded.error}); its keys are ignored.`,
+          pos: frontmatter.pos,
+          ...frontmatter.endLine !== void 0 ? { endLine: frontmatter.endLine } : {}
+        });
+      }
+    }
     const wikilinkRefs = /* @__PURE__ */ new Set();
     const collectWikilinks = (text, node) => {
       for (const link of extractWikilinks(text)) {
@@ -9518,6 +10171,11 @@ ${fence}`;
           nodeId: node.id
         });
       }
+      if (node.name === "excerpt") excerpts.push(node);
+      if (!suppressed(node)) validateMacroNode(node, diagnostics, options, (target) => {
+        referenced.add(target);
+        refSites.push({ target, node, attrKey: "block" });
+      });
       if (node.name === "state_change" && !suppressed(node)) {
         const block = node.attrs.block;
         if (typeof block === "string") {
@@ -9931,6 +10589,15 @@ ${fence}`;
       const node = ids.get(diagnostic.nodeId) ?? aliasToNode.get(diagnostic.nodeId);
       if (node?.endLine !== void 0) diagnostic.endLine = node.endLine;
     }
+    for (const extra of excerpts.slice(1)) {
+      diagnostics.push({
+        severity: "warning",
+        code: "excerpt-duplicate",
+        message: `Only the first ::excerpt on a page is used; "${extra.id ?? "excerpt"}" is ignored.`,
+        pos: extra.pos,
+        nodeId: extra.id
+      });
+    }
     const ignore = options.ignoreRules;
     if (ignore && ignore.length > 0) {
       const known = collectRuleCodes();
@@ -9967,6 +10634,7 @@ ${fence}`;
     return out;
   }
   var KNOWN_RULES = [
+    "invalid-frontmatter",
     "duplicate-id",
     "out-of-profile-directive",
     "unknown-profile",
@@ -10010,13 +10678,80 @@ ${fence}`;
     "computed-missing-formula",
     "computed-unknown-dependency",
     "formula-parse-error",
-    "computed-chain-too-deep"
+    "computed-chain-too-deep",
+    "include-missing-target",
+    "include-unknown-page",
+    "excerpt-duplicate",
+    "children-invalid-option",
+    "issue-invalid-key",
+    "issues-invalid-project",
+    "issues-invalid-status",
+    "page-properties-report-missing-label"
   ];
+  function validateMacroNode(node, diagnostics, options, referenceBlock) {
+    const at = { pos: node.pos, nodeId: node.id };
+    switch (node.name) {
+      case "include": {
+        const page = macroAttrText(node, "page");
+        const block = macroAttrText(node, "block");
+        const excerpt = node.attrs.excerpt === true;
+        if (!page && !block && !excerpt) {
+          diagnostics.push({ severity: "error", code: "include-missing-target", message: "::include needs `page=`, `block=`, or the `excerpt` flag.", ...at });
+          return;
+        }
+        if (!page) {
+          if (block) referenceBlock(block);
+          return;
+        }
+        if (options.pageExists?.(page)) return;
+        diagnostics.push({
+          severity: "warning",
+          code: "include-unknown-page",
+          message: options.pageExists ? `::include page="${page}" does not match a page you can see.` : `::include page="${page}" is resolved by Noma Cloud and cannot be checked in single-file mode.`,
+          ...at
+        });
+        return;
+      }
+      case "children": {
+        const depth = typeof node.attrs.depth === "string" && /^\d+$/.test(node.attrs.depth) ? Number(node.attrs.depth) : node.attrs.depth;
+        const sort = node.attrs.sort;
+        if (depth !== void 0 && !(typeof depth === "number" && Number.isInteger(depth) && depth >= 1 && depth <= 5)) {
+          diagnostics.push({ severity: "warning", code: "children-invalid-option", message: `::children depth="${String(depth)}" must be an integer from 1 to 5.`, ...at });
+        }
+        if (sort !== void 0 && !CHILDREN_SORTS.includes(sort)) {
+          diagnostics.push({ severity: "warning", code: "children-invalid-option", message: `::children sort="${String(sort)}" must be one of ${CHILDREN_SORTS.join(", ")}.`, ...at });
+        }
+        return;
+      }
+      case "issue":
+        if (!issueKeyFromNode(node)) {
+          diagnostics.push({ severity: "error", code: "issue-invalid-key", message: `::issue needs key="PROJ-12" (project key, dash, number).`, ...at });
+        }
+        return;
+      case "issues": {
+        if (!issuesRequest(node)) {
+          diagnostics.push({ severity: "error", code: "issues-invalid-project", message: `::issues needs project="PROJ" (2-20 letters, digits, or underscores).`, ...at });
+        }
+        const status = node.attrs.status;
+        if (status !== void 0 && !ISSUE_STATUSES.includes(status)) {
+          diagnostics.push({ severity: "warning", code: "issues-invalid-status", message: `::issues status="${String(status)}" must be one of ${ISSUE_STATUSES.join(", ")}.`, ...at });
+        }
+        return;
+      }
+      case "page-properties-report":
+        if (!macroAttrText(node, "label")) {
+          diagnostics.push({ severity: "error", code: "page-properties-report-missing-label", message: `::page-properties-report needs label="...".`, ...at });
+        }
+        return;
+      default:
+        return;
+    }
+  }
   function collectRuleCodes() {
     return new Set(KNOWN_RULES);
   }
   function suppressed(node) {
-    return node.attrs.noverify === true;
+    return node.attrs.noverify === true || node.attrs.noverify === "true";
   }
   function readFirstStringAttr(node, keys) {
     return readFirstStringAttrEntry(node, keys)?.value;
@@ -10280,9 +11015,14 @@ ${fence}`;
     const ageMs = now.getTime() - t;
     return ageMs > days * 24 * 60 * 60 * 1e3;
   }
+  function macroAttrText(node, key) {
+    const value = node.attrs[key];
+    if (typeof value === "number") return String(value);
+    return typeof value === "string" && value.trim() ? value.trim() : void 0;
+  }
 
   // themes/default.css
-  var default_default = ':root {\n  --noma-bg: #fbfaf7;\n  --noma-fg: #1d1c1a;\n  --noma-muted: #6b6a66;\n  --noma-rule: #e7e4dc;\n  --noma-accent: #b9522a;\n  --noma-accent-soft: #f4dccd;\n  --noma-claim: #2c5d8f;\n  --noma-claim-soft: #dfeaf5;\n  --noma-evidence: #2f7d4a;\n  --noma-evidence-soft: #dff0e3;\n  --noma-risk: #a8362e;\n  --noma-risk-soft: #f7d9d4;\n  --noma-code-bg: #f1ede4;\n  --noma-card-bg: #ffffff;\n  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);\n  --noma-radius: 8px;\n  --noma-cols: 2;\n  --noma-grid-min: 14rem;\n  --noma-grid-gap: 1rem;\n  --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;\n  --noma-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;\n  --noma-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;\n}\n\n* { box-sizing: border-box; }\n\nhtml, body {\n  margin: 0;\n  padding: 0;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n  font-family: var(--noma-font-serif);\n  font-size: 16px;\n  line-height: 1.58;\n  -webkit-font-smoothing: antialiased;\n  text-rendering: optimizeLegibility;\n}\n\nmain.noma-doc {\n  max-width: 1040px;\n  margin: 3rem auto;\n  padding: 0 1.25rem 5rem;\n}\n\nmain.noma-doc > section.noma-hero ~ section,\nmain.noma-doc > .noma-grid,\nmain.noma-doc > .noma-columns {\n  max-width: 100%;\n}\n\nh1, h2, h3, h4, h5, h6 {\n  font-family: var(--noma-font-sans);\n  font-weight: 700;\n  line-height: 1.2;\n  letter-spacing: 0;\n  margin: 2em 0 0.55em;\n}\nh1 { font-size: 2.1rem; margin-top: 0; }\nh2 { font-size: 1.45rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.25em; }\nh3 { font-size: 1.15rem; }\nh4 { font-size: 0.98rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n\np { margin: 0 0 1.05em; }\na { color: var(--noma-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }\na:hover { text-decoration-thickness: 2px; }\n\ncode {\n  font-family: var(--noma-font-mono);\n  font-size: 0.9em;\n  background: var(--noma-code-bg);\n  padding: 0.1em 0.35em;\n  border-radius: 4px;\n}\npre {\n  background: var(--noma-code-bg);\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  overflow-x: auto;\n  font-size: 0.9rem;\n  line-height: 1.5;\n}\npre code { background: none; padding: 0; }\n\nblockquote {\n  border-left: 3px solid var(--noma-accent);\n  margin: 1.5em 0;\n  padding: 0.2em 1.2em;\n  color: var(--noma-muted);\n  font-style: italic;\n}\n\nhr { border: 0; border-top: 1px solid var(--noma-rule); margin: 3em 0; }\n\nul, ol { padding-left: 1.4em; }\nli { margin: 0.25em 0; }\n\nfigure {\n  margin: 1.8em 0;\n}\nfigure img {\n  display: block;\n  max-width: 100%;\n  height: auto;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\nfigcaption {\n  margin-top: 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n\n/* Callouts */\naside.noma-callout {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-accent-soft);\n  border-left: 3px solid var(--noma-accent);\n}\naside.noma-callout-warning { background: #fbe6df; border-color: var(--noma-risk); }\naside.noma-callout-tip     { background: #e6f3eb; border-color: var(--noma-evidence); }\naside.noma-callout-note    { background: #ecedf2; border-color: #5a6071; }\n\n/* Research blocks */\naside.noma-research {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-research .noma-research-head {\n  display: flex;\n  align-items: center;\n  gap: 0.8em;\n  margin-bottom: 0.5em;\n}\naside.noma-research .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-muted);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-code-bg);\n}\naside.noma-claim          { border-left: 3px solid var(--noma-claim); }\naside.noma-claim .noma-tag { color: var(--noma-claim); background: var(--noma-claim-soft); }\naside.noma-evidence       { border-left: 3px solid var(--noma-evidence); }\naside.noma-evidence .noma-tag { color: var(--noma-evidence); background: var(--noma-evidence-soft); }\naside.noma-counterevidence { border-left: 3px solid var(--noma-risk); }\naside.noma-counterevidence .noma-tag { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-risk           { border-left: 3px solid var(--noma-risk); }\naside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }\naside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }\naside.noma-open_question { border-left: 3px solid #8b6c1a; }\naside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }\naside.noma-assumption { border-left: 3px solid #5a6071; }\naside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }\n\n/* Variants \u2014 themable per-block emphasis without inline styling */\n[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }\n[data-variant="subtle"] { opacity: 0.78; box-shadow: none; }\n[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }\n[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }\n[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }\n\n/* Export buttons (artifact-side action surface) */\n.noma-export-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  border: 0;\n  padding: 0.55em 1.1em;\n  margin: 0.3em 0.4em 0.3em 0;\n  border-radius: 999px;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.85rem;\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n.noma-export-button:hover { background: var(--noma-accent); color: white; }\n.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }\n.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }\n.noma-export-button[data-format="json"] { background: var(--noma-muted); }\n\n/* Controls (interactive artifact blocks) */\n.noma-control {\n  margin: 1em 0;\n  padding: 0.8em 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-control-row {\n  display: grid;\n  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 2fr);\n  gap: 0.75rem;\n  align-items: center;\n}\n.noma-control-label { font-weight: 650; }\n.noma-control input,\n.noma-control select {\n  width: 100%;\n  accent-color: var(--noma-accent);\n  font: inherit;\n}\n.noma-control input[type="number"],\n.noma-control input[type="text"],\n.noma-control select {\n  border: 1px solid var(--noma-rule);\n  border-radius: 6px;\n  padding: 0.35em 0.5em;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n}\n.noma-control input[type="checkbox"] {\n  width: auto;\n  justify-self: start;\n}\n.noma-control-value {\n  display: block;\n  margin-top: 0.35rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-mono);\n  font-size: 0.82rem;\n}\n.noma-interactive-disabled {\n  display: inline-block;\n  margin-bottom: 0.5rem;\n  padding: 0.18em 0.55em;\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n  font-weight: 650;\n}\n\n.noma-computed {\n  margin: 1.2em 0;\n  padding: 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 4px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-computed-head {\n  display: flex;\n  gap: 0.8rem;\n  align-items: baseline;\n  flex-wrap: wrap;\n  margin-bottom: 0.45rem;\n}\n.noma-computed-head h3 {\n  margin: 0;\n  font-size: 1rem;\n}\n.noma-computed-value {\n  font-family: var(--noma-font-sans);\n  font-size: 1.75rem;\n  line-height: 1.15;\n  font-weight: 750;\n  color: var(--noma-claim);\n}\n.noma-computed-body {\n  margin-top: 0.75rem;\n}\n.noma-computed-body p {\n  margin-bottom: 0;\n}\n.noma-computed-plot {\n  padding: 1em;\n}\n.noma-computed-canvas {\n  margin-bottom: 0.5rem;\n}\n.noma-computed-table-view {\n  margin: 0.65rem 0 0;\n  font-size: 0.9rem;\n}\n.noma-computed-table-view th:last-child,\n.noma-computed-table-view td:last-child {\n  text-align: right;\n}\n@media (max-width: 720px) {\n  .noma-control-row {\n    grid-template-columns: 1fr;\n  }\n}\n\n.noma-confidence {\n  flex: 1;\n  height: 6px;\n  border-radius: 999px;\n  background: var(--noma-rule);\n  overflow: hidden;\n  max-width: 140px;\n}\n.noma-confidence-bar {\n  height: 100%;\n  background: linear-gradient(90deg, var(--noma-accent), var(--noma-claim));\n}\n\n.noma-meta {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\n.noma-meta-key {\n  font-weight: 600;\n  color: var(--noma-fg);\n}\n\n/* Grid */\n.noma-grid,\n.noma-columns {\n  display: grid;\n  grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));\n  gap: var(--noma-grid-gap);\n  margin: 1.5em 0;\n}\n.noma-grid-auto,\n.noma-columns-auto {\n  grid-template-columns: repeat(auto-fit, minmax(min(var(--noma-grid-min), 100%), 1fr));\n}\n.noma-grid-wide,\n.noma-columns-wide,\n.noma-grid-full,\n.noma-columns-full {\n  position: relative;\n  left: 50%;\n  transform: translateX(-50%);\n}\n.noma-grid-wide,\n.noma-columns-wide {\n  width: min(1180px, calc(100vw - 2rem));\n}\n.noma-grid-full,\n.noma-columns-full {\n  width: min(1440px, calc(100vw - 2rem));\n}\n.noma-grid-compact,\n.noma-columns-compact {\n  --noma-grid-gap: 0.75rem;\n}\n@media (max-width: 720px) {\n  .noma-grid,\n  .noma-columns {\n    grid-template-columns: 1fr;\n    width: auto;\n    left: auto;\n    transform: none;\n  }\n}\n\n/* Card */\narticle.noma-card {\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 1em 1.1em;\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-card .noma-card-head {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  margin-bottom: 0.4em;\n}\narticle.noma-card h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-family: var(--noma-font-sans);\n}\narticle.noma-card .noma-icon {\n  color: var(--noma-accent);\n  font-size: 0.9em;\n}\narticle.noma-card p:last-child { margin-bottom: 0; }\n\n/* Hero */\nsection.noma-hero {\n  background: linear-gradient(180deg, var(--noma-accent-soft), transparent);\n  padding: 3rem 2rem 2.4rem;\n  border-radius: var(--noma-radius);\n  margin: 0 0 3rem;\n  text-align: center;\n}\nsection.noma-hero h1 { font-size: 2.8rem; margin-top: 0; }\n\na.noma-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  padding: 0.7em 1.4em;\n  border-radius: 999px;\n  text-decoration: none;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.95rem;\n  margin-top: 0.5em;\n}\na.noma-button:hover { background: var(--noma-accent); color: white; }\n\n/* Plot */\nfigure.noma-plot {\n  margin: 1.8em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n}\nfigure.noma-plot .noma-plot-canvas {\n  color: var(--noma-claim);\n  background: linear-gradient(180deg, transparent, var(--noma-claim-soft));\n  border-radius: 6px;\n  padding: 0.6em;\n}\nfigure.noma-plot svg { width: 100%; height: auto; display: block; }\nfigure.noma-plot figcaption {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\nfigure.noma-plot[data-compact="true"] {\n  padding: 0.65em 0.8em;\n}\nfigure.noma-plot[data-compact="true"] figcaption {\n  margin-top: 0.35em;\n  font-size: 0.78rem;\n}\n\n/* Dataset */\ndetails.noma-dataset {\n  margin: 1.4em 0;\n  padding: 0.6em 1em;\n  background: var(--noma-code-bg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\ndetails.noma-dataset pre {\n  background: transparent;\n  padding: 0.6em 0 0;\n}\n\n/* Agent task */\n.noma-agent-task {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-claim-soft);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n}\n.noma-agent-task label {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.9rem;\n  margin-bottom: 0.4em;\n}\n\n/* Collaboration metadata */\naside.noma-comment,\naside.noma-review-meta {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-comment {\n  background: #f7f6f1;\n}\n.noma-comment-head,\n.noma-review-meta-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.55em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-comment .noma-tag,\n.noma-review-meta .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-review-meta.noma-collab-review {\n  border-left-color: var(--noma-accent);\n}\n.noma-review-meta.noma-collab-review .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-review-meta.noma-collab-provenance {\n  border-left-color: var(--noma-claim);\n}\n.noma-review-meta.noma-collab-provenance .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-review-meta.noma-collab-confidence {\n  border-left-color: var(--noma-evidence);\n}\n.noma-review-meta.noma-collab-confidence .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-comment-body p:last-child,\n.noma-review-meta-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Memory profile */\naside.noma-memory,\naside.noma-memory-index {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-memory-index {\n  background: #f4f7f8;\n}\n.noma-memory-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-memory .noma-tag,\n.noma-memory-index .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-memory h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-memory.noma-memory-user {\n  border-left-color: var(--noma-evidence);\n}\n.noma-memory.noma-memory-user .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-memory.noma-memory-feedback {\n  border-left-color: var(--noma-accent);\n}\n.noma-memory.noma-memory-feedback .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-memory.noma-memory-project {\n  border-left-color: var(--noma-claim);\n}\n.noma-memory.noma-memory-project .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-memory.noma-memory-reference {\n  border-left-color: #5a6071;\n}\n.noma-memory.noma-memory-reference .noma-tag {\n  color: #5a6071;\n  background: #ecedf2;\n}\n.noma-memory-body p:last-child,\n.noma-memory-index .noma-memory-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Metrics */\naside.noma-metric {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-evidence);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-metric-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.25em;\n}\n.noma-metric .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-evidence);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-evidence-soft);\n}\n.noma-metric h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-metric-value {\n  margin: 0.2em 0 0.25em;\n  color: var(--noma-evidence);\n  font-family: var(--noma-font-sans);\n  font-size: 1.7rem;\n  font-weight: 800;\n  line-height: 1.15;\n}\n.noma-metric-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Technical documentation */\narticle.noma-technical {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-technical .noma-technical-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n}\narticle.noma-technical .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-claim);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n}\narticle.noma-technical h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-technical-meta {\n  margin: 0.35em 0 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.85rem;\n}\n.noma-technical-body p:last-child {\n  margin-bottom: 0;\n}\npre.noma-technical-code {\n  margin: 0.7em 0 0;\n}\n\n/* Custom directives */\naside.noma-block {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-block-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n  font-family: var(--noma-font-sans);\n}\naside.noma-block .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\naside.noma-block h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-block-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Change requests */\naside.noma-change-request {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: #fff4f0;\n  border: 1px solid #f0c7bd;\n  border-left: 3px solid #c85c4a;\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-change-request-head {\n  font-size: 0.85rem;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.45em;\n}\n.noma-change-request-delta {\n  display: flex;\n  align-items: baseline;\n  gap: 0.55em;\n  margin: 0.35em 0 0.55em;\n  line-height: 1.5;\n}\n.noma-change-request del {\n  color: #9a382b;\n  text-decoration-thickness: 0.12em;\n}\n.noma-change-request ins {\n  color: #2f6e42;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n/* State change */\naside.noma-state-change {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-fg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-state-change-head {\n  font-size: 0.85rem;\n  letter-spacing: 0.02em;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.4em;\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  flex-wrap: wrap;\n}\n.noma-state-change-delta {\n  font-size: 1rem;\n  display: flex;\n  align-items: baseline;\n  gap: 0.6em;\n  margin: 0.3em 0 0.5em;\n  font-variant-numeric: tabular-nums;\n}\n.noma-state-from {\n  text-decoration: line-through;\n  opacity: 0.65;\n}\n.noma-state-to {\n  font-weight: 700;\n}\n.noma-state-arrow {\n  opacity: 0.55;\n  font-size: 0.95em;\n}\n\n/* Tables */\ntable.noma-table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 1.6em 0;\n  font-family: var(--noma-font-sans);\n  font-size: 0.88rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  overflow: hidden;\n  box-shadow: var(--noma-shadow);\n}\ntable.noma-table thead {\n  background: var(--noma-code-bg);\n}\ntable.noma-table th {\n  text-align: left;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  padding: 0.55em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  color: var(--noma-fg);\n}\ntable.noma-table td {\n  padding: 0.5em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  vertical-align: top;\n}\ntable.noma-table tbody tr:last-child td { border-bottom: 0; }\ntable.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }\n\n.noma-page-header,\n.noma-page-footer {\n  margin: 1.2rem 0;\n  padding: 0.55rem 0;\n  border-color: var(--noma-rule);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-page-header {\n  border-bottom: 1px solid var(--noma-rule);\n}\n.noma-page-footer {\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-page-header p,\n.noma-page-footer p {\n  margin: 0;\n}\n.noma-page-number {\n  display: block;\n  text-align: right;\n}\n\n.noma-toc {\n  margin: 1.6rem 0 2rem;\n  padding: 1rem 1.1rem;\n  border: 1px solid var(--noma-rule);\n  background: var(--noma-card-bg);\n  font-family: var(--noma-font-sans);\n  box-shadow: var(--noma-shadow);\n}\n.noma-toc h2 {\n  margin: 0 0 0.6rem;\n  padding: 0;\n  border: 0;\n  font-size: 1.1rem;\n}\n.noma-toc ol {\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n.noma-toc li {\n  margin: 0.15rem 0;\n}\n.noma-toc li[data-level="2"] { margin-left: 1rem; }\n.noma-toc li[data-level="3"] { margin-left: 2rem; }\n.noma-toc li[data-level="4"] { margin-left: 3rem; }\n.noma-toc li[data-level="5"] { margin-left: 4rem; }\n.noma-toc li[data-level="6"] { margin-left: 5rem; }\n\n.noma-footnote,\n.noma-endnote {\n  margin: 1.2rem 0;\n  padding: 0.7rem 0.9rem;\n  border-left: 3px solid var(--noma-rule);\n  background: var(--noma-code-bg);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-footnote p,\n.noma-endnote p {\n  margin: 0.25rem 0;\n}\n.noma-footnote sup,\n.noma-endnote sup {\n  margin-right: 0.4rem;\n  color: var(--noma-accent);\n  font-weight: 700;\n}\n\n.noma-bibliography {\n  margin: 2rem 0;\n  padding-top: 0.8rem;\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-bibliography h2 {\n  margin-top: 0;\n}\n.noma-bibliography ol {\n  padding-left: 1.4rem;\n}\n.noma-citation-meta {\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9em;\n}\n\n.noma-pagebreak {\n  margin: 2rem 0;\n  border: 0;\n  border-top: 1px dashed var(--noma-rule);\n}\n\n/* Print */\n@media print {\n  @page { margin: 20mm 18mm; }\n  html, body { background: white; font-size: 11pt; }\n  main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }\n  section.noma-hero { background: none; border: 1px solid var(--noma-rule); }\n  a { color: var(--noma-fg); }\n  pre, article.noma-card, article.noma-technical, aside.noma-block, .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, aside.noma-comment, aside.noma-review-meta, aside.noma-memory, aside.noma-memory-index, aside.noma-metric, aside.noma-change-request, aside.noma-footnote, aside.noma-endnote, nav.noma-toc, header.noma-page-header, footer.noma-page-footer, details.noma-dataset, table.noma-table {\n    box-shadow: none;\n    page-break-inside: avoid;\n    break-inside: avoid;\n  }\n  .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {\n    background: white;\n  }\n  table.noma-table {\n    font-size: 9.5pt;\n    box-shadow: none;\n  }\n  table.noma-table th,\n  table.noma-table td {\n    padding: 0.35em 0.55em;\n  }\n  h1, h2, h3 {\n    page-break-after: avoid;\n    break-after: avoid;\n  }\n  .noma-pagebreak {\n    margin: 0;\n    border: 0;\n    height: 0;\n    page-break-after: always;\n    break-after: page;\n  }\n}\n\n/* v0.4 \u2014 alias anchors (offset for sticky-headed pages) */\na.noma-alias {\n  display: block;\n  position: relative;\n  top: -1.2em;\n  visibility: hidden;\n  height: 0;\n}\n\n/* v0.4 \u2014 multi-page site nav (rendered above main when --to site) */\nnav.noma-site-nav {\n  max-width: 1040px;\n  margin: 1.5rem auto 0;\n  padding: 0 2rem;\n  display: flex;\n  align-items: baseline;\n  gap: 1.5rem;\n  flex-wrap: wrap;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n}\nnav.noma-site-nav a.noma-site-home {\n  font-weight: 600;\n  color: var(--noma-fg);\n  text-decoration: none;\n  border-right: 1px solid var(--noma-rule);\n  padding-right: 1.25rem;\n}\nnav.noma-site-nav ol {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n  display: flex;\n  gap: 1.25rem;\n  flex-wrap: wrap;\n  counter-reset: chap;\n}\nnav.noma-site-nav li {\n  counter-increment: chap;\n}\nnav.noma-site-nav li::before {\n  content: counter(chap, decimal-leading-zero) " \xB7 ";\n  color: var(--noma-rule);\n  font-variant-numeric: tabular-nums;\n}\nnav.noma-site-nav a {\n  color: var(--noma-muted);\n  text-decoration: none;\n}\nnav.noma-site-nav a:hover { color: var(--noma-accent); }\nnav.noma-site-nav .noma-nav-current span {\n  color: var(--noma-fg);\n  font-weight: 500;\n}\n\na.noma-ref.noma-xchapter::after {\n  content: " \u2197";\n  font-size: 0.85em;\n  color: var(--noma-muted);\n}\n\nmain.noma-site-index {\n  padding-top: 3rem;\n}\nheader.noma-site-header h1 {\n  font-size: 2.4rem;\n  margin-bottom: 0.25rem;\n}\nheader.noma-site-header .noma-site-author {\n  color: var(--noma-muted);\n  margin: 0 0 2rem;\n}\nol.noma-site-toc {\n  list-style: none;\n  padding: 0;\n  margin: 2rem 0;\n  display: grid;\n  gap: 0.6rem;\n  counter-reset: toc;\n}\nol.noma-site-toc li {\n  counter-increment: toc;\n}\na.noma-site-chapter {\n  display: block;\n  padding: 1.1rem 1.4rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  text-decoration: none;\n  color: inherit;\n  transition: border-color 120ms ease, transform 120ms ease;\n}\na.noma-site-chapter:hover {\n  border-color: var(--noma-accent);\n  transform: translateY(-1px);\n}\na.noma-site-chapter::before {\n  content: counter(toc, decimal-leading-zero);\n  display: block;\n  font-size: 0.75rem;\n  font-variant-numeric: tabular-nums;\n  color: var(--noma-muted);\n  margin-bottom: 0.25rem;\n}\n.noma-site-chapter-title {\n  display: block;\n  font-weight: 600;\n  font-size: 1.1rem;\n}\n.noma-site-chapter-summary {\n  display: block;\n  color: var(--noma-muted);\n  margin-top: 0.4rem;\n  font-size: 0.93rem;\n}\n.noma-site-description {\n  max-width: 48rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 1.02rem;\n}\n.noma-site-chapter-tags,\n.noma-space-tags {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  margin-top: 0.6rem;\n}\n.noma-site-chapter-tags span,\n.noma-space-tags span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  padding: 0.12rem 0.45rem;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n}\n\n/* Space renderer \u2014 source-controlled documentation/wiki surface */\nbody.noma-space-body {\n  background: linear-gradient(180deg, #f7f5ef 0, var(--noma-bg) 16rem);\n}\n.noma-space-shell {\n  display: grid;\n  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);\n  min-height: 100vh;\n}\n.noma-space-sidebar {\n  position: sticky;\n  top: 0;\n  height: 100vh;\n  overflow: auto;\n  border-right: 1px solid var(--noma-rule);\n  background: rgba(255, 255, 255, 0.68);\n  padding: 1rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-home {\n  display: block;\n  margin-bottom: 0.45rem;\n  color: var(--noma-fg);\n  font-weight: 800;\n  text-decoration: none;\n}\n.noma-space-description,\n.noma-space-search-disabled {\n  margin: 0 0 1rem;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n  line-height: 1.38;\n}\n.noma-space-search {\n  display: grid;\n  gap: 0.35rem;\n  margin: 0.9rem 0 0.75rem;\n  color: var(--noma-muted);\n  font-size: 0.74rem;\n  font-weight: 750;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n}\n.noma-space-search input {\n  width: 100%;\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  padding: 0.5rem 0.6rem;\n  background: var(--noma-card-bg);\n  color: var(--noma-fg);\n  font: 500 0.88rem var(--noma-font-sans);\n  text-transform: none;\n  letter-spacing: 0;\n}\n.noma-space-search-results {\n  display: grid;\n  gap: 0.4rem;\n  margin: 0 0 0.85rem;\n  padding: 0.45rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: 8px;\n  background: var(--noma-card-bg);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-search-results a {\n  display: grid;\n  gap: 0.1rem;\n  padding: 0.45rem 0.5rem;\n  border-radius: 6px;\n  color: var(--noma-fg);\n  text-decoration: none;\n}\n.noma-space-search-results a:hover {\n  background: var(--noma-code-bg);\n}\n.noma-space-search-results small {\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n}\n.noma-space-search-results em {\n  display: flex;\n  gap: 0.25rem;\n  flex-wrap: wrap;\n  font-style: normal;\n}\n.noma-space-search-results em span {\n  color: var(--noma-accent);\n  font-size: 0.68rem;\n}\n.noma-space-search-results p {\n  margin: 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-sidebar nav.noma-site-nav {\n  max-width: none;\n  margin: 0;\n  padding: 0;\n  display: block;\n}\n.noma-space-sidebar nav.noma-site-nav ol {\n  display: grid;\n  gap: 0.18rem;\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  counter-reset: none;\n}\n.noma-space-sidebar nav.noma-site-nav li {\n  padding-left: calc(var(--depth, 0) * 0.85rem);\n}\n.noma-space-sidebar nav.noma-site-nav li::before {\n  content: "";\n}\n.noma-space-sidebar nav.noma-site-nav a,\n.noma-space-sidebar nav.noma-site-nav span {\n  display: block;\n  border-radius: 6px;\n  padding: 0.38rem 0.5rem;\n  color: var(--noma-muted);\n  text-decoration: none;\n  font-size: 0.88rem;\n  line-height: 1.25;\n}\n.noma-space-sidebar nav.noma-site-nav a:hover {\n  background: var(--noma-code-bg);\n  color: var(--noma-fg);\n}\n.noma-space-sidebar nav.noma-site-nav .noma-nav-current span {\n  background: var(--noma-accent-soft);\n  color: var(--noma-accent);\n  font-weight: 760;\n}\n.noma-space-sidebar nav.noma-site-nav small {\n  display: block;\n  padding: 0 0.5rem 0.32rem;\n  color: var(--noma-muted);\n  font-size: 0.68rem;\n}\n.noma-space-main {\n  min-width: 0;\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);\n  grid-template-rows: auto 1fr;\n  gap: 1rem;\n  padding: 1rem;\n}\n.noma-space-topbar {\n  grid-column: 1 / -1;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 1rem;\n  min-width: 0;\n  padding: 0.5rem 0.2rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-breadcrumbs {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  min-width: 0;\n  color: var(--noma-muted);\n  font-size: 0.83rem;\n}\n.noma-space-breadcrumbs a,\n.noma-space-breadcrumbs span {\n  color: inherit;\n  text-decoration: none;\n}\n.noma-space-breadcrumbs span:last-child {\n  color: var(--noma-fg);\n  font-weight: 700;\n}\n.noma-space-breadcrumbs a::after,\n.noma-space-breadcrumbs span::after {\n  content: "/";\n  margin-left: 0.35rem;\n  color: var(--noma-rule);\n}\n.noma-space-breadcrumbs span:last-child::after {\n  content: "";\n  margin: 0;\n}\n.noma-space-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.noma-space-actions button {\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.38rem 0.6rem;\n  font: 700 0.78rem var(--noma-font-sans);\n  cursor: pointer;\n}\n.noma-space-actions button:hover {\n  border-color: var(--noma-accent);\n  color: var(--noma-accent);\n}\nbody.noma-space-body main.noma-doc {\n  min-width: 0;\n  max-width: none;\n  margin: 0;\n  padding: 2rem min(4vw, 2.5rem) 5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: rgba(255, 255, 255, 0.78);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector {\n  min-width: 0;\n  align-self: start;\n  position: sticky;\n  top: 1rem;\n  display: grid;\n  gap: 0.75rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-inspector section {\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 0.85rem;\n  background: rgba(255, 255, 255, 0.72);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector h2 {\n  margin: 0 0 0.55rem;\n  padding: 0;\n  border: 0;\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n}\n.noma-space-inspector p {\n  display: flex;\n  justify-content: space-between;\n  gap: 0.6rem;\n  margin: 0.3rem 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-inspector strong {\n  color: var(--noma-fg);\n  overflow-wrap: anywhere;\n}\n.noma-space-inspector ul {\n  margin: 0;\n  padding-left: 1rem;\n}\n.noma-space-inspector li {\n  margin: 0.25rem 0;\n  font-size: 0.84rem;\n}\n.noma-space-empty {\n  display: block !important;\n  color: var(--noma-muted);\n}\n.noma-space-stats {\n  display: flex;\n  gap: 0.5rem;\n  flex-wrap: wrap;\n  margin: 1rem 0 0;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-stats span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.2rem 0.6rem;\n  font-size: 0.8rem;\n  font-weight: 700;\n}\nbody.noma-space-body ol.noma-site-toc {\n  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));\n}\n@media (max-width: 1100px) {\n  .noma-space-main {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .noma-space-inspector {\n    position: static;\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n}\n@media (max-width: 780px) {\n  .noma-space-shell {\n    grid-template-columns: 1fr;\n  }\n  .noma-space-sidebar {\n    position: static;\n    height: auto;\n    border-right: 0;\n    border-bottom: 1px solid var(--noma-rule);\n  }\n  .noma-space-main {\n    padding: 0.75rem;\n  }\n  .noma-space-topbar {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  body.noma-space-body main.noma-doc {\n    padding: 1.25rem 1rem 3rem;\n  }\n  .noma-space-inspector {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* v0.4 \u2014 math (KaTeX is loaded from CDN; we just style block layout) */\n.noma-math-display {\n  margin: 1.4em auto;\n  text-align: center;\n  overflow-x: auto;\n}\n.noma-math-inline {\n  display: inline;\n}\n';
+  var default_default = ':root {\n  --noma-bg: #fbfaf7;\n  --noma-fg: #1d1c1a;\n  --noma-muted: #6b6a66;\n  --noma-rule: #e7e4dc;\n  --noma-accent: #b9522a;\n  --noma-accent-soft: #f4dccd;\n  --noma-claim: #2c5d8f;\n  --noma-claim-soft: #dfeaf5;\n  --noma-evidence: #2f7d4a;\n  --noma-evidence-soft: #dff0e3;\n  --noma-risk: #a8362e;\n  --noma-risk-soft: #f7d9d4;\n  --noma-code-bg: #f1ede4;\n  --noma-card-bg: #ffffff;\n  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);\n  --noma-radius: 8px;\n  --noma-cols: 2;\n  --noma-grid-min: 14rem;\n  --noma-grid-gap: 1rem;\n  --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;\n  --noma-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;\n  --noma-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;\n}\n\n* { box-sizing: border-box; }\n\nhtml, body {\n  margin: 0;\n  padding: 0;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n  font-family: var(--noma-font-serif);\n  font-size: 16px;\n  line-height: 1.58;\n  -webkit-font-smoothing: antialiased;\n  text-rendering: optimizeLegibility;\n}\n\nmain.noma-doc {\n  max-width: 1040px;\n  margin: 3rem auto;\n  padding: 0 1.25rem 5rem;\n}\n\nmain.noma-doc > section.noma-hero ~ section,\nmain.noma-doc > .noma-grid,\nmain.noma-doc > .noma-columns {\n  max-width: 100%;\n}\n\nh1, h2, h3, h4, h5, h6 {\n  font-family: var(--noma-font-sans);\n  font-weight: 700;\n  line-height: 1.2;\n  letter-spacing: 0;\n  margin: 2em 0 0.55em;\n}\nh1 { font-size: 2.1rem; margin-top: 0; }\nh2 { font-size: 1.45rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.25em; }\nh3 { font-size: 1.15rem; }\nh4 { font-size: 0.98rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n\np { margin: 0 0 1.05em; }\na { color: var(--noma-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }\na:hover { text-decoration-thickness: 2px; }\n\ncode {\n  font-family: var(--noma-font-mono);\n  font-size: 0.9em;\n  background: var(--noma-code-bg);\n  padding: 0.1em 0.35em;\n  border-radius: 4px;\n}\npre {\n  background: var(--noma-code-bg);\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  overflow-x: auto;\n  font-size: 0.9rem;\n  line-height: 1.5;\n}\npre code { background: none; padding: 0; }\n\nblockquote {\n  border-left: 3px solid var(--noma-accent);\n  margin: 1.5em 0;\n  padding: 0.2em 1.2em;\n  color: var(--noma-muted);\n  font-style: italic;\n}\n\nhr { border: 0; border-top: 1px solid var(--noma-rule); margin: 3em 0; }\n\nul, ol { padding-left: 1.4em; }\nli { margin: 0.25em 0; }\n\nfigure {\n  margin: 1.8em 0;\n}\nfigure img {\n  display: block;\n  max-width: 100%;\n  height: auto;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\nfigcaption {\n  margin-top: 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n\n/* Callouts */\naside.noma-callout {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-accent-soft);\n  border-left: 3px solid var(--noma-accent);\n}\naside.noma-callout-warning { background: #fbe6df; border-color: var(--noma-risk); }\naside.noma-callout-tip     { background: #e6f3eb; border-color: var(--noma-evidence); }\naside.noma-callout-note    { background: #ecedf2; border-color: #5a6071; }\n\n/* Research blocks */\naside.noma-research {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-research .noma-research-head {\n  display: flex;\n  align-items: center;\n  gap: 0.8em;\n  margin-bottom: 0.5em;\n}\naside.noma-research .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-muted);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-code-bg);\n}\naside.noma-claim          { border-left: 3px solid var(--noma-claim); }\naside.noma-claim .noma-tag { color: var(--noma-claim); background: var(--noma-claim-soft); }\naside.noma-evidence       { border-left: 3px solid var(--noma-evidence); }\naside.noma-evidence .noma-tag { color: var(--noma-evidence); background: var(--noma-evidence-soft); }\naside.noma-counterevidence { border-left: 3px solid var(--noma-risk); }\naside.noma-counterevidence .noma-tag { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-risk           { border-left: 3px solid var(--noma-risk); }\naside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }\naside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }\naside.noma-open_question { border-left: 3px solid #8b6c1a; }\naside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }\naside.noma-assumption { border-left: 3px solid #5a6071; }\naside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }\n\n/* Variants \u2014 themable per-block emphasis without inline styling */\n[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }\n[data-variant="subtle"] { opacity: 0.78; box-shadow: none; }\n[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }\n[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }\n[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }\n\n/* Export buttons (artifact-side action surface) */\n.noma-export-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  border: 0;\n  padding: 0.55em 1.1em;\n  margin: 0.3em 0.4em 0.3em 0;\n  border-radius: 999px;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.85rem;\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n.noma-export-button:hover { background: var(--noma-accent); color: white; }\n.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }\n.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }\n.noma-export-button[data-format="json"] { background: var(--noma-muted); }\n\n/* Controls (interactive artifact blocks) */\n.noma-control {\n  margin: 1em 0;\n  padding: 0.8em 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-control-row {\n  display: grid;\n  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 2fr);\n  gap: 0.75rem;\n  align-items: center;\n}\n.noma-control-label { font-weight: 650; }\n.noma-control input,\n.noma-control select {\n  width: 100%;\n  accent-color: var(--noma-accent);\n  font: inherit;\n}\n.noma-control input[type="number"],\n.noma-control input[type="text"],\n.noma-control select {\n  border: 1px solid var(--noma-rule);\n  border-radius: 6px;\n  padding: 0.35em 0.5em;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n}\n.noma-control input[type="checkbox"] {\n  width: auto;\n  justify-self: start;\n}\n.noma-control-value {\n  display: block;\n  margin-top: 0.35rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-mono);\n  font-size: 0.82rem;\n}\n.noma-interactive-disabled {\n  display: inline-block;\n  margin-bottom: 0.5rem;\n  padding: 0.18em 0.55em;\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n  font-weight: 650;\n}\n\n.noma-computed {\n  margin: 1.2em 0;\n  padding: 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 4px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-computed-head {\n  display: flex;\n  gap: 0.8rem;\n  align-items: baseline;\n  flex-wrap: wrap;\n  margin-bottom: 0.45rem;\n}\n.noma-computed-head h3 {\n  margin: 0;\n  font-size: 1rem;\n}\n.noma-computed-value {\n  font-family: var(--noma-font-sans);\n  font-size: 1.75rem;\n  line-height: 1.15;\n  font-weight: 750;\n  color: var(--noma-claim);\n}\n.noma-computed-body {\n  margin-top: 0.75rem;\n}\n.noma-computed-body p {\n  margin-bottom: 0;\n}\n.noma-computed-plot {\n  padding: 1em;\n}\n.noma-computed-canvas {\n  margin-bottom: 0.5rem;\n}\n.noma-computed-table-view {\n  margin: 0.65rem 0 0;\n  font-size: 0.9rem;\n}\n.noma-computed-table-view th:last-child,\n.noma-computed-table-view td:last-child {\n  text-align: right;\n}\n@media (max-width: 720px) {\n  .noma-control-row {\n    grid-template-columns: 1fr;\n  }\n}\n\n.noma-confidence {\n  flex: 1;\n  height: 6px;\n  border-radius: 999px;\n  background: var(--noma-rule);\n  overflow: hidden;\n  max-width: 140px;\n}\n.noma-confidence-bar {\n  height: 100%;\n  background: linear-gradient(90deg, var(--noma-accent), var(--noma-claim));\n}\n\n.noma-meta {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\n.noma-meta-key {\n  font-weight: 600;\n  color: var(--noma-fg);\n}\n\n/* Grid */\n.noma-grid,\n.noma-columns {\n  display: grid;\n  grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));\n  gap: var(--noma-grid-gap);\n  margin: 1.5em 0;\n}\n.noma-grid-auto,\n.noma-columns-auto {\n  grid-template-columns: repeat(auto-fit, minmax(min(var(--noma-grid-min), 100%), 1fr));\n}\n.noma-grid-wide,\n.noma-columns-wide,\n.noma-grid-full,\n.noma-columns-full {\n  position: relative;\n  left: 50%;\n  transform: translateX(-50%);\n}\n.noma-grid-wide,\n.noma-columns-wide {\n  width: min(1180px, calc(100vw - 2rem));\n}\n.noma-grid-full,\n.noma-columns-full {\n  width: min(1440px, calc(100vw - 2rem));\n}\n.noma-grid-compact,\n.noma-columns-compact {\n  --noma-grid-gap: 0.75rem;\n}\n@media (max-width: 720px) {\n  .noma-grid,\n  .noma-columns {\n    grid-template-columns: 1fr;\n    width: auto;\n    left: auto;\n    transform: none;\n  }\n}\n\n/* Card */\narticle.noma-card {\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 1em 1.1em;\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-card .noma-card-head {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  margin-bottom: 0.4em;\n}\narticle.noma-card h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-family: var(--noma-font-sans);\n}\narticle.noma-card .noma-icon {\n  color: var(--noma-accent);\n  font-size: 0.9em;\n}\narticle.noma-card p:last-child { margin-bottom: 0; }\n\n/* Hero */\nsection.noma-hero {\n  background: linear-gradient(180deg, var(--noma-accent-soft), transparent);\n  padding: 3rem 2rem 2.4rem;\n  border-radius: var(--noma-radius);\n  margin: 0 0 3rem;\n  text-align: center;\n}\nsection.noma-hero h1 { font-size: 2.8rem; margin-top: 0; }\n\na.noma-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  padding: 0.7em 1.4em;\n  border-radius: 999px;\n  text-decoration: none;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.95rem;\n  margin-top: 0.5em;\n}\na.noma-button:hover { background: var(--noma-accent); color: white; }\n\n/* Plot */\nfigure.noma-plot {\n  margin: 1.8em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n}\nfigure.noma-plot .noma-plot-canvas {\n  color: var(--noma-claim);\n  background: linear-gradient(180deg, transparent, var(--noma-claim-soft));\n  border-radius: 6px;\n  padding: 0.6em;\n}\nfigure.noma-plot svg { width: 100%; height: auto; display: block; }\nfigure.noma-plot figcaption {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\nfigure.noma-plot[data-compact="true"] {\n  padding: 0.65em 0.8em;\n}\nfigure.noma-plot[data-compact="true"] figcaption {\n  margin-top: 0.35em;\n  font-size: 0.78rem;\n}\n\n/* Dataset */\ndetails.noma-dataset {\n  margin: 1.4em 0;\n  padding: 0.6em 1em;\n  background: var(--noma-code-bg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\ndetails.noma-dataset pre {\n  background: transparent;\n  padding: 0.6em 0 0;\n}\n\n/* Agent task */\n.noma-agent-task {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-claim-soft);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n}\n.noma-agent-task label {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.9rem;\n  margin-bottom: 0.4em;\n}\n\n/* Collaboration metadata */\naside.noma-comment,\naside.noma-review-meta {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-comment {\n  background: #f7f6f1;\n}\n.noma-comment-head,\n.noma-review-meta-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.55em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-comment .noma-tag,\n.noma-review-meta .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-review-meta.noma-collab-review {\n  border-left-color: var(--noma-accent);\n}\n.noma-review-meta.noma-collab-review .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-review-meta.noma-collab-provenance {\n  border-left-color: var(--noma-claim);\n}\n.noma-review-meta.noma-collab-provenance .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-review-meta.noma-collab-confidence {\n  border-left-color: var(--noma-evidence);\n}\n.noma-review-meta.noma-collab-confidence .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-comment-body p:last-child,\n.noma-review-meta-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Memory profile */\naside.noma-memory,\naside.noma-memory-index {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-memory-index {\n  background: #f4f7f8;\n}\n.noma-memory-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-memory .noma-tag,\n.noma-memory-index .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-memory h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-memory.noma-memory-user {\n  border-left-color: var(--noma-evidence);\n}\n.noma-memory.noma-memory-user .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-memory.noma-memory-feedback {\n  border-left-color: var(--noma-accent);\n}\n.noma-memory.noma-memory-feedback .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-memory.noma-memory-project {\n  border-left-color: var(--noma-claim);\n}\n.noma-memory.noma-memory-project .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-memory.noma-memory-reference {\n  border-left-color: #5a6071;\n}\n.noma-memory.noma-memory-reference .noma-tag {\n  color: #5a6071;\n  background: #ecedf2;\n}\n.noma-memory-body p:last-child,\n.noma-memory-index .noma-memory-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Metrics */\naside.noma-metric {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-evidence);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-metric-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.25em;\n}\n.noma-metric .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-evidence);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-evidence-soft);\n}\n.noma-metric h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-metric-value {\n  margin: 0.2em 0 0.25em;\n  color: var(--noma-evidence);\n  font-family: var(--noma-font-sans);\n  font-size: 1.7rem;\n  font-weight: 800;\n  line-height: 1.15;\n}\n.noma-metric-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Technical documentation */\narticle.noma-technical {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-technical .noma-technical-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n}\narticle.noma-technical .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-claim);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n}\narticle.noma-technical h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-technical-meta {\n  margin: 0.35em 0 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.85rem;\n}\n.noma-technical-body p:last-child {\n  margin-bottom: 0;\n}\npre.noma-technical-code {\n  margin: 0.7em 0 0;\n}\n\n/* Custom directives */\naside.noma-block {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-block-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n  font-family: var(--noma-font-sans);\n}\naside.noma-block .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\naside.noma-block h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-block-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Change requests */\naside.noma-change-request {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: #fff4f0;\n  border: 1px solid #f0c7bd;\n  border-left: 3px solid #c85c4a;\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-change-request-head {\n  font-size: 0.85rem;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.45em;\n}\n.noma-change-request-delta {\n  display: flex;\n  align-items: baseline;\n  gap: 0.55em;\n  margin: 0.35em 0 0.55em;\n  line-height: 1.5;\n}\n.noma-change-request del {\n  color: #9a382b;\n  text-decoration-thickness: 0.12em;\n}\n.noma-change-request ins {\n  color: #2f6e42;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n/* State change */\naside.noma-state-change {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-fg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-state-change-head {\n  font-size: 0.85rem;\n  letter-spacing: 0.02em;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.4em;\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  flex-wrap: wrap;\n}\n.noma-state-change-delta {\n  font-size: 1rem;\n  display: flex;\n  align-items: baseline;\n  gap: 0.6em;\n  margin: 0.3em 0 0.5em;\n  font-variant-numeric: tabular-nums;\n}\n.noma-state-from {\n  text-decoration: line-through;\n  opacity: 0.65;\n}\n.noma-state-to {\n  font-weight: 700;\n}\n.noma-state-arrow {\n  opacity: 0.55;\n  font-size: 0.95em;\n}\n\n/* Tables */\ntable.noma-table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 1.6em 0;\n  font-family: var(--noma-font-sans);\n  font-size: 0.88rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  overflow: hidden;\n  box-shadow: var(--noma-shadow);\n}\ntable.noma-table thead {\n  background: var(--noma-code-bg);\n}\ntable.noma-table th {\n  text-align: left;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  padding: 0.55em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  color: var(--noma-fg);\n}\ntable.noma-table td {\n  padding: 0.5em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  vertical-align: top;\n}\ntable.noma-table tbody tr:last-child td { border-bottom: 0; }\ntable.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }\n\n.noma-page-header,\n.noma-page-footer {\n  margin: 1.2rem 0;\n  padding: 0.55rem 0;\n  border-color: var(--noma-rule);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-page-header {\n  border-bottom: 1px solid var(--noma-rule);\n}\n.noma-page-footer {\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-page-header p,\n.noma-page-footer p {\n  margin: 0;\n}\n.noma-page-number {\n  display: block;\n  text-align: right;\n}\n\n.noma-toc {\n  margin: 1.6rem 0 2rem;\n  padding: 1rem 1.1rem;\n  border: 1px solid var(--noma-rule);\n  background: var(--noma-card-bg);\n  font-family: var(--noma-font-sans);\n  box-shadow: var(--noma-shadow);\n}\n.noma-toc h2 {\n  margin: 0 0 0.6rem;\n  padding: 0;\n  border: 0;\n  font-size: 1.1rem;\n}\n.noma-toc ol {\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n.noma-toc li {\n  margin: 0.15rem 0;\n}\n.noma-toc li[data-level="2"] { margin-left: 1rem; }\n.noma-toc li[data-level="3"] { margin-left: 2rem; }\n.noma-toc li[data-level="4"] { margin-left: 3rem; }\n.noma-toc li[data-level="5"] { margin-left: 4rem; }\n.noma-toc li[data-level="6"] { margin-left: 5rem; }\n\n.noma-footnote,\n.noma-endnote {\n  margin: 1.2rem 0;\n  padding: 0.7rem 0.9rem;\n  border-left: 3px solid var(--noma-rule);\n  background: var(--noma-code-bg);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-footnote p,\n.noma-endnote p {\n  margin: 0.25rem 0;\n}\n.noma-footnote sup,\n.noma-endnote sup {\n  margin-right: 0.4rem;\n  color: var(--noma-accent);\n  font-weight: 700;\n}\n\n.noma-bibliography {\n  margin: 2rem 0;\n  padding-top: 0.8rem;\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-bibliography h2 {\n  margin-top: 0;\n}\n.noma-bibliography ol {\n  padding-left: 1.4rem;\n}\n.noma-citation-meta {\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9em;\n}\n\n.noma-pagebreak {\n  margin: 2rem 0;\n  border: 0;\n  border-top: 1px dashed var(--noma-rule);\n}\n\n/* Print */\n@media print {\n  @page { margin: 20mm 18mm; }\n  html, body { background: white; font-size: 11pt; }\n  main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }\n  section.noma-hero { background: none; border: 1px solid var(--noma-rule); }\n  a { color: var(--noma-fg); }\n  pre, article.noma-card, article.noma-technical, aside.noma-block, .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, aside.noma-comment, aside.noma-review-meta, aside.noma-memory, aside.noma-memory-index, aside.noma-metric, aside.noma-change-request, aside.noma-footnote, aside.noma-endnote, nav.noma-toc, header.noma-page-header, footer.noma-page-footer, details.noma-dataset, table.noma-table {\n    box-shadow: none;\n    page-break-inside: avoid;\n    break-inside: avoid;\n  }\n  .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {\n    background: white;\n  }\n  table.noma-table {\n    font-size: 9.5pt;\n    box-shadow: none;\n  }\n  table.noma-table th,\n  table.noma-table td {\n    padding: 0.35em 0.55em;\n  }\n  h1, h2, h3 {\n    page-break-after: avoid;\n    break-after: avoid;\n  }\n  .noma-pagebreak {\n    margin: 0;\n    border: 0;\n    height: 0;\n    page-break-after: always;\n    break-after: page;\n  }\n}\n\n/* v0.4 \u2014 alias anchors (offset for sticky-headed pages) */\na.noma-alias {\n  display: block;\n  position: relative;\n  top: -1.2em;\n  visibility: hidden;\n  height: 0;\n}\n\n/* v0.4 \u2014 multi-page site nav (rendered above main when --to site) */\nnav.noma-site-nav {\n  max-width: 1040px;\n  margin: 1.5rem auto 0;\n  padding: 0 2rem;\n  display: flex;\n  align-items: baseline;\n  gap: 1.5rem;\n  flex-wrap: wrap;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n}\nnav.noma-site-nav a.noma-site-home {\n  font-weight: 600;\n  color: var(--noma-fg);\n  text-decoration: none;\n  border-right: 1px solid var(--noma-rule);\n  padding-right: 1.25rem;\n}\nnav.noma-site-nav ol {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n  display: flex;\n  gap: 1.25rem;\n  flex-wrap: wrap;\n  counter-reset: chap;\n}\nnav.noma-site-nav li {\n  counter-increment: chap;\n}\nnav.noma-site-nav li::before {\n  content: counter(chap, decimal-leading-zero) " \xB7 ";\n  color: var(--noma-rule);\n  font-variant-numeric: tabular-nums;\n}\nnav.noma-site-nav a {\n  color: var(--noma-muted);\n  text-decoration: none;\n}\nnav.noma-site-nav a:hover { color: var(--noma-accent); }\nnav.noma-site-nav .noma-nav-current span {\n  color: var(--noma-fg);\n  font-weight: 500;\n}\n\na.noma-ref.noma-xchapter::after {\n  content: " \u2197";\n  font-size: 0.85em;\n  color: var(--noma-muted);\n}\n\nmain.noma-site-index {\n  padding-top: 3rem;\n}\nheader.noma-site-header h1 {\n  font-size: 2.4rem;\n  margin-bottom: 0.25rem;\n}\nheader.noma-site-header .noma-site-author {\n  color: var(--noma-muted);\n  margin: 0 0 2rem;\n}\nol.noma-site-toc {\n  list-style: none;\n  padding: 0;\n  margin: 2rem 0;\n  display: grid;\n  gap: 0.6rem;\n  counter-reset: toc;\n}\nol.noma-site-toc li {\n  counter-increment: toc;\n}\na.noma-site-chapter {\n  display: block;\n  padding: 1.1rem 1.4rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  text-decoration: none;\n  color: inherit;\n  transition: border-color 120ms ease, transform 120ms ease;\n}\na.noma-site-chapter:hover {\n  border-color: var(--noma-accent);\n  transform: translateY(-1px);\n}\na.noma-site-chapter::before {\n  content: counter(toc, decimal-leading-zero);\n  display: block;\n  font-size: 0.75rem;\n  font-variant-numeric: tabular-nums;\n  color: var(--noma-muted);\n  margin-bottom: 0.25rem;\n}\n.noma-site-chapter-title {\n  display: block;\n  font-weight: 600;\n  font-size: 1.1rem;\n}\n.noma-site-chapter-summary {\n  display: block;\n  color: var(--noma-muted);\n  margin-top: 0.4rem;\n  font-size: 0.93rem;\n}\n.noma-site-description {\n  max-width: 48rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 1.02rem;\n}\n.noma-site-chapter-tags,\n.noma-space-tags {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  margin-top: 0.6rem;\n}\n.noma-site-chapter-tags span,\n.noma-space-tags span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  padding: 0.12rem 0.45rem;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n}\n\n/* Space renderer \u2014 source-controlled documentation/wiki surface */\nbody.noma-space-body {\n  background: linear-gradient(180deg, #f7f5ef 0, var(--noma-bg) 16rem);\n}\n.noma-space-shell {\n  display: grid;\n  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);\n  min-height: 100vh;\n}\n.noma-space-sidebar {\n  position: sticky;\n  top: 0;\n  height: 100vh;\n  overflow: auto;\n  border-right: 1px solid var(--noma-rule);\n  background: rgba(255, 255, 255, 0.68);\n  padding: 1rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-home {\n  display: block;\n  margin-bottom: 0.45rem;\n  color: var(--noma-fg);\n  font-weight: 800;\n  text-decoration: none;\n}\n.noma-space-description,\n.noma-space-search-disabled {\n  margin: 0 0 1rem;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n  line-height: 1.38;\n}\n.noma-space-search {\n  display: grid;\n  gap: 0.35rem;\n  margin: 0.9rem 0 0.75rem;\n  color: var(--noma-muted);\n  font-size: 0.74rem;\n  font-weight: 750;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n}\n.noma-space-search input {\n  width: 100%;\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  padding: 0.5rem 0.6rem;\n  background: var(--noma-card-bg);\n  color: var(--noma-fg);\n  font: 500 0.88rem var(--noma-font-sans);\n  text-transform: none;\n  letter-spacing: 0;\n}\n.noma-space-search-results {\n  display: grid;\n  gap: 0.4rem;\n  margin: 0 0 0.85rem;\n  padding: 0.45rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: 8px;\n  background: var(--noma-card-bg);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-search-results a {\n  display: grid;\n  gap: 0.1rem;\n  padding: 0.45rem 0.5rem;\n  border-radius: 6px;\n  color: var(--noma-fg);\n  text-decoration: none;\n}\n.noma-space-search-results a:hover {\n  background: var(--noma-code-bg);\n}\n.noma-space-search-results small {\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n}\n.noma-space-search-results em {\n  display: flex;\n  gap: 0.25rem;\n  flex-wrap: wrap;\n  font-style: normal;\n}\n.noma-space-search-results em span {\n  color: var(--noma-accent);\n  font-size: 0.68rem;\n}\n.noma-space-search-results p {\n  margin: 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-sidebar nav.noma-site-nav {\n  max-width: none;\n  margin: 0;\n  padding: 0;\n  display: block;\n}\n.noma-space-sidebar nav.noma-site-nav ol {\n  display: grid;\n  gap: 0.18rem;\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  counter-reset: none;\n}\n.noma-space-sidebar nav.noma-site-nav li {\n  padding-left: calc(var(--depth, 0) * 0.85rem);\n}\n.noma-space-sidebar nav.noma-site-nav li::before {\n  content: "";\n}\n.noma-space-sidebar nav.noma-site-nav a,\n.noma-space-sidebar nav.noma-site-nav span {\n  display: block;\n  border-radius: 6px;\n  padding: 0.38rem 0.5rem;\n  color: var(--noma-muted);\n  text-decoration: none;\n  font-size: 0.88rem;\n  line-height: 1.25;\n}\n.noma-space-sidebar nav.noma-site-nav a:hover {\n  background: var(--noma-code-bg);\n  color: var(--noma-fg);\n}\n.noma-space-sidebar nav.noma-site-nav .noma-nav-current span {\n  background: var(--noma-accent-soft);\n  color: var(--noma-accent);\n  font-weight: 760;\n}\n.noma-space-sidebar nav.noma-site-nav small {\n  display: block;\n  padding: 0 0.5rem 0.32rem;\n  color: var(--noma-muted);\n  font-size: 0.68rem;\n}\n.noma-space-main {\n  min-width: 0;\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);\n  grid-template-rows: auto 1fr;\n  gap: 1rem;\n  padding: 1rem;\n}\n.noma-space-topbar {\n  grid-column: 1 / -1;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 1rem;\n  min-width: 0;\n  padding: 0.5rem 0.2rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-breadcrumbs {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  min-width: 0;\n  color: var(--noma-muted);\n  font-size: 0.83rem;\n}\n.noma-space-breadcrumbs a,\n.noma-space-breadcrumbs span {\n  color: inherit;\n  text-decoration: none;\n}\n.noma-space-breadcrumbs span:last-child {\n  color: var(--noma-fg);\n  font-weight: 700;\n}\n.noma-space-breadcrumbs a::after,\n.noma-space-breadcrumbs span::after {\n  content: "/";\n  margin-left: 0.35rem;\n  color: var(--noma-rule);\n}\n.noma-space-breadcrumbs span:last-child::after {\n  content: "";\n  margin: 0;\n}\n.noma-space-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.noma-space-actions button {\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.38rem 0.6rem;\n  font: 700 0.78rem var(--noma-font-sans);\n  cursor: pointer;\n}\n.noma-space-actions button:hover {\n  border-color: var(--noma-accent);\n  color: var(--noma-accent);\n}\nbody.noma-space-body main.noma-doc {\n  min-width: 0;\n  max-width: none;\n  margin: 0;\n  padding: 2rem min(4vw, 2.5rem) 5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: rgba(255, 255, 255, 0.78);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector {\n  min-width: 0;\n  align-self: start;\n  position: sticky;\n  top: 1rem;\n  display: grid;\n  gap: 0.75rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-inspector section {\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 0.85rem;\n  background: rgba(255, 255, 255, 0.72);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector h2 {\n  margin: 0 0 0.55rem;\n  padding: 0;\n  border: 0;\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n}\n.noma-space-inspector p {\n  display: flex;\n  justify-content: space-between;\n  gap: 0.6rem;\n  margin: 0.3rem 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-inspector strong {\n  color: var(--noma-fg);\n  overflow-wrap: anywhere;\n}\n.noma-space-inspector ul {\n  margin: 0;\n  padding-left: 1rem;\n}\n.noma-space-inspector li {\n  margin: 0.25rem 0;\n  font-size: 0.84rem;\n}\n.noma-space-empty {\n  display: block !important;\n  color: var(--noma-muted);\n}\n.noma-space-stats {\n  display: flex;\n  gap: 0.5rem;\n  flex-wrap: wrap;\n  margin: 1rem 0 0;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-stats span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.2rem 0.6rem;\n  font-size: 0.8rem;\n  font-weight: 700;\n}\nbody.noma-space-body ol.noma-site-toc {\n  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));\n}\n@media (max-width: 1100px) {\n  .noma-space-main {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .noma-space-inspector {\n    position: static;\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n}\n@media (max-width: 780px) {\n  .noma-space-shell {\n    grid-template-columns: 1fr;\n  }\n  .noma-space-sidebar {\n    position: static;\n    height: auto;\n    border-right: 0;\n    border-bottom: 1px solid var(--noma-rule);\n  }\n  .noma-space-main {\n    padding: 0.75rem;\n  }\n  .noma-space-topbar {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  body.noma-space-body main.noma-doc {\n    padding: 1.25rem 1rem 3rem;\n  }\n  .noma-space-inspector {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* v0.4 \u2014 math (KaTeX is loaded from CDN; we just style block layout) */\n.noma-math-display {\n  margin: 1.4em auto;\n  text-align: center;\n  overflow-x: auto;\n}\n.noma-math-inline {\n  display: inline;\n}\n\n/* Wiki macros: ::include, ::children, ::issue(s), ::page-properties, unresolved placeholders */\n.noma-include {\n  border-left: 3px solid var(--noma-rule);\n  padding: 0.1rem 0 0.1rem 0.9rem;\n  margin: 1rem 0;\n}\n.noma-include-source {\n  color: var(--noma-muted);\n  font: 0.75rem/1.4 var(--noma-font-sans);\n  margin-bottom: 0.35rem;\n}\n.noma-macro-placeholder {\n  border: 1px dashed var(--noma-rule);\n  border-radius: var(--noma-radius);\n  color: var(--noma-muted);\n  font: 0.85rem/1.45 var(--noma-font-sans);\n  margin: 1rem 0;\n  padding: 0.6rem 0.8rem;\n}\n.noma-macro-forbidden, .noma-macro-cycle, .noma-macro-depth { border-color: var(--noma-risk); }\n.noma-children ul { margin: 0.4rem 0; }\n.noma-children-summary { color: var(--noma-muted); font-size: 0.9em; }\n.noma-issue-card {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 0.5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  font: 0.9rem/1.4 var(--noma-font-sans);\n  margin: 0.75rem 0;\n  padding: 0.5rem 0.75rem;\n}\n.noma-issue-key { font-weight: 700; }\n.noma-issue-status {\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n  color: var(--noma-claim);\n  font-size: 0.72rem;\n  font-weight: 700;\n  letter-spacing: 0.04em;\n  padding: 0.1rem 0.55rem;\n  text-transform: uppercase;\n}\n.noma-issue-status[data-status="done"] { background: var(--noma-evidence-soft); color: var(--noma-evidence); }\n.noma-issue-assignee, .noma-issue-meta { color: var(--noma-muted); }\n.noma-issue-meta span + span::before { content: " \xB7 "; }\n.noma-page-properties th[scope="row"] { width: 30%; }\n';
 
   // examples/agent-plan.noma
   var agent_plan_default = '---\ntitle: Agent Planning Artifact \u2014 Q3 Roadmap Decision\nauthor: ferax564\ndate: 2026-05-09\ntags: [planning, decision-record, agent-artifact]\n---\n\n# Q3 Roadmap Decision\n\n::summary\nThree candidate directions for next quarter. This document captures the\noptions, trade-offs, risks, and timeline as structured blocks so an agent\ncan revisit and update each section independently \u2014 and so the recommendation\ncan be exported as a prompt for a follow-on review pass.\n::\n\n## Options at a glance\n\n::grid{columns=3 min="14rem" gap="0.9rem" wide}\n:::card{title="A \xB7 Docs Platform" icon="docs"}\nBuild a hosted publishing target for Noma. Highest revenue ceiling, longest path to value.\n:::\n\n:::card{title="B \xB7 Research Workflows" icon="search"}\nLean into claims/evidence/risk blocks for analyst teams. Narrow ICP, fastest to first paying customer.\n:::\n\n:::card{title="C \xB7 General Reports" icon="report"}\nPosition Noma as the default format for AI-generated reports across domains. Broadest TAM, weakest wedge.\n:::\n::\n\n## Decision\n\n::decision{id="decision-q3-direction" status="proposed"}\nStart with **Option B \u2014 Research Workflows**. Narrowest wedge, fastest signal,\nkeeps the door open to A and C as adjacent expansions.\n::\n\n## Decision matrix\n\n| Dimension             | A \xB7 Docs | B \xB7 Research | C \xB7 Reports |\n| --------------------- | -------- | ------------ | ----------- |\n| Time to first revenue | 6\u20139 mo   | 6\u201310 wk      | 4\u20136 mo      |\n| Wedge sharpness       | Medium   | High         | Low         |\n| Existing block fit    | Strong   | Native       | Medium      |\n| Defensibility         | Network  | Workflow     | Brand only  |\n| 18-month revenue cap  | High     | Medium       | High        |\n\n## Claims and evidence\n\n::claim{id="claim-research-wedge" confidence=0.74}\nResearch and analyst teams are the sharpest wedge for Noma because their\nexisting tools (Word, Notion, Confluence) lack first-class claim/evidence/risk\nprimitives, and they already structure documents this way mentally.\n::\n\n::evidence{for="claim-research-wedge" source="user-interviews-apr-2026"}\nOf 11 analyst-team interviews in April, 9 described their current workflow as\n"copy-paste claims into a doc and hope someone catches stale ones." All 9 said\nthey would pay for a tool that flagged stale evidence automatically.\n::\n\n::claim{id="claim-docs-too-slow" confidence=0.68}\nA docs platform is the higher revenue ceiling, but time-to-revenue is too long\nto be the wedge. Better as a follow-on once Noma has format adoption.\n::\n\n::evidence{for="claim-docs-too-slow" source="docs-platform-benchmark-2026"}\nComparable docs-platform launches (Mintlify, GitBook) took 12\u201318 months to\nreach $100k ARR; research-tool launches (Mem, Reflect) hit it in 6\u20139 months\nwith a tighter ICP.\n::\n\n## Risks\n\n::risk{id="risk-narrow-icp" severity="medium" owner="ferax564"}\nResearch-team ICP is small (~3k orgs globally). Even high conversion caps the\nbusiness below docs-platform scale. Mitigation: use research wedge to drive\nformat adoption, then expand to docs.\n::\n\n::risk{id="risk-format-not-sticky" severity="high" owner="ferax564"}\nIf teams don\'t keep editing in Noma after first artifact, the workflow value\ndisappears. Mitigation: ship the agent patch protocol in week 3 so updates\nflow back into source automatically.\n::\n\n::risk{id="risk-llm-export-quality" severity="low" owner="ferax564"}\nLLM export quality determines whether agents trust Noma source as canonical.\nEasy to verify, easy to fix. Tracked separately.\n::\n\n## Timeline\n\n::grid{columns=4 min="12rem" compact wide}\n:::card{title="Wk 1 \xB7 Format"}\nParser, AST, frontmatter, JSON export, basic validation.\n:::\n\n:::card{title="Wk 2 \xB7 Artifact"}\nHTML renderer, default theme, cards/grids/tabs/charts, mobile.\n:::\n\n:::card{title="Wk 3 \xB7 Agent"}\nLLM export, patch protocol, copy-as-prompt buttons.\n:::\n\n:::card{title="Wk 4 \xB7 Launch"}\n3 demos, README, spec, comparison page, OSS release.\n:::\n::\n\n## Open questions\n\n::open_question{id="oq-pricing-model"}\nPer-seat, per-document, or per-render? Research-team workflows favor per-seat;\nagent-driven artifacts favor per-render. Decide before week 3.\n::\n\n::open_question{id="oq-pdf-engine"}\nKeep Puppeteer as the report-PDF path or add Typst for longer books? Puppeteer\nnow covers first-class PDFs; Typst may still be worth evaluating for book output.\n::\n\n## Agent tasks\n\n::agent_task{id="task-validate-claim-research-wedge"}\nRe-run the interview tally each month. If `claim-research-wedge` evidence base\ndrops below 8 of 11 supporting interviews (or new interviews contradict),\nlower the claim\'s `confidence` attribute and add a `counterevidence` block.\n::\n\n::agent_task{id="task-watch-stale-evidence"}\nEvery two weeks, scan `evidence` blocks for `source` attributes older than\n60 days. Flag any whose underlying source has changed materially. Do not\nauto-edit \u2014 propose a `replace_block` patch for human approval.\n::\n\n::agent_task{id="task-export-as-review-prompt"}\nOn request, package this document\'s `decision`, top three `claim`s, and all\n`risk`s of severity \u2265 medium into an LLM prompt for a second-opinion review.\n::\n\n## Export\n\n::export_button{format="prompt" target="decision-q3-direction"}\nLabel: Copy decision + risks as a review prompt\n::\n\n::export_button{format="markdown" target="summary"}\nLabel: Copy summary as Markdown\n::\n\n::export_button{format="json" target="document"}\nLabel: Copy full document AST\n::\n\n> The point of this artifact is not the prose \u2014 it\'s that an agent can re-open\n> it next month, walk the decision/claim/risk graph, and update only the parts\n> that changed. Everything else stays put, and the Git diff stays clean.\n';
@@ -11010,8 +11750,9 @@ body { background: #ffffff; }`;
     cloudLoading = true;
     renderCloudStatus();
     try {
-      await fetchCloudJson("/api/status");
+      const status = await fetchCloudJson("/api/status");
       cloudAvailable = true;
+      if (!cloudUser && status.user) cloudUser = { id: status.user.id, name: status.user.name, token: "", tokenPreview: status.user.tokenPreview };
       if (!cloudUser && !cloudShareToken) await createCloudUser({ silent: true });
       if (cloudDocumentId) {
         await loadCloudDocument(cloudDocumentId);
@@ -11202,6 +11943,10 @@ body { background: #ffffff; }`;
   }
   async function copyCloudUserToken() {
     if (!cloudUser) return;
+    if (!cloudUser.token) {
+      showTransientStatus("Signed in with a browser session; create an API token in Noma Cloud instead");
+      return;
+    }
     await copyText(cloudUser.token, "Copied cloud user token");
   }
   async function ensureCloudDocumentSaved() {
@@ -11236,10 +11981,13 @@ body { background: #ffffff; }`;
   async function fetchCloudJson(url, init) {
     const headers = new Headers(init?.headers);
     headers.set("accept", "application/json");
-    if (cloudUser) headers.set("authorization", `Bearer ${cloudUser.token}`);
+    if (cloudUser?.token) headers.set("authorization", `Bearer ${cloudUser.token}`);
+    const csrf = /(?:^|;\s*)noma_csrf=([^;]+)/.exec(document.cookie)?.[1];
+    if (csrf && !cloudUser?.token && (init?.method ?? "GET").toUpperCase() !== "GET") headers.set("x-noma-csrf", decodeURIComponent(csrf));
     if (cloudShareToken) headers.set("x-noma-share-token", cloudShareToken);
     const response = await fetch(url, {
       ...init,
+      credentials: "same-origin",
       headers
     });
     if (!response.ok) {

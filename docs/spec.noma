@@ -30,6 +30,8 @@ key: value
 
 The frontmatter is YAML. It is exposed on the document AST as `meta`. If the opening `---` line is missing, the file has no frontmatter.
 
+A leading `---` pair is frontmatter only when the text between the rules is blank or a YAML mapping. Anything else (a sentence, a list, a comment-only block) is a thematic break followed by ordinary content, so `---` / `Hello world` / `---` keeps its paragraph. Text that looks like `key: value` lines but is not valid YAML is still frontmatter: parsing never throws, `meta` is empty, and the validator reports an `invalid-frontmatter` error.
+
 ## Block syntax
 
 ### Headings
@@ -42,6 +44,8 @@ The frontmatter is YAML. It is exposed on the document AST as `meta`. If the ope
 
 Headings auto-create `section` nodes. Each section has an `id` derived by slugifying the title. Sections nest by level: `# A` is a parent of `## B` and `## B'` until the next `# C`.
 
+**Slugs.** The slug keeps letters and numbers of every script, lowercased, with runs of whitespace turned into `-` and other punctuation dropped: `# 日本語` → `日本語`, `## Привет мир` → `привет-мир`. Latin letters are folded to ASCII by dropping diacritics (`Café` → `cafe`); Latin letters with no ASCII decomposition (`ß`, `ø`) are dropped, which keeps every existing Latin-script slug unchanged. A title with no letters or numbers gets the id `section`. Repeated slugs are numbered `-2`, `-3`, … in document order.
+
 **Heading attributes (v0.4).** A heading line may end with a `{...}` attribute block to override the auto-slug or attach aliases:
 
 ```
@@ -49,6 +53,8 @@ Headings auto-create `section` nodes. Each section has an `id` derived by slugif
 ```
 
 `id="..."` replaces the slugified default. `aliases="comma,or,space,separated"` registers extra IDs that resolve to the same section — the validator accepts either, the HTML renderer emits a hidden `<a id="alias">` anchor before the heading so wikilinks and URL fragments work.
+
+A trailing `{...}` is read as attributes only when it is a well-formed attribute list with at least one `key=value` pair. Otherwise the braces stay in the title: `# Set {a, b}` has the title `Set {a, b}` and the id `set-a-b`.
 
 ### Inline content
 
@@ -96,7 +102,9 @@ Plain text outside any directive becomes a `paragraph` node. Inline markup is a 
 
 ### Code, lists, quotes, rules
 
-Standard Markdown: triple-backtick fenced code, `- ` bulleted lists, `1. ` ordered lists, `> ` block quotes, `---` thematic breaks.
+Standard Markdown: fenced code, `- ` bulleted lists, `1. ` ordered lists, `> ` block quotes, `---` thematic breaks.
+
+A code fence opens with three or more backticks or three or more tildes. The info string after a backtick fence may not contain backticks; its first word is the language, so info strings such as `c++` or `js title` both open a fence. The fence closes on a line of the same character that is at least as long as the opener, so a four-backtick fence can hold a triple-backtick example. Nothing inside a fence is parsed: `::`, headings and `{#id}` lines are code.
 
 ### Tables
 
@@ -156,6 +164,10 @@ Attribute lists appear after a directive name in curly braces:
 | `key=0.82`       | number  | `confidence=0.82` |
 | `flag`           | boolean | `done`            |
 | `key=true|false` | boolean | `pinned=true`     |
+
+**Only unquoted values are coerced.** A quoted value is always a string, even when it looks like a number or boolean: `version="1.10"` is the string `1.10` and `id="2024"` is the string `2024`. `id` is never coerced, so `id=2024` is also the string `2024`. Consumers that want a number (plot sizes, `confidence`, control defaults) accept numeric strings too, so `confidence="0.9"` and `confidence=0.9` behave the same.
+
+**Escapes.** Inside a double-quoted value, `\"` is a literal `"` and `\\` is a literal `\`. Any other backslash is kept as written, so `pattern="\d+"` means `\d+`. Single-quoted values are raw and cannot contain `'`. Writers (`renderNoma`, `noma patch`) use single quotes for values that contain `"` but not `'`, and otherwise double quotes with these escapes.
 
 **Attribute values are plain text.** Inline markup (`**bold**`, `*em*`, `` `code` ``, `[link](url)`, `[[id]]`) inside an attribute value is **not** parsed — it lands in the rendered output as a literal string. If you need rich content for a card title, evidence note, or callout heading, put it in the block body or as a child paragraph, not in an attribute. This keeps the attribute grammar trivially parseable and the AST shape predictable.
 
@@ -292,6 +304,34 @@ w_{i,t} = \frac{\sigma_\text{target}}{\hat\sigma_{i,t-1}}
 ```
 
 Force-disable assets with `--math=none` (or `meta.math: false`); force-enable with `--math=katex`.
+
+### Wiki macros
+
+```
+include, excerpt, children, issue, issues, page-properties, page-properties-report
+```
+
+Wiki macros pull live data from outside the page: other pages, the page tree, and the issue tracker. They are ordinary directives, so the source stays plain text and round-trips unchanged. Renderers stay pure: the host passes optional resolver callbacks in the render options (`resolveInclude`, `resolveChildren`, `resolveIssue`, `resolveIssues`, `resolvePagePropertiesReport`, plus the host page's `documentId`). Without a resolver, a macro renders a clear placeholder that says it resolves in Noma Cloud.
+
+| Macro | Attributes | Renders |
+|---|---|---|
+| `::include` | `page=` (document ID or title), `block=` (block ID or alias), `excerpt` flag | The target block, the target page's excerpt, or the whole page, framed with its source link. Without `page=`, the block comes from the same page. |
+| `::excerpt` | `id=` | Its body, inline in the page. It is also the page summary used by `::include{excerpt}`, `::children`, the page tree, and search results. The first excerpt on a page wins. |
+| `::children` | `depth=` (1 to 5), `sort=` (`position`, `title`, or `updated`) | The page's child pages from the space page tree, with links and excerpt summaries. |
+| `::issue` | `key="PROJ-12"` | A live issue card: key, summary, status, assignee. |
+| `::issues` | `project="PROJ"`, `status=` (`backlog`, `todo`, `in_progress`, `in_review`, `done`), `limit=` | A table of matching issues. |
+| `::page-properties` | none | A key/value table from two-column pipe rows or `Key: value` lines. |
+| `::page-properties-report` | `label=`, `limit=` | A table of pages with that label in the same space, one column per property key. |
+
+Included content is rendered with its IDs and source positions removed, so it never collides with the host page's IDs or editor line map. Includes nest at most three levels; a page or block that is already being included renders a `cycle` placeholder instead of recursing. In Noma Cloud every lookup is checked against the viewer: a page the viewer cannot open renders a `forbidden` placeholder, and a trashed or unknown target renders `missing`. The LLM renderer inlines resolved content between provenance comments, `<!-- included from <doc>:<block>@<hash> -->` … `<!-- /included from <doc>:<block> -->`, where `<hash>` is the first 12 hex characters of the target page's content hash. Markdown and DOCX exports from Noma Cloud expand macros into plain paragraphs, lists, and tables first (`expandMacros`).
+
+```noma
+::include{page="Engineering Handbook" block="review-policy"}
+::
+
+::issues{project="ENG" status="in_progress"}
+::
+```
 
 ### Escape hatches
 
@@ -540,7 +580,8 @@ Renderers exhaustively switch on `type`. Adding a new variant is a typed change:
 
 The default validator detects:
 
-- **errors** — duplicate IDs, references (`for=`, `[[id]]`) pointing to unknown IDs, `plot` blocks with no `data=` or `dataset=`, `::memory` blocks missing `type=` / `id=` or carrying an invalid `type` / `confidence` / `last_seen`.
+- **errors** — frontmatter that is not valid YAML (`invalid-frontmatter`), duplicate IDs, references (`for=`, `[[id]]`) pointing to unknown IDs, `plot` blocks with no `data=` or `dataset=`, `::memory` blocks missing `type=` / `id=` or carrying an invalid `type` / `confidence` / `last_seen`.
+- **macro checks** — `::include` with no `page=`, `block=`, or `excerpt` (error), a same-page `block=` that does not exist (`broken-reference`), `page=` targets that cannot be checked in single-file mode or do not match a page when the host passes `pageExists` (`include-unknown-page`, warning), invalid `::issue` keys and `::issues` projects (errors), unknown `::issues` statuses and out-of-range `::children` options (warnings), `::page-properties-report` without `label=` (error), and more than one `::excerpt` per page (warning).
 - **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, malformed tracked-revision `change_request` blocks, `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days), and `[[wikilinks]]` inside a `memory`-profile document that resolve to a non-`::memory` target.
 
 Per-block opt-out: add the `noverify` flag attribute to silence rules on a single block (e.g. rhetorical claims that aren't expected to carry their own evidence chain).

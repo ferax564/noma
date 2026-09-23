@@ -1,32 +1,41 @@
 /** View mode, chrome state, theme and split/paper resizing. */
+import { renderAiChrome } from "./ai.js";
 import { renderAccessManagement, renderCollaborationPanels, selectedGroupManagedByCurrentUser } from "./collaboration.js";
 import { panelsOpenStorageKey, previewPaperWidthStorageKey, splitSourceRatioStorageKey, viewModeStorageKey } from "./constants.js";
 import { addCommentButton, addGroupMemberButton, applyPatchButton, approvalNoteInput, approvalReviewerInput, cloudInvitationCodeInput, cloudUserNameInput, cloudUserTokenInput, commentBlockIdInput, commentBodyInput, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, dirtyBadge, documentGrid, favoritePageButton, globalSearchInput, groupMemberIdInput, groupMemberRoleSelect, importPageButton, inviteGroupButton, inviteGroupSelect, inviteUserButton, loginUserButton, logoutUserButton, manageGroupSelect, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTemplateSelect, pageTitleInput, previewViewButton, proposePatchButton, readAllNotificationsButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, reloadPageButton, requestApprovalButton, roleBadge, savePageButton, saveSpaceButton, searchButton, searchScopeSelect, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, themeToggleButton, togglePanelsButton, updatedText } from "./dom.js";
 import { renderCurrent } from "./editor.js";
+import { renderExportChrome } from "./export.js";
 import { renderHistory } from "./history.js";
+import { renderConfluenceImportChrome } from "./import.js";
 import { renderKnowledgeWorkspace, renderPatchProposals } from "./knowledge.js";
 import { renderNavigation } from "./navigation.js";
+import { renderAttachments } from "./attachments.js";
 import { renderPageMeta } from "./page-meta.js";
+import { renderRestrictionBadge } from "./restrictions.js";
 import { canCreatePage, canEditPage, canEditSite, canManagePermissions, currentPageRole, roleRank } from "./permissions.js";
 import { renderWorkspaceTools } from "./session.js";
 import { renderSpaceSettings } from "./spaces.js";
 import { renderPopularPages } from "./analytics.js";
 import { renderWebhooksPanel } from "./webhooks.js";
+import { renderTemplateToolsChrome } from "./templates.js";
 import { state } from "./state.js";
 import type { ViewMode } from "./types.js";
 import { clamp, formatDate, setCloudStatus } from "./util.js";
+import { renderVisualChrome } from "./visual.js";
 import { renderWorkManagement } from "./work.js";
 
 export function setViewMode(mode: ViewMode): void {
   state.viewMode = mode;
   if (mode === "preview") state.panelsOpen = false;
   localStorage.setItem(viewModeStorageKey, state.viewMode);
+  if (state.cloudUser) localStorage.setItem(`${viewModeStorageKey}:${state.cloudUser.id}`, state.viewMode);
   localStorage.setItem(panelsOpenStorageKey, state.panelsOpen ? "true" : "false");
   renderChrome();
   renderCurrent();
 }
 
 export function renderChrome(): void {
+  renderAiChrome();
   const shell = document.querySelector<HTMLElement>(".cloud-shell");
   if (shell) {
     shell.dataset.viewMode = state.viewMode;
@@ -50,6 +59,9 @@ export function renderChrome(): void {
   newFolderButton.disabled = state.busy || !canEditSite();
   importPageButton.disabled = state.busy || !canCreatePage();
   pageTemplateSelect.disabled = state.busy || !canCreatePage() || state.pageTemplates.length === 0;
+  renderConfluenceImportChrome();
+  renderTemplateToolsChrome();
+  renderExportChrome();
   globalSearchInput.disabled = state.busy || !state.cloudUser;
   searchScopeSelect.disabled = state.busy || !state.cloudUser;
   searchButton.disabled = state.busy || !state.cloudUser || !globalSearchInput.value.trim();
@@ -105,6 +117,8 @@ export function renderChrome(): void {
   dirtyBadge.dataset.state = state.dirty ? "dirty" : "ok";
   updatedText.textContent = state.currentPage ? `Updated ${formatDate(state.currentPage.updatedAt)}` : "";
   renderPageMeta();
+  renderRestrictionBadge();
+  renderAttachments();
 
   renderNavigation();
   renderHistory();
@@ -117,6 +131,7 @@ export function renderChrome(): void {
   renderSpaceSettings();
   renderPopularPages();
   renderWebhooksPanel();
+  renderVisualChrome();
 }
 
 export function applyPreviewPaperWidth(previewDoc: Document): void {

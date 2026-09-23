@@ -936,8 +936,9 @@ async function initializeCloud(): Promise<void> {
   cloudLoading = true;
   renderCloudStatus();
   try {
-    await fetchCloudJson<{ ok: boolean }>("/api/status");
+    const status = await fetchCloudJson<{ ok: boolean; user?: { id: string; name: string; tokenPreview?: string } }>("/api/status");
     cloudAvailable = true;
+    if (!cloudUser && status.user) cloudUser = { id: status.user.id, name: status.user.name, token: "", tokenPreview: status.user.tokenPreview };
     if (!cloudUser && !cloudShareToken) await createCloudUser({ silent: true });
     if (cloudDocumentId) {
       await loadCloudDocument(cloudDocumentId);
@@ -1146,6 +1147,10 @@ async function createCloudUser(options: { silent?: boolean } = {}): Promise<void
 
 async function copyCloudUserToken(): Promise<void> {
   if (!cloudUser) return;
+  if (!cloudUser.token) {
+    showTransientStatus("Signed in with a browser session; create an API token in Noma Cloud instead");
+    return;
+  }
   await copyText(cloudUser.token, "Copied cloud user token");
 }
 
@@ -1187,10 +1192,13 @@ function roleRank(role: CloudRole): number {
 async function fetchCloudJson<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("accept", "application/json");
-  if (cloudUser) headers.set("authorization", `Bearer ${cloudUser.token}`);
+  if (cloudUser?.token) headers.set("authorization", `Bearer ${cloudUser.token}`);
+  const csrf = /(?:^|;\s*)noma_csrf=([^;]+)/.exec(document.cookie)?.[1];
+  if (csrf && !cloudUser?.token && (init?.method ?? "GET").toUpperCase() !== "GET") headers.set("x-noma-csrf", decodeURIComponent(csrf));
   if (cloudShareToken) headers.set("x-noma-share-token", cloudShareToken);
   const response = await fetch(url, {
     ...init,
+    credentials: "same-origin",
     headers,
   });
   if (!response.ok) {

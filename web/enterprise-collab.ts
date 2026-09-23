@@ -4,9 +4,18 @@ import { Editor } from "@tiptap/core";
 import * as Y from "yjs";
 
 const params = new URLSearchParams(window.location.search);
-const token = params.get("token") ?? "";
-const documentId = params.get("documentId") ?? "";
+const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+const token = fragment.get("token") ?? params.get("token") ?? "";
+const documentId = params.get("documentId") ?? fragment.get("documentId") ?? "";
+if (params.has("token")) {
+  params.delete("token");
+  fragment.set("token", token);
+  const query = params.toString();
+  window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}#${fragment.toString()}`);
+}
 const status = document.getElementById("status");
+const presenceEl = document.getElementById("presence");
+const peers = new Map<string, string>();
 const mountElement = document.getElementById("editor");
 if (!mountElement) throw new Error("missing #editor");
 const mount: HTMLElement = mountElement;
@@ -32,10 +41,15 @@ function setStatus(text: string): void {
   if (status) status.textContent = text;
 }
 
+function renderPresence(): void {
+  if (presenceEl) presenceEl.textContent = peers.size > 0 ? `editing: ${[...peers.values()].join(", ")}` : "";
+}
+
 const api = {
   getText: () => editor?.getText() ?? "",
   acks: () => acks,
   ready: () => ready,
+  peers: () => [...peers.values()],
 };
 
 Object.assign(window, { nomaCollab: api });
@@ -63,11 +77,31 @@ function ensureEditor(): void {
 
 function connect(): void {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const wsUrl = `${protocol}://${window.location.host}/yjs?token=${encodeURIComponent(token)}&documentId=${encodeURIComponent(documentId)}`;
-  socket = new WebSocket(wsUrl);
-  socket.addEventListener("open", () => setStatus("connected"));
+  const wsUrl = `${protocol}://${window.location.host}/yjs?documentId=${encodeURIComponent(documentId)}`;
+  socket = new WebSocket(wsUrl, ["noma.v1", `noma.bearer.${token}`]);
+  socket.addEventListener("open", () => {
+    setStatus("connected");
+    socket?.send(JSON.stringify({ type: "presence", state: { active: true } }));
+  });
   socket.addEventListener("message", (event) => {
-    const message = JSON.parse(String(event.data)) as { type: string; update?: string };
+    const message = JSON.parse(String(event.data)) as {
+      type: string;
+      update?: string;
+      clientId?: string;
+      name?: string;
+      state?: unknown;
+      presence?: Array<{ clientId: string; name: string }>;
+    };
+    if (message.type === "init") {
+      peers.clear();
+      for (const peer of message.presence ?? []) peers.set(peer.clientId, peer.name);
+      renderPresence();
+    }
+    if (message.type === "presence" && message.clientId) {
+      if (message.state === null) peers.delete(message.clientId);
+      else peers.set(message.clientId, message.name ?? "someone");
+      renderPresence();
+    }
     if ((message.type === "init" || message.type === "update") && message.update) {
       Y.applyUpdate(ydoc, b64ToBytes(message.update), "remote");
       ready = true;

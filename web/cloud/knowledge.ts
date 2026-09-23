@@ -2,6 +2,7 @@
 import { type PatchOp, patchSource } from "../../src/patch.js";
 import { parse } from "../../src/parser.js";
 import { validate } from "../../src/validator.js";
+import { aiAskMode, answerNote, renderAnswerText } from "./ai.js";
 import { fetchCloudJson } from "./api.js";
 import { collaborationActions, collaborationRow, refreshActivity } from "./collaboration.js";
 import { agentChangeInboxList, agentDirectoryList, agentStatus, askNomaButton, askNomaInput, askNomaResult, askNomaStatus, globalSearchInput, knowledgeHealthList, offlineStatus, patchInput, patchProposalList, refreshKnowledgeButton, searchButton, searchResults, searchScopeSelect, sourceInput } from "./dom.js";
@@ -77,7 +78,7 @@ export async function askNoma(): Promise<void> {
     state.askNomaResponse = await fetchCloudJson<AskNomaResponse>("/api/ask", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query, ...(state.currentSite ? { siteId: state.currentSite.id } : {}) }),
+      body: JSON.stringify({ query, ...(state.currentSite ? { siteId: state.currentSite.id } : {}), ...(aiAskMode() ? { mode: aiAskMode() } : {}) }),
     });
     setPanelStatus(
       askNomaStatus,
@@ -140,8 +141,19 @@ function renderAskNomaAnswer(): void {
   }
   const answer = document.createElement("div");
   answer.className = "knowledge-answer-text";
-  answer.textContent = state.askNomaResponse.answer;
+  const response = state.askNomaResponse;
+  renderAnswerText(answer, response.answer, response.citations.map((citation) => citation.citation), (number) => {
+    const citation = response.citations.find((item) => item.citation === number);
+    if (citation) void openKnowledgeCitation(citation);
+  });
   askNomaResult.append(answer);
+  const note = answerNote(response);
+  if (note) {
+    const noteRow = document.createElement("div");
+    noteRow.className = "ai-answer-note";
+    noteRow.textContent = note;
+    askNomaResult.append(noteRow);
+  }
   for (const citation of state.askNomaResponse.citations) {
     const button = document.createElement("button");
     button.type = "button";

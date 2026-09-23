@@ -1,10 +1,12 @@
 /** Access-gate token/cookie handling, invitation codes, and `/api/auth/*`. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CloudUserRecord } from "../cloud-db.js";
-import { type CloudServerConfig, findUserByToken, randomToken, tokenPreview } from "./context.js";
+import { type CloudServerConfig, randomToken, tokenPreview } from "./context.js";
 import { headerValue, HttpError, readJsonBody, sendJson, sendText, setSecurityHeaders, sha256Hex } from "./http.js";
 import { optionalString, stringInput } from "./input.js";
-import { createUser, publicUser } from "./records.js";
+import { createUser, selfUser } from "./records.js";
+import { routeAuthSessions } from "./routes-sessions.js";
+import { appendSetCookie, cookieValue, fullTokenScopes, isSecureRequest, resolveTokenUser, startBrowserSession } from "./security.js";
 
 const cloudAccessCookieName = "noma_cloud_access";
 
@@ -79,12 +81,20 @@ export async function routeAuth(req: IncomingMessage, res: ServerResponse, parts
     const input = await readJsonBody(req, config.maxBodyBytes);
     const accessToken = requireCloudAccessToken(config, req, input);
     const userToken = optionalString(input.userToken);
-    const user = userToken ? await findUserByToken(config, sha256Hex(userToken)) : undefined;
-    if (userToken && !user) throw new HttpError(401, "Invalid Noma user token");
+    const resolved = userToken ? resolveTokenUser(config, userToken) : undefined;
+    if (userToken && !resolved) throw new HttpError(401, "Invalid Noma user token");
     setCloudAccessCookie(req, res, accessToken);
+    const browser = resolved
+      ? startBrowserSession(config, req, res, resolved.user, {
+          source: resolved.auth.method === "pat" ? "pat" : "user_token",
+          scopes: resolved.auth.scopes,
+          ...(resolved.auth.patId ? { patId: resolved.auth.patId, notAfter: config.store.readPersonalAccessToken(resolved.auth.patId)?.expiresAt } : {}),
+        })
+      : undefined;
     sendJson(res, 200, {
       ok: true,
-      user: user ? { ...publicUser(user), token: userToken } : undefined,
+      user: resolved ? selfUser(resolved.user) : undefined,
+      ...(browser ? { session: { id: browser.session.id, expiresAt: browser.session.expiresAt, scopes: browser.session.scopes }, csrfToken: browser.csrfToken } : {}),
     });
     return;
   }
@@ -96,9 +106,12 @@ export async function routeAuth(req: IncomingMessage, res: ServerResponse, parts
     requireInvitationCode(config, req, input);
     const { record, token } = await createUser(config, input);
     setCloudAccessCookie(req, res, accessToken);
+    const browser = startBrowserSession(config, req, res, record, { source: "register", scopes: fullTokenScopes });
     sendJson(res, 201, {
       ok: true,
-      user: { ...publicUser(record), token },
+      user: { ...selfUser(record), token },
+      session: { id: browser.session.id, expiresAt: browser.session.expiresAt, scopes: browser.session.scopes },
+      csrfToken: browser.csrfToken,
     });
     return;
   }
@@ -118,7 +131,13 @@ export async function routeAuth(req: IncomingMessage, res: ServerResponse, parts
     const token = randomToken("noma");
     const updated: CloudUserRecord = { ...user, tokenHash: sha256Hex(token), tokenPreview: tokenPreview(token), updatedAt: config.now().toISOString() };
     config.store.writeUser(updated);
-    sendJson(res, 200, { ok: true, provider: policy.sso.provider, user: { ...publicUser(updated), token } });
+    const browser = startBrowserSession(config, req, res, updated, { source: "sso", scopes: fullTokenScopes });
+    sendJson(res, 200, { ok: true, provider: policy.sso.provider, user: { ...selfUser(updated), token }, csrfToken: browser.csrfToken });
+    return;
+  }
+
+  if (action === "session" || action === "sessions" || action === "logout") {
+    await routeAuthSessions(req, res, parts, config);
     return;
   }
 
@@ -173,32 +192,10 @@ function redirectToLogin(res: ServerResponse, url: URL): void {
 }
 
 function setCloudAccessCookie(req: IncomingMessage, res: ServerResponse, token: string): void {
-  res.setHeader("set-cookie", cloudAccessCookie(req, token));
+  appendSetCookie(res, cloudAccessCookie(req, token));
 }
 
 function cloudAccessCookie(req: IncomingMessage, token: string): string {
   const secure = isSecureRequest(req) ? "; Secure" : "";
   return `${cloudAccessCookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure}`;
-}
-
-function isSecureRequest(req: IncomingMessage): boolean {
-  const forwardedProto = headerValue(req, "x-forwarded-proto");
-  const host = headerValue(req, "host") ?? "";
-  return forwardedProto === "https" || (!host.startsWith("127.0.0.1") && !host.startsWith("localhost"));
-}
-
-function cookieValue(req: IncomingMessage, name: string): string | undefined {
-  const header = headerValue(req, "cookie");
-  if (!header) return undefined;
-  for (const part of header.split(";")) {
-    const [rawKey, ...rawValue] = part.trim().split("=");
-    if (rawKey === name) {
-      try {
-        return decodeURIComponent(rawValue.join("="));
-      } catch {
-        return rawValue.join("=");
-      }
-    }
-  }
-  return undefined;
 }

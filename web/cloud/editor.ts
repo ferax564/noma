@@ -12,14 +12,18 @@ import { diagnosticsList, diagnosticsSummary, draftRecoveryStatus, historyStatus
 import { clearLocalDraft, persistLocalDraft, readLocalDraft } from "./drafts.js";
 import { refreshHistory, renderHistory } from "./history.js";
 import { renderChrome } from "./layout.js";
+import { clearMacroCache, flushMacroRequests, previewMacroResolvers } from "./macros.js";
 import { confirmDiscardDirty, pageFolder, recordRecent, replacePage, sourceTitle, updateAddress } from "./navigation.js";
 import { refreshPageMeta } from "./page-meta.js";
+import { refreshAttachments, resolveAttachmentUrl } from "./attachments.js";
+import { refreshRestrictions } from "./restrictions.js";
 import { canEditPage } from "./permissions.js";
 import { previewDocument, previewError } from "./preview.js";
 import { state } from "./state.js";
 import type { CloudDocumentResponse } from "./types.js";
 import { emptyState, errorMessage, formatDate, iconButton, setBusy, setCloudStatus, setPanelStatus } from "./util.js";
 import { refreshMyTasks } from "./tasks.js";
+import { syncVisualEditor } from "./visual.js";
 import { renderWikiPanel } from "./wiki.js";
 
 export async function saveCurrentPage(): Promise<void> {
@@ -52,6 +56,7 @@ export async function saveCurrentPage(): Promise<void> {
     state.savedPageTitle = saved.title;
     state.dirty = false;
     clearLocalDraft(saved.id);
+    clearMacroCache();
     state.pendingLocalDraft = undefined;
     syncTitleFromSource();
     setCloudStatus("Saved page", "ok");
@@ -134,6 +139,8 @@ export function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   void refreshHistory({ silent: true });
   void refreshPageCollaboration();
   void refreshPageMeta();
+  void refreshAttachments();
+  void refreshRestrictions();
   void recordRecent("document", page.id);
 }
 
@@ -142,19 +149,23 @@ export function renderCurrent(): void {
   try {
     const doc = parse(source, { filename: `${state.currentPage?.id ?? "draft"}.noma` });
     const diagnostics = validate(doc);
+    const macros = previewMacroResolvers();
     const body = renderHtml(doc, {
+      ...macros,
       standalone: false,
       allowEscapeHatches: false,
       externalAssets: false,
       interactive: false,
       sourcePositions: true,
+      resolveAttachment: resolveAttachmentUrl,
     });
     state.renderState = {
       doc,
       diagnostics,
-      llm: renderLlm(doc),
+      llm: renderLlm(doc, macros),
     };
     previewFrame.srcdoc = previewDocument(body);
+    flushMacroRequests(renderCurrent);
   } catch (error) {
     state.renderState = {
       doc: null,
@@ -167,6 +178,7 @@ export function renderCurrent(): void {
   renderDiagnostics();
   renderOutline();
   renderWikiPanel();
+  syncVisualEditor();
   renderChrome();
 }
 

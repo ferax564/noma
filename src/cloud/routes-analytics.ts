@@ -4,7 +4,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
-import { type AccessContext, type CloudServerConfig, type Principal, requireRecordAccess, roleRank } from "./context.js";
+import { type AccessContext, capAccessForDocument, type CloudServerConfig, type Principal, requireRecordAccess, roleRank } from "./context.js";
 import { HttpError, sendJson, sha256Hex } from "./http.js";
 import { boundedInteger, numberQuery } from "./input.js";
 
@@ -57,11 +57,15 @@ export async function routeDocumentAnalytics(
 /** `GET /api/sites/:id/popular?days=30&limit=10`: most viewed pages in a space. */
 export function routeSitePopular(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig, principal: Principal, site: CloudSiteRecord): void {
   if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
-  requireRecordAccess(config, site, principal, "viewer");
+  const access = requireRecordAccess(config, site, principal, "viewer");
   const url = new URL(req.url ?? "/", "http://noma.local");
   const days = boundedInteger(numberQuery(url.searchParams.get("days")), 30, 1, 365, "days");
   const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 10, 1, 50, "limit");
-  sendJson(res, 200, { siteId: site.id, days, pages: config.store.popularPages(site.id, daysAgo(config, days), limit) });
+  const pages = config.store
+    .popularPages(site.id, daysAgo(config, days), 200)
+    .filter((page) => capAccessForDocument(config, page.documentId, access) !== undefined)
+    .slice(0, limit);
+  sendJson(res, 200, { siteId: site.id, days, pages });
 }
 
 function daysAgo(config: CloudServerConfig, days: number): string {

@@ -1,6 +1,7 @@
-/** Workspace-wide listings: search, navigation, templates, trash, labels, notifications, activity. */
+/** Workspace-wide listings: search, navigation, trash, labels, notifications, activity. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { cloudPageTemplates } from "../cloud-templates.js";
+import { collectAttachmentGarbage } from "./attachments.js";
 import {
   type CloudServerConfig,
   type Principal,
@@ -10,6 +11,7 @@ import {
 } from "./context.js";
 import { decodePathSegment, HttpError, readJsonBody, sendJson } from "./http.js";
 import { emitPageWebhookEvent } from "./webhooks.js";
+import { documentSummary } from "./macros.js";
 import {
   boundedInteger,
   labelInput,
@@ -35,7 +37,20 @@ export function routeSearch(
   const parsed = mergeSearchParams(parseSearchQuery(q), url.searchParams);
   const filters = resolveSearchFilters(config, user, parsed);
   const results = config.store.searchFiltered(user, { words: parsed.words, phrases: parsed.phrases, ...(siteId ? { siteId } : {}), filters, limit });
-  sendJson(res, 200, { q, query: searchQueryResponse(parsed), results });
+  const summaries = new Map<string, string | undefined>();
+  for (const result of results) {
+    if (summaries.has(result.documentId)) continue;
+    const record = config.store.readDocument(result.documentId);
+    summaries.set(result.documentId, record ? documentSummary(record) : undefined);
+  }
+  sendJson(res, 200, {
+    q,
+    query: searchQueryResponse(parsed),
+    results: results.map((result) => {
+      const summary = summaries.get(result.documentId);
+      return summary ? { ...result, summary } : result;
+    }),
+  });
 }
 
 export async function routeNavigation(
@@ -75,12 +90,6 @@ export async function routeNavigation(
     return;
   }
   throw new HttpError(404, "Unknown navigation route");
-}
-
-export function routeTemplates(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig, principal: Principal): void {
-  if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
-  requireUser(principal);
-  sendJson(res, 200, { templates: cloudPageTemplates, count: cloudPageTemplates.length, storage: "built-in" });
 }
 
 export async function routeTrash(
@@ -125,8 +134,10 @@ export async function routeTrash(
       .listLegalHolds()
       .some((hold) => !hold.releasedAt && hold.resourceType === resourceType && hold.resourceId === resourceId);
     if (held) throw new HttpError(409, "Resource is under legal hold", { code: "legal_hold" });
+    const blobHashes = resourceType === "document" ? config.store.attachmentBlobHashes(resourceId) : [];
     config.store.purgeResource(resourceType, resourceId);
-    sendJson(res, 200, { ok: true, purged: true, resourceType, resourceId });
+    const blobsRemoved = await collectAttachmentGarbage(config, blobHashes);
+    sendJson(res, 200, { ok: true, purged: true, resourceType, resourceId, blobsRemoved });
     return;
   }
   throw new HttpError(404, "Unknown trash route");
@@ -144,7 +155,9 @@ export async function routeNotifications(
   const id = parts[2];
   const action = parts[3];
   if (!id && method === "GET") {
-    const notifications = config.store.listNotifications(user.id);
+    const notifications = config.store
+      .listNotifications(user.id)
+      .filter((item) => item.resourceType !== "document" || !item.resourceId || config.store.documentAccessRole(user.id, item.resourceId) !== undefined);
     sendJson(res, 200, { notifications, unread: notifications.filter((notification) => !notification.readAt).length });
     return;
   }
