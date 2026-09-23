@@ -77,6 +77,10 @@ export class LiveSession {
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     this.ws = new WebSocket(`${protocol}://${window.location.host}/api/collab/documents/${encodeURIComponent(documentId)}`);
     this.ws.addEventListener("open", () => {
+      if (this.closedByClient) {
+        this.ws.close(1000, "client left");
+        return;
+      }
       this.ws.send(JSON.stringify({ type: "hello", clientId: this.doc.clientID, token: auth.token, share: auth.share }));
     });
     this.ws.addEventListener("message", (event) => this.receive(event.data));
@@ -113,7 +117,7 @@ export class LiveSession {
 
   close(): void {
     this.closedByClient = true;
-    if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) this.ws.close(1000, "client left");
+    if (this.ws.readyState === WebSocket.OPEN) this.ws.close(1000, "client left");
     this.teardown();
   }
 
@@ -127,7 +131,7 @@ export class LiveSession {
   }
 
   private receive(data: unknown): void {
-    if (typeof data !== "string") return;
+    if (typeof data !== "string" || this.closedByClient) return;
     let frame: ServerFrame;
     try {
       frame = JSON.parse(data) as ServerFrame;
