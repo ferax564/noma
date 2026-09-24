@@ -358,6 +358,8 @@ export interface CloudSiteRecord {
   icon?: string;
   /** Page shown at the space root (`/s/<id>`); must be one of `documentIds`. */
   homeDocumentId?: string;
+  /** Space style-token vocabulary: alias → core tokens (see `src/style-tokens.ts`). */
+  styleTokens?: Record<string, string[]>;
   /** Archived spaces are read-only and hidden from default lists. */
   archivedAt?: string;
   archivedBy?: string;

@@ -1,5 +1,4 @@
-// @ts-nocheck — vendored PaperDOM kernel; host policy lives in enterprise-paperdom-host.ts
-// Vendored from https://github.com/ferax564/paperDOM/blob/a12198cdad8c7487242834941a34ed5adf5d4d74/app/text-merge.ts (MIT). Do not edit to add Noma host policy.
+// Forked from ferax564/paperDOM@a12198c app/text-merge.ts (MIT). Maintained in this repository; see src/paperdom-pin.ts.
 import { compactRuns, type TextRun } from './paperdom-advanced-model.js';
 
 type Edit<T> = { start: number; end: number; insert: T[] };
@@ -15,13 +14,13 @@ export function sequenceEdits<T>(base: T[], next: T[]): Edit<T>[] | null {
     if ((n + 1) * (m + 1) > 1_000_000) return null;
     const rows = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
     for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
-        rows[i][j] = equal(base[start + i], next[start + j]) ? rows[i + 1][j + 1] + 1 : Math.max(rows[i + 1][j], rows[i][j + 1]);
+        rows[i]![j] = equal(base[start + i]!, next[start + j]!) ? rows[i + 1]![j + 1]! + 1 : Math.max(rows[i + 1]![j]!, rows[i]![j + 1]!);
     const edits: Edit<T>[] = [];
     let i = 0, j = 0, current: Edit<T> | undefined;
     while (i < n || j < m) {
         if (i < n && j < m && equal(base[start + i], next[start + j])) { current = undefined; i++; j++; continue; }
         if (!current) { current = { start: start + i, end: start + i, insert: [] }; edits.push(current); }
-        if (j < m && (i === n || rows[i][j + 1] > rows[i + 1][j])) current.insert.push(next[start + j++]);
+        if (j < m && (i === n || rows[i]![j + 1]! > rows[i + 1]![j]!)) current.insert.push(next[start + j++]!);
         else { i++; current.end = start + i; }
     }
     return edits;

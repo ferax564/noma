@@ -1,8 +1,9 @@
 # @ferax564/noma-paperdom-core
 
-Pinned PaperDOM JSON model and transaction engine, extracted from
-[`ferax564/paperDOM`](https://github.com/ferax564/paperDOM) at the commit in
-`PAPERDOM_UPSTREAM_COMMIT`.
+PaperDOM JSON model and transaction engine. Noma maintains it as a fork of
+[`ferax564/paperDOM`](https://github.com/ferax564/paperDOM) (MIT); the fork
+base is recorded in `PAPERDOM_FORK_BASE_COMMIT`. The sources live in the CLI's
+`src/paperdom-*.ts` and are type-checked and tested there.
 
 Host policy (server-derived actors, stale revision mapping) lives in Noma's
 `applyHostedPaperDomTransaction`. This package re-exports the CLI kernel

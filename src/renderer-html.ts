@@ -2,7 +2,7 @@ import yaml from "js-yaml";
 import type { Attrs, DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
 import { deckAspect, deckSlides, findDecks, slideLayout, slideParts } from "./slides.js";
-import { styleTokenClassNames } from "./style-tokens.js";
+import { resolveStyleTokenAliases, styleTokenClassNames, type StyleTokenAliases } from "./style-tokens.js";
 import {
   bodyFieldText,
   buildComputedEvalContext,
@@ -57,6 +57,20 @@ export interface HtmlRenderOptions extends MacroResolvers {
    * contexts where unfiltered HTML is unsafe.
    */
   allowEscapeHatches?: boolean;
+  /**
+   * Host hook for sandboxed widgets. When escape hatches are disabled and this
+   * returns a URL for an `::html` / `::svg` block, the block renders as an
+   * `<iframe sandbox="allow-scripts">` pointing at that URL instead of a
+   * "disabled" placeholder. The host must serve the URL with an isolating CSP
+   * (opaque origin, no network). Blocks without an `id` cannot be addressed and
+   * keep the placeholder.
+   */
+  resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
+  /**
+   * Host style-token aliases (e.g. a space's vocabulary), merged over the
+   * document's `style_tokens:` frontmatter. Aliases expand to core tokens only.
+   */
+  styleTokens?: StyleTokenAliases;
   /**
    * Math rendering. `katex` injects KaTeX CDN assets in standalone HTML and
    * configures auto-render for `$..$`, `$$..$$`, `\(..\)`, `\[..\]`. Default
@@ -116,6 +130,8 @@ interface CaptionEntry {
 
 interface RenderCtx {
   allowEscapeHatches: boolean;
+  resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
+  styleAliases: StyleTokenAliases;
   externalAssets: boolean;
   interactive: boolean;
   strictInteractiveBadgeEmitted: boolean;
@@ -359,6 +375,8 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
   const allowExternalAssets = options.externalAssets !== false;
   const ctx: RenderCtx = {
     allowEscapeHatches: options.allowEscapeHatches !== false,
+    ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
+    styleAliases: resolveStyleTokenAliases(doc.meta.style_tokens, options.styleTokens),
     externalAssets: allowExternalAssets,
     interactive: options.interactive !== false,
     strictInteractiveBadgeEmitted: false,
@@ -1035,7 +1053,7 @@ function cssLength(value: unknown): string | undefined {
 }
 
 function renderDirective(node: DirectiveNode, ctx: RenderCtx): string {
-  return withStyleTokens(renderDirectiveBlock(node, ctx), styleTokenClassNames(node.attrs));
+  return withStyleTokens(renderDirectiveBlock(node, ctx), styleTokenClassNames(node.attrs, ctx.styleAliases));
 }
 
 /** Adds style-token classes to the block's outermost element (its first tag). */
@@ -1292,14 +1310,12 @@ function renderDirectiveBlock(node: DirectiveNode, ctx: RenderCtx): string {
       return renderPagePropertiesReportMacro(node, idAttr, ctx);
 
     case "html":
-      return ctx.allowEscapeHatches
-        ? `<div class="noma-raw-html"${idAttr}>${node.body ?? ""}</div>`
-        : `<aside class="noma-blocked-escape" data-kind="html"${idAttr}>[raw HTML escape hatch disabled]</aside>`;
+      if (ctx.allowEscapeHatches) return `<div class="noma-raw-html"${idAttr}>${node.body ?? ""}</div>`;
+      return renderWidgetFrame(node, idAttr, ctx) ?? `<aside class="noma-blocked-escape" data-kind="html"${idAttr}>[raw HTML escape hatch disabled]</aside>`;
 
     case "svg":
-      return ctx.allowEscapeHatches
-        ? `<div class="noma-raw-svg"${idAttr}>${node.body ?? ""}</div>`
-        : `<aside class="noma-blocked-escape" data-kind="svg"${idAttr}>[raw SVG escape hatch disabled]</aside>`;
+      if (ctx.allowEscapeHatches) return `<div class="noma-raw-svg"${idAttr}>${node.body ?? ""}</div>`;
+      return renderWidgetFrame(node, idAttr, ctx) ?? `<aside class="noma-blocked-escape" data-kind="svg"${idAttr}>[raw SVG escape hatch disabled]</aside>`;
 
     case "script": {
       if (!ctx.allowEscapeHatches) {
@@ -1438,7 +1454,7 @@ function renderDeck(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string
   const title = attrValueText(node.attrs, "title");
   const aspect = deckAspect(node);
   const others = node.children.filter((child) => !(child.type === "directive" && child.name === "slide"));
-  const slidesHtml = slides.map((slide, index) => withStyleTokens(renderSlide(slide, slide.id ? ` id="${escapeAttr(slide.id)}"` : "", ctx, index + 1, slides.length), styleTokenClassNames(slide.attrs))).join("\n");
+  const slidesHtml = slides.map((slide, index) => withStyleTokens(renderSlide(slide, slide.id ? ` id="${escapeAttr(slide.id)}"` : "", ctx, index + 1, slides.length), styleTokenClassNames(slide.attrs, ctx.styleAliases))).join("\n");
   const extra = others.map((child) => renderNode(child, ctx)).join("\n");
   const count = `${slides.length} slide${slides.length === 1 ? "" : "s"}`;
   const bar = `<header class="noma-deck-bar">${title ? `<strong class="noma-deck-title">${inlineToHtml(title, ctx.inline)}</strong>` : ""}<span class="noma-deck-count">${count}</span>${ctx.interactive ? `<button type="button" class="noma-deck-present" data-noma-deck-present>Present</button>` : ""}</header>`;
@@ -1459,6 +1475,22 @@ function renderSlide(node: DirectiveNode, idAttr: string, ctx: RenderCtx, index:
 
 function renderSlideNotes(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {
   return `<details class="noma-slide-notes"${idAttr}><summary>Speaker notes</summary>${renderChildren(node, ctx)}</details>`;
+}
+
+const WIDGET_DEFAULT_HEIGHT = 320;
+
+/** Sandboxed iframe for an `::html` / `::svg` widget, or undefined when the host offers no frame URL. */
+function renderWidgetFrame(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string | undefined {
+  if (!ctx.resolveWidgetFrame) return undefined;
+  if (!node.id) {
+    return `<aside class="noma-blocked-escape" data-kind="${escapeAttr(node.name)}">[add an id to this ::${escapeHtml(node.name)} block to run it as a sandboxed widget]</aside>`;
+  }
+  const src = ctx.resolveWidgetFrame(node);
+  if (!src) return undefined;
+  const rawHeight = Number(node.attrs.height);
+  const height = Number.isFinite(rawHeight) ? Math.max(40, Math.min(2000, Math.round(rawHeight))) : WIDGET_DEFAULT_HEIGHT;
+  const title = attrValueText(node.attrs, "title") ?? `${node.name} widget ${node.id}`;
+  return `<iframe class="noma-widget" data-kind="${escapeAttr(node.name)}"${idAttr} src="${escapeAttr(src)}" sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer" title="${escapeAttr(title)}" style="width: 100%; height: ${height}px; border: 0;"></iframe>`;
 }
 
 function renderGenericDirective(node: DirectiveNode, idAndAttrs: string, ctx: RenderCtx): string {

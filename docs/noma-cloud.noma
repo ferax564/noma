@@ -1563,7 +1563,7 @@ can remain side by side.
 Noma Cloud follows the same safety posture as the workbench:
 
 - the preview runs in a sandboxed iframe
-- raw `::html`, `::svg`, and `::script` escape hatches are blocked in preview
+- raw `::html` and `::svg` blocks with an `id` render as sandboxed widget iframes. Published pages run their scripts in an opaque origin with no network access. The editor preview shows the saved widget with scripts inert. `::script` is always blocked
 - external figure, math, diagram, and Plotly loads are disabled in preview
 - permissions are checked on document, site, export, share, collaborator, and DB endpoints
 - group grants are resolved dynamically and participate in the same permission checks

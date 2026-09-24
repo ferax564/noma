@@ -4,6 +4,7 @@ import { validate } from "../../src/validator.js";
 import { renderHtml } from "../../src/renderer-html.js";
 import { renderLlm } from "../../src/renderer-llm.js";
 import { type Diagnostic, walk } from "../../src/ast.js";
+import type { StyleTokenAliases } from "../../src/style-tokens.js";
 import { CloudRequestError, fetchCloudJson } from "./api.js";
 import { refreshActivity, refreshApprovals, refreshPageCollaboration, renderCollaborationPanels } from "./collaboration.js";
 import { activeDocumentStorageKey } from "./constants.js";
@@ -144,11 +145,23 @@ export function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   void recordRecent("document", page.id);
 }
 
+function pageStyleTokens(): StyleTokenAliases {
+  return (state.currentPage?.styleTokens ?? {}) as StyleTokenAliases;
+}
+
+/** Saved widget body; the preview frame has no `allow-scripts`, so scripts stay inert here and run on the published page. */
+function previewWidgetFrame(node: { id?: string }): string | undefined {
+  const pageId = state.currentPage?.id;
+  if (!pageId || !node.id) return undefined;
+  return `/api/documents/${encodeURIComponent(pageId)}/widgets/${encodeURIComponent(node.id)}`;
+}
+
 export function renderCurrent(): void {
   const source = sourceInput.value;
   try {
     const doc = parse(source, { filename: `${state.currentPage?.id ?? "draft"}.noma` });
-    const diagnostics = validate(doc);
+    const styleTokens = pageStyleTokens();
+    const diagnostics = validate(doc, { styleTokens });
     const macros = previewMacroResolvers();
     const body = renderHtml(doc, {
       ...macros,
@@ -158,6 +171,8 @@ export function renderCurrent(): void {
       interactive: false,
       sourcePositions: true,
       resolveAttachment: resolveAttachmentUrl,
+      resolveWidgetFrame: previewWidgetFrame,
+      styleTokens,
     });
     state.renderState = {
       doc,

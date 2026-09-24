@@ -227,7 +227,7 @@ async function routeSiteDocuments(
     };
     await writeSite(config, nextSite);
     afterDocumentSaved(config, undefined, document, { user, name: user.name });
-    sendJson(res, 201, documentResponse(document, requireRecordAccess(config, document, principal, "owner")));
+    sendJson(res, 201, documentResponse(document, requireRecordAccess(config, document, principal, "owner"), config));
     return;
   }
 
@@ -296,7 +296,7 @@ async function routeSiteDocuments(
   if (method === "GET") {
     const access = requireSiteDocumentAccess(config, site, docId, principal, "viewer");
     if (access.user) config.store.recordRecent(access.user.id, "document", docId, config.now().toISOString());
-    sendJson(res, 200, documentResponse(await readDocument(config, docId), access));
+    sendJson(res, 200, documentResponse(await readDocument(config, docId), access, config));
     return;
   }
 
@@ -306,7 +306,7 @@ async function routeSiteDocuments(
     const document = await readDocument(config, docId);
     requireDocumentPrecondition(req, document, input);
     const updated = await updateDocument(config, document, input, access, { assignTaskIds: true });
-    sendJson(res, 200, documentResponse(updated, access));
+    sendJson(res, 200, documentResponse(updated, access, config));
     return;
   }
 
@@ -322,7 +322,7 @@ async function siteDocumentResponses(
     .filter((id) => !config.store.isTrashed("document", id))
     .map((id) => ({ id, access: capAccessForDocument(config, id, access) }))
     .filter((entry): entry is { id: string; access: AccessContext } => entry.access !== undefined);
-  return Promise.all(visible.map(async (entry) => documentResponse(await readDocument(config, entry.id), entry.access)));
+  return Promise.all(visible.map(async (entry) => documentResponse(await readDocument(config, entry.id), entry.access, config)));
 }
 
 async function routeSiteWiki(
@@ -432,6 +432,7 @@ async function updateSite(
   const normalizedFolders = normalizeSiteFolders(folders, pageFolders);
   const settings = spaceSettingsInput(config, input, documentIds, existing.id);
   if (settings.key !== undefined && settings.key !== existing.key) requireAccessRole(access, "owner");
+  if (settings.styleTokens !== undefined) requireAccessRole(access, "owner");
   const updated: CloudSiteRecord = {
     ...existing,
     title,
@@ -527,6 +528,7 @@ function spaceFields(config: CloudServerConfig, record: CloudSiteRecord, visible
     key: record.key ?? null,
     description: record.description ?? "",
     icon: record.icon ?? "",
+    styleTokens: record.styleTokens ?? {},
     homeDocumentId: home ?? null,
     archived: Boolean(record.archivedAt),
     archivedAt: record.archivedAt ?? null,

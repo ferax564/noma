@@ -59,8 +59,8 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud.ts                 Noma Cloud public barrel (`@ferax564/noma-cli/cloud` subpath; loads better-sqlite3)
   enterprise.ts            Enterprise public barrel (`@ferax564/noma-cli/enterprise` subpath; Docs / Visuals / Work kernel)
   enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM host, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops, Yjs, Atlassian, AWS, security review, paid-pilot
-  paperdom-*.ts            Vendored PaperDOM kernel from github.com/ferax564/paperDOM (pinned MIT extract)
-  paperdom-pin.ts          PaperDOM source commit pin
+  paperdom-*.ts            PaperDOM canvas/slide kernel — maintained fork of github.com/ferax564/paperDOM (MIT, type-checked here)
+  paperdom-pin.ts          PaperDOM fork provenance (base commit + license)
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
   index.ts                 Lean core library exports (root npm entry; no cloud/enterprise/native deps)
 bin/noma.mjs               Node CLI shim

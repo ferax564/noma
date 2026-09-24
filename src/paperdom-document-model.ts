@@ -1,5 +1,4 @@
-// @ts-nocheck — vendored PaperDOM kernel; host policy lives in enterprise-paperdom-host.ts
-// Vendored from https://github.com/ferax564/paperDOM/blob/a12198cdad8c7487242834941a34ed5adf5d4d74/app/document-model.ts (MIT). Do not edit to add Noma host policy.
+// Forked from ferax564/paperDOM@a12198c app/document-model.ts (MIT). Maintained in this repository; see src/paperdom-pin.ts.
 import { MAX_PPTX_SOURCE_BYTES, type PowerPointSource } from './paperdom-pptx-source.js';
 import {safeLink,safeMedia,replaceRunText,type TextRun,type AnimationCue,type MediaData} from './paperdom-advanced-model.js';
 import { copyElements, endpointPoint, translateElement, type TableData, type ChartData } from './paperdom-presentation-tools.js';
@@ -870,10 +869,12 @@ export function applyDocumentTransaction(
       const ordered = page.elements.filter((item) => distributeIds.includes(item.id) && !item.locked && !item.hidden)
         .sort((a, b) => operation.axis === "x" ? a.frame.x - b.frame.x : a.frame.y - b.frame.y);
       if (ordered.length < 3) return transactionError(document, "invalid_operation", "distributeElements needs at least three movable elements", index);
+      const first = ordered[0]!;
+      const last = ordered[ordered.length - 1]!;
       const gap = operation.axis === "x"
-        ? (ordered[ordered.length - 1].frame.x + ordered[ordered.length - 1].frame.w - ordered[0].frame.x - ordered.reduce((sum, e) => sum + e.frame.w, 0)) / (ordered.length - 1)
-        : (ordered[ordered.length - 1].frame.y + ordered[ordered.length - 1].frame.h - ordered[0].frame.y - ordered.reduce((sum, e) => sum + e.frame.h, 0)) / (ordered.length - 1);
-      let cursor = operation.axis === "x" ? ordered[0].frame.x : ordered[0].frame.y;
+        ? (last.frame.x + last.frame.w - first.frame.x - ordered.reduce((sum, e) => sum + e.frame.w, 0)) / (ordered.length - 1)
+        : (last.frame.y + last.frame.h - first.frame.y - ordered.reduce((sum, e) => sum + e.frame.h, 0)) / (ordered.length - 1);
+      let cursor = operation.axis === "x" ? first.frame.x : first.frame.y;
       const positions = new Map<string, number>();
       for (const element of ordered) {
         positions.set(element.id, cursor);
@@ -995,7 +996,7 @@ export function applyDocumentTransaction(
           if (operation.includeComponents !== false && element.component) {
             const props = { ...element.component.props };
             for (const key of Object.keys(props)) {
-              const replaced = replaceIn(props[key]);
+              const replaced = replaceIn(props[key] ?? "");
               if (replaced !== null) { props[key] = replaced; touched = true; }
             }
             element.component = { ...element.component, props };
@@ -1052,24 +1053,25 @@ export function applyDocumentTransaction(
       }
       const elementIndex = page.elements.findIndex((item) => item.id === operation.elementId);
       if (elementIndex < 0) return transactionError(document, "invalid_operation", `Element ${operation.elementId} was not found`, index);
-      const current = page.elements[elementIndex];
+      const current = page.elements[elementIndex]!;
       const patch = operation.patch as CanvasElementPatch;
       if (patch.style && Object.keys(patch.style).some((key) => !Object.hasOwn(DEFAULT_STYLE, key))) {
         return transactionError(document, "invalid_operation", `Unknown style field in patch for ${operation.elementId}`, index);
       }
-      page.elements[elementIndex] = {
+      const patched: CanvasElement = {
         ...current,
-        ...patch,
+        ...(patch as Partial<CanvasElement>),
         id: current.id,
         frame: patch.frame ? { ...current.frame, ...patch.frame } : current.frame,
         style: patch.style ? { ...current.style, ...patch.style } : current.style,
         content: patch.content ? { ...current.content, ...patch.content } : current.content,
-      };
+      } as CanvasElement;
+      page.elements[elementIndex] = patched;
       // Text edits keep structured paragraphs aligned per line unless the patch supplies them explicitly.
       if (patch.content?.text !== undefined && patch.content.paragraphs === undefined && current.content?.paragraphs) {
-        page.elements[elementIndex].content = { ...page.elements[elementIndex].content, paragraphs: resyncParagraphs(current.content.paragraphs, patch.content.text) };
+        patched.content = { ...patched.content, paragraphs: resyncParagraphs(current.content.paragraphs, patch.content.text) };
       }
-      if(current.runs&&patch.content?.text!==undefined&&patch.runs===undefined)page.elements[elementIndex].runs=replaceRunText(current.runs,patch.content.text);
+      if(current.runs&&patch.content?.text!==undefined&&patch.runs===undefined)patched.runs=replaceRunText(current.runs,patch.content.text);
       changed.add(current.id);
       continue;
     }

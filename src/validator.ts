@@ -8,7 +8,7 @@ import { loadFrontmatterYaml } from "./parser.js";
 import { CHILDREN_SORTS, ISSUE_STATUSES, issueKeyFromNode, issuesRequest } from "./macros.js";
 import { collectTableIdentityStrings } from "./stable-identity.js";
 import { DECK_ASPECTS, isSlideLayout, SLIDE_LAYOUTS } from "./slides.js";
-import { parseStyleTokens, STYLE_TOKENS } from "./style-tokens.js";
+import { normalizeStyleTokenAliases, parseStyleTokens, resolveStyleTokenAliases, STYLE_TOKENS, type StyleTokenAliases } from "./style-tokens.js";
 
 export interface ValidateOptions {
   /**
@@ -29,6 +29,8 @@ export interface ValidateOptions {
    * `noverify` flag at file level. Used by `noma check --ignore-rule X`.
    */
   ignoreRules?: string[];
+  /** Host style-token aliases (e.g. a space's vocabulary); `class=` words matching them are valid. */
+  styleTokens?: StyleTokenAliases;
   /**
    * Additional validator profiles to apply without editing source frontmatter.
    * Used by CI and Actions workflows for `noma check --profile technical-docs`.
@@ -908,7 +910,11 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     });
   }
 
-  validateDecksAndStyleTokens(doc.children, undefined, diagnostics);
+  const frontmatterAliases = normalizeStyleTokenAliases(doc.meta.style_tokens);
+  for (const error of frontmatterAliases.errors) {
+    diagnostics.push({ severity: "warning", code: "invalid-style-token-alias", message: `style_tokens: ${error}.` });
+  }
+  validateDecksAndStyleTokens(doc.children, undefined, diagnostics, resolveStyleTokenAliases(doc.meta.style_tokens, options.styleTokens));
 
   const ignore = options.ignoreRules;
   if (ignore && ignore.length > 0) {
@@ -1003,6 +1009,7 @@ const KNOWN_RULES = [
   "issues-invalid-status",
   "page-properties-report-missing-label",
   "unknown-style-token",
+  "invalid-style-token-alias",
   "slide-outside-deck",
   "slide-unknown-layout",
   "notes-outside-slide",
@@ -1014,16 +1021,16 @@ const KNOWN_RULES = [
  * `::slide` lives directly in a `::deck`, `::notes` directly in a `::slide`,
  * layouts/aspects come from fixed sets, and `class=` holds only known tokens.
  */
-function validateDecksAndStyleTokens(nodes: Node[], parent: DirectiveNode | undefined, diagnostics: Diagnostic[]): void {
+function validateDecksAndStyleTokens(nodes: Node[], parent: DirectiveNode | undefined, diagnostics: Diagnostic[], aliases: StyleTokenAliases): void {
   for (const node of nodes) {
     if (node.type === "directive" && !suppressed(node)) {
       const at = { pos: node.pos, nodeId: node.id };
-      const { unknown } = parseStyleTokens(node.attrs.class);
+      const { unknown } = parseStyleTokens(node.attrs.class, aliases);
       if (unknown.length > 0) {
         diagnostics.push({
           severity: "warning",
           code: "unknown-style-token",
-          message: `Unknown style token${unknown.length === 1 ? "" : "s"} ${unknown.map((t) => `"${t}"`).join(", ")} in \`class=\` (dropped when rendering). Known tokens: ${[...STYLE_TOKENS].join(", ")}.`,
+          message: `Unknown style token${unknown.length === 1 ? "" : "s"} ${unknown.map((t) => `"${t}"`).join(", ")} in \`class=\` (dropped when rendering). Known tokens: ${[...STYLE_TOKENS, ...Object.keys(aliases)].join(", ")}.`,
           ...at,
         });
       }
@@ -1053,7 +1060,7 @@ function validateDecksAndStyleTokens(nodes: Node[], parent: DirectiveNode | unde
       }
     }
     const children = "children" in node && Array.isArray(node.children) ? (node.children as Node[]) : [];
-    if (children.length > 0) validateDecksAndStyleTokens(children, node.type === "directive" ? node : parent, diagnostics);
+    if (children.length > 0) validateDecksAndStyleTokens(children, node.type === "directive" ? node : parent, diagnostics, aliases);
   }
 }
 

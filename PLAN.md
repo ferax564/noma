@@ -1301,9 +1301,16 @@ Presentations are a surface of the same source. `::deck` / `::slide` flow
 decks are patchable by ID and present in the browser. PaperDOM canvas decks
 are exported from `.noma` with element IDs keyed to their owning blocks, and
 text sync back to `.noma` and embeds come next. Free CSS, HTML as source, and
-a second visual model stay out. `docs/strategy-2026-09.md` holds the
-competitor analysis and the phased plan, and `docs/direction.noma` mirrors
-this section.
+a second visual model stay out. The maintainer made four decisions on
+2026-09-24:
+
+- `.noma` is the standard.
+- Each space has its own style-token vocabulary.
+- Sandboxed `::html` widgets are enabled in Cloud.
+- PaperDOM is forked into this repository.
+
+`docs/strategy-2026-09.md` holds the competitor analysis and the phased plan,
+and `docs/direction.noma` mirrors this section.
 
 ## 24. Shipped Tracker
 

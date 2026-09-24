@@ -38,6 +38,8 @@ import {
 } from "./records.js";
 import { attachmentResolver } from "./attachments.js";
 import { renderDocumentHtml } from "./render.js";
+import { routeDocumentWidget, widgetFrameResolver } from "./widgets.js";
+import { documentStyleTokens } from "./spaces.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics } from "./routes-analytics.js";
 import { routeDocumentTasks } from "./routes-tasks.js";
@@ -64,7 +66,7 @@ export async function routeDocuments(
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
     const record = await createDocument(config, input, user);
-    sendJson(res, 201, documentResponse(record, requireRecordAccess(config, record, principal, "owner")));
+    sendJson(res, 201, documentResponse(record, requireRecordAccess(config, record, principal, "owner"), config));
     return;
   }
 
@@ -150,9 +152,14 @@ export async function routeDocuments(
     return;
   }
 
+  if (suffix === "widgets") {
+    routeDocumentWidget(req, res, parts[4], config, principal, record);
+    return;
+  }
+
   if (suffix === "html" && method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
     return;
   }
 
@@ -174,7 +181,7 @@ export async function routeDocuments(
   if (method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
     if (access.user) config.store.recordRecent(access.user.id, "document", record.id, config.now().toISOString());
-    sendJson(res, 200, documentResponse(record, access));
+    sendJson(res, 200, documentResponse(record, access, config));
     return;
   }
 
@@ -183,7 +190,7 @@ export async function routeDocuments(
     const input = await readJsonBody(req, config.maxBodyBytes);
     requireDocumentPrecondition(req, record, input);
     const updated = await updateDocument(config, record, input, access, { assignTaskIds: true });
-    sendJson(res, 200, documentResponse(updated, requireRecordAccess(config, updated, principal, "viewer")));
+    sendJson(res, 200, documentResponse(updated, requireRecordAccess(config, updated, principal, "viewer"), config));
     return;
   }
 
@@ -233,7 +240,7 @@ export async function routeDocumentRevisions(
       { title: revision.title, source: revision.source },
       access,
     );
-    sendJson(res, 200, documentResponse(restored, access));
+    sendJson(res, 200, documentResponse(restored, access, config));
     return;
   }
 

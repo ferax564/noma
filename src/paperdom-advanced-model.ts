@@ -1,5 +1,4 @@
-// @ts-nocheck — vendored PaperDOM kernel; host policy lives in enterprise-paperdom-host.ts
-// Vendored from https://github.com/ferax564/paperDOM/blob/a12198cdad8c7487242834941a34ed5adf5d4d74/app/advanced-model.ts (MIT). Do not edit to add Noma host policy.
+// Forked from ferax564/paperDOM@a12198c app/advanced-model.ts (MIT). Maintained in this repository; see src/paperdom-pin.ts.
 import type { CanvasElement, CanvasPage, ElementStyle, PaperDOMDocument } from './paperdom-document-model.js';
 export type TextRun = {
     text: string;
@@ -72,6 +71,8 @@ export function composePage(page: CanvasPage, document?: PaperDOMDocument): Canv
                     p.y = (p.y ?? 0) * sy;
                 }
             } return e; }), ...page.elements] }; }
+/** Web Animations keyframe (the core tsconfig has no DOM lib). */
+export type Keyframe = Record<string, string | number | null | undefined>;
 export function cueFrames(cue: AnimationCue, opacity=1): Keyframe[] { switch (cue.effect) {
     case 'appear': return [{ opacity }, { opacity }];
     case 'fade-in': return [{ opacity: 0 }, { opacity }];

@@ -17,7 +17,7 @@ export interface RenderPaperDomOptions {
 }
 
 /**
- * AST → PaperDOM presentation document (the JSON slide model vendored from
+ * AST → PaperDOM presentation document (the JSON slide model forked from
  * ferax564/paperDOM). Each `::slide` becomes a page whose id is the slide's
  * block ID; element ids are `<slide-id>--<part>`, so an agent can map a canvas
  * element back to the `.noma` block that owns it. Documents without a

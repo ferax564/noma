@@ -8,6 +8,10 @@ import { parse } from "../parser.js";
 import type { MacroResolvers } from "../macros.js";
 import { renderHtml } from "../renderer-html.js";
 import { attachmentResolver } from "./attachments.js";
+import { widgetFrameResolver } from "./widgets.js";
+import type { DirectiveNode } from "../ast.js";
+import type { StyleTokenAliases } from "../style-tokens.js";
+import { documentStyleTokens } from "./spaces.js";
 import { type AccessContext, capAccessForDocument, type CloudServerConfig, type Principal, readDocument } from "./context.js";
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
 import { cloudMacroResolvers, cloudPageHref } from "./macros.js";
@@ -15,7 +19,12 @@ import { cloudMacroResolvers, cloudPageHref } from "./macros.js";
 export function renderDocumentHtml(
   record: CloudDocumentRecord,
   access?: AccessContext,
-  options: { resolveAttachment?: (ref: string) => string | undefined; macros?: MacroResolvers } = {},
+  options: {
+    resolveAttachment?: (ref: string) => string | undefined;
+    resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
+    styleTokens?: StyleTokenAliases;
+    macros?: MacroResolvers;
+  } = {},
 ): string {
   const doc = parse(record.source, { filename: `${record.id}.noma` });
   const banner = access
@@ -25,6 +34,8 @@ export function renderDocumentHtml(
     ...options.macros,
     standalone: true,
     allowEscapeHatches: false,
+    ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
+    ...(options.styleTokens ? { styleTokens: options.styleTokens } : {}),
     externalAssets: false,
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
   });
@@ -56,6 +67,8 @@ export async function renderSiteHtml(
         externalAssets: false,
         interactive: false,
         resolveAttachment: attachmentResolver(config, record.id, documentAccess),
+        resolveWidgetFrame: widgetFrameResolver(config, record.id, documentAccess),
+        styleTokens: { ...documentStyleTokens(config, record.id), ...(site.styleTokens ?? {}) } as StyleTokenAliases,
       });
       const home = record.id === homeId ? ' data-home="true"' : "";
       return `<article class="site-doc" id="${escapeAttr(record.id)}"${home}><header><h2>${escapeHtml(record.title)}</h2><a href="#${escapeAttr(record.id)}">Copy link</a></header>${body}</article>`;

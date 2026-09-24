@@ -426,7 +426,7 @@ export async function routeSiteAi(req: IncomingMessage, res: ServerResponse, par
     recordActivity(config, user, "ai.page_applied", "site", site.id, { proposalId: proposal.id, documentId: document.id });
     sendJson(res, 200, {
       proposal: publicPageProposal(config.store.readAiPageProposal(proposal.id)!),
-      document: documentResponse(document, requireRecordAccess(config, document, principal, "viewer")),
+      document: documentResponse(document, requireRecordAccess(config, document, principal, "viewer"), config),
     });
     return;
   }

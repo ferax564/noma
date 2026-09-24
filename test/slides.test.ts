@@ -8,7 +8,7 @@ import { renderMarkdown } from "../src/renderer-markdown.js";
 import { renderLlm } from "../src/renderer-llm.js";
 import { renderPaperDom } from "../src/renderer-paperdom.js";
 import { parsePaperDOMDocument } from "../src/paperdom-document-model.js";
-import { parseStyleTokens } from "../src/style-tokens.js";
+import { normalizeStyleTokenAliases, parseStyleTokens } from "../src/style-tokens.js";
 import { patchSource } from "../src/patch.js";
 
 const DECK = `::deck{id="d" title="Deck" aspect="4:3"}
@@ -154,4 +154,23 @@ test("the example deck validates and converts", () => {
   const doc = parse(readFileSync("examples/deck.noma", "utf8"), { filename: "examples/deck.noma" });
   assert.equal(validate(doc).filter((d) => d.severity === "error").length, 0);
   assert.ok(parsePaperDOMDocument(renderPaperDom(doc)).ok);
+});
+
+test("style-token aliases expand to core tokens from frontmatter and host options", () => {
+  const src = `---\nstyle_tokens:\n  hero-box: tone-info elevated\n  bad: not-a-token\n---\n\n::card{id="c" class="hero-box team-box"}\nx\n::\n`;
+  const doc = parse(src);
+  const plain = renderHtml(doc, { standalone: false });
+  assert.match(plain, /class="noma-card n-tone-info n-elevated"/);
+  const hosted = renderHtml(doc, { standalone: false, styleTokens: { "team-box": ["span-2"], "hero-box": ["tone-danger"] } });
+  assert.match(hosted, /class="noma-card n-tone-danger n-span-2"/);
+  const diags = validate(doc);
+  assert.ok(diags.some((d) => d.code === "invalid-style-token-alias" && /unknown core token "not-a-token"/.test(d.message)));
+  assert.ok(diags.some((d) => d.code === "unknown-style-token" && /"team-box"/.test(d.message)));
+  assert.ok(!validate(doc, { styleTokens: { "team-box": ["span-2"] } }).some((d) => d.code === "unknown-style-token"));
+});
+
+test("normalizeStyleTokenAliases rejects shadowing, bad names, and non-core expansions", () => {
+  const { aliases, errors } = normalizeStyleTokenAliases({ ok: "tone-accent,filled", "tone-info": "filled", "Bad Name": "filled", css: "color:red", empty: "" });
+  assert.deepEqual(aliases, { ok: ["tone-accent", "filled"] });
+  assert.equal(errors.length, 4);
 });

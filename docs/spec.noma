@@ -197,6 +197,8 @@ hero, grid, card, callout, columns, tabs, accordion, sidebar, button, page_setup
 
 **Style tokens (`class=`).** Any directive may carry `class="..."` with space-separated tokens from a closed vocabulary. Tokens compose like utility classes, but they cannot inject CSS, scripts, or arbitrary layout. HTML emits each known token as `n-<token>` on the block's outer element. Unknown words are dropped when rendering, and the validator reports them as `unknown-style-token`. Other targets ignore tokens.
 
+**Token aliases.** A team can name bundles of core tokens. Put them in a document's frontmatter (`style_tokens: { brand-callout: "tone-accent filled roomy" }`) or in a host setting; in Noma Cloud, each space owner defines them in space settings. An alias expands only to core tokens. It cannot shadow a core token, and its name is 2–40 lowercase letters, digits, or dashes. Host aliases override frontmatter aliases. A page that belongs to several spaces gets the union of their vocabularies, and the first space wins on a clash. The validator reports invalid frontmatter aliases as `invalid-style-token-alias`.
+
 | Group | Tokens |
 |---|---|
 | tone | `tone-neutral`, `tone-accent`, `tone-info`, `tone-success`, `tone-warning`, `tone-danger` |
@@ -363,6 +365,8 @@ html, svg, script
 ```
 
 Allowed but discouraged. The validator warns on every untrusted use. Add the `trusted` flag attribute to silence the warning on a single block; pass `--no-unsafe` to the CLI (or set `allowEscapeHatches: false` on the API) to block escape hatches entirely. Pass `--strict` to also omit external CDN runtimes for math, diagrams, and Plotly and to render computed controls as inert static defaults with disabled inputs and no generated inline runtime. Book manifests with `trusted_publishing: true` apply that same strict static HTML posture to every manifest-driven HTML/site/PDF render. The LLM renderer always strips escape-hatch bodies and replaces them with a placeholder so agent context stays predictable.
+
+**Sandboxed widgets.** A host can pass `resolveWidgetFrame` along with `allowEscapeHatches: false`. Each `::html` / `::svg` block that has an `id` then renders as `<iframe sandbox="allow-scripts">` pointing at a URL the host serves. Set the frame height with `height=` (40–2000 px, default 320) and its accessible label with `title=`. Noma Cloud serves each widget on its own signed URL with a `sandbox allow-scripts` CSP. The widget's scripts therefore run in an opaque origin with no network access (`connect-src 'none'`), no cookies, and no access to the page. `::script` stays blocked in hosts.
 
 ```noma
 ::svg{trusted}

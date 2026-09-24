@@ -56,6 +56,8 @@ export interface CloudDocumentResponse {
   createdAt: string;
   updatedAt: string;
   diagnostics: Diagnostic[];
+  /** Effective style-token aliases from the page's spaces. */
+  styleTokens?: Record<string, string[]>;
   access?: AccessInfo;
 }
 
@@ -326,6 +328,7 @@ export interface CloudSiteResponse {
   key?: string | null;
   description?: string;
   icon?: string;
+  styleTokens?: Record<string, string[]>;
   homeDocumentId?: string | null;
   archived?: boolean;
   documentIds: string[];

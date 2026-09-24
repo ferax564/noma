@@ -1,5 +1,4 @@
-// @ts-nocheck — vendored PaperDOM kernel; host policy lives in enterprise-paperdom-host.ts
-// Vendored from https://github.com/ferax564/paperDOM/blob/a12198cdad8c7487242834941a34ed5adf5d4d74/app/component-library.ts (MIT). Do not edit to add Noma host policy.
+// Forked from ferax564/paperDOM@a12198c app/component-library.ts (MIT). Maintained in this repository; see src/paperdom-pin.ts.
 import {replaceRunText} from './paperdom-advanced-model.js';
 import type { CanvasElement, CanvasPage, ElementStyle, Frame } from './paperdom-document-model.js';
 
@@ -101,7 +100,7 @@ export function resolveComponent(element: CanvasElement, library: ComponentLibra
     const child = structuredClone(raw);
     for (const token of definition.tokens.filter(t => t.elementId === child.id)) child.style[token.field] = theme[token.token];
     Object.assign(child.style, instance.overrides?.[child.id]);
-    for (const binding of definition.bindings.filter(b => b.elementId === child.id)) {child.content = { ...child.content, [binding.field]: props[binding.property] };if(binding.field==='text'&&child.runs)child.runs=replaceRunText(child.runs,props[binding.property]);}
+    for (const binding of definition.bindings.filter(b => b.elementId === child.id)) {child.content = { ...child.content, [binding.field]: props[binding.property] };if(binding.field==='text'&&child.runs)child.runs=replaceRunText(child.runs,props[binding.property]??"");}
     child.frame = { ...child.frame, x: child.frame.x * sx, y: child.frame.y * sy, w: child.frame.w * sx, h: child.frame.h * sy };
     for (const key of ['fontSize','padding','radius','strokeWidth','letterSpacing'] as const) child.style[key] *= scale;
     if(child.runs)for(const run of child.runs)if(run.style?.fontSize)run.style.fontSize*=scale;

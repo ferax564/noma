@@ -147,7 +147,7 @@ Housekeeping required first:
 
 - Retire the flat `PaperDocument` "Visuals" model in `enterprise-paperdom.ts`, or make it a view over PaperDOM. There should be one visual model.
 - Replace the stub `paperDomHtmlExport` with a real renderer.
-- Remove `@ts-nocheck` from the vendored files by fixing types upstream in `ferax564/paperDOM`.
+- ~~Remove `@ts-nocheck`~~ **Done.** PaperDOM is now a maintained fork in this repo: type-checked, linted, and free to change.
 
 ---
 
@@ -169,10 +169,11 @@ Housekeeping required first:
   - Slash commands `/deck`, `/slide`, `/notes`.
   - A slide-strip view.
   - A token picker (chips, not a CSS box) that writes `class=`.
-- **Sandboxed `::html` in Cloud.**
-  - Render inside `<iframe sandbox="allow-scripts" srcdoc>` with a CSP and no same-origin access. Today Cloud blocks it entirely.
+- ~~**Sandboxed `::html` in Cloud.**~~ **Done.**
+  - Each widget has its own signed URL, served with a `sandbox allow-scripts` CSP, `connect-src 'none'`, and an opaque origin.
+  - A `srcdoc` iframe would have inherited the page CSP, so it was not used.
   - Agents can author these widgets through the proof loop.
-  - This matches Notion's HTML blocks, with isolation.
+- ~~**Per-space token vocabularies.**~~ **Done.** Space owners define aliases such as `brand-callout = tone-accent filled roomy`. An alias expands only to core tokens.
 
 ### Phase 2: component kits, the real Lego system (≈6 weeks)
 
@@ -241,12 +242,14 @@ Verification:
 
 ---
 
-## 8. Decisions for the maintainer
+## 8. Decisions (maintainer, 2026-09-24)
 
-1. **Adopt option E** (single `.noma` source, style tokens, component kits, HTML as projection). Is this the canonical answer to "HTML vs Noma"?
-2. **Token vocabulary governance.** Keep one global set (recommended), or allow per-space token extensions through kits?
-3. **Sandboxed `::html` in Cloud.** Enable it with iframe isolation (recommended, to match Notion), or keep it blocked?
-4. **PaperDOM ownership.** Fix types upstream and re-vendor (recommended), or fork into this repo?
+| # | Question | Decision | Implemented |
+|---|---|---|---|
+| 1 | HTML vs Noma | **`.noma` is the standard.** HTML is a projection and a sandboxed escape hatch, never the source | `docs/direction.noma` decision `lego-composition` is accepted |
+| 2 | Token governance | **Multiple vocabularies.** Each space defines its own aliases on top of the global core set | Space `styleTokens` (owner-only), frontmatter `style_tokens:`, `invalid-style-token-alias` rule |
+| 3 | Sandboxed `::html` in Cloud | **Yes** | Signed `/api/documents/:id/widgets/:block` route, `sandbox allow-scripts` CSP, `<iframe sandbox>` in pages and in the editor preview |
+| 4 | PaperDOM | **Fork** into this repo | `@ts-nocheck` removed, the 48 hidden type errors fixed, files linted, provenance in `paperdom-pin.ts` |
 
 ---
 

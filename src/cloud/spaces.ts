@@ -8,6 +8,7 @@ import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
 import { type CloudServerConfig, type Principal, recordActivity, requireRecordAccess, requireUser, sqliteConstraint, writeSite } from "./context.js";
 import { HttpError } from "./http.js";
 import { assertCloudId } from "./input.js";
+import { normalizeStyleTokenAliases, type StyleToken, type StyleTokenAliases } from "../style-tokens.js";
 
 const SPACE_KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/;
 
@@ -16,6 +17,8 @@ export interface SpaceSettings {
   description?: string;
   icon?: string;
   homeDocumentId?: string;
+  /** Replaces the space's style-token aliases; `{}` clears them. */
+  styleTokens?: Record<string, string[]>;
 }
 
 export function spaceKeyInput(value: unknown): string {
@@ -73,7 +76,27 @@ export function spaceSettingsInput(config: CloudServerConfig, input: Record<stri
       settings.homeDocumentId = input.homeDocumentId;
     }
   }
+  if (input.styleTokens !== undefined) {
+    const { aliases, errors } = normalizeStyleTokenAliases(input.styleTokens ?? {});
+    if (errors.length > 0) throw new HttpError(400, `Invalid styleTokens: ${errors.join("; ")}`, { code: "invalid_style_tokens", errors });
+    settings.styleTokens = aliases;
+  }
   return settings;
+}
+
+/**
+ * Style-token aliases for a page: the union of its spaces' vocabularies. When two
+ * spaces define the same alias, the space listed first for the page wins.
+ */
+export function documentStyleTokens(config: CloudServerConfig, documentId: string): StyleTokenAliases {
+  const merged: Record<string, StyleToken[]> = {};
+  for (const siteId of config.store.documentSiteIds(documentId)) {
+    const site = config.store.readSite(siteId);
+    for (const [name, tokens] of Object.entries(site?.styleTokens ?? {})) {
+      if (!Object.hasOwn(merged, name)) merged[name] = tokens as StyleToken[];
+    }
+  }
+  return merged;
 }
 
 /** Applies validated settings; empty strings clear optional fields. */
@@ -85,6 +108,10 @@ export function applySpaceSettings(record: CloudSiteRecord, settings: SpaceSetti
     if (value === undefined) continue;
     if (value) next[field] = value;
     else delete next[field];
+  }
+  if (settings.styleTokens !== undefined) {
+    if (Object.keys(settings.styleTokens).length > 0) next.styleTokens = settings.styleTokens;
+    else delete next.styleTokens;
   }
   if (next.homeDocumentId && !next.documentIds.includes(next.homeDocumentId)) delete next.homeDocumentId;
   return next;
