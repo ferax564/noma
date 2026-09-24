@@ -1293,6 +1293,28 @@ removed or a share link is revoked), and on a timer. Revoked users and trashed
 pages are disconnected. The server replaces each cursor's name and colour with
 the identity it knows, so nobody can pose as someone else.
 
+## Present a page
+
+Any page can be presented. Click **Present** in the page header, or the
+*Present* link on a published `/d/<id>` page, to open `/d/<id>/present` in a
+new tab.
+
+- A page with a `::deck` shows that deck's slides, layouts, and speaker notes.
+- Any other page becomes a title slide (the top heading and its intro) plus one
+  slide per section, so a runbook, handbook, or decision record presents
+  without extra work.
+- Use the arrow keys, Space, PageUp/PageDown, Home/End, the bar buttons, or a
+  swipe to move between slides. `N` toggles the speaker-notes panel, `O` opens
+  the overview grid, and `F` switches to fullscreen.
+- The URL hash follows the current slide (`#setup`), so links open on a slide.
+- Share links work: `/d/<id>/present?share=<token>`. Sandboxed `::html`
+  widgets, attachments, and the space's style tokens render as they do on the
+  page.
+- The presenter shows the last saved version. If the editor has unsaved
+  changes, Noma asks before it opens.
+
+The CLI renders the same presenter with `noma render page.noma --to slides`.
+
 ## Link pages like Obsidian
 
 Noma Cloud supports page-oriented wikilinks for LLM wiki workflows:

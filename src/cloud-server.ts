@@ -26,8 +26,8 @@ import { selfUser } from "./cloud/records.js";
 import { attachmentResolver } from "./cloud/attachments.js";
 import { widgetFrameResolver } from "./cloud/widgets.js";
 import { documentStyleTokens } from "./cloud/spaces.js";
-import { cloudMacroResolvers } from "./cloud/macros.js";
-import { renderDocumentHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
+import { cloudMacroResolvers, cloudPageHref } from "./cloud/macros.js";
+import { renderDocumentHtml, renderPresentationHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
 import { runDueMaintenance, startMaintenanceScheduler } from "./cloud/routes-maintenance.js";
 import { routeApi } from "./cloud/router.js";
 import { recordPageView } from "./cloud/routes-analytics.js";
@@ -413,13 +413,36 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     return;
   }
 
+  const presentMatch = method === "GET" ? /^\/d\/([^/]+)\/present\/?$/.exec(url.pathname) : null;
+  if (presentMatch) {
+    const id = decodePathSegment(presentMatch[1]!);
+    const record = await readDocument(config, id);
+    requireNotTrashed(config, "document", id);
+    const access = requireRecordAccess(config, record, principal, "viewer");
+    recordPageView(config, req, record, access);
+    const share = url.searchParams.get("share");
+    sendText(
+      res,
+      200,
+      renderPresentationHtml(record, {
+        resolveAttachment: attachmentResolver(config, record.id, access),
+        resolveWidgetFrame: widgetFrameResolver(config, record.id, access),
+        styleTokens: documentStyleTokens(config, record.id),
+        macros: cloudMacroResolvers(config, principal, record.id),
+        backHref: share ? `/d/${encodeURIComponent(record.id)}?share=${encodeURIComponent(share)}` : cloudPageHref(record.id),
+      }),
+      "text/html; charset=utf-8",
+    );
+    return;
+  }
+
   if (method === "GET" && url.pathname.startsWith("/d/")) {
     const id = decodePathSegment(url.pathname.slice(3));
     const record = await readDocument(config, id);
     requireNotTrashed(config, "document", id);
     const access = requireRecordAccess(config, record, principal, "viewer");
     recordPageView(config, req, record, access);
-    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), macros: cloudMacroResolvers(config, principal, record.id), ...(url.searchParams.get("share") ? { shareToken: url.searchParams.get("share")! } : {}) }), "text/html; charset=utf-8");
     return;
   }
 

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parse } from "../src/parser.js";
 import { validate } from "../src/validator.js";
-import { renderHtml } from "../src/renderer-html.js";
+import { renderHtml, renderSlidesHtml } from "../src/renderer-html.js";
+import { presentationSlides } from "../src/slides.js";
 import { renderMarkdown } from "../src/renderer-markdown.js";
 import { renderLlm } from "../src/renderer-llm.js";
 import { renderPaperDom } from "../src/renderer-paperdom.js";
@@ -137,7 +138,8 @@ test("renderPaperDom converts a deck-less document section-per-slide", () => {
   const doc = parse("# Title\n\nIntro\n\n## One\n\nAlpha\n\n## Two\n\n- Beta\n");
   const out = renderPaperDom(doc, { now: "2026-09-23T00:00:00.000Z" });
   assert.ok(parsePaperDOMDocument(out).ok);
-  assert.deepEqual(out.pages.map((p) => p.name), ["One", "Two"]);
+  assert.deepEqual(out.pages.map((p) => p.name), ["Title", "One", "Two"]);
+  assert.equal(out.pages[0]!.elements.find((e) => e.name === "title")?.content?.text, "Title");
 });
 
 test("renderPaperDom rejects an unknown --deck id", () => {
@@ -173,4 +175,50 @@ test("normalizeStyleTokenAliases rejects shadowing, bad names, and non-core expa
   const { aliases, errors } = normalizeStyleTokenAliases({ ok: "tone-accent,filled", "tone-info": "filled", "Bad Name": "filled", css: "color:red", empty: "" });
   assert.deepEqual(aliases, { ok: ["tone-accent", "filled"] });
   assert.equal(errors.length, 4);
+});
+
+test("presentationSlides uses the deck, else a title slide plus one slide per section", () => {
+  const fromDeck = presentationSlides(parse(DECK));
+  assert.equal(fromDeck.fromSections, false);
+  assert.equal(fromDeck.aspect, "4:3");
+  assert.deepEqual(fromDeck.slides.map((s) => s.id), ["s1", "s2", "s3"]);
+
+  const doc = parse("# Handbook\n\nWelcome.\n\n## Setup\n\nInstall.\n\n### Detail\n\nDeep.\n\n## Deploy\n\nShip.\n");
+  const before = JSON.stringify(doc);
+  const derived = presentationSlides(doc);
+  assert.equal(derived.fromSections, true);
+  assert.deepEqual(derived.slides.map((s) => [s.id, s.attrs.layout, s.attrs.title]), [
+    ["handbook", "title", "Handbook"],
+    ["setup", "content", "Setup"],
+    ["deploy", "content", "Deploy"],
+  ]);
+  assert.equal(JSON.stringify(doc), before);
+
+  assert.deepEqual(presentationSlides(parse("Just a paragraph.\n")).slides.map((s) => s.attrs.layout), ["content"]);
+  assert.deepEqual(presentationSlides(parse("")).slides, []);
+  assert.throws(() => presentationSlides(parse(DECK), "nope"), /No ::deck with id "nope"/);
+});
+
+test("renderSlidesHtml builds a presenter page with controls, deep links, and a no-JS fallback", () => {
+  const html = renderSlidesHtml(parse(DECK), { themeCss: ".x{}", backHref: "/cloud.html?doc=abc" });
+  assert.match(html, /<body class="noma-presenter-body">/);
+  assert.match(html, /<main class="noma-presenter" data-aspect="4:3" style="--noma-deck-ratio: 4 \/ 3; --noma-deck-rw: 4; --noma-deck-rh: 3;"/);
+  assert.match(html, /<article class="noma-slide noma-slide--content n-tone-accent" id="s2" data-slide-index="2"/);
+  assert.match(html, /<a class="noma-presenter-exit" href="\/cloud.html\?doc=abc">Exit<\/a>/);
+  assert.match(html, /data-noma-present="next"/);
+  assert.match(html, /<span class="noma-presenter-counter" aria-live="polite">1 \/ 3<\/span>/);
+  assert.match(html, /location\.hash/);
+  assert.doesNotMatch(html, /data-noma-deck-present/);
+
+  const staticHtml = renderSlidesHtml(parse(DECK), { interactive: false });
+  assert.doesNotMatch(staticHtml, /<script>/);
+  assert.doesNotMatch(staticHtml, /data-noma-present/);
+
+  const sections = renderSlidesHtml(parse("# Guide\n\nIntro\n\n## A\n\nx\n\n## B\n\ny\n"));
+  assert.match(sections, /data-from-sections="true"/);
+  assert.match(sections, /<article class="noma-slide noma-slide--title" id="guide"/);
+  assert.match(sections, /<title>Guide<\/title>/);
+
+  assert.match(renderSlidesHtml(parse("")), /Nothing to present/);
+  assert.match(renderSlidesHtml(parse(DECK), { backHref: "javascript:alert(1)" }), /class="noma-presenter-exit" href="#">Exit/);
 });

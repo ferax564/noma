@@ -219,6 +219,7 @@ The targets render decks as follows:
 - **Markdown** renders each slide as a `##` section followed by `---`.
 - **LLM** output keeps `[SLIDE ...]` / `[NOTES]` markers.
 - **`--to paperdom`** exports the deck as a PaperDOM canvas document.
+- **`--to slides`** writes a standalone presenter page. A page without a deck presents as a title slide (the top heading and its intro) plus one slide per section, at the shallowest heading level that has at least two headings. The slide IDs are the section IDs.
 
 `::page_setup{size="Letter|A4|Legal" orientation="portrait|landscape" margin="12mm"}` controls print geometry. DOCX uses the first page setup as the initial section geometry; later `::page_setup` blocks emit native Word section breaks and subsequent Word table columns, dataset tables, and grid/columns layouts size from the active page width and margins. HTML emits an `@page` rule for browser printing. Per-side margins use `margin_top`, `margin_right`, `margin_bottom`, and `margin_left`; lengths accept `in`, `mm`, `cm`, and `pt`.
 
@@ -816,7 +817,7 @@ Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 | `docx`   | experimental | WordprocessingML package for Word / Google Docs handoff. Requires `--out <file.docx>` |
 | `epub`   | planned |                                                                               |
 | `paperdom` | experimental | `::deck` → PaperDOM canvas JSON (pages = slides, element ids `<slide-id>--<part>`). `--deck <id>` picks a deck; a document without a deck converts one section per slide |
-| `slides` | planned | Standalone presenter page; today decks present from the `html` target |
+| `slides` | experimental | Standalone presenter page (`renderSlidesHtml`): the chosen or first `::deck`, else a title slide plus one slide per section. Keyboard, swipe, notes panel, overview grid, fullscreen, `#slide-id` deep links; without JavaScript it lists every slide and prints one per page. `--deck <id>` picks a deck |
 
 **Watch mode (v0.15).** `noma render|check|export <file> --watch` re-runs the
 command whenever the document's directory changes (debounced; output files and

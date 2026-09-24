@@ -3,10 +3,7 @@
  * `GET /api/sites/:id/export?to=site-zip|noma-zip`. Macros are resolved for
  * the requesting viewer; escape hatches and external assets stay off.
  */
-import { readFileSync } from "node:fs";
 import type { ServerResponse } from "node:http";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
 import { expandMacros } from "../macros.js";
@@ -21,6 +18,7 @@ import { createZip, type ZipEntryInput } from "../zip.js";
 import { type AccessContext, type CloudServerConfig, type Principal, requireRecordAccess } from "./context.js";
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
 import { cloudMacroResolvers } from "./macros.js";
+import { defaultThemeCss } from "./theme.js";
 
 export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json"] as const;
 export const SITE_EXPORT_FORMATS = ["site-zip", "noma-zip"] as const;
@@ -257,21 +255,8 @@ function standaloneHtml(record: CloudDocumentRecord, macros: ReturnType<typeof c
   });
 }
 
-let cachedThemeCss: string | undefined;
-
 function themeCss(): string {
-  if (cachedThemeCss !== undefined) return cachedThemeCss;
-  const here = dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [resolve(here, "..", "..", "themes", "default.css"), resolve(here, "..", "..", "..", "themes", "default.css")]) {
-    try {
-      cachedThemeCss = readFileSync(candidate, "utf8");
-      return cachedThemeCss;
-    } catch {
-      continue;
-    }
-  }
-  cachedThemeCss = "";
-  return cachedThemeCss;
+  return defaultThemeCss();
 }
 
 function formatInput<T extends string>(value: string | null, formats: readonly T[]): T {

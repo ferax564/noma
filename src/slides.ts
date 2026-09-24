@@ -70,10 +70,13 @@ export function findDecks(doc: DocumentNode): DirectiveNode[] {
 }
 
 /**
- * Doc-to-deck fallback for documents without a `::deck`: every section at the
- * shallowest level that has at least two headings becomes one slide.
+ * Doc-to-deck fallback for documents without a `::deck`. Every section at the
+ * shallowest level with at least two headings becomes one slide. When that
+ * level sits under a single top heading (the usual `# Title` + `## Parts`
+ * page), the top heading and its intro become a leading `title` slide. A page
+ * with no headings becomes one slide.
  */
-export function sectionsAsSlides(doc: DocumentNode): Array<{ section: SectionNode; body: Node[] }> {
+export function sectionsAsSlides(doc: DocumentNode): Array<{ section?: SectionNode; title?: string; body: Node[]; layout: SlideLayout }> {
   const byLevel = new Map<number, SectionNode[]>();
   const visit = (nodes: Node[]): void => {
     for (const node of nodes) {
@@ -85,11 +88,69 @@ export function sectionsAsSlides(doc: DocumentNode): Array<{ section: SectionNod
     }
   };
   visit(doc.children);
+  const preamble = doc.children.filter((child) => child.type !== "section" && child.type !== "frontmatter");
   const levels = [...byLevel.keys()].sort((a, b) => a - b);
-  const level = levels.find((l) => (byLevel.get(l)?.length ?? 0) >= 2) ?? levels[0];
-  if (level === undefined) return [];
-  return (byLevel.get(level) ?? []).map((section) => ({
-    section,
-    body: section.children.filter((child) => child.type !== "section"),
-  }));
+  const docTitle = typeof doc.meta.title === "string" ? doc.meta.title : undefined;
+  if (levels.length === 0) return preamble.length > 0 ? [{ title: docTitle, body: preamble, layout: "content" }] : [];
+  const level = levels.find((l) => (byLevel.get(l)?.length ?? 0) >= 2) ?? levels[0]!;
+  const out: Array<{ section?: SectionNode; title?: string; body: Node[]; layout: SlideLayout }> = [];
+  const top = byLevel.get(levels[0]!) ?? [];
+  if (level !== levels[0] && top.length === 1) {
+    const root = top[0]!;
+    out.push({ section: root, body: [...preamble, ...root.children.filter((child) => child.type !== "section")], layout: "title" });
+  } else if (preamble.length > 0) {
+    out.push({ title: docTitle, body: preamble, layout: "title" });
+  }
+  for (const section of byLevel.get(level) ?? []) {
+    out.push({ section, body: section.children.filter((child) => child.type !== "section"), layout: "content" });
+  }
+  return out;
+}
+
+export interface PresentationSlides {
+  /** The `::deck` being presented, when the document has one. */
+  deck?: DirectiveNode;
+  title?: string;
+  aspect: string;
+  /** Real `::slide` blocks, or synthetic ones built from sections (IDs = section IDs). */
+  slides: DirectiveNode[];
+  /** True when the slides were derived from sections rather than a `::deck`. */
+  fromSections: boolean;
+}
+
+/**
+ * What "Present" shows for a document: the chosen (or first) `::deck`, else
+ * one slide per section. Synthetic slides are fresh nodes; the AST is not mutated.
+ */
+export function presentationSlides(doc: DocumentNode, deckId?: string): PresentationSlides {
+  const decks = findDecks(doc);
+  const deck = deckId ? decks.find((d) => d.id === deckId) : decks[0];
+  if (deckId && !deck) throw new Error(`No ::deck with id "${deckId}".`);
+  const docTitle = typeof doc.meta.title === "string" ? doc.meta.title : undefined;
+  if (deck) {
+    const title = typeof deck.attrs.title === "string" ? deck.attrs.title : docTitle;
+    return { deck, ...(title ? { title } : {}), aspect: deckAspect(deck), slides: deckSlides(deck), fromSections: false };
+  }
+  const used = new Set<string>();
+  const slides = sectionsAsSlides(doc).map((entry, index): DirectiveNode => {
+    let id = entry.section?.id ?? `slide-${index + 1}`;
+    for (let n = 2; used.has(id); n += 1) id = `${entry.section?.id ?? "slide"}-${n}`;
+    used.add(id);
+    const title = entry.section?.title ?? entry.title;
+    return {
+      type: "directive",
+      name: "slide",
+      id,
+      attrs: { id, layout: entry.layout, ...(title ? { title } : {}) },
+      children: entry.body,
+      ...(entry.section?.pos ? { pos: entry.section.pos } : {}),
+    };
+  });
+  const title = docTitle ?? sectionsTitle(doc);
+  return { ...(title ? { title } : {}), aspect: "16:9", slides, fromSections: true };
+}
+
+function sectionsTitle(doc: DocumentNode): string | undefined {
+  const first = doc.children.find((child): child is SectionNode => child.type === "section");
+  return first?.title;
 }

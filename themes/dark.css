@@ -1143,11 +1143,11 @@ body.noma-space-body ol.noma-site-toc { grid-template-columns: repeat(auto-fit, 
   justify-content: center; align-items: center; text-align: center;
 }
 .noma-slide--title .noma-slide-title { font-size: 2.6em; }
-.noma-slide--title .noma-slide-body { flex: 0; color: var(--noma-muted); font-size: 1.2em; }
+.noma-slide--title .noma-slide-body { flex: 0 0 auto; color: var(--noma-muted); font-size: 1.2em; }
 .noma-slide--section .noma-slide-frame { justify-content: center; background: var(--noma-accent); color: var(--noma-bg); border-color: transparent; }
 .noma-slide--section .noma-slide-title { font-size: 2.6em; }
-.noma-slide--statement .noma-slide-body { flex: 0; font-size: 1.8em; font-weight: 600; }
-.noma-slide--quote .noma-slide-body { flex: 0; font-size: 1.6em; font-style: italic; font-family: var(--noma-font-serif); }
+.noma-slide--statement .noma-slide-body { flex: 0 0 auto; font-size: 1.8em; font-weight: 600; }
+.noma-slide--quote .noma-slide-body { flex: 0 0 auto; font-size: 1.6em; font-style: italic; font-family: var(--noma-font-serif); }
 .noma-slide--two-column .noma-slide-body { display: grid; grid-template-columns: 1fr 1fr; gap: 3cqw; align-content: start; }
 .noma-slide--two-column .noma-slide-body > .noma-grid { display: contents; }
 .noma-slide--media .noma-slide-body img, .noma-slide--media .noma-slide-body svg { max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -1169,4 +1169,71 @@ html.noma-presenting-root { overflow: hidden; }
 @media print {
   .noma-deck-bar, .noma-slide-notes { display: none; }
   .noma-slide { break-inside: avoid; page-break-inside: avoid; }
+}
+
+/* ---------------------------------------------------------------------------
+   Presenter — `--to slides` and Noma Cloud "Present"
+   --------------------------------------------------------------------------- */
+html:has(body.noma-presenter-body), body.noma-presenter-body { margin: 0; background: #101114; color: var(--noma-fg); }
+.noma-presenter { --noma-deck-rw: 16; --noma-deck-rh: 9; min-height: 100vh; }
+.noma-presenter-stage { padding: 1.5rem; }
+.noma-presenter .noma-deck-slides { display: grid; gap: 1.5rem; max-width: 1100px; margin: 0 auto; }
+.noma-presenter-empty { color: #d6d3cc; font-family: var(--noma-font-sans); text-align: center; padding: 4rem 1rem; }
+.noma-presenter[data-ready] {
+  position: fixed; inset: 0; display: grid;
+  grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto;
+}
+.noma-presenter[data-ready][data-notes] { grid-template-columns: minmax(0, 1fr) minmax(16rem, 26rem); }
+.noma-presenter[data-ready] .noma-presenter-stage { display: flex; align-items: center; justify-content: center; min-height: 0; padding: 2vmin; }
+.noma-presenter[data-ready] .noma-deck-slides {
+  display: block; margin: 0; max-width: none;
+  width: min(100%, calc((100vh - 5.5rem) * var(--noma-deck-rw) / var(--noma-deck-rh)));
+}
+.noma-presenter[data-ready][data-notes] .noma-deck-slides { width: min(100%, calc((100vh - 5.5rem) * var(--noma-deck-rw) / var(--noma-deck-rh))); }
+.noma-presenter[data-ready] .noma-slide { display: none; }
+.noma-presenter[data-ready] .noma-slide.noma-slide-current { display: block; }
+.noma-presenter[data-ready] .noma-slide-notes { display: none; }
+.noma-presenter .noma-slide-body { overflow: auto; }
+.noma-presenter[data-ready] .noma-slide-frame { border: 0; box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.8); }
+.noma-presenter-notes {
+  grid-row: 1 / span 1; grid-column: 2; overflow: auto; padding: 1.25rem 1.25rem 1.25rem 0;
+  font-family: var(--noma-font-sans); font-size: 1.05rem; line-height: 1.5; color: #e8e6e1;
+}
+.noma-presenter-notes[hidden] { display: none; }
+.noma-presenter-no-notes { color: #8b8a85; }
+.noma-presenter-bar {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;
+  font-family: var(--noma-font-sans); font-size: 0.9rem; color: #d6d3cc; background: #16171b;
+}
+.noma-presenter-bar button, .noma-presenter-exit {
+  font: inherit; color: inherit; background: transparent; border: 1px solid #3a3b40; border-radius: 6px;
+  padding: 0.25rem 0.7rem; cursor: pointer; text-decoration: none;
+}
+.noma-presenter-bar button:hover:not(:disabled), .noma-presenter-exit:hover { background: #2a2b30; }
+.noma-presenter-bar button:disabled { opacity: 0.35; cursor: default; }
+.noma-presenter-bar button[aria-pressed="true"] { background: var(--noma-accent); border-color: var(--noma-accent); color: #fff; }
+.noma-presenter-bar button:focus-visible, .noma-presenter-exit:focus-visible { outline: 2px solid var(--noma-accent); outline-offset: 2px; }
+.noma-presenter-counter { min-width: 4.5em; text-align: center; font-variant-numeric: tabular-nums; }
+.noma-presenter-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8b8a85; padding: 0 0.5rem; }
+.noma-presenter-progress { grid-column: 1 / -1; height: 3px; background: #26272b; }
+.noma-presenter-progress span { display: block; height: 100%; width: 0; background: var(--noma-accent); transition: width 0.2s ease; }
+.noma-presenter[data-overview] .noma-presenter-stage { align-items: flex-start; overflow: auto; }
+.noma-presenter[data-overview] .noma-deck-slides {
+  display: grid; width: 100%; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+.noma-presenter[data-overview] .noma-slide { display: block; cursor: pointer; border-radius: var(--noma-radius); }
+.noma-presenter[data-overview] .noma-slide-current { outline: 3px solid var(--noma-accent); outline-offset: 2px; }
+.noma-presenter[data-overview] .noma-slide-body { overflow: hidden; }
+.noma-presenter:fullscreen .noma-presenter-bar { opacity: 0; transition: opacity 0.2s; }
+.noma-presenter:fullscreen .noma-presenter-bar:hover, .noma-presenter:fullscreen .noma-presenter-bar:focus-within { opacity: 1; }
+@media (max-width: 640px) {
+  .noma-presenter-title, [data-noma-present="notes"], [data-noma-present="fullscreen"] { display: none; }
+  .noma-presenter[data-ready][data-notes] { grid-template-columns: minmax(0, 1fr); }
+}
+@media print {
+  body.noma-presenter-body { background: #fff; }
+  .noma-presenter[data-ready] { position: static; display: block; }
+  .noma-presenter .noma-presenter-bar, .noma-presenter .noma-presenter-progress, .noma-presenter .noma-presenter-notes { display: none; }
+  .noma-presenter[data-ready] .noma-deck-slides { width: 100%; }
+  .noma-presenter[data-ready] .noma-slide { display: block; break-after: page; }
 }

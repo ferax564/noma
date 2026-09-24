@@ -44,6 +44,7 @@ export const savePageButton = requireElement<HTMLButtonElement>("savePageButton"
 export const reloadPageButton = requireElement<HTMLButtonElement>("reloadPageButton");
 export const favoritePageButton = requireElement<HTMLButtonElement>("favoritePageButton");
 export const watchPageButton = requireElement<HTMLButtonElement>("watchPageButton");
+export const presentPageButton = requireElement<HTMLButtonElement>("presentPageButton");
 export const pageBreadcrumbs = requireElement<HTMLElement>("pageBreadcrumbs");
 export const pageLabels = requireElement<HTMLElement>("pageLabels");
 export const addLabelButton = requireElement<HTMLButtonElement>("addLabelButton");

@@ -225,6 +225,8 @@ npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.
 npm run noma -- render examples/agent-plan.noma --to llm
 npm run noma -- render examples/agent-plan.noma --to noma          # AST → .noma source
 npm run noma -- render examples/agent-plan.noma --to markdown      # portable Markdown
+npm run noma -- render examples/deck.noma --to slides              # standalone presenter (deck, or one slide per section)
+npm run noma -- render examples/deck.noma --to paperdom            # PaperDOM canvas JSON
 npm run noma -- render examples/word-review-loop.noma --to docx --out dist/review.docx
 npm run noma -- render examples/thesis.noma --to pdf --out dist/thesis.pdf
 npm run noma -- render examples/book/book.noma.yml --to html       # multi-file book (single page)

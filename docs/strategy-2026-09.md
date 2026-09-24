@@ -164,7 +164,10 @@ Housekeeping required first:
 
 ### Phase 1: make it feel native in Cloud (≈4 weeks)
 
-- **Present from any page.** A Present button in the Cloud page header, using the same runtime. Pages without a deck present one section per slide, which matches Confluence doc-to-deck.
+- ~~**Present from any page.**~~ **Done.**
+  - A Present button in the page header opens `/d/:id/present`. Pages without a deck present as a title slide plus one slide per section, which matches Confluence doc-to-deck.
+  - The presenter has speaker notes, an overview grid, deep links, and share-link support.
+  - The same presenter ships as `noma render --to slides`.
 - **Visual editor support.**
   - Slash commands `/deck`, `/slide`, `/notes`.
   - A slide-strip view.

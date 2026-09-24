@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { parse } from "./parser.js";
-import { renderHtml } from "./renderer-html.js";
+import { renderHtml, renderSlidesHtml } from "./renderer-html.js";
 import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
@@ -62,14 +62,14 @@ Usage:
   noma --version                             Print the CLI version
 
 Render options:
-  --to <html|llm|json|noma|markdown|md|site|pdf|docx|paperdom>
+  --to <html|slides|llm|json|noma|markdown|md|site|pdf|docx|paperdom>
                             Target format (default: html). 'site' renders
                             a book manifest as a multi-page HTML site.
   --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
-  --deck <id>               paperdom: export this ::deck (default: the first;
-                            documents without a deck convert section-per-slide)
+  --deck <id>               slides/paperdom: use this ::deck (default: the first;
+                            documents without a deck present one slide per section)
   --theme <name>            HTML theme: default | dark (default: default)
   --css <path>              Append custom CSS to standalone HTML/site/PDF output
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
@@ -922,6 +922,24 @@ async function run(argv: string[]): Promise<void> {
             ...(args.math ? { math: args.math } : {}),
           });
           output(html, args.out);
+          return;
+        }
+        case "slides": {
+          try {
+            output(
+              renderSlidesHtml(doc, {
+                title: args.title,
+                themeCss: loadThemeCss(args),
+                ...safety,
+                ...(args.math ? { math: args.math } : {}),
+                ...(args.deck ? { deck: args.deck } : {}),
+              }),
+              args.out,
+            );
+          } catch (error) {
+            process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.exit(2);
+          }
           return;
         }
         case "pdf": {

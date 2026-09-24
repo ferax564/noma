@@ -7,7 +7,7 @@ import type {
   Paragraph,
   PaperDOMDocument,
 } from "./paperdom-document-model.js";
-import { DECK_ASPECTS, deckAspect, deckSlides, findDecks, sectionsAsSlides, slideLayout, slideParts, type SlideLayout } from "./slides.js";
+import { DECK_ASPECTS, presentationSlides, slideLayout, slideParts, type SlideLayout } from "./slides.js";
 
 export interface RenderPaperDomOptions {
   /** Deck to export when the document has several. Defaults to the first `::deck`. */
@@ -24,36 +24,25 @@ export interface RenderPaperDomOptions {
  * `::deck` convert section-per-slide. Pure: no I/O, input is not mutated.
  */
 export function renderPaperDom(doc: DocumentNode, options: RenderPaperDomOptions = {}): PaperDOMDocument {
-  const decks = findDecks(doc);
-  const deck = options.deck ? decks.find((d) => d.id === options.deck) : decks[0];
-  if (options.deck && !deck) throw new Error(`No ::deck with id "${options.deck}".`);
-  const size = DECK_ASPECTS[deckAspect(deck)] ?? { width: 1280, height: 720 };
+  const presentation = presentationSlides(doc, options.deck);
+  const deck = presentation.deck;
+  const size = DECK_ASPECTS[presentation.aspect] ?? { width: 1280, height: 720 };
   const theme = deckTheme(deck);
   const now = options.now ?? (typeof doc.meta.date === "string" ? isoDate(doc.meta.date) : undefined) ?? "1970-01-01T00:00:00.000Z";
-  const title = attrString(deck, "title") ?? (typeof doc.meta.title === "string" ? doc.meta.title : "Untitled deck");
+  const title = presentation.title ?? "Untitled deck";
 
-  const specs: SlideSpec[] = deck
-    ? deckSlides(deck).map((slide, index) => {
-        const parts = slideParts(slide);
-        return {
-          id: slide.id ?? `slide-${index + 1}`,
-          title: parts.title,
-          layout: slideLayout(slide),
-          body: parts.body,
-          notes: parts.notes.map(notesText).filter(Boolean).join("\n\n"),
-          hidden: slide.attrs.hidden === true,
-          transition: transitionOf(slide.attrs.transition),
-        };
-      })
-    : sectionsAsSlides(doc).map(({ section, body }, index) => ({
-        id: section.id ?? `slide-${index + 1}`,
-        title: section.title,
-        layout: index === 0 ? "title" : "content",
-        body,
-        notes: "",
-        hidden: false,
-        transition: "none" as const,
-      }));
+  const specs: SlideSpec[] = presentation.slides.map((slide, index) => {
+    const parts = slideParts(slide);
+    return {
+      id: slide.id ?? `slide-${index + 1}`,
+      title: parts.title,
+      layout: slideLayout(slide),
+      body: parts.body,
+      notes: parts.notes.map(notesText).filter(Boolean).join("\n\n"),
+      hidden: slide.attrs.hidden === true,
+      transition: transitionOf(slide.attrs.transition),
+    };
+  });
 
   const used = new Set<string>();
   const pages: CanvasPage[] = specs.map((spec) => {

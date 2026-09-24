@@ -1,7 +1,7 @@
 import yaml from "js-yaml";
 import type { Attrs, DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
-import { deckAspect, deckSlides, findDecks, slideLayout, slideParts } from "./slides.js";
+import { deckAspect, deckSlides, findDecks, presentationSlides, slideLayout, slideParts } from "./slides.js";
 import { resolveStyleTokenAliases, styleTokenClassNames, type StyleTokenAliases } from "./style-tokens.js";
 import {
   bodyFieldText,
@@ -371,13 +371,12 @@ export function resolvePlotLabels(
   return table.rows.map((r) => String(r[idx] ?? ""));
 }
 
-export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): string {
-  const allowExternalAssets = options.externalAssets !== false;
-  const ctx: RenderCtx = {
+function createRenderCtx(doc: DocumentNode, options: HtmlRenderOptions): RenderCtx {
+  return {
     allowEscapeHatches: options.allowEscapeHatches !== false,
     ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
     styleAliases: resolveStyleTokenAliases(doc.meta.style_tokens, options.styleTokens),
-    externalAssets: allowExternalAssets,
+    externalAssets: options.externalAssets !== false,
     interactive: options.interactive !== false,
     strictInteractiveBadgeEmitted: false,
     datasets: buildDatasetRegistry(doc),
@@ -392,6 +391,11 @@ export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): 
     includeTrail: initialIncludeTrail(options.documentId),
     rootDoc: doc,
   };
+}
+
+export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): string {
+  const allowExternalAssets = options.externalAssets !== false;
+  const ctx = createRenderCtx(doc, options);
   const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
   if (!options.standalone) return body;
 
@@ -432,6 +436,161 @@ ${body}
 </body>
 </html>`;
 }
+
+export interface SlidesRenderOptions extends HtmlRenderOptions {
+  /** Present this `::deck` instead of the first one. */
+  deck?: string;
+  /** Adds an "Exit" link back to the page (e.g. the Cloud page URL). */
+  backHref?: string;
+}
+
+/**
+ * AST → standalone presenter page (`--to slides`, Cloud "Present"). Shows the
+ * chosen or first `::deck`; a document without one presents one slide per
+ * section, led by a title slide. Slide IDs are block (or section) IDs, so
+ * `#<id>` deep-links a slide. Without the runtime (`interactive: false` or no
+ * JavaScript) every slide is listed in order, which also prints one per page.
+ */
+export function renderSlidesHtml(doc: DocumentNode, options: SlidesRenderOptions = {}): string {
+  const presentation = presentationSlides(doc, options.deck);
+  const ctx = createRenderCtx(doc, options);
+  const { slides } = presentation;
+  const slidesHtml = slides
+    .map((slide, index) =>
+      withStyleTokens(renderSlide(slide, slide.id ? ` id="${escapeAttr(slide.id)}"` : "", ctx, index + 1, slides.length), styleTokenClassNames(slide.attrs, ctx.styleAliases)),
+    )
+    .join("\n");
+  const [rw, rh] = presentation.aspect.split(":");
+  const title = options.title || presentation.title || extractFirstHeading(doc) || "Presentation";
+  const themeCss = options.themeCss ?? "";
+  const styleHead = options.stylesheetHref ? `<link rel="stylesheet" href="${escapeAttr(options.stylesheetHref)}" />` : `<style>${themeCss}</style>`;
+  const allowExternalAssets = options.externalAssets !== false;
+  const mathMode = allowExternalAssets ? resolveMathMode(doc, options.math) : "none";
+  const diagramFoot = allowExternalAssets ? diagramScripts(resolveDiagramKinds(doc)) : "";
+  const computedFoot = ctx.interactive && usesComputedRuntime(doc) ? COMPUTED_RUNTIME_FOOT : "";
+  const exit = options.backHref ? `<a class="noma-presenter-exit" href="${escapeAttr(safeHref(options.backHref))}">Exit</a>` : "";
+  const controls = ctx.interactive
+    ? `<nav class="noma-presenter-bar" aria-label="Presentation controls">${exit}<button type="button" data-noma-present="prev" aria-label="Previous slide">‹</button><span class="noma-presenter-counter" aria-live="polite">1 / ${slides.length}</span><button type="button" data-noma-present="next" aria-label="Next slide">›</button><span class="noma-presenter-title">${escapeHtml(title)}</span><button type="button" data-noma-present="notes" aria-pressed="false">Notes</button><button type="button" data-noma-present="overview" aria-pressed="false">Overview</button><button type="button" data-noma-present="fullscreen">Fullscreen</button></nav><div class="noma-presenter-progress" aria-hidden="true"><span></span></div>`
+    : exit ? `<nav class="noma-presenter-bar">${exit}</nav>` : "";
+  const empty = slides.length === 0 ? `<p class="noma-presenter-empty">Nothing to present: add headings or a <code>::deck</code> to this page.</p>` : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="generator" content="noma" />
+<title>${escapeHtml(title)}</title>
+<link rel="icon" href="data:," />
+${styleHead}${mathMode === "katex" ? KATEX_HEAD : ""}
+</head>
+<body class="noma-presenter-body">
+<main class="noma-presenter" data-aspect="${escapeAttr(presentation.aspect)}"${presentation.fromSections ? ` data-from-sections="true"` : ""} style="--noma-deck-ratio: ${escapeAttr(rw ?? "16")} / ${escapeAttr(rh ?? "9")}; --noma-deck-rw: ${escapeAttr(rw ?? "16")}; --noma-deck-rh: ${escapeAttr(rh ?? "9")};" aria-roledescription="slide deck" aria-label="${escapeAttr(title)}">
+<div class="noma-presenter-stage"><div class="noma-deck-slides">${slidesHtml}${empty}</div></div>
+<aside class="noma-presenter-notes" aria-label="Speaker notes" hidden></aside>
+${controls}
+</main>${mathMode === "katex" ? KATEX_FOOT : ""}${diagramFoot}${computedFoot}${ctx.interactive ? PRESENTER_RUNTIME_FOOT : ""}
+</body>
+</html>`;
+}
+
+/**
+ * Presenter runtime for `renderSlidesHtml`: one slide at a time, keyboard
+ * (arrows, PageUp/PageDown, Space, Home/End, N notes, O overview, F fullscreen),
+ * swipe, and `#slide-id` deep links.
+ */
+const PRESENTER_RUNTIME_FOOT = `
+<script>
+(function () {
+  var root = document.querySelector(".noma-presenter");
+  if (!root) return;
+  var slides = Array.prototype.slice.call(root.querySelectorAll(".noma-slide")).filter(function (s) { return s.getAttribute("data-hidden") !== "true"; });
+  var counter = root.querySelector(".noma-presenter-counter");
+  var progress = root.querySelector(".noma-presenter-progress span");
+  var notes = root.querySelector(".noma-presenter-notes");
+  var current = 0;
+  root.setAttribute("data-ready", "true");
+  function button(name) { return root.querySelector('[data-noma-present="' + name + '"]'); }
+  function renderNotes() {
+    if (!notes || notes.hidden) return;
+    notes.textContent = "";
+    var source = slides[current] && slides[current].querySelector(".noma-slide-notes");
+    if (!source) { var empty = document.createElement("p"); empty.className = "noma-presenter-no-notes"; empty.textContent = "No speaker notes for this slide."; notes.appendChild(empty); return; }
+    Array.prototype.forEach.call(source.childNodes, function (child) {
+      if (child.nodeName !== "SUMMARY") notes.appendChild(child.cloneNode(true));
+    });
+  }
+  function show(index) {
+    if (!slides.length) return;
+    current = Math.max(0, Math.min(slides.length - 1, index));
+    slides.forEach(function (s, i) { s.classList.toggle("noma-slide-current", i === current); });
+    if (counter) counter.textContent = (current + 1) + " / " + slides.length;
+    if (progress) progress.style.width = ((current + 1) / slides.length * 100) + "%";
+    var prev = button("prev"), next = button("next");
+    if (prev) prev.disabled = current === 0;
+    if (next) next.disabled = current === slides.length - 1;
+    renderNotes();
+    var id = slides[current].id;
+    if (id && history.replaceState) history.replaceState(null, "", "#" + id);
+  }
+  function toggleNotes() {
+    if (!notes) return;
+    notes.hidden = !notes.hidden;
+    root.toggleAttribute("data-notes", !notes.hidden);
+    var b = button("notes"); if (b) b.setAttribute("aria-pressed", String(!notes.hidden));
+    renderNotes();
+  }
+  function setOverview(on) {
+    root.toggleAttribute("data-overview", on);
+    var b = button("overview"); if (b) b.setAttribute("aria-pressed", String(on));
+    if (on && slides[current]) slides[current].scrollIntoView({ block: "nearest" });
+  }
+  function toggleFullscreen() {
+    if (document.fullscreenElement) { if (document.exitFullscreen) document.exitFullscreen().catch(function () {}); }
+    else if (root.requestFullscreen) root.requestFullscreen().catch(function () {});
+  }
+  root.addEventListener("click", function (event) {
+    var target = event.target;
+    var action = target && target.closest && target.closest("[data-noma-present]");
+    if (action) {
+      var name = action.getAttribute("data-noma-present");
+      if (name === "prev") show(current - 1);
+      else if (name === "next") show(current + 1);
+      else if (name === "notes") toggleNotes();
+      else if (name === "overview") setOverview(!root.hasAttribute("data-overview"));
+      else if (name === "fullscreen") toggleFullscreen();
+      return;
+    }
+    if (!root.hasAttribute("data-overview")) return;
+    var slide = target && target.closest && target.closest(".noma-slide");
+    var at = slides.indexOf(slide);
+    if (at >= 0) { setOverview(false); show(at); }
+  });
+  document.addEventListener("keydown", function (event) {
+    var tag = event.target && event.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (event.target && event.target.isContentEditable)) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    var key = event.key;
+    if (key === "ArrowRight" || key === "PageDown" || key === " " || key === "Enter") { event.preventDefault(); show(current + 1); }
+    else if (key === "ArrowLeft" || key === "PageUp" || key === "Backspace") { event.preventDefault(); show(current - 1); }
+    else if (key === "Home") show(0);
+    else if (key === "End") show(slides.length - 1);
+    else if (key === "n" || key === "N") toggleNotes();
+    else if (key === "o" || key === "O") setOverview(!root.hasAttribute("data-overview"));
+    else if (key === "f" || key === "F") toggleFullscreen();
+    else if (key === "Escape" && root.hasAttribute("data-overview")) setOverview(false);
+  });
+  var startX = null;
+  root.addEventListener("pointerdown", function (event) { if (event.pointerType !== "mouse") startX = event.clientX; });
+  root.addEventListener("pointerup", function (event) {
+    if (startX === null) return;
+    var dx = event.clientX - startX; startX = null;
+    if (Math.abs(dx) > 50 && !root.hasAttribute("data-overview")) show(current + (dx < 0 ? 1 : -1));
+  });
+  var hash = decodeURIComponent(location.hash.slice(1));
+  var start = slides.findIndex(function (s) { return s.id === hash; });
+  show(start < 0 ? 0 : start);
+})();
+</script>`;
 
 const MERMAID_VERSION = "11.4.0";
 const VIZ_VERSION = "3.11.0";

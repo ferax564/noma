@@ -6,7 +6,8 @@ import { extname, join, resolve, sep } from "node:path";
 import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
 import { parse } from "../parser.js";
 import type { MacroResolvers } from "../macros.js";
-import { renderHtml } from "../renderer-html.js";
+import { renderHtml, renderSlidesHtml } from "../renderer-html.js";
+import { defaultThemeCss } from "./theme.js";
 import { attachmentResolver } from "./attachments.js";
 import { widgetFrameResolver } from "./widgets.js";
 import type { DirectiveNode } from "../ast.js";
@@ -24,11 +25,13 @@ export function renderDocumentHtml(
     resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
     styleTokens?: StyleTokenAliases;
     macros?: MacroResolvers;
+    /** Share token of the current request, carried into the banner's Present link. */
+    shareToken?: string;
   } = {},
 ): string {
   const doc = parse(record.source, { filename: `${record.id}.noma` });
   const banner = access
-    ? `<div class="noma-cloud-banner">Noma Cloud · ${escapeHtml(record.title)} · ${escapeHtml(access.role)} access</div>`
+    ? `<div class="noma-cloud-banner">Noma Cloud · ${escapeHtml(record.title)} · ${escapeHtml(access.role)} access · <a href="/d/${encodeURIComponent(record.id)}/present${options.shareToken ? `?share=${encodeURIComponent(options.shareToken)}` : ""}">Present</a></div>`
     : "";
   const html = renderHtml(doc, {
     ...options.macros,
@@ -40,6 +43,31 @@ export function renderDocumentHtml(
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
   });
   return banner ? html.replace("<body>", `<body>${banner}`) : html;
+}
+
+/** Presenter page for `/d/:id/present`: the page's first `::deck`, else one slide per section. */
+export function renderPresentationHtml(
+  record: CloudDocumentRecord,
+  options: {
+    resolveAttachment?: (ref: string) => string | undefined;
+    resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
+    styleTokens?: StyleTokenAliases;
+    macros?: MacroResolvers;
+    backHref?: string;
+  } = {},
+): string {
+  const doc = parse(record.source, { filename: `${record.id}.noma` });
+  return renderSlidesHtml(doc, {
+    ...options.macros,
+    title: record.title,
+    themeCss: defaultThemeCss(),
+    allowEscapeHatches: false,
+    externalAssets: false,
+    ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
+    ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
+    ...(options.styleTokens ? { styleTokens: options.styleTokens } : {}),
+    ...(options.backHref ? { backHref: options.backHref } : {}),
+  });
 }
 
 export async function renderSiteHtml(
