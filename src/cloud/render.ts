@@ -17,6 +17,10 @@ import { type AccessContext, capAccessForDocument, type CloudServerConfig, type 
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
 import { cloudMacroResolvers, cloudPageHref } from "./macros.js";
 
+const CLOUD_BANNER_CSS = `.noma-cloud-banner{position:sticky;top:0;z-index:10;padding:.45rem 1.25rem;font:500 .85rem/1.4 var(--noma-font-sans);color:var(--noma-muted);background:var(--noma-bg);border-bottom:1px solid var(--noma-rule)}
+.noma-cloud-banner a{color:var(--noma-accent);font-weight:650;text-decoration:none}.noma-cloud-banner a:hover{text-decoration:underline}
+@media print{.noma-cloud-banner{display:none}}`;
+
 export function renderDocumentHtml(
   record: CloudDocumentRecord,
   access?: AccessContext,
@@ -40,6 +44,7 @@ export function renderDocumentHtml(
     ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
     ...(options.styleTokens ? { styleTokens: options.styleTokens } : {}),
     externalAssets: false,
+    themeCss: `${defaultThemeCss()}\n${CLOUD_BANNER_CSS}`,
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
   });
   return banner ? html.replace("<body>", `<body>${banner}`) : html;
@@ -112,6 +117,7 @@ export async function renderSiteHtml(
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="data:," />
 <title>${escapeHtml(site.title)}</title>
+<style>${defaultThemeCss()}</style>
 <style>
 body{margin:0;background:#f2f4f1;color:#20242a;font:15px/1.52 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .shell{display:grid;grid-template-columns:minmax(180px,260px) minmax(0,1fr);min-height:100vh}

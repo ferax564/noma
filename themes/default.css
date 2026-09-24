@@ -1579,9 +1579,9 @@ body.noma-space-body ol.noma-site-toc {
   font-size: 2.3cqw;
   line-height: 1.35;
 }
-.noma-slide-frame h1, .noma-slide-frame h2, .noma-slide-frame h3 { margin: 0; border: 0; padding: 0; }
-.noma-slide-title { font-size: 1.9em; }
-.noma-slide-frame section > h1, .noma-slide-frame section > h2 { font-size: 1.9em; }
+.noma-slide .noma-slide-frame h1, .noma-slide .noma-slide-frame h2, .noma-slide .noma-slide-frame h3 { margin: 0; border: 0; padding: 0; line-height: 1.15; }
+.noma-slide .noma-slide-title { font-size: 1.9em; }
+.noma-slide .noma-slide-frame section > h1, .noma-slide .noma-slide-frame section > h2 { font-size: 1.9em; }
 .noma-slide-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1.2cqw; }
 .noma-slide-body > * { margin: 0; }
 .noma-slide-body ul, .noma-slide-body ol { padding-left: 1.2em; }

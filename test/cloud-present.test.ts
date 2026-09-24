@@ -44,7 +44,14 @@ test("Cloud presents any page at /d/:id/present, including through share links",
     assert.match(html, /\.noma-presenter-stage/, "theme CSS is inlined");
 
     const page2 = await request(`${base}/d/${page.id}`, { token: alice.token });
-    assert.match(await page2.text(), new RegExp(`<a href="/d/${page.id}/present">Present</a>`));
+    const page2Html = await page2.text();
+    assert.match(page2Html, new RegExp(`<a href="/d/${page.id}/present">Present</a>`));
+    assert.match(page2Html, /\.noma-card \{/, "published pages inline the default theme");
+    assert.match(page2Html, /\.noma-cloud-banner\{/, "and style the Cloud banner");
+
+    const space = await json<{ id: string }>(`${base}/api/sites`, { method: "POST", token: alice.token, body: { title: "Docs", documentIds: [page.id] } });
+    const siteHtml = await (await request(`${base}/s/${space.id}`, { token: alice.token })).text();
+    assert.ok(siteHtml.indexOf(".noma-card {") > 0 && siteHtml.indexOf(".noma-card {") < siteHtml.indexOf(".shell{"), "space sites load the theme before their own chrome CSS");
 
     assert.equal((await request(`${base}/d/${page.id}/present`)).status, 401);
     assert.equal((await request(`${base}/d/${page.id}/present`, { token: mallory.token })).status, 403);

@@ -23,6 +23,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Published Noma Cloud pages (`/d/:id`, `/api/documents/:id/html`) rendered with an empty stylesheet, so cards, callouts, grids, decks, and style tokens appeared unstyled. They now inline the default theme and style the Cloud banner. Space sites (`/s/:id`) also load the theme, before their own chrome CSS. Slide heading rules are more specific, so a host page's heading styles cannot restyle slide titles.
+
 - `paperDomHtmlExport` now escapes element text, page and element ids, and the document title. Before this fix, a PaperDOM document could inject markup into the exported HTML.
 
 ## [0.18.0] — 2026-09-23
