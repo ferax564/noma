@@ -640,3 +640,17 @@ test("noma patch transaction applies when validations pass", () => {
   assert.equal(res.status, 0, res.stderr);
   assert.match(readFileSync(input, "utf8"), /confidence=0\.9/);
 });
+
+test("value options before the input file consume their value (--title, --deck, --kit)", () => {
+  const titled = spawnSync("npx", ["tsx", "src/cli.ts", "render", "--title", "Report", "examples/deck.noma", "--to", "slides"], { encoding: "utf8" });
+  assert.equal(titled.status, 0, titled.stderr);
+  assert.match(titled.stdout, /<title>Report<\/title>/);
+
+  const deck = spawnSync("npx", ["tsx", "src/cli.ts", "render", "--deck", "pitch", "examples/deck.noma", "--to", "paperdom"], { encoding: "utf8" });
+  assert.equal(deck.status, 0, deck.stderr);
+  assert.equal((JSON.parse(deck.stdout) as { id: string }).id, "pitch");
+
+  const kit = spawnSync("npx", ["tsx", "src/cli.ts", "render", "--kit", "examples/kit/kit.noma", "examples/kit/pricing.noma", "--to", "html"], { encoding: "utf8" });
+  assert.equal(kit.status, 0, kit.stderr);
+  assert.match(kit.stdout, /id="plan-team"/);
+});

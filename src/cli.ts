@@ -242,8 +242,10 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--title") {
       args.title = argv[++i];
+      i++;
     } else if (a === "--deck") {
       args.deck = argv[++i];
+      i++;
     } else if (a === "--kit") {
       args.kit = argv[++i];
       i++;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readZip } from "../src/zip.js";
 import { createCloudUser, json, jsonStatus, request, startCloudServer } from "./cloud-wiki-helpers.js";
 
 interface SpaceResponse {
@@ -54,6 +55,13 @@ test("spaces define style-token aliases that pages in the space render and valid
 
     const html = await (await request(`${base}/d/${page.id}`, { token: ada.token })).text();
     assert.match(html, /<article class="noma-card n-tone-accent n-filled n-roomy n-span-2" id="c"/);
+
+    const exported = await (await request(`${base}/api/documents/${page.id}/export?to=html`, { token: ada.token })).text();
+    assert.match(exported, /<article class="noma-card n-tone-accent n-filled n-roomy n-span-2" id="c"/, "HTML/PDF exports resolve space aliases");
+    const zip = readZip(new Uint8Array(await (await request(`${base}/api/sites/${space.id}/export?to=site-zip`, { token: ada.token })).arrayBuffer()));
+    const zipped = zip.find((entry) => entry.path.endsWith(".html") && entry.data.toString("utf8").includes('id="c"'));
+    assert.ok(zipped, "the site ZIP contains the page");
+    assert.match(zipped.data.toString("utf8"), /n-tone-accent n-filled n-roomy n-span-2/, "site ZIP exports resolve space aliases");
 
     const cleared = await json<SpaceResponse>(`${base}/api/sites/${space.id}`, {
       method: "PUT",

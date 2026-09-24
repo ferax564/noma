@@ -2347,9 +2347,9 @@ body.noma-space-body ol.noma-site-toc {
 :root .n-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }
 :root .n-center-v { display: flex; flex-direction: column; justify-content: center; }
 :root .n-print-only { display: none; }
-:root .noma-deck .n-hide-in-slides { display: none; }
+:root .noma-deck .n-hide-in-slides, :root .noma-presenter .n-hide-in-slides { display: none; }
 :root .n-slides-only { display: none; }
-:root .noma-deck .n-slides-only { display: revert; }
+:root .noma-deck .n-slides-only, :root .noma-presenter .n-slides-only { display: revert; }
 @media print {
   :root .n-print-only { display: revert; }
   :root .n-screen-only { display: none; }
@@ -2475,6 +2475,7 @@ html:has(body.noma-presenter-body), body.noma-presenter-body { margin: 0; backgr
   display: grid; width: 100%; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
 }
 .noma-presenter[data-overview] .noma-slide { display: block; cursor: pointer; border-radius: var(--noma-radius); }
+.noma-presenter .noma-deck-slides .noma-slide[data-hidden="true"] { display: none; }
 .noma-presenter[data-overview] .noma-slide-current { outline: 3px solid var(--noma-accent); outline-offset: 2px; }
 .noma-presenter[data-overview] .noma-slide-body { overflow: hidden; }
 .noma-presenter:fullscreen .noma-presenter-bar { opacity: 0; transition: opacity 0.2s; }
@@ -2489,6 +2490,7 @@ html:has(body.noma-presenter-body), body.noma-presenter-body { margin: 0; backgr
   .noma-presenter .noma-presenter-bar, .noma-presenter .noma-presenter-progress, .noma-presenter .noma-presenter-notes { display: none; }
   .noma-presenter[data-ready] .noma-deck-slides { width: 100%; }
   .noma-presenter[data-ready] .noma-slide { display: block; break-after: page; }
+  .noma-presenter .noma-deck-slides .noma-slide[data-hidden="true"] { display: none; }
 }
 
 /* ---------------------------------------------------------------------------

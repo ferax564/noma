@@ -35,6 +35,10 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `noma render --title <t>` and `--deck <id>` placed before the input file no longer take their value as the file path.
+- The `hide-in-slides` and `slides-only` style tokens now apply in the standalone presenter (`--to slides`, Cloud "Present"). Hidden slides stay out of the presenter overview and print output.
+- Noma Cloud HTML, PDF, and site-ZIP exports now resolve the space's style-token aliases.
+
 - Published Noma Cloud pages (`/d/:id`, `/api/documents/:id/html`) rendered with an empty stylesheet, so cards, callouts, grids, decks, and style tokens appeared unstyled. They now inline the default theme and style the Cloud banner. Space sites (`/s/:id`) also load the theme, before their own chrome CSS. Slide heading rules are more specific, so a host page's heading styles cannot restyle slide titles.
 
 - `paperDomHtmlExport` now escapes element text, page and element ids, and the document title. Before this fix, a PaperDOM document could inject markup into the exported HTML.
