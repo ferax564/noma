@@ -45,6 +45,7 @@ const hooks: VisualEditorHooks = {
   isRemote: (tr) => Boolean(live?.isRemote(tr)),
   save: () => void saveCurrentPage(),
   editable: () => isEditable(),
+  styleTokens: () => state.currentPage?.styleTokens ?? {},
 };
 
 function isEditable(): boolean {

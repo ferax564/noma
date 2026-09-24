@@ -227,6 +227,85 @@ test("visual mode inserts blocks from the slash menu and markdown shortcuts with
   assert.deepEqual(errors, []);
 });
 
+test("visual mode builds decks with /deck, /slide, /notes and styles blocks with the token picker", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "noma-cloud-visual-deck-"));
+  const server = createNomaCloudServer({ dataDir: join(root, "documents"), publicDir: resolve("site"), rateLimitMaxRequests: 10_000 });
+  await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolveClose, reject) => server.close((error) => (error ? reject(error) : resolveClose())));
+    await rm(root, { recursive: true, force: true });
+  });
+  const browser: Browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await isolateFonts(page);
+  await page.setRequestInterception(true);
+  page.on("request", (request) => {
+    if (request.url().includes("/api/collab/")) void request.abort();
+  });
+  const errors = collectErrors(page);
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(window, "WebSocket", { value: undefined, configurable: true });
+  });
+  await page.goto(`${origin}/cloud.html`, { waitUntil: "networkidle0" });
+  await page.locator("#cloudUserName").fill("Deck Builder");
+  await page.locator("#newUserButton").click();
+  await waitForText(page, "#cloudStatus", "Created user");
+  await waitForText(page, "#visualLiveBadge", "local");
+  const source = () => page.$eval("#sourceInput", (input) => (input as HTMLTextAreaElement).value);
+
+  await typeAtEndOf(page, ".visual-editor-surface > p:last-of-type", "");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/deck");
+  await page.waitForSelector(".visual-slash-menu [data-slash-id='deck']");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => (document.querySelector<HTMLTextAreaElement>("#sourceInput")?.value ?? "").includes('::deck{id="deck-1"'), { timeout: 10_000 });
+  assert.match(await source(), /::deck\{id="deck-1" title="Untitled deck" aspect="16:9"\}\n:::slide\{id="slide-1" title="Title slide" layout="title"\}\nSubtitle\n:::\n\n:::slide\{id="slide-2" title="First point" layout="content"\}\n:::\n::/);
+
+  await typeAtEndOf(page, ".nv-directive[data-name='slide']:last-of-type .nv-directive-body > p", "Agents propose");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/slide");
+  await page.waitForSelector(".visual-slash-menu [data-slash-id='slide']");
+  assert.equal(await page.$eval(".visual-slash-menu .visual-slash-item", (item) => (item as HTMLElement).dataset.slashId), "slide", "an exact match ranks first");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Humans approve");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/notes");
+  await page.waitForSelector(".visual-slash-menu [data-slash-id='notes']");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Pause for questions.");
+  await page.waitForFunction(() => (document.querySelector<HTMLTextAreaElement>("#sourceInput")?.value ?? "").includes("Pause for questions."), { timeout: 10_000 });
+  assert.match(await source(), /:::slide\{id="slide-2" title="First point" layout="content"\}\nAgents propose\n:::\n\n:::slide\{id="slide-3" title="New slide" layout="content"\}\nHumans approve\n\n::::notes\nPause for questions\.\n::::\n:::\n::/);
+
+  const slide3 = ".nv-directive[data-name='slide']:nth-of-type(3)";
+  await page.click(`${slide3} > .nv-directive-header .nv-directive-style`);
+  await page.waitForSelector(`${slide3} > .visual-token-picker:not([hidden]) [data-token='tone-accent']`);
+  await page.click(`${slide3} > .visual-token-picker [data-token='tone-accent']`);
+  await page.click(`${slide3} > .visual-token-picker [data-token='elevated']`);
+  await page.click(`${slide3} > .visual-token-picker [data-token='tone-info']`);
+  await page.waitForFunction(() => (document.querySelector<HTMLTextAreaElement>("#sourceInput")?.value ?? "").includes('class="elevated tone-info"'), { timeout: 10_000 });
+  assert.equal(await page.$eval(`${slide3} > .visual-token-picker [data-token='tone-accent']`, (chip) => chip.getAttribute("aria-pressed")), "false", "tone tokens are exclusive");
+  assert.equal(await page.$eval(`${slide3} > .visual-token-picker [data-token='tone-info']`, (chip) => chip.getAttribute("aria-pressed")), "true");
+
+  const saveModifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.down(saveModifier);
+  await page.keyboard.press("s");
+  await page.keyboard.up(saveModifier);
+  await waitForText(page, "#cloudStatus", "Saved page");
+  const documentId = new URL(page.url()).searchParams.get("doc");
+  const session = await sessionToken(page);
+  const stored = await requestJson<CloudDocument & { diagnostics: Array<{ code: string; severity: string }> }>(`${origin}/api/documents/${documentId}`, session.token);
+  assert.match(stored.source, /:::slide\{id="slide-3" title="New slide" layout="content" class="elevated tone-info"\}/);
+  assert.deepEqual(stored.diagnostics.filter((d) => /slide|notes|deck|style-token/.test(d.code)), []);
+  const present = await fetch(`${origin}/d/${documentId}/present`, { headers: { authorization: `Bearer ${session.token}` } });
+  const presentHtml = await present.text();
+  assert.match(presentHtml, /<span class="noma-presenter-counter" aria-live="polite">1 \/ 3<\/span>/);
+  assert.match(presentHtml, /class="noma-slide noma-slide--content n-elevated n-tone-info" id="slide-3"/);
+  assert.deepEqual(errors, []);
+});
+
 async function until(predicate: () => Promise<boolean>, label: string, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!(await predicate())) {

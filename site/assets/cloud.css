@@ -2250,6 +2250,52 @@ button.wiki-row {
   gap: 6px;
 }
 
+.visual-token-picker {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel-2);
+}
+
+.visual-token-picker[hidden] { display: none; }
+
+.visual-token-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.visual-token-group-name {
+  min-width: 68px;
+  color: var(--faint);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.visual-token-chip {
+  padding: 1px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.visual-token-chip:hover:not(:disabled) { background: var(--context-hover); color: var(--context-hover-ink); }
+.visual-token-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+.visual-token-chip:disabled { opacity: 0.55; cursor: default; }
+.visual-token-unknown .visual-token-chip { border-style: dashed; color: var(--warn); }
+.nv-directive-style[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+
+.nv-directive[data-name="deck"] { border-left: 4px solid var(--accent); }
+.nv-directive[data-name="slide"] { border-style: dashed; }
+.nv-directive[data-name="notes"] { background: var(--panel-2); font-style: italic; }
+
 .visual-slash-menu,
 .visual-toolbar {
   position: fixed;

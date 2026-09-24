@@ -1259,7 +1259,7 @@ such as `decision-1`. Switch to Source at any time to see the exact text.
 
 | Input | Result |
 |---|---|
-| `/` | Block menu: headings, lists, task list, table, code, quote, callout, warning, decision, claim, evidence, figure, math, mermaid, table of contents, child pages, include, divider, raw Noma |
+| `/` | Block menu: headings, lists, task list, table, code, quote, callout, warning, decision, claim, evidence, figure, math, mermaid, table of contents, child pages, include, slide deck, slide, speaker notes, grid of cards, card, HTML widget, divider, raw Noma. Exact matches rank first |
 | `## `, `- `, `1. `, `[ ] `, `> `, three backticks, `---` | Markdown shortcuts |
 | `**bold**`, `*em*`, backtick code, `[[id]]` | Inline shortcuts |
 | Select text | Floating toolbar: bold, italic, code, link, block link, heading level; table row and column buttons inside tables |
@@ -1273,6 +1273,23 @@ in the page header. If the socket cannot connect, Visual mode keeps working on
 your device and you save as usual. Typing in the raw Source pane pauses live
 editing until that draft is saved, because a source draft is saved the classic
 way with a hash check.
+
+**Decks and widgets.**
+
+- `/deck` inserts a `::deck` with a title slide and a content slide.
+- `/slide` adds a slide after the one you are in. Outside a deck, it starts a new deck.
+- `/notes` adds speaker notes at the end of the current slide.
+- `/widget` inserts a sandboxed `::html` block with a working example.
+- New decks, slides, and widgets get stable IDs (`deck-1`, `slide-3`, `widget-1`) that are not already used on the page, so presenter deep links and agent patches can target them.
+
+**Style picker.** Every directive card has a **Style** button next to
+**Attributes**. It opens chips for the style-token groups (tone, surface,
+emphasis, size, align, spacing, span, layout, media). When the page's spaces
+define aliases, they appear first under *space*. Clicking a chip writes it
+into the block's `class=` attribute right away. Tone, surface, size, align,
+spacing, and span allow one token each, so picking `tone-info` replaces
+`tone-accent`. Words that are not tokens show as dashed *unknown* chips you can
+click to remove.
 
 Live edits become normal page history. The server writes a checkpoint
 revision at most once per 30 seconds of activity, and again when the last

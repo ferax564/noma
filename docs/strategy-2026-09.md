@@ -169,9 +169,9 @@ Housekeeping required first:
   - The presenter has speaker notes, an overview grid, deep links, and share-link support.
   - The same presenter ships as `noma render --to slides`.
 - **Visual editor support.**
-  - Slash commands `/deck`, `/slide`, `/notes`.
-  - A slide-strip view.
-  - A token picker (chips, not a CSS box) that writes `class=`.
+  - ~~Slash commands `/deck`, `/slide`, `/notes`~~ **Done.** `/grid`, `/card`, and `/widget` were added too.
+  - A slide-strip view (still open).
+  - ~~A token picker (chips, not a CSS box) that writes `class=`~~ **Done.** It shows space aliases first and keeps one token per exclusive group.
 - ~~**Sandboxed `::html` in Cloud.**~~ **Done.**
   - Each widget has its own signed URL, served with a `sandbox allow-scripts` CSP, `connect-src 'none'`, and an opaque origin.
   - A `srcdoc` iframe would have inherited the page CSP, so it was not used.
