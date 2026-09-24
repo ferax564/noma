@@ -1,3 +1,4 @@
+import { type ComponentKit, expandComponents } from "./components.js";
 import type { DirectiveNode, DocumentNode, Node } from "./ast.js";
 import { inlineToPlain } from "./inline.js";
 import type {
@@ -10,6 +11,8 @@ import type {
 import { DECK_ASPECTS, presentationSlides, slideLayout, slideParts, type SlideLayout } from "./slides.js";
 
 export interface RenderPaperDomOptions {
+  /** Host component kit; component uses are expanded in place and definitions dropped. */
+  components?: ComponentKit;
   /** Deck to export when the document has several. Defaults to the first `::deck`. */
   deck?: string;
   /** Timestamp written to `metadata`. Defaults to the document `date`, else the Unix epoch, so output is deterministic. */
@@ -23,7 +26,8 @@ export interface RenderPaperDomOptions {
  * element back to the `.noma` block that owns it. Documents without a
  * `::deck` convert section-per-slide. Pure: no I/O, input is not mutated.
  */
-export function renderPaperDom(doc: DocumentNode, options: RenderPaperDomOptions = {}): PaperDOMDocument {
+export function renderPaperDom(source: DocumentNode, options: RenderPaperDomOptions = {}): PaperDOMDocument {
+  const doc = expandComponents(source, { ...(options.components ? { kit: options.components } : {}), wrap: false, dropDefinitions: true });
   const presentation = presentationSlides(doc, options.deck);
   const deck = presentation.deck;
   const size = DECK_ASPECTS[presentation.aspect] ?? { width: 1280, height: 720 };

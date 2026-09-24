@@ -178,7 +178,11 @@ Housekeeping required first:
   - Agents can author these widgets through the proof loop.
 - ~~**Per-space token vocabularies.**~~ **Done.** Space owners define aliases such as `brand-callout = tone-accent filled roomy`. An alias expands only to core tokens.
 
-### Phase 2: component kits, the real Lego system (≈6 weeks)
+### Phase 2: component kits, the real Lego system — **shipped**
+
+Shipped on this branch as described below. Two details changed during
+implementation: the kit is a page chosen in Space settings, not a `_kit.noma`
+file, and the LLM renderer keeps the component call.
 
 - A space-level kit file (`_kit.noma`) declares components:
 

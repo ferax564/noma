@@ -19,6 +19,7 @@ import {
 } from "../../src/editor-model.js";
 import { convertMarkdownToNoma } from "../../src/ingest-markdown.js";
 import { STYLE_TOKEN_GROUPS } from "../../src/style-tokens.js";
+import { type ComponentKit, componentUseSource } from "../../src/components.js";
 import { safeHref } from "../../src/inline.js";
 import { knownMentionName, resolveMentionNames } from "./mentions.js";
 import { visualSchema, wikilinkLabel } from "./visual-schema.js";
@@ -36,6 +37,8 @@ export interface VisualEditorHooks {
   editable(): boolean;
   /** Style-token aliases of the page's spaces, offered in the Style picker. */
   styleTokens?(): Readonly<Record<string, readonly string[]>>;
+  /** Component kit of the page's spaces, offered in the slash menu. */
+  components?(): ComponentKit;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,11 +262,35 @@ function slashMatch(state: EditorState): SlashState {
   return { active: true, from: $from.pos - length, to: $from.pos, query: match[1]!.toLowerCase() };
 }
 
+let componentProvider: () => ComponentKit = () => new Map();
+
+/** Slash entries for the page's components: `/pricing_card` inserts a use with required props and slots scaffolded. */
+export function componentSlashItems(kit: ComponentKit): SlashItem[] {
+  return [...kit.values()].map((definition) => ({
+    id: `component:${definition.name}`,
+    label: definition.name.replace(/_/g, " "),
+    hint: `::${definition.name}`,
+    keywords: `component kit ${definition.name} ${definition.description ?? ""}`.toLowerCase(),
+    build: () => paragraph(),
+    insert: (view, from, to) => {
+      const id = freshBlockId(view.state.doc, definition.name.replace(/_/g, "-"));
+      const parsed = schema.nodeFromJSON(nomaToEditorDoc(componentUseSource(definition, id)));
+      const blocks: PMNode[] = [];
+      parsed.forEach((node) => {
+        blocks.push(node);
+      });
+      applySlashItem(view, { id: definition.name, label: "", hint: "", keywords: "", build: () => blocks }, from, to);
+    },
+  }));
+}
+
 /** Matching items, best first: exact id, then label or id prefix, then any other match (menu order kept within a rank). */
 export function filteredSlashItems(query: string): SlashItem[] {
-  if (!query) return slashItems;
-  const rank = (item: SlashItem): number => (item.id === query ? 0 : item.label.toLowerCase().startsWith(query) || item.id.startsWith(query) ? 1 : 2);
-  return slashItems
+  const all = [...slashItems, ...componentSlashItems(componentProvider())];
+  if (!query) return all;
+  const rank = (item: SlashItem): number =>
+    item.id === query || item.id === `component:${query}` ? 0 : item.label.toLowerCase().startsWith(query) || item.id.startsWith(query) || item.hint.startsWith(`::${query}`) ? 1 : 2;
+  return all
     .filter((item) => item.label.toLowerCase().includes(query) || item.id.includes(query) || item.keywords.includes(query))
     .map((item, index) => ({ item, index, rank: rank(item) }))
     .sort((a, b) => a.rank - b.rank || a.index - b.index)
@@ -1320,6 +1347,7 @@ export function nomaNodeViews(hooks: VisualEditorHooks): Record<string, NodeView
 
 /** Plugins shared by local and live editing. `history` supplies undo/redo (ProseMirror history or Yjs undo). */
 export function nomaEditorPlugins(hooks: VisualEditorHooks, historyPlugins: Plugin[], undo: Command, redo: Command): Plugin[] {
+  componentProvider = () => hooks.components?.() ?? new Map();
   return [
     ...historyPlugins,
     slashPlugin(),

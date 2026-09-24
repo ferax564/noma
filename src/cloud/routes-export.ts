@@ -19,6 +19,8 @@ import { type AccessContext, type CloudServerConfig, type Principal, requireReco
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
 import { cloudMacroResolvers } from "./macros.js";
 import { defaultThemeCss } from "./theme.js";
+import { documentComponentKit } from "./spaces.js";
+import type { ComponentKit } from "../components.js";
 
 export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json"] as const;
 export const SITE_EXPORT_FORMATS = ["site-zip", "noma-zip"] as const;
@@ -51,13 +53,13 @@ export async function routeDocumentExport(
       sendDownload(res, renderJson(doc), "application/json; charset=utf-8", `${base}.json`);
       return;
     case "markdown":
-      sendDownload(res, renderMarkdown(expandMacros(doc, macros)), "text/markdown; charset=utf-8", `${base}.md`);
+      sendDownload(res, renderMarkdown(expandMacros(doc, macros), { components: documentComponentKit(config, record.id) }), "text/markdown; charset=utf-8", `${base}.md`);
       return;
     case "html":
-      sendDownload(res, standaloneHtml(record, macros), "text/html; charset=utf-8", `${base}.html`);
+      sendDownload(res, standaloneHtml(record, macros, documentComponentKit(config, record.id)), "text/html; charset=utf-8", `${base}.html`);
       return;
     case "docx": {
-      const docx = renderDocx(expandMacros(doc, macros), { title: record.title, creator: "Noma Cloud" });
+      const docx = renderDocx(expandMacros(doc, macros), { title: record.title, creator: "Noma Cloud", components: documentComponentKit(config, record.id) });
       sendDownload(res, docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", `${base}.docx`);
       return;
     }
@@ -68,7 +70,7 @@ export async function routeDocumentExport(
       }
       activePdfRenders += 1;
       try {
-        sendDownload(res, await renderPdfBuffer(standaloneHtml(record, macros)), "application/pdf", `${base}.pdf`);
+        sendDownload(res, await renderPdfBuffer(standaloneHtml(record, macros, documentComponentKit(config, record.id))), "application/pdf", `${base}.pdf`);
       } catch (error) {
         if (error instanceof PdfUnavailableError) {
           throw new HttpError(501, "PDF export is not available on this server: install Puppeteer and its Chrome build (npx puppeteer browsers install chrome).", {
@@ -167,6 +169,7 @@ function siteArchive(
     const macros = cloudMacroResolvers(config, principal, page.id, { pageHref });
     const html = renderHtml(parse(page.source, { filename: `${page.id}.noma` }), {
       ...macros,
+      components: documentComponentKit(config, page.id),
       standalone: true,
       title: page.title,
       allowEscapeHatches: false,
@@ -243,9 +246,10 @@ function uniquePagePaths(pages: CloudDocumentRecord[]): Map<string, string> {
   return paths;
 }
 
-function standaloneHtml(record: CloudDocumentRecord, macros: ReturnType<typeof cloudMacroResolvers>): string {
+function standaloneHtml(record: CloudDocumentRecord, macros: ReturnType<typeof cloudMacroResolvers>, components: ComponentKit): string {
   return renderHtml(parse(record.source, { filename: `${record.id}.noma` }), {
     ...macros,
+    components,
     standalone: true,
     title: record.title,
     allowEscapeHatches: false,

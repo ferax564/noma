@@ -5,6 +5,7 @@ import { renderHtml } from "../../src/renderer-html.js";
 import { renderLlm } from "../../src/renderer-llm.js";
 import { type Diagnostic, walk } from "../../src/ast.js";
 import type { StyleTokenAliases } from "../../src/style-tokens.js";
+import { type ComponentKit, componentKitFromSource } from "../../src/components.js";
 import { CloudRequestError, fetchCloudJson } from "./api.js";
 import { refreshActivity, refreshApprovals, refreshPageCollaboration, renderCollaborationPanels } from "./collaboration.js";
 import { activeDocumentStorageKey } from "./constants.js";
@@ -145,6 +146,19 @@ export function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   void recordRecent("document", page.id);
 }
 
+let cachedKitSource: string | undefined;
+let cachedKit: ComponentKit = new Map();
+
+/** The page's space component kit, parsed once per distinct kit source. */
+export function pageComponentKit(): ComponentKit {
+  const source = state.currentPage?.componentKit ?? "";
+  if (source !== cachedKitSource) {
+    cachedKitSource = source;
+    cachedKit = source ? componentKitFromSource(source, "space kit") : new Map();
+  }
+  return cachedKit;
+}
+
 function pageStyleTokens(): StyleTokenAliases {
   return (state.currentPage?.styleTokens ?? {}) as StyleTokenAliases;
 }
@@ -161,7 +175,8 @@ export function renderCurrent(): void {
   try {
     const doc = parse(source, { filename: `${state.currentPage?.id ?? "draft"}.noma` });
     const styleTokens = pageStyleTokens();
-    const diagnostics = validate(doc, { styleTokens });
+    const components = pageComponentKit();
+    const diagnostics = validate(doc, { styleTokens, components });
     const macros = previewMacroResolvers();
     const body = renderHtml(doc, {
       ...macros,
@@ -173,6 +188,7 @@ export function renderCurrent(): void {
       resolveAttachment: resolveAttachmentUrl,
       resolveWidgetFrame: previewWidgetFrame,
       styleTokens,
+      components,
     });
     state.renderState = {
       doc,

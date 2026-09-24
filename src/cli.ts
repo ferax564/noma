@@ -10,6 +10,7 @@ import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
 import { renderMarkdown } from "./renderer-markdown.js";
 import { renderPaperDom } from "./renderer-paperdom.js";
+import { type ComponentKit, componentKitFromSource } from "./components.js";
 import { renderDocx } from "./renderer-docx.js";
 import { extractDocxControlData } from "./docx-control-data.js";
 import { syncControlDefaultsFromDocx } from "./docx-control-sync.js";
@@ -68,6 +69,8 @@ Render options:
   --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
+  --kit <file.noma>         Component kit: ::component definitions available to
+                            the document (render, check)
   --deck <id>               slides/paperdom: use this ::deck (default: the first;
                             documents without a deck present one slide per section)
   --theme <name>            HTML theme: default | dark (default: default)
@@ -166,6 +169,7 @@ interface CliArgs {
   standalone: boolean;
   title?: string;
   deck?: string;
+  kit?: string;
   help: boolean;
   op?: string;
   opsFile?: string;
@@ -240,6 +244,8 @@ function parseArgs(argv: string[]): CliArgs {
       args.title = argv[++i];
     } else if (a === "--deck") {
       args.deck = argv[++i];
+    } else if (a === "--kit") {
+      args.kit = argv[++i];
       i++;
     } else if (a === "--theme") {
       args.theme = argv[++i] ?? "default";
@@ -563,8 +569,23 @@ function proofJson(proof: ReturnType<typeof createAgentSafetyProof>): string {
   return JSON.stringify(body, null, 2);
 }
 
+const kitCache = new Map<string, ComponentKit>();
+
+/** `--kit <file>` → component definitions, read once per path. */
+function kitFromArgs(args: CliArgs): { components?: ComponentKit } {
+  if (!args.kit) return {};
+  const path = resolve(args.kit);
+  let kit = kitCache.get(path);
+  if (!kit) {
+    kit = componentKitFromSource(readFileSync(path, "utf8"), args.kit);
+    kitCache.set(path, kit);
+  }
+  return { components: kit };
+}
+
 function validateOptionsFromArgs(args: CliArgs): ValidateOptions {
   return {
+    ...kitFromArgs(args),
     ...(args.staleDays !== undefined ? { staleCitationDays: args.staleDays } : {}),
     ...(args.ignoreRules.length > 0 ? { ignoreRules: args.ignoreRules } : {}),
     ...(args.profiles.length > 0 ? { profiles: args.profiles } : {}),
@@ -915,6 +936,7 @@ async function run(argv: string[]): Promise<void> {
         case "html": {
           const themeCss = loadThemeCss(args);
           const html = renderHtml(doc, {
+            ...kitFromArgs(args),
             standalone: args.standalone,
             title: args.title,
             themeCss,
@@ -928,6 +950,7 @@ async function run(argv: string[]): Promise<void> {
           try {
             output(
               renderSlidesHtml(doc, {
+                ...kitFromArgs(args),
                 title: args.title,
                 themeCss: loadThemeCss(args),
                 ...safety,
@@ -949,6 +972,7 @@ async function run(argv: string[]): Promise<void> {
           }
           const themeCss = loadThemeCss(args);
           const html = renderHtml(doc, {
+            ...kitFromArgs(args),
             standalone: true,
             title: args.title,
             themeCss,
@@ -971,7 +995,7 @@ async function run(argv: string[]): Promise<void> {
           inlineFigureSources(doc, undefined, {
             allowExternalPaths: args.allowExternalPaths,
           });
-          outputBinary(renderDocx(doc, { title: args.title }), args.out);
+          outputBinary(renderDocx(doc, { title: args.title, ...kitFromArgs(args) }), args.out);
           return;
         }
         case "llm": {
@@ -995,12 +1019,12 @@ async function run(argv: string[]): Promise<void> {
         }
         case "markdown":
         case "md": {
-          output(renderMarkdown(doc), args.out);
+          output(renderMarkdown(doc, kitFromArgs(args)), args.out);
           return;
         }
         case "paperdom": {
           try {
-            output(`${JSON.stringify(renderPaperDom(doc, args.deck ? { deck: args.deck } : {}), null, 2)}\n`, args.out);
+            output(`${JSON.stringify(renderPaperDom(doc, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}) }), null, 2)}\n`, args.out);
           } catch (error) {
             process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
             process.exit(2);

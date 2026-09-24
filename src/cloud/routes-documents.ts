@@ -39,7 +39,7 @@ import {
 import { attachmentResolver } from "./attachments.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeDocumentWidget, widgetFrameResolver } from "./widgets.js";
-import { documentStyleTokens } from "./spaces.js";
+import { documentComponentKit, documentStyleTokens } from "./spaces.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics } from "./routes-analytics.js";
 import { routeDocumentTasks } from "./routes-tasks.js";
@@ -159,7 +159,7 @@ export async function routeDocuments(
 
   if (suffix === "html" && method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), components: documentComponentKit(config, record.id), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
     return;
   }
 

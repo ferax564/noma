@@ -1059,50 +1059,50 @@ body.noma-space-body ol.noma-site-toc { grid-template-columns: repeat(auto-fit, 
 /* ---------------------------------------------------------------------------
    Style tokens — `class="..."` on any block. Closed vocabulary, `n-` prefix.
    --------------------------------------------------------------------------- */
-.n-tone-neutral { --noma-tone: var(--noma-muted); --noma-tone-soft: var(--noma-code-bg); }
-.n-tone-accent { --noma-tone: var(--noma-accent); --noma-tone-soft: var(--noma-accent-soft); }
-.n-tone-info { --noma-tone: var(--noma-claim); --noma-tone-soft: var(--noma-claim-soft); }
-.n-tone-success { --noma-tone: var(--noma-evidence); --noma-tone-soft: var(--noma-evidence-soft); }
-.n-tone-warning { --noma-tone: #b7791f; --noma-tone-soft: color-mix(in srgb, #b7791f 16%, transparent); }
-.n-tone-danger { --noma-tone: var(--noma-risk); --noma-tone-soft: var(--noma-risk-soft); }
-[class*="n-tone-"] { border-color: var(--noma-tone); }
-[class*="n-tone-"].n-filled, [class*="n-tone-"] .noma-slide-frame { background: var(--noma-tone-soft); }
-.n-plain { background: transparent; border: 0; box-shadow: none; }
-.n-outline { background: transparent; border: 1px solid var(--noma-tone, var(--noma-rule)); box-shadow: none; }
-.n-filled { background: var(--noma-tone-soft, var(--noma-code-bg)); border-color: transparent; }
-.n-elevated { box-shadow: var(--noma-shadow); border-radius: var(--noma-radius); }
-.n-muted { color: var(--noma-muted); }
-.n-inverse { background: var(--noma-fg); color: var(--noma-bg); }
-.n-lead { font-size: 1.2em; line-height: 1.5; }
-.n-subtle { opacity: 0.78; }
-.n-emphasis { font-weight: 600; color: var(--noma-tone, inherit); }
-.n-mono { font-family: var(--noma-font-mono); }
-.n-text-sm { font-size: 0.875em; }
-.n-text-lg { font-size: 1.2em; }
-.n-text-xl { font-size: 1.5em; }
-.n-text-2xl { font-size: 2em; line-height: 1.2; }
-.n-align-start { text-align: start; }
-.n-align-center { text-align: center; }
-.n-align-end { text-align: end; }
-.n-tight { padding: 0.5rem; }
-.n-tight > * + * { margin-top: 0.35rem; }
-.n-roomy { padding: 1.75rem; }
-.n-span-2 { grid-column: span 2; }
-.n-span-3 { grid-column: span 3; }
-.n-span-full { grid-column: 1 / -1; }
-.n-stack { display: flex; flex-direction: column; gap: 0.75rem; }
-.n-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }
-.n-center-v { display: flex; flex-direction: column; justify-content: center; }
-.n-print-only { display: none; }
-.noma-deck .n-hide-in-slides { display: none; }
-.n-slides-only { display: none; }
-.noma-deck .n-slides-only { display: revert; }
+:root .n-tone-neutral { --noma-tone: var(--noma-muted); --noma-tone-soft: var(--noma-code-bg); }
+:root .n-tone-accent { --noma-tone: var(--noma-accent); --noma-tone-soft: var(--noma-accent-soft); }
+:root .n-tone-info { --noma-tone: var(--noma-claim); --noma-tone-soft: var(--noma-claim-soft); }
+:root .n-tone-success { --noma-tone: var(--noma-evidence); --noma-tone-soft: var(--noma-evidence-soft); }
+:root .n-tone-warning { --noma-tone: #b7791f; --noma-tone-soft: color-mix(in srgb, #b7791f 16%, transparent); }
+:root .n-tone-danger { --noma-tone: var(--noma-risk); --noma-tone-soft: var(--noma-risk-soft); }
+:root [class*="n-tone-"] { border-color: var(--noma-tone); }
+:root [class*="n-tone-"].n-filled, :root [class*="n-tone-"] .noma-slide-frame { background: var(--noma-tone-soft); }
+:root .n-plain { background: transparent; border: 0; box-shadow: none; }
+:root .n-outline { background: transparent; border: 1px solid var(--noma-tone, var(--noma-rule)); box-shadow: none; }
+:root .n-filled { background: var(--noma-tone-soft, var(--noma-code-bg)); border-color: transparent; }
+:root .n-elevated { box-shadow: var(--noma-shadow); border-radius: var(--noma-radius); }
+:root .n-muted { color: var(--noma-muted); }
+:root .n-inverse { background: var(--noma-fg); color: var(--noma-bg); }
+:root .n-lead { font-size: 1.2em; line-height: 1.5; }
+:root .n-subtle { opacity: 0.78; }
+:root .n-emphasis { font-weight: 600; color: var(--noma-tone, inherit); }
+:root .n-mono { font-family: var(--noma-font-mono); }
+:root .n-text-sm { font-size: 0.875em; }
+:root .n-text-lg { font-size: 1.2em; }
+:root .n-text-xl { font-size: 1.5em; }
+:root .n-text-2xl { font-size: 2em; line-height: 1.2; }
+:root .n-align-start { text-align: start; }
+:root .n-align-center { text-align: center; }
+:root .n-align-end { text-align: end; }
+:root .n-tight { padding: 0.5rem; }
+:root .n-tight > * + * { margin-top: 0.35rem; }
+:root .n-roomy { padding: 1.75rem; }
+:root .n-span-2 { grid-column: span 2; }
+:root .n-span-3 { grid-column: span 3; }
+:root .n-span-full { grid-column: 1 / -1; }
+:root .n-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+:root .n-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }
+:root .n-center-v { display: flex; flex-direction: column; justify-content: center; }
+:root .n-print-only { display: none; }
+:root .noma-deck .n-hide-in-slides { display: none; }
+:root .n-slides-only { display: none; }
+:root .noma-deck .n-slides-only { display: revert; }
 @media print {
-  .n-print-only { display: revert; }
-  .n-screen-only { display: none; }
+  :root .n-print-only { display: revert; }
+  :root .n-screen-only { display: none; }
 }
 @media (max-width: 640px) {
-  .n-span-2, .n-span-3 { grid-column: auto; }
+  :root .n-span-2, :root .n-span-3 { grid-column: auto; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1237,3 +1237,17 @@ html:has(body.noma-presenter-body), body.noma-presenter-body { margin: 0; backgr
   .noma-presenter[data-ready] .noma-deck-slides { width: 100%; }
   .noma-presenter[data-ready] .noma-slide { display: block; break-after: page; }
 }
+
+/* ---------------------------------------------------------------------------
+   Component kits — `::component` definitions and expanded uses
+   --------------------------------------------------------------------------- */
+.noma-component-single { display: contents; }
+.noma-component-definition {
+  margin: 1.5rem 0; padding: 0.9rem 1rem 0.4rem;
+  border: 1px dashed var(--noma-rule); border-radius: var(--noma-radius);
+}
+.noma-component-head { display: flex; align-items: center; gap: 0.6rem; font-family: var(--noma-font-sans); font-size: 0.9rem; }
+.noma-component-head code { font-family: var(--noma-font-mono); font-size: 0.85rem; }
+.noma-component-description { margin: 0.35rem 0 0; color: var(--noma-muted); font-family: var(--noma-font-sans); font-size: 0.9rem; }
+.noma-component-preview { margin-top: 0.6rem; }
+.noma-component-invalid { color: var(--noma-risk); border-color: var(--noma-risk); }

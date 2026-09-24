@@ -1,3 +1,4 @@
+import { type ComponentKit, expandComponents } from "./components.js";
 import yaml from "js-yaml";
 import type {
   AttrValue,
@@ -14,6 +15,8 @@ import type {
 import { escapePipeTableCell, extractWikilinks, splitPipeRow, unescapeMarkdownTextEscapes } from "./inline.js";
 
 export interface MarkdownRenderOptions {
+  /** Host component kit; component uses are expanded in place and definitions dropped. */
+  components?: ComponentKit;
   /** Include YAML frontmatter when present or when document meta has public keys. Default: true. */
   includeFrontmatter?: boolean;
   /** Drop internal meta keys such as parser filename from generated frontmatter. Default: true. */
@@ -43,7 +46,8 @@ const CODE_DIRECTIVES = new Set(["code", "code_cell", "output", "query", "exampl
 const LAYOUT_CONTAINERS = new Set(["grid", "columns", "tabs", "accordion", "hero", "deck"]);
 const VERBATIM_DIRECTIVES = new Set(["dataset", "diagram", "plotly"]);
 
-export function renderMarkdown(doc: DocumentNode, options: MarkdownRenderOptions = {}): string {
+export function renderMarkdown(source: DocumentNode, options: MarkdownRenderOptions = {}): string {
+  const doc = expandComponents(source, { ...(options.components ? { kit: options.components } : {}), wrap: false, dropDefinitions: true });
   const ctx: RenderCtx = {
     includeFrontmatter: options.includeFrontmatter !== false,
     stripInternal: options.stripInternal !== false,
@@ -361,7 +365,7 @@ function renderMetadata(node: DirectiveNode): string {
 }
 
 function metadataParts(node: DirectiveNode): string[] {
-  const skip = new Set(["id", "title", "caption", "label", "Label", "name", "src", "alt"]);
+  const skip = new Set(["id", "title", "caption", "label", "Label", "name", "src", "alt", "class"]);
   const parts: string[] = [];
   if (node.id) parts.push(`id=${node.id}`);
   for (const [key, value] of Object.entries(node.attrs)) {

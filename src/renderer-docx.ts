@@ -1,3 +1,4 @@
+import { type ComponentKit, expandComponents } from "./components.js";
 import type { Attrs, AttrValue, DirectiveNode, DocumentNode, Node, SectionNode, TableAlign, TableNode } from "./ast.js";
 import { walk } from "./ast.js";
 import {
@@ -16,6 +17,8 @@ import { extractWikilinks, inlineToPlain, splitPipeRow, unescapeMarkdownLinkLabe
 import { buildDatasetRegistry, renderPlotSvgForNode, type DatasetTable } from "./renderer-html.js";
 
 export interface DocxRenderOptions {
+  /** Host component kit; component uses are expanded in place and definitions dropped. */
+  components?: ComponentKit;
   /** Override document title used in package metadata. */
   title?: string;
   /** Creator metadata written to docProps/core.xml. */
@@ -289,7 +292,8 @@ const DEFAULT_PAGE_SETUP: PageSetup = {
   },
 };
 
-export function renderDocx(doc: DocumentNode, options: DocxRenderOptions = {}): Buffer {
+export function renderDocx(source: DocumentNode, options: DocxRenderOptions = {}): Buffer {
+  const doc = expandComponents(source, { ...(options.components ? { kit: options.components } : {}), wrap: false, dropDefinitions: true });
   const headerFooter = collectHeaderFooter(doc);
   const controlData = collectControlData(doc);
   const hasControlData = controlData.length > 0;

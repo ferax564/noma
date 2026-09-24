@@ -7,6 +7,7 @@ import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } f
 import { loadFrontmatterYaml } from "./parser.js";
 import { CHILDREN_SORTS, ISSUE_STATUSES, issueKeyFromNode, issuesRequest } from "./macros.js";
 import { collectTableIdentityStrings } from "./stable-identity.js";
+import { checkComponentUses, componentDefinitionNodes, componentKitFrom, type ComponentKit, resolveComponentKit } from "./components.js";
 import { DECK_ASPECTS, isSlideLayout, SLIDE_LAYOUTS } from "./slides.js";
 import { normalizeStyleTokenAliases, parseStyleTokens, resolveStyleTokenAliases, STYLE_TOKENS, type StyleTokenAliases } from "./style-tokens.js";
 
@@ -31,6 +32,8 @@ export interface ValidateOptions {
   ignoreRules?: string[];
   /** Host style-token aliases (e.g. a space's vocabulary); `class=` words matching them are valid. */
   styleTokens?: StyleTokenAliases;
+  /** Host component kit (e.g. a space's kit page); uses of its components are checked. */
+  components?: ComponentKit;
   /**
    * Additional validator profiles to apply without editing source frontmatter.
    * Used by CI and Actions workflows for `noma check --profile technical-docs`.
@@ -184,6 +187,8 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
 };
 
 const DECK_DIRECTIVES = ["deck", "slide", "notes"];
+/** Kit plumbing is allowed under every profile; a component's own output is what the profile governs. */
+const COMPONENT_DIRECTIVES = new Set(["component", "slot"]);
 
 for (const name of ["technical", "research"]) PROFILES[name] = new Set([...PROFILES[name]!, ...DECK_DIRECTIVES]);
 
@@ -241,7 +246,10 @@ const ISO_DATE_RE =
 
 export const KNOWN_PROFILES = Object.keys(PROFILES);
 
-export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diagnostic[] {
+export function validate(source: DocumentNode, options: ValidateOptions = {}): Diagnostic[] {
+  const componentDiagnostics = validateComponents(source, options.components);
+  const doc = withoutComponentTemplates(source);
+  const componentNames = new Set(resolveComponentKit(source, options.components).keys());
   const requireEvidence = options.requireEvidenceForClaims !== false;
   const metaStale = readPositiveNumber(doc.meta.stale_citation_days);
   const staleDays =
@@ -357,7 +365,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
     if (node.type !== "directive") continue;
 
-    if (profileSet && !suppressed(node) && !profileSet.has(node.name)) {
+    if (profileSet && !suppressed(node) && !profileSet.has(node.name) && !COMPONENT_DIRECTIVES.has(node.name) && !componentNames.has(node.name)) {
       diagnostics.push({
         severity: "warning",
         code: "out-of-profile-directive",
@@ -915,6 +923,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     diagnostics.push({ severity: "warning", code: "invalid-style-token-alias", message: `style_tokens: ${error}.` });
   }
   validateDecksAndStyleTokens(doc.children, undefined, diagnostics, resolveStyleTokenAliases(doc.meta.style_tokens, options.styleTokens));
+  diagnostics.push(...componentDiagnostics);
 
   const ignore = options.ignoreRules;
   if (ignore && ignore.length > 0) {
@@ -1014,7 +1023,61 @@ const KNOWN_RULES = [
   "slide-unknown-layout",
   "notes-outside-slide",
   "deck-unknown-aspect",
+  "component-invalid-definition",
+  "component-duplicate",
+  "component-missing-prop",
+  "component-unknown-prop",
+  "component-unknown-slot",
 ];
+
+/**
+ * Component templates hold `{{placeholders}}` and scoped IDs, so the regular
+ * rules skip them; definitions and uses are checked by `validateComponents`.
+ */
+function withoutComponentTemplates(doc: DocumentNode): DocumentNode {
+  const strip = (nodes: Node[]): { nodes: Node[]; changed: boolean } => {
+    let changed = false;
+    const out = nodes.map((node) => {
+      if (node.type === "directive" && node.name === "component") {
+        changed = true;
+        return { ...node, children: [], body: undefined } as DirectiveNode;
+      }
+      if (node.type === "section" || node.type === "directive") {
+        const inner = strip(node.children);
+        if (inner.changed) {
+          changed = true;
+          return { ...node, children: inner.nodes } as Node;
+        }
+      }
+      return node;
+    });
+    return { nodes: changed ? out : nodes, changed };
+  };
+  const result = strip(doc.children);
+  return result.changed ? { ...doc, children: result.nodes } : doc;
+}
+
+function validateComponents(doc: DocumentNode, host: ComponentKit | undefined): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const seen = new Set<string>();
+  const { issues } = componentKitFrom([{ doc }]);
+  for (const issue of issues) {
+    diagnostics.push({ severity: "error", code: "component-invalid-definition", message: `${issue.message}.`, pos: issue.node.pos, nodeId: issue.node.id });
+  }
+  for (const node of componentDefinitionNodes(doc)) {
+    const name = typeof node.attrs.name === "string" ? node.attrs.name : "";
+    if (!name) continue;
+    if (seen.has(name)) {
+      diagnostics.push({ severity: "warning", code: "component-duplicate", message: `Component "${name}" is defined more than once on this page; the first definition wins.`, pos: node.pos, nodeId: node.id });
+    }
+    seen.add(name);
+  }
+  for (const issue of checkComponentUses(doc, resolveComponentKit(doc, host))) {
+    if (issue.node.attrs.noverify === true) continue;
+    diagnostics.push({ severity: issue.code === "component-missing-prop" ? "error" : "warning", code: issue.code, message: issue.message, pos: issue.node.pos, nodeId: issue.node.id });
+  }
+  return diagnostics;
+}
 
 /**
  * Structural rules for presentations and the style-token vocabulary:

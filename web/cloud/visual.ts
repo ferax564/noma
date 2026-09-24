@@ -16,7 +16,7 @@ import { yXmlFragmentToProseMirrorRootNode } from "y-prosemirror";
 import { editorBlockKey, editorDocToNoma, editorIdBackfill, type EditorNode, lcsPairs, nomaToEditorDoc } from "../../src/editor-model.js";
 import { sourceInput, visualEditorMount, visualLiveBadge, visualPresence, visualViewButton } from "./dom.js";
 import { clearLocalDraft, persistLocalDraft } from "./drafts.js";
-import { markDirty, saveCurrentPage, scheduleRender, syncTitleFromSource } from "./editor.js";
+import { markDirty, pageComponentKit, saveCurrentPage, scheduleRender, syncTitleFromSource } from "./editor.js";
 import { refreshHistory } from "./history.js";
 import { renderChrome } from "./layout.js";
 import { replacePage } from "./navigation.js";
@@ -46,6 +46,7 @@ const hooks: VisualEditorHooks = {
   save: () => void saveCurrentPage(),
   editable: () => isEditable(),
   styleTokens: () => state.currentPage?.styleTokens ?? {},
+  components: () => pageComponentKit(),
 };
 
 function isEditable(): boolean {

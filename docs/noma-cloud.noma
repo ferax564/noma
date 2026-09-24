@@ -1282,6 +1282,16 @@ way with a hash check.
 - `/widget` inserts a sandboxed `::html` block with a working example.
 - New decks, slides, and widgets get stable IDs (`deck-1`, `slide-3`, `widget-1`) that are not already used on the page, so presenter deep links and agent patches can target them.
 
+**Components.** Each space can name a **Component kit page** in Space
+settings (owners only). The `::component` definitions on that page are
+available to every page in the space. Type `/` and the component name, for
+example `/pricing`, to insert a use. The use comes with its required props
+and named slots filled in as placeholders, plus a fresh stable ID. Pages
+render, present, export, and validate with the kit. Viewers who cannot open
+the kit page still see its components rendered. The editor receives only the
+definitions, never the rest of the kit page. Changing a definition updates
+every page that uses it.
+
 **Style picker.** Every directive card has a **Style** button next to
 **Attributes**. It opens chips for the style-token groups (tone, surface,
 emphasis, size, align, spacing, span, layout, media). When the page's spaces

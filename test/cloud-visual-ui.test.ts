@@ -306,6 +306,61 @@ test("visual mode builds decks with /deck, /slide, /notes and styles blocks with
   assert.deepEqual(errors, []);
 });
 
+test("the slash menu offers the space kit's components and scaffolds a use", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "noma-cloud-visual-kit-"));
+  const server = createNomaCloudServer({ dataDir: join(root, "documents"), publicDir: resolve("site"), rateLimitMaxRequests: 10_000 });
+  await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolveClose, reject) => server.close((error) => (error ? reject(error) : resolveClose())));
+    await rm(root, { recursive: true, force: true });
+  });
+  const browser: Browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await isolateFonts(page);
+  await page.setRequestInterception(true);
+  page.on("request", (request) => {
+    if (request.url().includes("/api/collab/")) void request.abort();
+  });
+  const errors = collectErrors(page);
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(window, "WebSocket", { value: undefined, configurable: true });
+  });
+  await page.goto(`${origin}/cloud.html`, { waitUntil: "networkidle0" });
+  await page.locator("#cloudUserName").fill("Kit User");
+  await page.locator("#newUserButton").click();
+  await waitForText(page, "#cloudStatus", "Created user");
+  const documentId = new URL(page.url()).searchParams.get("doc");
+  assert.ok(documentId);
+  const session = await sessionToken(page);
+  const post = (body: unknown): RequestInit => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const kit = await requestJson<CloudDocument>(`${origin}/api/documents`, session.token, post({
+    title: "Kit",
+    source: '# Kit\n\n::component{name="pricing_card" props="plan,price" slots="features"}\n:::card{title="{{plan}}"}\n**{{price}}**\n\n{{slot:features}}\n:::\n::\n',
+  }));
+  const sites = await requestJson<{ sites: Array<{ id: string; title: string; documentIds: string[] }> }>(`${origin}/api/sites`, session.token);
+  const space = sites.sites.find((site) => site.documentIds.includes(documentId)) ?? (await requestJson<{ id: string; title: string; documentIds: string[] }>(`${origin}/api/sites`, session.token, post({ title: "Kit space", documentIds: [documentId] })));
+  await requestJson(`${origin}/api/sites/${space.id}`, session.token, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title: space.title, documentIds: [...space.documentIds.filter((id) => id !== kit.id), kit.id], kitDocumentId: kit.id }),
+  });
+  await page.goto(`${origin}/cloud.html?doc=${documentId}`, { waitUntil: "networkidle0" });
+  await waitForText(page, "#visualLiveBadge", "local");
+
+  await typeAtEndOf(page, ".visual-editor-surface > p:last-of-type", "");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/pricing", { delay: 5 });
+  await page.waitForSelector(".visual-slash-menu [data-slash-id='component:pricing_card']");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => (document.querySelector<HTMLTextAreaElement>("#sourceInput")?.value ?? "").includes("::pricing_card{"), { timeout: 10_000 });
+  const source = await page.$eval("#sourceInput", (input) => (input as HTMLTextAreaElement).value);
+  assert.match(source, /::pricing_card\{id="pricing-card-1" plan="" price=""\}\n:::slot\{name="features"\}\n/);
+  assert.deepEqual(errors, []);
+});
+
 async function until(predicate: () => Promise<boolean>, label: string, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!(await predicate())) {

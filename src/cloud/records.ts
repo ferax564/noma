@@ -25,7 +25,8 @@ import {
 import { headerValue, HttpError, sha256Hex } from "./http.js";
 import { optionalString } from "./input.js";
 import { afterDocumentSaved } from "./page-hooks.js";
-import { documentStyleTokens, requirePageWritable } from "./spaces.js";
+import { documentComponentKit, documentComponentKitSource, documentStyleTokens, requirePageWritable } from "./spaces.js";
+import type { ComponentKit } from "../components.js";
 import type { StyleTokenAliases } from "../style-tokens.js";
 import { assignTaskIds } from "./tasks.js";
 import { resolveCreateTemplate } from "./templates.js";
@@ -121,6 +122,7 @@ export async function updateDocument(
 
 export function documentResponse(record: CloudDocumentRecord, access: AccessContext, config: CloudServerConfig): Record<string, unknown> & SourceInspection {
   const styleTokens = documentStyleTokens(config, record.id);
+  const components = documentComponentKit(config, record.id);
   return {
     version: record.version,
     id: record.id,
@@ -130,8 +132,9 @@ export function documentResponse(record: CloudDocumentRecord, access: AccessCont
     updatedAt: record.updatedAt,
     createdBy: record.createdBy,
     updatedBy: record.updatedBy,
-    ...inspectSource(record.source, record.id, styleTokens),
+    ...inspectSource(record.source, record.id, styleTokens, components),
     styleTokens,
+    componentKit: documentComponentKitSource(config, record.id),
     access: accessResponse(access),
   };
 }
@@ -158,11 +161,11 @@ export function selfUser(user: CloudUserRecord): Omit<CloudUserRecord, "tokenHas
   return out;
 }
 
-export function inspectSource(source: string, id: string, styleTokens?: StyleTokenAliases): SourceInspection {
+export function inspectSource(source: string, id: string, styleTokens?: StyleTokenAliases, components?: ComponentKit): SourceInspection {
   const doc = parse(source, { filename: `${id}.noma` });
   return {
     hash: sha256Hex(source),
-    diagnostics: validate(doc, styleTokens ? { styleTokens } : {}),
+    diagnostics: validate(doc, { ...(styleTokens ? { styleTokens } : {}), ...(components && components.size > 0 ? { components } : {}) }),
     json: renderJson(doc),
     llm: renderLlm(doc),
   };

@@ -58,6 +58,8 @@ export interface CloudDocumentResponse {
   diagnostics: Diagnostic[];
   /** Effective style-token aliases from the page's spaces. */
   styleTokens?: Record<string, string[]>;
+  /** `::component` definitions from the page's space kits (definitions only). */
+  componentKit?: string;
   access?: AccessInfo;
 }
 
@@ -329,6 +331,7 @@ export interface CloudSiteResponse {
   description?: string;
   icon?: string;
   styleTokens?: Record<string, string[]>;
+  kitDocumentId?: string | null;
   homeDocumentId?: string | null;
   archived?: boolean;
   documentIds: string[];

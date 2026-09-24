@@ -12,7 +12,8 @@ import { attachmentResolver } from "./attachments.js";
 import { widgetFrameResolver } from "./widgets.js";
 import type { DirectiveNode } from "../ast.js";
 import type { StyleTokenAliases } from "../style-tokens.js";
-import { documentStyleTokens } from "./spaces.js";
+import { documentComponentKit, documentStyleTokens } from "./spaces.js";
+import type { ComponentKit } from "../components.js";
 import { type AccessContext, capAccessForDocument, type CloudServerConfig, type Principal, readDocument } from "./context.js";
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
 import { cloudMacroResolvers, cloudPageHref } from "./macros.js";
@@ -28,6 +29,7 @@ export function renderDocumentHtml(
     resolveAttachment?: (ref: string) => string | undefined;
     resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
     styleTokens?: StyleTokenAliases;
+    components?: ComponentKit;
     macros?: MacroResolvers;
     /** Share token of the current request, carried into the banner's Present link. */
     shareToken?: string;
@@ -43,6 +45,7 @@ export function renderDocumentHtml(
     allowEscapeHatches: false,
     ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
     ...(options.styleTokens ? { styleTokens: options.styleTokens } : {}),
+    ...(options.components ? { components: options.components } : {}),
     externalAssets: false,
     themeCss: `${defaultThemeCss()}\n${CLOUD_BANNER_CSS}`,
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
@@ -57,6 +60,7 @@ export function renderPresentationHtml(
     resolveAttachment?: (ref: string) => string | undefined;
     resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
     styleTokens?: StyleTokenAliases;
+    components?: ComponentKit;
     macros?: MacroResolvers;
     backHref?: string;
   } = {},
@@ -71,6 +75,7 @@ export function renderPresentationHtml(
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
     ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
     ...(options.styleTokens ? { styleTokens: options.styleTokens } : {}),
+    ...(options.components ? { components: options.components } : {}),
     ...(options.backHref ? { backHref: options.backHref } : {}),
   });
 }
@@ -102,6 +107,7 @@ export async function renderSiteHtml(
         resolveAttachment: attachmentResolver(config, record.id, documentAccess),
         resolveWidgetFrame: widgetFrameResolver(config, record.id, documentAccess),
         styleTokens: { ...documentStyleTokens(config, record.id), ...(site.styleTokens ?? {}) } as StyleTokenAliases,
+        components: documentComponentKit(config, record.id, site.id),
       });
       const home = record.id === homeId ? ' data-home="true"' : "";
       return `<article class="site-doc" id="${escapeAttr(record.id)}"${home}><header><h2>${escapeHtml(record.title)}</h2><a href="#${escapeAttr(record.id)}">Copy link</a></header>${body}</article>`;

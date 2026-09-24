@@ -8,6 +8,10 @@ import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
 import { type CloudServerConfig, type Principal, recordActivity, requireRecordAccess, requireUser, sqliteConstraint, writeSite } from "./context.js";
 import { HttpError } from "./http.js";
 import { assertCloudId } from "./input.js";
+import type { Node } from "../ast.js";
+import { type ComponentKit, componentDefinitionNodes, componentKitFrom } from "../components.js";
+import { parse } from "../parser.js";
+import { renderNoma } from "../renderer-noma.js";
 import { normalizeStyleTokenAliases, type StyleToken, type StyleTokenAliases } from "../style-tokens.js";
 
 const SPACE_KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/;
@@ -17,6 +21,8 @@ export interface SpaceSettings {
   description?: string;
   icon?: string;
   homeDocumentId?: string;
+  /** Kit page; `""` clears it. */
+  kitDocumentId?: string;
   /** Replaces the space's style-token aliases; `{}` clears them. */
   styleTokens?: Record<string, string[]>;
 }
@@ -76,6 +82,17 @@ export function spaceSettingsInput(config: CloudServerConfig, input: Record<stri
       settings.homeDocumentId = input.homeDocumentId;
     }
   }
+  if (input.kitDocumentId !== undefined) {
+    if (input.kitDocumentId === null || input.kitDocumentId === "") {
+      settings.kitDocumentId = "";
+    } else {
+      if (typeof input.kitDocumentId !== "string") throw new HttpError(400, "kitDocumentId must be a document ID");
+      assertCloudId(input.kitDocumentId, "Kit document");
+      if (!documentIds.includes(input.kitDocumentId)) throw new HttpError(400, "kitDocumentId must be a page in this space");
+      if (config.store.isTrashed("document", input.kitDocumentId)) throw new HttpError(400, "kitDocumentId is in trash");
+      settings.kitDocumentId = input.kitDocumentId;
+    }
+  }
   if (input.styleTokens !== undefined) {
     const { aliases, errors } = normalizeStyleTokenAliases(input.styleTokens ?? {});
     if (errors.length > 0) throw new HttpError(400, `Invalid styleTokens: ${errors.join("; ")}`, { code: "invalid_style_tokens", errors });
@@ -99,11 +116,46 @@ export function documentStyleTokens(config: CloudServerConfig, documentId: strin
   return merged;
 }
 
+/** Kit pages of the spaces a page belongs to, in space order, without duplicates or trashed pages. */
+export function documentKitPageIds(config: CloudServerConfig, documentId: string, preferSiteId?: string): string[] {
+  const siteIds = config.store.documentSiteIds(documentId);
+  const ordered = preferSiteId && siteIds.includes(preferSiteId) ? [preferSiteId, ...siteIds.filter((id) => id !== preferSiteId)] : siteIds;
+  const out: string[] = [];
+  for (const siteId of ordered) {
+    const kitId = config.store.readSite(siteId)?.kitDocumentId;
+    if (kitId && !out.includes(kitId) && !config.store.isTrashed("document", kitId)) out.push(kitId);
+  }
+  return out;
+}
+
+/**
+ * Component kit for a page: the `::component` definitions of its spaces' kit
+ * pages (first space wins on a name clash). Only definitions are read, never
+ * the rest of the kit page, so a viewer learns nothing else about it.
+ */
+export function documentComponentKit(config: CloudServerConfig, documentId: string, preferSiteId?: string): ComponentKit {
+  const sources = documentKitPageIds(config, documentId, preferSiteId)
+    .map((id) => config.store.readDocument(id))
+    .filter((record): record is CloudDocumentRecord => Boolean(record && typeof record.source === "string"))
+    .map((record) => ({ doc: parse(record.source, { filename: `${record.id}.noma` }), origin: record.id }));
+  return componentKitFrom(sources).kit;
+}
+
+/** Definitions-only `.noma` source of a page's kit, for clients that preview and validate locally. */
+export function documentComponentKitSource(config: CloudServerConfig, documentId: string): string {
+  const nodes: Node[] = [];
+  for (const id of documentKitPageIds(config, documentId)) {
+    const record = config.store.readDocument(id);
+    if (record) nodes.push(...componentDefinitionNodes(parse(record.source, { filename: `${record.id}.noma` })));
+  }
+  return nodes.length > 0 ? renderNoma({ type: "document", meta: {}, children: nodes }) : "";
+}
+
 /** Applies validated settings; empty strings clear optional fields. */
 export function applySpaceSettings(record: CloudSiteRecord, settings: SpaceSettings): CloudSiteRecord {
   const next: CloudSiteRecord = { ...record };
   if (settings.key !== undefined) next.key = settings.key;
-  for (const field of ["description", "icon", "homeDocumentId"] as const) {
+  for (const field of ["description", "icon", "homeDocumentId", "kitDocumentId"] as const) {
     const value = settings[field];
     if (value === undefined) continue;
     if (value) next[field] = value;
@@ -114,6 +166,7 @@ export function applySpaceSettings(record: CloudSiteRecord, settings: SpaceSetti
     else delete next.styleTokens;
   }
   if (next.homeDocumentId && !next.documentIds.includes(next.homeDocumentId)) delete next.homeDocumentId;
+  if (next.kitDocumentId && !next.documentIds.includes(next.kitDocumentId)) delete next.kitDocumentId;
   return next;
 }
 

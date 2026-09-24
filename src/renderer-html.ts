@@ -2,6 +2,7 @@ import yaml from "js-yaml";
 import type { Attrs, DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
 import { walk } from "./ast.js";
 import { deckAspect, deckSlides, findDecks, presentationSlides, slideLayout, slideParts } from "./slides.js";
+import { type ComponentKit, componentSignature, expandComponents, readComponentDefinition } from "./components.js";
 import { resolveStyleTokenAliases, styleTokenClassNames, type StyleTokenAliases } from "./style-tokens.js";
 import {
   bodyFieldText,
@@ -71,6 +72,11 @@ export interface HtmlRenderOptions extends MacroResolvers {
    * document's `style_tokens:` frontmatter. Aliases expand to core tokens only.
    */
   styleTokens?: StyleTokenAliases;
+  /**
+   * Host component kit (e.g. a space's kit page), merged under the document's
+   * own `::component` definitions. Component uses are expanded before rendering.
+   */
+  components?: ComponentKit;
   /**
    * Math rendering. `katex` injects KaTeX CDN assets in standalone HTML and
    * configures auto-render for `$..$`, `$$..$$`, `\(..\)`, `\[..\]`. Default
@@ -393,7 +399,8 @@ function createRenderCtx(doc: DocumentNode, options: HtmlRenderOptions): RenderC
   };
 }
 
-export function renderHtml(doc: DocumentNode, options: HtmlRenderOptions = {}): string {
+export function renderHtml(source: DocumentNode, options: HtmlRenderOptions = {}): string {
+  const doc = expandComponents(source, { ...(options.components ? { kit: options.components } : {}), wrap: true });
   const allowExternalAssets = options.externalAssets !== false;
   const ctx = createRenderCtx(doc, options);
   const body = doc.children.map((c) => renderNode(c, ctx)).join("\n");
@@ -451,7 +458,8 @@ export interface SlidesRenderOptions extends HtmlRenderOptions {
  * `#<id>` deep-links a slide. Without the runtime (`interactive: false` or no
  * JavaScript) every slide is listed in order, which also prints one per page.
  */
-export function renderSlidesHtml(doc: DocumentNode, options: SlidesRenderOptions = {}): string {
+export function renderSlidesHtml(source: DocumentNode, options: SlidesRenderOptions = {}): string {
+  const doc = expandComponents(source, { ...(options.components ? { kit: options.components } : {}), wrap: true, dropDefinitions: true });
   const presentation = presentationSlides(doc, options.deck);
   const ctx = createRenderCtx(doc, options);
   const { slides } = presentation;
@@ -1297,6 +1305,15 @@ function renderDirectiveBlock(node: DirectiveNode, ctx: RenderCtx): string {
     case "hero":
       return `<section class="noma-hero"${idAttr}>${renderChildren(node, ctx)}</section>`;
 
+    case "component_instance":
+      return `<div class="noma-component${node.attrs.single === true ? " noma-component-single" : ""}" data-component="${escapeAttr(String(node.attrs.component ?? ""))}"${idAttr}>${renderChildren(node, ctx)}</div>`;
+
+    case "component":
+      return renderComponentDefinition(node, ctx);
+
+    case "slot":
+      return `<div class="noma-slot"${idAttr}>${renderChildren(node, ctx)}</div>`;
+
     case "deck":
       return renderDeck(node, idAttr, ctx);
 
@@ -1606,6 +1623,16 @@ function renderPagePropertiesReportMacro(node: DirectiveNode, idAttr: string, ct
     })
     .join("\n");
   return `<table class="noma-table noma-page-properties-report"${idAttr}>\n<thead><tr>${head}</tr></thead>\n<tbody>\n${rows}\n</tbody>\n</table>`;
+}
+
+/** A kit page shows each definition: its signature, then the template with placeholders visible. */
+function renderComponentDefinition(node: DirectiveNode, ctx: RenderCtx): string {
+  const definition = readComponentDefinition(node);
+  if ("message" in definition) {
+    return `<aside class="noma-component-definition noma-component-invalid" role="note">${escapeHtml(definition.message)}</aside>`;
+  }
+  const description = definition.description ? `<p class="noma-component-description">${inlineToHtml(definition.description, ctx.inline)}</p>` : "";
+  return `<section class="noma-component-definition" data-component="${escapeAttr(definition.name)}"${node.id ? ` id="${escapeAttr(node.id)}"` : ""}><header class="noma-component-head"><span class="noma-tag">Component</span><code>${escapeHtml(componentSignature(definition))}</code></header>${description}<div class="noma-component-preview">${renderChildren(node, ctx)}</div></section>`;
 }
 
 function renderDeck(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {

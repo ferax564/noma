@@ -9,6 +9,13 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Presentations in `.noma`:** `::deck{aspect="16:9|4:3|1:1"}` holds `:::slide{layout="title|section|content|two-column|statement|quote|media|blank"}` children, with speaker notes in `::::notes`. If a slide has no `title=`, a leading heading becomes the title. HTML shows the slides as scaled frames in the page, and a **Present** button opens a fullscreen presenter with keyboard navigation and a URL-hash deep link to the current slide. Markdown writes one `##` section per slide, and LLM output keeps `[SLIDE]` markers. New `presentation` profile; `technical` and `research` also allow decks. Example: `examples/deck.noma`.
+- **Component kits:** `::component{name props slots}` defines a reusable block that is built only from core blocks and style tokens. A page uses it by name (`::pricing_card{id plan price}` with `:::slot{name}` children).
+  - **Expansion:** `expandComponents()` fills in the template on the AST, not the source text, so a prop value can never add blocks, attributes, or markup. It is bounded by depth and by a cycle check. A single-root expansion takes the use's `id` and `class`, and other template IDs become `<use-id>--<template-id>`.
+  - **Where it applies:** HTML, `--to slides`, Markdown, DOCX, and PaperDOM expand the call. The `.noma` source and the LLM context keep it compact. HTML kit pages preview each definition.
+  - **CLI:** `--kit <file>` supplies definitions to render and check.
+  - **Validator:** five new `component-*` rules.
+  - **Noma Cloud:** a space's owner can set a **Component kit page**. Its definitions render, present, export, and validate on every page in the space. They also work inside sandboxed widgets, and they appear in the Visual editor's slash menu with props and slots scaffolded. Only the definitions leave the kit page. Example: `examples/kit/`.
+- **Style tokens override built-in block styles:** token rules are now `:root`-scoped, so `class="tone-accent"` recolours a card's border (`article.noma-card` used to win).
 - **Visual editor: deck slash commands and a style-token picker.**
   - `/deck`, `/slide` (inserted after the current slide, or as a new deck outside one), `/notes` (appended to the current slide), `/grid`, `/card`, and `/widget` (a sandboxed `::html` example).
   - New decks, slides, and widgets get unused stable IDs.

@@ -25,7 +25,7 @@ import { decodePathSegment, headerValue, HttpError, sendJson, sendText, sha256He
 import { selfUser } from "./cloud/records.js";
 import { attachmentResolver } from "./cloud/attachments.js";
 import { widgetFrameResolver } from "./cloud/widgets.js";
-import { documentStyleTokens } from "./cloud/spaces.js";
+import { documentComponentKit, documentStyleTokens } from "./cloud/spaces.js";
 import { cloudMacroResolvers, cloudPageHref } from "./cloud/macros.js";
 import { renderDocumentHtml, renderPresentationHtml, renderSiteHtml, serveStatic } from "./cloud/render.js";
 import { runDueMaintenance, startMaintenanceScheduler } from "./cloud/routes-maintenance.js";
@@ -428,6 +428,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
         resolveAttachment: attachmentResolver(config, record.id, access),
         resolveWidgetFrame: widgetFrameResolver(config, record.id, access),
         styleTokens: documentStyleTokens(config, record.id),
+        components: documentComponentKit(config, record.id),
         macros: cloudMacroResolvers(config, principal, record.id),
         backHref: share ? `/d/${encodeURIComponent(record.id)}?share=${encodeURIComponent(share)}` : cloudPageHref(record.id),
       }),
@@ -442,7 +443,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     requireNotTrashed(config, "document", id);
     const access = requireRecordAccess(config, record, principal, "viewer");
     recordPageView(config, req, record, access);
-    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), macros: cloudMacroResolvers(config, principal, record.id), ...(url.searchParams.get("share") ? { shareToken: url.searchParams.get("share")! } : {}) }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), components: documentComponentKit(config, record.id), macros: cloudMacroResolvers(config, principal, record.id), ...(url.searchParams.get("share") ? { shareToken: url.searchParams.get("share")! } : {}) }), "text/html; charset=utf-8");
     return;
   }
 

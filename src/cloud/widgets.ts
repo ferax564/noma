@@ -12,6 +12,8 @@ import type { DirectiveNode } from "../ast.js";
 import { walk } from "../ast.js";
 import type { CloudDocumentRecord } from "../cloud-db.js";
 import { parse } from "../parser.js";
+import { type ComponentKit, expandComponents } from "../components.js";
+import { documentComponentKit } from "./spaces.js";
 import { type AttachmentGrant, attachmentGrant, grantStillValid } from "./attachments.js";
 import { type AccessContext, type CloudServerConfig, type Principal, documentAccessAnywhere } from "./context.js";
 import { HttpError, setSecurityHeaders } from "./http.js";
@@ -67,8 +69,8 @@ function widgetSignature(config: CloudServerConfig, documentId: string, blockId:
 }
 
 /** The `::html` / `::svg` block with this ID in the page's current source. */
-export function findWidgetBlock(source: string, documentId: string, blockId: string): DirectiveNode | undefined {
-  const doc = parse(source, { filename: `${documentId}.noma` });
+export function findWidgetBlock(source: string, documentId: string, blockId: string, components?: ComponentKit): DirectiveNode | undefined {
+  const doc = expandComponents(parse(source, { filename: `${documentId}.noma` }), { ...(components ? { kit: components } : {}), wrap: false });
   for (const node of walk(doc)) {
     if (node.type === "directive" && WIDGET_KINDS.has(node.name) && node.id === blockId) return node;
   }
@@ -107,7 +109,7 @@ export function routeDocumentWidget(
   } else if (!documentAccessAnywhere(config, record, principal)) {
     throw new HttpError(principal.user || principal.shareTokenHash ? 403 : 401, "viewer access is required");
   }
-  const node = findWidgetBlock(record.source, record.id, blockId);
+  const node = findWidgetBlock(record.source, record.id, blockId, documentComponentKit(config, record.id));
   if (!node) throw new HttpError(404, `No ::html or ::svg block "${blockId}" on this page`);
   res.statusCode = 200;
   setSecurityHeaders(res, widgetContentSecurityPolicy);

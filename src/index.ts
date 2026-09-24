@@ -23,6 +23,18 @@ export { DECK_ASPECTS, SLIDE_LAYOUTS, deckSlides, findDecks, slideParts } from "
 export type { SlideLayout, SlideParts } from "./slides.js";
 export { STYLE_TOKENS, STYLE_TOKEN_GROUPS, normalizeStyleTokenAliases, parseStyleTokens, resolveStyleTokenAliases, styleTokenClassNames } from "./style-tokens.js";
 export type { StyleToken, StyleTokenAliases } from "./style-tokens.js";
+export {
+  CORE_DIRECTIVES,
+  checkComponentUses,
+  componentKitFrom,
+  componentKitFromSource,
+  componentSignature,
+  componentUseSource,
+  expandComponents,
+  readComponentDefinition,
+  resolveComponentKit,
+} from "./components.js";
+export type { ComponentDefinition, ComponentKit, ComponentProp, ExpandComponentsOptions } from "./components.js";
 export { renderDocx } from "./renderer-docx.js";
 export type { DocxRenderOptions } from "./renderer-docx.js";
 export { extractDocxControlData } from "./docx-control-data.js";

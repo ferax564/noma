@@ -211,6 +211,67 @@ hero, grid, card, callout, columns, tabs, accordion, sidebar, button, page_setup
 | layout | `stack`, `row`, `center-v` |
 | media | `print-only`, `screen-only`, `hide-in-slides`, `slides-only` |
 
+**Component kits.** A `::component` block defines a reusable block that is
+built only from core blocks and style tokens:
+
+```noma
+::component{name="pricing_card" props="plan,price,cta?" slots="features" description="A plan in a pricing grid."}
+:::card{title="{{plan}}" class="elevated"}
+**{{price}}**
+
+{{slot:features}}
+
+{{cta}}
+:::
+::
+```
+
+A page uses the component by name:
+
+```noma
+::pricing_card{id="plan-team" plan="Team" price="$8" class="tone-accent"}
+:::slot{name="features"}
+- Unlimited spaces
+:::
+::
+```
+
+**Definition rules**
+
+- `name` is 2–41 lowercase letters, digits, or underscores, and it can never be a core directive name.
+- `props` lists attribute names. A trailing `?` marks a prop as optional. `id`, `class`, and `noverify` are reserved.
+- `slots` lists named slots. The unnamed default slot is always available.
+
+**How the template is filled in**
+
+- `{{prop}}` is replaced inside text, headings, list items, table cells, directive bodies, and attribute values.
+- A paragraph that is exactly `{{slot:name}}` (or `{{slot}}`) is replaced by the blocks inside that `:::slot{name="..."}`. For `{{slot}}`, it is the use's other children.
+- A paragraph that only held placeholders and ends up empty is dropped.
+
+Substitution happens on the AST, not the source text. A prop value can change words and attribute values, but it can never add blocks, attributes, or markup.
+
+**IDs.** When the template has a single root block, that root takes the use's `id` and `class`. Otherwise template IDs become `<use-id>--<template-id>`, so repeated uses never collide.
+
+**Where the definitions come from.** A page can use its own definitions. It can also use a host kit: `--kit <file>` in the CLI, or the space's kit page in Noma Cloud. The page's own definitions win on a name clash.
+
+**How each output handles components**
+
+- The `.noma` source and the LLM context keep the compact call (`[PRICING_CARD plan="Team" ...]`).
+- HTML, `--to slides`, Markdown, DOCX, and PaperDOM expand the call.
+- Handoff targets drop the definitions.
+- An HTML kit page shows each definition's signature and a preview of its template, with the placeholders visible.
+- Expansion stops at a depth of 8 and at 500 uses. A cycle renders a warning instead of recursing.
+
+**Validator rules**
+
+- `component-invalid-definition` (error)
+- `component-duplicate` (warning)
+- `component-missing-prop` (error)
+- `component-unknown-prop` (warning)
+- `component-unknown-slot` (warning)
+
+Template bodies are skipped by the other rules, and component plumbing is allowed under every profile.
+
 **Decks and slides.** `::deck{id="..." title="..." aspect="16:9|4:3|1:1"}` holds `:::slide` children. `:::slide{id="..." title="..." layout="..."}` is one slide. Its layout is one of `title`, `section`, `content` (the default), `two-column`, `statement`, `quote`, `media`, or `blank`. If a slide has no `title=`, a leading heading becomes the title. Put speaker notes in a `::::notes` block inside the slide. `hidden` skips a slide when presenting. `transition="fade|slide"` is carried into PaperDOM. Each slide is an ordinary block with a stable ID, so agents patch one slide or bullet without rewriting the deck. The validator enforces that `::slide` sits directly in a `::deck` (`slide-outside-deck`, error). It also warns on `notes-outside-slide`, `slide-unknown-layout`, and `deck-unknown-aspect`.
 
 The targets render decks as follows:

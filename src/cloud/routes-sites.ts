@@ -433,6 +433,7 @@ async function updateSite(
   const settings = spaceSettingsInput(config, input, documentIds, existing.id);
   if (settings.key !== undefined && settings.key !== existing.key) requireAccessRole(access, "owner");
   if (settings.styleTokens !== undefined) requireAccessRole(access, "owner");
+  if (settings.kitDocumentId !== undefined && settings.kitDocumentId !== (existing.kitDocumentId ?? "")) requireAccessRole(access, "owner");
   const updated: CloudSiteRecord = {
     ...existing,
     title,
@@ -529,6 +530,7 @@ function spaceFields(config: CloudServerConfig, record: CloudSiteRecord, visible
     description: record.description ?? "",
     icon: record.icon ?? "",
     styleTokens: record.styleTokens ?? {},
+    kitDocumentId: record.kitDocumentId && visible.has(record.kitDocumentId) ? record.kitDocumentId : null,
     homeDocumentId: home ?? null,
     archived: Boolean(record.archivedAt),
     archivedAt: record.archivedAt ?? null,
