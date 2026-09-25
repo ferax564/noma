@@ -545,6 +545,8 @@ async function importNotion(
       outcomes.push({ pageId: page.id, title: page.title, action: "failed", reason: error instanceof Error ? error.message.slice(0, 300) : String(error) });
     }
     progress.processed += 1;
+    progress.attachmentsCopied = stats.stored;
+    progress.attachmentsSkipped = stats.skipped.length;
     report();
   }
 

@@ -432,7 +432,7 @@ test("Notion export ZIP imports pages, databases, and attachments, and re-import
     const job = await waitForJob(cloud.base, alice.token, ((await response.json()) as { job: ImportJob }).job.id);
     assert.equal(job.status, "succeeded", job.error);
     assert.equal(job.source, "notion-export");
-    assert.deepEqual({ ...job.progress }, { total: 5, processed: 5, created: 5, updated: 0, unchanged: 0, skipped: 0, failed: 0 });
+    assert.deepEqual({ ...job.progress }, { total: 5, processed: 5, created: 5, updated: 0, unchanged: 0, skipped: 0, failed: 0, attachmentsCopied: 3, attachmentsSkipped: 0 });
     assert.deepEqual(job.result?.loss.find((entry) => entry.macro === "html"), { macro: "html", count: 3 });
     const attachments = job.result?.attachments as unknown as { referenced: number; stored: number; skipped: unknown[] };
     assert.deepEqual({ referenced: attachments.referenced, stored: attachments.stored, skipped: attachments.skipped }, { referenced: 3, stored: 3, skipped: [] });
