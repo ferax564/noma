@@ -224,6 +224,13 @@ test("visual mode inserts blocks from the slash menu and markdown shortcuts with
   const stored = await requestJson<CloudDocument>(`${origin}/api/documents/${documentId}`, session.token);
   assert.match(stored.source, /::decision\{id="decision-1" status="proposed"\}\nAdopt the visual editor\.\n::/);
   assert.match(stored.source, /## Shortcut heading\n\n- \{#task-[a-z0-9]{8}\} \[ \] first task/, "saving gives the new checkbox task a stable ID");
+
+  await typeAtEndOf(page, ".visual-editor-surface > p:last-of-type", "");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/canvas");
+  await page.waitForSelector(".visual-slash-menu [data-slash-id='canvas']");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => (document.querySelector<HTMLTextAreaElement>("#sourceInput")?.value ?? "").includes('canvas{id="canvas-1" src="att:board.json" caption="Canvas"}'), { timeout: 10_000 });
   assert.deepEqual(errors, []);
 });
 
@@ -255,13 +262,6 @@ test("visual mode builds decks with /deck, /slide, /notes and styles blocks with
   await waitForText(page, "#cloudStatus", "Created user");
   await waitForText(page, "#visualLiveBadge", "local");
   const source = () => page.$eval("#sourceInput", (input) => (input as HTMLTextAreaElement).value);
-
-  await typeAtEndOf(page, ".visual-editor-surface > p:last-of-type", "");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("/canvas");
-  await page.waitForSelector(".visual-slash-menu [data-slash-id='canvas']");
-  await page.keyboard.press("Enter");
-  await page.waitForFunction(() => (document.querySelector<HTMLTextAreaElement>("#sourceInput")?.value ?? "").includes('::canvas{id="canvas-1" src="att:board.json" caption="Canvas"}\n::'), { timeout: 10_000 });
 
   await typeAtEndOf(page, ".visual-editor-surface > p:last-of-type", "");
   await page.keyboard.press("Enter");
