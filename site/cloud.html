@@ -101,7 +101,7 @@
         <button id="newPageButton" type="button">New Page</button>
         <button id="newFolderButton" type="button">New Folder</button>
         <button id="importPageButton" type="button">Import</button>
-        <button id="confluenceImportButton" type="button" aria-label="Import from Confluence">Confluence</button>
+        <button id="confluenceImportButton" type="button" aria-label="Import from Confluence or Notion" title="Import from Confluence or Notion">Migrate</button>
         <input id="importPageInput" type="file" accept=".noma,.md,.markdown,text/plain,text/markdown" hidden />
       </div>
       <label class="rail-template-field" for="pageTemplateSelect">Page template
@@ -672,13 +672,14 @@
 </dialog>
 <dialog id="confluenceImportDialog" class="wiki-dialog" aria-labelledby="confluenceImportTitle">
   <form id="confluenceImportForm" class="wiki-dialog-form">
-    <h2 id="confluenceImportTitle">Import from Confluence</h2>
+    <h2 id="confluenceImportTitle">Import from Confluence or Notion</h2>
     <label class="wiki-dialog-field">Source
       <select id="confluenceImportMode">
         <option value="cloud">Confluence Cloud (API token)</option>
         <option value="datacenter">Confluence Data Center (personal access token)</option>
         <option value="export">XML space export (.zip or entities.xml)</option>
-        <option value="bundle">JSON page bundle</option>
+        <option value="bundle">Confluence JSON page bundle</option>
+        <option value="notion">Notion export (Markdown &amp; CSV .zip)</option>
       </select>
     </label>
     <label class="wiki-dialog-field" data-import-mode="cloud datacenter">Site URL
@@ -693,7 +694,7 @@
     <label class="wiki-dialog-field" data-import-mode="cloud datacenter">Token
       <input id="confluenceImportToken" type="password" autocomplete="off" />
     </label>
-    <label class="wiki-dialog-field" data-import-mode="export bundle">File
+    <label class="wiki-dialog-field" data-import-mode="export bundle notion">File
       <input id="confluenceImportFile" type="file" />
     </label>
     <label class="wiki-dialog-check"><input id="confluenceImportOverwrite" type="checkbox" /> Replace pages edited in Noma since the last import</label>

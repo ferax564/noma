@@ -392,6 +392,63 @@ last import is skipped unless `overwrite: true`. The job status reports
 editor of the space can read it. Only one import per space runs at a time.
 Jobs interrupted by a server restart are marked failed.
 
+### Import from Notion
+
+`POST /api/import/notion` imports a Notion workspace (or any part of it) into an
+existing Noma space, with the same job model as the Confluence import: editor
+access to the space, a `202` job, `GET /api/import/jobs/<job-id>` polling, and
+one import per space at a time.
+
+```text
+POST /api/import/notion?site=<id>&overwrite=false   (body: Notion "Markdown & CSV" export .zip)
+POST /api/import/notion   { siteId, archiveBase64, overwrite? }
+POST /api/import/notion   { siteId, bundle, overwrite? }
+```
+
+- **Export ZIP** is the file from *Settings → Export → Markdown & CSV* (include
+  subpages and files). Pages are `Title <id>.md`, child pages live in the
+  folder `Title <id>/`, and databases are `Name <id>.csv` (the `_all.csv`
+  variant wins when both exist) with their row pages in `Name <id>/`. Large
+  exports that wrap `Part-N.zip` files are unpacked one level deep. The upload
+  is capped by `NOMA_CLOUD_IMPORT_MAX_BYTES`, the archive by entry count and
+  inflated size, and the import by 2,000 pages. Entries with absolute or `..`
+  paths are skipped and listed in the result.
+- **JSON bundle** (`format: "noma-notion-bundle"`, optional) is for pipelines
+  that read the Notion API block tree themselves: `{ workspace?, pages: [{ id,
+  title, parentId?, markdown, properties?, url?, database?: { columns, rows }
+  }] }`. `markdown` uses Notion's export dialect. Links to `notion.so` URLs or
+  bare page IDs become wikilinks. Bundles carry no files.
+
+Each page becomes one `.noma` document with `source: notion` frontmatter (the
+Notion ID and URL). Folders become the page tree. Links to other imported pages
+(relative `.md`/`.csv` paths or `notion.so` URLs) become `[[Title]]` wikilinks.
+Images and files in the export are stored as page attachments. A standalone
+image becomes `::figure{src="att:<file>"}` and other files become
+`[name](att:<file>)` links. Attachment size and space quota limits apply, and a
+file that is too large or executable is skipped and listed in the result.
+Notion callouts (`<aside>`) become `::callout` blocks. A database becomes a page
+with a readable pipe table (row titles link to their row pages) plus a
+`::dataset{format="csv"}` copy that agents and plots can use. A row page's
+properties (the `Key: value` lines under its title) become a
+`::page-properties` block, so `::page-properties-report` can list them. A
+`Tags` or `Labels` property becomes page labels. Literal `::` lines and
+`[[...]]` text from Notion are neutralised with a zero-width space so they stay
+plain text.
+
+The job's `loss` report counts what did not carry over exactly: raw HTML
+(`html`), links to pages or files missing from the export (`broken-link`,
+`missing-file`), titles that cannot be a wikilink target (`unlinkable-title`),
+duplicate titles, and oversized files. Re-importing matches pages by Notion ID.
+It follows the same unchanged / updated / skipped-unless-`overwrite` rules as
+the Confluence import. Attachments whose name and bytes are unchanged are kept,
+and changed files replace the old attachment. Wikilinks resolve by title, so two
+imported pages with the same title link to whichever the space finds first.
+
+The CLI converts the same exports offline:
+`noma ingest export.zip --from notion --out wiki/` writes one `.noma` file per
+page in a folder tree, files under `<page>.files/`, and a
+`notion-import-report.json` with the loss report.
+
 ### Export
 
 `GET /api/documents/<id>/export?to=` downloads one page as `pdf`, `docx`,

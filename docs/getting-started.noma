@@ -605,6 +605,15 @@ jobs:
 
 The action installs the CLI from the checked-out action ref by default, runs `noma check`, and either renders the requested target or generates proof HTML plus a Markdown summary. For book manifests in render mode, set `to: site` and point `output` at a directory. If you need an explicit package source, set `cli-package` to any npm package spec or `cli-version` to an `@ferax564/noma-cli` npm version range.
 
+## Bring in Markdown or Notion
+
+```bash
+npm run noma -- ingest README.md --out readme.noma
+npm run noma -- ingest notion-export.zip --from notion --out wiki/
+```
+
+`ingest` converts Markdown to Noma and gives each heading an explicit, stable ID (`--no-stable-ids` keeps headings as written). With `--from notion` it reads the ZIP from Notion's *Export → Markdown & CSV* (or a `noma-notion-bundle` JSON file). It writes one `.noma` file per page in a folder tree that mirrors the Notion hierarchy. Internal links become `[[Title]]` wikilinks, and images and files are copied to `<page>.files/`. Databases become a pipe table plus a `::dataset`, and row properties become a `::page-properties` block. `notion-import-report.json` lists every page and what did not convert exactly. To import straight into a Noma Cloud space, use the *Migrate* dialog or `POST /api/import/notion` (see the [Noma Cloud guide](noma-cloud.noma)).
+
 ## Re-align tables in source
 
 ```bash

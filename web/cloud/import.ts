@@ -1,4 +1,4 @@
-/** "Import from Confluence" dialog: live Cloud/Data Center import or an XML export/JSON bundle upload, with job polling. */
+/** "Import from Confluence or Notion" dialog: live Confluence Cloud/Data Center import, a Confluence XML export/JSON bundle, or a Notion export ZIP upload, with job polling. */
 import { CloudRequestError, fetchCloudJson } from "./api.js";
 import { renderChrome } from "./layout.js";
 import { loadSite } from "./navigation.js";
@@ -11,7 +11,8 @@ interface ImportJobResponse {
   status: "queued" | "running" | "succeeded" | "failed";
   spaceKey?: string;
   progress: { total: number; processed: number; created: number; updated: number; unchanged: number; skipped: number; failed: number };
-  result?: { loss?: Array<{ macro: string; count: number }>; attachments?: { referenced: number; note: string } };
+  source?: string;
+  result?: { loss?: Array<{ macro: string; count: number }>; attachments?: { referenced: number; stored?: number; skipped?: unknown[]; note: string } };
   error?: string;
 }
 
@@ -68,7 +69,7 @@ function syncMode(): void {
   tokenInput.required = live;
   fileInput.required = !live;
   tokenInput.placeholder = mode === "datacenter" ? "Personal access token" : "API token";
-  fileInput.accept = mode === "bundle" ? ".json,application/json" : ".zip,.xml,application/zip,application/xml";
+  fileInput.accept = mode === "bundle" ? ".json,application/json" : mode === "notion" ? ".zip,application/zip" : ".zip,.xml,application/zip,application/xml";
 }
 
 async function startImport(): Promise<void> {
@@ -96,7 +97,13 @@ async function startImport(): Promise<void> {
     } else {
       const file = fileInput.files?.[0];
       if (!file) throw new Error("Choose a file to import");
-      if (mode === "bundle") {
+      if (mode === "notion") {
+        started = await fetchCloudJson(`/api/import/notion?site=${encodeURIComponent(site.id)}&overwrite=${overwriteInput.checked}`, {
+          method: "POST",
+          headers: { "content-type": "application/zip" },
+          body: file,
+        });
+      } else if (mode === "bundle") {
         const bundle = JSON.parse(await file.text()) as unknown;
         started = await fetchCloudJson(`/api/import/confluence`, {
           method: "POST",
@@ -132,15 +139,22 @@ async function pollJob(jobId: string, siteId: string): Promise<void> {
         return;
       }
       if (job.status === "succeeded") {
-        const lossy = job.result?.loss?.length ? ` Unsupported macros kept as text: ${job.result.loss.map((entry) => `${entry.macro} ×${entry.count}`).join(", ")}.` : "";
-        const attachments = job.result?.attachments?.referenced ? ` ${job.result.attachments.referenced} attachment links point at Confluence.` : "";
+        const notion = job.source?.startsWith("notion") === true;
+        const lossLabel = notion ? "Not carried over exactly" : "Unsupported macros kept as text";
+        const lossy = job.result?.loss?.length ? ` ${lossLabel}: ${job.result.loss.map((entry) => `${entry.macro} ×${entry.count}`).join(", ")}.` : "";
+        const files = job.result?.attachments;
+        const attachments = !files?.referenced
+          ? ""
+          : notion
+            ? ` ${files.stored ?? 0} files stored as attachments${files.skipped?.length ? `, ${files.skipped.length} skipped` : ""}.`
+            : ` ${files.referenced} attachment links point at Confluence.`;
         setPanelStatus(
           status,
-          `Imported ${job.spaceKey ?? "space"}: ${progress.created} created, ${progress.updated} updated, ${progress.unchanged} unchanged, ${progress.skipped} skipped, ${progress.failed} failed.${lossy}${attachments}`,
+          `Imported ${job.spaceKey ?? (notion ? "Notion workspace" : "space")}: ${progress.created} created, ${progress.updated} updated, ${progress.unchanged} unchanged, ${progress.skipped} skipped, ${progress.failed} failed.${lossy}${attachments}`,
           progress.failed > 0 || progress.skipped > 0 ? "warning" : "ok",
         );
         startButton.disabled = false;
-        setCloudStatus("Confluence import finished", "ok");
+        setCloudStatus(notion ? "Notion import finished" : "Confluence import finished", "ok");
         if (state.currentSite?.id === siteId) await loadSite(siteId, state.currentPage?.id);
         return;
       }

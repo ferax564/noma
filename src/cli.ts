@@ -27,6 +27,7 @@ import { collectIdRegistry } from "./ids.js";
 import { writePdfFromHtml, type PdfMarginOptions } from "./pdf.js";
 import { createAgentSafetyProof, renderProofHtml, renderProofMarkdownSummary } from "./proof.js";
 import { convertMarkdownToNoma } from "./ingest-markdown.js";
+import { NotionImportError, notionOutputFiles, parseNotionBundle, parseNotionExport } from "./notion-import.js";
 import type { RenderLlmOptions } from "./renderer-llm.js";
 import type { DocumentNode } from "./ast.js";
 import type { ValidateOptions } from "./validator.js";
@@ -44,6 +45,8 @@ Usage:
   noma proof <file.noma> [opts]              Render an agent safety proof for patch ops
   noma agent review <file.noma> [opts]       Alias for proof
   noma ingest <file.md> [opts]               Convert Markdown to Noma-compatible source
+  noma ingest <export.zip> --from notion --out <dir>
+                                             Convert a Notion export into a .noma tree
   noma init [dir]                            Create a starter .noma document
   noma ids <file.noma|book.yml>              Print canonical ID and alias registry
   noma prove <file.noma> [opts]              Alias for proof
@@ -122,6 +125,9 @@ Proof options:
 Ingest options:
   --add-stable-ids          Add explicit IDs to Markdown headings (default)
   --no-stable-ids           Preserve Markdown headings without explicit IDs
+  --from <markdown|notion>  Source format (default: markdown). notion reads a
+                            Notion "Markdown & CSV" export ZIP (or a
+                            noma-notion-bundle .json) and needs --out <dir>
 
 DOCX sync options:
   --report <path>           Write a JSON report for docx-sync or
@@ -149,6 +155,7 @@ Examples:
   noma patch examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --inplace
   noma proof examples/thesis.noma --op '{"op":"update_attribute","id":"asml-euv-moat","key":"confidence","value":0.9}' --out dist/proof.html
   noma ingest docs/README.md --out docs/README.noma
+  noma ingest notion-export.zip --from notion --out wiki/
   noma diff before.noma after.noma --at 2026-05-12 --reason "Q1 refresh"
 `;
 
@@ -185,6 +192,7 @@ interface CliArgs {
   ignoreRules: string[];
   profiles: string[];
   addStableIds: boolean;
+  from?: string;
   math?: "katex" | "none";
   excludeStaleDays?: number;
   llmSelect: string[];
@@ -332,6 +340,9 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--no-stable-ids") {
       args.addStableIds = false;
       i++;
+    } else if (a === "--from") {
+      args.from = argv[++i];
+      i++;
     } else if (a === "--reason") {
       args.diffReason = argv[++i];
       i++;
@@ -446,6 +457,31 @@ function output(content: string, out?: string): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(out, content, "utf8");
   process.stderr.write(`✓ wrote ${out}\n`);
+}
+
+function ingestNotion(file: string, out: string | undefined): void {
+  if (!out) {
+    process.stderr.write("noma ingest --from notion: --out <dir> required\n");
+    process.exit(2);
+  }
+  const input = readFileSync(resolve(file));
+  let result;
+  try {
+    result = /\.json$/i.test(file) ? parseNotionBundle(JSON.parse(input.toString("utf8"))) : parseNotionExport(input);
+  } catch (error) {
+    const message = error instanceof NotionImportError || error instanceof SyntaxError ? error.message : String(error);
+    process.stderr.write(`error: ${message}\n`);
+    process.exit(2);
+  }
+  const root = resolve(out);
+  for (const entry of notionOutputFiles(result)) {
+    const target = resolve(root, entry.path);
+    if (!target.startsWith(`${root}/`) && !target.startsWith(`${root}\\`)) throw new Error(`Refusing to write outside ${out}: ${entry.path}`);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, entry.data);
+  }
+  const lossy = result.loss.length > 0 ? `; loss: ${result.loss.map((entry) => `${entry.kind} ×${entry.count}`).join(", ")}` : "";
+  process.stderr.write(`✓ wrote ${result.pages.length} pages to ${out} (report: notion-import-report.json${lossy})\n`);
 }
 
 function outputBinary(content: Buffer, out?: string): void {
@@ -699,6 +735,14 @@ async function run(argv: string[]): Promise<void> {
   if (cmd === "ingest") {
     if (!args.file) {
       process.stderr.write("noma ingest: <file.md> required\n");
+      process.exit(2);
+    }
+    if (args.from === "notion") {
+      ingestNotion(args.file, args.out);
+      return;
+    }
+    if (args.from !== undefined && args.from !== "markdown") {
+      process.stderr.write(`noma ingest: unknown --from ${args.from} (expected markdown or notion)\n`);
       process.exit(2);
     }
     const source = readFileSync(resolve(args.file), "utf8");
