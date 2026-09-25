@@ -1,6 +1,8 @@
 /** Noma Cloud browser app entry: wires event listeners and boots the app. */
+import { installAccountSecurity, openAccountSecurity } from "./account-security.js";
 import { installAttachments } from "./attachments.js";
 import { installCloudAi } from "./ai.js";
+import { installAiPageDrafts } from "./ai-pages.js";
 import { addComment, addGroupMember, createGroup, inviteCollaborator, inviteGroup, readAllNotifications, refreshAccessManagement, refreshActivity, refreshApprovals, refreshComments, refreshGroups, refreshNotifications, requestApproval } from "./collaboration.js";
 import { panelsOpenStorageKey, themeStorageKey } from "./constants.js";
 import { closeContextMenu, showSourceContextMenu } from "./context-menu.js";
@@ -24,7 +26,7 @@ import { bindTasks, decoratePreviewTasks } from "./tasks.js";
 import { bindWebhooks } from "./webhooks.js";
 import { bindNotificationSettings } from "./notification-settings.js";
 import { installRestrictions } from "./restrictions.js";
-import { createApiToken, createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
+import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
 import { installTemplateTools } from "./templates.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
@@ -43,6 +45,8 @@ void initializeCloud();
 
 function bindEvents(): void {
   installCloudAi();
+  installAiPageDrafts();
+  installAccountSecurity();
   document.addEventListener("click", () => closeContextMenu());
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeContextMenu();
@@ -66,7 +70,7 @@ function bindEvents(): void {
   });
 
   copyUserTokenButton.addEventListener("click", () => {
-    void createApiToken();
+    void openAccountSecurity();
   });
 
   themeToggleButton.addEventListener("click", () => {

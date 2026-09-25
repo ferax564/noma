@@ -185,8 +185,18 @@ only mint tokens within its own scopes, and rotating the legacy token needs
 `token_revoked`. Signing in with a personal access token opens a session with
 the same scopes that ends no later than the token. Each user may hold 50 active
 tokens. The legacy token returned at registration still works with full scope,
-but it is deprecated for automation. In the app, **Create API Token** makes a
-read + write token that expires in 90 days and copies it once.
+but it is deprecated for automation.
+
+In the app, the header **Security** button opens a dialog with both lists. It
+shows your own tokens with name, preview, scopes, creation date, expiry, and
+last use, and a **Revoke** button for each. A form creates a token with a name,
+scopes from those your session holds (`read` is always on), and an expiry of 7,
+30, 90, or 365 days, or none. The new secret is shown once with a **Copy
+token** button and is cleared when the dialog closes. The same dialog lists
+your signed-in browser sessions with how they started, when, last activity,
+user agent, and IP. The current browser is marked and cannot be revoked there
+(use **Sign Out**). Other sessions can be revoked one at a time or all at once
+with **Sign out other sessions**.
 
 API clients must send the gate token separately from the normal Noma user
 token:
@@ -215,7 +225,8 @@ identity for API calls and UI permissions.
 3. To resume an existing identity, paste its user token in **Token** and choose
    **Log In**. **Sign Out** clears that browser session without deleting data.
 4. Use **Copy User ID** when another owner needs to invite you.
-5. Use **Copy Token** only for your own API calls or plugin development.
+5. Use **Security** to create personal access tokens for your own API calls or
+   plugin development, and to review or revoke signed-in sessions.
 6. Registration creates a starter workspace and paper page automatically.
    Choose **New Space** when you need another research, book, or docs space.
 7. Use **New Page** to add another paper section, chapter, or reference page,
@@ -232,7 +243,8 @@ The left rail provides workspace navigation beyond the page tree:
 | Control | Behavior |
 |---|---|
 | Search | Hybrid lexical, local-embedding, typed-block, graph, trust, and freshness search over visible source blocks. Results preserve the exact source span, version hash, and access decision and open the matching page and source line. |
-| Page template | Starts a new page from a built-in template (blank, meeting-notes, decision-record, project-overview, technical-spec, research-paper), a workspace template, or a template of the current space. Blueprints with variables open a form first. |
+| Page template | Starts a new page from a built-in template (blank, meeting-notes, decision-record, project-overview, technical-spec, research-paper), a workspace template, or a template of the current space. Blueprints with variables open a form first. **Manage** lists every template and lets you edit or delete the ones you manage. |
+| Draft with AI | Drafts a new page in the current space from a title and instructions. The draft becomes a page proposal under Agent Review. See [[generative-ai-on-the-trust-loop]]. |
 | Import | Uploads `.noma`, `.md`, `.markdown`, or plain text into the current space. Markdown intake pins stable heading IDs. |
 | Confluence | Imports a whole Confluence space into the current space. See [[wiki-macros-templates-import-export]]. |
 | Favorite | Adds the current page to a per-user Favorites list. Spaces can be favorited from their context menu. |
@@ -334,6 +346,14 @@ the page toolbar). The page's first heading becomes
 To create a page from a blueprint, send `templateId` and `variables` to
 `POST /api/sites/<id>/documents`. Space templates can only be used inside their
 own space. Missing required variables return `400` with a `missing` list.
+
+In the app, **Manage** next to the page template picker lists built-in,
+workspace, and space templates. Templates you can manage (workspace templates
+for workspace owners, space templates for that space's editors) have **Edit**
+and **Delete** buttons. Edit changes the name, description, category, source,
+and declared variables (name, label, default, required). Server validation
+errors, such as an undeclared placeholder, are shown in the dialog. Built-in
+templates are read-only.
 
 Values are filled in so they cannot change the page's structure. Values become
 one line. Inside attributes, quotes and braces are neutralised. In YAML
@@ -979,6 +999,15 @@ and sources. In the app, the page header **AI** menu offers Summarize, Draft
 changes, and Refresh from sources. Results open in the Agent Review panel.
 The Ask panel's **Generate answer** toggle turns citations into links to the
 cited blocks.
+
+**Draft with AI** in the space rail asks for a title and instructions. It can
+also place the page under the page that is open. The dialog shows the drafted
+source and adds the proposal to **Agent Review → AI page proposals** for the
+current space. There, the proposer can withdraw it, and another editor can
+approve or reject it. After approval, an editor chooses **Create page**, which
+applies it and opens the new page. When AI is unavailable (no provider, policy,
+or budget), the dialog says why and does not send the request. A request that
+fails with `ai_unavailable` is reported the same way.
 
 ## Stale-knowledge maintenance
 
