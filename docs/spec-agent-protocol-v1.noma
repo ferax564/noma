@@ -264,6 +264,8 @@ that position. If no `id=` is present in `content`, the block has no id after re
   non-directive node.
 - `invalid_content` (§3.5) — `content` does not parse to exactly one top-level directive
   block.
+- `unbalanced_fence_content` (§3.5) — the fence in `content` does not open at the
+  target's nesting depth (a child of a `::` block must open with `:::`, and so on).
 - `id_conflict` (§3.5) — the `id=` declared inside `content` is already taken by another
   block in the document (other than the block being replaced).
 
@@ -309,6 +311,8 @@ does not exist.
   children, or `position` is out of the valid range `[0, parent.children.length]`.
 - `invalid_content` (§3.5) — `content` does not parse to exactly one top-level directive
   block.
+- `unbalanced_fence_content` (§3.5) — the fence in `content` does not open one colon
+  deeper than `parent` (two colons when `parent` is a heading section).
 - `id_conflict` (§3.5) — the `id=` declared inside `content` is already taken by another
   block in the document.
 
@@ -586,7 +590,7 @@ errors as machine-readable `code` values in the `diagnostics` array of the trans
 | `op_list_aborted` | This op was virtually applied in memory before a later op in the same list failed. The list was rolled back; no bytes were written. Emitted in the transcript record for each preceding op in the failed list. |
 | `invalid_attribute_key` | `update_attribute.key` or `remove_attribute.key` is not a valid attribute name (`[a-zA-Z_][\w-]*`). |
 | `invalid_attribute_value` | A value the op writes into an attribute list (`update_attribute.value`, comment/note/change-request attributes, `rename_id.to`) contains a line break. |
-| `unbalanced_fence_content` | `replace_body.content` would change blocks outside the target — for example a `::` line that closes the target early, or an unterminated code fence. Balanced child blocks and fenced code are allowed. |
+| `unbalanced_fence_content` | `replace_body.content` would change blocks outside the target — for example a `::` line that closes the target early, or an unterminated code fence. Balanced child blocks and fenced code are allowed. Also raised when `replace_block.content` or `add_block.content` opens at the wrong fence depth for its position, which would otherwise close an enclosing block early. |
 | `unsupported_op` | The `op` value is not in the v1.0 op catalog (the §3.1 core ops or the §1.5 extended ops), or the operation targets a book manifest (`.noma.yml`). Book manifests are not valid patch targets in v1.0. |
 
 New codes MAY be added in a minor version without breaking conforming implementations (the
@@ -1770,8 +1774,8 @@ core ops (5 patch-error).
 
 ### C.5.1 Extended-op fixtures (normative)
 
-The remaining 21 fixtures exercise the §1.5 extended operations (20) and the `baseHash`
-precondition (1) — all normative as of v1.0. A v1.0-conformant implementation MUST pass
+The remaining 23 fixtures exercise the §1.5 extended operations (20), the `baseHash`
+precondition (1), and fence-depth containment for `add_block`/`replace_block` (2) — all normative as of v1.0. A v1.0-conformant implementation MUST pass
 these too.
 
 ::table{align="l,l"}
@@ -1797,9 +1801,11 @@ these too.
 | `patch/insert_dataset_column` | `insert_dataset_column`: a schema field + per-row cell inserted. |
 | `patch/delete_dataset_column` | `delete_dataset_column`: a schema field + per-row cell removed. |
 | `patch-error/sha_mismatch` | An op whose `baseHash` precondition does not match the target block rejects with `sha_mismatch`. |
+| `patch-error/wrong_fence_depth` | `add_block` into a `::grid` with a `::card` fragment (needs `:::card`) rejects with `unbalanced_fence_content`. |
+| `patch-error/wrong_fence_depth_replace` | `replace_block` of a nested `:::card` with a `::card` fragment rejects with `unbalanced_fence_content`. |
 ::
 
-The 19 core fixtures plus these 21 extended fixtures total 40. All fixtures use the same
+The 19 core fixtures plus these 23 extended fixtures total 42. All fixtures use the same
 directory layout and expected-file vocabulary, so the same `noma verify` harness runs the
 entire corpus.
 

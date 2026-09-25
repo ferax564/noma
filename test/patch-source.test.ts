@@ -871,3 +871,22 @@ test("patchSource: missing id throws", () => {
     /not found/,
   );
 });
+
+test("replace_block and add_block reject fragments at the wrong fence depth", () => {
+  const nested = `# T\n\n::grid{id="g"}\n:::card{id="a"}\nA\n:::\n\n:::card{id="b"}\nB\n:::\n::\n\nAfter\n`;
+  const code = (fn: () => unknown): string | undefined => {
+    try {
+      fn();
+    } catch (error) {
+      return error instanceof PatchError ? error.code : "other";
+    }
+    return undefined;
+  };
+  assert.equal(code(() => patchSource(nested, { op: "replace_block", id: "a", content: `::card{id="a"}\nA2\n::` })), "unbalanced_fence_content");
+  assert.equal(code(() => patchSource(nested, { op: "add_block", parent: "g", content: `::card{id="c"}\nC\n::` })), "unbalanced_fence_content");
+  assert.equal(code(() => patchSource(nested, { op: "add_block", parent: "t", content: `:::note{id="n"}\nN\n:::` })), "unbalanced_fence_content");
+  assert.match(patchSource(nested, { op: "replace_block", id: "a", content: `:::card{id="a"}\nA2\n:::` }), /:::card\{id="a"\}\nA2\n:::\n\n:::card\{id="b"\}/);
+  assert.match(patchSource(nested, { op: "add_block", parent: "g", content: `:::card{id="c"}\nC\n:::` }), /:::card\{id="c"\}\nC\n:::\n::/);
+  assert.match(patchSource(nested, { op: "add_block", parent: "t", content: `::note{id="n"}\nN\n::` }), /::note\{id="n"\}/);
+  assert.match(patchSource(nested, { op: "replace_block", id: "g", content: `::grid{id="g"}\n:::card{id="z"}\nZ\n:::\n::` }), /:::card\{id="z"\}/);
+});

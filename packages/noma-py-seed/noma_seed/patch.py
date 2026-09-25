@@ -203,6 +203,14 @@ def _add_block(source: str, op: dict) -> str:
         raise PatchError(
             "invalid_content", "add_block content must be exactly one top-level directive"
         )
+    expected = parent.colons + 1
+    if inner.blocks[0].colons != expected:
+        fence = ":" * expected
+        raise PatchError(
+            "unbalanced_fence_content",
+            f"fragment opens with {inner.blocks[0].colons} colons but this position needs {expected} "
+            f'(write "{fence}name{{...}}" … "{fence}")',
+        )
     content_lines = content.split("\n")
     position = op.get("position", len(parent.children))
 

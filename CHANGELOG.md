@@ -41,6 +41,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Patch engine:** `replace_block` and `add_block` in `patchSource` now reject a fragment that opens at the wrong fence depth for its position, with `unbalanced_fence_content`. Before this fix, a `::card` spliced into a `::grid` closed the grid early and silently produced a malformed document. The error names the depth that position needs. The Python seed enforces the same rule for `add_block`. Conformance: the `patch/add_block` fixture now nests correctly, and there are new `patch-error/wrong_fence_depth` and `wrong_fence_depth_replace` fixtures (58 in total).
 - `noma render --title <t>` and `--deck <id>` placed before the input file no longer take their value as the file path.
 - The `hide-in-slides` and `slides-only` style tokens now apply in the standalone presenter (`--to slides`, Cloud "Present"). Hidden slides stay out of the presenter overview and print output.
 - Noma Cloud HTML, PDF, and site-ZIP exports now resolve the space's style-token aliases.
