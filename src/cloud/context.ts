@@ -21,6 +21,7 @@ import type { LlmProvider } from "../cloud-llm.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
 import { assertCloudId } from "./input.js";
+import type { OidcClient } from "./oidc.js";
 import { routeNotificationByPreference } from "./mail.js";
 import { resolveSessionUser, resolveTokenUser } from "./security.js";
 
@@ -34,6 +35,8 @@ export interface CloudServerConfig {
   accessTokenHash?: string;
   invitationCodeHash?: string;
   ssoTrustedHeaderHash?: string;
+  /** Native OpenID Connect login; absent when no `NOMA_CLOUD_OIDC_*` settings are configured. */
+  oidc?: OidcClient;
   rateLimiter: CloudRateLimiter;
   trustProxy: boolean;
   adminUserIds: string[];

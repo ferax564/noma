@@ -15,7 +15,7 @@ The `EnterpriseWorkspace` kernel (`src/enterprise.ts` and `src/enterprise-*.ts`)
 
 | Area | What is implemented | Evidence |
 | --- | --- | --- |
-| Identity | OIDC adapter interface, SCIM upsert/deprovision, short-lived sessions, revocation | `test/enterprise-workspace.test.ts` |
+| Identity | OIDC adapter interface, SCIM upsert/deprovision, short-lived sessions, revocation; Noma Cloud native OpenID Connect login (PKCE, JWKS, ID-token checks, enforced-SSO policy); SAML via trusted-header proxy | `test/enterprise-workspace.test.ts`, `test/cloud-oidc.test.ts` |
 | Docs | Persistent block/table IDs, lossless adapter, draft/publish coordinator, block-level three-way merge (not a CRDT) with persist-before-ack, reconnect replay, lost-ack idempotency; disjoint blocks merge, identical edits collapse, divergent edits to one block conflict; edits go through source-preserving `patchSource` | `test/stable-identity.test.ts`, `test/enterprise-merge.test.ts` |
 | Hosted collab | Tiptap + Yjs over a persist-before-ack WebSocket; token via `Authorization` or `noma.bearer.*` subprotocol (query token only behind `allowQueryToken`); idle-room eviction; transactional snapshot compaction; cross-process-safe sequence allocation; server-asserted presence; read-only viewers; two real browsers; reconnect keeps acknowledged text | `test/enterprise-yjs.test.ts` |
 | Visuals | Pinned PaperDOM kernel from `ferax564/paperDOM`; host strips client actors; stale revisions fail; HTML export and fidelity report | `test/enterprise-paperdom-upstream.test.ts` |
@@ -44,7 +44,7 @@ What the collaboration, merge, connector, and infrastructure modules do today, a
 
 These remain operational or partner-environment concerns even though the in-repo contracts pass:
 
-- A live corporate IdP (the kernel still uses the OIDC adapter plus fixture identities)
+- A live corporate IdP for the enterprise kernel (it still uses the OIDC adapter plus fixture identities). Noma Cloud itself now has native OpenID Connect login -- discovery, JWKS with key rotation, authorization code + PKCE, ID-token verification, (issuer, subject) bindings, JIT provisioning, domain and group gates, and enforced-SSO policy -- tested against an in-process IdP in `test/cloud-oidc.test.ts`; see the Noma Cloud guide. SAML is not native: it still goes through a SAML-capable proxy and the trusted-header `POST /api/auth/sso` route.
 - Multi-process realtime fan-out (the Yjs relay has no pub/sub between processes; use sticky routing per document)
 - A CloudFormation stack that has actually been deployed. The template passes `cfn-lint` and the in-repo self-check, but it has not been applied to a live account.
 - An applied AWS account, RDS snapshots, Bedrock quotas, or a malware-scanning appliance
