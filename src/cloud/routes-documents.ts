@@ -48,6 +48,7 @@ import { routeDocumentAnalytics } from "./routes-analytics.js";
 import { routeDocumentTasks } from "./routes-tasks.js";
 import { emitPageWebhookEvent } from "./webhooks.js";
 import { routeComments } from "./routes-comments.js";
+import { assignableAgents, assignmentResponse } from "./agent-assignments.js";
 import { routeDocumentAttachments } from "./routes-attachments.js";
 import { routeDocumentRestrictions } from "./routes-restrictions.js";
 import { cloudMacroResolvers } from "./macros.js";
@@ -127,6 +128,20 @@ export async function routeDocuments(
 
   if (suffix === "comments") {
     await routeDocumentComments(req, res, parts[4], parts[5], config, principal, record, undefined, parts[6]);
+    return;
+  }
+
+  if (suffix === "agents" && !parts[4]) {
+    if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
+    requireRecordAccess(config, record, principal, "viewer");
+    sendJson(res, 200, { agents: assignableAgents(config, record) });
+    return;
+  }
+
+  if (suffix === "agent-assignments" && !parts[4]) {
+    if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
+    requireRecordAccess(config, record, principal, "viewer");
+    sendJson(res, 200, { assignments: config.platform.listAgentAssignments({ documentId: record.id }, { limit: 200, offset: 0 }).map((assignment) => assignmentResponse(config, assignment)) });
     return;
   }
 

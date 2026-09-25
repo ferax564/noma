@@ -48,7 +48,9 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
       updatedAt: config.now().toISOString(),
       updatedBy: user.id,
     };
-    if (policy.sso.enforced && !config.ssoTrustedHeaderHash) throw new HttpError(409, "Configure NOMA_CLOUD_SSO_TRUST_SECRET before enforcing SSO");
+    if (policy.sso.enforced && !config.ssoTrustedHeaderHash && !config.oidc) {
+      throw new HttpError(409, "Configure NOMA_CLOUD_OIDC_* or NOMA_CLOUD_SSO_TRUST_SECRET before enforcing SSO");
+    }
     sendJson(res, 200, platformInput(() => config.platform.setEnterprisePolicy(policy)));
     return;
   }

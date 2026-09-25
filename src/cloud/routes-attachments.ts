@@ -24,6 +24,7 @@ import {
 } from "./attachments.js";
 import { decodePathSegment, headerValue, HttpError, sendJson, setSecurityHeaders } from "./http.js";
 import { assertCloudId } from "./input.js";
+import { MULTIPART_OVERHEAD_BYTES, multipartBoundary, readMultipartUpload } from "./multipart.js";
 
 /** Extra bytes read (and discarded) past the limit so the client sees the 413 instead of a reset. */
 const OVERSIZE_DRAIN_BYTES = 1024 * 1024;
@@ -113,7 +114,10 @@ export async function routeAttachments(
   await new Promise<void>((resolve, reject) => {
     blob.stream.once("error", reject);
     res.once("finish", resolve);
-    res.once("close", resolve);
+    res.once("close", () => {
+      blob.stream.destroy();
+      resolve();
+    });
     blob.stream.pipe(res);
   });
 }
@@ -125,23 +129,27 @@ async function uploadAttachment(
   document: CloudDocumentRecord,
   access: AccessContext,
 ): Promise<CloudAttachment> {
-  const declaredType = headerValue(req, "content-type") ?? "application/octet-stream";
-  if (/^multipart\//i.test(declaredType)) {
-    throw new HttpError(415, "Upload the raw file bytes with content-type and x-filename headers", { code: "attachment_multipart_unsupported" });
-  }
+  const requestType = headerValue(req, "content-type") ?? "application/octet-stream";
+  const multipart = /^multipart\//i.test(requestType);
+  const boundary = multipart ? multipartBoundary(requestType) : undefined;
+  const maxBodyBytes = config.maxAttachmentBytes + (multipart ? MULTIPART_OVERHEAD_BYTES : 0);
   const declaredLength = Number(headerValue(req, "content-length") ?? Number.NaN);
-  if (Number.isFinite(declaredLength) && declaredLength > config.maxAttachmentBytes) {
+  if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
     res.setHeader("connection", "close");
     throw tooLarge(config);
   }
-  const filename = sanitizeAttachmentFilename(headerValue(req, "x-filename"));
+  const body = limitedBody(req, maxBodyBytes, config);
+  const form = boundary ? readMultipartUpload(body, boundary, config.maxAttachmentBytes, () => tooLarge(config)) : undefined;
   let staged;
   try {
-    staged = await config.blobs.stage(limitedBody(req, config.maxAttachmentBytes, config));
+    staged = await config.blobs.stage(form ? form.file : body);
   } catch (error) {
-    if (error instanceof HttpError && error.status === 413) res.setHeader("connection", "close");
+    if (error instanceof HttpError && (error.status === 413 || form)) res.setHeader("connection", "close");
     throw error;
   }
+  const declaredType = (form ? form.result.contentType : requestType) ?? "application/octet-stream";
+  const formFilename = form?.result.filename;
+  const filename = sanitizeAttachmentFilename(formFilename !== undefined ? encodeURIComponent(formFilename) : headerValue(req, "x-filename"));
   let contentType: string;
   try {
     if (staged.size === 0) throw new HttpError(400, "Attachment body is empty");
@@ -223,7 +231,7 @@ function uploaderId(access: AccessContext): string {
   return access.user?.id ?? `share:${access.share?.id ?? "unknown"}`;
 }
 
-function attachmentIdFor(config: CloudServerConfig): string {
+export function attachmentIdFor(config: CloudServerConfig): string {
   for (let attempt = 0; attempt < 12; attempt++) {
     const id = randomId();
     if (!config.store.readAttachment(id) && !config.store.hasRecordId(id)) return id;

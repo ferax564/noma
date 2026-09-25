@@ -1,9 +1,9 @@
 /** Cloud connection, cookie-backed user session (register/login/logout), API tokens and workspace bootstrap. */
 import { fetchCloudJson } from "./api.js";
-import { forgetCsrfToken, migrateLegacyStoredToken, rememberCsrfToken } from "./auth.js";
+import { fetchSignInProviders, forgetCsrfToken, migrateLegacyStoredToken, rememberCsrfToken, signInWithProvider } from "./auth.js";
 import { refreshAccessManagement, refreshGroups, refreshNotifications, renderAccessManagement, renderCollaborationPanels } from "./collaboration.js";
 import { activeDocumentStorageKey, activeSiteStorageKey, query } from "./constants.js";
-import { cloudInvitationCodeInput, cloudUserNameInput, cloudUserTokenInput, favoriteList, recentList, siteTitleInput } from "./dom.js";
+import { cloudInvitationCodeInput, cloudUserNameInput, cloudUserTokenInput, favoriteList, oidcLoginButton, recentList, siteTitleInput } from "./dom.js";
 import { restoreLatestOfflineDraft } from "./drafts.js";
 import { setCurrentPage } from "./editor.js";
 import { refreshKnowledgeWorkspace, renderSearchResults } from "./knowledge.js";
@@ -11,8 +11,8 @@ import { renderChrome } from "./layout.js";
 import { confirmDiscardDirty, createStarterWorkspace, loadSite, loadStandaloneDocument, refreshNavigationItems, refreshSites, refreshTemplates, refreshTrash, renderNavigationList, renderTrashList } from "./navigation.js";
 import { refreshMyTasks } from "./tasks.js";
 import { readCloudId, shareToken, state, storedUserViewMode } from "./state.js";
-import type { CloudAuthResponse, CloudPersonalAccessTokenResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
-import { copyText, errorMessage, setBusy, setCloudStatus } from "./util.js";
+import type { CloudAuthResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
+import { errorMessage, setBusy, setCloudStatus } from "./util.js";
 import { refreshWorkManagement, renderWorkManagement } from "./work.js";
 
 export async function initializeCloud(): Promise<void> {
@@ -24,7 +24,8 @@ export async function initializeCloud(): Promise<void> {
     applySessionUser(status.user);
     if (!state.cloudUser && !shareToken) {
       clearWorkspaceState();
-      setCloudStatus("Register with an invitation code or log in with an existing user token", "warning");
+      const sso = await showSignInProviders();
+      setCloudStatus(sso ? `Sign in with ${sso}, or use an existing user token` : "Register with an invitation code or log in with an existing user token", "warning");
       return;
     }
 
@@ -175,6 +176,22 @@ export async function createCloudUser(options: { silent?: boolean } = {}): Promi
   }
 }
 
+/** Reveals the "Sign in with <label>" button when the server offers OpenID Connect; returns the label. */
+async function showSignInProviders(): Promise<string | undefined> {
+  const provider = (await fetchSignInProviders()).find((item) => item.type === "oidc");
+  oidcLoginButton.hidden = !provider;
+  if (!provider) return undefined;
+  oidcLoginButton.textContent = `Sign in with ${provider.label}`;
+  oidcLoginButton.dataset.startUrl = provider.startUrl;
+  return provider.label;
+}
+
+export function startOidcLogin(): void {
+  const startUrl = oidcLoginButton.dataset.startUrl;
+  if (!startUrl) return;
+  signInWithProvider({ startUrl }, `${window.location.pathname}${window.location.search}`);
+}
+
 export async function loginCloudUser(): Promise<void> {
   if (!state.cloudAvailable) return;
   const userToken = cloudUserTokenInput.value.trim();
@@ -207,32 +224,6 @@ function activateCloudUser(user: CloudUserSession, csrfToken: string | undefined
   state.viewMode = storedUserViewMode(state.cloudUser.id) ?? state.viewMode;
   rememberCsrfToken(csrfToken);
   cloudUserNameInput.value = user.name;
-}
-
-/** Creates a personal access token (read + write) for scripts and agents and copies it once; it is never stored. */
-export async function createApiToken(): Promise<void> {
-  if (!state.cloudUser) return;
-  const name = window.prompt("Name for the new API token", "Cloud app token")?.trim();
-  if (!name) return;
-  setBusy(true, "Creating API token", "warning");
-  try {
-    const created = await fetchCloudJson<CloudPersonalAccessTokenResponse>("/api/tokens", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, scopes: ["read", "write"], expiresInDays: 90 }),
-    });
-    try {
-      await copyText(created.token, `Copied API token ${created.name}; it will not be shown again`);
-    } catch {
-      window.prompt("Copy your API token now; it will not be shown again", created.token);
-      setCloudStatus(`Created API token ${created.name}`, "ok");
-    }
-  } catch (error) {
-    setCloudStatus(errorMessage(error), "error");
-  } finally {
-    setBusy(false);
-    renderChrome();
-  }
 }
 
 export async function logoutCloudUser(): Promise<void> {

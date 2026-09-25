@@ -5,6 +5,7 @@ export const cloudInvitationCodeInput = requireElement<HTMLInputElement>("cloudI
 export const cloudUserTokenInput = requireElement<HTMLInputElement>("cloudUserToken");
 export const newUserButton = requireElement<HTMLButtonElement>("newUserButton");
 export const loginUserButton = requireElement<HTMLButtonElement>("loginUserButton");
+export const oidcLoginButton = requireElement<HTMLButtonElement>("oidcLoginButton");
 export const logoutUserButton = requireElement<HTMLButtonElement>("logoutUserButton");
 export const copyUserIdButton = requireElement<HTMLButtonElement>("copyUserIdButton");
 export const copyUserTokenButton = requireElement<HTMLButtonElement>("copyUserTokenButton");

@@ -54,7 +54,8 @@ function commentRow(comment: CloudComment, actions: CommentThreadActions): HTMLE
   const copy = document.createElement("div");
   copy.className = "collaboration-copy";
   const title = document.createElement("strong");
-  title.textContent = `${comment.parentId ? "↳ " : ""}${comment.deleted ? "Deleted comment" : comment.createdByName}${comment.resolvedAt ? " · resolved" : ""}`;
+  const author = comment.agent ? `🤖 ${comment.agent.name} (agent of ${comment.createdByName})` : comment.createdByName;
+  title.textContent = `${comment.parentId ? "↳ " : ""}${comment.deleted ? "Deleted comment" : author}${comment.resolvedAt ? " · resolved" : ""}`;
   copy.append(title);
   if (comment.anchor && !comment.deleted) {
     const quote = document.createElement("blockquote");

@@ -212,11 +212,12 @@ file, and the LLM renderer keeps the component call.
 
 ### Phase 4: close the enterprise gaps that decide deals
 
-- **Notion import.** Notion's export formats are Markdown/CSV and the API block tree. Map databases to `::dataset` plus page properties.
-- **Real embeddings** behind the hybrid search interface (pluggable, with a local default).
-- **Native OIDC/SAML** login flow.
-- **S3 blob driver.** Also copy attachments during Confluence import.
-- **Multi-node collaboration fan-out.**
+- ~~**Notion import.**~~ **Done (2026-09-25).**
+- ~~**Real embeddings**~~ **Done (2026-09-25):** OpenAI-compatible and Voyage providers, local hash default.
+- ~~**Native OIDC**~~ **Done (2026-09-25).** SAML stays behind the trusted-header route.
+- ~~**S3 blob driver**~~ and ~~Confluence attachment copy~~ **Done (2026-09-25).**
+- **Multi-node collaboration fan-out.** Still open.
+- ~~**Agents as teammates**~~ **Done (2026-09-25):** @-mention or assign tasks to agents, with MCP `assignments`/`reply`/`update_assignment`.
 
 ### Explicit non-goals
 

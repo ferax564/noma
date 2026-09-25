@@ -8,6 +8,40 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Agents as teammates (Noma Cloud):** mention an agent in a comment (`@{agent-id} please re-check the TAM`) or assign it a page task (`- [ ] Refresh the steps @{agent-id}`), and the agent gets an assignment in its inbox.
+  - **Who can be assigned:** an agent is assignable on a page only while it is active, holds a page or space grant that covers the page, and its owner can still open the page. The mention picker lists those agents next to people, marked 🤖 (`GET /api/users?q=&document=`, `GET /api/documents/:id/agents`).
+  - **Working an assignment:** over REST (`/api/agents/:id/assignments`, `…/reply`, `…/status`) or the MCP gateway (`assignments`, `reply`, `update_assignment`). Replies need the new `comment` capability and show as *🤖 Agent (agent of Owner)*. `proposal` accepts an `assignmentId`, and the proposal still needs another person's approval.
+  - **Closing:** checking the task off, or `done`/`declined`, closes the assignment and notifies the requester. The agent's owner gets `task_assigned` notifications, and spaces can subscribe to the new `agent.assigned` webhook event.
+  - **No loops:** comments written by agents never open assignments.
+- **Notion import:** `POST /api/import/notion` imports a Notion "Markdown & CSV" export ZIP (or a `noma-notion-bundle` JSON) into a Noma Cloud space as a background job. It keeps the page tree. Re-importing matches pages by Notion ID and skips pages edited in Noma unless `overwrite` is set. The Cloud import dialog (now **Migrate**) gains a Notion option.
+  - **Links and files:** internal links become `[[wikilinks]]`. Images and files become page attachments referenced as `att:<file>`.
+  - **Databases:** each database becomes a pipe table plus `::dataset{format="csv"}`. Row properties become `::page-properties`, and a `Tags` property becomes labels.
+  - **Loss report:** lists what did not convert exactly.
+  - **CLI:** `noma ingest export.zip --from notion --out <dir>` converts the same exports offline into a `.noma` folder tree with `<page>.files/` and `notion-import-report.json`.
+  - **Database migration:** the `import_jobs` source constraint gains `notion-export` and `notion-bundle`, and existing databases are migrated in place.
+- **Real embeddings for knowledge search:** `NOMA_CLOUD_EMBEDDINGS=local|openai|voyage` (plus `_MODEL`, `_URL`, `_API_KEY`/`_API_KEY_FILE`, `_DIMENSIONS`) plugs an embedding model into hybrid search.
+  - **Providers:** any OpenAI-compatible `/v1/embeddings` API (OpenAI, gateways, Ollama, local servers), or Voyage AI with `input_type` document/query. The deterministic local hash vector stays the default.
+  - **Backfill and cache:** block vectors are backfilled by the queue tick and `POST /api/knowledge/reindex`, and cached in SQLite by provider, model, and SHA-256 of the text.
+  - **Fallback:** queries are embedded under a deadline and fall back to lexical + hash scoring. Vectors from different models are never compared. Search, Ask, and the gateway report `retrieval: { semantic, coverage, fallback }`.
+  - **Policy:** remote providers follow the enterprise `modelAllowlist` and zero-retention policy.
+- **Native OpenID Connect login:** set `NOMA_CLOUD_OIDC_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET` (or `_FILE`), and `_REDIRECT_URL` (or `NOMA_CLOUD_PUBLIC_URL`), and the login page and app bar show **Sign in with <label>**.
+  - **Protocol:** dependency-free. Cached discovery and JWKS with refresh on key rotation, authorization code + PKCE (S256), `state`/`nonce` in an encrypted short-lived cookie. ID-token checks allow RS/PS/ES algorithms only and verify `iss`, `aud`/`azp`, `exp`/`iat`/`nbf`, and `nonce`.
+  - **Account mapping:** logins map through (issuer, subject) bindings, then SCIM `externalId`, then verified-email linking (opt-in, `NOMA_CLOUD_OIDC_LINK_BY_EMAIL`), then JIT provisioning (`NOMA_CLOUD_OIDC_AUTO_PROVISION`). They are gated by `_ALLOWED_DOMAINS` and `_REQUIRED_GROUP`.
+  - **Sessions and policy:** success opens the usual HttpOnly session + CSRF cookie (source `oidc`) and redirects only to same-origin paths. OIDC satisfies workspace-enforced SSO, and any valid browser session now passes the cloud access gate. `GET /api/auth/providers` lists sign-in methods. SAML stays on the trusted-header route.
+- **S3-compatible attachment storage:** `NOMA_CLOUD_BLOB_STORE=s3` keeps attachment blobs in AWS S3, MinIO, Cloudflare R2, or Hetzner Object Storage through the dependency-free `S3BlobStore`.
+  - **Signing and options:** SigV4 over `fetch`. Supports custom endpoints, path-style or virtual-hosted URLs, key prefixes, session tokens, SSE (`AES256` or `aws:kms`), timeouts, and bounded retries.
+  - **Uploads:** still hashed and checked locally first, then put at `<prefix>blobs/ab/cd/<sha256>`, signed with the content hash. `HeadObject` skips blobs that already exist.
+  - **Configuration:** `NOMA_CLOUD_S3_*` variables (with `_FILE` secrets and `AWS_*` fallbacks). Startup fails on incomplete configuration, and secrets are never printed.
+- **Multipart attachment uploads:** `POST /api/documents/:id/attachments` accepts `multipart/form-data` (one `file` part, optional `filename`/`name`). The body is parsed as a bounded stream and gets the same size, quota, and magic-byte checks. Raw-body uploads still work.
+- **Confluence import copies attachments:** live Cloud/Data Center imports list and download each page's attachments. XML export ZIPs map `attachments/<pageId>/<attachmentId>/<version>` through `entities.xml`, and JSON bundles accept base64 `attachments`.
+  - **Checks:** files go through the upload checks (size limit, magic-byte sniffing, executables refused, space quota), capped at `NOMA_CLOUD_IMPORT_MAX_BYTES` per import.
+  - **References:** `ri:attachment` images and links become `att:` references. Re-imports reuse identical files.
+  - **Reporting:** job progress reports `attachmentsCopied`/`attachmentsSkipped`, and the result lists each skipped file with a reason.
+- **Cloud UI for the last API-only features:**
+  - **Security dialog:** list, create (name, scopes, expiry; secret shown once), and revoke personal access tokens. List browser sessions and revoke one, or sign out all the others.
+  - **Manage templates:** edit and delete workspace and space templates. Built-ins stay read-only.
+  - **Draft with AI:** available in the space rail. Page proposals appear under Agent Review, where another editor approves them and creates the page.
+
 - **Slide strip in the Cloud editor:** a filmstrip of the page's slides above the editor, drawn through the canvas model.
   - **Navigate:** click a slide to reveal it in the source, the visual editor, and the preview. The slide at the source cursor is highlighted.
   - **Edit:** drag a slide, or use Alt+←/→, to reorder it (`move_block`). **Hide** toggles `hidden`, and **+ Slide** appends a slide at the deck's fence depth. Each action is an ordinary source patch.
@@ -58,6 +92,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Security:** Confluence import traffic (page fetches and attachment downloads) resolves each host once, rejects any private answer, and pins the socket to the checked address. This closes the DNS-rebinding window between the SSRF check and the connection.
+- Attachment downloads now stop streaming when the client disconnects.
 - **Patch engine:** `replace_block` and `add_block` in `patchSource` now reject a fragment that opens at the wrong fence depth for its position, with `unbalanced_fence_content`. Before this fix, a `::card` spliced into a `::grid` closed the grid early and silently produced a malformed document. The error names the depth that position needs. The Python seed enforces the same rule for `add_block`. Conformance: the `patch/add_block` fixture now nests correctly, and there are new `patch-error/wrong_fence_depth` and `wrong_fence_depth_replace` fixtures (57 in total).
 - `noma render --title <t>` and `--deck <id>` placed before the input file no longer take their value as the file path.
 - The `hide-in-slides` and `slides-only` style tokens now apply in the standalone presenter (`--to slides`, Cloud "Present"). Hidden slides stay out of the presenter overview and print output.

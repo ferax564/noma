@@ -5,8 +5,9 @@ import { type CloudServerConfig, randomToken, tokenPreview } from "./context.js"
 import { headerValue, HttpError, readJsonBody, sendJson, sendText, setSecurityHeaders, sha256Hex } from "./http.js";
 import { optionalString, stringInput } from "./input.js";
 import { createUser, selfUser } from "./records.js";
+import { routeAuthProviders, routeOidc } from "./routes-oidc.js";
 import { routeAuthSessions } from "./routes-sessions.js";
-import { appendSetCookie, cookieValue, fullTokenScopes, isSecureRequest, resolveTokenUser, startBrowserSession } from "./security.js";
+import { appendSetCookie, cookieValue, fullTokenScopes, isSecureRequest, resolveSessionUser, resolveTokenUser, startBrowserSession } from "./security.js";
 
 const cloudAccessCookieName = "noma_cloud_access";
 
@@ -29,7 +30,7 @@ export function resolveCloudAccess(
   config: CloudServerConfig,
   req: IncomingMessage,
   url: URL,
-): { ok: true; via: "open" | "query" | "header" | "cookie"; token: string } | { ok: false } {
+): { ok: true; via: "open" | "query" | "header" | "cookie" | "session"; token: string } | { ok: false } {
   if (!config.accessTokenHash) return { ok: true, via: "open", token: "" };
 
   const queryToken = url.searchParams.get("access");
@@ -42,6 +43,8 @@ export function resolveCloudAccess(
 
   const cookieToken = cookieValue(req, cloudAccessCookieName);
   if (cookieToken && tokenMatches(config, cookieToken)) return { ok: true, via: "cookie", token: cookieToken };
+
+  if (resolveSessionUser(config, req)) return { ok: true, via: "session", token: "" };
 
   return { ok: false };
 }
@@ -133,6 +136,16 @@ export async function routeAuth(req: IncomingMessage, res: ServerResponse, parts
     config.store.writeUser(updated);
     const browser = startBrowserSession(config, req, res, updated, { source: "sso", scopes: fullTokenScopes });
     sendJson(res, 200, { ok: true, provider: policy.sso.provider, user: { ...selfUser(updated), token }, csrfToken: browser.csrfToken });
+    return;
+  }
+
+  if (action === "providers" && method === "GET" && !parts[3]) {
+    routeAuthProviders(res, config);
+    return;
+  }
+
+  if (action === "oidc") {
+    await routeOidc(req, res, parts, config);
     return;
   }
 

@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
+import { NomaCloudDatabase } from "../src/cloud-db.js";
 import { parseConfluenceEntitiesXml } from "../src/confluence-import.js";
 import { convertConfluencePage } from "../src/confluence-storage.js";
 import { parse } from "../src/parser.js";
 import { validate } from "../src/validator.js";
 import { createZip } from "../src/zip.js";
 import { type CloudUserResponse, createCloudUser, json, jsonStatus, request, startCloudServer } from "./cloud-wiki-helpers.js";
+import { DESIGN, HOME, notionFixture, PNG, TASK_A, TASK_B, TASKS } from "./notion-fixture.js";
 
 interface ImportJob {
   id: string;
@@ -190,7 +194,7 @@ test("live Confluence Cloud import preserves hierarchy, labels, and provenance, 
     const job = await startImport(cloud.base, alice, live);
     assert.equal(job.status, "succeeded", job.error);
     assert.equal(job.spaceKey, "ENG");
-    assert.deepEqual({ ...job.progress }, { total: 3, processed: 3, created: 3, updated: 0, unchanged: 0, skipped: 0, failed: 0 });
+    assert.deepEqual({ ...job.progress }, { total: 3, processed: 3, created: 3, updated: 0, unchanged: 0, skipped: 0, failed: 0, attachmentsCopied: 0, attachmentsSkipped: 1 });
     assert.deepEqual(job.result?.loss, [{ macro: "roadmap", count: 1 }]);
     assert.equal(job.result?.attachments.referenced, 1);
     assert.ok(confluence.requests.some((line) => line.includes("cursor=next-1")));
@@ -407,3 +411,158 @@ test("storage conversion is structure-safe and the entities parser keeps only cu
   assert.equal(space.pages.find((page) => page.id === "1002")?.parentId, "1001");
   assert.equal(space.spaceName, "Operations");
 });
+
+test("Notion export ZIP imports pages, databases, and attachments, and re-imports by Notion ID", async () => {
+  const cloud = await startCloudServer("noma-cloud-import-notion-", { importMaxBytes: 2_000_000 });
+  try {
+    const alice = await createCloudUser(cloud.base, "Alice");
+    const viewer = await createCloudUser(cloud.base, "Viewer");
+    const site = await json<SiteResponse>(`${cloud.base}/api/sites`, { method: "POST", token: alice.token, body: { title: "From Notion", documentIds: [] } });
+    await json(`${cloud.base}/api/sites/${site.id}/collaborators`, { method: "POST", token: alice.token, body: { userId: viewer.id, role: "viewer" } });
+    const archive = new Uint8Array(notionFixture());
+    const upload = (token: string, query = ""): Promise<Response> =>
+      request(`${cloud.base}/api/import/notion?site=${site.id}${query}`, { method: "POST", token, headers: { "content-type": "application/zip" }, body: archive });
+
+    assert.equal((await upload(viewer.token)).status, 403);
+    await jsonStatus(`${cloud.base}/api/import/notion`, 400, { method: "POST", token: alice.token, body: { siteId: site.id } });
+    await jsonStatus(`${cloud.base}/api/import/notion`, 415, { method: "POST", token: alice.token, headers: { "content-type": "text/plain" }, body: new Uint8Array(Buffer.from("x")) });
+
+    const response = await upload(alice.token);
+    assert.equal(response.status, 202, await response.clone().text());
+    const job = await waitForJob(cloud.base, alice.token, ((await response.json()) as { job: ImportJob }).job.id);
+    assert.equal(job.status, "succeeded", job.error);
+    assert.equal(job.source, "notion-export");
+    assert.deepEqual({ ...job.progress }, { total: 5, processed: 5, created: 5, updated: 0, unchanged: 0, skipped: 0, failed: 0, attachmentsCopied: 3, attachmentsSkipped: 0 });
+    assert.deepEqual(job.result?.loss.find((entry) => entry.macro === "html"), { macro: "html", count: 3 });
+    const attachments = job.result?.attachments as unknown as { referenced: number; stored: number; skipped: unknown[] };
+    assert.deepEqual({ referenced: attachments.referenced, stored: attachments.stored, skipped: attachments.skipped }, { referenced: 3, stored: 3, skipped: [] });
+
+    const byPage = new Map(job.result!.pages.map((page) => [page.pageId, page.documentId!]));
+    const tree = await json<SiteResponse>(`${cloud.base}/api/sites/${site.id}`, { token: alice.token });
+    assert.deepEqual(tree.documentIds, [byPage.get(HOME), byPage.get(DESIGN), byPage.get(TASKS), byPage.get(TASK_A), byPage.get(TASK_B)]);
+    assert.equal(tree.pageParents?.[byPage.get(DESIGN)!], byPage.get(HOME));
+    assert.equal(tree.pageParents?.[byPage.get(TASK_A)!], byPage.get(TASKS));
+
+    const design = await json<DocumentResponse>(`${cloud.base}/api/documents/${byPage.get(DESIGN)}`, { token: alice.token });
+    assert.match(design.source, /::figure\{src="att:arch-v2-\.png" alt="Diagram"\}/);
+    const files = await json<{ attachments: Array<{ id: string; filename: string; contentType: string }> }>(`${cloud.base}/api/documents/${design.id}/attachments`, { token: alice.token });
+    assert.deepEqual(files.attachments.map((file) => [file.filename, file.contentType]).sort(), [["arch-v2-.png", "image/png"], ["spec.pdf", "application/pdf"]]);
+    const arch = files.attachments.find((file) => file.filename === "arch-v2-.png")!;
+    const html = await (await request(`${cloud.base}/api/documents/${design.id}/html`, { token: alice.token })).text();
+    assert.match(html, new RegExp(`/api/attachments/${arch.id}\\?exp=`));
+    const labels = await json<{ labels: string[] }>(`${cloud.base}/api/documents/${byPage.get(TASK_A)}/labels`, { token: alice.token });
+    assert.deepEqual(labels.labels, ["import", "notion"]);
+    const tasks = await json<DocumentResponse>(`${cloud.base}/api/documents/${byPage.get(TASKS)}`, { token: alice.token });
+    assert.match(tasks.source, /::dataset\{id="tasks-data" format="csv"\}/);
+
+    const again = await waitForJob(cloud.base, alice.token, ((await (await upload(alice.token)).json()) as { job: ImportJob }).job.id);
+    assert.deepEqual({ created: again.progress.created, unchanged: again.progress.unchanged }, { created: 0, unchanged: 5 });
+    const againAttachments = again.result?.attachments as unknown as { stored: number; unchanged: number };
+    assert.deepEqual({ stored: againAttachments.stored, unchanged: againAttachments.unchanged }, { stored: 0, unchanged: 3 });
+    const stable = await json<SiteResponse>(`${cloud.base}/api/sites/${site.id}`, { token: alice.token });
+    assert.equal(stable.documentIds.length, 5);
+
+    await json(`${cloud.base}/api/documents/${design.id}`, { method: "PUT", token: alice.token, body: { source: `${design.source}\nLocal note.\n`, expectedHash: design.hash } });
+    const bundleJob = await startNotionJson(cloud.base, alice, {
+      siteId: site.id,
+      bundle: { pages: [{ id: DESIGN, title: "Design Doc", markdown: "Rewritten from the API." }] },
+    });
+    assert.equal(bundleJob.source, "notion-bundle");
+    assert.equal(bundleJob.progress.skipped, 1);
+    assert.match(bundleJob.result!.pages[0]!.reason ?? "", /edited after the last import/);
+    const overwritten = await startNotionJson(cloud.base, alice, {
+      siteId: site.id,
+      overwrite: true,
+      bundle: { pages: [{ id: DESIGN, title: "Design Doc", markdown: "Rewritten from the API." }] },
+    });
+    assert.equal(overwritten.progress.updated, 1);
+    const rewritten = await json<DocumentResponse>(`${cloud.base}/api/documents/${design.id}`, { token: alice.token });
+    assert.match(rewritten.source, /Rewritten from the API\./);
+
+    const base64 = await startNotionJson(cloud.base, alice, { siteId: site.id, archiveBase64: Buffer.from("PK\u0003\u0004 broken").toString("base64") });
+    assert.equal(base64.status, "failed");
+    assert.match(base64.error ?? "", /Could not read the export ZIP/);
+    await jsonStatus(`${cloud.base}/api/import/notion`, 400, { method: "POST", token: alice.token, body: { siteId: site.id, bundle: { pages: [{ id: "x" }] } } });
+  } finally {
+    await cloud.close();
+  }
+});
+
+test("Notion imports respect the upload limit and the attachment size limit", async () => {
+  const cloud = await startCloudServer("noma-cloud-import-notion-limits-", { importMaxBytes: 1_000, maxAttachmentBytes: 20 });
+  try {
+    const alice = await createCloudUser(cloud.base, "Alice");
+    const site = await json<SiteResponse>(`${cloud.base}/api/sites`, { method: "POST", token: alice.token, body: { title: "Limits", documentIds: [] } });
+    const tooLarge = await request(`${cloud.base}/api/import/notion?site=${site.id}`, {
+      method: "POST",
+      token: alice.token,
+      headers: { "content-type": "application/zip" },
+      body: new Uint8Array(notionFixture()),
+    });
+    assert.equal(tooLarge.status, 413);
+    const small = createZip([
+      { path: `Page ${HOME}.md`, data: `# Page\n\n![big](big.png)\n` },
+      { path: "big.png", data: Buffer.alloc(64, 1) },
+    ]);
+    const job = await startNotionJson(cloud.base, alice, { siteId: site.id, archiveBase64: small.toString("base64") });
+    assert.equal(job.status, "succeeded", job.error);
+    assert.deepEqual(job.result?.loss, [{ macro: "attachment-too-large", count: 1 }]);
+  } finally {
+    await cloud.close();
+  }
+});
+
+test("Notion re-imports count space attachment quota once for pages already in the space", async () => {
+  const variant = (tag: number) => Buffer.concat([PNG, Buffer.from([tag])]);
+  const size = PNG.length + 1;
+  const cloud = await startCloudServer("noma-cloud-import-notion-quota-", { attachmentQuotaBytes: size * 3 + 5 });
+  try {
+    const alice = await createCloudUser(cloud.base, "Alice");
+    const site = await json<SiteResponse>(`${cloud.base}/api/sites`, { method: "POST", token: alice.token, body: { title: "Quota", documentIds: [] } });
+    const archive = (names: string[]) =>
+      createZip([
+        { path: `Page ${HOME}.md`, data: `# Page\n\n${names.map((name) => `![${name}](${name}.png)`).join("\n\n")}\n` },
+        ...names.map((name, index) => ({ path: `${name}.png`, data: variant(index + 1) })),
+      ]).toString("base64");
+    const first = await startNotionJson(cloud.base, alice, { siteId: site.id, archiveBase64: archive(["a"]) });
+    assert.equal(first.status, "succeeded", first.error);
+    const second = await startNotionJson(cloud.base, alice, { siteId: site.id, archiveBase64: archive(["a", "b", "c"]) });
+    assert.equal(second.status, "succeeded", second.error);
+    const attachments = second.result?.attachments as unknown as { stored: number; unchanged: number; skipped: unknown[] };
+    assert.deepEqual({ stored: attachments.stored, unchanged: attachments.unchanged, skipped: attachments.skipped }, { stored: 2, unchanged: 1, skipped: [] });
+  } finally {
+    await cloud.close();
+  }
+});
+
+test("databases created before Notion import accept the new import job kinds", async () => {
+  const root = await mkdtemp(join(tmpdir(), "noma-import-migrate-"));
+  try {
+    const dbPath = join(root, "noma-cloud.sqlite");
+    const legacy = new Database(dbPath);
+    legacy.exec(`CREATE TABLE import_jobs (
+      id TEXT PRIMARY KEY, site_id TEXT NOT NULL, created_by TEXT NOT NULL,
+      source TEXT NOT NULL CHECK (source IN ('confluence-cloud', 'confluence-datacenter', 'confluence-export', 'confluence-bundle')),
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+      space_key TEXT, progress_json TEXT NOT NULL DEFAULT '{}', result_json TEXT, error TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT)`);
+    legacy.prepare("INSERT INTO import_jobs VALUES ('old-job', 'site-1', 'user-1', 'confluence-export', 'succeeded', 'OPS', '{}', NULL, NULL, 't', 't', 't')").run();
+    legacy.close();
+    const store = new NomaCloudDatabase({ dbPath, dataDir: join(root, "documents"), usersDir: join(root, "users"), sitesDir: join(root, "sites") });
+    try {
+      assert.equal(store.readImportJob("old-job")?.source, "confluence-export");
+      const progress = { total: 0, processed: 0, created: 0, updated: 0, unchanged: 0, skipped: 0, failed: 0 };
+      store.createImportJob({ id: "new-job", siteId: "site-1", createdBy: "user-1", source: "notion-export", status: "queued", progress, createdAt: "t", updatedAt: "t" });
+      assert.equal(store.readImportJob("new-job")?.source, "notion-export");
+    } finally {
+      store.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function startNotionJson(base: string, user: CloudUserResponse, body: Record<string, unknown>): Promise<ImportJob> {
+  const started = await json<{ job: ImportJob }>(`${base}/api/import/notion`, { method: "POST", token: user.token, body });
+  return waitForJob(base, user.token, started.job.id);
+}

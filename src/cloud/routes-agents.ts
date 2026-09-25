@@ -43,7 +43,17 @@ import {
   stringInput,
   stringPathPart,
 } from "./input.js";
-import { documentResponse, updateDocument } from "./records.js";
+import {
+  AGENT_COMMENT_CAPABILITY,
+  agentDocumentAccess,
+  assignmentResponse,
+  assignmentStatusInput,
+  assignmentThreadRoot,
+  recordAgentReply,
+  updateAgentAssignment,
+} from "./agent-assignments.js";
+import { documentHasBlock, documentResponse, updateDocument } from "./records.js";
+import { createComment } from "./routes-comments.js";
 import { knowledgeDocuments, ownedAgent, platformInput } from "./routes-knowledge.js";
 import {
   cloudProofRecord,
@@ -109,6 +119,21 @@ export async function routeAgents(req: IncomingMessage, res: ServerResponse, par
     const now = config.now().toISOString();
     const grant: AgentAccessGrant = { id: uniqueId(config), agentId: agent.id, resourceType, resourceId, role, createdAt: now, updatedAt: now };
     sendJson(res, 201, platformInput(() => config.platform.grantAgentAccess(grant, user.id, now)));
+    return;
+  }
+  if (action === "assignments" && !childId && method === "GET") {
+    const url = requestUrl(req);
+    sendJson(res, 200, { assignments: listAssignments(config, agent, url.searchParams.get("status") ?? undefined, pageQuery(url)) });
+    return;
+  }
+  if (action === "assignments" && childId && parts[5] === "reply" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    sendJson(res, 201, await replyToAssignment(config, user, agent, childId, stringInput(input, "body")));
+    return;
+  }
+  if (action === "assignments" && childId && parts[5] === "status" && method === "POST") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    sendJson(res, 200, { assignment: assignmentResponse(config, setAssignmentStatus(config, agent, childId, input)) });
     return;
   }
   if (action === "runs" && !childId && method === "GET") {
@@ -363,8 +388,11 @@ async function callGatewayTool(
     const query = stringInput(args, "query").slice(0, 1_000);
     const siteId = optionalCloudId(args.siteId, "Site");
     const documents = knowledgeDocuments(config, user, siteId, agentId);
-    if (name === "search") return { query, results: config.platform.search({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 12, 1, 100, "limit") }) };
-    return config.platform.ask({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 8, 1, 25, "limit") }) as unknown as Record<string, unknown>;
+    if (name === "search") {
+      const { results, retrieval } = await config.platform.searchWithRetrieval({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 12, 1, 100, "limit") });
+      return { query, results, retrieval };
+    }
+    return (await config.platform.askWithRetrieval({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 8, 1, 25, "limit") })) as unknown as Record<string, unknown>;
   }
   if (name === "llm_export") {
     const agentId = stringInput(args, "agentId");
@@ -412,9 +440,25 @@ async function callGatewayTool(
       createdAt: now,
       updatedAt: now,
     };
+    const assignmentId = optionalString(args.assignmentId);
+    const assignment = assignmentId ? ownedAssignment(config, config.platform.readAgent(agentId)!, assignmentId) : undefined;
+    if (assignment && assignment.documentId !== documentId) throw new HttpError(400, "The assignment is for a different document");
     config.store.writePatchProposal(proposal);
-    recordActivity(config, user, "patch.proposed", "document", documentId, { proposalId: proposal.id, agentId, transport: "mcp" });
-    return { proposed: true, proposal: config.store.readPatchProposal(proposal.id) };
+    recordActivity(config, user, "patch.proposed", "document", documentId, { proposalId: proposal.id, agentId, transport: "mcp", ...(assignment ? { assignmentId: assignment.id } : {}) });
+    const linked = assignment ? updateAgentAssignment(config, assignment, { proposalId: proposal.id }) : undefined;
+    return { proposed: true, proposal: config.store.readPatchProposal(proposal.id), ...(linked ? { assignment: assignmentResponse(config, linked) } : {}) };
+  }
+  if (name === "assignments") {
+    const agent = ownedAgent(config, user, stringInput(args, "agentId"));
+    return { assignments: listAssignments(config, agent, optionalString(args.status), { limit: boundedInteger(args.limit, 50, 1, 200, "limit"), offset: 0 }) };
+  }
+  if (name === "reply") {
+    const agent = ownedAgent(config, user, stringInput(args, "agentId"));
+    return await replyToAssignment(config, user, agent, stringInput(args, "assignmentId"), stringInput(args, "body"));
+  }
+  if (name === "update_assignment") {
+    const agent = ownedAgent(config, user, stringInput(args, "agentId"));
+    return { assignment: assignmentResponse(config, setAssignmentStatus(config, agent, stringInput(args, "assignmentId"), args)) };
   }
   if (name === "review") {
     const documentId = stringInput(args, "documentId");
@@ -445,6 +489,60 @@ async function callGatewayTool(
     return { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access, config) };
   }
   throw new HttpError(400, `Unknown gateway tool: ${name}`);
+}
+
+function listAssignments(config: CloudServerConfig, agent: CloudAgentIdentity, status: string | undefined, page: { limit: number; offset: number }) {
+  const wanted = status === undefined || status === "" || status === "all" ? undefined : status === "active" ? ["open", "in_progress"] : [assignmentStatusInput(status)];
+  const all = config.platform.listAgentAssignments({ agentId: agent.id });
+  return all
+    .filter((assignment) => !wanted || wanted.includes(assignment.status))
+    .slice(page.offset, page.offset + page.limit)
+    .map((assignment) => {
+      if (!agentDocumentAccess(config, agent.id, assignment.documentId)) {
+        const { request: _request, ...rest } = assignment;
+        return { ...rest, agentName: agent.name, accessRevoked: true as const };
+      }
+      const document = config.store.readDocument(assignment.documentId);
+      const root = assignmentThreadRoot(config, assignment);
+      return {
+        ...assignmentResponse(config, assignment),
+        ...(document ? { documentHash: document.hash } : {}),
+        ...(root ? { thread: [root, ...config.store.listComments(assignment.documentId).filter((comment) => comment.parentId === root.id)].filter((comment) => !comment.deletedAt).slice(0, 50).map((comment) => ({ id: comment.id, body: comment.body, author: comment.createdByName, ...(comment.agentId ? { agentId: comment.agentId } : {}), createdAt: comment.createdAt })) } : {}),
+      };
+    });
+}
+
+function ownedAssignment(config: CloudServerConfig, agent: CloudAgentIdentity, assignmentId: string) {
+  const assignment = config.platform.readAgentAssignment(assignmentId);
+  if (!assignment || assignment.agentId !== agent.id) throw new HttpError(404, "Assignment not found");
+  return assignment;
+}
+
+async function replyToAssignment(config: CloudServerConfig, owner: CloudUserRecord, agent: CloudAgentIdentity, assignmentId: string, body: string) {
+  const assignment = ownedAssignment(config, agent, assignmentId);
+  if (!agent.capabilities.includes(AGENT_COMMENT_CAPABILITY)) throw new HttpError(403, `Agent lacks capability: ${AGENT_COMMENT_CAPABILITY}`);
+  if (!agentDocumentAccess(config, agent.id, assignment.documentId)) throw new HttpError(403, "The agent can no longer work on this page");
+  const document = await readDocument(config, assignment.documentId);
+  const root = assignmentThreadRoot(config, assignment);
+  const blockId = !root && assignment.blockId && documentHasBlock(document, assignment.blockId) ? assignment.blockId : undefined;
+  const comment = createComment(config, owner, document, { body, ...(root ? { parentId: root.id } : {}), ...(blockId ? { blockId } : {}) }, agent.id);
+  const updated = recordAgentReply(config, assignment, comment.id);
+  return { comment, assignment: assignmentResponse(config, updated) };
+}
+
+function setAssignmentStatus(config: CloudServerConfig, agent: CloudAgentIdentity, assignmentId: string, input: Record<string, unknown>) {
+  const assignment = ownedAssignment(config, agent, assignmentId);
+  const proposalId = optionalString(input.proposalId);
+  if (proposalId) {
+    const proposal = config.store.readPatchProposal(proposalId);
+    if (!proposal || proposal.documentId !== assignment.documentId) throw new HttpError(400, "proposalId must be a proposal on the assignment's page");
+  }
+  const note = optionalString(input.note);
+  return updateAgentAssignment(config, assignment, {
+    ...(input.status === undefined ? {} : { status: assignmentStatusInput(input.status) }),
+    ...(note !== undefined ? { note } : {}),
+    ...(proposalId ? { proposalId } : {}),
+  });
 }
 
 function requireGatewayAgentDocumentAccess(config: CloudServerConfig, agentId: string, documentId: string, capability: string): AgentAccessGrant {

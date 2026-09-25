@@ -138,6 +138,8 @@ export interface CloudComment {
   deletedAt?: string;
   deletedBy?: string;
   anchor?: CloudCommentAnchor;
+  /** Set when an agent wrote the comment on its owner's behalf (`createdBy` is the owner). */
+  agentId?: string;
 }
 
 /** Text-range anchor: `quote` inside block `blockId`, disambiguated by up to 64 chars of surrounding text. */
@@ -449,7 +451,7 @@ export interface CloudPageTaskChanges {
   reopened: CloudPageTask[];
 }
 
-export const cloudWebhookEvents = ["page.created", "page.updated", "page.deleted", "comment.created", "label.changed", "task.completed"] as const;
+export const cloudWebhookEvents = ["page.created", "page.updated", "page.deleted", "comment.created", "label.changed", "task.completed", "agent.assigned"] as const;
 export type CloudWebhookEvent = (typeof cloudWebhookEvents)[number];
 export type CloudWebhookFormat = "json" | "slack";
 export type CloudWebhookDeliveryStatus = "pending" | "delivered" | "failed";
@@ -585,7 +587,8 @@ export interface CloudPageTemplateRecord {
   updatedAt: string;
 }
 
-export type CloudImportSourceKind = "confluence-cloud" | "confluence-datacenter" | "confluence-export" | "confluence-bundle";
+export const cloudImportSourceKinds = ["confluence-cloud", "confluence-datacenter", "confluence-export", "confluence-bundle", "notion-export", "notion-bundle"] as const;
+export type CloudImportSourceKind = (typeof cloudImportSourceKinds)[number];
 export type CloudImportJobStatus = "queued" | "running" | "succeeded" | "failed";
 
 export interface CloudImportProgress {
@@ -596,6 +599,10 @@ export interface CloudImportProgress {
   unchanged: number;
   skipped: number;
   failed: number;
+  /** Page attachments stored in Noma Cloud by this import (reused identical files are not counted). */
+  attachmentsCopied?: number;
+  /** Attachments left behind (too large, over budget or quota, executable, download failed, not in the source). */
+  attachmentsSkipped?: number;
 }
 
 export interface CloudImportJob {
@@ -640,7 +647,7 @@ export interface CloudAuthSession {
   id: string;
   userId: string;
   scopes: CloudTokenScope[];
-  source: "user_token" | "register" | "pat" | "sso";
+  source: "user_token" | "register" | "pat" | "sso" | "oidc";
   patId?: string;
   createdAt: string;
   lastSeenAt: string;
@@ -661,6 +668,36 @@ export interface CloudPersonalAccessToken {
   expiresAt?: string;
   lastUsedAt?: string;
   revokedAt?: string;
+}
+
+/** Binds an OpenID Connect identity (issuer + subject) to a Noma user. */
+export interface CloudOidcIdentity {
+  issuer: string;
+  subject: string;
+  userId: string;
+  email?: string;
+  createdAt: string;
+  lastLoginAt: string;
+}
+
+interface OidcIdentityRow {
+  issuer: string;
+  subject: string;
+  user_id: string;
+  email: string | null;
+  created_at: string;
+  last_login_at: string;
+}
+
+function oidcIdentity(row: OidcIdentityRow): CloudOidcIdentity {
+  return {
+    issuer: row.issuer,
+    subject: row.subject,
+    userId: row.user_id,
+    ...(row.email ? { email: row.email } : {}),
+    createdAt: row.created_at,
+    lastLoginAt: row.last_login_at,
+  };
 }
 
 interface AuthSessionRow {
@@ -867,6 +904,7 @@ interface CommentRow {
   deleted_at?: string | null;
   deleted_by?: string | null;
   anchor_json?: string | null;
+  agent_id?: string | null;
 }
 
 interface PageTaskRow {
@@ -1945,8 +1983,8 @@ export class NomaCloudDatabase {
     this.db
       .prepare(
         `INSERT INTO comments
-          (id, document_id, block_id, line, parent_id, body, created_by, created_at, updated_at, resolved_at, resolved_by)
-         VALUES (@id, @documentId, @blockId, @line, @parentId, @body, @createdBy, @createdAt, @updatedAt, @resolvedAt, @resolvedBy)
+          (id, document_id, block_id, line, parent_id, body, created_by, created_at, updated_at, resolved_at, resolved_by, agent_id)
+         VALUES (@id, @documentId, @blockId, @line, @parentId, @body, @createdBy, @createdAt, @updatedAt, @resolvedAt, @resolvedBy, @agentId)
          ON CONFLICT(id) DO UPDATE SET
            body = excluded.body,
            updated_at = excluded.updated_at,
@@ -1960,6 +1998,7 @@ export class NomaCloudDatabase {
         parentId: comment.parentId ?? null,
         resolvedAt: comment.resolvedAt ?? null,
         resolvedBy: comment.resolvedBy ?? null,
+        agentId: comment.agentId ?? null,
       });
   }
 
@@ -3959,6 +3998,38 @@ export class NomaCloudDatabase {
 
   // end auth-hardening
 
+  // native OpenID Connect identity bindings
+
+  readOidcIdentity(issuer: string, subject: string): CloudOidcIdentity | undefined {
+    const row = this.db.prepare("SELECT * FROM oidc_identities WHERE issuer = ? AND subject = ?").get(issuer, subject) as OidcIdentityRow | undefined;
+    return row ? oidcIdentity(row) : undefined;
+  }
+
+  listUserOidcIdentities(userId: string): CloudOidcIdentity[] {
+    return (this.db.prepare("SELECT * FROM oidc_identities WHERE user_id = ? ORDER BY created_at, issuer, subject").all(userId) as OidcIdentityRow[]).map(oidcIdentity);
+  }
+
+  /** Creates or refreshes the binding; `createdAt` is kept from the first login. */
+  upsertOidcIdentity(identity: CloudOidcIdentity): void {
+    this.db
+      .prepare(
+        `INSERT INTO oidc_identities (issuer, subject, user_id, email, created_at, last_login_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(issuer, subject) DO UPDATE SET
+           user_id = excluded.user_id,
+           email = excluded.email,
+           last_login_at = excluded.last_login_at`,
+      )
+      .run(identity.issuer, identity.subject, identity.userId, identity.email ?? null, identity.createdAt, identity.lastLoginAt);
+  }
+
+  /** Users whose notification email matches `email` case-insensitively. */
+  findUsersByEmail(email: string): CloudUserRecord[] {
+    return (this.db.prepare("SELECT record_json FROM users WHERE lower(json_extract(record_json, '$.email')) = lower(?) ORDER BY created_at, id").all(email) as RecordJsonRow[]).map(
+      (row) => parseRecord<CloudUserRecord>(row.record_json),
+    );
+  }
+
   private applySchema(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS meta (
@@ -4383,7 +4454,7 @@ export class NomaCloudDatabase {
         id TEXT PRIMARY KEY,
         site_id TEXT NOT NULL,
         created_by TEXT NOT NULL,
-        source TEXT NOT NULL CHECK (source IN ('confluence-cloud', 'confluence-datacenter', 'confluence-export', 'confluence-bundle')),
+        source TEXT NOT NULL CHECK (source IN ('confluence-cloud', 'confluence-datacenter', 'confluence-export', 'confluence-bundle', 'notion-export', 'notion-bundle')),
         status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
         space_key TEXT,
         progress_json TEXT NOT NULL DEFAULT '{}',
@@ -4580,6 +4651,7 @@ export class NomaCloudDatabase {
     `);
     this.rebuildPageParents();
     this.migrateNotificationTypes();
+    this.migrateImportJobSources();
     this.migrateCommentColumns();
     this.migrateSpaceColumns();
 
@@ -4592,7 +4664,7 @@ export class NomaCloudDatabase {
         csrf_hash TEXT NOT NULL,
         user_id TEXT NOT NULL,
         scopes_json TEXT NOT NULL,
-        source TEXT NOT NULL CHECK (source IN ('user_token', 'register', 'pat', 'sso')),
+        source TEXT NOT NULL CHECK (source IN ('user_token', 'register', 'pat', 'sso', 'oidc')),
         pat_id TEXT,
         created_at TEXT NOT NULL,
         last_seen_at TEXT NOT NULL,
@@ -4618,7 +4690,19 @@ export class NomaCloudDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_personal_access_tokens_user ON personal_access_tokens(user_id, created_at DESC);
       -- end auth-hardening
+      -- native OpenID Connect: (issuer, subject) → Noma user bindings
+      CREATE TABLE IF NOT EXISTS oidc_identities (
+        issuer TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        email TEXT,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT NOT NULL,
+        PRIMARY KEY (issuer, subject)
+      );
+      CREATE INDEX IF NOT EXISTS idx_oidc_identities_user ON oidc_identities(user_id);
     `);
+    this.migrateAuthSessionSources();
     this.db.exec(`
       INSERT OR IGNORE INTO document_revisions
         (document_id, revision, title, source, hash, created_at, created_by)
@@ -4629,6 +4713,37 @@ export class NomaCloudDatabase {
     this.db
       .prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .run(schemaVersion);
+  }
+
+  /** Older databases predate the `oidc` session source; SQLite cannot alter a CHECK constraint, so rebuild once. */
+  private migrateAuthSessionSources(): void {
+    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auth_sessions'").get() as { sql: string } | undefined;
+    if (!row || row.sql.includes("'oidc'")) return;
+    this.db.transaction(() => {
+      this.db.exec(`
+        ALTER TABLE auth_sessions RENAME TO auth_sessions_pre_oidc;
+        CREATE TABLE auth_sessions (
+          id TEXT PRIMARY KEY,
+          secret_hash TEXT NOT NULL UNIQUE,
+          csrf_hash TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          scopes_json TEXT NOT NULL,
+          source TEXT NOT NULL CHECK (source IN ('user_token', 'register', 'pat', 'sso', 'oidc')),
+          pat_id TEXT,
+          created_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          user_agent TEXT,
+          ip TEXT,
+          revoked_at TEXT
+        );
+        INSERT INTO auth_sessions SELECT id, secret_hash, csrf_hash, user_id, scopes_json, source, pat_id, created_at, last_seen_at, expires_at, user_agent, ip, revoked_at FROM auth_sessions_pre_oidc;
+        DROP TABLE auth_sessions_pre_oidc;
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, revoked_at, expires_at);
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_pat ON auth_sessions(pat_id);
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
+      `);
+    })();
   }
 
   /** SQLite cannot alter a CHECK constraint, so older databases rebuild the notifications table once. */
@@ -4657,10 +4772,39 @@ export class NomaCloudDatabase {
     })();
   }
 
+  /** SQLite cannot alter a CHECK constraint, so databases created before Notion import rebuild import_jobs once. */
+  private migrateImportJobSources(): void {
+    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'import_jobs'").get() as { sql: string } | undefined;
+    if (!row || cloudImportSourceKinds.every((kind) => row.sql.includes(`'${kind}'`))) return;
+    const allowed = cloudImportSourceKinds.map((kind) => `'${kind}'`).join(", ");
+    this.db.transaction(() => {
+      this.db.exec(`
+        ALTER TABLE import_jobs RENAME TO import_jobs_v9;
+        CREATE TABLE import_jobs (
+          id TEXT PRIMARY KEY,
+          site_id TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          source TEXT NOT NULL CHECK (source IN (${allowed})),
+          status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+          space_key TEXT,
+          progress_json TEXT NOT NULL DEFAULT '{}',
+          result_json TEXT,
+          error TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          finished_at TEXT
+        );
+        INSERT INTO import_jobs SELECT id, site_id, created_by, source, status, space_key, progress_json, result_json, error, created_at, updated_at, finished_at FROM import_jobs_v9;
+        DROP TABLE import_jobs_v9;
+        CREATE INDEX IF NOT EXISTS idx_import_jobs_site ON import_jobs(site_id, status, created_at DESC);
+      `);
+    })();
+  }
+
   /** Adds the comment edit/soft-delete/anchor columns to databases created before they existed. */
   private migrateCommentColumns(): void {
     const columns = new Set((this.db.prepare("PRAGMA table_info(comments)").all() as Array<{ name: string }>).map((column) => column.name));
-    for (const [name, type] of [["edited_at", "TEXT"], ["deleted_at", "TEXT"], ["deleted_by", "TEXT"], ["anchor_json", "TEXT"]] as const) {
+    for (const [name, type] of [["edited_at", "TEXT"], ["deleted_at", "TEXT"], ["deleted_by", "TEXT"], ["anchor_json", "TEXT"], ["agent_id", "TEXT"]] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE comments ADD COLUMN ${name} ${type}`);
     }
   }
@@ -5047,6 +5191,7 @@ function cloudComment(row: CommentRow): CloudComment {
     ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
     ...(row.deleted_by ? { deletedBy: row.deleted_by } : {}),
     ...(row.anchor_json ? { anchor: parseRecord<CloudCommentAnchor>(row.anchor_json) } : {}),
+    ...(row.agent_id ? { agentId: row.agent_id } : {}),
   };
 }
 

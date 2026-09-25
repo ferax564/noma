@@ -2,6 +2,17 @@ import DatabaseConstructor from "better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
 import type { Attrs, Node } from "./ast.js";
 import type { CloudDocumentRecord, CloudPatchProposal, CloudRole } from "./cloud-db.js";
+import {
+  cosineSimilarity as cosine,
+  type EmbeddingProvider,
+  embeddingLabel,
+  embeddingPolicyBlock,
+  embeddingTextHash,
+  LOCAL_HASH_PROVIDER_ID,
+  LocalHashEmbeddingProvider,
+  localHashEmbedding as embed,
+  retrievalTokens as tokens,
+} from "./cloud-embeddings.js";
 import { sha256Hex } from "./hash.js";
 import { extractWikilinks } from "./inline.js";
 import { parse } from "./parser.js";
@@ -80,6 +91,46 @@ export interface KnowledgeSearchRequest {
   contentTypes?: string[];
 }
 
+/**
+ * How a search or answer was retrieved. `semantic` names the vectors that scored semantic similarity:
+ * `local-hash` (the deterministic 96-dimension hash vector) or `provider:model` of a configured
+ * embedding provider. `fallback` says why a configured provider was not used for this query, and
+ * `coverage` how many candidate blocks already carried a provider vector (the rest used lexical +
+ * hash scoring; vectors from different spaces are never compared).
+ */
+export interface KnowledgeRetrievalMode {
+  semantic: string;
+  provider: string;
+  coverage?: { embedded: number; total: number };
+  fallback?: "policy_model_not_allowed" | "policy_zero_retention_required" | "provider_unavailable" | "query_timeout" | "not_embedded";
+}
+
+export interface KnowledgeSearchOutcome {
+  results: KnowledgeRetrievalRecord[];
+  retrieval: KnowledgeRetrievalMode;
+}
+
+/** Result of one embedding backfill pass. */
+export interface EmbeddingBackfillResult {
+  provider: string;
+  embedded: number;
+  reused: number;
+  pending: number;
+  skipped?: "local" | "policy_model_not_allowed" | "policy_zero_retention_required" | "provider_unavailable" | "closed";
+  error?: string;
+}
+
+export interface CloudKnowledgePlatformOptions {
+  /** Embedding provider for semantic retrieval; defaults to the local hash vector. */
+  embeddings?: EmbeddingProvider;
+  /** Deadline for embedding a query at search time before falling back to lexical + hash scoring. */
+  queryEmbeddingTimeoutMs?: number;
+  /** How long a failing provider is skipped before it is tried again. */
+  providerCooldownMs?: number;
+  /** Blocks embedded per backfill pass. */
+  backfillBatchBlocks?: number;
+}
+
 export interface AskNomaResult {
   query: string;
   state: "answered" | "insufficient_evidence";
@@ -89,6 +140,7 @@ export interface AskNomaResult {
   conflicts: Array<{ concept: string; records: string[]; reason: string }>;
   latencyMs: number;
   estimatedCostUsd: number;
+  retrieval?: KnowledgeRetrievalMode;
 }
 
 export interface RagEvaluationFixture {
@@ -160,6 +212,7 @@ type PlatformKind =
   | "agent"
   | "agent_access"
   | "agent_run"
+  | "agent_assignment"
   | "connector"
   | "connector_source"
   | "recipe"
@@ -187,7 +240,7 @@ interface StoredRecord {
 }
 
 type IndexedBlock = Omit<KnowledgeRetrievalRecord, "accessDecision" | "score" | "scoreParts"> &
-  Omit<StoredRecord, "documentId" | "kind"> & { documentId: string; kind: "rag_block" };
+  Omit<StoredRecord, "documentId" | "kind"> & { documentId: string; kind: "rag_block"; textHash?: string };
 
 interface AuditRecord {
   id: string;
@@ -199,8 +252,6 @@ interface AuditRecord {
   createdAt: string;
 }
 
-const vectorDimensions = 96;
-const retrievalStopWords = new Set(["a", "an", "and", "are", "as", "at", "be", "by", "do", "does", "for", "from", "how", "in", "is", "it", "of", "on", "or", "the", "to", "was", "were", "what", "when", "where", "which", "who", "why", "with"]);
 const defaultEnterprisePolicy: EnterprisePolicy = {
   id: "workspace",
   sso: { enabled: false, provider: "none", enforced: false },
@@ -228,16 +279,29 @@ const maxDocumentsIndexedPerCall = 250;
 export class CloudKnowledgePlatform {
   private readonly db: SqliteDatabase;
   private readonly indexedBlockCache = new Map<string, { versionHash: string; blocks: IndexedBlock[] }>();
+  private readonly embeddings: EmbeddingProvider;
+  private readonly queryEmbeddingTimeoutMs: number;
+  private readonly providerCooldownMs: number;
+  private readonly backfillBatchBlocks: number;
+  private readonly queryVectorCache = new Map<string, number[]>();
+  private providerUnavailableUntil = 0;
+  private backfillChain: Promise<unknown> = Promise.resolve();
+  private closed = false;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, options: CloudKnowledgePlatformOptions = {}) {
     this.db = new DatabaseConstructor(dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.db.pragma("busy_timeout = 5000");
     this.applySchema();
+    this.embeddings = options.embeddings ?? new LocalHashEmbeddingProvider();
+    this.queryEmbeddingTimeoutMs = options.queryEmbeddingTimeoutMs ?? 2_000;
+    this.providerCooldownMs = options.providerCooldownMs ?? 60_000;
+    this.backfillBatchBlocks = Math.max(1, options.backfillBatchBlocks ?? 256);
   }
 
   close(): void {
+    this.closed = true;
     this.db.close();
   }
 
@@ -333,20 +397,213 @@ export class CloudKnowledgePlatform {
     }
   }
 
+  /** Synchronous hybrid search scored with the local hash vector only (no provider call). */
   search(request: KnowledgeSearchRequest): KnowledgeRetrievalRecord[] {
     const query = request.query.trim();
     if (!query) return [];
     this.indexDocuments(request.documents, request.now);
-    const accessByDocument = new Map(request.documents.map((item) => [item.document.id, item]));
     const queryEmbedding = embed(query);
+    return this.rank(request, query, this.indexedBlocks(request.documents), (block) => cosine(queryEmbedding, block.embedding));
+  }
+
+  /**
+   * Hybrid search that uses the configured embedding provider when policy allows it: the query is
+   * embedded with a deadline, blocks with a cached provider vector of the same length are scored
+   * against it, and everything else (or everything, when the provider is blocked, down, or slow)
+   * falls back to lexical + local-hash scoring. `retrieval` reports which mode served the query.
+   */
+  async searchWithRetrieval(request: KnowledgeSearchRequest): Promise<KnowledgeSearchOutcome> {
+    const query = request.query.trim();
+    const provider = this.embeddings;
+    const label = embeddingLabel(provider);
+    const local: KnowledgeRetrievalMode = { semantic: LOCAL_HASH_PROVIDER_ID, provider: label };
+    if (!query) return { results: [], retrieval: local };
+    this.indexDocuments(request.documents, request.now);
+    const hashQuery = embed(query);
+    const hashScore = (block: IndexedBlock): number => cosine(hashQuery, block.embedding);
+    if (provider.id === LOCAL_HASH_PROVIDER_ID) {
+      return { results: this.rank(request, query, this.indexedBlocks(request.documents), hashScore), retrieval: local };
+    }
+    const blocked = this.providerBlock();
+    if (blocked) {
+      return { results: this.rank(request, query, this.indexedBlocks(request.documents), hashScore), retrieval: { ...local, fallback: blocked } };
+    }
+    let queryVector: number[] | undefined;
+    let fallback: KnowledgeRetrievalMode["fallback"];
+    try {
+      queryVector = await this.embedQuery(query);
+    } catch (error) {
+      fallback = error instanceof QueryEmbeddingTimeout ? "query_timeout" : "provider_unavailable";
+      this.providerUnavailableUntil = Date.now() + this.providerCooldownMs;
+    }
+    if (this.closed) throw new Error("Knowledge platform is closed");
+    const blocks = this.indexedBlocks(request.documents);
+    if (!queryVector) return { results: this.rank(request, query, blocks, hashScore), retrieval: { ...local, fallback: fallback ?? "provider_unavailable" } };
+    const vectors = this.cachedVectors(queryVector.length, blocks.map(blockTextHash));
+    const vector = queryVector;
+    const results = this.rank(request, query, blocks, (block) => {
+      const stored = vectors.get(blockTextHash(block));
+      return stored && stored.length === vector.length ? cosine(vector, stored) : hashScore(block);
+    });
+    const embedded = blocks.filter((block) => vectors.has(blockTextHash(block))).length;
+    const coverage = { embedded, total: blocks.length };
+    if (embedded === 0) return { results, retrieval: { ...local, coverage, fallback: "not_embedded" } };
+    return { results, retrieval: { semantic: label, provider: label, coverage } };
+  }
+
+  /** The configured embedding provider, whether policy or a recent failure blocks it, and its cache size. */
+  embeddingStatus(): { provider: string; remote: boolean; dimensions?: number; blocked?: KnowledgeRetrievalMode["fallback"]; cachedVectors: number } {
+    const provider = this.embeddings;
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM block_embeddings WHERE provider = ? AND model = ?").get(provider.id, provider.model) as { count: number };
+    const blocked = provider.id === LOCAL_HASH_PROVIDER_ID ? undefined : this.providerBlock();
+    return {
+      provider: embeddingLabel(provider),
+      remote: provider.remote,
+      ...(provider.dimensions !== undefined ? { dimensions: provider.dimensions } : {}),
+      ...(blocked ? { blocked } : {}),
+      cachedVectors: row.count,
+    };
+  }
+
+  /**
+   * Embeds indexed blocks that have no cached vector for the configured provider yet, at most
+   * `backfillBatchBlocks` per pass. Vectors are cached by (provider, model, sha256(text)), so
+   * re-indexing unchanged text never re-embeds it. Passes are serialised; failures put the provider
+   * on cooldown and are reported, never thrown.
+   */
+  backfillEmbeddings(options: { documentIds?: string[]; maxBlocks?: number } = {}): Promise<EmbeddingBackfillResult> {
+    const run = this.backfillChain.then(() => this.runBackfill(options));
+    this.backfillChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async runBackfill(options: { documentIds?: string[]; maxBlocks?: number }): Promise<EmbeddingBackfillResult> {
+    const provider = this.embeddings;
+    const label = embeddingLabel(provider);
+    const empty = { provider: label, embedded: 0, reused: 0, pending: 0 };
+    if (this.closed) return { ...empty, skipped: "closed" };
+    if (provider.id === LOCAL_HASH_PROVIDER_ID) return { ...empty, skipped: "local" };
+    const blocked = this.providerBlock();
+    if (blocked === "policy_model_not_allowed" || blocked === "policy_zero_retention_required") return { ...empty, skipped: blocked };
+    if (blocked) return { ...empty, skipped: "provider_unavailable" };
+    const limit = Math.max(1, Math.min(options.maxBlocks ?? this.backfillBatchBlocks, 5_000));
+    const candidates = this.missingEmbeddingBlocks(limit, options.documentIds);
+    const texts = new Map<string, string>();
+    for (const candidate of candidates) texts.set(candidate.textHash, candidate.text);
+    const hashes = [...texts.keys()];
+    if (hashes.length === 0) return empty;
+    let vectors: number[][];
+    try {
+      vectors = await provider.embed(hashes.map((hash) => texts.get(hash)!), { inputType: "document" });
+    } catch (error) {
+      this.providerUnavailableUntil = Date.now() + this.providerCooldownMs;
+      return { ...empty, pending: hashes.length, skipped: "provider_unavailable", error: error instanceof Error ? error.message : String(error) };
+    }
+    if (this.closed) return { ...empty, skipped: "closed" };
+    const length = vectors[0]?.length ?? 0;
+    if (vectors.length !== hashes.length || length === 0 || vectors.some((vector) => vector.length !== length) || (provider.dimensions !== undefined && length !== provider.dimensions)) {
+      this.providerUnavailableUntil = Date.now() + this.providerCooldownMs;
+      return { ...empty, pending: hashes.length, skipped: "provider_unavailable", error: "Embedding provider returned vectors of an unexpected shape" };
+    }
+    const insert = this.db.prepare("INSERT OR REPLACE INTO block_embeddings (provider, model, text_hash, dimensions, vector, created_at) VALUES (?, ?, ?, ?, ?, ?)");
+    const createdAt = new Date().toISOString();
+    this.db.transaction(() => {
+      hashes.forEach((hash, index) => insert.run(provider.id, provider.model, hash, length, encodeVector(vectors[index]!), createdAt));
+    })();
+    const pending = this.missingEmbeddingBlocks(1, options.documentIds).length;
+    return { provider: label, embedded: hashes.length, reused: candidates.length - hashes.length, pending };
+  }
+
+  private missingEmbeddingBlocks(limit: number, documentIds?: string[]): Array<{ textHash: string; text: string }> {
+    const provider = this.embeddings;
+    const dimensions = provider.dimensions ?? null;
+    const select = (): Array<{ id: string; text_hash: string | null; text: string | null }> =>
+      this.db
+        .prepare(`
+          SELECT r.id AS id, json_extract(r.data_json, '$.textHash') AS text_hash, json_extract(r.data_json, '$.searchableText') AS text
+          FROM cloud_platform_records r
+          WHERE r.kind = 'rag_block'
+            ${documentIds ? "AND r.document_id IN (SELECT value FROM json_each(?))" : ""}
+            AND NOT EXISTS (
+              SELECT 1 FROM block_embeddings e
+              WHERE e.provider = ? AND e.model = ? AND e.text_hash = json_extract(r.data_json, '$.textHash')
+                AND (? IS NULL OR e.dimensions = ?)
+            )
+          ORDER BY r.updated_at, r.id
+          LIMIT ?
+        `)
+        .all(...(documentIds ? [JSON.stringify(documentIds)] : []), provider.id, provider.model, dimensions, dimensions, limit) as Array<{ id: string; text_hash: string | null; text: string | null }>;
+    let rows = select();
+    const legacy = rows.filter((row) => !row.text_hash && typeof row.text === "string");
+    if (legacy.length > 0) {
+      const update = this.db.prepare("UPDATE cloud_platform_records SET data_json = json_set(data_json, '$.textHash', ?) WHERE kind = 'rag_block' AND id = ?");
+      this.db.transaction(() => {
+        for (const row of legacy) update.run(embeddingTextHash(row.text!), row.id);
+      })();
+      rows = select();
+    }
+    return rows
+      .filter((row): row is { id: string; text_hash: string; text: string } => typeof row.text_hash === "string" && typeof row.text === "string")
+      .map((row) => ({ textHash: row.text_hash, text: row.text }));
+  }
+
+  private cachedVectors(dimensions: number, textHashes: string[]): Map<string, Float32Array> {
+    const vectors = new Map<string, Float32Array>();
+    const provider = this.embeddings;
+    const unique = [...new Set(textHashes)];
+    const select = this.db.prepare("SELECT text_hash, vector FROM block_embeddings WHERE provider = ? AND model = ? AND dimensions = ? AND text_hash IN (SELECT value FROM json_each(?))");
+    for (let start = 0; start < unique.length; start += 500) {
+      const rows = select.all(provider.id, provider.model, dimensions, JSON.stringify(unique.slice(start, start + 500))) as Array<{ text_hash: string; vector: Buffer }>;
+      for (const row of rows) {
+        const vector = decodeVector(row.vector);
+        if (vector.length === dimensions) vectors.set(row.text_hash, vector);
+      }
+    }
+    return vectors;
+  }
+
+  private async embedQuery(query: string): Promise<number[]> {
+    const provider = this.embeddings;
+    const key = `${provider.id}\u0000${provider.model}\u0000${query}`;
+    const cached = this.queryVectorCache.get(key);
+    if (cached) return cached;
+    const timeoutMs = this.queryEmbeddingTimeoutMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new QueryEmbeddingTimeout()), timeoutMs);
+    });
+    try {
+      const [vector] = await Promise.race([provider.embed([query], { inputType: "query", timeoutMs }), deadline]);
+      if (!vector || vector.length === 0 || (provider.dimensions !== undefined && vector.length !== provider.dimensions)) throw new Error("Embedding provider returned an unexpected query vector");
+      this.queryVectorCache.set(key, vector);
+      while (this.queryVectorCache.size > 256) {
+        const oldest = this.queryVectorCache.keys().next().value;
+        if (oldest === undefined) break;
+        this.queryVectorCache.delete(oldest);
+      }
+      return vector;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  private providerBlock(): KnowledgeRetrievalMode["fallback"] | undefined {
+    const policyBlock = embeddingPolicyBlock(this.enterprisePolicy(), this.embeddings);
+    if (policyBlock) return policyBlock === "model_not_allowed" ? "policy_model_not_allowed" : "policy_zero_retention_required";
+    if (Date.now() < this.providerUnavailableUntil) return "provider_unavailable";
+    return undefined;
+  }
+
+  private rank(request: KnowledgeSearchRequest, query: string, blocks: IndexedBlock[], semanticScore: (block: IndexedBlock) => number): KnowledgeRetrievalRecord[] {
+    const accessByDocument = new Map(request.documents.map((item) => [item.document.id, item]));
     const queryTokens = tokens(query);
     const types = new Set(request.contentTypes ?? []);
-    const scored = this.indexedBlocks(request.documents)
+    const scored = blocks
       .filter((block) => types.size === 0 || types.has(block.contentType))
       .map((block): KnowledgeRetrievalRecord => {
         const access = accessByDocument.get(block.documentId)!;
         const lexical = lexicalScore(queryTokens, tokens(block.searchableText));
-        const semantic = cosine(queryEmbedding, block.embedding);
+        const semantic = semanticScore(block);
         const typed = typedScore(queryTokens, block);
         const graph = Math.min(1, (block.trust.canonicalFor?.length ?? 0) * 0.15 + (block.trust.sourceOf?.length ?? 0) * 0.1 + (block.trust.supersedes?.length ?? 0) * 0.1);
         const verification = block.trust.verifiedAt ? 1 : 0;
@@ -372,7 +629,17 @@ export class CloudKnowledgePlatform {
 
   ask(request: KnowledgeSearchRequest): AskNomaResult {
     const started = performance.now();
-    const results = this.search({ ...request, limit: request.limit ?? 8 });
+    return this.answer(request, this.search({ ...request, limit: request.limit ?? 8 }), started);
+  }
+
+  /** `ask` over `searchWithRetrieval`; the result carries the retrieval mode that served it. */
+  async askWithRetrieval(request: KnowledgeSearchRequest): Promise<AskNomaResult> {
+    const started = performance.now();
+    const { results, retrieval } = await this.searchWithRetrieval({ ...request, limit: request.limit ?? 8 });
+    return { ...this.answer(request, results, started), retrieval };
+  }
+
+  private answer(request: KnowledgeSearchRequest, results: KnowledgeRetrievalRecord[], started: number): AskNomaResult {
     const citations = uniqueCitations(results).slice(0, 5);
     const confidenceScore = citations.length === 0 ? 0 : round(citations.reduce((sum, item) => sum + item.score, 0) / citations.length);
     const strongest = citations[0];
@@ -594,6 +861,28 @@ export class CloudKnowledgePlatform {
     return this.list<CloudAgentIdentity>("agent", { ownerId }, page);
   }
 
+  /** Agent grants that cover a page directly or through one of `siteIds`. */
+  listAgentAccessCovering(documentId: string, siteIds: string[]): AgentAccessGrant[] {
+    return this.db
+      .prepare("SELECT data_json FROM cloud_platform_records WHERE kind = 'agent_access' AND (document_id = ? OR site_id IN (SELECT value FROM json_each(?))) ORDER BY updated_at DESC, id LIMIT 1000")
+      .all(documentId, JSON.stringify(siteIds))
+      .map((row) => JSON.parse((row as PlatformRow).data_json) as AgentAccessGrant);
+  }
+
+  writeAgentAssignment(assignment: AgentAssignment): AgentAssignment {
+    this.put("agent_assignment", assignment.id, assignment, { ownerId: assignment.agentId, documentId: assignment.documentId, updatedAt: assignment.updatedAt });
+    return assignment;
+  }
+
+  readAgentAssignment(id: string): AgentAssignment | undefined {
+    return this.get<AgentAssignment>("agent_assignment", id);
+  }
+
+  /** Assignments for one agent (`agentId`) or one page (`documentId`), newest activity first. */
+  listAgentAssignments(filter: { agentId?: string; documentId?: string }, page?: PlatformPage): AgentAssignment[] {
+    return this.list<AgentAssignment>("agent_assignment", { ownerId: filter.agentId, documentId: filter.documentId }, page);
+  }
+
   grantAgentAccess(access: AgentAccessGrant, actorId: string, now: string): AgentAccessGrant {
     if (!this.readAgent(access.agentId)) throw new Error("Agent not found");
     this.put("agent_access", access.id, access, { ownerId: access.agentId, documentId: access.resourceType === "document" ? access.resourceId : undefined, siteId: access.resourceType === "site" ? access.resourceId : undefined, updatedAt: access.updatedAt });
@@ -781,6 +1070,9 @@ export class CloudKnowledgePlatform {
       { operation: "review", method: "POST", path: "/api/documents/:id/patch-proposals/:proposal/review", permission: "editor" },
       { operation: "apply", method: "POST", path: "/api/documents/:id/patch-proposals/:proposal/apply", permission: "editor" },
       { operation: "webhook", method: "POST", path: "/api/gateway/webhooks/:recipe", permission: "editor" },
+      { operation: "assignments", method: "GET", path: "/api/agents/:id/assignments", permission: "viewer" },
+      { operation: "reply", method: "POST", path: "/api/agents/:id/assignments/:assignment/reply", permission: "viewer" },
+      { operation: "update_assignment", method: "POST", path: "/api/agents/:id/assignments/:assignment/status", permission: "viewer" },
     ];
   }
 
@@ -1013,6 +1305,15 @@ export class CloudKnowledgePlatform {
       CREATE INDEX IF NOT EXISTS idx_cloud_platform_kind_document ON cloud_platform_records(kind, document_id, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_cloud_platform_owner ON cloud_platform_records(kind, owner_id, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_cloud_platform_audit_time ON cloud_platform_audit(created_at, sequence);
+      CREATE TABLE IF NOT EXISTS block_embeddings (
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        text_hash TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        vector BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (provider, model, text_hash)
+      );
     `);
   }
 
@@ -1070,6 +1371,28 @@ export class CloudKnowledgePlatform {
   }
 }
 
+class QueryEmbeddingTimeout extends Error {
+  constructor() {
+    super("Query embedding timed out");
+  }
+}
+
+function blockTextHash(block: IndexedBlock): string {
+  if (!block.textHash) block.textHash = embeddingTextHash(block.searchableText);
+  return block.textHash;
+}
+
+function encodeVector(vector: number[]): Buffer {
+  const floats = Float32Array.from(vector);
+  return Buffer.from(floats.buffer, floats.byteOffset, floats.byteLength);
+}
+
+function decodeVector(buffer: Buffer): Float32Array {
+  const copy = new Uint8Array(buffer.byteLength);
+  copy.set(buffer);
+  return new Float32Array(copy.buffer, 0, Math.floor(copy.byteLength / 4));
+}
+
 function sortIndexedBlocks(blocks: IndexedBlock[]): IndexedBlock[] {
   return [...blocks].sort((left, right) => left.sourceSpan.line - right.sourceSpan.line || left.id.localeCompare(right.id));
 }
@@ -1106,6 +1429,7 @@ function indexDocument(document: CloudDocumentRecord, trustRecords: KnowledgeTru
         searchableText,
         attrs,
         embedding: embed(searchableText),
+        textHash: embeddingTextHash(searchableText),
         trust,
         freshness,
         provenance: trust.sourceOf?.length ? trust.sourceOf : [`noma:${document.id}@${document.hash}#${blockId}`],
@@ -1154,23 +1478,7 @@ function freshnessFor(trust: KnowledgeTrust, documentUpdatedAt: string, now: str
   return { state: "current", score: 0.9 };
 }
 
-function embed(value: string): number[] {
-  const vector = Array.from({ length: vectorDimensions }, () => 0);
-  const normalized = ` ${value.normalize("NFKC").toLocaleLowerCase()} `;
-  const features = [...tokens(normalized), ...Array.from({ length: Math.max(0, normalized.length - 2) }, (_, index) => normalized.slice(index, index + 3))];
-  for (const feature of features) {
-    const hash = sha256Hex(feature);
-    const index = Number.parseInt(hash.slice(0, 8), 16) % vectorDimensions;
-    const sign = Number.parseInt(hash.slice(8, 10), 16) % 2 === 0 ? 1 : -1;
-    vector[index] = vector[index]! + sign;
-  }
-  const magnitude = Math.sqrt(vector.reduce((sum, item) => sum + item * item, 0)) || 1;
-  return vector.map((item) => round(item / magnitude, 6));
-}
 
-function tokens(value: string): string[] {
-  return (value.normalize("NFKC").toLocaleLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) ?? []).filter((token) => !retrievalStopWords.has(token));
-}
 
 function lexicalScore(query: string[], document: string[]): number {
   if (query.length === 0 || document.length === 0) return 0;
@@ -1185,21 +1493,9 @@ function typedScore(query: string[], block: IndexedBlock): number {
   return query.length === 0 ? 0 : query.filter((token) => typeTokens.has(token)).length / query.length;
 }
 
-function cosine(left: number[], right: number[]): number {
-  let dot = 0;
-  let leftMagnitude = 0;
-  let rightMagnitude = 0;
-  for (let index = 0; index < Math.min(left.length, right.length); index++) {
-    dot += left[index]! * right[index]!;
-    leftMagnitude += left[index]! * left[index]!;
-    rightMagnitude += right[index]! * right[index]!;
-  }
-  if (leftMagnitude === 0 || rightMagnitude === 0) return 0;
-  return Math.max(0, dot / Math.sqrt(leftMagnitude * rightMagnitude));
-}
 
 function stripStored(block: IndexedBlock): Omit<KnowledgeRetrievalRecord, "accessDecision" | "score" | "scoreParts"> {
-  const { id: _id, kind: _kind, ownerId: _ownerId, siteId: _siteId, createdAt: _createdAt, updatedAt: _updatedAt, ...record } = block;
+  const { id: _id, kind: _kind, ownerId: _ownerId, siteId: _siteId, createdAt: _createdAt, updatedAt: _updatedAt, textHash: _textHash, ...record } = block;
   return record;
 }
 
@@ -1444,6 +1740,33 @@ export interface AgentAccessGrant {
   updatedAt: string;
 }
 
+export type AgentAssignmentStatus = "open" | "in_progress" | "done" | "declined";
+
+/**
+ * Work handed to an agent by a person: an `@{agentId}` mention in a comment, or a page task
+ * assigned to the agent. The agent reads it through the gateway, replies in the comment thread,
+ * links the patch proposals it opens, and reports a final status.
+ */
+export interface AgentAssignment {
+  id: string;
+  agentId: string;
+  documentId: string;
+  source: "comment" | "task";
+  commentId?: string;
+  taskId?: string;
+  blockId?: string;
+  request: string;
+  requestedBy: string;
+  requestedByName: string;
+  status: AgentAssignmentStatus;
+  note?: string;
+  proposalIds: string[];
+  replyCommentIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
 export type AgentRunStatus = "running" | "completed" | "failed" | "cancelled";
 
 export interface AgentRun {
@@ -1536,7 +1859,7 @@ export interface SemanticCollection {
 }
 
 export interface AgentGatewayCapability {
-  operation: "search" | "cited_answer" | "list_ids" | "llm_export" | "proof" | "proposal" | "review" | "apply" | "webhook";
+  operation: "search" | "cited_answer" | "list_ids" | "llm_export" | "proof" | "proposal" | "review" | "apply" | "webhook" | "assignments" | "reply" | "update_assignment";
   method: "GET" | "POST";
   path: string;
   permission: "viewer" | "editor";

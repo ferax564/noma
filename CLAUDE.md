@@ -49,9 +49,10 @@ src/                       TypeScript core — parser, AST, renderers, validator
   ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
   verify.ts                Conformance fixture runner (`noma verify`)
   cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
-  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render
+  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
   cloud-db.ts              SQLite persistence for Noma Cloud
-  cloud-blobs.ts           Content-addressed attachment blob store (local disk; S3-ready interface)
+  cloud-blobs.ts           Content-addressed attachment blob store (local disk + dependency-free SigV4 S3 driver)
+  cloud-embeddings.ts      Embedding providers for hybrid search (local hash default, OpenAI-compatible, Voyage)
   cloud-llm.ts             LLM provider layer for Cloud AI (Claude Messages API over fetch, fake provider, pricing)
   cloud-git-sync.ts        `noma cloud export-space|sync` — two-way space ↔ .noma directory sync
   cloud-collab.ts          Live co-editing relay for the Cloud Visual editor (Yjs rooms, checkpoints back to .noma, presence)
@@ -60,6 +61,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   macros.ts                Wiki macros (::include/excerpt/children/issue/issues/page-properties) — pure resolver contracts
   confluence-storage.ts    Confluence storage format → .noma converter with loss report
   confluence-import.ts     Confluence space import (live API, XML export, JSON bundle) into Cloud spaces
+  notion-import.ts         Notion Markdown & CSV export / JSON bundle → .noma page tree with loss report (`noma ingest --from notion`, Cloud import)
   zip.ts                   Dependency-free bounded ZIP reader/writer (imports and space exports)
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates

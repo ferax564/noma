@@ -64,6 +64,31 @@ export async function migrateLegacyStoredToken(): Promise<void> {
   }
 }
 
+/** A browser sign-in method advertised by `GET /api/auth/providers` (today: native OpenID Connect). */
+export interface SignInProvider {
+  id: string;
+  type: string;
+  label: string;
+  startUrl: string;
+}
+
+/** Sign-in providers the server offers; an empty list when the endpoint is unavailable. */
+export async function fetchSignInProviders(): Promise<SignInProvider[]> {
+  try {
+    const response = await fetch("/api/auth/providers", { credentials: "same-origin", headers: { accept: "application/json" } });
+    if (!response.ok) return [];
+    const payload = (await response.json()) as { providers?: SignInProvider[] };
+    return Array.isArray(payload.providers) ? payload.providers.filter((provider) => typeof provider.startUrl === "string" && provider.startUrl.startsWith("/api/auth/")) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Full-page navigation into the IdP; the server only honours same-origin `returnTo` paths. */
+export function signInWithProvider(provider: Pick<SignInProvider, "startUrl">, returnTo: string): void {
+  window.location.assign(`${provider.startUrl}?returnTo=${encodeURIComponent(returnTo)}`);
+}
+
 function readCookie(name: string): string | undefined {
   for (const part of document.cookie.split(";")) {
     const [key, ...value] = part.trim().split("=");

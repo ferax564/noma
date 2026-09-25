@@ -1,10 +1,12 @@
 /** Noma Cloud browser app entry: wires event listeners and boots the app. */
+import { installAccountSecurity, openAccountSecurity } from "./account-security.js";
 import { installAttachments } from "./attachments.js";
 import { installCloudAi } from "./ai.js";
+import { installAiPageDrafts } from "./ai-pages.js";
 import { addComment, addGroupMember, createGroup, inviteCollaborator, inviteGroup, readAllNotifications, refreshAccessManagement, refreshActivity, refreshApprovals, refreshComments, refreshGroups, refreshNotifications, requestApproval } from "./collaboration.js";
 import { panelsOpenStorageKey, themeStorageKey } from "./constants.js";
 import { closeContextMenu, showSourceContextMenu } from "./context-menu.js";
-import { addCommentButton, addGroupMemberButton, commentBodyInput, addIssueCommentButton, addIssueLinkButton, addLabelButton, applyPatchButton, askNomaButton, askNomaInput, cloudUserNameInput, completeSprintButton, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, createIssueButton, createProjectButton, createSprintButton, discardDraftButton, favoritePageButton, globalSearchInput, importPageButton, importPageInput, inviteGroupButton, inviteUserButton, issueFilterSelect, issueSearchInput, loginUserButton, logoutUserButton, manageGroupSelect, mergeDraftButton, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTitleInput, previewFrame, previewViewButton, proposePatchButton, readAllNotificationsButton, recoverDraftButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshHistoryButton, refreshKnowledgeButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, refreshWorkButton, reloadPageButton, requestApprovalButton, savePageButton, saveSpaceButton, searchButton, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, startSprintButton, visualViewButton, themeToggleButton, togglePanelsButton, watchPageButton, workProjectSelect } from "./dom.js";
+import { addCommentButton, addGroupMemberButton, commentBodyInput, addIssueCommentButton, addIssueLinkButton, addLabelButton, applyPatchButton, askNomaButton, askNomaInput, cloudUserNameInput, completeSprintButton, copyArtifactLinkButton, copyLlmButton, copyPageLinkButton, copySiteLinkButton, copyUserIdButton, copyUserTokenButton, createGroupButton, createIssueButton, createProjectButton, createSprintButton, discardDraftButton, favoritePageButton, globalSearchInput, importPageButton, importPageInput, inviteGroupButton, inviteUserButton, issueFilterSelect, issueSearchInput, loginUserButton, logoutUserButton, manageGroupSelect, oidcLoginButton, mergeDraftButton, newFolderButton, newPageButton, newSpaceButton, newUserButton, openPublishedSiteButton, pageTitleInput, previewFrame, previewViewButton, proposePatchButton, readAllNotificationsButton, recoverDraftButton, refreshAccessButton, refreshActivityButton, refreshApprovalsButton, refreshCommentsButton, refreshGroupsButton, refreshHistoryButton, refreshKnowledgeButton, refreshNotificationsButton, refreshPatchProposalsButton, refreshTrashButton, refreshWorkButton, reloadPageButton, requestApprovalButton, savePageButton, saveSpaceButton, searchButton, sourceInput, sourceViewButton, splitResizeHandle, splitViewButton, startSprintButton, visualViewButton, themeToggleButton, togglePanelsButton, watchPageButton, workProjectSelect } from "./dom.js";
 import { discardCurrentLocalDraft, mergeLocalDraft, persistLocalDraft, recoverLocalDraft } from "./drafts.js";
 import { markDirty, reloadCurrentPage, renderCurrent, saveCurrentPage, scheduleRender, syncTitleFromSource } from "./editor.js";
 import { refreshHistory } from "./history.js";
@@ -26,7 +28,7 @@ import { bindTasks, decoratePreviewTasks } from "./tasks.js";
 import { bindWebhooks } from "./webhooks.js";
 import { bindNotificationSettings } from "./notification-settings.js";
 import { installRestrictions } from "./restrictions.js";
-import { createApiToken, createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa } from "./session.js";
+import { createCloudUser, initializeCloud, loginCloudUser, logoutCloudUser, registerCloudPwa, startOidcLogin } from "./session.js";
 import { installTemplateTools } from "./templates.js";
 import { state } from "./state.js";
 import { copyText, promptName, setCloudStatus } from "./util.js";
@@ -45,6 +47,8 @@ void initializeCloud();
 
 function bindEvents(): void {
   installCloudAi();
+  installAiPageDrafts();
+  installAccountSecurity();
   document.addEventListener("click", () => closeContextMenu());
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeContextMenu();
@@ -55,6 +59,9 @@ function bindEvents(): void {
     void createCloudUser();
   });
 
+  oidcLoginButton.addEventListener("click", () => {
+    startOidcLogin();
+  });
   loginUserButton.addEventListener("click", () => {
     void loginCloudUser();
   });
@@ -68,7 +75,7 @@ function bindEvents(): void {
   });
 
   copyUserTokenButton.addEventListener("click", () => {
-    void createApiToken();
+    void openAccountSecurity();
   });
 
   themeToggleButton.addEventListener("click", () => {
