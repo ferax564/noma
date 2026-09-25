@@ -362,7 +362,7 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 - Book manifests (`book.noma.yml`) + multi-file rendering. CLI auto-detects manifest extension; chapters resolve relative to its directory, and `--to site` publishes the set as a searchable static Noma Space.
 - Starter templates under `examples/templates/` for research memos, decision records, technical specs, and agent refresh packs.
 - Nine examples: five demos (agent-plan, tech-doc, research-thesis, interactive-projection, word-review-loop), the original thesis/landing/book-chapter, and the `examples/book/` 3-chapter book.
-- Thirteen docs (all written in Noma): direction, spec, compatibility, getting started, web workbench guide, Noma Cloud guide, agent patch protocol, architecture, comparison guide, case studies, agent editing guide, starter templates, and the Markdown/HTML pain research memo.
+- Docs written in Noma under `docs/`: direction, spec, compatibility, getting started, web workbench guide, Noma Cloud guide, enterprise boundary, security review, agent protocol (v1 RFC and legacy), architecture, comparison guide, case studies, agent editing guide, starter templates, and two research memos. Reviews and strategy notes (`review-2026-09.md`, `strategy-2026-09.md`, `status-2026-09-25.md`) are Markdown.
 - Hand-crafted HTML landing page (`site/index.html`) plus the hosted cloud app (`site/cloud.html`) and static browser workbench (`site/workbench.html`).
 - PDF demo exports via Puppeteer.
 - GitHub Pages deployment on every push to `main`.
@@ -373,7 +373,17 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.18.0 — Noma Cloud becomes a Confluence-class wiki for the agentic-AI era. Spaces now have a page tree, labels, watching, version diffs, attachments, page restrictions, wiki macros and transclusion, Confluence import, templates, PDF/DOCX export, search filters, @mentions, inline tasks, webhooks, and email digests. A Visual block editor with live co-editing and presence round-trips through `.noma` source with stable block IDs. Generative Ask and AI page actions run inside the proof → independent approval → hash-checked apply loop, backed by stale-knowledge sweeps and Git-native space sync. Security is hardened with cookie sessions, CSRF protection, scoped personal access tokens, and a fail-closed production admin. The core parser and patch engine gain property-tested fixes, and the npm root entry is lean, with the `/cloud` and `/enterprise` subpaths. Since v0.18.0 (unreleased): agents are teammates you can @-mention or assign tasks to, Notion import, real embeddings behind hybrid search, native OpenID Connect login, S3-compatible attachment storage, and Confluence attachment copy. See [`CHANGELOG.md`](CHANGELOG.md), `PLAN.md` §24.43–§24.45, [`docs/review-2026-09.md`](docs/review-2026-09.md), and the gap analysis in [`docs/status-2026-09-25.md`](docs/status-2026-09-25.md).
+**Status:** v0.18.0 — Noma Cloud becomes a Confluence-class wiki for the agentic-AI era. Spaces now have a page tree, labels, watching, version diffs, attachments, page restrictions, wiki macros and transclusion, Confluence import, templates, PDF/DOCX export, search filters, @mentions, inline tasks, webhooks, and email digests. A Visual block editor with live co-editing and presence round-trips through `.noma` source with stable block IDs. Generative Ask and AI page actions run inside the proof → independent approval → hash-checked apply loop, backed by stale-knowledge sweeps and Git-native space sync. Security is hardened with cookie sessions, CSRF protection, scoped personal access tokens, and a fail-closed production admin. The core parser and patch engine gain property-tested fixes, and the npm root entry is lean, with the `/cloud` and `/enterprise` subpaths. See [`CHANGELOG.md`](CHANGELOG.md), `PLAN.md` §24.43–§24.44, and [`docs/review-2026-09.md`](docs/review-2026-09.md).
+
+**Unreleased (on `main`, next release):** this release closes the remaining gaps against Notion and Confluence for agent-first teams.
+
+- **Agents as teammates.** @-mention an agent in a comment or assign it a page task. It works the assignment over REST or MCP, replies in the thread, and links proofed proposals that still need a person's approval.
+- **Imports.** Notion import (Markdown & CSV export, databases, and properties) and a Confluence import that now copies attachments.
+- **Search.** Pluggable real embeddings (OpenAI-compatible or Voyage) behind hybrid search.
+- **Enterprise.** Native OpenID Connect login and S3-compatible attachment storage.
+- **Composition and presentations.** Decks, style tokens, component kits, sandboxed widgets, `::canvas`, and `.pptx` export.
+
+What is still missing, and why, is in the gap analysis [`docs/status-2026-09-25.md`](docs/status-2026-09-25.md) and in `PLAN.md` §24.45.
 
 ## License
 
