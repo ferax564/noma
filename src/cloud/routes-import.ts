@@ -1,11 +1,14 @@
 /**
- * `/api/import/confluence` (start a background import into a space) and
- * `/api/import/jobs/:id` (poll it). Pages become `.noma` documents owned by
- * the importer; hierarchy, labels, and Confluence provenance (frontmatter) are
- * kept, and re-importing updates pages by Confluence page ID.
+ * `/api/import/confluence` and `/api/import/notion` (start a background import
+ * into a space) and `/api/import/jobs/:id` (poll it). Pages become `.noma`
+ * documents owned by the importer; hierarchy, labels, and source provenance
+ * (frontmatter) are kept, and re-importing updates pages by source page ID.
+ * Notion images and files are stored as page attachments (`att:` references).
  */
+import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { CloudDocumentRecord, CloudImportJob, CloudImportProgress, CloudImportSource, CloudImportSourceKind, CloudSiteRecord, CloudUserRecord } from "../cloud-db.js";
+import { BLOB_HEAD_BYTES } from "../cloud-blobs.js";
+import type { CloudDocumentRecord, CloudImportJob, CloudImportProgress, CloudImportSourceKind, CloudSiteRecord, CloudUserRecord } from "../cloud-db.js";
 import {
   type ConfluencePage,
   type ConfluenceSpace,
@@ -17,7 +20,9 @@ import {
   parseConfluenceBundle,
 } from "../confluence-import.js";
 import { convertConfluencePage } from "../confluence-storage.js";
+import { type NotionImport, NotionImportError, type NotionPage, parseNotionBundle, parseNotionExport } from "../notion-import.js";
 import { parse } from "../parser.js";
+import { sanitizeAttachmentFilename, sniffAttachmentType } from "./attachments.js";
 import {
   type CloudServerConfig,
   type Principal,
@@ -32,13 +37,18 @@ import {
   writeSite,
 } from "./context.js";
 import { headerValue, HttpError, readJsonBody, sendJson, sha256Hex } from "./http.js";
-import { ImportAttachmentLedger, preparePageAttachments } from "./import-attachments.js";
 import { assertCloudId, optionalCloudId, optionalString } from "./input.js";
+import { attachmentIdFor } from "./routes-attachments.js";
+import { ImportAttachmentLedger, preparePageAttachments } from "./import-attachments.js";
 
 const SOURCE_SYSTEM = "confluence";
+const NOTION_SOURCE_SYSTEM = "notion";
 const DEFAULT_IMPORT_MAX_BYTES = 50_000_000;
+const ZIP_CONTENT_TYPES = ["application/zip", "application/x-zip-compressed", "application/octet-stream"];
 
 type SpaceLoader = (onProgress: (fetched: number) => void) => Promise<ConfluenceSpace>;
+type JobPatch = Parameters<CloudServerConfig["store"]["updateImportJob"]>[1];
+type ImportRun = (progress: CloudImportProgress, report: () => void, touch: (patch: JobPatch) => void) => Promise<Record<string, unknown>>;
 
 export async function routeImport(
   req: IncomingMessage,
@@ -51,9 +61,11 @@ export async function routeImport(
   const method = req.method ?? "GET";
   const user = requireUser(principal);
 
-  if (parts[2] === "confluence" && !parts[3]) {
+  if ((parts[2] === "confluence" || parts[2] === "notion") && !parts[3]) {
     if (method !== "POST") throw new HttpError(405, "Method not allowed");
-    const started = await startConfluenceImport(req, url, config, principal, user);
+    const started = parts[2] === "notion"
+      ? await startNotionImport(req, url, config, principal, user)
+      : await startConfluenceImport(req, url, config, principal, user);
     sendJson(res, 202, { job: started, statusUrl: `/api/import/jobs/${started.id}` });
     return;
   }
@@ -114,7 +126,7 @@ async function startConfluenceImport(
       spaceKey = live.spaceKey;
       loader = (onProgress) => fetchConfluenceSpace(live, onProgress);
     }
-  } else if (["application/zip", "application/x-zip-compressed", "application/octet-stream", "application/xml", "text/xml"].includes(contentType)) {
+  } else if ([...ZIP_CONTENT_TYPES, "application/xml", "text/xml"].includes(contentType)) {
     siteId = optionalCloudId(url.searchParams.get("site"), "Site");
     overwrite = /^(1|true|yes)$/i.test(url.searchParams.get("overwrite") ?? "");
     const data = await readRawBody(req, maxBytes);
@@ -124,6 +136,76 @@ async function startConfluenceImport(
     throw new HttpError(415, "Send JSON, a Confluence XML export ZIP (application/zip), or entities.xml (application/xml)");
   }
 
+  return queueImportJob(config, principal, user, siteId, kind, spaceKey, async (targetSiteId, progress, report, touch) => {
+    const space = await loader((fetched) => touch({ progress: { ...progress, total: fetched } }));
+    progress.total = space.pages.length;
+    touch({ spaceKey: space.spaceKey, progress });
+    return importSpace(config, targetSiteId, user, space, overwrite, progress, report);
+  });
+}
+
+/**
+ * Notion import: a "Markdown & CSV" export ZIP (raw `application/zip` body with `?site=`, or JSON
+ * `{ siteId, archiveBase64 }`) or a JSON `{ siteId, bundle }` (see `parseNotionBundle`).
+ */
+async function startNotionImport(
+  req: IncomingMessage,
+  url: URL,
+  config: CloudServerConfig,
+  principal: Principal,
+  user: CloudUserRecord,
+): Promise<CloudImportJob> {
+  const maxBytes = config.importMaxBytes ?? DEFAULT_IMPORT_MAX_BYTES;
+  const contentType = (headerValue(req, "content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+  const options = { maxAttachmentBytes: config.maxAttachmentBytes };
+  let siteId: string | undefined;
+  let overwrite = false;
+  let kind: CloudImportSourceKind;
+  let loader: () => NotionImport;
+
+  if (contentType === "application/json" || contentType === "") {
+    const input = await readJsonBody(req, maxBytes);
+    siteId = optionalCloudId(input.siteId, "Site");
+    overwrite = input.overwrite === true;
+    if (input.bundle !== undefined) {
+      const parsed = wrapImportError(() => parseNotionBundle(input.bundle, options));
+      kind = "notion-bundle";
+      loader = () => parsed;
+    } else if (typeof input.archiveBase64 === "string") {
+      const data = base64Input(input.archiveBase64, maxBytes);
+      kind = "notion-export";
+      loader = () => parseNotionExport(data, options);
+    } else {
+      throw new HttpError(400, "Provide archiveBase64 (a Notion Markdown & CSV export ZIP) or bundle");
+    }
+  } else if (ZIP_CONTENT_TYPES.includes(contentType)) {
+    siteId = optionalCloudId(url.searchParams.get("site"), "Site");
+    overwrite = /^(1|true|yes)$/i.test(url.searchParams.get("overwrite") ?? "");
+    const data = await readRawBody(req, maxBytes);
+    kind = "notion-export";
+    loader = () => parseNotionExport(data, options);
+  } else {
+    throw new HttpError(415, "Send JSON or a Notion Markdown & CSV export ZIP (application/zip)");
+  }
+
+  return queueImportJob(config, principal, user, siteId, kind, undefined, async (targetSiteId, progress, report) => {
+    const parsed = loader();
+    progress.total = parsed.pages.length;
+    report();
+    return importNotion(config, targetSiteId, user, parsed, overwrite, progress, report);
+  });
+}
+
+/** Checks the target space, records a queued job, and runs it in the background. */
+async function queueImportJob(
+  config: CloudServerConfig,
+  principal: Principal,
+  user: CloudUserRecord,
+  siteId: string | undefined,
+  kind: CloudImportSourceKind,
+  spaceKey: string | undefined,
+  run: (siteId: string, ...rest: Parameters<ImportRun>) => ReturnType<ImportRun>,
+): Promise<CloudImportJob> {
   if (!siteId) throw new HttpError(400, "siteId is required");
   const site = await readSite(config, siteId);
   requireNotTrashed(config, "site", siteId);
@@ -144,25 +226,24 @@ async function startConfluenceImport(
   };
   config.store.createImportJob(job);
   recordActivity(config, user, "import.started", "site", siteId, { jobId: job.id, source: kind, spaceKey });
+  const targetSiteId = siteId;
   setImmediate(() => {
-    runImportJob(config, job, user, loader, overwrite).catch(() => undefined);
+    runImportJob(config, job, user, (...args) => run(targetSiteId, ...args)).catch(() => undefined);
   });
   return job;
 }
 
-async function runImportJob(config: CloudServerConfig, job: CloudImportJob, user: CloudUserRecord, loader: SpaceLoader, overwrite: boolean): Promise<void> {
+async function runImportJob(config: CloudServerConfig, job: CloudImportJob, user: CloudUserRecord, run: ImportRun): Promise<void> {
   const progress = emptyProgress();
-  const touch = (patch: Parameters<typeof config.store.updateImportJob>[1]): void => config.store.updateImportJob(job.id, patch, config.now().toISOString());
+  const touch = (patch: JobPatch): void => config.store.updateImportJob(job.id, patch, config.now().toISOString());
   try {
     touch({ status: "running" });
-    const space = await loader((fetched) => touch({ progress: { ...progress, total: fetched } }));
-    progress.total = space.pages.length;
-    touch({ spaceKey: space.spaceKey, progress });
-    const result = await importSpace(config, job.siteId, user, space, overwrite, progress, () => touch({ progress }));
+    const result = await run(progress, () => touch({ progress }), touch);
     touch({ status: "succeeded", progress, result, finishedAt: config.now().toISOString() });
     recordActivity(config, user, "import.completed", "site", job.siteId, { jobId: job.id, created: progress.created, updated: progress.updated });
   } catch (error) {
-    const message = error instanceof ConfluenceImportError || error instanceof HttpError ? error.message : `Import failed: ${error instanceof Error ? error.message : String(error)}`;
+    const known = error instanceof ConfluenceImportError || error instanceof NotionImportError || error instanceof HttpError;
+    const message = known ? error.message : `Import failed: ${error instanceof Error ? error.message : String(error)}`;
     touch({ status: "failed", progress, error: message.slice(0, 2_000), finishedAt: config.now().toISOString() });
   }
 }
@@ -175,6 +256,14 @@ interface ImportedPage {
   reason?: string;
 }
 
+function countOutcome(progress: CloudImportProgress, action: ImportedPage["action"]): void {
+  if (action === "created") progress.created += 1;
+  else if (action === "updated") progress.updated += 1;
+  else if (action === "unchanged") progress.unchanged += 1;
+  else if (action === "failed") progress.failed += 1;
+  else progress.skipped += 1;
+}
+
 async function importSpace(
   config: CloudServerConfig,
   siteId: string,
@@ -185,7 +274,6 @@ async function importSpace(
   report: () => void,
 ): Promise<Record<string, unknown>> {
   const initialSite = await readSite(config, siteId);
-  const pageIds = new Set(space.pages.map((page) => page.id));
   const ordered = orderPages(space.pages);
   const documentByPage = new Map<string, string>();
   const outcomes: ImportedPage[] = [];
@@ -201,10 +289,7 @@ async function importSpace(
       outcomes.push(outcome.page);
       const documentId = outcome.page.documentId;
       if (documentId && !config.store.isTrashed("document", documentId)) documentByPage.set(page.id, documentId);
-      if (outcome.page.action === "created") progress.created += 1;
-      else if (outcome.page.action === "updated") progress.updated += 1;
-      else if (outcome.page.action === "unchanged") progress.unchanged += 1;
-      else progress.skipped += 1;
+      countOutcome(progress, outcome.page.action);
     } catch (error) {
       progress.failed += 1;
       outcomes.push({ pageId: page.id, title: page.title, action: "failed", reason: error instanceof Error ? error.message.slice(0, 300) : String(error) });
@@ -215,6 +300,30 @@ async function importSpace(
     report();
   }
 
+  await attachImportedTree(config, siteId, user, ordered, documentByPage);
+
+  return {
+    spaceKey: space.spaceKey,
+    ...(space.spaceName ? { spaceName: space.spaceName } : {}),
+    pages: outcomes.slice(0, 2_000),
+    loss: [...loss].map(([macro, count]) => ({ macro, count })).sort((a, b) => b.count - a.count),
+    attachments: {
+      referenced: attachments,
+      ...ledger.summary(),
+      ...(space.attachmentsUnavailable ? { note: space.attachmentsUnavailable } : {}),
+    },
+  };
+}
+
+/** Adds imported documents to the space and links each to its imported parent. */
+async function attachImportedTree(
+  config: CloudServerConfig,
+  siteId: string,
+  user: CloudUserRecord,
+  ordered: Array<{ id: string; parentId?: string }>,
+  documentByPage: Map<string, string>,
+): Promise<void> {
+  const pageIds = new Set(ordered.map((page) => page.id));
   const site = await readSite(config, siteId);
   requireNotTrashed(config, "site", siteId);
   const documentIds = [...site.documentIds];
@@ -234,18 +343,6 @@ async function importSpace(
     updatedBy: user.id,
   };
   await writeSite(config, nextSite);
-
-  return {
-    spaceKey: space.spaceKey,
-    ...(space.spaceName ? { spaceName: space.spaceName } : {}),
-    pages: outcomes.slice(0, 2_000),
-    loss: [...loss].map(([macro, count]) => ({ macro, count })).sort((a, b) => b.count - a.count),
-    attachments: {
-      referenced: attachments,
-      ...ledger.summary(),
-      ...(space.attachmentsUnavailable ? { note: space.attachmentsUnavailable } : {}),
-    },
-  };
 }
 
 async function importPage(
@@ -260,13 +357,12 @@ async function importPage(
 ): Promise<{ page: ImportedPage; attachments: number }> {
   const sourceId = `${space.spaceKey}:${page.id}`;
   const mapping = config.store.readImportSource(site.id, SOURCE_SYSTEM, sourceId);
-  // A mapped page that has left this space is not updated or re-added: re-adding would hand the space's members access to it.
   const existing = mapping && site.documentIds.includes(mapping.documentId) ? config.store.readDocument(mapping.documentId) : undefined;
   const prepared = existing && config.store.isTrashed("document", existing.id)
     ? undefined
     : await preparePageAttachments(ledger, space.attachmentSource, space.attachmentsUnavailable, page, existing ? config.store.listAttachments(existing.id) : []);
   try {
-    const result = await importConvertedPage(config, site, user, space, page, overwrite, loss, mapping, existing, prepared?.refs);
+    const result = await importConvertedPage(config, site, user, space, page, overwrite, loss, sourceId, prepared?.refs);
     const documentId = result.page.documentId;
     if (prepared && documentId && ["created", "updated", "unchanged"].includes(result.page.action)) await prepared.commit(documentId, user.id);
     else await prepared?.discard();
@@ -288,8 +384,7 @@ async function importConvertedPage(
   page: ConfluencePage,
   overwrite: boolean,
   loss: Map<string, number>,
-  mapping: CloudImportSource | undefined,
-  existing: CloudDocumentRecord | undefined,
+  sourceId: string,
   attachmentRefs: Map<string, string> | undefined,
 ): Promise<{ page: ImportedPage; attachments: number; unresolved: string[] }> {
   const conversion = convertConfluencePage(page.storage, {
@@ -306,33 +401,78 @@ async function importConvertedPage(
     ...(attachmentRefs ? { attachmentRef: (filename: string) => attachmentRefs.get(filename) } : {}),
   });
   for (const entry of conversion.loss) loss.set(entry.macro, (loss.get(entry.macro) ?? 0) + entry.count);
-  parse(conversion.source, { filename: `${page.id}.noma` });
-  const sourceHash = sha256Hex(conversion.source);
-  const sourceId = `${space.spaceKey}:${page.id}`;
-  const title = page.title.slice(0, 120) || "Untitled Page";
-  const now = config.now().toISOString();
-  const attachments = conversion.attachments.length;
-  const unresolved = conversion.attachments.filter((ref) => !ref.copied).map((ref) => ref.filename);
-  const outcome = (action: ImportedPage["action"], documentId?: string, reason?: string): { page: ImportedPage; attachments: number; unresolved: string[] } => ({
-    page: { pageId: page.id, title, ...(documentId ? { documentId } : {}), action, ...(reason ? { reason } : {}) },
-    attachments,
-    unresolved,
+  const imported = await upsertImportedPage(config, site, user, {
+    sourceSystem: SOURCE_SYSTEM,
+    sourceLabel: "Confluence",
+    sourceId,
+    pageId: page.id,
+    title: page.title,
+    source: conversion.source,
+    ...(page.version ? { version: page.version } : {}),
+    labels: page.labels,
+    overwrite,
+    activity: { importedFrom: "confluence", confluencePageId: page.id },
   });
+  return { page: imported, attachments: conversion.attachments.length, unresolved: conversion.attachments.filter((ref) => !ref.copied).map((ref) => ref.filename) };
+}
+
+interface UpsertInput {
+  sourceSystem: string;
+  sourceLabel: string;
+  sourceId: string;
+  pageId: string;
+  title: string;
+  source: string;
+  version?: string;
+  labels: string[];
+  overwrite: boolean;
+  activity: Record<string, unknown>;
+}
+
+/**
+ * Creates or updates the document mapped to one imported source page. Pages edited in Noma since
+ * the last import are skipped unless `overwrite` is set; unchanged sources only merge labels.
+ */
+async function upsertImportedPage(config: CloudServerConfig, site: CloudSiteRecord, user: CloudUserRecord, input: UpsertInput): Promise<ImportedPage> {
+  parse(input.source, { filename: `${input.pageId}.noma` });
+  const sourceHash = sha256Hex(input.source);
+  const title = input.title.slice(0, 120) || "Untitled Page";
+  const now = config.now().toISOString();
+  const mapping = config.store.readImportSource(site.id, input.sourceSystem, input.sourceId);
+  // A mapped page that has left this space is not updated or re-added: re-adding would hand the space's members access to it.
+  const existing = mapping && site.documentIds.includes(mapping.documentId) ? config.store.readDocument(mapping.documentId) : undefined;
+  const outcome = (action: ImportedPage["action"], documentId?: string, reason?: string): ImportedPage => ({
+    pageId: input.pageId,
+    title,
+    ...(documentId ? { documentId } : {}),
+    action,
+    ...(reason ? { reason } : {}),
+  });
+  const writeMapping = (documentId: string): void =>
+    config.store.writeImportSource({
+      siteId: site.id,
+      sourceSystem: input.sourceSystem,
+      sourceId: input.sourceId,
+      documentId,
+      ...(input.version ? { sourceVersion: input.version } : {}),
+      importedHash: sourceHash,
+      importedAt: now,
+    });
 
   if (existing) {
     if (config.store.isTrashed("document", existing.id)) return outcome("skipped", existing.id, "The Noma page is in the trash");
     if (mapping!.importedHash === sourceHash) {
-      mergeLabels(config, existing.id, page.labels, user, now);
-      return outcome("unchanged", existing.id, existing.hash === sourceHash ? undefined : "Unchanged in Confluence; local Noma edits kept");
+      mergeLabels(config, existing.id, input.labels, user, now);
+      return outcome("unchanged", existing.id, existing.hash === sourceHash ? undefined : `Unchanged in ${input.sourceLabel}; local Noma edits kept`);
     }
-    if (existing.hash !== mapping!.importedHash && !overwrite) {
+    if (existing.hash !== mapping!.importedHash && !input.overwrite) {
       return outcome("skipped", existing.id, "The Noma page was edited after the last import; re-run with overwrite to replace it");
     }
-    const record: CloudDocumentRecord = { ...existing, title, source: conversion.source, hash: sourceHash, updatedAt: now, updatedBy: user.id };
+    const record: CloudDocumentRecord = { ...existing, title, source: input.source, hash: sourceHash, updatedAt: now, updatedBy: user.id };
     await writeDocument(config, record, existing.hash);
-    mergeLabels(config, existing.id, page.labels, user, now);
-    config.store.writeImportSource({ siteId: site.id, sourceSystem: SOURCE_SYSTEM, sourceId, documentId: existing.id, ...(page.version ? { sourceVersion: page.version } : {}), importedHash: sourceHash, importedAt: now });
-    recordActivity(config, user, "document.updated", "document", existing.id, { hash: sourceHash, importedFrom: "confluence", confluencePageId: page.id });
+    mergeLabels(config, existing.id, input.labels, user, now);
+    writeMapping(existing.id);
+    recordActivity(config, user, "document.updated", "document", existing.id, { hash: sourceHash, ...input.activity });
     return outcome("updated", existing.id);
   }
 
@@ -340,7 +480,7 @@ async function importConvertedPage(
     version: 2,
     id: uniqueId(config),
     title,
-    source: conversion.source,
+    source: input.source,
     hash: sourceHash,
     createdAt: now,
     updatedAt: now,
@@ -351,10 +491,157 @@ async function importConvertedPage(
   };
   await writeDocument(config, record);
   config.store.setWatch(user.id, "document", record.id, now);
-  mergeLabels(config, record.id, page.labels, user, now);
-  config.store.writeImportSource({ siteId: site.id, sourceSystem: SOURCE_SYSTEM, sourceId, documentId: record.id, ...(page.version ? { sourceVersion: page.version } : {}), importedHash: sourceHash, importedAt: now });
-  recordActivity(config, user, "document.created", "document", record.id, { title, importedFrom: "confluence", confluencePageId: page.id });
+  mergeLabels(config, record.id, input.labels, user, now);
+  writeMapping(record.id);
+  recordActivity(config, user, "document.created", "document", record.id, { title, ...input.activity });
   return outcome("created", record.id);
+}
+
+interface NotionAttachmentStats {
+  referenced: number;
+  stored: number;
+  unchanged: number;
+  addedBytes: number;
+  skipped: Array<{ pageId: string; filename: string; reason: string }>;
+}
+
+async function importNotion(
+  config: CloudServerConfig,
+  siteId: string,
+  user: CloudUserRecord,
+  workspace: NotionImport,
+  overwrite: boolean,
+  progress: CloudImportProgress,
+  report: () => void,
+): Promise<Record<string, unknown>> {
+  const initialSite = await readSite(config, siteId);
+  const documentByPage = new Map<string, string>();
+  const outcomes: ImportedPage[] = [];
+  const stats: NotionAttachmentStats = { referenced: 0, stored: 0, unchanged: 0, addedBytes: 0, skipped: [] };
+
+  for (const page of workspace.pages) {
+    await new Promise<void>((resolveTick) => setImmediate(resolveTick));
+    try {
+      const imported = await upsertImportedPage(config, initialSite, user, {
+        sourceSystem: NOTION_SOURCE_SYSTEM,
+        sourceLabel: "Notion",
+        sourceId: page.id,
+        pageId: page.id,
+        title: page.title,
+        source: page.source,
+        labels: page.labels,
+        overwrite,
+        activity: { importedFrom: "notion", notionPageId: page.id },
+      });
+      outcomes.push(imported);
+      const documentId = imported.documentId;
+      if (documentId && !config.store.isTrashed("document", documentId)) {
+        documentByPage.set(page.id, documentId);
+        if (imported.action !== "skipped") await storeNotionAttachments(config, siteId, documentId, page, user, stats);
+      }
+      countOutcome(progress, imported.action);
+    } catch (error) {
+      progress.failed += 1;
+      outcomes.push({ pageId: page.id, title: page.title, action: "failed", reason: error instanceof Error ? error.message.slice(0, 300) : String(error) });
+    }
+    progress.processed += 1;
+    report();
+  }
+
+  await attachImportedTree(config, siteId, user, workspace.pages, documentByPage);
+
+  return {
+    ...(workspace.workspace ? { workspace: workspace.workspace } : {}),
+    pages: outcomes.slice(0, 2_000),
+    loss: workspace.loss.map((entry) => ({ macro: entry.kind, count: entry.count })),
+    skippedEntries: workspace.skipped.slice(0, 200),
+    attachments: {
+      referenced: stats.referenced,
+      stored: stats.stored,
+      unchanged: stats.unchanged,
+      skipped: stats.skipped.slice(0, 200),
+      note: "Images and files from the export are stored as page attachments and referenced as att:<filename>.",
+    },
+  };
+}
+
+/**
+ * Stores a Notion page's files as attachments of its document. A file whose name already holds the
+ * same bytes is left alone; changed bytes replace the old attachment. Oversized, executable, or
+ * over-quota files are reported and skipped (their `att:` reference renders as a missing file).
+ */
+async function storeNotionAttachments(
+  config: CloudServerConfig,
+  siteId: string,
+  documentId: string,
+  page: NotionPage,
+  user: CloudUserRecord,
+  stats: NotionAttachmentStats,
+): Promise<void> {
+  if (page.attachments.length === 0) return;
+  const existing = new Map(config.store.listAttachments(documentId).map((attachment) => [attachment.filename, attachment]));
+  const now = config.now().toISOString();
+  let changed = false;
+  for (const attachment of page.attachments) {
+    stats.referenced += 1;
+    const skip = (reason: string): void => {
+      stats.skipped.push({ pageId: page.id, filename: attachment.filename, reason });
+    };
+    const size = attachment.data.length;
+    const sha256 = createHash("sha256").update(attachment.data).digest("hex");
+    const current = existing.get(attachment.filename);
+    if (current && current.sha256 === sha256) {
+      stats.unchanged += 1;
+      continue;
+    }
+    if (sanitizeAttachmentFilename(attachment.filename) !== attachment.filename) {
+      skip("invalid filename");
+      continue;
+    }
+    if (size === 0) {
+      skip("empty file");
+      continue;
+    }
+    if (size > config.maxAttachmentBytes) {
+      skip(`larger than ${config.maxAttachmentBytes} bytes`);
+      continue;
+    }
+    if (config.store.siteAttachmentBytes(siteId) + stats.addedBytes + size > config.attachmentQuotaBytes) {
+      skip("attachment storage quota exceeded");
+      continue;
+    }
+    let contentType: string;
+    try {
+      contentType = sniffAttachmentType(attachment.data.subarray(0, BLOB_HEAD_BYTES), undefined, attachment.filename);
+    } catch (error) {
+      skip(error instanceof Error ? error.message : String(error));
+      continue;
+    }
+    const staged = await config.blobs.stage(
+      (async function* () {
+        yield attachment.data;
+      })(),
+    );
+    await staged.commit();
+    if (current) config.store.markAttachmentDeleted(current.id, now);
+    config.store.insertAttachment({
+      id: attachmentIdFor(config),
+      documentId,
+      sha256: staged.sha256,
+      filename: attachment.filename,
+      contentType,
+      size: staged.size,
+      uploadedBy: user.id,
+      createdAt: now,
+    });
+    stats.stored += 1;
+    stats.addedBytes += staged.size;
+    changed = true;
+  }
+  if (changed) {
+    config.store.reindexAttachments(documentId);
+    recordActivity(config, user, "attachment.uploaded", "document", documentId, { importedFrom: "notion", notionPageId: page.id });
+  }
 }
 
 function mergeLabels(config: CloudServerConfig, documentId: string, labels: string[], user: CloudUserRecord, now: string): void {
@@ -470,7 +757,7 @@ function wrapImportError<T>(run: () => T): T {
   try {
     return run();
   } catch (error) {
-    if (error instanceof ConfluenceImportError) throw new HttpError(error.status, error.message);
+    if (error instanceof ConfluenceImportError || error instanceof NotionImportError) throw new HttpError(error.status, error.message);
     throw error;
   }
 }

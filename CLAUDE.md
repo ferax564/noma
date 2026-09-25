@@ -61,6 +61,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   macros.ts                Wiki macros (::include/excerpt/children/issue/issues/page-properties) — pure resolver contracts
   confluence-storage.ts    Confluence storage format → .noma converter with loss report
   confluence-import.ts     Confluence space import (live API, XML export, JSON bundle) into Cloud spaces
+  notion-import.ts         Notion Markdown & CSV export / JSON bundle → .noma page tree with loss report (`noma ingest --from notion`, Cloud import)
   zip.ts                   Dependency-free bounded ZIP reader/writer (imports and space exports)
   cloud-platform.ts        Agent-human knowledge platform (RAG, trust, agents, recipes, enterprise policy)
   cloud-templates.ts       Built-in Noma Cloud page templates

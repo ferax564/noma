@@ -587,7 +587,8 @@ export interface CloudPageTemplateRecord {
   updatedAt: string;
 }
 
-export type CloudImportSourceKind = "confluence-cloud" | "confluence-datacenter" | "confluence-export" | "confluence-bundle";
+export const cloudImportSourceKinds = ["confluence-cloud", "confluence-datacenter", "confluence-export", "confluence-bundle", "notion-export", "notion-bundle"] as const;
+export type CloudImportSourceKind = (typeof cloudImportSourceKinds)[number];
 export type CloudImportJobStatus = "queued" | "running" | "succeeded" | "failed";
 
 export interface CloudImportProgress {
@@ -4453,7 +4454,7 @@ export class NomaCloudDatabase {
         id TEXT PRIMARY KEY,
         site_id TEXT NOT NULL,
         created_by TEXT NOT NULL,
-        source TEXT NOT NULL CHECK (source IN ('confluence-cloud', 'confluence-datacenter', 'confluence-export', 'confluence-bundle')),
+        source TEXT NOT NULL CHECK (source IN ('confluence-cloud', 'confluence-datacenter', 'confluence-export', 'confluence-bundle', 'notion-export', 'notion-bundle')),
         status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
         space_key TEXT,
         progress_json TEXT NOT NULL DEFAULT '{}',
@@ -4650,6 +4651,7 @@ export class NomaCloudDatabase {
     `);
     this.rebuildPageParents();
     this.migrateNotificationTypes();
+    this.migrateImportJobSources();
     this.migrateCommentColumns();
     this.migrateSpaceColumns();
 
@@ -4766,6 +4768,35 @@ export class NomaCloudDatabase {
         INSERT INTO notifications SELECT id, user_id, type, title, body, resource_type, resource_id, created_at, read_at FROM notifications_v7;
         DROP TABLE notifications_v7;
         CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at, created_at DESC);
+      `);
+    })();
+  }
+
+  /** SQLite cannot alter a CHECK constraint, so databases created before Notion import rebuild import_jobs once. */
+  private migrateImportJobSources(): void {
+    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'import_jobs'").get() as { sql: string } | undefined;
+    if (!row || cloudImportSourceKinds.every((kind) => row.sql.includes(`'${kind}'`))) return;
+    const allowed = cloudImportSourceKinds.map((kind) => `'${kind}'`).join(", ");
+    this.db.transaction(() => {
+      this.db.exec(`
+        ALTER TABLE import_jobs RENAME TO import_jobs_v9;
+        CREATE TABLE import_jobs (
+          id TEXT PRIMARY KEY,
+          site_id TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          source TEXT NOT NULL CHECK (source IN (${allowed})),
+          status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+          space_key TEXT,
+          progress_json TEXT NOT NULL DEFAULT '{}',
+          result_json TEXT,
+          error TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          finished_at TEXT
+        );
+        INSERT INTO import_jobs SELECT id, site_id, created_by, source, status, space_key, progress_json, result_json, error, created_at, updated_at, finished_at FROM import_jobs_v9;
+        DROP TABLE import_jobs_v9;
+        CREATE INDEX IF NOT EXISTS idx_import_jobs_site ON import_jobs(site_id, status, created_at DESC);
       `);
     })();
   }

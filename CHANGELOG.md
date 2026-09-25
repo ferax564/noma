@@ -13,6 +13,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   - **Working an assignment:** over REST (`/api/agents/:id/assignments`, `…/reply`, `…/status`) or the MCP gateway (`assignments`, `reply`, `update_assignment`). Replies need the new `comment` capability and show as *🤖 Agent (agent of Owner)*. `proposal` accepts an `assignmentId`, and the proposal still needs another person's approval.
   - **Closing:** checking the task off, or `done`/`declined`, closes the assignment and notifies the requester. The agent's owner gets `task_assigned` notifications, and spaces can subscribe to the new `agent.assigned` webhook event.
   - **No loops:** comments written by agents never open assignments.
+- **Notion import:** `POST /api/import/notion` imports a Notion "Markdown & CSV" export ZIP (or a `noma-notion-bundle` JSON) into a Noma Cloud space as a background job. It keeps the page tree. Re-importing matches pages by Notion ID and skips pages edited in Noma unless `overwrite` is set. The Cloud import dialog (now **Migrate**) gains a Notion option.
+  - **Links and files:** internal links become `[[wikilinks]]`. Images and files become page attachments referenced as `att:<file>`.
+  - **Databases:** each database becomes a pipe table plus `::dataset{format="csv"}`. Row properties become `::page-properties`, and a `Tags` property becomes labels.
+  - **Loss report:** lists what did not convert exactly.
+  - **CLI:** `noma ingest export.zip --from notion --out <dir>` converts the same exports offline into a `.noma` folder tree with `<page>.files/` and `notion-import-report.json`.
+  - **Database migration:** the `import_jobs` source constraint gains `notion-export` and `notion-bundle`, and existing databases are migrated in place.
 - **Real embeddings for knowledge search:** `NOMA_CLOUD_EMBEDDINGS=local|openai|voyage` (plus `_MODEL`, `_URL`, `_API_KEY`/`_API_KEY_FILE`, `_DIMENSIONS`) plugs an embedding model into hybrid search.
   - **Providers:** any OpenAI-compatible `/v1/embeddings` API (OpenAI, gateways, Ollama, local servers), or Voyage AI with `input_type` document/query. The deterministic local hash vector stays the default.
   - **Backfill and cache:** block vectors are backfilled by the queue tick and `POST /api/knowledge/reindex`, and cached in SQLite by provider, model, and SHA-256 of the text.

@@ -231,7 +231,7 @@ function uploaderId(access: AccessContext): string {
   return access.user?.id ?? `share:${access.share?.id ?? "unknown"}`;
 }
 
-function attachmentIdFor(config: CloudServerConfig): string {
+export function attachmentIdFor(config: CloudServerConfig): string {
   for (let attempt = 0; attempt < 12; attempt++) {
     const id = randomId();
     if (!config.store.readAttachment(id) && !config.store.hasRecordId(id)) return id;
