@@ -95,6 +95,10 @@ npm run deploy:ezkeel
 The EZKeel deployment uses `Dockerfile`, `ezkeel.yaml`, `npm run build:cloud`,
 `node dist/cloud-server.js`, and `/data/noma` as the storage root.
 
+Attachment blobs live under `<storage root>/blobs` by default. To keep them in
+object storage instead, set `NOMA_CLOUD_BLOB_STORE=s3` (see
+[S3-compatible attachment storage](#s3-attachment-storage)).
+
 ## Protect the cloud app
 
 Production deployments must provide a global token gate for the cloud app and
@@ -785,7 +789,7 @@ page's files. A reference that does not resolve renders as a placeholder.
 
 | Behavior | Detail |
 |---|---|
-| Storage | Content-addressed blobs under `<storage root>/blobs/ab/cd/<sha256>`. Identical uploads share one blob. Uploads stream to a temp file and are renamed into place. The `BlobStore` interface in `src/cloud-blobs.ts` is where an S3-compatible driver plugs in. |
+| Storage | Content-addressed blobs keyed by SHA-256, laid out as `blobs/ab/cd/<sha256>`. Identical uploads share one blob. Uploads stream to a local temp file while they are hashed and checked, then move into the blob store. The default store is the local disk under `<storage root>/blobs`. Set `NOMA_CLOUD_BLOB_STORE=s3` to keep blobs in S3 or an S3-compatible service instead (see below). |
 | Limits | 25 MB per file (`NOMA_CLOUD_MAX_ATTACHMENT_BYTES`). 1 GB of live attachments per space, or per uploader for pages outside a space (`NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES`). Over the limit, the server returns `413` with code `attachment_too_large` or `attachment_quota_exceeded`. |
 | Content type | Taken from the file's magic bytes, not the declared type. Executables (PE, ELF, Mach-O, shebang scripts, and executable extensions) are rejected with `415`. Filenames lose directory parts and control characters. |
 | Serving | `x-content-type-options: nosniff`, CSP `sandbox`, and an ETag. PNG, JPEG, GIF, WebP, and PDF are served `inline`. Everything else downloads as an attachment. SVG, HTML, and XML are always sent as `application/octet-stream`. |
@@ -794,13 +798,98 @@ page's files. A reference that does not resolve renders as a placeholder.
 | Search and backup | Filenames are indexed as `attachment` rows in `/api/search`. `/api/backup/export` embeds attachments, base64 encoded and hash-checked, up to 50 MB (pass `includeAttachments: false` to skip them). Import restores them for pages the importer can edit. |
 
 ```text
-POST   /api/documents/<id>/attachments               raw body; content-type + x-filename headers
+POST   /api/documents/<id>/attachments               raw body (content-type + x-filename) or multipart/form-data
 GET    /api/documents/<id>/attachments
 DELETE /api/documents/<id>/attachments/<attachment-id>
 GET    /api/attachments/<attachment-id>              bearer/share access, or ?exp=&p=&sig= signed URL
 ```
 
-Uploads send the raw file bytes. Multipart form bodies are rejected with `415`.
+An upload is either the raw file bytes, with `content-type` and a
+URL-encoded `x-filename` header, or a `multipart/form-data` body. A multipart
+body needs exactly one file part named `file`. Optional `filename` or `name`
+text fields set the stored name. Without them, the file part's own `filename`
+is used. The file part's `content-type` is the declared type. Other fields are
+ignored. The parser streams the file part into staging and never buffers the
+whole body. The same size limit, quota, and magic-byte checks apply to both
+upload styles.
+
+```bash
+curl -H "Authorization: Bearer $NOMA_CLOUD_TOKEN" \
+  -F "file=@chart.png;type=image/png" -F "filename=Q3 chart.png" \
+  https://wiki.example.com/api/documents/<id>/attachments
+```
+
+| Multipart error | Status | Code |
+|---|---|---|
+| No part named `file` | `400` | `attachment_multipart_missing_file` |
+| Missing or invalid `boundary`, a body that does not use it, no closing boundary, bad part headers, a second `file` part, more than 16 parts, or a text field over 4 KB | `400` | `attachment_multipart_malformed` |
+| File part larger than `NOMA_CLOUD_MAX_ATTACHMENT_BYTES` | `413` | `attachment_too_large` |
+
+### S3-compatible attachment storage {id="s3-attachment-storage"}
+
+`NOMA_CLOUD_BLOB_STORE=s3` stores attachment blobs in AWS S3 or any
+S3-compatible service, such as MinIO, Cloudflare R2, or Hetzner Object
+Storage. The driver has no dependencies. It signs requests with AWS
+Signature V4 using `node:crypto` and sends them with the built-in `fetch`.
+
+- **Upload.** Each upload is still staged on local disk first, so it can be
+  hashed, sniffed, and checked against the quota. Commit sends a `HeadObject`
+  and skips the upload when the blob already exists. Otherwise it streams a
+  `PutObject` from the staged file.
+- **Integrity.** The signed `x-amz-content-sha256` header is the blob's
+  SHA-256, the same value as its key. The service rejects any body that does
+  not match it.
+- **Download.** Downloads stream from `GetObject`. Deleting a blob during
+  garbage collection sends `DeleteObject`.
+- **Keys.** Object keys are `<prefix>blobs/ab/cd/<sha256>`.
+
+| Variable | Meaning |
+|---|---|
+| `NOMA_CLOUD_BLOB_STORE` | `local` (default) or `s3`. |
+| `NOMA_CLOUD_S3_BUCKET` | Bucket name. Required for `s3`. |
+| `NOMA_CLOUD_S3_REGION` | Signing region, falling back to `AWS_REGION` or `AWS_DEFAULT_REGION`. Required for AWS. With a custom endpoint it defaults to `us-east-1`. Use `auto` for R2. |
+| `NOMA_CLOUD_S3_ENDPOINT` | Custom endpoint, for example `http://minio:9000`, `https://<account>.r2.cloudflarestorage.com`, or `https://fsn1.your-objectstorage.com`. Falls back to `AWS_ENDPOINT_URL_S3` or `AWS_ENDPOINT_URL`. When unset, the AWS endpoint for the region is used. |
+| `NOMA_CLOUD_S3_FORCE_PATH_STYLE` | `1` for path-style URLs (`<endpoint>/<bucket>/<key>`) and `0` for virtual-hosted URLs (`<bucket>.<host>/<key>`). Defaults to path-style with a custom endpoint and virtual-hosted on AWS. |
+| `NOMA_CLOUD_S3_PREFIX` | Key prefix, for example `noma/prod/`, to share one bucket between deployments. |
+| `NOMA_CLOUD_S3_ACCESS_KEY_ID`, `NOMA_CLOUD_S3_SECRET_ACCESS_KEY` | Credentials. Either one can be read from a file with the `_FILE` suffix. Falls back to `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. |
+| `NOMA_CLOUD_S3_SESSION_TOKEN` | Optional session token for temporary credentials (also `_FILE`, or `AWS_SESSION_TOKEN`). |
+| `NOMA_CLOUD_S3_SSE` | Server-side encryption on upload: `AES256`, `aws:kms`, or `none` (default: the bucket's own setting). |
+| `NOMA_CLOUD_S3_KMS_KEY_ID` | KMS key ID or ARN for `aws:kms`. When it is unset, the bucket's default key is used. |
+| `NOMA_CLOUD_S3_TIMEOUT_MS`, `NOMA_CLOUD_S3_MAX_ATTEMPTS` | Per-attempt timeout (default 30000) and total attempts (default 3). Only 5xx, 429, throttling codes such as `SlowDown`, timeouts, and network errors are retried, with jittered exponential backoff. |
+
+```bash
+NOMA_CLOUD_BLOB_STORE=s3 \
+NOMA_CLOUD_S3_BUCKET=noma-attachments \
+NOMA_CLOUD_S3_REGION=eu-central-1 \
+NOMA_CLOUD_S3_PREFIX=prod/ \
+NOMA_CLOUD_S3_ACCESS_KEY_ID_FILE=/run/secrets/s3-key-id \
+NOMA_CLOUD_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/s3-secret \
+NOMA_CLOUD_S3_SSE=aws:kms \
+npm start
+```
+
+If `s3` is selected but the bucket, region, or credentials are missing or
+invalid, the server fails at startup. The error names the variable but never
+includes a secret value. Errors from S3 report only the operation, the HTTP
+status, and the S3 error code.
+
+The IAM principal needs `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject`
+on `<bucket>/<prefix>*`. It also needs `kms:GenerateDataKey` and `kms:Decrypt`
+on the key when SSE-KMS is used. Also grant `s3:ListBucket` on the bucket. S3
+answers a `HeadObject` for a missing key with `403` instead of `404` when the
+caller lacks it. Without it, every upload is sent even when the blob already
+exists.
+
+With the AWS/EU reference template (`infra/aws-eu-reference.json`), set
+`NOMA_CLOUD_S3_BUCKET` to its `AssetsBucketName` output and
+`NOMA_CLOUD_S3_KMS_KEY_ID` to its `KmsKeyArn` output. That bucket already
+enforces TLS and default SSE-KMS.
+
+Only static credentials are read from the environment. For instance-role or
+web-identity credentials, embed Noma Cloud and pass
+`blobStore: new S3BlobStore({ credentials: async () => ... })` to
+`createNomaCloudServer`. Existing local blobs are not migrated automatically.
+Copy the `blobs/` tree into the bucket under the same prefix before you switch.
 
 ## Page restrictions
 
