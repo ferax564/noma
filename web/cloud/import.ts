@@ -11,7 +11,7 @@ interface ImportJobResponse {
   status: "queued" | "running" | "succeeded" | "failed";
   spaceKey?: string;
   progress: { total: number; processed: number; created: number; updated: number; unchanged: number; skipped: number; failed: number };
-  result?: { loss?: Array<{ macro: string; count: number }>; attachments?: { referenced: number; note: string } };
+  result?: { loss?: Array<{ macro: string; count: number }>; attachments?: { referenced: number; copied?: number; reused?: number; skipped?: number; note?: string } };
   error?: string;
 }
 
@@ -133,7 +133,11 @@ async function pollJob(jobId: string, siteId: string): Promise<void> {
       }
       if (job.status === "succeeded") {
         const lossy = job.result?.loss?.length ? ` Unsupported macros kept as text: ${job.result.loss.map((entry) => `${entry.macro} ×${entry.count}`).join(", ")}.` : "";
-        const attachments = job.result?.attachments?.referenced ? ` ${job.result.attachments.referenced} attachment links point at Confluence.` : "";
+        const copied = (job.result?.attachments?.copied ?? 0) + (job.result?.attachments?.reused ?? 0);
+        const skippedFiles = job.result?.attachments?.skipped ?? 0;
+        const attachments = copied || skippedFiles
+          ? ` Attachments: ${copied} copied${skippedFiles ? `, ${skippedFiles} skipped (kept as Confluence links)` : ""}.`
+          : "";
         setPanelStatus(
           status,
           `Imported ${job.spaceKey ?? "space"}: ${progress.created} created, ${progress.updated} updated, ${progress.unchanged} unchanged, ${progress.skipped} skipped, ${progress.failed} failed.${lossy}${attachments}`,
