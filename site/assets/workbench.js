@@ -2708,10 +2708,10 @@
     function generateNextLine(state2, level) {
       return "\n" + common2.repeat(" ", state2.indent * level);
     }
-    function testImplicitResolving(state2, str2) {
+    function testImplicitResolving(state2, str22) {
       for (let index = 0, length = state2.implicitTypes.length; index < length; index += 1) {
         const type2 = state2.implicitTypes[index];
-        if (type2.resolve(str2)) {
+        if (type2.resolve(str22)) {
           return true;
         }
       }
@@ -4945,9 +4945,43 @@
     parseFragment(op.content, op);
     const { start, end } = locate(source, op.id, op);
     const lines = source.split("\n");
+    assertFragmentDepth(op.content, fenceDepthForChildOf(parse(source), lines, op.id), op);
     const replacement = op.content.replace(/\n+$/, "").split("\n");
     lines.splice(start - 1, end - start + 1, ...replacement);
     return lines.join("\n");
+  }
+  function openFenceDepth(line) {
+    return /^(:{2,})[A-Za-z_]/.exec(line)?.[1]?.length ?? 0;
+  }
+  function childFenceDepth(parent, lines) {
+    if (parent.type !== "directive" || !parent.pos?.line) return 2;
+    return Math.max(2, openFenceDepth(lines[parent.pos.line - 1] ?? "")) + 1;
+  }
+  function fenceDepthForChildOf(doc, lines, id) {
+    const parent = findParentNode(doc, id);
+    return parent ? childFenceDepth(parent, lines) : 2;
+  }
+  function findParentNode(node, id) {
+    for (const arr of childArrays(node)) {
+      for (const child of arr.list) {
+        if (child.id === id) return node;
+        const found = findParentNode(child, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  function assertFragmentDepth(content, expected, op) {
+    const first = content.split("\n").find((line) => line.trim() !== "") ?? "";
+    const actual = openFenceDepth(first.trimStart());
+    if (actual !== expected) {
+      const fence = ":".repeat(expected);
+      throw new PatchError(
+        "unbalanced_fence_content",
+        `fragment opens with ${actual} colons but this position needs ${expected} (write "${fence}name{...}" \u2026 "${fence}")`,
+        op
+      );
+    }
   }
   function applySrcDelete(source, op) {
     const { start, end } = locate(source, op.id, op);
@@ -4970,6 +5004,7 @@
     const children = parent.children;
     const pos = Math.max(0, Math.min(op.position ?? children.length, children.length));
     const lines = source.split("\n");
+    assertFragmentDepth(op.content, childFenceDepth(parent, lines), op);
     const fragmentLines = op.content.replace(/\n+$/, "").split("\n");
     let insertAt;
     if (pos < children.length) {
@@ -6200,6 +6235,7 @@ ${content}
     "code_cell",
     "columns",
     "comment",
+    "canvas",
     "component",
     "component_instance",
     "computed_metric",
@@ -6568,6 +6604,354 @@ ${content}
   }
   function styleTokenClassNames(attrs, aliases = {}) {
     return parseStyleTokens(attrs.class, aliases).tokens.map((token) => `${STYLE_TOKEN_CLASS_PREFIX}${token}`);
+  }
+
+  // src/canvas-svg.ts
+  var MAX_CANVAS_SOURCE_BYTES = 2 * 1024 * 1024;
+  function readCanvasDocument(json2) {
+    if (json2.length > MAX_CANVAS_SOURCE_BYTES) return { ok: false, error: `canvas JSON is larger than ${MAX_CANVAS_SOURCE_BYTES} bytes` };
+    let value;
+    try {
+      value = JSON.parse(json2);
+    } catch (error) {
+      return { ok: false, error: `canvas JSON does not parse: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    if (!isRecord(value)) return { ok: false, error: "canvas JSON must be an object" };
+    if (value.format !== "paperdom" && value.format !== "canvasdoc") return { ok: false, error: 'canvas JSON needs "format": "paperdom"' };
+    if (!Array.isArray(value.pages) || value.pages.length === 0) return { ok: false, error: "canvas JSON needs at least one page" };
+    for (const [index, page] of value.pages.entries()) {
+      if (!isRecord(page) || !Array.isArray(page.elements)) return { ok: false, error: `canvas page ${index + 1} needs an elements array` };
+    }
+    return { ok: true, document: value };
+  }
+  function canvasPageSize(page) {
+    const size = isRecord(page.size) ? page.size : {};
+    return { width: bounded(size.width, 1280, 16, 2e4), height: bounded(size.height, 720, 16, 2e4) };
+  }
+  function canvasPageSvg(page, options = {}) {
+    const { width, height } = canvasPageSize(page);
+    const prefix = safeIdPart(options.idPrefix ?? "canvas");
+    const label = options.label ?? str2(page.name) ?? "Canvas page";
+    const elements = (Array.isArray(page.elements) ? page.elements : []).filter((el) => isRecord(el) && !el.hidden).map((el, index) => ({ el, index })).sort((a, b) => num(a.el.z, 0) - num(b.el.z, 0) || a.index - b.index).map(({ el }) => el);
+    const byId = new Map(elements.map((el) => [str2(el.id) ?? "", el]));
+    const body = elements.map((el, index) => renderElement(el, `${prefix}-${index}`, byId, options)).join("");
+    const background = color(isRecord(page.background) ? page.background.color : void 0, "#ffffff");
+    const className = ["noma-canvas-svg", options.className].filter(Boolean).join(" ");
+    return `<svg xmlns="http://www.w3.org/2000/svg" class="${escapeAttr(className)}" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeAttr(label)}" preserveAspectRatio="xMidYMid meet"><rect width="${width}" height="${height}" fill="${background}"/>${body}</svg>`;
+  }
+  function canvasPages(document2, pageId) {
+    const pages = document2.pages.filter((page) => isRecord(page));
+    if (pageId) return pages.filter((page) => page.id === pageId);
+    return pages.filter((page) => !page.hidden);
+  }
+  function canvasOutline(document2, pageId) {
+    return canvasPages(document2, pageId).map((page, index) => {
+      const elements = (Array.isArray(page.elements) ? page.elements : []).filter((el) => isRecord(el) && !el.hidden).slice().sort((a, b) => rowBand(a, page) - rowBand(b, page) || frameOf(a).x - frameOf(b).x);
+      const lines = [];
+      for (const el of elements) {
+        if (isRecord(el.table) && Array.isArray(el.table.rows)) {
+          for (const row of el.table.rows) if (Array.isArray(row)) lines.push(row.map((cell) => String(cell ?? "")).join(" | "));
+          continue;
+        }
+        if (isRecord(el.chart)) {
+          const chart = el.chart;
+          const labels = Array.isArray(chart.labels) ? chart.labels : [];
+          const values = Array.isArray(chart.values) ? chart.values : [];
+          lines.push(`${str2(chart.title) ?? "Chart"}: ${labels.map((label, i) => `${String(label)} ${String(values[i] ?? "")}`).join(", ")}`);
+          continue;
+        }
+        const text = elementText(el);
+        if (text) lines.push(...text.split("\n").map((line) => line.trim()).filter(Boolean));
+        else if (el.type === "image" && isRecord(el.content) && str2(el.content.alt)) lines.push(`[image: ${str2(el.content.alt)}]`);
+      }
+      return { page: str2(page.name) ?? `Page ${index + 1}`, lines };
+    });
+  }
+  function rowBand(el, page) {
+    const f = frameOf(el);
+    const band = canvasPageSize(page).height / 12;
+    return Math.floor((f.y + f.h / 2) / band);
+  }
+  function renderElement(el, uid, byId, options) {
+    const frame = frameOf(el);
+    const style = styleOf(el);
+    const { x, y, w, h } = frame;
+    const opacity = bounded(style.opacity, 1, 0, 1);
+    const rotation = num(frame.rotation, 0);
+    const transform = rotation ? ` transform="rotate(${fmt(rotation)} ${fmt(x + w / 2)} ${fmt(y + h / 2)})"` : "";
+    const attrs = `data-element="${escapeAttr(str2(el.id) ?? "")}"${opacity < 1 ? ` opacity="${fmt(opacity)}"` : ""}${transform}`;
+    switch (el.type) {
+      case "line":
+      case "connector":
+        return `<g ${attrs}>${lineMarkup(el, frame, style, byId)}</g>`;
+      case "ellipse":
+        return `<g ${attrs}><ellipse cx="${fmt(x + w / 2)}" cy="${fmt(y + h / 2)}" rx="${fmt(w / 2)}" ry="${fmt(h / 2)}"${paint(style)}/>${textBox(el, frame, style, "middle")}</g>`;
+      case "shape":
+        return `<g ${attrs}>${boxMarkup(frame, style)}${textBox(el, frame, style, "middle")}</g>`;
+      case "text":
+        return `<g ${attrs}>${hasPaint(style) ? boxMarkup(frame, style) : ""}${textBox(el, frame, style)}</g>`;
+      case "table":
+        return `<g ${attrs}>${tableMarkup(el, frame, style)}</g>`;
+      case "chart":
+        return `<g ${attrs}>${chartMarkup(el, frame, style, uid)}</g>`;
+      case "image":
+        return `<g ${attrs}>${imageMarkup(el, frame, options)}</g>`;
+      default:
+        return `<g ${attrs}>${placeholder(frame, str2(el.name) ?? String(el.type ?? "element"))}</g>`;
+    }
+  }
+  function boxMarkup(frame, style) {
+    const radius = bounded(style.radius, 0, 0, Math.min(frame.w, frame.h) / 2);
+    return `<rect x="${fmt(frame.x)}" y="${fmt(frame.y)}" width="${fmt(frame.w)}" height="${fmt(frame.h)}"${radius ? ` rx="${fmt(radius)}"` : ""}${paint(style)}/>`;
+  }
+  function paint(style) {
+    const fill = color(style.fill, "transparent");
+    const stroke = color(style.stroke, "transparent");
+    const width = bounded(style.strokeWidth, 0, 0, 200);
+    const dash = style.lineStyle === "dashed" ? ` stroke-dasharray="${fmt(width * 3 || 6)} ${fmt(width * 2 || 4)}"` : "";
+    return ` fill="${fill === "transparent" ? "none" : fill}"${stroke !== "transparent" && width > 0 ? ` stroke="${stroke}" stroke-width="${fmt(width)}"${dash}` : ""}`;
+  }
+  function hasPaint(style) {
+    return color(style.fill, "transparent") !== "transparent" || color(style.stroke, "transparent") !== "transparent" && num(style.strokeWidth, 0) > 0;
+  }
+  function textBox(el, frame, style, defaultAlign = "top") {
+    const paragraphs = paragraphsOf(el);
+    if (paragraphs.length === 0) return "";
+    const padding = bounded(style.padding, 0, 0, 400);
+    const vertical = style.verticalAlign === "middle" || style.verticalAlign === "bottom" || style.verticalAlign === "top" ? style.verticalAlign : defaultAlign;
+    const justify = vertical === "middle" ? "center" : vertical === "bottom" ? "flex-end" : "flex-start";
+    const css = [
+      "box-sizing:border-box",
+      "width:100%",
+      "height:100%",
+      "display:flex",
+      "flex-direction:column",
+      `justify-content:${justify}`,
+      "overflow:hidden",
+      `padding:${fmt(padding)}px`,
+      `color:${color(style.color, "#1d1c1a")}`,
+      `font-family:${font(style.fontFamily)}`,
+      `font-size:${fmt(bounded(style.fontSize, 24, 1, 800))}px`,
+      `font-weight:${Math.round(bounded(style.fontWeight, 400, 100, 900))}`,
+      `font-style:${style.fontStyle === "italic" ? "italic" : "normal"}`,
+      `line-height:${fmt(bounded(style.lineHeight, 1.3, 0.5, 5))}`,
+      `letter-spacing:${fmt(bounded(style.letterSpacing, 0, -20, 100))}px`,
+      `text-align:${style.textAlign === "center" || style.textAlign === "right" ? style.textAlign : "left"}`,
+      `text-decoration:${[style.underline ? "underline" : "", style.strike ? "line-through" : ""].filter(Boolean).join(" ") || "none"}`,
+      "overflow-wrap:anywhere"
+    ].join(";");
+    let number = 0;
+    const lines = paragraphs.map((p) => {
+      const level = Math.round(bounded(p.level, 0, 0, 8));
+      const indent = p.kind === "bullet" || p.kind === "number" ? 1.2 + level * 1.2 : 0;
+      number = p.kind === "number" ? number + 1 : 0;
+      const marker = p.kind === "bullet" ? "\u2022 " : p.kind === "number" ? `${number}. ` : "";
+      const pad = indent ? `padding-left:${fmt(indent)}em;text-indent:-1.1em;` : "";
+      return `<div style="${pad}margin:0;min-height:1em">${escapeHtml(marker + p.text)}</div>`;
+    }).join("");
+    return `<foreignObject x="${fmt(frame.x)}" y="${fmt(frame.y)}" width="${fmt(frame.w)}" height="${fmt(frame.h)}"><div xmlns="http://www.w3.org/1999/xhtml" style="${css}">${lines}</div></foreignObject>`;
+  }
+  function lineMarkup(el, frame, style, byId) {
+    const start = endpoint(el.from, byId) ?? { x: frame.x, y: frame.y };
+    const end = endpoint(el.to, byId) ?? { x: frame.x + frame.w, y: frame.y + frame.h };
+    const stroke = color(style.stroke, "#1d1c1a");
+    const width = bounded(style.strokeWidth, 2, 0.5, 200);
+    const dash = style.lineStyle === "dashed" ? ` stroke-dasharray="${fmt(width * 3)} ${fmt(width * 2)}"` : "";
+    return `<line x1="${fmt(start.x)}" y1="${fmt(start.y)}" x2="${fmt(end.x)}" y2="${fmt(end.y)}" stroke="${stroke === "transparent" ? "#1d1c1a" : stroke}" stroke-width="${fmt(width)}"${dash}/>`;
+  }
+  function endpoint(value, byId) {
+    if (!isRecord(value)) return void 0;
+    const target = typeof value.elementId === "string" ? byId.get(value.elementId) : void 0;
+    if (target) {
+      const f = frameOf(target);
+      switch (value.anchor) {
+        case "top":
+          return { x: f.x + f.w / 2, y: f.y };
+        case "bottom":
+          return { x: f.x + f.w / 2, y: f.y + f.h };
+        case "left":
+          return { x: f.x, y: f.y + f.h / 2 };
+        case "right":
+          return { x: f.x + f.w, y: f.y + f.h / 2 };
+        default:
+          return { x: f.x + f.w / 2, y: f.y + f.h / 2 };
+      }
+    }
+    if (Number.isFinite(value.x) && Number.isFinite(value.y)) return { x: value.x, y: value.y };
+    return void 0;
+  }
+  function tableMarkup(el, frame, style) {
+    const table = isRecord(el.table) ? el.table : void 0;
+    const rows = (Array.isArray(table?.rows) ? table.rows : []).filter(Array.isArray);
+    if (rows.length === 0) return placeholder(frame, "table");
+    const border = color(style.stroke, "#cbd5e1");
+    const cell = `border:1px solid ${border === "transparent" ? "#cbd5e1" : border};padding:.25em .45em;text-align:left;vertical-align:top`;
+    const html = rows.map((row, index) => {
+      const tag = index === 0 && table?.header !== false ? "th" : "td";
+      return `<tr>${row.map((value) => `<${tag} style="${cell}${tag === "th" ? ";font-weight:700" : ""}">${escapeHtml(String(value ?? ""))}</${tag}>`).join("")}</tr>`;
+    }).join("");
+    const css = `width:100%;border-collapse:collapse;table-layout:fixed;color:${color(style.color, "#1d1c1a")};font-family:${font(style.fontFamily)};font-size:${fmt(bounded(style.fontSize, 18, 1, 400))}px;line-height:1.25`;
+    return `<foreignObject x="${fmt(frame.x)}" y="${fmt(frame.y)}" width="${fmt(frame.w)}" height="${fmt(frame.h)}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;overflow:hidden"><table style="${css}">${html}</table></div></foreignObject>`;
+  }
+  var CHART_COLORS = ["#2f6fa7", "#b9522a", "#2f7048", "#8a5cb8", "#9a681f", "#0f666b"];
+  function chartMarkup(el, frame, style, uid) {
+    const chart = isRecord(el.chart) ? el.chart : void 0;
+    if (!chart) return placeholder(frame, "chart");
+    const labels = (Array.isArray(chart.labels) ? chart.labels : []).map((label) => String(label ?? ""));
+    const series = chartSeries(chart);
+    if (labels.length === 0 || series.length === 0) return placeholder(frame, "chart");
+    const colors = (Array.isArray(chart.colors) ? chart.colors : []).map((c) => color(c, ""));
+    const ink = color(style.color, "#1d1c1a");
+    const fontSize = bounded(style.fontSize, 14, 6, 60);
+    const title = str2(chart.title);
+    const top = frame.y + (title ? fontSize * 1.8 : fontSize * 0.6);
+    const bottom = frame.y + frame.h - fontSize * 1.6;
+    const left = frame.x + fontSize * 0.6;
+    const right = frame.x + frame.w - fontSize * 0.6;
+    const plotH = Math.max(1, bottom - top);
+    const max = Math.max(0, ...series.flatMap((s) => s.values));
+    const min = Math.min(0, ...series.flatMap((s) => s.values));
+    const span = max - min || 1;
+    const yOf = (value) => bottom - (value - min) / span * plotH;
+    const slot = (right - left) / labels.length;
+    const parts = [];
+    if (title) parts.push(`<text x="${fmt(frame.x + frame.w / 2)}" y="${fmt(frame.y + fontSize * 1.2)}" text-anchor="middle" font-size="${fmt(fontSize * 1.1)}" font-weight="700" fill="${ink}" font-family="${escapeAttr(font(style.fontFamily))}">${escapeHtml(title)}</text>`);
+    if (chart.grid) {
+      for (let i = 0; i <= 4; i++) {
+        const gy = top + plotH * i / 4;
+        parts.push(`<line x1="${fmt(left)}" x2="${fmt(right)}" y1="${fmt(gy)}" y2="${fmt(gy)}" stroke="#e2e8f0" stroke-width="1"/>`);
+      }
+    }
+    parts.push(`<line x1="${fmt(left)}" x2="${fmt(right)}" y1="${fmt(yOf(0))}" y2="${fmt(yOf(0))}" stroke="#94a3b8" stroke-width="1"/>`);
+    const seriesColor = (index) => colors[index] || CHART_COLORS[index % CHART_COLORS.length];
+    if (chart.kind === "line") {
+      series.forEach((s, si) => {
+        const points = labels.map((_, i) => `${fmt(left + slot * (i + 0.5))},${fmt(yOf(s.values[i] ?? 0))}`).join(" ");
+        parts.push(`<polyline points="${points}" fill="none" stroke="${seriesColor(si)}" stroke-width="${fmt(Math.max(2, fontSize / 6))}"/>`);
+      });
+    } else {
+      const barW = slot * 0.7 / series.length;
+      series.forEach((s, si) => {
+        labels.forEach((_, i) => {
+          const value = s.values[i] ?? 0;
+          const bx = left + slot * i + slot * 0.15 + barW * si;
+          const y0 = yOf(Math.max(0, value));
+          const height = Math.abs(yOf(value) - yOf(0));
+          parts.push(`<rect x="${fmt(bx)}" y="${fmt(y0)}" width="${fmt(barW)}" height="${fmt(height)}" fill="${seriesColor(si)}"/>`);
+        });
+      });
+    }
+    labels.forEach((label, i) => {
+      parts.push(`<text x="${fmt(left + slot * (i + 0.5))}" y="${fmt(bottom + fontSize * 1.2)}" text-anchor="middle" font-size="${fmt(fontSize)}" fill="${ink}" font-family="${escapeAttr(font(style.fontFamily))}">${escapeHtml(label)}</text>`);
+    });
+    return `<g data-chart="${escapeAttr(uid)}">${parts.join("")}</g>`;
+  }
+  function chartSeries(chart) {
+    const toValues = (raw) => Array.isArray(raw) ? raw.map((v) => typeof v === "number" && Number.isFinite(v) ? v : 0) : [];
+    if (Array.isArray(chart.series) && chart.series.length > 0) {
+      return chart.series.filter(isRecord).map((s, i) => ({ name: str2(s.name) ?? `Series ${i + 1}`, values: toValues(s.values) }));
+    }
+    const values = toValues(chart.values);
+    return values.length ? [{ name: str2(chart.title) ?? "Series 1", values }] : [];
+  }
+  function imageMarkup(el, frame, options) {
+    const content = isRecord(el.content) ? el.content : {};
+    const src = str2(content.src);
+    const alt = str2(content.alt) ?? str2(el.name) ?? "image";
+    const href = src ? SAFE_IMAGE_DATA.test(src) ? src : options.resolveImage?.(src) : void 0;
+    if (!href) return placeholder(frame, `image: ${alt}`);
+    const fit = isRecord(el.style) && el.style.fit === "contain" ? "xMidYMid meet" : "xMidYMid slice";
+    return `<image href="${escapeAttr(href)}" x="${fmt(frame.x)}" y="${fmt(frame.y)}" width="${fmt(frame.w)}" height="${fmt(frame.h)}" preserveAspectRatio="${fit}"><title>${escapeHtml(alt)}</title></image>`;
+  }
+  function placeholder(frame, label) {
+    const size = Math.max(8, Math.min(18, frame.h / 3));
+    return `<rect x="${fmt(frame.x)}" y="${fmt(frame.y)}" width="${fmt(frame.w)}" height="${fmt(frame.h)}" fill="#f1f5f9" stroke="#94a3b8" stroke-dasharray="6 4"/><text x="${fmt(frame.x + frame.w / 2)}" y="${fmt(frame.y + frame.h / 2)}" text-anchor="middle" dominant-baseline="middle" font-size="${fmt(size)}" fill="#475569" font-family="system-ui, sans-serif">${escapeHtml(label)}</text>`;
+  }
+  function paragraphsOf(el) {
+    const content = isRecord(el.content) ? el.content : void 0;
+    if (!content) return [];
+    if (Array.isArray(content.paragraphs) && content.paragraphs.length > 0) {
+      return content.paragraphs.filter(isRecord).map((p) => ({
+        text: String(p.text ?? ""),
+        kind: p.kind === "bullet" || p.kind === "number" ? p.kind : "plain",
+        level: bounded(p.level, 0, 0, 8)
+      }));
+    }
+    const text = str2(content.text) ?? str2(content.label);
+    if (!text) return [];
+    return text.split("\n").map((line) => ({ text: line, kind: "plain", level: 0 }));
+  }
+  function elementText(el) {
+    return paragraphsOf(el).map((p) => p.text).join("\n").trim();
+  }
+  function frameOf(el) {
+    const frame = isRecord(el.frame) ? el.frame : {};
+    return {
+      x: bounded(frame.x, 0, -5e4, 5e4),
+      y: bounded(frame.y, 0, -5e4, 5e4),
+      w: bounded(frame.w, 0, 0, 5e4),
+      h: bounded(frame.h, 0, 0, 5e4),
+      rotation: bounded(frame.rotation, 0, -360, 360)
+    };
+  }
+  function styleOf(el) {
+    return isRecord(el.style) ? el.style : {};
+  }
+  var SAFE_IMAGE_DATA = /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/;
+  var HEX_COLOR = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+  var FUNC_COLOR = /^(?:rgb|rgba|hsl|hsla)\(\s*[\d.%\s,/-]+\)$/;
+  var NAMED_COLOR = /^[a-zA-Z]{3,20}$/;
+  function color(value, fallback) {
+    if (typeof value !== "string") return fallback;
+    const v = value.trim();
+    if (HEX_COLOR.test(v) || FUNC_COLOR.test(v) || NAMED_COLOR.test(v)) return v;
+    return fallback;
+  }
+  function font(value) {
+    if (typeof value !== "string") return "system-ui, sans-serif";
+    const cleaned = value.replace(/[^\w\s,'-]/g, "").trim();
+    return cleaned || "system-ui, sans-serif";
+  }
+  function bounded(value, fallback, min, max) {
+    const n = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+    return Math.min(max, Math.max(min, n));
+  }
+  function num(value, fallback) {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  }
+  function str2(value) {
+    return typeof value === "string" && value.trim() ? value : void 0;
+  }
+  function fmt(n) {
+    return String(Math.round(n * 100) / 100);
+  }
+  function safeIdPart(value) {
+    return value.replace(/[^A-Za-z0-9_-]/g, "-") || "canvas";
+  }
+  function isRecord(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+  var ATTACHMENT_PREFIX = "att:";
+  function canvasSourceOf(node, resolveCanvas) {
+    const code = node.children.find((child) => child.type === "code");
+    if (code && code.type === "code" && code.content.trim()) return { json: code.content };
+    const body = node.body?.trim();
+    if (body && body.startsWith("{")) return { json: body };
+    const src = typeof node.attrs.src === "string" ? node.attrs.src.trim() : "";
+    if (!src) return {};
+    if (src.toLowerCase().startsWith(ATTACHMENT_PREFIX) && resolveCanvas) {
+      const json2 = resolveCanvas(src.slice(ATTACHMENT_PREFIX.length));
+      if (json2 !== void 0) return { json: json2, src };
+    }
+    return { src };
+  }
+  function canvasTextLines(node, resolveCanvas) {
+    const { json: json2, src } = canvasSourceOf(node, resolveCanvas);
+    if (json2 === void 0) return { pages: [], error: src ? `canvas not available: ${src}` : "canvas has no source" };
+    const read = readCanvasDocument(json2);
+    if (!read.ok) return { pages: [], error: read.error };
+    const pageId = typeof node.attrs.page === "string" ? node.attrs.page : void 0;
+    return { pages: canvasOutline(read.document, pageId) };
   }
 
   // src/formula.ts
@@ -7464,6 +7848,7 @@ ${content}
       sourcePositions: options.sourcePositions === true,
       inline: options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {},
       ...options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {},
+      ...options.resolveCanvas ? { resolveCanvas: options.resolveCanvas } : {},
       macros: options,
       includeTrail: initialIncludeTrail(options.documentId),
       rootDoc: doc
@@ -8184,6 +8569,8 @@ ${inner}
       }
       case "plot":
         return renderPlotPlaceholder(node, idAttr, ctx);
+      case "canvas":
+        return renderCanvas(node, idAttr, ctx);
       case "diagram":
         return renderDiagram(node, idAttr);
       case "plotly":
@@ -8458,6 +8845,36 @@ ${rows}
   <div class="noma-block-body">${renderChildren(node, ctx)}</div>
   ${metaHtml}
 </aside>`;
+  }
+  function renderCanvas(node, idAttr, ctx) {
+    const caption = attrValueText(node.attrs, "caption") ?? attrValueText(node.attrs, "title");
+    const figcaption = caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : "";
+    const { json: json2, src } = canvasSourceOf(node, ctx.resolveCanvas);
+    if (json2 === void 0) {
+      const reason = src ? `canvas not available: ${src}` : "canvas has no source: add a ```json body or src=";
+      return `<figure class="noma-canvas noma-canvas-missing"${idAttr}><aside class="noma-blocked-escape" data-kind="canvas">[${escapeHtml(reason)}]</aside>${figcaption}</figure>`;
+    }
+    const read = readCanvasDocument(json2);
+    if (!read.ok) {
+      return `<figure class="noma-canvas noma-canvas-missing"${idAttr}><aside class="noma-blocked-escape" data-kind="canvas">[${escapeHtml(read.error)}]</aside>${figcaption}</figure>`;
+    }
+    const pageId = attrValueText(node.attrs, "page");
+    const pages = canvasPages(read.document, pageId);
+    if (pages.length === 0) {
+      return `<figure class="noma-canvas noma-canvas-missing"${idAttr}><aside class="noma-blocked-escape" data-kind="canvas">[${escapeHtml(pageId ? `canvas has no page "${pageId}"` : "canvas has no visible pages")}]</aside>${figcaption}</figure>`;
+    }
+    const resolveImage = (value) => {
+      if (value.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) return ctx.resolveAttachment?.(value.slice(ATTACHMENT_URL_PREFIX.length));
+      return ctx.externalAssets && /^https:\/\//i.test(value) ? value : void 0;
+    };
+    const prefix = node.id ?? "canvas";
+    const frames = pages.map((page, index) => {
+      const { width, height } = canvasPageSize(page);
+      const label = `${attrValueText(node.attrs, "title") ?? read.document.title ?? "Canvas"} \u2014 ${page.name || `page ${index + 1}`}`;
+      const svg = canvasPageSvg(page, { idPrefix: `${prefix}-${index}`, resolveImage, label });
+      return `<div class="noma-canvas-page" data-page="${escapeAttr(String(page.id ?? ""))}" style="aspect-ratio: ${width} / ${height}">${svg}</div>`;
+    }).join("");
+    return `<figure class="noma-canvas"${idAttr} data-pages="${pages.length}"><div class="noma-canvas-pages">${frames}</div>${figcaption}</figure>`;
   }
   function renderFigureImage(src, alt, ctx) {
     if (src.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) {
@@ -9381,8 +9798,8 @@ ${bodyRows}
       return wrapDiagram("drawio", idAttr, fig, caption);
     }
     const cls = `noma-diagram noma-diagram-${escapeAttr(kind)}`;
-    const placeholder = `<pre class="noma-diagram-source">${escapeHtml(body)}</pre>`;
-    const figure = `<div class="${cls}" data-noma-source="${escapeAttr(body)}">${placeholder}</div>`;
+    const placeholder2 = `<pre class="noma-diagram-source">${escapeHtml(body)}</pre>`;
+    const figure = `<div class="${cls}" data-noma-source="${escapeAttr(body)}">${placeholder2}</div>`;
     return wrapDiagram(kind, idAttr, figure, caption);
   }
   function wrapDiagram(kind, idAttr, inner, caption) {
@@ -9622,12 +10039,12 @@ ${bodyRows}
     } else {
       const showMarkers = N <= 30;
       plot = seriesList.map((ser, sIdx) => {
-        const color = PLOT_COLORS[sIdx % PLOT_COLORS.length];
+        const color2 = PLOT_COLORS[sIdx % PLOT_COLORS.length];
         const points = ser.values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-        const areaFill = sIdx === 0 && nSeries === 1 ? `<path d="M ${x(0).toFixed(1)},${(padT + innerH).toFixed(1)} L ${points.split(" ").join(" L ")} L ${x(N - 1).toFixed(1)},${(padT + innerH).toFixed(1)} Z" fill="${color}" opacity="0.12" />` : "";
-        const line = `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" />`;
+        const areaFill = sIdx === 0 && nSeries === 1 ? `<path d="M ${x(0).toFixed(1)},${(padT + innerH).toFixed(1)} L ${points.split(" ").join(" L ")} L ${x(N - 1).toFixed(1)},${(padT + innerH).toFixed(1)} Z" fill="${color2}" opacity="0.12" />` : "";
+        const line = `<polyline points="${points}" fill="none" stroke="${color2}" stroke-width="2" />`;
         const markers = showMarkers ? ser.values.map(
-          (v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="${color}" />`
+          (v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="${color2}" />`
         ).join("") : "";
         return areaFill + line + markers;
       }).join("");
@@ -9665,12 +10082,12 @@ ${bodyRows}
     if (showLegend) {
       let cursor = padL;
       legend = seriesList.map((ser, sIdx) => {
-        const color = PLOT_COLORS[sIdx % PLOT_COLORS.length];
+        const color2 = PLOT_COLORS[sIdx % PLOT_COLORS.length];
         const swatchX = cursor;
         const textX = cursor + 14;
         const labelW = ser.name.length * CHAR_W + 22;
         cursor += labelW;
-        return `<rect x="${swatchX}" y="6" width="10" height="10" fill="${color}" opacity="0.85" /><text x="${textX}" y="14" font-size="${FONT_PX}" fill="currentColor" opacity="0.85">${escapeHtml(ser.name)}</text>`;
+        return `<rect x="${swatchX}" y="6" width="10" height="10" fill="${color2}" opacity="0.85" /><text x="${textX}" y="14" font-size="${FONT_PX}" fill="currentColor" opacity="0.85">${escapeHtml(ser.name)}</text>`;
       }).join("");
     }
     return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img">
@@ -9807,8 +10224,8 @@ ${bodyRows}
             3
           )
         );
-        const fmt = (cells) => "| " + cells.map((c, i) => c.padEnd(widths[i] ?? c.length)).join(" | ") + " |";
-        out.push(fmt(node.header));
+        const fmt2 = (cells) => "| " + cells.map((c, i) => c.padEnd(widths[i] ?? c.length)).join(" | ") + " |";
+        out.push(fmt2(node.header));
         out.push(
           "| " + widths.map((w, i) => {
             const a = node.align[i];
@@ -9819,7 +10236,7 @@ ${bodyRows}
             return dashes;
           }).join(" | ") + " |"
         );
-        for (const row of node.rows) out.push(fmt(row));
+        for (const row of node.rows) out.push(fmt2(row));
         out.push("");
         return;
       }
@@ -9862,7 +10279,14 @@ ${bodyRows}
     }
     const isIndexWithExclusions = node.name === "memory_index" && opts.excludedMemoryIds.size > 0;
     const childForce = forceSubtree || matchesSelector(node, opts.selectSet);
-    if (VERBATIM_BODY.has(node.name) && node.body !== void 0) {
+    if (node.name === "canvas") {
+      const { pages, error } = canvasTextLines(node);
+      if (error) out.push(`(${error})`);
+      for (const page of pages) {
+        out.push(`${page.page}:`);
+        for (const line of page.lines) out.push(`- ${line}`);
+      }
+    } else if (VERBATIM_BODY.has(node.name) && node.body !== void 0) {
       out.push(node.body);
     } else if (node.children.length === 0 && node.body !== void 0) {
       const body = isIndexWithExclusions ? filterMemoryIndexBody(node.body, opts.excludedMemoryIds) : node.body;
@@ -10154,6 +10578,17 @@ $$`, ctx);
     }
     if (node.name === "figure") {
       return wrapDirective(node, renderFigure(node, ctx, depth), ctx);
+    }
+    if (node.name === "canvas") {
+      const { pages, error } = canvasTextLines(node);
+      const caption = typeof node.attrs.caption === "string" ? node.attrs.caption : typeof node.attrs.title === "string" ? node.attrs.title : "Canvas";
+      const lines = [`**${caption}**`];
+      if (error) lines.push("", `*(${error})*`);
+      for (const page of pages) {
+        lines.push("", `*${page.page}*`, "");
+        for (const line of page.lines) lines.push(`- ${line}`);
+      }
+      return wrapDirective(node, lines.join("\n"), ctx);
     }
     if (node.name === "agent_task" || node.name === "todo") {
       return wrapDirective(node, renderTask(node, ctx, depth), ctx);
@@ -10475,6 +10910,7 @@ ${fence}`;
       "toc",
       "pagebreak",
       "figure",
+      "canvas",
       "plot",
       "plotly",
       "diagram",
@@ -10526,6 +10962,7 @@ ${fence}`;
       "dataset",
       "query",
       "plot",
+      "canvas",
       "plotly",
       "diagram",
       "metric",
@@ -10594,6 +11031,7 @@ ${fence}`;
     "tip",
     "warning",
     "figure",
+    "canvas",
     "plot",
     "diagram",
     "dataset",
@@ -10603,6 +11041,23 @@ ${fence}`;
     "decision",
     "risk"
   ]);
+  function validateCanvas(node, diagnostics) {
+    const at = { pos: node.pos, ...node.endLine ? { endLine: node.endLine } : {}, ...node.id ? { nodeId: node.id } : {} };
+    const { json: json2, src } = canvasSourceOf(node);
+    if (json2 === void 0) {
+      if (!src) diagnostics.push({ severity: "error", code: "canvas-missing-source", message: `Canvas "${node.id ?? "?"}" needs a \`\`\`json body or a src= (file path or att: attachment).`, ...at });
+      return;
+    }
+    const read = readCanvasDocument(json2);
+    if (!read.ok) {
+      diagnostics.push({ severity: "error", code: "canvas-invalid", message: `Canvas "${node.id ?? "?"}": ${read.error}.`, ...at });
+      return;
+    }
+    const page = node.attrs.page;
+    if (typeof page === "string" && !read.document.pages.some((p) => p.id === page)) {
+      diagnostics.push({ severity: "warning", code: "canvas-unknown-page", message: `Canvas "${node.id ?? "?"}" has no page "${page}".`, ...at });
+    }
+  }
   var MEMORY_TYPES = /* @__PURE__ */ new Set(["user", "feedback", "project", "reference"]);
   var ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
   var KNOWN_PROFILES = Object.keys(PROFILES);
@@ -10756,13 +11211,13 @@ ${fence}`;
       if (node.name === "decision" || node.name === "adr") adrNodes.push(node);
       if (node.name === "claim" && !suppressed(node) && "confidence" in node.attrs) {
         const c = node.attrs.confidence;
-        let num = null;
-        if (typeof c === "number" && Number.isFinite(c)) num = c;
+        let num2 = null;
+        if (typeof c === "number" && Number.isFinite(c)) num2 = c;
         else if (typeof c === "string" && c.trim() !== "") {
           const n = Number(c);
-          if (Number.isFinite(n)) num = n;
+          if (Number.isFinite(n)) num2 = n;
         }
-        if (num === null || num < 0 || num > 1) {
+        if (num2 === null || num2 < 0 || num2 > 1) {
           diagnostics.push({
             severity: "warning",
             code: "claim-invalid-confidence",
@@ -10919,6 +11374,7 @@ ${fence}`;
           }
         }
       }
+      if (node.name === "canvas" && !suppressed(node)) validateCanvas(node, diagnostics);
       if (node.name === "figure" && !suppressed(node) && !node.attrs.alt && !node.attrs.caption) {
         diagnostics.push({
           severity: "warning",
@@ -11062,14 +11518,14 @@ ${fence}`;
         }
         if ("confidence" in node.attrs) {
           const c = node.attrs.confidence;
-          let num = null;
+          let num2 = null;
           if (typeof c === "number" && Number.isFinite(c)) {
-            num = c;
+            num2 = c;
           } else if (typeof c === "string" && c.trim() !== "") {
             const n = Number(c);
-            if (Number.isFinite(n)) num = n;
+            if (Number.isFinite(n)) num2 = n;
           }
-          if (num === null || num < 0 || num > 1) {
+          if (num2 === null || num2 < 0 || num2 > 1) {
             diagnostics.push({
               severity: "error",
               code: "memory-invalid-confidence",
@@ -11275,6 +11731,9 @@ ${fence}`;
     "diagram-missing-source",
     "plotly-missing-spec",
     "plotly-invalid-json",
+    "canvas-missing-source",
+    "canvas-invalid",
+    "canvas-unknown-page",
     "dataset-src-missing",
     "memory-missing-type",
     "memory-invalid-type",
@@ -11734,7 +12193,7 @@ ${fence}`;
   }
 
   // themes/default.css
-  var default_default = ':root {\n  --noma-bg: #fbfaf7;\n  --noma-fg: #1d1c1a;\n  --noma-muted: #6b6a66;\n  --noma-rule: #e7e4dc;\n  --noma-accent: #b9522a;\n  --noma-accent-soft: #f4dccd;\n  --noma-claim: #2c5d8f;\n  --noma-claim-soft: #dfeaf5;\n  --noma-evidence: #2f7d4a;\n  --noma-evidence-soft: #dff0e3;\n  --noma-risk: #a8362e;\n  --noma-risk-soft: #f7d9d4;\n  --noma-code-bg: #f1ede4;\n  --noma-card-bg: #ffffff;\n  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);\n  --noma-radius: 8px;\n  --noma-cols: 2;\n  --noma-grid-min: 14rem;\n  --noma-grid-gap: 1rem;\n  --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;\n  --noma-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;\n  --noma-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;\n}\n\n* { box-sizing: border-box; }\n\nhtml, body {\n  margin: 0;\n  padding: 0;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n  font-family: var(--noma-font-serif);\n  font-size: 16px;\n  line-height: 1.58;\n  -webkit-font-smoothing: antialiased;\n  text-rendering: optimizeLegibility;\n}\n\nmain.noma-doc {\n  max-width: 1040px;\n  margin: 3rem auto;\n  padding: 0 1.25rem 5rem;\n}\n\nmain.noma-doc > section.noma-hero ~ section,\nmain.noma-doc > .noma-grid,\nmain.noma-doc > .noma-columns {\n  max-width: 100%;\n}\n\nh1, h2, h3, h4, h5, h6 {\n  font-family: var(--noma-font-sans);\n  font-weight: 700;\n  line-height: 1.2;\n  letter-spacing: 0;\n  margin: 2em 0 0.55em;\n}\nh1 { font-size: 2.1rem; margin-top: 0; }\nh2 { font-size: 1.45rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.25em; }\nh3 { font-size: 1.15rem; }\nh4 { font-size: 0.98rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n\np { margin: 0 0 1.05em; }\na { color: var(--noma-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }\na:hover { text-decoration-thickness: 2px; }\n\ncode {\n  font-family: var(--noma-font-mono);\n  font-size: 0.9em;\n  background: var(--noma-code-bg);\n  padding: 0.1em 0.35em;\n  border-radius: 4px;\n}\npre {\n  background: var(--noma-code-bg);\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  overflow-x: auto;\n  font-size: 0.9rem;\n  line-height: 1.5;\n}\npre code { background: none; padding: 0; }\n\nblockquote {\n  border-left: 3px solid var(--noma-accent);\n  margin: 1.5em 0;\n  padding: 0.2em 1.2em;\n  color: var(--noma-muted);\n  font-style: italic;\n}\n\nhr { border: 0; border-top: 1px solid var(--noma-rule); margin: 3em 0; }\n\nul, ol { padding-left: 1.4em; }\nli { margin: 0.25em 0; }\n\nfigure {\n  margin: 1.8em 0;\n}\nfigure img {\n  display: block;\n  max-width: 100%;\n  height: auto;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\nfigcaption {\n  margin-top: 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n\n/* Callouts */\naside.noma-callout {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-accent-soft);\n  border-left: 3px solid var(--noma-accent);\n}\naside.noma-callout-warning { background: #fbe6df; border-color: var(--noma-risk); }\naside.noma-callout-tip     { background: #e6f3eb; border-color: var(--noma-evidence); }\naside.noma-callout-note    { background: #ecedf2; border-color: #5a6071; }\n\n/* Research blocks */\naside.noma-research {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-research .noma-research-head {\n  display: flex;\n  align-items: center;\n  gap: 0.8em;\n  margin-bottom: 0.5em;\n}\naside.noma-research .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-muted);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-code-bg);\n}\naside.noma-claim          { border-left: 3px solid var(--noma-claim); }\naside.noma-claim .noma-tag { color: var(--noma-claim); background: var(--noma-claim-soft); }\naside.noma-evidence       { border-left: 3px solid var(--noma-evidence); }\naside.noma-evidence .noma-tag { color: var(--noma-evidence); background: var(--noma-evidence-soft); }\naside.noma-counterevidence { border-left: 3px solid var(--noma-risk); }\naside.noma-counterevidence .noma-tag { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-risk           { border-left: 3px solid var(--noma-risk); }\naside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }\naside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }\naside.noma-open_question { border-left: 3px solid #8b6c1a; }\naside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }\naside.noma-assumption { border-left: 3px solid #5a6071; }\naside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }\n\n/* Variants \u2014 themable per-block emphasis without inline styling */\n[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }\n[data-variant="subtle"] { opacity: 0.78; box-shadow: none; }\n[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }\n[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }\n[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }\n\n/* Export buttons (artifact-side action surface) */\n.noma-export-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  border: 0;\n  padding: 0.55em 1.1em;\n  margin: 0.3em 0.4em 0.3em 0;\n  border-radius: 999px;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.85rem;\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n.noma-export-button:hover { background: var(--noma-accent); color: white; }\n.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }\n.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }\n.noma-export-button[data-format="json"] { background: var(--noma-muted); }\n\n/* Controls (interactive artifact blocks) */\n.noma-control {\n  margin: 1em 0;\n  padding: 0.8em 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-control-row {\n  display: grid;\n  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 2fr);\n  gap: 0.75rem;\n  align-items: center;\n}\n.noma-control-label { font-weight: 650; }\n.noma-control input,\n.noma-control select {\n  width: 100%;\n  accent-color: var(--noma-accent);\n  font: inherit;\n}\n.noma-control input[type="number"],\n.noma-control input[type="text"],\n.noma-control select {\n  border: 1px solid var(--noma-rule);\n  border-radius: 6px;\n  padding: 0.35em 0.5em;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n}\n.noma-control input[type="checkbox"] {\n  width: auto;\n  justify-self: start;\n}\n.noma-control-value {\n  display: block;\n  margin-top: 0.35rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-mono);\n  font-size: 0.82rem;\n}\n.noma-interactive-disabled {\n  display: inline-block;\n  margin-bottom: 0.5rem;\n  padding: 0.18em 0.55em;\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n  font-weight: 650;\n}\n\n.noma-computed {\n  margin: 1.2em 0;\n  padding: 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 4px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-computed-head {\n  display: flex;\n  gap: 0.8rem;\n  align-items: baseline;\n  flex-wrap: wrap;\n  margin-bottom: 0.45rem;\n}\n.noma-computed-head h3 {\n  margin: 0;\n  font-size: 1rem;\n}\n.noma-computed-value {\n  font-family: var(--noma-font-sans);\n  font-size: 1.75rem;\n  line-height: 1.15;\n  font-weight: 750;\n  color: var(--noma-claim);\n}\n.noma-computed-body {\n  margin-top: 0.75rem;\n}\n.noma-computed-body p {\n  margin-bottom: 0;\n}\n.noma-computed-plot {\n  padding: 1em;\n}\n.noma-computed-canvas {\n  margin-bottom: 0.5rem;\n}\n.noma-computed-table-view {\n  margin: 0.65rem 0 0;\n  font-size: 0.9rem;\n}\n.noma-computed-table-view th:last-child,\n.noma-computed-table-view td:last-child {\n  text-align: right;\n}\n@media (max-width: 720px) {\n  .noma-control-row {\n    grid-template-columns: 1fr;\n  }\n}\n\n.noma-confidence {\n  flex: 1;\n  height: 6px;\n  border-radius: 999px;\n  background: var(--noma-rule);\n  overflow: hidden;\n  max-width: 140px;\n}\n.noma-confidence-bar {\n  height: 100%;\n  background: linear-gradient(90deg, var(--noma-accent), var(--noma-claim));\n}\n\n.noma-meta {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\n.noma-meta-key {\n  font-weight: 600;\n  color: var(--noma-fg);\n}\n\n/* Grid */\n.noma-grid,\n.noma-columns {\n  display: grid;\n  grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));\n  gap: var(--noma-grid-gap);\n  margin: 1.5em 0;\n}\n.noma-grid-auto,\n.noma-columns-auto {\n  grid-template-columns: repeat(auto-fit, minmax(min(var(--noma-grid-min), 100%), 1fr));\n}\n.noma-grid-wide,\n.noma-columns-wide,\n.noma-grid-full,\n.noma-columns-full {\n  position: relative;\n  left: 50%;\n  transform: translateX(-50%);\n}\n.noma-grid-wide,\n.noma-columns-wide {\n  width: min(1180px, calc(100vw - 2rem));\n}\n.noma-grid-full,\n.noma-columns-full {\n  width: min(1440px, calc(100vw - 2rem));\n}\n.noma-grid-compact,\n.noma-columns-compact {\n  --noma-grid-gap: 0.75rem;\n}\n@media (max-width: 720px) {\n  .noma-grid,\n  .noma-columns {\n    grid-template-columns: 1fr;\n    width: auto;\n    left: auto;\n    transform: none;\n  }\n}\n\n/* Card */\narticle.noma-card {\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 1em 1.1em;\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-card .noma-card-head {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  margin-bottom: 0.4em;\n}\narticle.noma-card h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-family: var(--noma-font-sans);\n}\narticle.noma-card .noma-icon {\n  color: var(--noma-accent);\n  font-size: 0.9em;\n}\narticle.noma-card p:last-child { margin-bottom: 0; }\n\n/* Hero */\nsection.noma-hero {\n  background: linear-gradient(180deg, var(--noma-accent-soft), transparent);\n  padding: 3rem 2rem 2.4rem;\n  border-radius: var(--noma-radius);\n  margin: 0 0 3rem;\n  text-align: center;\n}\nsection.noma-hero h1 { font-size: 2.8rem; margin-top: 0; }\n\na.noma-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  padding: 0.7em 1.4em;\n  border-radius: 999px;\n  text-decoration: none;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.95rem;\n  margin-top: 0.5em;\n}\na.noma-button:hover { background: var(--noma-accent); color: white; }\n\n/* Plot */\nfigure.noma-plot {\n  margin: 1.8em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n}\nfigure.noma-plot .noma-plot-canvas {\n  color: var(--noma-claim);\n  background: linear-gradient(180deg, transparent, var(--noma-claim-soft));\n  border-radius: 6px;\n  padding: 0.6em;\n}\nfigure.noma-plot svg { width: 100%; height: auto; display: block; }\nfigure.noma-plot figcaption {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\nfigure.noma-plot[data-compact="true"] {\n  padding: 0.65em 0.8em;\n}\nfigure.noma-plot[data-compact="true"] figcaption {\n  margin-top: 0.35em;\n  font-size: 0.78rem;\n}\n\n/* Dataset */\ndetails.noma-dataset {\n  margin: 1.4em 0;\n  padding: 0.6em 1em;\n  background: var(--noma-code-bg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\ndetails.noma-dataset pre {\n  background: transparent;\n  padding: 0.6em 0 0;\n}\n\n/* Agent task */\n.noma-agent-task {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-claim-soft);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n}\n.noma-agent-task label {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.9rem;\n  margin-bottom: 0.4em;\n}\n\n/* Collaboration metadata */\naside.noma-comment,\naside.noma-review-meta {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-comment {\n  background: #f7f6f1;\n}\n.noma-comment-head,\n.noma-review-meta-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.55em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-comment .noma-tag,\n.noma-review-meta .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-review-meta.noma-collab-review {\n  border-left-color: var(--noma-accent);\n}\n.noma-review-meta.noma-collab-review .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-review-meta.noma-collab-provenance {\n  border-left-color: var(--noma-claim);\n}\n.noma-review-meta.noma-collab-provenance .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-review-meta.noma-collab-confidence {\n  border-left-color: var(--noma-evidence);\n}\n.noma-review-meta.noma-collab-confidence .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-comment-body p:last-child,\n.noma-review-meta-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Memory profile */\naside.noma-memory,\naside.noma-memory-index {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-memory-index {\n  background: #f4f7f8;\n}\n.noma-memory-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-memory .noma-tag,\n.noma-memory-index .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-memory h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-memory.noma-memory-user {\n  border-left-color: var(--noma-evidence);\n}\n.noma-memory.noma-memory-user .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-memory.noma-memory-feedback {\n  border-left-color: var(--noma-accent);\n}\n.noma-memory.noma-memory-feedback .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-memory.noma-memory-project {\n  border-left-color: var(--noma-claim);\n}\n.noma-memory.noma-memory-project .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-memory.noma-memory-reference {\n  border-left-color: #5a6071;\n}\n.noma-memory.noma-memory-reference .noma-tag {\n  color: #5a6071;\n  background: #ecedf2;\n}\n.noma-memory-body p:last-child,\n.noma-memory-index .noma-memory-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Metrics */\naside.noma-metric {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-evidence);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-metric-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.25em;\n}\n.noma-metric .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-evidence);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-evidence-soft);\n}\n.noma-metric h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-metric-value {\n  margin: 0.2em 0 0.25em;\n  color: var(--noma-evidence);\n  font-family: var(--noma-font-sans);\n  font-size: 1.7rem;\n  font-weight: 800;\n  line-height: 1.15;\n}\n.noma-metric-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Technical documentation */\narticle.noma-technical {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-technical .noma-technical-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n}\narticle.noma-technical .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-claim);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n}\narticle.noma-technical h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-technical-meta {\n  margin: 0.35em 0 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.85rem;\n}\n.noma-technical-body p:last-child {\n  margin-bottom: 0;\n}\npre.noma-technical-code {\n  margin: 0.7em 0 0;\n}\n\n/* Custom directives */\naside.noma-block {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-block-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n  font-family: var(--noma-font-sans);\n}\naside.noma-block .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\naside.noma-block h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-block-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Change requests */\naside.noma-change-request {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: #fff4f0;\n  border: 1px solid #f0c7bd;\n  border-left: 3px solid #c85c4a;\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-change-request-head {\n  font-size: 0.85rem;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.45em;\n}\n.noma-change-request-delta {\n  display: flex;\n  align-items: baseline;\n  gap: 0.55em;\n  margin: 0.35em 0 0.55em;\n  line-height: 1.5;\n}\n.noma-change-request del {\n  color: #9a382b;\n  text-decoration-thickness: 0.12em;\n}\n.noma-change-request ins {\n  color: #2f6e42;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n/* State change */\naside.noma-state-change {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-fg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-state-change-head {\n  font-size: 0.85rem;\n  letter-spacing: 0.02em;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.4em;\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  flex-wrap: wrap;\n}\n.noma-state-change-delta {\n  font-size: 1rem;\n  display: flex;\n  align-items: baseline;\n  gap: 0.6em;\n  margin: 0.3em 0 0.5em;\n  font-variant-numeric: tabular-nums;\n}\n.noma-state-from {\n  text-decoration: line-through;\n  opacity: 0.65;\n}\n.noma-state-to {\n  font-weight: 700;\n}\n.noma-state-arrow {\n  opacity: 0.55;\n  font-size: 0.95em;\n}\n\n/* Tables */\ntable.noma-table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 1.6em 0;\n  font-family: var(--noma-font-sans);\n  font-size: 0.88rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  overflow: hidden;\n  box-shadow: var(--noma-shadow);\n}\ntable.noma-table thead {\n  background: var(--noma-code-bg);\n}\ntable.noma-table th {\n  text-align: left;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  padding: 0.55em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  color: var(--noma-fg);\n}\ntable.noma-table td {\n  padding: 0.5em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  vertical-align: top;\n}\ntable.noma-table tbody tr:last-child td { border-bottom: 0; }\ntable.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }\n\n.noma-page-header,\n.noma-page-footer {\n  margin: 1.2rem 0;\n  padding: 0.55rem 0;\n  border-color: var(--noma-rule);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-page-header {\n  border-bottom: 1px solid var(--noma-rule);\n}\n.noma-page-footer {\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-page-header p,\n.noma-page-footer p {\n  margin: 0;\n}\n.noma-page-number {\n  display: block;\n  text-align: right;\n}\n\n.noma-toc {\n  margin: 1.6rem 0 2rem;\n  padding: 1rem 1.1rem;\n  border: 1px solid var(--noma-rule);\n  background: var(--noma-card-bg);\n  font-family: var(--noma-font-sans);\n  box-shadow: var(--noma-shadow);\n}\n.noma-toc h2 {\n  margin: 0 0 0.6rem;\n  padding: 0;\n  border: 0;\n  font-size: 1.1rem;\n}\n.noma-toc ol {\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n.noma-toc li {\n  margin: 0.15rem 0;\n}\n.noma-toc li[data-level="2"] { margin-left: 1rem; }\n.noma-toc li[data-level="3"] { margin-left: 2rem; }\n.noma-toc li[data-level="4"] { margin-left: 3rem; }\n.noma-toc li[data-level="5"] { margin-left: 4rem; }\n.noma-toc li[data-level="6"] { margin-left: 5rem; }\n\n.noma-footnote,\n.noma-endnote {\n  margin: 1.2rem 0;\n  padding: 0.7rem 0.9rem;\n  border-left: 3px solid var(--noma-rule);\n  background: var(--noma-code-bg);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-footnote p,\n.noma-endnote p {\n  margin: 0.25rem 0;\n}\n.noma-footnote sup,\n.noma-endnote sup {\n  margin-right: 0.4rem;\n  color: var(--noma-accent);\n  font-weight: 700;\n}\n\n.noma-bibliography {\n  margin: 2rem 0;\n  padding-top: 0.8rem;\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-bibliography h2 {\n  margin-top: 0;\n}\n.noma-bibliography ol {\n  padding-left: 1.4rem;\n}\n.noma-citation-meta {\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9em;\n}\n\n.noma-pagebreak {\n  margin: 2rem 0;\n  border: 0;\n  border-top: 1px dashed var(--noma-rule);\n}\n\n/* Print */\n@media print {\n  @page { margin: 20mm 18mm; }\n  html, body { background: white; font-size: 11pt; }\n  main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }\n  section.noma-hero { background: none; border: 1px solid var(--noma-rule); }\n  a { color: var(--noma-fg); }\n  pre, article.noma-card, article.noma-technical, aside.noma-block, .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, aside.noma-comment, aside.noma-review-meta, aside.noma-memory, aside.noma-memory-index, aside.noma-metric, aside.noma-change-request, aside.noma-footnote, aside.noma-endnote, nav.noma-toc, header.noma-page-header, footer.noma-page-footer, details.noma-dataset, table.noma-table {\n    box-shadow: none;\n    page-break-inside: avoid;\n    break-inside: avoid;\n  }\n  .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {\n    background: white;\n  }\n  table.noma-table {\n    font-size: 9.5pt;\n    box-shadow: none;\n  }\n  table.noma-table th,\n  table.noma-table td {\n    padding: 0.35em 0.55em;\n  }\n  h1, h2, h3 {\n    page-break-after: avoid;\n    break-after: avoid;\n  }\n  .noma-pagebreak {\n    margin: 0;\n    border: 0;\n    height: 0;\n    page-break-after: always;\n    break-after: page;\n  }\n}\n\n/* v0.4 \u2014 alias anchors (offset for sticky-headed pages) */\na.noma-alias {\n  display: block;\n  position: relative;\n  top: -1.2em;\n  visibility: hidden;\n  height: 0;\n}\n\n/* v0.4 \u2014 multi-page site nav (rendered above main when --to site) */\nnav.noma-site-nav {\n  max-width: 1040px;\n  margin: 1.5rem auto 0;\n  padding: 0 2rem;\n  display: flex;\n  align-items: baseline;\n  gap: 1.5rem;\n  flex-wrap: wrap;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n}\nnav.noma-site-nav a.noma-site-home {\n  font-weight: 600;\n  color: var(--noma-fg);\n  text-decoration: none;\n  border-right: 1px solid var(--noma-rule);\n  padding-right: 1.25rem;\n}\nnav.noma-site-nav ol {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n  display: flex;\n  gap: 1.25rem;\n  flex-wrap: wrap;\n  counter-reset: chap;\n}\nnav.noma-site-nav li {\n  counter-increment: chap;\n}\nnav.noma-site-nav li::before {\n  content: counter(chap, decimal-leading-zero) " \xB7 ";\n  color: var(--noma-rule);\n  font-variant-numeric: tabular-nums;\n}\nnav.noma-site-nav a {\n  color: var(--noma-muted);\n  text-decoration: none;\n}\nnav.noma-site-nav a:hover { color: var(--noma-accent); }\nnav.noma-site-nav .noma-nav-current span {\n  color: var(--noma-fg);\n  font-weight: 500;\n}\n\na.noma-ref.noma-xchapter::after {\n  content: " \u2197";\n  font-size: 0.85em;\n  color: var(--noma-muted);\n}\n\nmain.noma-site-index {\n  padding-top: 3rem;\n}\nheader.noma-site-header h1 {\n  font-size: 2.4rem;\n  margin-bottom: 0.25rem;\n}\nheader.noma-site-header .noma-site-author {\n  color: var(--noma-muted);\n  margin: 0 0 2rem;\n}\nol.noma-site-toc {\n  list-style: none;\n  padding: 0;\n  margin: 2rem 0;\n  display: grid;\n  gap: 0.6rem;\n  counter-reset: toc;\n}\nol.noma-site-toc li {\n  counter-increment: toc;\n}\na.noma-site-chapter {\n  display: block;\n  padding: 1.1rem 1.4rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  text-decoration: none;\n  color: inherit;\n  transition: border-color 120ms ease, transform 120ms ease;\n}\na.noma-site-chapter:hover {\n  border-color: var(--noma-accent);\n  transform: translateY(-1px);\n}\na.noma-site-chapter::before {\n  content: counter(toc, decimal-leading-zero);\n  display: block;\n  font-size: 0.75rem;\n  font-variant-numeric: tabular-nums;\n  color: var(--noma-muted);\n  margin-bottom: 0.25rem;\n}\n.noma-site-chapter-title {\n  display: block;\n  font-weight: 600;\n  font-size: 1.1rem;\n}\n.noma-site-chapter-summary {\n  display: block;\n  color: var(--noma-muted);\n  margin-top: 0.4rem;\n  font-size: 0.93rem;\n}\n.noma-site-description {\n  max-width: 48rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 1.02rem;\n}\n.noma-site-chapter-tags,\n.noma-space-tags {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  margin-top: 0.6rem;\n}\n.noma-site-chapter-tags span,\n.noma-space-tags span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  padding: 0.12rem 0.45rem;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n}\n\n/* Space renderer \u2014 source-controlled documentation/wiki surface */\nbody.noma-space-body {\n  background: linear-gradient(180deg, #f7f5ef 0, var(--noma-bg) 16rem);\n}\n.noma-space-shell {\n  display: grid;\n  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);\n  min-height: 100vh;\n}\n.noma-space-sidebar {\n  position: sticky;\n  top: 0;\n  height: 100vh;\n  overflow: auto;\n  border-right: 1px solid var(--noma-rule);\n  background: rgba(255, 255, 255, 0.68);\n  padding: 1rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-home {\n  display: block;\n  margin-bottom: 0.45rem;\n  color: var(--noma-fg);\n  font-weight: 800;\n  text-decoration: none;\n}\n.noma-space-description,\n.noma-space-search-disabled {\n  margin: 0 0 1rem;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n  line-height: 1.38;\n}\n.noma-space-search {\n  display: grid;\n  gap: 0.35rem;\n  margin: 0.9rem 0 0.75rem;\n  color: var(--noma-muted);\n  font-size: 0.74rem;\n  font-weight: 750;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n}\n.noma-space-search input {\n  width: 100%;\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  padding: 0.5rem 0.6rem;\n  background: var(--noma-card-bg);\n  color: var(--noma-fg);\n  font: 500 0.88rem var(--noma-font-sans);\n  text-transform: none;\n  letter-spacing: 0;\n}\n.noma-space-search-results {\n  display: grid;\n  gap: 0.4rem;\n  margin: 0 0 0.85rem;\n  padding: 0.45rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: 8px;\n  background: var(--noma-card-bg);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-search-results a {\n  display: grid;\n  gap: 0.1rem;\n  padding: 0.45rem 0.5rem;\n  border-radius: 6px;\n  color: var(--noma-fg);\n  text-decoration: none;\n}\n.noma-space-search-results a:hover {\n  background: var(--noma-code-bg);\n}\n.noma-space-search-results small {\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n}\n.noma-space-search-results em {\n  display: flex;\n  gap: 0.25rem;\n  flex-wrap: wrap;\n  font-style: normal;\n}\n.noma-space-search-results em span {\n  color: var(--noma-accent);\n  font-size: 0.68rem;\n}\n.noma-space-search-results p {\n  margin: 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-sidebar nav.noma-site-nav {\n  max-width: none;\n  margin: 0;\n  padding: 0;\n  display: block;\n}\n.noma-space-sidebar nav.noma-site-nav ol {\n  display: grid;\n  gap: 0.18rem;\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  counter-reset: none;\n}\n.noma-space-sidebar nav.noma-site-nav li {\n  padding-left: calc(var(--depth, 0) * 0.85rem);\n}\n.noma-space-sidebar nav.noma-site-nav li::before {\n  content: "";\n}\n.noma-space-sidebar nav.noma-site-nav a,\n.noma-space-sidebar nav.noma-site-nav span {\n  display: block;\n  border-radius: 6px;\n  padding: 0.38rem 0.5rem;\n  color: var(--noma-muted);\n  text-decoration: none;\n  font-size: 0.88rem;\n  line-height: 1.25;\n}\n.noma-space-sidebar nav.noma-site-nav a:hover {\n  background: var(--noma-code-bg);\n  color: var(--noma-fg);\n}\n.noma-space-sidebar nav.noma-site-nav .noma-nav-current span {\n  background: var(--noma-accent-soft);\n  color: var(--noma-accent);\n  font-weight: 760;\n}\n.noma-space-sidebar nav.noma-site-nav small {\n  display: block;\n  padding: 0 0.5rem 0.32rem;\n  color: var(--noma-muted);\n  font-size: 0.68rem;\n}\n.noma-space-main {\n  min-width: 0;\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);\n  grid-template-rows: auto 1fr;\n  gap: 1rem;\n  padding: 1rem;\n}\n.noma-space-topbar {\n  grid-column: 1 / -1;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 1rem;\n  min-width: 0;\n  padding: 0.5rem 0.2rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-breadcrumbs {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  min-width: 0;\n  color: var(--noma-muted);\n  font-size: 0.83rem;\n}\n.noma-space-breadcrumbs a,\n.noma-space-breadcrumbs span {\n  color: inherit;\n  text-decoration: none;\n}\n.noma-space-breadcrumbs span:last-child {\n  color: var(--noma-fg);\n  font-weight: 700;\n}\n.noma-space-breadcrumbs a::after,\n.noma-space-breadcrumbs span::after {\n  content: "/";\n  margin-left: 0.35rem;\n  color: var(--noma-rule);\n}\n.noma-space-breadcrumbs span:last-child::after {\n  content: "";\n  margin: 0;\n}\n.noma-space-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.noma-space-actions button {\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.38rem 0.6rem;\n  font: 700 0.78rem var(--noma-font-sans);\n  cursor: pointer;\n}\n.noma-space-actions button:hover {\n  border-color: var(--noma-accent);\n  color: var(--noma-accent);\n}\nbody.noma-space-body main.noma-doc {\n  min-width: 0;\n  max-width: none;\n  margin: 0;\n  padding: 2rem min(4vw, 2.5rem) 5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: rgba(255, 255, 255, 0.78);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector {\n  min-width: 0;\n  align-self: start;\n  position: sticky;\n  top: 1rem;\n  display: grid;\n  gap: 0.75rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-inspector section {\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 0.85rem;\n  background: rgba(255, 255, 255, 0.72);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector h2 {\n  margin: 0 0 0.55rem;\n  padding: 0;\n  border: 0;\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n}\n.noma-space-inspector p {\n  display: flex;\n  justify-content: space-between;\n  gap: 0.6rem;\n  margin: 0.3rem 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-inspector strong {\n  color: var(--noma-fg);\n  overflow-wrap: anywhere;\n}\n.noma-space-inspector ul {\n  margin: 0;\n  padding-left: 1rem;\n}\n.noma-space-inspector li {\n  margin: 0.25rem 0;\n  font-size: 0.84rem;\n}\n.noma-space-empty {\n  display: block !important;\n  color: var(--noma-muted);\n}\n.noma-space-stats {\n  display: flex;\n  gap: 0.5rem;\n  flex-wrap: wrap;\n  margin: 1rem 0 0;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-stats span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.2rem 0.6rem;\n  font-size: 0.8rem;\n  font-weight: 700;\n}\nbody.noma-space-body ol.noma-site-toc {\n  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));\n}\n@media (max-width: 1100px) {\n  .noma-space-main {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .noma-space-inspector {\n    position: static;\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n}\n@media (max-width: 780px) {\n  .noma-space-shell {\n    grid-template-columns: 1fr;\n  }\n  .noma-space-sidebar {\n    position: static;\n    height: auto;\n    border-right: 0;\n    border-bottom: 1px solid var(--noma-rule);\n  }\n  .noma-space-main {\n    padding: 0.75rem;\n  }\n  .noma-space-topbar {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  body.noma-space-body main.noma-doc {\n    padding: 1.25rem 1rem 3rem;\n  }\n  .noma-space-inspector {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* v0.4 \u2014 math (KaTeX is loaded from CDN; we just style block layout) */\n.noma-math-display {\n  margin: 1.4em auto;\n  text-align: center;\n  overflow-x: auto;\n}\n.noma-math-inline {\n  display: inline;\n}\n\n/* Wiki macros: ::include, ::children, ::issue(s), ::page-properties, unresolved placeholders */\n.noma-include {\n  border-left: 3px solid var(--noma-rule);\n  padding: 0.1rem 0 0.1rem 0.9rem;\n  margin: 1rem 0;\n}\n.noma-include-source {\n  color: var(--noma-muted);\n  font: 0.75rem/1.4 var(--noma-font-sans);\n  margin-bottom: 0.35rem;\n}\n.noma-macro-placeholder {\n  border: 1px dashed var(--noma-rule);\n  border-radius: var(--noma-radius);\n  color: var(--noma-muted);\n  font: 0.85rem/1.45 var(--noma-font-sans);\n  margin: 1rem 0;\n  padding: 0.6rem 0.8rem;\n}\n.noma-macro-forbidden, .noma-macro-cycle, .noma-macro-depth { border-color: var(--noma-risk); }\n.noma-children ul { margin: 0.4rem 0; }\n.noma-children-summary { color: var(--noma-muted); font-size: 0.9em; }\n.noma-issue-card {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 0.5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  font: 0.9rem/1.4 var(--noma-font-sans);\n  margin: 0.75rem 0;\n  padding: 0.5rem 0.75rem;\n}\n.noma-issue-key { font-weight: 700; }\n.noma-issue-status {\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n  color: var(--noma-claim);\n  font-size: 0.72rem;\n  font-weight: 700;\n  letter-spacing: 0.04em;\n  padding: 0.1rem 0.55rem;\n  text-transform: uppercase;\n}\n.noma-issue-status[data-status="done"] { background: var(--noma-evidence-soft); color: var(--noma-evidence); }\n.noma-issue-assignee, .noma-issue-meta { color: var(--noma-muted); }\n.noma-issue-meta span + span::before { content: " \xB7 "; }\n.noma-page-properties th[scope="row"] { width: 30%; }\n\n/* ---------------------------------------------------------------------------\n   Style tokens \u2014 `class="..."` on any block. Closed vocabulary, `n-` prefix.\n   --------------------------------------------------------------------------- */\n:root .n-tone-neutral { --noma-tone: var(--noma-muted); --noma-tone-soft: var(--noma-code-bg); }\n:root .n-tone-accent { --noma-tone: var(--noma-accent); --noma-tone-soft: var(--noma-accent-soft); }\n:root .n-tone-info { --noma-tone: var(--noma-claim); --noma-tone-soft: var(--noma-claim-soft); }\n:root .n-tone-success { --noma-tone: var(--noma-evidence); --noma-tone-soft: var(--noma-evidence-soft); }\n:root .n-tone-warning { --noma-tone: #b7791f; --noma-tone-soft: color-mix(in srgb, #b7791f 16%, transparent); }\n:root .n-tone-danger { --noma-tone: var(--noma-risk); --noma-tone-soft: var(--noma-risk-soft); }\n:root [class*="n-tone-"] { border-color: var(--noma-tone); }\n:root [class*="n-tone-"].n-filled, :root [class*="n-tone-"] .noma-slide-frame { background: var(--noma-tone-soft); }\n:root .n-plain { background: transparent; border: 0; box-shadow: none; }\n:root .n-outline { background: transparent; border: 1px solid var(--noma-tone, var(--noma-rule)); box-shadow: none; }\n:root .n-filled { background: var(--noma-tone-soft, var(--noma-code-bg)); border-color: transparent; }\n:root .n-elevated { box-shadow: var(--noma-shadow); border-radius: var(--noma-radius); }\n:root .n-muted { color: var(--noma-muted); }\n:root .n-inverse { background: var(--noma-fg); color: var(--noma-bg); }\n:root .n-lead { font-size: 1.2em; line-height: 1.5; }\n:root .n-subtle { opacity: 0.78; }\n:root .n-emphasis { font-weight: 600; color: var(--noma-tone, inherit); }\n:root .n-mono { font-family: var(--noma-font-mono); }\n:root .n-text-sm { font-size: 0.875em; }\n:root .n-text-lg { font-size: 1.2em; }\n:root .n-text-xl { font-size: 1.5em; }\n:root .n-text-2xl { font-size: 2em; line-height: 1.2; }\n:root .n-align-start { text-align: start; }\n:root .n-align-center { text-align: center; }\n:root .n-align-end { text-align: end; }\n:root .n-tight { padding: 0.5rem; }\n:root .n-tight > * + * { margin-top: 0.35rem; }\n:root .n-roomy { padding: 1.75rem; }\n:root .n-span-2 { grid-column: span 2; }\n:root .n-span-3 { grid-column: span 3; }\n:root .n-span-full { grid-column: 1 / -1; }\n:root .n-stack { display: flex; flex-direction: column; gap: 0.75rem; }\n:root .n-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }\n:root .n-center-v { display: flex; flex-direction: column; justify-content: center; }\n:root .n-print-only { display: none; }\n:root .noma-deck .n-hide-in-slides, :root .noma-presenter .n-hide-in-slides { display: none; }\n:root .n-slides-only { display: none; }\n:root .noma-deck .n-slides-only, :root .noma-presenter .n-slides-only { display: revert; }\n@media print {\n  :root .n-print-only { display: revert; }\n  :root .n-screen-only { display: none; }\n}\n@media (max-width: 640px) {\n  :root .n-span-2, :root .n-span-3 { grid-column: auto; }\n}\n\n/* ---------------------------------------------------------------------------\n   Decks \u2014 `::deck` / `:::slide` / `::::notes`\n   --------------------------------------------------------------------------- */\n.noma-deck { margin: 2rem 0; --noma-deck-ratio: 16 / 9; }\n.noma-deck-bar { display: flex; align-items: center; gap: 0.75rem; font-family: var(--noma-font-sans); font-size: 0.9rem; color: var(--noma-muted); margin-bottom: 0.75rem; }\n.noma-deck-title { color: var(--noma-fg); }\n.noma-deck-present { margin-left: auto; font: inherit; padding: 0.3rem 0.9rem; border-radius: 999px; border: 1px solid var(--noma-accent); background: transparent; color: var(--noma-accent); cursor: pointer; }\n.noma-deck-present:hover { background: var(--noma-accent); color: var(--noma-bg); }\n.noma-deck-slides { display: grid; gap: 1.25rem; }\n.noma-slide { container-type: inline-size; }\n.noma-slide-frame {\n  aspect-ratio: var(--noma-deck-ratio);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  padding: 5cqw 6cqw;\n  gap: 2cqw;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n  font-family: var(--noma-font-sans);\n  font-size: 2.3cqw;\n  line-height: 1.35;\n}\n.noma-slide .noma-slide-frame h1, .noma-slide .noma-slide-frame h2, .noma-slide .noma-slide-frame h3 { margin: 0; border: 0; padding: 0; line-height: 1.15; }\n.noma-slide .noma-slide-title { font-size: 1.9em; }\n.noma-slide .noma-slide-frame section > h1, .noma-slide .noma-slide-frame section > h2 { font-size: 1.9em; }\n.noma-slide-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1.2cqw; }\n.noma-slide-body > * { margin: 0; }\n.noma-slide-body ul, .noma-slide-body ol { padding-left: 1.2em; }\n.noma-slide-body li + li { margin-top: 0.4em; }\n.noma-slide-body .noma-table { font-size: 0.8em; }\n.noma-slide--title .noma-slide-frame,\n.noma-slide--statement .noma-slide-frame, .noma-slide--quote .noma-slide-frame {\n  justify-content: center; align-items: center; text-align: center;\n}\n.noma-slide--title .noma-slide-title { font-size: 2.6em; }\n.noma-slide--title .noma-slide-body { flex: 0 0 auto; color: var(--noma-muted); font-size: 1.2em; }\n.noma-slide--section .noma-slide-frame { justify-content: center; background: var(--noma-accent); color: var(--noma-bg); border-color: transparent; }\n.noma-slide--section .noma-slide-title { font-size: 2.6em; }\n.noma-slide--statement .noma-slide-body { flex: 0 0 auto; font-size: 1.8em; font-weight: 600; }\n.noma-slide--quote .noma-slide-body { flex: 0 0 auto; font-size: 1.6em; font-style: italic; font-family: var(--noma-font-serif); }\n.noma-slide--two-column .noma-slide-body { display: grid; grid-template-columns: 1fr 1fr; gap: 3cqw; align-content: start; }\n.noma-slide--two-column .noma-slide-body > .noma-grid { display: contents; }\n.noma-slide--media .noma-slide-body img, .noma-slide--media .noma-slide-body svg { max-width: 100%; max-height: 100%; object-fit: contain; }\n.noma-slide--blank .noma-slide-frame { padding: 0; }\n.noma-slide-notes { margin-top: 0.4rem; font-family: var(--noma-font-sans); font-size: 0.85rem; color: var(--noma-muted); }\n.noma-slide-notes summary { cursor: pointer; }\n.noma-deck.noma-presenting {\n  position: fixed; inset: 0; z-index: 9999; margin: 0;\n  display: flex; align-items: center; justify-content: center;\n  background: #000;\n}\n.noma-deck.noma-presenting .noma-deck-bar,\n.noma-deck.noma-presenting .noma-slide-notes { display: none; }\n.noma-deck.noma-presenting .noma-deck-slides { display: block; width: min(100vw, calc(100vh * 16 / 9)); }\n.noma-deck.noma-presenting .noma-slide { display: none; }\n.noma-deck.noma-presenting .noma-slide.noma-slide-current { display: block; }\n.noma-deck.noma-presenting .noma-slide-frame { border-radius: 0; border: 0; box-shadow: none; }\nhtml.noma-presenting-root { overflow: hidden; }\n@media print {\n  .noma-deck-bar, .noma-slide-notes { display: none; }\n  .noma-slide { break-inside: avoid; page-break-inside: avoid; }\n}\n\n/* ---------------------------------------------------------------------------\n   Presenter \u2014 `--to slides` and Noma Cloud "Present"\n   --------------------------------------------------------------------------- */\nhtml:has(body.noma-presenter-body), body.noma-presenter-body { margin: 0; background: #101114; color: var(--noma-fg); }\n.noma-presenter { --noma-deck-rw: 16; --noma-deck-rh: 9; min-height: 100vh; }\n.noma-presenter-stage { padding: 1.5rem; }\n.noma-presenter .noma-deck-slides { display: grid; gap: 1.5rem; max-width: 1100px; margin: 0 auto; }\n.noma-presenter-empty { color: #d6d3cc; font-family: var(--noma-font-sans); text-align: center; padding: 4rem 1rem; }\n.noma-presenter[data-ready] {\n  position: fixed; inset: 0; display: grid;\n  grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto;\n}\n.noma-presenter[data-ready][data-notes] { grid-template-columns: minmax(0, 1fr) minmax(16rem, 26rem); }\n.noma-presenter[data-ready] .noma-presenter-stage { display: flex; align-items: center; justify-content: center; min-height: 0; padding: 2vmin; }\n.noma-presenter[data-ready] .noma-deck-slides {\n  display: block; margin: 0; max-width: none;\n  width: min(100%, calc((100vh - 5.5rem) * var(--noma-deck-rw) / var(--noma-deck-rh)));\n}\n.noma-presenter[data-ready][data-notes] .noma-deck-slides { width: min(100%, calc((100vh - 5.5rem) * var(--noma-deck-rw) / var(--noma-deck-rh))); }\n.noma-presenter[data-ready] .noma-slide { display: none; }\n.noma-presenter[data-ready] .noma-slide.noma-slide-current { display: block; }\n.noma-presenter[data-ready] .noma-slide-notes { display: none; }\n.noma-presenter .noma-slide-body { overflow: auto; }\n.noma-presenter[data-ready] .noma-slide-frame { border: 0; box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.8); }\n.noma-presenter-notes {\n  grid-row: 1 / span 1; grid-column: 2; overflow: auto; padding: 1.25rem 1.25rem 1.25rem 0;\n  font-family: var(--noma-font-sans); font-size: 1.05rem; line-height: 1.5; color: #e8e6e1;\n}\n.noma-presenter-notes[hidden] { display: none; }\n.noma-presenter-no-notes { color: #8b8a85; }\n.noma-presenter-bar {\n  grid-column: 1 / -1; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;\n  font-family: var(--noma-font-sans); font-size: 0.9rem; color: #d6d3cc; background: #16171b;\n}\n.noma-presenter-bar button, .noma-presenter-exit {\n  font: inherit; color: inherit; background: transparent; border: 1px solid #3a3b40; border-radius: 6px;\n  padding: 0.25rem 0.7rem; cursor: pointer; text-decoration: none;\n}\n.noma-presenter-bar button:hover:not(:disabled), .noma-presenter-exit:hover { background: #2a2b30; }\n.noma-presenter-bar button:disabled { opacity: 0.35; cursor: default; }\n.noma-presenter-bar button[aria-pressed="true"] { background: var(--noma-accent); border-color: var(--noma-accent); color: #fff; }\n.noma-presenter-bar button:focus-visible, .noma-presenter-exit:focus-visible { outline: 2px solid var(--noma-accent); outline-offset: 2px; }\n.noma-presenter-counter { min-width: 4.5em; text-align: center; font-variant-numeric: tabular-nums; }\n.noma-presenter-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8b8a85; padding: 0 0.5rem; }\n.noma-presenter-progress { grid-column: 1 / -1; height: 3px; background: #26272b; }\n.noma-presenter-progress span { display: block; height: 100%; width: 0; background: var(--noma-accent); transition: width 0.2s ease; }\n.noma-presenter[data-overview] .noma-presenter-stage { align-items: flex-start; overflow: auto; }\n.noma-presenter[data-overview] .noma-deck-slides {\n  display: grid; width: 100%; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));\n}\n.noma-presenter[data-overview] .noma-slide { display: block; cursor: pointer; border-radius: var(--noma-radius); }\n.noma-presenter .noma-deck-slides .noma-slide[data-hidden="true"] { display: none; }\n.noma-presenter[data-overview] .noma-slide-current { outline: 3px solid var(--noma-accent); outline-offset: 2px; }\n.noma-presenter[data-overview] .noma-slide-body { overflow: hidden; }\n.noma-presenter:fullscreen .noma-presenter-bar { opacity: 0; transition: opacity 0.2s; }\n.noma-presenter:fullscreen .noma-presenter-bar:hover, .noma-presenter:fullscreen .noma-presenter-bar:focus-within { opacity: 1; }\n@media (max-width: 640px) {\n  .noma-presenter-title, [data-noma-present="notes"], [data-noma-present="fullscreen"] { display: none; }\n  .noma-presenter[data-ready][data-notes] { grid-template-columns: minmax(0, 1fr); }\n}\n@media print {\n  body.noma-presenter-body { background: #fff; }\n  .noma-presenter[data-ready] { position: static; display: block; }\n  .noma-presenter .noma-presenter-bar, .noma-presenter .noma-presenter-progress, .noma-presenter .noma-presenter-notes { display: none; }\n  .noma-presenter[data-ready] .noma-deck-slides { width: 100%; }\n  .noma-presenter[data-ready] .noma-slide { display: block; break-after: page; }\n  .noma-presenter .noma-deck-slides .noma-slide[data-hidden="true"] { display: none; }\n}\n\n/* ---------------------------------------------------------------------------\n   Component kits \u2014 `::component` definitions and expanded uses\n   --------------------------------------------------------------------------- */\n.noma-component-single { display: contents; }\n.noma-component-definition {\n  margin: 1.5rem 0; padding: 0.9rem 1rem 0.4rem;\n  border: 1px dashed var(--noma-rule); border-radius: var(--noma-radius);\n}\n.noma-component-head { display: flex; align-items: center; gap: 0.6rem; font-family: var(--noma-font-sans); font-size: 0.9rem; }\n.noma-component-head code { font-family: var(--noma-font-mono); font-size: 0.85rem; }\n.noma-component-description { margin: 0.35rem 0 0; color: var(--noma-muted); font-family: var(--noma-font-sans); font-size: 0.9rem; }\n.noma-component-preview { margin-top: 0.6rem; }\n.noma-component-invalid { color: var(--noma-risk); border-color: var(--noma-risk); }\n';
+  var default_default = ':root {\n  --noma-bg: #fbfaf7;\n  --noma-fg: #1d1c1a;\n  --noma-muted: #6b6a66;\n  --noma-rule: #e7e4dc;\n  --noma-accent: #b9522a;\n  --noma-accent-soft: #f4dccd;\n  --noma-claim: #2c5d8f;\n  --noma-claim-soft: #dfeaf5;\n  --noma-evidence: #2f7d4a;\n  --noma-evidence-soft: #dff0e3;\n  --noma-risk: #a8362e;\n  --noma-risk-soft: #f7d9d4;\n  --noma-code-bg: #f1ede4;\n  --noma-card-bg: #ffffff;\n  --noma-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(20, 20, 20, 0.18);\n  --noma-radius: 8px;\n  --noma-cols: 2;\n  --noma-grid-min: 14rem;\n  --noma-grid-gap: 1rem;\n  --noma-font-serif: "Iowan Old Style", "Charter", Georgia, serif;\n  --noma-font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;\n  --noma-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;\n}\n\n* { box-sizing: border-box; }\n\nhtml, body {\n  margin: 0;\n  padding: 0;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n  font-family: var(--noma-font-serif);\n  font-size: 16px;\n  line-height: 1.58;\n  -webkit-font-smoothing: antialiased;\n  text-rendering: optimizeLegibility;\n}\n\nmain.noma-doc {\n  max-width: 1040px;\n  margin: 3rem auto;\n  padding: 0 1.25rem 5rem;\n}\n\nmain.noma-doc > section.noma-hero ~ section,\nmain.noma-doc > .noma-grid,\nmain.noma-doc > .noma-columns {\n  max-width: 100%;\n}\n\nh1, h2, h3, h4, h5, h6 {\n  font-family: var(--noma-font-sans);\n  font-weight: 700;\n  line-height: 1.2;\n  letter-spacing: 0;\n  margin: 2em 0 0.55em;\n}\nh1 { font-size: 2.1rem; margin-top: 0; }\nh2 { font-size: 1.45rem; border-bottom: 1px solid var(--noma-rule); padding-bottom: 0.25em; }\nh3 { font-size: 1.15rem; }\nh4 { font-size: 0.98rem; color: var(--noma-muted); text-transform: uppercase; letter-spacing: 0.04em; }\n\np { margin: 0 0 1.05em; }\na { color: var(--noma-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }\na:hover { text-decoration-thickness: 2px; }\n\ncode {\n  font-family: var(--noma-font-mono);\n  font-size: 0.9em;\n  background: var(--noma-code-bg);\n  padding: 0.1em 0.35em;\n  border-radius: 4px;\n}\npre {\n  background: var(--noma-code-bg);\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  overflow-x: auto;\n  font-size: 0.9rem;\n  line-height: 1.5;\n}\npre code { background: none; padding: 0; }\n\nblockquote {\n  border-left: 3px solid var(--noma-accent);\n  margin: 1.5em 0;\n  padding: 0.2em 1.2em;\n  color: var(--noma-muted);\n  font-style: italic;\n}\n\nhr { border: 0; border-top: 1px solid var(--noma-rule); margin: 3em 0; }\n\nul, ol { padding-left: 1.4em; }\nli { margin: 0.25em 0; }\n\nfigure {\n  margin: 1.8em 0;\n}\nfigure img {\n  display: block;\n  max-width: 100%;\n  height: auto;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\nfigcaption {\n  margin-top: 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n\n/* Callouts */\naside.noma-callout {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-accent-soft);\n  border-left: 3px solid var(--noma-accent);\n}\naside.noma-callout-warning { background: #fbe6df; border-color: var(--noma-risk); }\naside.noma-callout-tip     { background: #e6f3eb; border-color: var(--noma-evidence); }\naside.noma-callout-note    { background: #ecedf2; border-color: #5a6071; }\n\n/* Research blocks */\naside.noma-research {\n  margin: 1.6em 0;\n  padding: 1em 1.2em;\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-research .noma-research-head {\n  display: flex;\n  align-items: center;\n  gap: 0.8em;\n  margin-bottom: 0.5em;\n}\naside.noma-research .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-muted);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-code-bg);\n}\naside.noma-claim          { border-left: 3px solid var(--noma-claim); }\naside.noma-claim .noma-tag { color: var(--noma-claim); background: var(--noma-claim-soft); }\naside.noma-evidence       { border-left: 3px solid var(--noma-evidence); }\naside.noma-evidence .noma-tag { color: var(--noma-evidence); background: var(--noma-evidence-soft); }\naside.noma-counterevidence { border-left: 3px solid var(--noma-risk); }\naside.noma-counterevidence .noma-tag { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-risk           { border-left: 3px solid var(--noma-risk); }\naside.noma-risk .noma-tag  { color: var(--noma-risk); background: var(--noma-risk-soft); }\naside.noma-decision, aside.noma-adr { border-left: 3px solid var(--noma-accent); }\naside.noma-decision .noma-tag, aside.noma-adr .noma-tag { color: var(--noma-accent); background: var(--noma-accent-soft); }\naside.noma-open_question { border-left: 3px solid #8b6c1a; }\naside.noma-open_question .noma-tag { color: #8b6c1a; background: #f5ebcf; }\naside.noma-assumption { border-left: 3px solid #5a6071; }\naside.noma-assumption .noma-tag { color: #5a6071; background: #ecedf2; }\n\n/* Variants \u2014 themable per-block emphasis without inline styling */\n[data-variant="important"] { border-width: 5px !important; box-shadow: 0 0 0 1px var(--noma-accent) inset, var(--noma-shadow); }\n[data-variant="subtle"] { opacity: 0.78; box-shadow: none; }\n[data-variant="success"] { border-left: 3px solid var(--noma-evidence); background: var(--noma-evidence-soft); }\n[data-variant="danger"]  { border-left: 3px solid var(--noma-risk); background: var(--noma-risk-soft); }\n[data-variant="info"]    { border-left: 3px solid var(--noma-claim); background: var(--noma-claim-soft); }\n\n/* Export buttons (artifact-side action surface) */\n.noma-export-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  border: 0;\n  padding: 0.55em 1.1em;\n  margin: 0.3em 0.4em 0.3em 0;\n  border-radius: 999px;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.85rem;\n  cursor: pointer;\n  transition: background 120ms ease;\n}\n.noma-export-button:hover { background: var(--noma-accent); color: white; }\n.noma-export-button[data-format="prompt"] { background: var(--noma-claim); }\n.noma-export-button[data-format="markdown"] { background: var(--noma-evidence); }\n.noma-export-button[data-format="json"] { background: var(--noma-muted); }\n\n/* Controls (interactive artifact blocks) */\n.noma-control {\n  margin: 1em 0;\n  padding: 0.8em 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-control-row {\n  display: grid;\n  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 2fr);\n  gap: 0.75rem;\n  align-items: center;\n}\n.noma-control-label { font-weight: 650; }\n.noma-control input,\n.noma-control select {\n  width: 100%;\n  accent-color: var(--noma-accent);\n  font: inherit;\n}\n.noma-control input[type="number"],\n.noma-control input[type="text"],\n.noma-control select {\n  border: 1px solid var(--noma-rule);\n  border-radius: 6px;\n  padding: 0.35em 0.5em;\n  background: var(--noma-bg);\n  color: var(--noma-fg);\n}\n.noma-control input[type="checkbox"] {\n  width: auto;\n  justify-self: start;\n}\n.noma-control-value {\n  display: block;\n  margin-top: 0.35rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-mono);\n  font-size: 0.82rem;\n}\n.noma-interactive-disabled {\n  display: inline-block;\n  margin-bottom: 0.5rem;\n  padding: 0.18em 0.55em;\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n  font-weight: 650;\n}\n\n.noma-computed {\n  margin: 1.2em 0;\n  padding: 1em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 4px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-computed-head {\n  display: flex;\n  gap: 0.8rem;\n  align-items: baseline;\n  flex-wrap: wrap;\n  margin-bottom: 0.45rem;\n}\n.noma-computed-head h3 {\n  margin: 0;\n  font-size: 1rem;\n}\n.noma-computed-value {\n  font-family: var(--noma-font-sans);\n  font-size: 1.75rem;\n  line-height: 1.15;\n  font-weight: 750;\n  color: var(--noma-claim);\n}\n.noma-computed-body {\n  margin-top: 0.75rem;\n}\n.noma-computed-body p {\n  margin-bottom: 0;\n}\n.noma-computed-plot {\n  padding: 1em;\n}\n.noma-computed-canvas {\n  margin-bottom: 0.5rem;\n}\n.noma-computed-table-view {\n  margin: 0.65rem 0 0;\n  font-size: 0.9rem;\n}\n.noma-computed-table-view th:last-child,\n.noma-computed-table-view td:last-child {\n  text-align: right;\n}\n@media (max-width: 720px) {\n  .noma-control-row {\n    grid-template-columns: 1fr;\n  }\n}\n\n.noma-confidence {\n  flex: 1;\n  height: 6px;\n  border-radius: 999px;\n  background: var(--noma-rule);\n  overflow: hidden;\n  max-width: 140px;\n}\n.noma-confidence-bar {\n  height: 100%;\n  background: linear-gradient(90deg, var(--noma-accent), var(--noma-claim));\n}\n\n.noma-meta {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\n.noma-meta-key {\n  font-weight: 600;\n  color: var(--noma-fg);\n}\n\n/* Grid */\n.noma-grid,\n.noma-columns {\n  display: grid;\n  grid-template-columns: repeat(var(--noma-cols), minmax(0, 1fr));\n  gap: var(--noma-grid-gap);\n  margin: 1.5em 0;\n}\n.noma-grid-auto,\n.noma-columns-auto {\n  grid-template-columns: repeat(auto-fit, minmax(min(var(--noma-grid-min), 100%), 1fr));\n}\n.noma-grid-wide,\n.noma-columns-wide,\n.noma-grid-full,\n.noma-columns-full {\n  position: relative;\n  left: 50%;\n  transform: translateX(-50%);\n}\n.noma-grid-wide,\n.noma-columns-wide {\n  width: min(1180px, calc(100vw - 2rem));\n}\n.noma-grid-full,\n.noma-columns-full {\n  width: min(1440px, calc(100vw - 2rem));\n}\n.noma-grid-compact,\n.noma-columns-compact {\n  --noma-grid-gap: 0.75rem;\n}\n@media (max-width: 720px) {\n  .noma-grid,\n  .noma-columns {\n    grid-template-columns: 1fr;\n    width: auto;\n    left: auto;\n    transform: none;\n  }\n}\n\n/* Card */\narticle.noma-card {\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 1em 1.1em;\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-card .noma-card-head {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  margin-bottom: 0.4em;\n}\narticle.noma-card h3 {\n  margin: 0;\n  font-size: 1rem;\n  font-family: var(--noma-font-sans);\n}\narticle.noma-card .noma-icon {\n  color: var(--noma-accent);\n  font-size: 0.9em;\n}\narticle.noma-card p:last-child { margin-bottom: 0; }\n\n/* Hero */\nsection.noma-hero {\n  background: linear-gradient(180deg, var(--noma-accent-soft), transparent);\n  padding: 3rem 2rem 2.4rem;\n  border-radius: var(--noma-radius);\n  margin: 0 0 3rem;\n  text-align: center;\n}\nsection.noma-hero h1 { font-size: 2.8rem; margin-top: 0; }\n\na.noma-button {\n  display: inline-block;\n  background: var(--noma-fg);\n  color: var(--noma-bg);\n  padding: 0.7em 1.4em;\n  border-radius: 999px;\n  text-decoration: none;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.95rem;\n  margin-top: 0.5em;\n}\na.noma-button:hover { background: var(--noma-accent); color: white; }\n\n/* Plot */\nfigure.noma-plot {\n  margin: 1.8em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n}\nfigure.noma-plot .noma-plot-canvas {\n  color: var(--noma-claim);\n  background: linear-gradient(180deg, transparent, var(--noma-claim-soft));\n  border-radius: 6px;\n  padding: 0.6em;\n}\nfigure.noma-plot svg { width: 100%; height: auto; display: block; }\nfigure.noma-plot figcaption {\n  margin-top: 0.6em;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n}\nfigure.noma-plot[data-compact="true"] {\n  padding: 0.65em 0.8em;\n}\nfigure.noma-plot[data-compact="true"] figcaption {\n  margin-top: 0.35em;\n  font-size: 0.78rem;\n}\n\n/* Dataset */\ndetails.noma-dataset {\n  margin: 1.4em 0;\n  padding: 0.6em 1em;\n  background: var(--noma-code-bg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\ndetails.noma-dataset pre {\n  background: transparent;\n  padding: 0.6em 0 0;\n}\n\n/* Agent task */\n.noma-agent-task {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-claim-soft);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n}\n.noma-agent-task label {\n  display: flex;\n  align-items: center;\n  gap: 0.6em;\n  font-family: var(--noma-font-sans);\n  font-weight: 600;\n  font-size: 0.9rem;\n  margin-bottom: 0.4em;\n}\n\n/* Collaboration metadata */\naside.noma-comment,\naside.noma-review-meta {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-comment {\n  background: #f7f6f1;\n}\n.noma-comment-head,\n.noma-review-meta-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.55em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-comment .noma-tag,\n.noma-review-meta .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-review-meta.noma-collab-review {\n  border-left-color: var(--noma-accent);\n}\n.noma-review-meta.noma-collab-review .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-review-meta.noma-collab-provenance {\n  border-left-color: var(--noma-claim);\n}\n.noma-review-meta.noma-collab-provenance .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-review-meta.noma-collab-confidence {\n  border-left-color: var(--noma-evidence);\n}\n.noma-review-meta.noma-collab-confidence .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-comment-body p:last-child,\n.noma-review-meta-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Memory profile */\naside.noma-memory,\naside.noma-memory-index {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\naside.noma-memory-index {\n  background: #f4f7f8;\n}\n.noma-memory-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.4em;\n  font-family: var(--noma-font-sans);\n}\n.noma-memory .noma-tag,\n.noma-memory-index .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\n.noma-memory h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-memory.noma-memory-user {\n  border-left-color: var(--noma-evidence);\n}\n.noma-memory.noma-memory-user .noma-tag {\n  color: var(--noma-evidence);\n  background: var(--noma-evidence-soft);\n}\n.noma-memory.noma-memory-feedback {\n  border-left-color: var(--noma-accent);\n}\n.noma-memory.noma-memory-feedback .noma-tag {\n  color: var(--noma-accent);\n  background: var(--noma-accent-soft);\n}\n.noma-memory.noma-memory-project {\n  border-left-color: var(--noma-claim);\n}\n.noma-memory.noma-memory-project .noma-tag {\n  color: var(--noma-claim);\n  background: var(--noma-claim-soft);\n}\n.noma-memory.noma-memory-reference {\n  border-left-color: #5a6071;\n}\n.noma-memory.noma-memory-reference .noma-tag {\n  color: #5a6071;\n  background: #ecedf2;\n}\n.noma-memory-body p:last-child,\n.noma-memory-index .noma-memory-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Metrics */\naside.noma-metric {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-evidence);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-metric-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.25em;\n}\n.noma-metric .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-evidence);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-evidence-soft);\n}\n.noma-metric h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-metric-value {\n  margin: 0.2em 0 0.25em;\n  color: var(--noma-evidence);\n  font-family: var(--noma-font-sans);\n  font-size: 1.7rem;\n  font-weight: 800;\n  line-height: 1.15;\n}\n.noma-metric-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Technical documentation */\narticle.noma-technical {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-claim);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\narticle.noma-technical .noma-technical-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n}\narticle.noma-technical .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0.08em;\n  text-transform: uppercase;\n  color: var(--noma-claim);\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n}\narticle.noma-technical h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-technical-meta {\n  margin: 0.35em 0 0.65em;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.85rem;\n}\n.noma-technical-body p:last-child {\n  margin-bottom: 0;\n}\npre.noma-technical-code {\n  margin: 0.7em 0 0;\n}\n\n/* Custom directives */\naside.noma-block {\n  margin: 1.5em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid #5a6071;\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n}\n.noma-block-head {\n  display: flex;\n  align-items: baseline;\n  flex-wrap: wrap;\n  gap: 0.65em;\n  margin-bottom: 0.35em;\n  font-family: var(--noma-font-sans);\n}\naside.noma-block .noma-tag {\n  display: inline-block;\n  font-family: var(--noma-font-sans);\n  font-size: 0.7rem;\n  font-weight: 700;\n  letter-spacing: 0;\n  text-transform: uppercase;\n  color: #5a6071;\n  padding: 0.2em 0.6em;\n  border-radius: 999px;\n  background: #ecedf2;\n}\naside.noma-block h3 {\n  margin: 0;\n  border: 0;\n  padding: 0;\n  font-size: 1.05rem;\n  line-height: 1.35;\n}\n.noma-block-body p:last-child {\n  margin-bottom: 0;\n}\n\n/* Change requests */\naside.noma-change-request {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: #fff4f0;\n  border: 1px solid #f0c7bd;\n  border-left: 3px solid #c85c4a;\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-change-request-head {\n  font-size: 0.85rem;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.45em;\n}\n.noma-change-request-delta {\n  display: flex;\n  align-items: baseline;\n  gap: 0.55em;\n  margin: 0.35em 0 0.55em;\n  line-height: 1.5;\n}\n.noma-change-request del {\n  color: #9a382b;\n  text-decoration-thickness: 0.12em;\n}\n.noma-change-request ins {\n  color: #2f6e42;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n/* State change */\naside.noma-state-change {\n  margin: 1.4em 0;\n  padding: 1em 1.2em;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-left: 3px solid var(--noma-fg);\n  border-radius: var(--noma-radius);\n  font-family: var(--noma-font-sans);\n}\n.noma-state-change-head {\n  font-size: 0.85rem;\n  letter-spacing: 0.02em;\n  color: var(--noma-muted, var(--noma-fg));\n  margin-bottom: 0.4em;\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  flex-wrap: wrap;\n}\n.noma-state-change-delta {\n  font-size: 1rem;\n  display: flex;\n  align-items: baseline;\n  gap: 0.6em;\n  margin: 0.3em 0 0.5em;\n  font-variant-numeric: tabular-nums;\n}\n.noma-state-from {\n  text-decoration: line-through;\n  opacity: 0.65;\n}\n.noma-state-to {\n  font-weight: 700;\n}\n.noma-state-arrow {\n  opacity: 0.55;\n  font-size: 0.95em;\n}\n\n/* Tables */\ntable.noma-table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 1.6em 0;\n  font-family: var(--noma-font-sans);\n  font-size: 0.88rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  overflow: hidden;\n  box-shadow: var(--noma-shadow);\n}\ntable.noma-table thead {\n  background: var(--noma-code-bg);\n}\ntable.noma-table th {\n  text-align: left;\n  font-weight: 700;\n  letter-spacing: 0.02em;\n  padding: 0.55em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  color: var(--noma-fg);\n}\ntable.noma-table td {\n  padding: 0.5em 0.75em;\n  border-bottom: 1px solid var(--noma-rule);\n  vertical-align: top;\n}\ntable.noma-table tbody tr:last-child td { border-bottom: 0; }\ntable.noma-table tbody tr:hover { background: rgba(185, 82, 42, 0.04); }\n\n.noma-page-header,\n.noma-page-footer {\n  margin: 1.2rem 0;\n  padding: 0.55rem 0;\n  border-color: var(--noma-rule);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-page-header {\n  border-bottom: 1px solid var(--noma-rule);\n}\n.noma-page-footer {\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-page-header p,\n.noma-page-footer p {\n  margin: 0;\n}\n.noma-page-number {\n  display: block;\n  text-align: right;\n}\n\n.noma-toc {\n  margin: 1.6rem 0 2rem;\n  padding: 1rem 1.1rem;\n  border: 1px solid var(--noma-rule);\n  background: var(--noma-card-bg);\n  font-family: var(--noma-font-sans);\n  box-shadow: var(--noma-shadow);\n}\n.noma-toc h2 {\n  margin: 0 0 0.6rem;\n  padding: 0;\n  border: 0;\n  font-size: 1.1rem;\n}\n.noma-toc ol {\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n.noma-toc li {\n  margin: 0.15rem 0;\n}\n.noma-toc li[data-level="2"] { margin-left: 1rem; }\n.noma-toc li[data-level="3"] { margin-left: 2rem; }\n.noma-toc li[data-level="4"] { margin-left: 3rem; }\n.noma-toc li[data-level="5"] { margin-left: 4rem; }\n.noma-toc li[data-level="6"] { margin-left: 5rem; }\n\n.noma-footnote,\n.noma-endnote {\n  margin: 1.2rem 0;\n  padding: 0.7rem 0.9rem;\n  border-left: 3px solid var(--noma-rule);\n  background: var(--noma-code-bg);\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9rem;\n}\n.noma-footnote p,\n.noma-endnote p {\n  margin: 0.25rem 0;\n}\n.noma-footnote sup,\n.noma-endnote sup {\n  margin-right: 0.4rem;\n  color: var(--noma-accent);\n  font-weight: 700;\n}\n\n.noma-bibliography {\n  margin: 2rem 0;\n  padding-top: 0.8rem;\n  border-top: 1px solid var(--noma-rule);\n}\n.noma-bibliography h2 {\n  margin-top: 0;\n}\n.noma-bibliography ol {\n  padding-left: 1.4rem;\n}\n.noma-citation-meta {\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 0.9em;\n}\n\n.noma-pagebreak {\n  margin: 2rem 0;\n  border: 0;\n  border-top: 1px dashed var(--noma-rule);\n}\n\n/* Print */\n@media print {\n  @page { margin: 20mm 18mm; }\n  html, body { background: white; font-size: 11pt; }\n  main.noma-doc { margin: 0 auto; padding: 0; max-width: 100%; }\n  section.noma-hero { background: none; border: 1px solid var(--noma-rule); }\n  a { color: var(--noma-fg); }\n  pre, article.noma-card, article.noma-technical, aside.noma-block, .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap, aside.noma-research, aside.noma-comment, aside.noma-review-meta, aside.noma-memory, aside.noma-memory-index, aside.noma-metric, aside.noma-change-request, aside.noma-footnote, aside.noma-endnote, nav.noma-toc, header.noma-page-header, footer.noma-page-footer, details.noma-dataset, table.noma-table {\n    box-shadow: none;\n    page-break-inside: avoid;\n    break-inside: avoid;\n  }\n  .noma-computed, figure.noma-plot, figure.noma-plotly-wrap, figure.noma-diagram-wrap {\n    background: white;\n  }\n  table.noma-table {\n    font-size: 9.5pt;\n    box-shadow: none;\n  }\n  table.noma-table th,\n  table.noma-table td {\n    padding: 0.35em 0.55em;\n  }\n  h1, h2, h3 {\n    page-break-after: avoid;\n    break-after: avoid;\n  }\n  .noma-pagebreak {\n    margin: 0;\n    border: 0;\n    height: 0;\n    page-break-after: always;\n    break-after: page;\n  }\n}\n\n/* v0.4 \u2014 alias anchors (offset for sticky-headed pages) */\na.noma-alias {\n  display: block;\n  position: relative;\n  top: -1.2em;\n  visibility: hidden;\n  height: 0;\n}\n\n/* v0.4 \u2014 multi-page site nav (rendered above main when --to site) */\nnav.noma-site-nav {\n  max-width: 1040px;\n  margin: 1.5rem auto 0;\n  padding: 0 2rem;\n  display: flex;\n  align-items: baseline;\n  gap: 1.5rem;\n  flex-wrap: wrap;\n  font-size: 0.85rem;\n  color: var(--noma-muted);\n}\nnav.noma-site-nav a.noma-site-home {\n  font-weight: 600;\n  color: var(--noma-fg);\n  text-decoration: none;\n  border-right: 1px solid var(--noma-rule);\n  padding-right: 1.25rem;\n}\nnav.noma-site-nav ol {\n  list-style: none;\n  padding: 0;\n  margin: 0;\n  display: flex;\n  gap: 1.25rem;\n  flex-wrap: wrap;\n  counter-reset: chap;\n}\nnav.noma-site-nav li {\n  counter-increment: chap;\n}\nnav.noma-site-nav li::before {\n  content: counter(chap, decimal-leading-zero) " \xB7 ";\n  color: var(--noma-rule);\n  font-variant-numeric: tabular-nums;\n}\nnav.noma-site-nav a {\n  color: var(--noma-muted);\n  text-decoration: none;\n}\nnav.noma-site-nav a:hover { color: var(--noma-accent); }\nnav.noma-site-nav .noma-nav-current span {\n  color: var(--noma-fg);\n  font-weight: 500;\n}\n\na.noma-ref.noma-xchapter::after {\n  content: " \u2197";\n  font-size: 0.85em;\n  color: var(--noma-muted);\n}\n\nmain.noma-site-index {\n  padding-top: 3rem;\n}\nheader.noma-site-header h1 {\n  font-size: 2.4rem;\n  margin-bottom: 0.25rem;\n}\nheader.noma-site-header .noma-site-author {\n  color: var(--noma-muted);\n  margin: 0 0 2rem;\n}\nol.noma-site-toc {\n  list-style: none;\n  padding: 0;\n  margin: 2rem 0;\n  display: grid;\n  gap: 0.6rem;\n  counter-reset: toc;\n}\nol.noma-site-toc li {\n  counter-increment: toc;\n}\na.noma-site-chapter {\n  display: block;\n  padding: 1.1rem 1.4rem;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  text-decoration: none;\n  color: inherit;\n  transition: border-color 120ms ease, transform 120ms ease;\n}\na.noma-site-chapter:hover {\n  border-color: var(--noma-accent);\n  transform: translateY(-1px);\n}\na.noma-site-chapter::before {\n  content: counter(toc, decimal-leading-zero);\n  display: block;\n  font-size: 0.75rem;\n  font-variant-numeric: tabular-nums;\n  color: var(--noma-muted);\n  margin-bottom: 0.25rem;\n}\n.noma-site-chapter-title {\n  display: block;\n  font-weight: 600;\n  font-size: 1.1rem;\n}\n.noma-site-chapter-summary {\n  display: block;\n  color: var(--noma-muted);\n  margin-top: 0.4rem;\n  font-size: 0.93rem;\n}\n.noma-site-description {\n  max-width: 48rem;\n  color: var(--noma-muted);\n  font-family: var(--noma-font-sans);\n  font-size: 1.02rem;\n}\n.noma-site-chapter-tags,\n.noma-space-tags {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  margin-top: 0.6rem;\n}\n.noma-site-chapter-tags span,\n.noma-space-tags span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  padding: 0.12rem 0.45rem;\n  color: var(--noma-muted);\n  background: var(--noma-bg);\n  font-family: var(--noma-font-sans);\n  font-size: 0.72rem;\n}\n\n/* Space renderer \u2014 source-controlled documentation/wiki surface */\nbody.noma-space-body {\n  background: linear-gradient(180deg, #f7f5ef 0, var(--noma-bg) 16rem);\n}\n.noma-space-shell {\n  display: grid;\n  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);\n  min-height: 100vh;\n}\n.noma-space-sidebar {\n  position: sticky;\n  top: 0;\n  height: 100vh;\n  overflow: auto;\n  border-right: 1px solid var(--noma-rule);\n  background: rgba(255, 255, 255, 0.68);\n  padding: 1rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-home {\n  display: block;\n  margin-bottom: 0.45rem;\n  color: var(--noma-fg);\n  font-weight: 800;\n  text-decoration: none;\n}\n.noma-space-description,\n.noma-space-search-disabled {\n  margin: 0 0 1rem;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n  line-height: 1.38;\n}\n.noma-space-search {\n  display: grid;\n  gap: 0.35rem;\n  margin: 0.9rem 0 0.75rem;\n  color: var(--noma-muted);\n  font-size: 0.74rem;\n  font-weight: 750;\n  text-transform: uppercase;\n  letter-spacing: 0.04em;\n}\n.noma-space-search input {\n  width: 100%;\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  padding: 0.5rem 0.6rem;\n  background: var(--noma-card-bg);\n  color: var(--noma-fg);\n  font: 500 0.88rem var(--noma-font-sans);\n  text-transform: none;\n  letter-spacing: 0;\n}\n.noma-space-search-results {\n  display: grid;\n  gap: 0.4rem;\n  margin: 0 0 0.85rem;\n  padding: 0.45rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: 8px;\n  background: var(--noma-card-bg);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-search-results a {\n  display: grid;\n  gap: 0.1rem;\n  padding: 0.45rem 0.5rem;\n  border-radius: 6px;\n  color: var(--noma-fg);\n  text-decoration: none;\n}\n.noma-space-search-results a:hover {\n  background: var(--noma-code-bg);\n}\n.noma-space-search-results small {\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n}\n.noma-space-search-results em {\n  display: flex;\n  gap: 0.25rem;\n  flex-wrap: wrap;\n  font-style: normal;\n}\n.noma-space-search-results em span {\n  color: var(--noma-accent);\n  font-size: 0.68rem;\n}\n.noma-space-search-results p {\n  margin: 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-sidebar nav.noma-site-nav {\n  max-width: none;\n  margin: 0;\n  padding: 0;\n  display: block;\n}\n.noma-space-sidebar nav.noma-site-nav ol {\n  display: grid;\n  gap: 0.18rem;\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  counter-reset: none;\n}\n.noma-space-sidebar nav.noma-site-nav li {\n  padding-left: calc(var(--depth, 0) * 0.85rem);\n}\n.noma-space-sidebar nav.noma-site-nav li::before {\n  content: "";\n}\n.noma-space-sidebar nav.noma-site-nav a,\n.noma-space-sidebar nav.noma-site-nav span {\n  display: block;\n  border-radius: 6px;\n  padding: 0.38rem 0.5rem;\n  color: var(--noma-muted);\n  text-decoration: none;\n  font-size: 0.88rem;\n  line-height: 1.25;\n}\n.noma-space-sidebar nav.noma-site-nav a:hover {\n  background: var(--noma-code-bg);\n  color: var(--noma-fg);\n}\n.noma-space-sidebar nav.noma-site-nav .noma-nav-current span {\n  background: var(--noma-accent-soft);\n  color: var(--noma-accent);\n  font-weight: 760;\n}\n.noma-space-sidebar nav.noma-site-nav small {\n  display: block;\n  padding: 0 0.5rem 0.32rem;\n  color: var(--noma-muted);\n  font-size: 0.68rem;\n}\n.noma-space-main {\n  min-width: 0;\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);\n  grid-template-rows: auto 1fr;\n  gap: 1rem;\n  padding: 1rem;\n}\n.noma-space-topbar {\n  grid-column: 1 / -1;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 1rem;\n  min-width: 0;\n  padding: 0.5rem 0.2rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-breadcrumbs {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 0.35rem;\n  min-width: 0;\n  color: var(--noma-muted);\n  font-size: 0.83rem;\n}\n.noma-space-breadcrumbs a,\n.noma-space-breadcrumbs span {\n  color: inherit;\n  text-decoration: none;\n}\n.noma-space-breadcrumbs span:last-child {\n  color: var(--noma-fg);\n  font-weight: 700;\n}\n.noma-space-breadcrumbs a::after,\n.noma-space-breadcrumbs span::after {\n  content: "/";\n  margin-left: 0.35rem;\n  color: var(--noma-rule);\n}\n.noma-space-breadcrumbs span:last-child::after {\n  content: "";\n  margin: 0;\n}\n.noma-space-actions {\n  display: flex;\n  align-items: center;\n  gap: 0.4rem;\n}\n.noma-space-actions button {\n  border: 1px solid var(--noma-rule);\n  border-radius: 7px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.38rem 0.6rem;\n  font: 700 0.78rem var(--noma-font-sans);\n  cursor: pointer;\n}\n.noma-space-actions button:hover {\n  border-color: var(--noma-accent);\n  color: var(--noma-accent);\n}\nbody.noma-space-body main.noma-doc {\n  min-width: 0;\n  max-width: none;\n  margin: 0;\n  padding: 2rem min(4vw, 2.5rem) 5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: rgba(255, 255, 255, 0.78);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector {\n  min-width: 0;\n  align-self: start;\n  position: sticky;\n  top: 1rem;\n  display: grid;\n  gap: 0.75rem;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-inspector section {\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  padding: 0.85rem;\n  background: rgba(255, 255, 255, 0.72);\n  box-shadow: var(--noma-shadow);\n}\n.noma-space-inspector h2 {\n  margin: 0 0 0.55rem;\n  padding: 0;\n  border: 0;\n  color: var(--noma-muted);\n  font-size: 0.76rem;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n}\n.noma-space-inspector p {\n  display: flex;\n  justify-content: space-between;\n  gap: 0.6rem;\n  margin: 0.3rem 0;\n  color: var(--noma-muted);\n  font-size: 0.82rem;\n}\n.noma-space-inspector strong {\n  color: var(--noma-fg);\n  overflow-wrap: anywhere;\n}\n.noma-space-inspector ul {\n  margin: 0;\n  padding-left: 1rem;\n}\n.noma-space-inspector li {\n  margin: 0.25rem 0;\n  font-size: 0.84rem;\n}\n.noma-space-empty {\n  display: block !important;\n  color: var(--noma-muted);\n}\n.noma-space-stats {\n  display: flex;\n  gap: 0.5rem;\n  flex-wrap: wrap;\n  margin: 1rem 0 0;\n  font-family: var(--noma-font-sans);\n}\n.noma-space-stats span {\n  border: 1px solid var(--noma-rule);\n  border-radius: 999px;\n  background: var(--noma-card-bg);\n  color: var(--noma-muted);\n  padding: 0.2rem 0.6rem;\n  font-size: 0.8rem;\n  font-weight: 700;\n}\nbody.noma-space-body ol.noma-site-toc {\n  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));\n}\n@media (max-width: 1100px) {\n  .noma-space-main {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .noma-space-inspector {\n    position: static;\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n}\n@media (max-width: 780px) {\n  .noma-space-shell {\n    grid-template-columns: 1fr;\n  }\n  .noma-space-sidebar {\n    position: static;\n    height: auto;\n    border-right: 0;\n    border-bottom: 1px solid var(--noma-rule);\n  }\n  .noma-space-main {\n    padding: 0.75rem;\n  }\n  .noma-space-topbar {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  body.noma-space-body main.noma-doc {\n    padding: 1.25rem 1rem 3rem;\n  }\n  .noma-space-inspector {\n    grid-template-columns: 1fr;\n  }\n}\n\n/* v0.4 \u2014 math (KaTeX is loaded from CDN; we just style block layout) */\n.noma-math-display {\n  margin: 1.4em auto;\n  text-align: center;\n  overflow-x: auto;\n}\n.noma-math-inline {\n  display: inline;\n}\n\n/* Wiki macros: ::include, ::children, ::issue(s), ::page-properties, unresolved placeholders */\n.noma-include {\n  border-left: 3px solid var(--noma-rule);\n  padding: 0.1rem 0 0.1rem 0.9rem;\n  margin: 1rem 0;\n}\n.noma-include-source {\n  color: var(--noma-muted);\n  font: 0.75rem/1.4 var(--noma-font-sans);\n  margin-bottom: 0.35rem;\n}\n.noma-macro-placeholder {\n  border: 1px dashed var(--noma-rule);\n  border-radius: var(--noma-radius);\n  color: var(--noma-muted);\n  font: 0.85rem/1.45 var(--noma-font-sans);\n  margin: 1rem 0;\n  padding: 0.6rem 0.8rem;\n}\n.noma-macro-forbidden, .noma-macro-cycle, .noma-macro-depth { border-color: var(--noma-risk); }\n.noma-children ul { margin: 0.4rem 0; }\n.noma-children-summary { color: var(--noma-muted); font-size: 0.9em; }\n.noma-issue-card {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 0.5rem;\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  background: var(--noma-card-bg);\n  font: 0.9rem/1.4 var(--noma-font-sans);\n  margin: 0.75rem 0;\n  padding: 0.5rem 0.75rem;\n}\n.noma-issue-key { font-weight: 700; }\n.noma-issue-status {\n  border-radius: 999px;\n  background: var(--noma-claim-soft);\n  color: var(--noma-claim);\n  font-size: 0.72rem;\n  font-weight: 700;\n  letter-spacing: 0.04em;\n  padding: 0.1rem 0.55rem;\n  text-transform: uppercase;\n}\n.noma-issue-status[data-status="done"] { background: var(--noma-evidence-soft); color: var(--noma-evidence); }\n.noma-issue-assignee, .noma-issue-meta { color: var(--noma-muted); }\n.noma-issue-meta span + span::before { content: " \xB7 "; }\n.noma-page-properties th[scope="row"] { width: 30%; }\n\n/* ---------------------------------------------------------------------------\n   Style tokens \u2014 `class="..."` on any block. Closed vocabulary, `n-` prefix.\n   --------------------------------------------------------------------------- */\n:root .n-tone-neutral { --noma-tone: var(--noma-muted); --noma-tone-soft: var(--noma-code-bg); }\n:root .n-tone-accent { --noma-tone: var(--noma-accent); --noma-tone-soft: var(--noma-accent-soft); }\n:root .n-tone-info { --noma-tone: var(--noma-claim); --noma-tone-soft: var(--noma-claim-soft); }\n:root .n-tone-success { --noma-tone: var(--noma-evidence); --noma-tone-soft: var(--noma-evidence-soft); }\n:root .n-tone-warning { --noma-tone: #b7791f; --noma-tone-soft: color-mix(in srgb, #b7791f 16%, transparent); }\n:root .n-tone-danger { --noma-tone: var(--noma-risk); --noma-tone-soft: var(--noma-risk-soft); }\n:root [class*="n-tone-"] { border-color: var(--noma-tone); }\n:root [class*="n-tone-"].n-filled, :root [class*="n-tone-"] .noma-slide-frame { background: var(--noma-tone-soft); }\n:root .n-plain { background: transparent; border: 0; box-shadow: none; }\n:root .n-outline { background: transparent; border: 1px solid var(--noma-tone, var(--noma-rule)); box-shadow: none; }\n:root .n-filled { background: var(--noma-tone-soft, var(--noma-code-bg)); border-color: transparent; }\n:root .n-elevated { box-shadow: var(--noma-shadow); border-radius: var(--noma-radius); }\n:root .n-muted { color: var(--noma-muted); }\n:root .n-inverse { background: var(--noma-fg); color: var(--noma-bg); }\n:root .n-lead { font-size: 1.2em; line-height: 1.5; }\n:root .n-subtle { opacity: 0.78; }\n:root .n-emphasis { font-weight: 600; color: var(--noma-tone, inherit); }\n:root .n-mono { font-family: var(--noma-font-mono); }\n:root .n-text-sm { font-size: 0.875em; }\n:root .n-text-lg { font-size: 1.2em; }\n:root .n-text-xl { font-size: 1.5em; }\n:root .n-text-2xl { font-size: 2em; line-height: 1.2; }\n:root .n-align-start { text-align: start; }\n:root .n-align-center { text-align: center; }\n:root .n-align-end { text-align: end; }\n:root .n-tight { padding: 0.5rem; }\n:root .n-tight > * + * { margin-top: 0.35rem; }\n:root .n-roomy { padding: 1.75rem; }\n:root .n-span-2 { grid-column: span 2; }\n:root .n-span-3 { grid-column: span 3; }\n:root .n-span-full { grid-column: 1 / -1; }\n:root .n-stack { display: flex; flex-direction: column; gap: 0.75rem; }\n:root .n-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }\n:root .n-center-v { display: flex; flex-direction: column; justify-content: center; }\n:root .n-print-only { display: none; }\n:root .noma-deck .n-hide-in-slides, :root .noma-presenter .n-hide-in-slides { display: none; }\n:root .n-slides-only { display: none; }\n:root .noma-deck .n-slides-only, :root .noma-presenter .n-slides-only { display: revert; }\n@media print {\n  :root .n-print-only { display: revert; }\n  :root .n-screen-only { display: none; }\n}\n@media (max-width: 640px) {\n  :root .n-span-2, :root .n-span-3 { grid-column: auto; }\n}\n\n/* ---------------------------------------------------------------------------\n   Decks \u2014 `::deck` / `:::slide` / `::::notes`\n   --------------------------------------------------------------------------- */\n.noma-deck { margin: 2rem 0; --noma-deck-ratio: 16 / 9; }\n.noma-deck-bar { display: flex; align-items: center; gap: 0.75rem; font-family: var(--noma-font-sans); font-size: 0.9rem; color: var(--noma-muted); margin-bottom: 0.75rem; }\n.noma-deck-title { color: var(--noma-fg); }\n.noma-deck-present { margin-left: auto; font: inherit; padding: 0.3rem 0.9rem; border-radius: 999px; border: 1px solid var(--noma-accent); background: transparent; color: var(--noma-accent); cursor: pointer; }\n.noma-deck-present:hover { background: var(--noma-accent); color: var(--noma-bg); }\n.noma-deck-slides { display: grid; gap: 1.25rem; }\n.noma-slide { container-type: inline-size; }\n.noma-slide-frame {\n  aspect-ratio: var(--noma-deck-ratio);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  padding: 5cqw 6cqw;\n  gap: 2cqw;\n  background: var(--noma-card-bg);\n  border: 1px solid var(--noma-rule);\n  border-radius: var(--noma-radius);\n  box-shadow: var(--noma-shadow);\n  font-family: var(--noma-font-sans);\n  font-size: 2.3cqw;\n  line-height: 1.35;\n}\n.noma-slide .noma-slide-frame h1, .noma-slide .noma-slide-frame h2, .noma-slide .noma-slide-frame h3 { margin: 0; border: 0; padding: 0; line-height: 1.15; }\n.noma-slide .noma-slide-title { font-size: 1.9em; }\n.noma-slide .noma-slide-frame section > h1, .noma-slide .noma-slide-frame section > h2 { font-size: 1.9em; }\n.noma-slide-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1.2cqw; }\n.noma-slide-body > * { margin: 0; }\n.noma-slide-body ul, .noma-slide-body ol { padding-left: 1.2em; }\n.noma-slide-body li + li { margin-top: 0.4em; }\n.noma-slide-body .noma-table { font-size: 0.8em; }\n.noma-slide--title .noma-slide-frame,\n.noma-slide--statement .noma-slide-frame, .noma-slide--quote .noma-slide-frame {\n  justify-content: center; align-items: center; text-align: center;\n}\n.noma-slide--title .noma-slide-title { font-size: 2.6em; }\n.noma-slide--title .noma-slide-body { flex: 0 0 auto; color: var(--noma-muted); font-size: 1.2em; }\n.noma-slide--section .noma-slide-frame { justify-content: center; background: var(--noma-accent); color: var(--noma-bg); border-color: transparent; }\n.noma-slide--section .noma-slide-title { font-size: 2.6em; }\n.noma-slide--statement .noma-slide-body { flex: 0 0 auto; font-size: 1.8em; font-weight: 600; }\n.noma-slide--quote .noma-slide-body { flex: 0 0 auto; font-size: 1.6em; font-style: italic; font-family: var(--noma-font-serif); }\n.noma-slide--two-column .noma-slide-body { display: grid; grid-template-columns: 1fr 1fr; gap: 3cqw; align-content: start; }\n.noma-slide--two-column .noma-slide-body > .noma-grid { display: contents; }\n.noma-slide--media .noma-slide-body img, .noma-slide--media .noma-slide-body svg { max-width: 100%; max-height: 100%; object-fit: contain; }\n.noma-slide--blank .noma-slide-frame { padding: 0; }\n.noma-slide-notes { margin-top: 0.4rem; font-family: var(--noma-font-sans); font-size: 0.85rem; color: var(--noma-muted); }\n.noma-slide-notes summary { cursor: pointer; }\n.noma-deck.noma-presenting {\n  position: fixed; inset: 0; z-index: 9999; margin: 0;\n  display: flex; align-items: center; justify-content: center;\n  background: #000;\n}\n.noma-deck.noma-presenting .noma-deck-bar,\n.noma-deck.noma-presenting .noma-slide-notes { display: none; }\n.noma-deck.noma-presenting .noma-deck-slides { display: block; width: min(100vw, calc(100vh * 16 / 9)); }\n.noma-deck.noma-presenting .noma-slide { display: none; }\n.noma-deck.noma-presenting .noma-slide.noma-slide-current { display: block; }\n.noma-deck.noma-presenting .noma-slide-frame { border-radius: 0; border: 0; box-shadow: none; }\nhtml.noma-presenting-root { overflow: hidden; }\n@media print {\n  .noma-deck-bar, .noma-slide-notes { display: none; }\n  .noma-slide { break-inside: avoid; page-break-inside: avoid; }\n}\n\n/* ---------------------------------------------------------------------------\n   Presenter \u2014 `--to slides` and Noma Cloud "Present"\n   --------------------------------------------------------------------------- */\nhtml:has(body.noma-presenter-body), body.noma-presenter-body { margin: 0; background: #101114; color: var(--noma-fg); }\n.noma-presenter { --noma-deck-rw: 16; --noma-deck-rh: 9; min-height: 100vh; }\n.noma-presenter-stage { padding: 1.5rem; }\n.noma-presenter .noma-deck-slides { display: grid; gap: 1.5rem; max-width: 1100px; margin: 0 auto; }\n.noma-presenter-empty { color: #d6d3cc; font-family: var(--noma-font-sans); text-align: center; padding: 4rem 1rem; }\n.noma-presenter[data-ready] {\n  position: fixed; inset: 0; display: grid;\n  grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto;\n}\n.noma-presenter[data-ready][data-notes] { grid-template-columns: minmax(0, 1fr) minmax(16rem, 26rem); }\n.noma-presenter[data-ready] .noma-presenter-stage { display: flex; align-items: center; justify-content: center; min-height: 0; padding: 2vmin; }\n.noma-presenter[data-ready] .noma-deck-slides {\n  display: block; margin: 0; max-width: none;\n  width: min(100%, calc((100vh - 5.5rem) * var(--noma-deck-rw) / var(--noma-deck-rh)));\n}\n.noma-presenter[data-ready][data-notes] .noma-deck-slides { width: min(100%, calc((100vh - 5.5rem) * var(--noma-deck-rw) / var(--noma-deck-rh))); }\n.noma-presenter[data-ready] .noma-slide { display: none; }\n.noma-presenter[data-ready] .noma-slide.noma-slide-current { display: block; }\n.noma-presenter[data-ready] .noma-slide-notes { display: none; }\n.noma-presenter .noma-slide-body { overflow: auto; }\n.noma-presenter[data-ready] .noma-slide-frame { border: 0; box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.8); }\n.noma-presenter-notes {\n  grid-row: 1 / span 1; grid-column: 2; overflow: auto; padding: 1.25rem 1.25rem 1.25rem 0;\n  font-family: var(--noma-font-sans); font-size: 1.05rem; line-height: 1.5; color: #e8e6e1;\n}\n.noma-presenter-notes[hidden] { display: none; }\n.noma-presenter-no-notes { color: #8b8a85; }\n.noma-presenter-bar {\n  grid-column: 1 / -1; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;\n  font-family: var(--noma-font-sans); font-size: 0.9rem; color: #d6d3cc; background: #16171b;\n}\n.noma-presenter-bar button, .noma-presenter-exit {\n  font: inherit; color: inherit; background: transparent; border: 1px solid #3a3b40; border-radius: 6px;\n  padding: 0.25rem 0.7rem; cursor: pointer; text-decoration: none;\n}\n.noma-presenter-bar button:hover:not(:disabled), .noma-presenter-exit:hover { background: #2a2b30; }\n.noma-presenter-bar button:disabled { opacity: 0.35; cursor: default; }\n.noma-presenter-bar button[aria-pressed="true"] { background: var(--noma-accent); border-color: var(--noma-accent); color: #fff; }\n.noma-presenter-bar button:focus-visible, .noma-presenter-exit:focus-visible { outline: 2px solid var(--noma-accent); outline-offset: 2px; }\n.noma-presenter-counter { min-width: 4.5em; text-align: center; font-variant-numeric: tabular-nums; }\n.noma-presenter-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8b8a85; padding: 0 0.5rem; }\n.noma-presenter-progress { grid-column: 1 / -1; height: 3px; background: #26272b; }\n.noma-presenter-progress span { display: block; height: 100%; width: 0; background: var(--noma-accent); transition: width 0.2s ease; }\n.noma-presenter[data-overview] .noma-presenter-stage { align-items: flex-start; overflow: auto; }\n.noma-presenter[data-overview] .noma-deck-slides {\n  display: grid; width: 100%; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));\n}\n.noma-presenter[data-overview] .noma-slide { display: block; cursor: pointer; border-radius: var(--noma-radius); }\n.noma-presenter .noma-deck-slides .noma-slide[data-hidden="true"] { display: none; }\n.noma-presenter[data-overview] .noma-slide-current { outline: 3px solid var(--noma-accent); outline-offset: 2px; }\n.noma-presenter[data-overview] .noma-slide-body { overflow: hidden; }\n.noma-presenter:fullscreen .noma-presenter-bar { opacity: 0; transition: opacity 0.2s; }\n.noma-presenter:fullscreen .noma-presenter-bar:hover, .noma-presenter:fullscreen .noma-presenter-bar:focus-within { opacity: 1; }\n@media (max-width: 640px) {\n  .noma-presenter-title, [data-noma-present="notes"], [data-noma-present="fullscreen"] { display: none; }\n  .noma-presenter[data-ready][data-notes] { grid-template-columns: minmax(0, 1fr); }\n}\n@media print {\n  body.noma-presenter-body { background: #fff; }\n  .noma-presenter[data-ready] { position: static; display: block; }\n  .noma-presenter .noma-presenter-bar, .noma-presenter .noma-presenter-progress, .noma-presenter .noma-presenter-notes { display: none; }\n  .noma-presenter[data-ready] .noma-deck-slides { width: 100%; }\n  .noma-presenter[data-ready] .noma-slide { display: block; break-after: page; }\n  .noma-presenter .noma-deck-slides .noma-slide[data-hidden="true"] { display: none; }\n}\n\n/* ---------------------------------------------------------------------------\n   Component kits \u2014 `::component` definitions and expanded uses\n   --------------------------------------------------------------------------- */\n.noma-component-single { display: contents; }\n.noma-component-definition {\n  margin: 1.5rem 0; padding: 0.9rem 1rem 0.4rem;\n  border: 1px dashed var(--noma-rule); border-radius: var(--noma-radius);\n}\n.noma-component-head { display: flex; align-items: center; gap: 0.6rem; font-family: var(--noma-font-sans); font-size: 0.9rem; }\n.noma-component-head code { font-family: var(--noma-font-mono); font-size: 0.85rem; }\n.noma-component-description { margin: 0.35rem 0 0; color: var(--noma-muted); font-family: var(--noma-font-sans); font-size: 0.9rem; }\n.noma-component-preview { margin-top: 0.6rem; }\n.noma-component-invalid { color: var(--noma-risk); border-color: var(--noma-risk); }\n\n/* ::canvas \u2014 PaperDOM canvases drawn as static SVG */\n.noma-canvas { margin: 1.5rem 0; }\n.noma-canvas-pages { display: grid; gap: 0.75rem; }\n.noma-canvas-page { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--noma-rule); border-radius: var(--noma-radius); background: var(--noma-card-bg); box-shadow: var(--noma-shadow); }\n.noma-canvas-page > svg { display: block; width: 100%; height: 100%; }\n.noma-canvas figcaption { margin-top: 0.5rem; color: var(--noma-muted); font-size: 0.9rem; }\n.noma-slide .noma-canvas { margin: 0; }\n@media print { .noma-canvas-page { break-inside: avoid; box-shadow: none; } }\n';
 
   // examples/agent-plan.noma
   var agent_plan_default = '---\ntitle: Agent Planning Artifact \u2014 Q3 Roadmap Decision\nauthor: ferax564\ndate: 2026-05-09\ntags: [planning, decision-record, agent-artifact]\n---\n\n# Q3 Roadmap Decision\n\n::summary\nThree candidate directions for next quarter. This document captures the\noptions, trade-offs, risks, and timeline as structured blocks so an agent\ncan revisit and update each section independently \u2014 and so the recommendation\ncan be exported as a prompt for a follow-on review pass.\n::\n\n## Options at a glance\n\n::grid{columns=3 min="14rem" gap="0.9rem" wide}\n:::card{title="A \xB7 Docs Platform" icon="docs"}\nBuild a hosted publishing target for Noma. Highest revenue ceiling, longest path to value.\n:::\n\n:::card{title="B \xB7 Research Workflows" icon="search"}\nLean into claims/evidence/risk blocks for analyst teams. Narrow ICP, fastest to first paying customer.\n:::\n\n:::card{title="C \xB7 General Reports" icon="report"}\nPosition Noma as the default format for AI-generated reports across domains. Broadest TAM, weakest wedge.\n:::\n::\n\n## Decision\n\n::decision{id="decision-q3-direction" status="proposed"}\nStart with **Option B \u2014 Research Workflows**. Narrowest wedge, fastest signal,\nkeeps the door open to A and C as adjacent expansions.\n::\n\n## Decision matrix\n\n| Dimension             | A \xB7 Docs | B \xB7 Research | C \xB7 Reports |\n| --------------------- | -------- | ------------ | ----------- |\n| Time to first revenue | 6\u20139 mo   | 6\u201310 wk      | 4\u20136 mo      |\n| Wedge sharpness       | Medium   | High         | Low         |\n| Existing block fit    | Strong   | Native       | Medium      |\n| Defensibility         | Network  | Workflow     | Brand only  |\n| 18-month revenue cap  | High     | Medium       | High        |\n\n## Claims and evidence\n\n::claim{id="claim-research-wedge" confidence=0.74}\nResearch and analyst teams are the sharpest wedge for Noma because their\nexisting tools (Word, Notion, Confluence) lack first-class claim/evidence/risk\nprimitives, and they already structure documents this way mentally.\n::\n\n::evidence{for="claim-research-wedge" source="user-interviews-apr-2026"}\nOf 11 analyst-team interviews in April, 9 described their current workflow as\n"copy-paste claims into a doc and hope someone catches stale ones." All 9 said\nthey would pay for a tool that flagged stale evidence automatically.\n::\n\n::claim{id="claim-docs-too-slow" confidence=0.68}\nA docs platform is the higher revenue ceiling, but time-to-revenue is too long\nto be the wedge. Better as a follow-on once Noma has format adoption.\n::\n\n::evidence{for="claim-docs-too-slow" source="docs-platform-benchmark-2026"}\nComparable docs-platform launches (Mintlify, GitBook) took 12\u201318 months to\nreach $100k ARR; research-tool launches (Mem, Reflect) hit it in 6\u20139 months\nwith a tighter ICP.\n::\n\n## Risks\n\n::risk{id="risk-narrow-icp" severity="medium" owner="ferax564"}\nResearch-team ICP is small (~3k orgs globally). Even high conversion caps the\nbusiness below docs-platform scale. Mitigation: use research wedge to drive\nformat adoption, then expand to docs.\n::\n\n::risk{id="risk-format-not-sticky" severity="high" owner="ferax564"}\nIf teams don\'t keep editing in Noma after first artifact, the workflow value\ndisappears. Mitigation: ship the agent patch protocol in week 3 so updates\nflow back into source automatically.\n::\n\n::risk{id="risk-llm-export-quality" severity="low" owner="ferax564"}\nLLM export quality determines whether agents trust Noma source as canonical.\nEasy to verify, easy to fix. Tracked separately.\n::\n\n## Timeline\n\n::grid{columns=4 min="12rem" compact wide}\n:::card{title="Wk 1 \xB7 Format"}\nParser, AST, frontmatter, JSON export, basic validation.\n:::\n\n:::card{title="Wk 2 \xB7 Artifact"}\nHTML renderer, default theme, cards/grids/tabs/charts, mobile.\n:::\n\n:::card{title="Wk 3 \xB7 Agent"}\nLLM export, patch protocol, copy-as-prompt buttons.\n:::\n\n:::card{title="Wk 4 \xB7 Launch"}\n3 demos, README, spec, comparison page, OSS release.\n:::\n::\n\n## Open questions\n\n::open_question{id="oq-pricing-model"}\nPer-seat, per-document, or per-render? Research-team workflows favor per-seat;\nagent-driven artifacts favor per-render. Decide before week 3.\n::\n\n::open_question{id="oq-pdf-engine"}\nKeep Puppeteer as the report-PDF path or add Typst for longer books? Puppeteer\nnow covers first-class PDFs; Typst may still be worth evaluating for book output.\n::\n\n## Agent tasks\n\n::agent_task{id="task-validate-claim-research-wedge"}\nRe-run the interview tally each month. If `claim-research-wedge` evidence base\ndrops below 8 of 11 supporting interviews (or new interviews contradict),\nlower the claim\'s `confidence` attribute and add a `counterevidence` block.\n::\n\n::agent_task{id="task-watch-stale-evidence"}\nEvery two weeks, scan `evidence` blocks for `source` attributes older than\n60 days. Flag any whose underlying source has changed materially. Do not\nauto-edit \u2014 propose a `replace_block` patch for human approval.\n::\n\n::agent_task{id="task-export-as-review-prompt"}\nOn request, package this document\'s `decision`, top three `claim`s, and all\n`risk`s of severity \u2265 medium into an LLM prompt for a second-opinion review.\n::\n\n## Export\n\n::export_button{format="prompt" target="decision-q3-direction"}\nLabel: Copy decision + risks as a review prompt\n::\n\n::export_button{format="markdown" target="summary"}\nLabel: Copy summary as Markdown\n::\n\n::export_button{format="json" target="document"}\nLabel: Copy full document AST\n::\n\n> The point of this artifact is not the prose \u2014 it\'s that an agent can re-open\n> it next month, walk the decision/claim/risk graph, and update only the parts\n> that changed. Everything else stays put, and the Git diff stays clean.\n';
@@ -12277,15 +12736,15 @@ profile: technical
 Start writing here.
 `;
   }
-  function wrapSelection(prefix, suffix, placeholder) {
+  function wrapSelection(prefix, suffix, placeholder2) {
     const selection = sourceSelection();
-    const body = selection.text || placeholder;
+    const body = selection.text || placeholder2;
     const inserted = `${prefix}${body}${suffix}`;
     replaceRange(selection.start, selection.end, inserted, selection.start + prefix.length, selection.start + prefix.length + body.length);
   }
-  function wrapBlock(prefix, suffix, placeholder) {
+  function wrapBlock(prefix, suffix, placeholder2) {
     const selection = sourceSelection();
-    const body = selection.text || placeholder;
+    const body = selection.text || placeholder2;
     const inserted = `${prefix}${body}${suffix}`;
     replaceRange(selection.start, selection.end, inserted, selection.start + prefix.length, selection.start + prefix.length + body.length);
   }
@@ -12962,27 +13421,27 @@ body { background: #ffffff; }`;
   }
   function jsonDatasetForEditor(node, parsed) {
     if (Array.isArray(parsed)) {
-      if (parsed.length > 0 && isRecord(parsed[0])) {
+      if (parsed.length > 0 && isRecord2(parsed[0])) {
         const columns2 = Object.keys(parsed[0]);
         return {
           columns: columns2,
-          rows: parsed.filter(isRecord).map((row) => columns2.map((column) => scalarText(row[column])))
+          rows: parsed.filter(isRecord2).map((row) => columns2.map((column) => scalarText(row[column])))
         };
       }
       const rows2 = parsed.filter(Array.isArray).map((row) => row.map(scalarText));
       return { columns: columnsAttr2(node, rows2), rows: rows2 };
     }
-    const record = isRecord(parsed) ? parsed : null;
+    const record = isRecord2(parsed) ? parsed : null;
     if (!record || !Array.isArray(record.rows)) return null;
     const rows = record.rows.filter(Array.isArray).map((row) => row.map(scalarText));
     const columns = Array.isArray(record.columns) ? record.columns.map(String) : columnsAttr2(node, rows);
     return { columns, rows };
   }
   function yamlDatasetForEditor(node, parsed) {
-    const record = isRecord(parsed) ? parsed : null;
+    const record = isRecord2(parsed) ? parsed : null;
     if (!record || !Array.isArray(record.rows)) return null;
     const rows = record.rows.filter(Array.isArray).map((row) => row.map(scalarText));
-    const schema2 = isRecord(record.schema) ? record.schema : null;
+    const schema2 = isRecord2(record.schema) ? record.schema : null;
     const columns = schema2 ? Object.keys(schema2) : columnsAttr2(node, rows);
     return { columns, rows };
   }
@@ -13143,7 +13602,7 @@ body { background: #ffffff; }`;
     if (typeof value === "string") return value;
     return String(value);
   }
-  function isRecord(value) {
+  function isRecord2(value) {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
   }
   function renderOutput() {

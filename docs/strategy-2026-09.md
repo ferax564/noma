@@ -140,8 +140,8 @@ A deck needs two different editing modes, and forcing either into the other fail
    - Page id = slide block ID. Element id = `<slide-id>--<part>`.
    - The output is valid under the vendored kernel's `parsePaperDOMDocument`.
 2. **PaperDOM → `.noma` text sync — shipped.** When someone edits an element's text on the canvas, the id convention maps the edit back to a `patchSource` op on the owning block. It goes through the same proof and approval loop. Geometry stays in PaperDOM, and words stay in `.noma`.
-3. **Embed canvases in pages (next).** `::canvas{src="att:<hash>" id="…"}` renders a PaperDOM document (stored as an attachment) inside a wiki page. This is Noma's whiteboard answer, without cloning Confluence whiteboards.
-4. **Office export through PaperDOM (next).** `.pptx` from the canvas model, with an honest fidelity report (`paperDomFidelityReport` already exists).
+3. **Embed canvases in pages — shipped.** `::canvas{src="att:board.json" id="…"}` draws a PaperDOM document (an inline JSON body, a file, or a page attachment) inside a wiki page as sanitised SVG. This is Noma's whiteboard answer, without cloning Confluence whiteboards.
+4. **Office export through PaperDOM — shipped.** `noma render --to pptx` and Cloud `export?to=pptx` write `.pptx` from the canvas model (native text, shapes, connectors, tables, charts, images, notes, hidden slides, transitions), with a fidelity report for everything else.
 
 Housekeeping required first:
 
@@ -170,7 +170,7 @@ Housekeeping required first:
   - The same presenter ships as `noma render --to slides`.
 - **Visual editor support.**
   - ~~Slash commands `/deck`, `/slide`, `/notes`~~ **Done.** `/grid`, `/card`, and `/widget` were added too.
-  - A slide-strip view (still open).
+  - ~~A slide-strip view~~ **Done.** A filmstrip above the editor, drawn through the canvas model: click to reveal, drag or Alt+←/→ to reorder (`move_block`), hide, and add slides.
   - ~~A token picker (chips, not a CSS box) that writes `class=`~~ **Done.** It shows space aliases first and keeps one token per exclusive group.
 - ~~**Sandboxed `::html` in Cloud.**~~ **Done.**
   - Each widget has its own signed URL, served with a `sandbox allow-scripts` CSP, `connect-src 'none'`, and an opaque origin.
@@ -205,9 +205,9 @@ file, and the LLM renderer keeps the component call.
 ### Phase 3: the canvas bridge (≈6–8 weeks)
 
 - ~~PaperDOM → `.noma` text sync (§5.2)~~ **Done:** `noma paperdom-sync` and Cloud `POST …/paperdom-sync` feed the proof and approval loop.
-- `::canvas` embeds (§5.3).
-- `.pptx` export (§5.4).
-- A real PaperDOM HTML/SVG renderer.
+- ~~`::canvas` embeds (§5.3).~~ **Done.**
+- ~~`.pptx` export (§5.4).~~ **Done.**
+- ~~A real PaperDOM HTML/SVG renderer.~~ **Done:** `canvasPageSvg` (static, sanitised) backs `::canvas` and the slide strip.
 - Unify the visual models.
 
 ### Phase 4: close the enterprise gaps that decide deals

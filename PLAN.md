@@ -1295,12 +1295,14 @@ way:
 - attributes are props
 - fences nest blocks
 - a closed `class=` style-token vocabulary is the utility layer
-- space-level component kits come next
+- space-level component kits package reusable blocks
 
 Presentations are a surface of the same source. `::deck` / `::slide` flow
-decks are patchable by ID and present in the browser. PaperDOM canvas decks
-are exported from `.noma` with element IDs keyed to their owning blocks, and
-text sync back to `.noma` and embeds come next. Free CSS, HTML as source, and
+decks are patchable by ID, present in the browser, and show as a slide strip
+in the Cloud editor. PaperDOM canvas decks are exported from `.noma` with
+element IDs keyed to their owning blocks; canvas text edits sync back as
+proofed patches, `::canvas` embeds canvases in pages, and `.pptx` is exported
+from the canvas model with a fidelity report. Free CSS, HTML as source, and
 a second visual model stay out. The maintainer made four decisions on
 2026-09-24:
 

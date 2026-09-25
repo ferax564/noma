@@ -1259,7 +1259,7 @@ such as `decision-1`. Switch to Source at any time to see the exact text.
 
 | Input | Result |
 |---|---|
-| `/` | Block menu: headings, lists, task list, table, code, quote, callout, warning, decision, claim, evidence, figure, math, mermaid, table of contents, child pages, include, slide deck, slide, speaker notes, grid of cards, card, HTML widget, divider, raw Noma. Exact matches rank first |
+| `/` | Block menu: headings, lists, task list, table, code, quote, callout, warning, decision, claim, evidence, figure, math, mermaid, table of contents, child pages, include, slide deck, slide, speaker notes, grid of cards, card, HTML widget, canvas, divider, raw Noma. Exact matches rank first |
 | `## `, `- `, `1. `, `[ ] `, `> `, three backticks, `---` | Markdown shortcuts |
 | `**bold**`, `*em*`, backtick code, `[[id]]` | Inline shortcuts |
 | Select text | Floating toolbar: bold, italic, code, link, block link, heading level; table row and column buttons inside tables |
@@ -1280,7 +1280,17 @@ way with a hash check.
 - `/slide` adds a slide after the one you are in. Outside a deck, it starts a new deck.
 - `/notes` adds speaker notes at the end of the current slide.
 - `/widget` inserts a sandboxed `::html` block with a working example.
-- New decks, slides, and widgets get stable IDs (`deck-1`, `slide-3`, `widget-1`) that are not already used on the page, so presenter deep links and agent patches can target them.
+- `/canvas` inserts a `::canvas` embed pointing at a page attachment (`att:board.json`).
+- New decks, slides, widgets, and canvases get stable IDs (`deck-1`, `slide-3`, `widget-1`, `canvas-1`) that are not already used on the page, so presenter deep links and agent patches can target them.
+
+**Slide strip.** A page with a `::deck` shows a filmstrip of its slides above
+the editor, drawn through the same canvas model as the PowerPoint export. The
+**Slides** button shows or hides it on any page; a page without a deck shows
+the slides that *Present* would build from its sections.
+
+- Click a slide to jump to it in the source, the visual editor, and the preview. The slide at the source cursor is highlighted.
+- Drag a slide, or focus it and press Alt+← / Alt+→, to reorder. **Hide** marks a slide `hidden` for presenting; **+ Slide** adds one at the end of the deck.
+- Every strip action is an ordinary patch (`move_block`, `update_attribute`, `add_block`) applied to the page source, so it saves, diffs, and goes through proposals like any other edit. Reordering is available when every child of the deck is a `::slide` with an id.
 
 **Components.** Each space can name a **Component kit page** in Space
 settings (owners only). The `::component` definitions on that page are

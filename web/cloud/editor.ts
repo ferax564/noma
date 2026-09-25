@@ -18,6 +18,7 @@ import { clearMacroCache, flushMacroRequests, previewMacroResolvers } from "./ma
 import { confirmDiscardDirty, pageFolder, recordRecent, replacePage, sourceTitle, updateAddress } from "./navigation.js";
 import { refreshPageMeta } from "./page-meta.js";
 import { refreshAttachments, resolveAttachmentUrl, resolveCanvasJson } from "./attachments.js";
+import { renderSlideStrip } from "./slide-strip.js";
 import { refreshRestrictions } from "./restrictions.js";
 import { canEditPage } from "./permissions.js";
 import { previewDocument, previewError } from "./preview.js";
@@ -198,6 +199,7 @@ export function renderCurrent(): void {
     };
     previewFrame.srcdoc = previewDocument(body);
     flushMacroRequests(renderCurrent);
+    renderSlideStrip(components);
   } catch (error) {
     state.renderState = {
       doc: null,
@@ -206,6 +208,7 @@ export function renderCurrent(): void {
       error: error instanceof Error ? error : new Error(String(error)),
     };
     previewFrame.srcdoc = previewError(errorMessage(error));
+    renderSlideStrip();
   }
   renderDiagnostics();
   renderOutline();

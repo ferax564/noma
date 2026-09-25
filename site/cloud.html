@@ -169,6 +169,7 @@
           <button id="favoritePageButton" type="button" aria-pressed="false">Favorite</button>
           <button id="watchPageButton" type="button" aria-pressed="false">Watch</button>
           <button id="presentPageButton" type="button" title="Present this page (a ::deck, or one slide per section)">Present</button>
+          <button id="slideStripToggleButton" type="button" aria-pressed="false" aria-controls="slideStrip" title="Show or hide the slide strip" hidden>Slides</button>
         </div>
         <details id="pageMoreMenu" class="page-more-menu">
           <summary aria-label="Share and export this page">Share &amp; export</summary>
@@ -206,6 +207,14 @@
           </div>
         </details>
       </div>
+    </section>
+
+    <section id="slideStrip" class="slide-strip" aria-label="Slides" hidden>
+      <div class="slide-strip-head">
+        <span id="slideStripSummary" class="slide-strip-summary"></span>
+        <button id="slideStripAddButton" type="button" hidden>+ Slide</button>
+      </div>
+      <ol id="slideStripList" class="slide-strip-list"></ol>
     </section>
 
     <section id="documentGrid" class="document-grid" aria-label="Document editor">

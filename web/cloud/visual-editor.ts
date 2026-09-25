@@ -165,6 +165,12 @@ function insertWidget(view: EditorView, from: number, to: number): void {
   applySlashItem(view, { id: "html", label: "", hint: "", keywords: "", build: () => nodes.raw!.create({ src, label: "html" }) }, from, to);
 }
 
+function insertCanvas(view: EditorView, from: number, to: number): void {
+  const id = freshBlockId(view.state.doc, "canvas");
+  const src = `::canvas{id="${id}" src="att:board.json" caption="Canvas"}\n::`;
+  applySlashItem(view, { id: "canvas", label: "", hint: "", keywords: "", build: () => nodes.raw!.create({ src, label: "canvas" }) }, from, to);
+}
+
 function gridOfCards(): PMNode {
   const card = (title: string) => nodes.directive!.create({ name: "card", attrs: serializeDirectiveAttrs([["title", title]]), colons: 3 }, [paragraph()]);
   return nodes.directive!.create({ name: "grid", attrs: "columns=2", colons: 2 }, [card("First"), card("Second")]);
@@ -197,6 +203,7 @@ export const slashItems: SlashItem[] = [
   { id: "grid", label: "Grid of cards", hint: "::grid", keywords: "columns layout cards lego", build: () => gridOfCards() },
   { id: "card", label: "Card", hint: "::card", keywords: "box panel tile", keepsText: true, build: (content) => directive("card", `title="Card"`, [nodes.paragraph!.create(null, content)]) },
   { id: "widget", label: "HTML widget", hint: "::html", keywords: "embed interactive calculator app script sandbox", build: () => paragraph(), insert: insertWidget },
+  { id: "canvas", label: "Canvas", hint: "::canvas", keywords: "whiteboard paperdom diagram board drawing embed", build: () => paragraph(), insert: insertCanvas },
   { id: "divider", label: "Divider", hint: "---", keywords: "rule hr separator", build: () => nodes.horizontal_rule!.create() },
   { id: "raw", label: "Raw Noma block", hint: "::", keywords: "source directive custom", build: () => nodes.raw!.create({ src: "::note\nWrite Noma source here.\n::", label: "note" }) },
 ];

@@ -14,6 +14,7 @@ import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage,
 import { addLabel, toggleWatch } from "./page-meta.js";
 import { installExportMenu } from "./export.js";
 import { installPresentButton } from "./present.js";
+import { installSlideStrip } from "./slide-strip.js";
 import { installConfluenceImport } from "./import.js";
 import { installPreviewEditing } from "./preview.js";
 import { installCommentSelectionCapture } from "./comments.js";
@@ -131,6 +132,7 @@ function bindEvents(): void {
   });
 
   installPresentButton();
+  installSlideStrip();
 
   watchPageButton.addEventListener("click", () => {
     void toggleWatch();

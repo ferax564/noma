@@ -258,6 +258,13 @@ test("visual mode builds decks with /deck, /slide, /notes and styles blocks with
 
   await typeAtEndOf(page, ".visual-editor-surface > p:last-of-type", "");
   await page.keyboard.press("Enter");
+  await page.keyboard.type("/canvas");
+  await page.waitForSelector(".visual-slash-menu [data-slash-id='canvas']");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => (document.querySelector<HTMLTextAreaElement>("#sourceInput")?.value ?? "").includes('::canvas{id="canvas-1" src="att:board.json" caption="Canvas"}\n::'), { timeout: 10_000 });
+
+  await typeAtEndOf(page, ".visual-editor-surface > p:last-of-type", "");
+  await page.keyboard.press("Enter");
   await page.keyboard.type("/deck");
   await page.waitForSelector(".visual-slash-menu [data-slash-id='deck']");
   await page.keyboard.press("Enter");

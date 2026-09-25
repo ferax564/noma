@@ -26,9 +26,11 @@ src/                       TypeScript core — parser, AST, renderers, validator
   renderer-noma.ts         AST → .noma source (roundtrip-safe; backs `noma patch`)
   renderer-markdown.ts     AST → portable Markdown (`--to markdown`)
   renderer-paperdom.ts     AST → PaperDOM canvas JSON (`--to paperdom`); slides keyed by block ID
+  canvas-svg.ts            PaperDOM canvas → sanitised static SVG + text outline (`::canvas`, slide strip); type-only PaperDOM imports
   slides.ts                `::deck`/`::slide` helpers + `presentationSlides` (doc-to-deck) for `--to slides` and PaperDOM
   style-tokens.ts          Closed `class=` style-token vocabulary + per-space aliases
   components.ts            Component kits — `::component` definitions, AST-level expansion, use checks
+  paperdom-pptx.ts         Canvas → PowerPoint `.pptx` (`--to pptx`, Cloud export) with a fidelity report
   paperdom-sync.ts         Canvas → `.noma` text sync: edited PaperDOM doc → proofed patch ops (`noma paperdom-sync`)
   renderer-docx.ts         AST → Word .docx (comments, footnotes, tracked changes, controls, captions)
   renderer-site.ts         Multi-page HTML site for book manifests (`--to site`). Cross-chapter wikilink rewrite.

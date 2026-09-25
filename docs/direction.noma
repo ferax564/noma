@@ -336,10 +336,12 @@ stable IDs.
 `.noma` stays the only source of truth, and HTML is its projection. Freedom
 comes from composition, not from raw markup. Directives are the components,
 attributes are their props, and fenced nesting composes them. A closed
-`class="..."` style-token vocabulary works as the utility layer. Space-level
-component kits come next. Presentations are a surface of the same source:
-`::deck` / `::slide` flow decks live inside pages, and PaperDOM canvas decks
-are keyed back to their blocks by ID. Each space may define its own
+`class="..."` style-token vocabulary works as the utility layer, and
+space-level component kits package reusable blocks. Presentations are a
+surface of the same source: `::deck` / `::slide` flow decks live inside pages,
+PaperDOM canvas decks are keyed back to their blocks by ID so canvas text
+edits sync back as patches, `::canvas` embeds canvases in pages, and `.pptx`
+is exported from the canvas model with a fidelity report. Each space may define its own
 style-token aliases over the global core set. In Noma Cloud, `::html`
 widgets run in sandboxed iframes. PaperDOM is maintained as a fork in this
 repository. The full reasoning is in `docs/strategy-2026-09.md`.

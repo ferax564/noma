@@ -8,6 +8,11 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Slide strip in the Cloud editor:** a filmstrip of the page's slides above the editor, drawn through the canvas model.
+  - **Navigate:** click a slide to reveal it in the source, the visual editor, and the preview. The slide at the source cursor is highlighted.
+  - **Edit:** drag a slide, or use Alt+←/→, to reorder it (`move_block`). **Hide** toggles `hidden`, and **+ Slide** appends a slide at the deck's fence depth. Each action is an ordinary source patch.
+  - **When it shows:** by default on pages with a `::deck`. The **Slides** header button shows the section-derived slides of any page.
+- **`/canvas` slash command** inserts a `::canvas` embed with a fresh id.
 - **Canvas embeds (`::canvas`):** a page can draw a PaperDOM canvas as static SVG, covering shapes, text, connectors, tables, bar and line charts, and images.
   - **Sources:** a fenced ```` ```json ```` body, a file `src=` (read by the CLI loader and contained to the document directory), or, in Noma Cloud, an `att:` attachment on the same page. `page=` picks one page.
   - **Safety:** canvas JSON is treated as untrusted. Colours, fonts, and numbers are sanitised, text is escaped, SVG data URIs are never drawn, and remote images load only where the host resolves them.
@@ -53,7 +58,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **Patch engine:** `replace_block` and `add_block` in `patchSource` now reject a fragment that opens at the wrong fence depth for its position, with `unbalanced_fence_content`. Before this fix, a `::card` spliced into a `::grid` closed the grid early and silently produced a malformed document. The error names the depth that position needs. The Python seed enforces the same rule for `add_block`. Conformance: the `patch/add_block` fixture now nests correctly, and there are new `patch-error/wrong_fence_depth` and `wrong_fence_depth_replace` fixtures (58 in total).
+- **Patch engine:** `replace_block` and `add_block` in `patchSource` now reject a fragment that opens at the wrong fence depth for its position, with `unbalanced_fence_content`. Before this fix, a `::card` spliced into a `::grid` closed the grid early and silently produced a malformed document. The error names the depth that position needs. The Python seed enforces the same rule for `add_block`. Conformance: the `patch/add_block` fixture now nests correctly, and there are new `patch-error/wrong_fence_depth` and `wrong_fence_depth_replace` fixtures (57 in total).
 - `noma render --title <t>` and `--deck <id>` placed before the input file no longer take their value as the file path.
 - The `hide-in-slides` and `slides-only` style tokens now apply in the standalone presenter (`--to slides`, Cloud "Present"). Hidden slides stay out of the presenter overview and print output.
 - Noma Cloud HTML, PDF, and site-ZIP exports now resolve the space's style-token aliases.
