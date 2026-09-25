@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { type BlobStore, LocalDiskBlobStore } from "./cloud-blobs.js";
 import { attachCloudCollab, type CloudCollabOptions } from "./cloud-collab.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
+import { createEmbeddingProviderFromEnv, type EmbeddingProvider } from "./cloud-embeddings.js";
 import { createLlmProviderFromEnv, type LlmProvider } from "./cloud-llm.js";
 import { CloudKnowledgePlatform } from "./cloud-platform.js";
 import {
@@ -120,6 +121,21 @@ export interface NomaCloudServerOptions {
   collab?: CloudCollabOptions;
   /** Generative AI settings; environment variables fill anything left unset. */
   ai?: NomaCloudAiOptions;
+  /** Semantic retrieval embeddings; environment variables fill anything left unset. */
+  embeddings?: NomaCloudEmbeddingsOptions;
+}
+
+/**
+ * Knowledge-search embeddings. Without a provider (or with `NOMA_CLOUD_EMBEDDINGS=local`) retrieval
+ * uses the deterministic local hash vector. Env: `NOMA_CLOUD_EMBEDDINGS=local|openai|voyage`,
+ * `NOMA_CLOUD_EMBEDDINGS_MODEL`, `NOMA_CLOUD_EMBEDDINGS_URL`, `NOMA_CLOUD_EMBEDDINGS_API_KEY`
+ * (or `_FILE`), `NOMA_CLOUD_EMBEDDINGS_DIMENSIONS`, `NOMA_CLOUD_EMBEDDINGS_QUERY_TIMEOUT_MS`.
+ */
+export interface NomaCloudEmbeddingsOptions {
+  /** `null` forces the local hash vector even when `NOMA_CLOUD_EMBEDDINGS` is set. */
+  provider?: EmbeddingProvider | null;
+  /** Deadline for embedding a search query before falling back to lexical + hash scoring (default 2000). */
+  queryTimeoutMs?: number;
 }
 
 export interface NomaCloudAiOptions {
@@ -198,7 +214,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const now = options.now ?? (() => new Date());
   const adminUserIds = options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean);
   const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir, adminUserIds, bootstrapFirstUserAdmin: !production });
-  const platform = new CloudKnowledgePlatform(dbPath);
+  const platform = new CloudKnowledgePlatform(dbPath, cloudEmbeddingsConfig(options.embeddings ?? {}));
   return {
     dataDir,
     usersDir,
@@ -244,6 +260,12 @@ function cloudAiConfig(options: NomaCloudAiOptions): CloudServerConfig["ai"] {
     allowPrivateSourceHosts: options.allowPrivateSourceHosts ?? enabledEnvironmentFlag("NOMA_CLOUD_AI_ALLOW_PRIVATE_SOURCES"),
     maintenanceTickMs: nonNegativeNumber(options.maintenanceTickMs ?? Number(process.env.NOMA_CLOUD_MAINTENANCE_TICK_MS ?? 900_000), "maintenanceTickMs"),
   };
+}
+
+function cloudEmbeddingsConfig(options: NomaCloudEmbeddingsOptions): ConstructorParameters<typeof CloudKnowledgePlatform>[1] {
+  const provider = options.provider === null ? undefined : options.provider ?? createEmbeddingProviderFromEnv();
+  const queryTimeoutMs = options.queryTimeoutMs ?? Number(process.env.NOMA_CLOUD_EMBEDDINGS_QUERY_TIMEOUT_MS ?? 2_000);
+  return { ...(provider ? { embeddings: provider } : {}), queryEmbeddingTimeoutMs: positiveInteger(queryTimeoutMs, "embeddings.queryTimeoutMs") };
 }
 
 function nonNegativeNumber(value: number, label: string): number {

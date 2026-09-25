@@ -443,7 +443,7 @@ async function draftPage(
   agentId: string | undefined,
 ): Promise<Record<string, unknown>> {
   const documents = knowledgeDocuments(config, user, site.id);
-  const references = config.platform.search({ principalId: user.id, query: `${title} ${instruction}`.slice(0, 1_000), documents, now: config.now().toISOString(), limit: 6 });
+  const { results: references } = await config.platform.searchWithRetrieval({ principalId: user.id, query: `${title} ${instruction}`.slice(0, 1_000), documents, now: config.now().toISOString(), limit: 6 });
   const referenceText = references
     .map((record) => `<block ref="${promptAttr(citationRef(record))}" page="${promptAttr(record.documentTitle)}">\n${promptData(record.exactSource.slice(0, 4_000))}\n</block>`)
     .join("\n");

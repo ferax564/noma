@@ -3,7 +3,7 @@
  * per-user and per-agent budgets, and usage accounting. Routes never call an `LlmProvider` directly.
  */
 import type { CloudUserRecord } from "../cloud-db.js";
-import { costUsd, type LlmCompletion, LlmError, type LlmMessage, worstCaseCostUsd } from "../cloud-llm.js";
+import { costUsd, type LlmCompletion, LlmError, type LlmMessage, modelAllowedByPolicy, worstCaseCostUsd } from "../cloud-llm.js";
 import type { CloudAgentIdentity, EnterprisePolicy } from "../cloud-platform.js";
 import { type CloudServerConfig, randomId } from "./context.js";
 
@@ -154,8 +154,7 @@ export async function runAiCompletion(config: CloudServerConfig, user: CloudUser
  * workspace admin saves a policy, its `modelAllowlist` is authoritative.
  */
 export function modelAllowed(policy: EnterprisePolicy, model: string, configuredModel: string): boolean {
-  if (policy.modelAllowlist.includes(model)) return true;
-  return policy.updatedBy === "system" && model === configuredModel;
+  return modelAllowedByPolicy(policy, model, configuredModel);
 }
 
 function resolveAgent(config: CloudServerConfig, user: CloudUserRecord, agentId: string | undefined): CloudAgentIdentity {

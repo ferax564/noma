@@ -89,7 +89,7 @@ export async function routeAskNoma(req: IncomingMessage, res: ServerResponse, co
   const contentTypes = optionalStringArray(input.contentTypes, "contentTypes", 30);
   const mode = input.mode === undefined ? "extractive" : input.mode;
   if (mode !== "extractive" && mode !== "generative") throw new HttpError(400, "mode must be extractive or generative");
-  const answer = config.platform.ask({
+  const answer = await config.platform.askWithRetrieval({
     principalId: agentId ?? user.id,
     query,
     documents,
@@ -121,7 +121,7 @@ export async function routeKnowledge(
     const agentId = optionalString(url.searchParams.get("agent"));
     const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 25, 1, 100, "limit");
     const parsed = mergeSearchParams(parseSearchQuery(query), url.searchParams);
-    sendJson(res, 200, filteredKnowledgeSearch(config, user, parsed, query, limit, siteId, agentId));
+    sendJson(res, 200, await filteredKnowledgeSearch(config, user, parsed, query, limit, siteId, agentId));
     return;
   }
   if (action === "trust") {
@@ -173,7 +173,9 @@ export async function routeKnowledge(
     return;
   }
   if (action === "reindex" && method === "POST") {
-    sendJson(res, 200, { indexed: config.platform.indexDocuments(documents, config.now().toISOString(), true), documentCount: documents.length });
+    const indexed = config.platform.indexDocuments(documents, config.now().toISOString(), true);
+    const embeddings = await config.platform.backfillEmbeddings({ documentIds: documents.map((item) => item.document.id) });
+    sendJson(res, 200, { indexed, documentCount: documents.length, embeddings });
     return;
   }
   if (action === "evaluations" && method === "POST") {
@@ -458,7 +460,7 @@ export async function routeRealtime(req: IncomingMessage, res: ServerResponse, u
  * corpus before retrieval; `type:` maps to block content types, phrases must appear verbatim, and
  * `type:page` keeps the best block per page. A filter-only query lists matching pages instead.
  */
-function filteredKnowledgeSearch(
+async function filteredKnowledgeSearch(
   config: CloudServerConfig,
   user: CloudUserRecord,
   parsed: ParsedSearchQuery,
@@ -466,7 +468,7 @@ function filteredKnowledgeSearch(
   limit: number,
   siteId: string | undefined,
   agentId: string | undefined,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   let documents = knowledgeDocuments(config, user, siteId, agentId);
   const filters = resolveSearchFilters(config, user, parsed);
   const allowed = config.store.filteredDocumentIds(user, filters);
@@ -484,7 +486,7 @@ function filteredKnowledgeSearch(
   const blockTypes = parsed.types.filter((type) => type !== "page");
   const pageOnly = parsed.types.includes("page");
   const phrases = parsed.phrases.map((phrase) => phrase.toLowerCase().replace(/\s+/g, " "));
-  const candidates = config.platform.search({
+  const { results: candidates, retrieval } = await config.platform.searchWithRetrieval({
     principalId: agentId ?? user.id,
     query: parsed.text,
     documents,
@@ -497,7 +499,7 @@ function filteredKnowledgeSearch(
     .filter((result) => phrases.every((phrase) => result.exactSource.toLowerCase().replace(/\s+/g, " ").includes(phrase)))
     .filter((result) => !pageOnly || (seen.has(result.documentId) ? false : (seen.add(result.documentId), true)))
     .slice(0, limit);
-  return { query, mode: "hybrid", filters: searchQueryResponse(parsed), results };
+  return { query, mode: "hybrid", retrieval, filters: searchQueryResponse(parsed), results };
 }
 
 export function knowledgeDocuments(config: CloudServerConfig, user: CloudUserRecord, siteId?: string, agentId?: string): KnowledgeDocumentAccess[] {
