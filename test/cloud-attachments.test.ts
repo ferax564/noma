@@ -140,7 +140,8 @@ test("attachments upload, sniff, dedupe, serve safely, and enforce page permissi
       headers: { authorization: `Bearer ${alice.token}`, "content-type": "multipart/form-data; boundary=x" },
       body: "--x--",
     });
-    assert.equal(multipart.status, 415);
+    assert.equal(multipart.status, 400);
+    assert.equal(((await multipart.json()) as { code: string }).code, "attachment_multipart_missing_file");
 
     const deleted = await json<{ ok: boolean }>(`${harness.base}/api/documents/${page.id}/attachments/${fakeImage.body.id}`, { method: "DELETE", token: alice.token });
     assert.equal(deleted.ok, true);
@@ -196,6 +197,100 @@ test("attachment uploads respect the per-file limit and the per-space quota", as
     await harness.close();
   }
 });
+
+test("multipart/form-data uploads stream one file part through the same checks", async () => {
+  const harness = await startCloudServer("noma-attachments-multipart-", { maxAttachmentBytes: 1_024 });
+  try {
+    const alice = await createCloudUser(harness.base, "Alice");
+    const page = await createDocument(harness.base, alice.token, "Multipart");
+
+    const form = new FormData();
+    form.append("file", new Blob([PNG], { type: "image/png" }), "../Screenshot 1.png");
+    const browser = await postForm(harness.base, page.id, alice.token, form);
+    assert.equal(browser.status, 201);
+    assert.equal(browser.body.filename, "Screenshot 1.png");
+    assert.equal(browser.body.contentType, "image/png");
+    assert.equal(browser.body.sha256, sha256(PNG));
+    const download = await fetch(`${harness.base}/api/attachments/${browser.body.id}`, { headers: { authorization: `Bearer ${alice.token}` } });
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), PNG);
+
+    const boundary = "noma-Boundary_42";
+    const tricky = Buffer.concat([Buffer.from("line one\r\n--noma-Boundar"), Buffer.from(" not a delimiter\r\n-- noma\r\n")]);
+    const handBuilt = Buffer.concat([
+      Buffer.from(`preamble is ignored\r\n--${boundary}\r\ncontent-disposition: form-data; name="name"\r\n\r\nnotes 100%.txt\r\n`),
+      Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="ignored.bin"\r\ncontent-type: text/plain\r\n\r\n`),
+      tricky,
+      Buffer.from(`\r\n--${boundary}\r\ncontent-disposition: form-data; name="comment"\r\n\r\nextra fields are ignored\r\n--${boundary}--\r\nepilogue`),
+    ]);
+    const streamed = await fetch(`${harness.base}/api/documents/${page.id}/attachments`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${alice.token}`, "content-type": `multipart/form-data; boundary="${boundary}"` },
+      body: new ReadableStream({
+        start(controller) {
+          for (let offset = 0; offset < handBuilt.byteLength; offset += 7) controller.enqueue(new Uint8Array(handBuilt.subarray(offset, offset + 7)));
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+    assert.equal(streamed.status, 201);
+    const streamedBody = (await streamed.json()) as AttachmentResponse;
+    assert.equal(streamedBody.filename, "notes 100%.txt");
+    assert.equal(streamedBody.contentType, "text/plain");
+    assert.equal(streamedBody.size, tricky.byteLength);
+    assert.equal(streamedBody.sha256, sha256(tricky));
+
+    const oversize = new FormData();
+    oversize.append("file", new Blob([Buffer.alloc(1_025, 0x61)], { type: "text/plain" }), "big.txt");
+    const tooBig = await postForm(harness.base, page.id, alice.token, oversize);
+    assert.equal(tooBig.status, 413);
+    assert.equal((tooBig.body as unknown as { code: string }).code, "attachment_too_large");
+
+    const exe = new FormData();
+    exe.append("file", new Blob([Buffer.concat([Buffer.from("MZ"), Buffer.alloc(64)])]), "setup.dat");
+    assert.equal((await postForm(harness.base, page.id, alice.token, exe)).status, 415);
+
+    const noFile = new FormData();
+    noFile.append("filename", "orphan.txt");
+    noFile.append("attachment", new Blob([Buffer.from("wrong field")]), "orphan.txt");
+    const missing = await postForm(harness.base, page.id, alice.token, noFile);
+    assert.equal(missing.status, 400);
+    assert.equal((missing.body as unknown as { code: string }).code, "attachment_multipart_missing_file");
+
+    const malformed = async (contentType: string, body: string): Promise<{ status: number; code: string }> => {
+      const response = await fetch(`${harness.base}/api/documents/${page.id}/attachments`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${alice.token}`, "content-type": contentType },
+        body,
+      });
+      return { status: response.status, code: ((await response.json()) as { code: string }).code };
+    };
+    const part = 'content-disposition: form-data; name="file"; filename="a.txt"\r\n\r\nhello';
+    const expected = { status: 400, code: "attachment_multipart_malformed" };
+    assert.deepEqual(await malformed("multipart/form-data", `--x\r\n${part}\r\n--x--`), expected, "missing boundary parameter");
+    assert.deepEqual(await malformed(`multipart/form-data; boundary=${"b".repeat(71)}`, "--b--"), expected, "boundary longer than 70 characters");
+    assert.deepEqual(await malformed("multipart/form-data; boundary=real", `--other\r\n${part}\r\n--other--`), expected, "body uses a different boundary");
+    assert.deepEqual(await malformed("multipart/form-data; boundary=real", `--real\r\n${part}`), expected, "no closing boundary");
+    assert.deepEqual(await malformed("multipart/form-data; boundary=real", `--real\r\nno colon here\r\n\r\nhello\r\n--real--`), expected, "bad part header");
+    assert.deepEqual(await malformed("multipart/mixed; boundary=real", `--real\r\n${part}\r\n--real--`), expected, "not form-data");
+    assert.deepEqual(
+      await malformed("multipart/form-data; boundary=real", `--real\r\n${part}\r\n--real\r\n${part}\r\n--real--`),
+      expected,
+      "two file parts",
+    );
+    assert.deepEqual(await readdir(join(harness.root, "data", "blobs", "tmp")), []);
+
+    const listed = await json<{ attachments: AttachmentResponse[] }>(`${harness.base}/api/documents/${page.id}/attachments`, { token: alice.token });
+    assert.deepEqual(listed.attachments.map((item) => item.filename), ["Screenshot 1.png", "notes 100%.txt"]);
+  } finally {
+    await harness.close();
+  }
+});
+
+async function postForm(base: string, documentId: string, token: string, form: FormData): Promise<{ status: number; body: AttachmentResponse }> {
+  const response = await fetch(`${base}/api/documents/${documentId}/attachments`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: form });
+  return { status: response.status, body: (await response.json()) as AttachmentResponse };
+}
 
 test("att: references render through signed same-origin URLs scoped to the page", async () => {
   const harness = await startCloudServer("noma-attachments-render-");

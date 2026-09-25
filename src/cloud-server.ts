@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type BlobStore, LocalDiskBlobStore } from "./cloud-blobs.js";
+import { type BlobStore, LocalDiskBlobStore, S3BlobStore, type S3ServerSideEncryption } from "./cloud-blobs.js";
 import { attachCloudCollab, type CloudCollabOptions } from "./cloud-collab.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
 import { createLlmProviderFromEnv, type LlmProvider } from "./cloud-llm.js";
@@ -104,7 +104,10 @@ export interface NomaCloudServerOptions {
   maxAttachmentBytes?: number;
   /** Live attachment bytes per space, or per user outside spaces (default 1 GB, env `NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES`). */
   attachmentQuotaBytes?: number;
-  /** Attachment blob storage; defaults to content-addressed files under `<storage root>/blobs`. */
+  /**
+   * Attachment blob storage. When unset, `NOMA_CLOUD_BLOB_STORE` picks the driver: `local` (default,
+   * content-addressed files under `<storage root>/blobs`) or `s3` (see `createBlobStoreFromEnv`).
+   */
   blobStore?: BlobStore;
   /** Allow Confluence imports from private/loopback hosts (tests, on-prem Data Center). */
   importAllowPrivateHosts?: boolean;
@@ -222,7 +225,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     now,
     store,
     platform,
-    blobs: options.blobStore ?? new LocalDiskBlobStore(storageRoot),
+    blobs: options.blobStore ?? createBlobStoreFromEnv(storageRoot),
     maxAttachmentBytes: positiveInteger(
       options.maxAttachmentBytes ?? Number(process.env.NOMA_CLOUD_MAX_ATTACHMENT_BYTES ?? 25 * 1024 * 1024),
       "maxAttachmentBytes",
@@ -307,6 +310,76 @@ function readCloudInvitationCode(options: NomaCloudServerOptions): string | unde
   const code = cleanSecret(readFileSync(resolve(filePath), "utf8"));
   if (!code) throw new Error(`Cloud invitation code file is empty: ${filePath}`);
   return code;
+}
+
+/**
+ * Builds the attachment blob store from environment variables. `NOMA_CLOUD_BLOB_STORE=local` (the
+ * default) stores blobs under `<storageRoot>/blobs`; `s3` needs `NOMA_CLOUD_S3_BUCKET`, a region
+ * (`NOMA_CLOUD_S3_REGION`, `AWS_REGION`, or `AWS_DEFAULT_REGION`), and credentials
+ * (`NOMA_CLOUD_S3_ACCESS_KEY_ID[_FILE]` / `NOMA_CLOUD_S3_SECRET_ACCESS_KEY[_FILE]`, falling back to
+ * `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`). Misconfiguration throws at startup; secret values
+ * never appear in the error.
+ */
+export function createBlobStoreFromEnv(storageRoot: string, env: NodeJS.ProcessEnv = process.env): BlobStore {
+  const driver = (env.NOMA_CLOUD_BLOB_STORE?.trim() || "local").toLowerCase();
+  if (driver === "local" || driver === "local-disk") return new LocalDiskBlobStore(storageRoot);
+  if (driver !== "s3") throw new Error(`NOMA_CLOUD_BLOB_STORE must be "local" or "s3" (got ${JSON.stringify(driver)})`);
+  const value = (name: string): string | undefined => cleanSecret(env[name]);
+  const bucket = value("NOMA_CLOUD_S3_BUCKET");
+  if (!bucket) throw new Error("NOMA_CLOUD_BLOB_STORE=s3 requires NOMA_CLOUD_S3_BUCKET");
+  const endpoint = value("NOMA_CLOUD_S3_ENDPOINT") ?? value("AWS_ENDPOINT_URL_S3") ?? value("AWS_ENDPOINT_URL");
+  const region = value("NOMA_CLOUD_S3_REGION") ?? value("AWS_REGION") ?? value("AWS_DEFAULT_REGION") ?? (endpoint ? "us-east-1" : undefined);
+  if (!region) throw new Error("NOMA_CLOUD_BLOB_STORE=s3 requires NOMA_CLOUD_S3_REGION (or AWS_REGION)");
+  const accessKeyId = envSecret(env, "NOMA_CLOUD_S3_ACCESS_KEY_ID") ?? value("AWS_ACCESS_KEY_ID");
+  const secretAccessKey = envSecret(env, "NOMA_CLOUD_S3_SECRET_ACCESS_KEY") ?? value("AWS_SECRET_ACCESS_KEY");
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error(
+      "NOMA_CLOUD_BLOB_STORE=s3 requires NOMA_CLOUD_S3_ACCESS_KEY_ID and NOMA_CLOUD_S3_SECRET_ACCESS_KEY (or their _FILE variants, or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)",
+    );
+  }
+  const sessionToken = envSecret(env, "NOMA_CLOUD_S3_SESSION_TOKEN") ?? value("AWS_SESSION_TOKEN");
+  const sse = s3ServerSideEncryption(value("NOMA_CLOUD_S3_SSE"));
+  const kmsKeyId = value("NOMA_CLOUD_S3_KMS_KEY_ID");
+  if (kmsKeyId && sse !== "aws:kms") throw new Error('NOMA_CLOUD_S3_KMS_KEY_ID requires NOMA_CLOUD_S3_SSE="aws:kms"');
+  const forcePathStyleRaw = value("NOMA_CLOUD_S3_FORCE_PATH_STYLE");
+  const timeoutMs = value("NOMA_CLOUD_S3_TIMEOUT_MS");
+  const maxAttempts = value("NOMA_CLOUD_S3_MAX_ATTEMPTS");
+  try {
+    return new S3BlobStore({
+      bucket,
+      region,
+      ...(endpoint ? { endpoint } : {}),
+      ...(forcePathStyleRaw !== undefined ? { forcePathStyle: /^(?:1|true|yes)$/i.test(forcePathStyleRaw) } : {}),
+      prefix: value("NOMA_CLOUD_S3_PREFIX") ?? "",
+      credentials: { accessKeyId, secretAccessKey, ...(sessionToken ? { sessionToken } : {}) },
+      ...(sse ? { serverSideEncryption: sse } : {}),
+      ...(kmsKeyId ? { kmsKeyId } : {}),
+      stagingDir: join(storageRoot, "blob-staging"),
+      ...(timeoutMs !== undefined ? { timeoutMs: positiveInteger(Number(timeoutMs), "NOMA_CLOUD_S3_TIMEOUT_MS") } : {}),
+      ...(maxAttempts !== undefined ? { maxAttempts: positiveInteger(Number(maxAttempts), "NOMA_CLOUD_S3_MAX_ATTEMPTS") } : {}),
+    });
+  } catch (error) {
+    throw new Error(`NOMA_CLOUD_BLOB_STORE=s3 is misconfigured: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function s3ServerSideEncryption(raw: string | undefined): S3ServerSideEncryption | undefined {
+  const normalized = raw?.toLowerCase();
+  if (normalized === undefined || normalized === "none" || normalized === "off") return undefined;
+  if (normalized === "aes256") return "AES256";
+  if (normalized === "aws:kms" || normalized === "kms") return "aws:kms";
+  throw new Error('NOMA_CLOUD_S3_SSE must be "AES256", "aws:kms", or "none"');
+}
+
+/** Reads `NAME`, or the file named by `NAME_FILE`; an empty secret file is an error. */
+function envSecret(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const inline = cleanSecret(env[name]);
+  if (inline) return inline;
+  const filePath = cleanSecret(env[`${name}_FILE`]);
+  if (!filePath) return undefined;
+  const secret = cleanSecret(readFileSync(resolve(filePath), "utf8"));
+  if (!secret) throw new Error(`${name}_FILE points to an empty file: ${filePath}`);
+  return secret;
 }
 
 function cleanSecret(value: string | undefined): string | undefined {
