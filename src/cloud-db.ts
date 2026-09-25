@@ -138,6 +138,8 @@ export interface CloudComment {
   deletedAt?: string;
   deletedBy?: string;
   anchor?: CloudCommentAnchor;
+  /** Set when an agent wrote the comment on its owner's behalf (`createdBy` is the owner). */
+  agentId?: string;
 }
 
 /** Text-range anchor: `quote` inside block `blockId`, disambiguated by up to 64 chars of surrounding text. */
@@ -449,7 +451,7 @@ export interface CloudPageTaskChanges {
   reopened: CloudPageTask[];
 }
 
-export const cloudWebhookEvents = ["page.created", "page.updated", "page.deleted", "comment.created", "label.changed", "task.completed"] as const;
+export const cloudWebhookEvents = ["page.created", "page.updated", "page.deleted", "comment.created", "label.changed", "task.completed", "agent.assigned"] as const;
 export type CloudWebhookEvent = (typeof cloudWebhookEvents)[number];
 export type CloudWebhookFormat = "json" | "slack";
 export type CloudWebhookDeliveryStatus = "pending" | "delivered" | "failed";
@@ -867,6 +869,7 @@ interface CommentRow {
   deleted_at?: string | null;
   deleted_by?: string | null;
   anchor_json?: string | null;
+  agent_id?: string | null;
 }
 
 interface PageTaskRow {
@@ -1945,8 +1948,8 @@ export class NomaCloudDatabase {
     this.db
       .prepare(
         `INSERT INTO comments
-          (id, document_id, block_id, line, parent_id, body, created_by, created_at, updated_at, resolved_at, resolved_by)
-         VALUES (@id, @documentId, @blockId, @line, @parentId, @body, @createdBy, @createdAt, @updatedAt, @resolvedAt, @resolvedBy)
+          (id, document_id, block_id, line, parent_id, body, created_by, created_at, updated_at, resolved_at, resolved_by, agent_id)
+         VALUES (@id, @documentId, @blockId, @line, @parentId, @body, @createdBy, @createdAt, @updatedAt, @resolvedAt, @resolvedBy, @agentId)
          ON CONFLICT(id) DO UPDATE SET
            body = excluded.body,
            updated_at = excluded.updated_at,
@@ -1960,6 +1963,7 @@ export class NomaCloudDatabase {
         parentId: comment.parentId ?? null,
         resolvedAt: comment.resolvedAt ?? null,
         resolvedBy: comment.resolvedBy ?? null,
+        agentId: comment.agentId ?? null,
       });
   }
 
@@ -4660,7 +4664,7 @@ export class NomaCloudDatabase {
   /** Adds the comment edit/soft-delete/anchor columns to databases created before they existed. */
   private migrateCommentColumns(): void {
     const columns = new Set((this.db.prepare("PRAGMA table_info(comments)").all() as Array<{ name: string }>).map((column) => column.name));
-    for (const [name, type] of [["edited_at", "TEXT"], ["deleted_at", "TEXT"], ["deleted_by", "TEXT"], ["anchor_json", "TEXT"]] as const) {
+    for (const [name, type] of [["edited_at", "TEXT"], ["deleted_at", "TEXT"], ["deleted_by", "TEXT"], ["anchor_json", "TEXT"], ["agent_id", "TEXT"]] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE comments ADD COLUMN ${name} ${type}`);
     }
   }
@@ -5047,6 +5051,7 @@ function cloudComment(row: CommentRow): CloudComment {
     ...(row.deleted_at ? { deletedAt: row.deleted_at } : {}),
     ...(row.deleted_by ? { deletedBy: row.deleted_by } : {}),
     ...(row.anchor_json ? { anchor: parseRecord<CloudCommentAnchor>(row.anchor_json) } : {}),
+    ...(row.agent_id ? { agentId: row.agent_id } : {}),
   };
 }
 

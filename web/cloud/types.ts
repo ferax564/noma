@@ -126,7 +126,9 @@ export interface CloudComment {
   createdByName: string;
   createdAt: string;
   resolvedAt?: string;
-  mentions?: Array<{ id: string; name: string }>;
+  mentions?: Array<{ id: string; name: string; agent?: true }>;
+  /** Set when an agent wrote the comment on its owner's behalf. */
+  agent?: { id: string; name: string };
   editedAt?: string;
   deleted?: boolean;
   outdated?: boolean;

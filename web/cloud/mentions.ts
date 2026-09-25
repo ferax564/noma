@@ -5,6 +5,8 @@ import { state } from "./state.js";
 interface DirectoryUser {
   id: string;
   name: string;
+  /** An agent assignable on the current page; mentioning it hands the agent the request. */
+  agent?: true;
 }
 
 const MENTION_RE = /@\{([A-Za-z0-9_-]{8,80})\}/g;
@@ -197,7 +199,7 @@ function renderPicker(): void {
   if (options.length === 0) {
     const empty = document.createElement("div");
     empty.className = "mention-picker-empty";
-    empty.textContent = "No people in your spaces match";
+    empty.textContent = "No people or agents match";
     picker.append(empty);
     return;
   }
@@ -207,8 +209,9 @@ function renderPicker(): void {
     option.className = "mention-option";
     option.setAttribute("role", "option");
     option.setAttribute("aria-selected", String(index === selected));
-    option.textContent = user.name;
-    option.title = `Mention ${user.name}`;
+    option.textContent = user.agent ? `🤖 ${user.name}` : user.name;
+    if (user.agent) option.classList.add("mention-option-agent");
+    option.title = user.agent ? `Ask agent ${user.name} to help` : `Mention ${user.name}`;
     option.addEventListener("mousedown", (event) => {
       event.preventDefault();
       if (activeInput) insertMention(activeInput, user);

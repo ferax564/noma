@@ -20,6 +20,7 @@ import {
 } from "./context.js";
 import { decodePathSegment, HttpError, readJsonBody, sendJson } from "./http.js";
 import { boundedInteger, optionalRecord, optionalString, stringInput } from "./input.js";
+import { assignAgentsFromComment } from "./agent-assignments.js";
 import { extractMentions, mentionNames } from "./mentions.js";
 import { documentHasBlock } from "./records.js";
 import { emitPageWebhookEvent } from "./webhooks.js";
@@ -38,7 +39,9 @@ export type CommentResponse = CloudComment & {
   deleted?: true;
   outdated?: boolean;
   reactions: CommentReactionSummary[];
-  mentions: Array<{ id: string; name: string }>;
+  mentions: Array<{ id: string; name: string; agent?: true }>;
+  /** The agent that wrote this comment on its owner's behalf. */
+  agent?: { id: string; name: string };
 };
 
 export async function routeComments(
@@ -80,6 +83,7 @@ export async function routeComments(
       const now = config.now().toISOString();
       config.store.editComment(existing.id, body, now);
       notifyNewMentions(config, document, existing, body, user);
+      assignAgentsFromComment(config, document, { ...existing, body }, user, existing.body);
       recordActivity(config, user, "comment.edited", "document", document.id, { commentId: existing.id });
     }
     sendJson(res, 200, commentResponse(config, user, document, config.store.readComment(existing.id)!));
@@ -129,7 +133,11 @@ export async function routeComments(
   throw new HttpError(404, "Unknown comment route");
 }
 
-function createComment(config: CloudServerConfig, user: CloudUserRecord, document: CloudDocumentRecord, input: Record<string, unknown>): CloudComment {
+/**
+ * Creates a comment. `agentId` marks a reply an agent writes on behalf of `user`, its owner; agent
+ * comments never open new agent assignments.
+ */
+export function createComment(config: CloudServerConfig, user: CloudUserRecord, document: CloudDocumentRecord, input: Record<string, unknown>, agentId?: string): CloudComment {
   const body = commentBody(input);
   const anchor = anchorInput(document, input.anchor);
   const blockId = anchor?.blockId ?? optionalString(input.blockId)?.slice(0, 160);
@@ -153,15 +161,18 @@ function createComment(config: CloudServerConfig, user: CloudUserRecord, documen
     createdBy: user.id,
     createdAt: now,
     updatedAt: now,
+    ...(agentId ? { agentId } : {}),
   };
   config.store.writeComment(comment);
   if (anchor) config.store.setCommentAnchor(comment.id, anchor);
   notifyCommentParticipants(config, document, comment, user);
+  assignAgentsFromComment(config, document, comment, user);
   emitPageWebhookEvent(config, "comment.created", document, user, {
-    comment: { id: comment.id, body: comment.body, ...(comment.parentId ? { parentId: comment.parentId } : {}), ...(blockId ? { blockId } : {}), ...(anchor ? { quote: anchor.quote } : {}) },
+    comment: { id: comment.id, body: comment.body, ...(agentId ? { agentId } : {}), ...(comment.parentId ? { parentId: comment.parentId } : {}), ...(blockId ? { blockId } : {}), ...(anchor ? { quote: anchor.quote } : {}) },
   });
   recordActivity(config, user, parentId ? "comment.replied" : "comment.created", "document", document.id, {
     commentId: comment.id,
+    ...(agentId ? { agentId } : {}),
     blockId,
     line,
     ...(anchor ? { quote: anchor.quote.slice(0, 120) } : {}),
@@ -193,9 +204,11 @@ function shapeComment(
     return { ...rest, ...(anchor ? { anchor: { blockId: anchor.blockId, quote: "" } } : {}), body: "", deleted: true, reactions: [], mentions: [] };
   }
   const outdated = comment.anchor ? !quoteStillPresent(blockTexts.get(comment.anchor.blockId), comment.anchor.quote) : undefined;
+  const agentName = comment.agentId ? config.platform.readAgent(comment.agentId)?.name : undefined;
   return {
     ...comment,
     ...(outdated === undefined ? {} : { outdated }),
+    ...(comment.agentId ? { agent: { id: comment.agentId, name: agentName ?? comment.agentId } } : {}),
     reactions: summarizeReactions(reactions, user.id),
     mentions: mentionNames(config, user, comment.body, document.id),
   };

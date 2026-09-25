@@ -1,7 +1,8 @@
 /** `/api/users`. */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { type CloudNotificationType, type CloudUserRecord, cloudNotificationTypes } from "../cloud-db.js";
+import { type CloudDocumentRecord, type CloudNotificationType, type CloudUserRecord, cloudNotificationTypes } from "../cloud-db.js";
 import { type CloudServerConfig, type Principal, randomToken, requireNotTrashed, requireRecordAccess, requireUser, tokenPreview, writeUser } from "./context.js";
+import { assignableAgents } from "./agent-assignments.js";
 import { HttpError, readJsonBody, sendJson, sha256Hex } from "./http.js";
 import { assertCloudId, optionalCloudId, optionalRecord } from "./input.js";
 import { isValidEmail } from "./mail.js";
@@ -114,28 +115,35 @@ async function listUsers(config: CloudServerConfig): Promise<CloudUserRecord[]> 
 /**
  * Mention-picker directory: `q` searches users who share a space with the caller; `ids` resolves
  * display names for mentions. `document` narrows to people who can open that page (and lets
- * `ids` resolve anyone with access to it). Only `id` and `name` are returned.
+ * `ids` resolve anyone with access to it). Only `id` and `name` are returned. With `document`, agents
+ * assignable on that page are included too, flagged `agent: true`.
  */
-function userDirectory(config: CloudServerConfig, user: CloudUserRecord, principal: Principal, url: URL): Array<{ id: string; name: string }> {
+function userDirectory(config: CloudServerConfig, user: CloudUserRecord, principal: Principal, url: URL): Array<{ id: string; name: string; agent?: true }> {
   const documentId = optionalCloudId(url.searchParams.get("document"), "Document");
+  let document: CloudDocumentRecord | undefined;
   if (documentId) {
-    const document = config.store.readDocument(documentId);
+    document = config.store.readDocument(documentId);
     if (!document) throw new HttpError(404, "Record not found");
     requireNotTrashed(config, "document", documentId);
     requireRecordAccess(config, document, principal, "viewer");
   }
+  const agents = document ? assignableAgents(config, document).map((agent) => ({ id: agent.id, name: agent.name, agent: true as const })) : [];
   const idsParam = url.searchParams.get("ids");
   if (idsParam !== null) {
     const ids = [...new Set(idsParam.split(",").map((value) => value.trim()).filter(Boolean))];
     if (ids.length > 100) throw new HttpError(400, "ids cannot contain more than 100 users");
     for (const id of ids) assertCloudId(id, "User");
-    return config.store.userNames(user.id, ids, documentId);
+    const wanted = new Set(ids);
+    return [...config.store.userNames(user.id, ids, documentId), ...agents.filter((agent) => wanted.has(agent.id))];
   }
   const q = (url.searchParams.get("q") ?? "").trim().replace(/^@/, "").slice(0, 80);
   const limitText = url.searchParams.get("limit");
   const limit = limitText === null ? 10 : Number(limitText);
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new HttpError(400, "limit must be between 1 and 50");
-  return config.store.coMemberUsers(user.id, q, limit, documentId);
+  const people = config.store.coMemberUsers(user.id, q, limit, documentId);
+  const needle = q.toLowerCase();
+  const matchingAgents = agents.filter((agent) => agent.name.toLowerCase().includes(needle)).slice(0, Math.max(0, limit - people.length) || 3);
+  return [...people, ...matchingAgents];
 }
 
 function preferencesResponse(config: CloudServerConfig, user: CloudUserRecord): Record<string, unknown> {

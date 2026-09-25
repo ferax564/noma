@@ -160,6 +160,7 @@ type PlatformKind =
   | "agent"
   | "agent_access"
   | "agent_run"
+  | "agent_assignment"
   | "connector"
   | "connector_source"
   | "recipe"
@@ -594,6 +595,28 @@ export class CloudKnowledgePlatform {
     return this.list<CloudAgentIdentity>("agent", { ownerId }, page);
   }
 
+  /** Agent grants that cover a page directly or through one of `siteIds`. */
+  listAgentAccessCovering(documentId: string, siteIds: string[]): AgentAccessGrant[] {
+    return this.db
+      .prepare("SELECT data_json FROM cloud_platform_records WHERE kind = 'agent_access' AND (document_id = ? OR site_id IN (SELECT value FROM json_each(?))) ORDER BY updated_at DESC, id LIMIT 1000")
+      .all(documentId, JSON.stringify(siteIds))
+      .map((row) => JSON.parse((row as PlatformRow).data_json) as AgentAccessGrant);
+  }
+
+  writeAgentAssignment(assignment: AgentAssignment): AgentAssignment {
+    this.put("agent_assignment", assignment.id, assignment, { ownerId: assignment.agentId, documentId: assignment.documentId, updatedAt: assignment.updatedAt });
+    return assignment;
+  }
+
+  readAgentAssignment(id: string): AgentAssignment | undefined {
+    return this.get<AgentAssignment>("agent_assignment", id);
+  }
+
+  /** Assignments for one agent (`agentId`) or one page (`documentId`), newest activity first. */
+  listAgentAssignments(filter: { agentId?: string; documentId?: string }, page?: PlatformPage): AgentAssignment[] {
+    return this.list<AgentAssignment>("agent_assignment", { ownerId: filter.agentId, documentId: filter.documentId }, page);
+  }
+
   grantAgentAccess(access: AgentAccessGrant, actorId: string, now: string): AgentAccessGrant {
     if (!this.readAgent(access.agentId)) throw new Error("Agent not found");
     this.put("agent_access", access.id, access, { ownerId: access.agentId, documentId: access.resourceType === "document" ? access.resourceId : undefined, siteId: access.resourceType === "site" ? access.resourceId : undefined, updatedAt: access.updatedAt });
@@ -781,6 +804,9 @@ export class CloudKnowledgePlatform {
       { operation: "review", method: "POST", path: "/api/documents/:id/patch-proposals/:proposal/review", permission: "editor" },
       { operation: "apply", method: "POST", path: "/api/documents/:id/patch-proposals/:proposal/apply", permission: "editor" },
       { operation: "webhook", method: "POST", path: "/api/gateway/webhooks/:recipe", permission: "editor" },
+      { operation: "assignments", method: "GET", path: "/api/agents/:id/assignments", permission: "viewer" },
+      { operation: "reply", method: "POST", path: "/api/agents/:id/assignments/:assignment/reply", permission: "viewer" },
+      { operation: "update_assignment", method: "POST", path: "/api/agents/:id/assignments/:assignment/status", permission: "viewer" },
     ];
   }
 
@@ -1444,6 +1470,33 @@ export interface AgentAccessGrant {
   updatedAt: string;
 }
 
+export type AgentAssignmentStatus = "open" | "in_progress" | "done" | "declined";
+
+/**
+ * Work handed to an agent by a person: an `@{agentId}` mention in a comment, or a page task
+ * assigned to the agent. The agent reads it through the gateway, replies in the comment thread,
+ * links the patch proposals it opens, and reports a final status.
+ */
+export interface AgentAssignment {
+  id: string;
+  agentId: string;
+  documentId: string;
+  source: "comment" | "task";
+  commentId?: string;
+  taskId?: string;
+  blockId?: string;
+  request: string;
+  requestedBy: string;
+  requestedByName: string;
+  status: AgentAssignmentStatus;
+  note?: string;
+  proposalIds: string[];
+  replyCommentIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
 export type AgentRunStatus = "running" | "completed" | "failed" | "cancelled";
 
 export interface AgentRun {
@@ -1536,7 +1589,7 @@ export interface SemanticCollection {
 }
 
 export interface AgentGatewayCapability {
-  operation: "search" | "cited_answer" | "list_ids" | "llm_export" | "proof" | "proposal" | "review" | "apply" | "webhook";
+  operation: "search" | "cited_answer" | "list_ids" | "llm_export" | "proof" | "proposal" | "review" | "apply" | "webhook" | "assignments" | "reply" | "update_assignment";
   method: "GET" | "POST";
   path: string;
   permission: "viewer" | "editor";

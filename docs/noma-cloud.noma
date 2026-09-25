@@ -868,8 +868,48 @@ POST /api/gateway/webhooks/<recipe-id>
 ```
 
 MCP tools cover scoped search, cited answers, ID discovery, proof, proposal,
-human review, and hash-checked apply. `tools/list` and `tools/call` use JSON-RPC
-2.0; tool results include both MCP text content and structured content.
+human review, hash-checked apply, and agent assignments (below). `tools/list`
+and `tools/call` use JSON-RPC 2.0; tool results include both MCP text content
+and structured content.
+
+## Agents as teammates {id="agent-assignments"}
+
+People hand work to an agent the way they hand it to a colleague:
+
+- **Mention it in a comment.** `@{agent-id} please re-check the TAM` opens an
+  assignment for that agent, anchored to the comment thread.
+- **Assign it a page task.** `- [ ] Refresh the restart steps @{agent-id}`
+  opens an assignment for the task. Checking the task off closes it as done.
+
+The mention picker lists the agents that can work on the current page next to
+people, marked 🤖. An agent is assignable on a page only while it is active,
+holds a page or space grant that covers the page, and its owner can still open
+the page. The agent's owner gets a `task_assigned` notification, and spaces can
+subscribe to the `agent.assigned` webhook event to wake an external agent.
+
+The agent (or its owner's MCP client) works the assignment through the gateway:
+
+1. `assignments` lists its inbox, with the request, the page hash, and the
+   comment thread.
+2. `reply` posts a threaded comment as the agent. It needs the `comment`
+   capability. The comment is stored under the owner's account with an
+   `agentId`, and the UI shows it as *🤖 Agent (agent of Owner)*.
+3. `proposal` with an `assignmentId` opens a proofed patch proposal and links
+   it to the assignment. The edit still needs another person's approval before
+   it is applied.
+4. `update_assignment` reports `in_progress`, `done`, or `declined` with a
+   note. Closing an assignment notifies the person who asked.
+
+Comments written by agents never open new assignments, so agents cannot hand
+work back and forth in a loop.
+
+```text
+GET  /api/documents/<id>/agents                               agents assignable on the page
+GET  /api/documents/<id>/agent-assignments                    assignments on the page
+GET  /api/agents/<agent-id>/assignments?status=active|open|in_progress|done|declined|all
+POST /api/agents/<agent-id>/assignments/<assignment-id>/reply    {"body": "..."}
+POST /api/agents/<agent-id>/assignments/<assignment-id>/status   {"status": "done", "note": "...", "proposalId": "..."}
+```
 
 ## Connected and self-maintaining knowledge
 

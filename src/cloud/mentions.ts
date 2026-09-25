@@ -1,5 +1,6 @@
 /** `@{userId}` mentions in comments and page source: extraction, display names, and notifications. */
 import type { CloudDocumentRecord, CloudUserRecord } from "../cloud-db.js";
+import { agentDocumentAccess } from "./agent-assignments.js";
 import { type CloudServerConfig, writeNotification } from "./context.js";
 
 const MENTION_RE = /@\{([A-Za-z0-9_-]{8,80})\}/g;
@@ -10,12 +11,23 @@ export function extractMentions(text: string): string[] {
   return [...new Set([...withoutCode.matchAll(MENTION_RE)].map((match) => match[1]!))];
 }
 
-/** Display names for the users mentioned in `text` that the caller may see. */
-export function mentionNames(config: CloudServerConfig, caller: CloudUserRecord | undefined, text: string, documentId: string): Array<{ id: string; name: string }> {
+/**
+ * Display names for the users mentioned in `text` that the caller may see, plus the agents
+ * assignable on the page (flagged `agent: true`).
+ */
+export function mentionNames(config: CloudServerConfig, caller: CloudUserRecord | undefined, text: string, documentId: string): Array<{ id: string; name: string; agent?: true }> {
   const ids = extractMentions(text);
   if (ids.length === 0) return [];
-  if (!caller) return ids.flatMap((id) => (config.store.documentAccessRole(id, documentId) ? [{ id, name: config.store.readUser(id)?.name ?? id }] : []));
-  return config.store.userNames(caller.id, ids.slice(0, 200), documentId);
+  const users = caller
+    ? config.store.userNames(caller.id, ids.slice(0, 200), documentId)
+    : ids.flatMap((id) => (config.store.documentAccessRole(id, documentId) ? [{ id, name: config.store.readUser(id)?.name ?? id }] : []));
+  const known = new Set(users.map((user) => user.id));
+  const agents = ids.slice(0, 200).flatMap((id) => {
+    if (known.has(id)) return [];
+    const access = agentDocumentAccess(config, id, documentId);
+    return access ? [{ id, name: access.agent.name, agent: true as const }] : [];
+  });
+  return [...users, ...agents];
 }
 
 /**

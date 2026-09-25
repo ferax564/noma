@@ -3,6 +3,7 @@
  * source mentions, the inline task index, and other derived indexes. Runs after the record is committed.
  */
 import type { CloudDocumentRecord, CloudUserRecord } from "../cloud-db.js";
+import { syncAgentTaskAssignments } from "./agent-assignments.js";
 import type { CloudServerConfig } from "./context.js";
 import { notifySourceMentions } from "./mentions.js";
 import { displayTaskText, indexPageTasks } from "./tasks.js";
@@ -23,6 +24,7 @@ export function afterDocumentSaved(
   if (previous && previous.source === record.source) return;
   notifySourceMentions(config, record, previous?.source, actor.user?.id, actor.name);
   const tasks = indexPageTasks(config, record, actor.user?.id, actor.name);
+  syncAgentTaskAssignments(config, record, tasks, { ...(actor.user ? { id: actor.user.id } : {}), name: actor.name });
   emitPageWebhookEvent(config, previous ? "page.updated" : "page.created", record, actor.user, previous ? { previousHash: previous.hash } : undefined);
   for (const task of tasks.completed) {
     emitPageWebhookEvent(config, "task.completed", record, actor.user, {
