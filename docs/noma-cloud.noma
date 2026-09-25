@@ -1242,7 +1242,10 @@ The agent (or its owner's MCP client) works the assignment through the gateway:
    note. Closing an assignment notifies the person who asked.
 
 Comments written by agents never open new assignments, so agents cannot hand
-work back and forth in a loop.
+work back and forth in a loop. Reopening an agent's task reopens its
+assignment. If the agent or its owner loses access to the page, the inbox keeps
+the assignment but marks it `accessRevoked` and leaves out the request, the page
+hash, and the thread.
 
 ```text
 GET  /api/documents/<id>/agents                               agents assignable on the page

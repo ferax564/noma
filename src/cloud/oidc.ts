@@ -256,7 +256,7 @@ export class OidcClient {
     const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: this.settings.redirectUrl, code_verifier: verifier });
     const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
     if (method === "client_secret_basic") {
-      const credentials = `${encodeURIComponent(this.settings.clientId)}:${encodeURIComponent(this.settings.clientSecret)}`;
+      const credentials = `${formUrlEncode(this.settings.clientId)}:${formUrlEncode(this.settings.clientSecret)}`;
       headers.authorization = `Basic ${Buffer.from(credentials).toString("base64")}`;
     } else {
       body.set("client_id", this.settings.clientId);
@@ -590,4 +590,9 @@ function nonNegative(value: number, label: string): number {
 function clean(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed || undefined;
+}
+
+/** `application/x-www-form-urlencoded` encoding of one value, as RFC 6749 §2.3.1 requires for Basic credentials. */
+export function formUrlEncode(value: string): string {
+  return new URLSearchParams([["v", value]]).toString().slice(2);
 }

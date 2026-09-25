@@ -498,6 +498,10 @@ function listAssignments(config: CloudServerConfig, agent: CloudAgentIdentity, s
     .filter((assignment) => !wanted || wanted.includes(assignment.status))
     .slice(page.offset, page.offset + page.limit)
     .map((assignment) => {
+      if (!agentDocumentAccess(config, agent.id, assignment.documentId)) {
+        const { request: _request, ...rest } = assignment;
+        return { ...rest, agentName: agent.name, accessRevoked: true as const };
+      }
       const document = config.store.readDocument(assignment.documentId);
       const root = assignmentThreadRoot(config, assignment);
       return {

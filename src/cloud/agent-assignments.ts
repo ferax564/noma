@@ -98,17 +98,17 @@ export function assignAgentsFromComment(
 }
 
 /**
- * Keeps task assignments in step with a saved page: newly assigned agent tasks open an assignment,
- * and a task a person checks off closes its open assignment as done.
+ * Keeps task assignments in step with a saved page: newly assigned or reopened agent tasks open an
+ * assignment, and a task a person checks off closes its open assignment as done.
  */
 export function syncAgentTaskAssignments(
   config: CloudServerConfig,
   document: CloudDocumentRecord,
-  changes: { assigned: CloudPageTask[]; completed: CloudPageTask[] },
+  changes: { assigned: CloudPageTask[]; completed: CloudPageTask[]; reopened: CloudPageTask[] },
   actor: { id?: string; name: string },
 ): AgentAssignment[] {
   const opened: AgentAssignment[] = [];
-  for (const task of changes.assigned) {
+  for (const task of [...changes.assigned, ...changes.reopened]) {
     if (!task.assigneeId || task.status === "done") continue;
     const access = agentDocumentAccess(config, task.assigneeId, document.id);
     if (!access) continue;

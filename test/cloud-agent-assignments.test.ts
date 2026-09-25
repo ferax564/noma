@@ -137,6 +137,14 @@ test("@-mentioning an agent in a comment opens an assignment it can answer in-th
     const closedNotes = await json<{ notifications: Array<{ title: string; body: string }> }>(`${base}/api/notifications`, { token: ada.token });
     assert.ok(closedNotes.notifications.some((note) => note.title === "Research Bot finished your request" && note.body.includes("$3.1B")));
 
+    await json(`${base}/api/sites/${site.id}/collaborators/${bob.id}`, { method: "DELETE", token: ada.token });
+    const revoked = (await json<{ assignments: Array<AssignmentResponse & { accessRevoked?: true }> }>(`${base}/api/agents/${agent.id}/assignments`, { token: bob.token })).assignments;
+    assert.equal(revoked.length, 1);
+    assert.equal(revoked[0]!.accessRevoked, true);
+    assert.equal(revoked[0]!.thread, undefined, "no thread once the owner loses access");
+    assert.equal(revoked[0]!.documentHash, undefined);
+    assert.equal(revoked[0]!.request, undefined);
+    assert.equal(revoked[0]!.documentTitle, undefined);
     const pageAssignments = await json<{ assignments: AssignmentResponse[] }>(`${base}/api/documents/${page.id}/agent-assignments`, { token: ada.token });
     assert.deepEqual(pageAssignments.assignments.map((item) => [item.agentName, item.status]), [["Research Bot", "done"]]);
     assert.equal((await json<{ assignments: AssignmentResponse[] }>(`${base}/api/agents/${agent.id}/assignments?status=active`, { token: bob.token })).assignments.length, 0);
@@ -178,6 +186,12 @@ test("page tasks assigned to an agent open assignments, and checking the task of
     assignments = (await json<{ assignments: AssignmentResponse[] }>(`${base}/api/agents/${agent.id}/assignments`, { token: ada.token })).assignments;
     assert.equal(assignments[0]!.status, "done");
     assert.match(assignments[0]!.note ?? "", /checked off/);
+
+    page = await savePage(base, ada.token, page, page.source.replace("[x]", "[ ]"));
+    assignments = (await json<{ assignments: AssignmentResponse[] }>(`${base}/api/agents/${agent.id}/assignments?status=active`, { token: ada.token })).assignments;
+    assert.deepEqual(assignments.map((item) => [item.taskId, item.status, item.completedAt]), [[taskId, "open", undefined]], "reopening the task reopens the assignment");
+    assert.deepEqual(assignments[0]!.replyCommentIds, [reply.comment.id], "history survives a reopen");
+    page = await savePage(base, ada.token, page, page.source.replace("[ ]", "[x]"));
 
     await json(`${base}/api/agents/${agent.id}/access`, { method: "POST", token: ada.token, body: { resourceType: "document", resourceId: page.id, role: "viewer" } });
     const silent = await json<{ id: string }>(`${base}/api/agents`, { method: "POST", token: ada.token, body: { name: "Silent Bot", capabilities: ["read_doc"] } });

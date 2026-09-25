@@ -583,6 +583,8 @@ async function storeNotionAttachments(
   if (page.attachments.length === 0) return;
   const existing = new Map(config.store.listAttachments(documentId).map((attachment) => [attachment.filename, attachment]));
   const now = config.now().toISOString();
+  // Files on a page already in the space count in siteAttachmentBytes as soon as they are stored.
+  const countedBySite = config.store.siteIdsForDocument(documentId).includes(siteId);
   let changed = false;
   for (const attachment of page.attachments) {
     stats.referenced += 1;
@@ -637,7 +639,7 @@ async function storeNotionAttachments(
       createdAt: now,
     });
     stats.stored += 1;
-    stats.addedBytes += staged.size;
+    if (!countedBySite) stats.addedBytes += staged.size;
     changed = true;
   }
   if (changed) {

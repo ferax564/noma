@@ -12,7 +12,7 @@ import { parse } from "../src/parser.js";
 import { validate } from "../src/validator.js";
 import { createZip } from "../src/zip.js";
 import { type CloudUserResponse, createCloudUser, json, jsonStatus, request, startCloudServer } from "./cloud-wiki-helpers.js";
-import { DESIGN, HOME, notionFixture, TASK_A, TASK_B, TASKS } from "./notion-fixture.js";
+import { DESIGN, HOME, notionFixture, PNG, TASK_A, TASK_B, TASKS } from "./notion-fixture.js";
 
 interface ImportJob {
   id: string;
@@ -507,6 +507,29 @@ test("Notion imports respect the upload limit and the attachment size limit", as
     const job = await startNotionJson(cloud.base, alice, { siteId: site.id, archiveBase64: small.toString("base64") });
     assert.equal(job.status, "succeeded", job.error);
     assert.deepEqual(job.result?.loss, [{ macro: "attachment-too-large", count: 1 }]);
+  } finally {
+    await cloud.close();
+  }
+});
+
+test("Notion re-imports count space attachment quota once for pages already in the space", async () => {
+  const variant = (tag: number) => Buffer.concat([PNG, Buffer.from([tag])]);
+  const size = PNG.length + 1;
+  const cloud = await startCloudServer("noma-cloud-import-notion-quota-", { attachmentQuotaBytes: size * 3 + 5 });
+  try {
+    const alice = await createCloudUser(cloud.base, "Alice");
+    const site = await json<SiteResponse>(`${cloud.base}/api/sites`, { method: "POST", token: alice.token, body: { title: "Quota", documentIds: [] } });
+    const archive = (names: string[]) =>
+      createZip([
+        { path: `Page ${HOME}.md`, data: `# Page\n\n${names.map((name) => `![${name}](${name}.png)`).join("\n\n")}\n` },
+        ...names.map((name, index) => ({ path: `${name}.png`, data: variant(index + 1) })),
+      ]).toString("base64");
+    const first = await startNotionJson(cloud.base, alice, { siteId: site.id, archiveBase64: archive(["a"]) });
+    assert.equal(first.status, "succeeded", first.error);
+    const second = await startNotionJson(cloud.base, alice, { siteId: site.id, archiveBase64: archive(["a", "b", "c"]) });
+    assert.equal(second.status, "succeeded", second.error);
+    const attachments = second.result?.attachments as unknown as { stored: number; unchanged: number; skipped: unknown[] };
+    assert.deepEqual({ stored: attachments.stored, unchanged: attachments.unchanged, skipped: attachments.skipped }, { stored: 2, unchanged: 1, skipped: [] });
   } finally {
     await cloud.close();
   }

@@ -8,11 +8,11 @@ import test from "node:test";
 import Database from "better-sqlite3";
 import { openNomaCloudDatabase } from "../src/cloud-db.js";
 import { createNomaCloudServer, type NomaCloudServerOptions } from "../src/cloud-server.js";
-import { resolveOidcSettings } from "../src/cloud/oidc.js";
+import { formUrlEncode, resolveOidcSettings } from "../src/cloud/oidc.js";
 import { safeReturnTo } from "../src/cloud/routes-oidc.js";
 
 const clientId = "noma-cloud";
-const clientSecret = "s3cret value/+";
+const clientSecret = "s3cret value/+!~*";
 
 interface SigningKey {
   kid: string;
@@ -112,7 +112,7 @@ async function startFakeIdp(clock: { now: Date }): Promise<FakeIdp> {
         const form = new URLSearchParams(await readBody(req));
         const basic = req.headers.authorization;
         if (basic) {
-          const [id, secret] = Buffer.from(basic.replace(/^Basic /, ""), "base64").toString("utf8").split(":").map(decodeURIComponent);
+          const [id, secret] = Buffer.from(basic.replace(/^Basic /, ""), "base64").toString("utf8").split(":").map((part) => decodeURIComponent(part.replace(/\+/g, " ")));
           if (id !== clientId || secret !== clientSecret) return json(401, { error: "invalid_client" });
           idp.tokenAuth?.push("basic");
         } else {
@@ -622,4 +622,9 @@ test("databases created before OIDC gain the oidc session source without losing 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("client_secret_basic credentials use form-urlencoding, not URI-component encoding", () => {
+  assert.equal(formUrlEncode("a b!~*'()/+:"), "a+b%21%7E*%27%28%29%2F%2B%3A");
+  assert.equal(formUrlEncode("plain-id_1.2"), "plain-id_1.2");
 });
