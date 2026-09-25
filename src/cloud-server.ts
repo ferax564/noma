@@ -24,6 +24,7 @@ import {
 import { decodePathSegment, headerValue, HttpError, sendJson, sendText, sha256Hex } from "./cloud/http.js";
 import { selfUser } from "./cloud/records.js";
 import { attachmentResolver } from "./cloud/attachments.js";
+import { canvasResolver } from "./cloud/canvas.js";
 import { widgetFrameResolver } from "./cloud/widgets.js";
 import { documentComponentKit, documentStyleTokens } from "./cloud/spaces.js";
 import { cloudMacroResolvers, cloudPageHref } from "./cloud/macros.js";
@@ -426,6 +427,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
       200,
       renderPresentationHtml(record, {
         resolveAttachment: attachmentResolver(config, record.id, access),
+        resolveCanvas: await canvasResolver(config, record.id, record.source),
         resolveWidgetFrame: widgetFrameResolver(config, record.id, access),
         styleTokens: documentStyleTokens(config, record.id),
         components: documentComponentKit(config, record.id),
@@ -443,7 +445,7 @@ async function routeRequest(req: IncomingMessage, res: ServerResponse, config: C
     requireNotTrashed(config, "document", id);
     const access = requireRecordAccess(config, record, principal, "viewer");
     recordPageView(config, req, record, access);
-    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), components: documentComponentKit(config, record.id), macros: cloudMacroResolvers(config, principal, record.id), ...(url.searchParams.get("share") ? { shareToken: url.searchParams.get("share")! } : {}) }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveCanvas: await canvasResolver(config, record.id, record.source), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), components: documentComponentKit(config, record.id), macros: cloudMacroResolvers(config, principal, record.id), ...(url.searchParams.get("share") ? { shareToken: url.searchParams.get("share")! } : {}) }), "text/html; charset=utf-8");
     return;
   }
 

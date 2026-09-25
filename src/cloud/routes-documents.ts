@@ -37,6 +37,7 @@ import {
   updateDocument,
 } from "./records.js";
 import { attachmentResolver } from "./attachments.js";
+import { canvasResolver } from "./canvas.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeDocumentWidget, widgetFrameResolver } from "./widgets.js";
 import { paperDomToPatchOps } from "../paperdom-sync.js";
@@ -179,7 +180,7 @@ export async function routeDocuments(
 
   if (suffix === "html" && method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), components: documentComponentKit(config, record.id), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveCanvas: await canvasResolver(config, record.id, record.source), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), components: documentComponentKit(config, record.id), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
     return;
   }
 

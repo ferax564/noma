@@ -4,6 +4,7 @@ import { walk } from "./ast.js";
 import { deckAspect, deckSlides, findDecks, presentationSlides, slideLayout, slideParts } from "./slides.js";
 import { type ComponentKit, componentSignature, expandComponents, readComponentDefinition } from "./components.js";
 import { resolveStyleTokenAliases, styleTokenClassNames, type StyleTokenAliases } from "./style-tokens.js";
+import { canvasPages, canvasPageSize, canvasPageSvg, canvasSourceOf, readCanvasDocument } from "./canvas-svg.js";
 import {
   bodyFieldText,
   buildComputedEvalContext,
@@ -105,6 +106,12 @@ export interface HtmlRenderOptions extends MacroResolvers {
    * resolver scoped to the page's attachments; without one, `att:` figures render as a placeholder.
    */
   resolveAttachment?: (ref: string) => string | undefined;
+  /**
+   * Maps a `::canvas{src="att:<ref>"}` reference to the canvas JSON. Hosts
+   * pre-read the attachment (renderers stay synchronous and I/O-free); without
+   * one, such canvases render as a placeholder.
+   */
+  resolveCanvas?: (ref: string) => string | undefined;
 }
 
 export interface DatasetTable {
@@ -149,6 +156,7 @@ interface RenderCtx {
   sourcePositions: boolean;
   inline: InlineHtmlOptions;
   resolveAttachment?: (ref: string) => string | undefined;
+  resolveCanvas?: (ref: string) => string | undefined;
   macros: MacroResolvers;
   includeTrail: IncludeTrail;
   rootDoc: DocumentNode;
@@ -393,6 +401,7 @@ function createRenderCtx(doc: DocumentNode, options: HtmlRenderOptions): RenderC
     sourcePositions: options.sourcePositions === true,
     inline: options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {},
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
+    ...(options.resolveCanvas ? { resolveCanvas: options.resolveCanvas } : {}),
     macros: options,
     includeTrail: initialIncludeTrail(options.documentId),
     rootDoc: doc,
@@ -1356,6 +1365,9 @@ function renderDirectiveBlock(node: DirectiveNode, ctx: RenderCtx): string {
     case "plot":
       return renderPlotPlaceholder(node, idAttr, ctx);
 
+    case "canvas":
+      return renderCanvas(node, idAttr, ctx);
+
     case "diagram":
       return renderDiagram(node, idAttr);
 
@@ -1689,6 +1701,40 @@ function renderGenericDirective(node: DirectiveNode, idAndAttrs: string, ctx: Re
   <div class="noma-block-body">${renderChildren(node, ctx)}</div>
   ${metaHtml}
 </aside>`;
+}
+
+/** `::canvas` — a PaperDOM canvas drawn as static SVG, one frame per visible page (or `page=`). */
+function renderCanvas(node: DirectiveNode, idAttr: string, ctx: RenderCtx): string {
+  const caption = attrValueText(node.attrs, "caption") ?? attrValueText(node.attrs, "title");
+  const figcaption = caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : "";
+  const { json, src } = canvasSourceOf(node, ctx.resolveCanvas);
+  if (json === undefined) {
+    const reason = src ? `canvas not available: ${src}` : "canvas has no source: add a ```json body or src=";
+    return `<figure class="noma-canvas noma-canvas-missing"${idAttr}><aside class="noma-blocked-escape" data-kind="canvas">[${escapeHtml(reason)}]</aside>${figcaption}</figure>`;
+  }
+  const read = readCanvasDocument(json);
+  if (!read.ok) {
+    return `<figure class="noma-canvas noma-canvas-missing"${idAttr}><aside class="noma-blocked-escape" data-kind="canvas">[${escapeHtml(read.error)}]</aside>${figcaption}</figure>`;
+  }
+  const pageId = attrValueText(node.attrs, "page");
+  const pages = canvasPages(read.document, pageId);
+  if (pages.length === 0) {
+    return `<figure class="noma-canvas noma-canvas-missing"${idAttr}><aside class="noma-blocked-escape" data-kind="canvas">[${escapeHtml(pageId ? `canvas has no page "${pageId}"` : "canvas has no visible pages")}]</aside>${figcaption}</figure>`;
+  }
+  const resolveImage = (value: string): string | undefined => {
+    if (value.toLowerCase().startsWith(ATTACHMENT_URL_PREFIX)) return ctx.resolveAttachment?.(value.slice(ATTACHMENT_URL_PREFIX.length));
+    return ctx.externalAssets && /^https:\/\//i.test(value) ? value : undefined;
+  };
+  const prefix = node.id ?? "canvas";
+  const frames = pages
+    .map((page, index) => {
+      const { width, height } = canvasPageSize(page);
+      const label = `${attrValueText(node.attrs, "title") ?? read.document.title ?? "Canvas"} — ${page.name || `page ${index + 1}`}`;
+      const svg = canvasPageSvg(page, { idPrefix: `${prefix}-${index}`, resolveImage, label });
+      return `<div class="noma-canvas-page" data-page="${escapeAttr(String(page.id ?? ""))}" style="aspect-ratio: ${width} / ${height}">${svg}</div>`;
+    })
+    .join("");
+  return `<figure class="noma-canvas"${idAttr} data-pages="${pages.length}"><div class="noma-canvas-pages">${frames}</div>${figcaption}</figure>`;
 }
 
 function renderFigureImage(src: string, alt: string, ctx: RenderCtx): string {

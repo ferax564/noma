@@ -1,4 +1,4 @@
-/** Export menu: download the current page (PDF, Word, Markdown, HTML, .noma) or the current space (HTML site or .noma bundle). */
+/** Export menu: download the current page (PDF, Word, PowerPoint, PaperDOM, Markdown, HTML, .noma) or the current space (HTML site or .noma bundle). */
 import { CloudRequestError } from "./api.js";
 import { shareToken, state } from "./state.js";
 import { errorMessage, setBusy, setCloudStatus } from "./util.js";
@@ -17,6 +17,18 @@ export function renderExportChrome(): void {
   exportSelect.disabled = state.busy || !state.currentPage;
   for (const option of exportSelect.querySelectorAll<HTMLOptionElement>("option[data-export-scope='site']")) {
     option.disabled = !state.currentSite;
+  }
+}
+
+/** Short summary of what a .pptx export could not carry exactly (from the `x-noma-fidelity` header). */
+function fidelityNote(header: string | null): string {
+  if (!header) return "";
+  try {
+    const report = JSON.parse(header) as { approximated?: string[]; unsupported?: string[] };
+    const items = [...(report.approximated ?? []), ...(report.unsupported ?? [])];
+    return items.length ? ` · not exact in PowerPoint: ${items.map((item) => item.split(":")[0]).join(", ")}` : "";
+  } catch {
+    return "";
   }
 }
 
@@ -54,7 +66,8 @@ async function downloadExport(value: string): Promise<void> {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
-    setCloudStatus(`Downloaded ${filename}`, "ok");
+    const fidelity = fidelityNote(response.headers.get("x-noma-fidelity"));
+    setCloudStatus(`Downloaded ${filename}${fidelity}`, fidelity ? "warning" : "ok");
   } catch (error) {
     setCloudStatus(errorMessage(error), "error");
   } finally {

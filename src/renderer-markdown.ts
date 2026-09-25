@@ -1,4 +1,5 @@
 import { type ComponentKit, expandComponents } from "./components.js";
+import { canvasTextLines } from "./canvas-svg.js";
 import yaml from "js-yaml";
 import type {
   AttrValue,
@@ -154,6 +155,18 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx, depth: number): st
 
   if (node.name === "figure") {
     return wrapDirective(node, renderFigure(node, ctx, depth), ctx);
+  }
+
+  if (node.name === "canvas") {
+    const { pages, error } = canvasTextLines(node);
+    const caption = typeof node.attrs.caption === "string" ? node.attrs.caption : typeof node.attrs.title === "string" ? node.attrs.title : "Canvas";
+    const lines = [`**${caption}**`];
+    if (error) lines.push("", `*(${error})*`);
+    for (const page of pages) {
+      lines.push("", `*${page.page}*`, "");
+      for (const line of page.lines) lines.push(`- ${line}`);
+    }
+    return wrapDirective(node, lines.join("\n"), ctx);
   }
 
   if (node.name === "agent_task" || node.name === "todo") {

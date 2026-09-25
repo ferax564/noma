@@ -8,6 +8,18 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Canvas embeds (`::canvas`):** a page can draw a PaperDOM canvas as static SVG, covering shapes, text, connectors, tables, bar and line charts, and images.
+  - **Sources:** a fenced ```` ```json ```` body, a file `src=` (read by the CLI loader and contained to the document directory), or, in Noma Cloud, an `att:` attachment on the same page. `page=` picks one page.
+  - **Safety:** canvas JSON is treated as untrusted. Colours, fonts, and numbers are sanitised, text is escaped, SVG data URIs are never drawn, and remote images load only where the host resolves them.
+  - **Text targets:** LLM, Markdown, and DOCX list each page's text in reading order, not the JSON.
+  - **Validator:** `canvas-missing-source` and `canvas-invalid` (errors), and `canvas-unknown-page` (warning).
+  - **Noma Cloud:** published pages, the presenter, the space site, and every export read the page's canvas attachments. The editor preview fetches them once.
+  - **Library:** `canvasPageSvg`, `canvasOutline`, `readCanvasDocument`, and friends are exported from the root entry, which stays free of runtime PaperDOM imports.
+- **PowerPoint export (`--to pptx`):** `paperDomToPptx()` writes a `.pptx` from the canvas model with the dependency-free ZIP writer.
+  - **Native in PowerPoint:** text boxes with bullets and numbering, preset shapes, connectors, tables, bar and line charts (native chart parts with literal data), embedded images, speaker notes, hidden slides, and transitions.
+  - **Fidelity report:** anything approximated or left out is listed in the report and printed by the CLI.
+  - **Input:** a `.noma` page (its deck, or one slide per section) or a PaperDOM canvas `.json`.
+  - **Noma Cloud:** *Export… → PowerPoint (.pptx)* (`export?to=pptx`) sends the report as the `x-noma-fidelity` header, and the editor shows it. The export menu also offers the PaperDOM canvas.
 - **Presentations in `.noma`:** `::deck{aspect="16:9|4:3|1:1"}` holds `:::slide{layout="title|section|content|two-column|statement|quote|media|blank"}` children, with speaker notes in `::::notes`. If a slide has no `title=`, a leading heading becomes the title. HTML shows the slides as scaled frames in the page, and a **Present** button opens a fullscreen presenter with keyboard navigation and a URL-hash deep link to the current slide. Markdown writes one `##` section per slide, and LLM output keeps `[SLIDE]` markers. New `presentation` profile; `technical` and `research` also allow decks. Example: `examples/deck.noma`.
 - **PaperDOM → `.noma` text sync:** `noma paperdom-sync <file.noma> <canvas.json>` and `paperDomToPatchOps()` turn text edits made on an exported canvas back into ordinary patch ops, ready for `noma proof --ops` (`--inplace` applies and validates).
   - **What syncs:** slide titles, paragraphs, list items, quotes, code, pipe-table cells, speaker notes, `hidden`, `transition`, and slide order.

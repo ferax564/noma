@@ -37,6 +37,35 @@ export function resolveAttachmentUrl(ref: string): string | undefined {
   return attachment?.url;
 }
 
+const MAX_PREVIEW_CANVAS_BYTES = 2 * 1024 * 1024;
+/** Canvas JSON by attachment id (attachments are immutable, so ids never go stale); null = unreadable. */
+const canvasJson = new Map<string, string | null>();
+const canvasPending = new Set<string>();
+
+/**
+ * `::canvas{src="att:…"}` resolver for the preview: returns cached JSON, or starts
+ * one fetch of the attachment and re-renders when it arrives.
+ */
+export function resolveCanvasJson(ref: string): string | undefined {
+  if (!state.currentPage || attachmentsPageId !== state.currentPage.id) return undefined;
+  const attachment = attachments.find((item) => item.id === ref) ?? [...attachments].reverse().find((item) => item.filename === ref);
+  if (!attachment?.url || attachment.size > MAX_PREVIEW_CANVAS_BYTES) return undefined;
+  const cached = canvasJson.get(attachment.id);
+  if (cached !== undefined) return cached ?? undefined;
+  if (!canvasPending.has(attachment.id)) {
+    canvasPending.add(attachment.id);
+    const id = attachment.id;
+    void fetch(attachment.url, { credentials: "same-origin" })
+      .then(async (response) => canvasJson.set(id, response.ok ? await response.text() : null))
+      .catch(() => canvasJson.set(id, null))
+      .finally(() => {
+        canvasPending.delete(id);
+        renderCurrent();
+      });
+  }
+  return undefined;
+}
+
 export function installAttachments(): void {
   uploadButton.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => {

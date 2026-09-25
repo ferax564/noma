@@ -1,6 +1,7 @@
 import yaml from "js-yaml";
 import type { Diagnostic, DirectiveNode, DocumentNode, Node } from "./ast.js";
 import { walk } from "./ast.js";
+import { canvasSourceOf, readCanvasDocument } from "./canvas-svg.js";
 import { computedDomainVars, controlDefaultNumber, formulaText, numericAttr as computedNumericAttr } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
 import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } from "./inline.js";
@@ -106,6 +107,7 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "toc",
     "pagebreak",
     "figure",
+    "canvas",
     "plot",
     "plotly",
     "diagram",
@@ -157,6 +159,7 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "dataset",
     "query",
     "plot",
+    "canvas",
     "plotly",
     "diagram",
     "metric",
@@ -230,6 +233,7 @@ PROFILES.presentation = new Set([
   "tip",
   "warning",
   "figure",
+  "canvas",
   "plot",
   "diagram",
   "dataset",
@@ -239,6 +243,25 @@ PROFILES.presentation = new Set([
   "decision",
   "risk",
 ]);
+
+/** `::canvas` needs a source; inline JSON (or a loader-inlined file) must be a drawable canvas. */
+function validateCanvas(node: DirectiveNode, diagnostics: Diagnostic[]): void {
+  const at = { pos: node.pos, ...(node.endLine ? { endLine: node.endLine } : {}), ...(node.id ? { nodeId: node.id } : {}) };
+  const { json, src } = canvasSourceOf(node);
+  if (json === undefined) {
+    if (!src) diagnostics.push({ severity: "error", code: "canvas-missing-source", message: `Canvas "${node.id ?? "?"}" needs a \`\`\`json body or a src= (file path or att: attachment).`, ...at });
+    return;
+  }
+  const read = readCanvasDocument(json);
+  if (!read.ok) {
+    diagnostics.push({ severity: "error", code: "canvas-invalid", message: `Canvas "${node.id ?? "?"}": ${read.error}.`, ...at });
+    return;
+  }
+  const page = node.attrs.page;
+  if (typeof page === "string" && !read.document.pages.some((p) => p.id === page)) {
+    diagnostics.push({ severity: "warning", code: "canvas-unknown-page", message: `Canvas "${node.id ?? "?"}" has no page "${page}".`, ...at });
+  }
+}
 
 const MEMORY_TYPES = new Set(["user", "feedback", "project", "reference"]);
 const ISO_DATE_RE =
@@ -591,6 +614,8 @@ export function validate(source: DocumentNode, options: ValidateOptions = {}): D
         }
       }
     }
+
+    if (node.name === "canvas" && !suppressed(node)) validateCanvas(node, diagnostics);
 
     if (node.name === "figure" && !suppressed(node) && !node.attrs.alt && !node.attrs.caption) {
       diagnostics.push({
@@ -989,6 +1014,9 @@ const KNOWN_RULES = [
   "diagram-missing-source",
   "plotly-missing-spec",
   "plotly-invalid-json",
+  "canvas-missing-source",
+  "canvas-invalid",
+  "canvas-unknown-page",
   "dataset-src-missing",
   "memory-missing-type",
   "memory-invalid-type",

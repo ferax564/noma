@@ -17,7 +17,7 @@ import { renderChrome } from "./layout.js";
 import { clearMacroCache, flushMacroRequests, previewMacroResolvers } from "./macros.js";
 import { confirmDiscardDirty, pageFolder, recordRecent, replacePage, sourceTitle, updateAddress } from "./navigation.js";
 import { refreshPageMeta } from "./page-meta.js";
-import { refreshAttachments, resolveAttachmentUrl } from "./attachments.js";
+import { refreshAttachments, resolveAttachmentUrl, resolveCanvasJson } from "./attachments.js";
 import { refreshRestrictions } from "./restrictions.js";
 import { canEditPage } from "./permissions.js";
 import { previewDocument, previewError } from "./preview.js";
@@ -186,6 +186,7 @@ export function renderCurrent(): void {
       interactive: false,
       sourcePositions: true,
       resolveAttachment: resolveAttachmentUrl,
+      resolveCanvas: resolveCanvasJson,
       resolveWidgetFrame: previewWidgetFrame,
       styleTokens,
       components,

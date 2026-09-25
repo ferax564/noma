@@ -18,6 +18,8 @@ export type { NomaRenderOptions } from "./renderer-noma.js";
 export { renderMarkdown } from "./renderer-markdown.js";
 export type { MarkdownRenderOptions } from "./renderer-markdown.js";
 export { buildPaperDom, renderPaperDom } from "./renderer-paperdom.js";
+export { canvasOutline, canvasPageSvg, canvasPages, canvasSourceOf, readCanvasDocument, MAX_CANVAS_SOURCE_BYTES } from "./canvas-svg.js";
+export type { CanvasReadResult, CanvasSvgOptions } from "./canvas-svg.js";
 export type { PaperDomPageSource, RenderPaperDomOptions } from "./renderer-paperdom.js";
 export { DECK_ASPECTS, SLIDE_LAYOUTS, deckSlides, findDecks, slideParts } from "./slides.js";
 export type { SlideLayout, SlideParts } from "./slides.js";

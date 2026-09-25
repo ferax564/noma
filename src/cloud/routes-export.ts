@@ -23,8 +23,10 @@ import { defaultThemeCss } from "./theme.js";
 import { documentComponentKit, documentStyleTokens } from "./spaces.js";
 import type { StyleTokenAliases } from "../style-tokens.js";
 import type { ComponentKit } from "../components.js";
+import { canvasResolver, inlineResolvedCanvases } from "./canvas.js";
+import { paperDomToPptx } from "../paperdom-pptx.js";
 
-export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json", "paperdom"] as const;
+export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json", "paperdom", "pptx"] as const;
 export const SITE_EXPORT_FORMATS = ["site-zip", "noma-zip"] as const;
 const MAX_SITE_EXPORT_PAGES = 2_000;
 const MAX_CONCURRENT_PDF_RENDERS = 2;
@@ -43,6 +45,8 @@ export async function routeDocumentExport(
   const to = formatInput(url.searchParams.get("to"), DOCUMENT_EXPORT_FORMATS);
   const base = fileSlug(record.title, record.id);
   const doc = parse(record.source, { filename: `${record.id}.noma` });
+  const resolveCanvas = await canvasResolver(config, record.id, doc);
+  if (to !== "noma" && to !== "json") inlineResolvedCanvases(doc, resolveCanvas);
   const macros = cloudMacroResolvers(config, principal, record.id);
   switch (to) {
     case "noma":
@@ -54,6 +58,12 @@ export async function routeDocumentExport(
     case "paperdom":
       sendDownload(res, `${JSON.stringify(renderPaperDom(expandMacros(doc, macros), { components: documentComponentKit(config, record.id) }), null, 2)}\n`, "application/json; charset=utf-8", `${base}.paperdom.json`);
       return;
+    case "pptx": {
+      const { bytes, report } = paperDomToPptx(renderPaperDom(expandMacros(doc, macros), { components: documentComponentKit(config, record.id) }), { creator: "Noma Cloud" });
+      res.setHeader("x-noma-fidelity", JSON.stringify(report).replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`));
+      sendDownload(res, bytes, "application/vnd.openxmlformats-officedocument.presentationml.presentation", `${base}.pptx`);
+      return;
+    }
     case "json":
       sendDownload(res, renderJson(doc), "application/json; charset=utf-8", `${base}.json`);
       return;
@@ -61,7 +71,7 @@ export async function routeDocumentExport(
       sendDownload(res, renderMarkdown(expandMacros(doc, macros), { components: documentComponentKit(config, record.id) }), "text/markdown; charset=utf-8", `${base}.md`);
       return;
     case "html":
-      sendDownload(res, standaloneHtml(record, macros, documentComponentKit(config, record.id), documentStyleTokens(config, record.id)), "text/html; charset=utf-8", `${base}.html`);
+      sendDownload(res, standaloneHtml(record, macros, documentComponentKit(config, record.id), documentStyleTokens(config, record.id), resolveCanvas), "text/html; charset=utf-8", `${base}.html`);
       return;
     case "docx": {
       const docx = renderDocx(expandMacros(doc, macros), { title: record.title, creator: "Noma Cloud", components: documentComponentKit(config, record.id) });
@@ -75,7 +85,7 @@ export async function routeDocumentExport(
       }
       activePdfRenders += 1;
       try {
-        sendDownload(res, await renderPdfBuffer(standaloneHtml(record, macros, documentComponentKit(config, record.id), documentStyleTokens(config, record.id))), "application/pdf", `${base}.pdf`);
+        sendDownload(res, await renderPdfBuffer(standaloneHtml(record, macros, documentComponentKit(config, record.id), documentStyleTokens(config, record.id), resolveCanvas)), "application/pdf", `${base}.pdf`);
       } catch (error) {
         if (error instanceof PdfUnavailableError) {
           throw new HttpError(501, "PDF export is not available on this server: install Puppeteer and its Chrome build (npx puppeteer browsers install chrome).", {
@@ -115,7 +125,7 @@ export async function routeSiteExport(
   const entries: ZipEntryInput[] =
     to === "noma-zip"
       ? nomaArchive(config, site, pages, paths, parents, exportedAt)
-      : siteArchive(config, principal, site, pages, paths, parents, access, exportedAt);
+      : siteArchive(config, principal, site, pages, paths, parents, access, exportedAt, await siteCanvasResolvers(config, pages));
   sendDownload(res, createZip(entries.map((entry) => ({ ...entry, modifiedAt: exportedAt }))), "application/zip", `${base}-${to}.zip`);
 }
 
@@ -155,6 +165,12 @@ function nomaArchive(
   ];
 }
 
+async function siteCanvasResolvers(config: CloudServerConfig, pages: CloudDocumentRecord[]): Promise<Map<string, (ref: string) => string | undefined>> {
+  const out = new Map<string, (ref: string) => string | undefined>();
+  for (const page of pages) out.set(page.id, await canvasResolver(config, page.id, page.source));
+  return out;
+}
+
 function siteArchive(
   config: CloudServerConfig,
   principal: Principal,
@@ -164,6 +180,7 @@ function siteArchive(
   parents: Record<string, string>,
   access: AccessContext,
   exportedAt: Date,
+  canvases: Map<string, (ref: string) => string | undefined>,
 ): ZipEntryInput[] {
   const pageHref = (id: string): string | undefined => {
     const path = paths.get(id);
@@ -176,6 +193,7 @@ function siteArchive(
       ...macros,
       components: documentComponentKit(config, page.id),
       styleTokens: documentStyleTokens(config, page.id),
+      ...(canvases.get(page.id) ? { resolveCanvas: canvases.get(page.id)! } : {}),
       standalone: true,
       title: page.title,
       allowEscapeHatches: false,
@@ -252,9 +270,10 @@ function uniquePagePaths(pages: CloudDocumentRecord[]): Map<string, string> {
   return paths;
 }
 
-function standaloneHtml(record: CloudDocumentRecord, macros: ReturnType<typeof cloudMacroResolvers>, components: ComponentKit, styleTokens: StyleTokenAliases): string {
+function standaloneHtml(record: CloudDocumentRecord, macros: ReturnType<typeof cloudMacroResolvers>, components: ComponentKit, styleTokens: StyleTokenAliases, resolveCanvas: (ref: string) => string | undefined): string {
   return renderHtml(parse(record.source, { filename: `${record.id}.noma` }), {
     ...macros,
+    resolveCanvas,
     components,
     styleTokens,
     standalone: true,

@@ -1,4 +1,5 @@
 import { type ComponentKit, expandComponents } from "./components.js";
+import { canvasTextLines } from "./canvas-svg.js";
 import type { Attrs, AttrValue, DirectiveNode, DocumentNode, Node, SectionNode, TableAlign, TableNode } from "./ast.js";
 import { walk } from "./ast.js";
 import {
@@ -498,6 +499,7 @@ function renderDirective(node: DirectiveNode, ctx: DocxCtx): string {
   if (node.name === "pagebreak") return renderPageBreak(node, ctx);
   if (node.name === "plot") return renderPlot(node, ctx);
   if (node.name === "figure") return renderFigure(node, ctx);
+  if (node.name === "canvas") return renderCanvasOutline(node, ctx);
   if (node.name === "dataset") return renderDataset(node, ctx);
   if (node.name === "metric") return renderMetric(node, ctx);
   if (node.name === "computed_metric") return renderComputedMetric(node, ctx);
@@ -1377,6 +1379,18 @@ function renderFigure(node: DirectiveNode, ctx: DocxCtx): string {
     : "";
   const label = captionParagraph(`Figure: ${caption}`, node, ctx);
   return imageParagraph ? imageParagraph + label + source + body : label + source + body;
+}
+
+function renderCanvasOutline(node: DirectiveNode, ctx: DocxCtx): string {
+  const caption = stringAttr(node.attrs, "caption") ?? stringAttr(node.attrs, "title") ?? "Canvas";
+  const { pages, error } = canvasTextLines(node);
+  const parts = [captionParagraph(`Figure: ${caption}`, node, ctx)];
+  if (error) parts.push(paragraph(inlineRuns(`(${error})`, ctx), { style: "NomaMeta" }));
+  for (const page of pages) {
+    parts.push(paragraph(inlineRuns(`**${page.page}**`, ctx)));
+    for (const line of page.lines) parts.push(paragraph(inlineRuns(line, ctx)));
+  }
+  return parts.join("");
 }
 
 function captionParagraph(label: string, node: DirectiveNode, ctx: DocxCtx): string {

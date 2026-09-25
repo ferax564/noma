@@ -282,7 +282,7 @@ export function blockParagraphs(node: Node): Paragraph[] {
     case "section":
       return [{ text: oneLine(node.title), kind: "plain" }, ...node.children.flatMap(blockParagraphs)];
     case "directive":
-      if (node.name === "notes" || node.name === "html" || node.name === "svg" || node.name === "script") return [];
+      if (node.name === "notes" || node.name === "html" || node.name === "svg" || node.name === "script" || node.name === "canvas") return [];
       if (node.children.length > 0) return node.children.flatMap(blockParagraphs);
       return node.body ? node.body.split(/\n{2,}/).map((chunk) => ({ text: oneLine(chunk), kind: "plain" as const })).filter((p) => p.text) : [];
     default:

@@ -9,6 +9,7 @@ import type { MacroResolvers } from "../macros.js";
 import { renderHtml, renderSlidesHtml } from "../renderer-html.js";
 import { defaultThemeCss } from "./theme.js";
 import { attachmentResolver } from "./attachments.js";
+import { canvasResolver } from "./canvas.js";
 import { widgetFrameResolver } from "./widgets.js";
 import type { DirectiveNode } from "../ast.js";
 import type { StyleTokenAliases } from "../style-tokens.js";
@@ -27,6 +28,7 @@ export function renderDocumentHtml(
   access?: AccessContext,
   options: {
     resolveAttachment?: (ref: string) => string | undefined;
+    resolveCanvas?: (ref: string) => string | undefined;
     resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
     styleTokens?: StyleTokenAliases;
     components?: ComponentKit;
@@ -49,6 +51,7 @@ export function renderDocumentHtml(
     externalAssets: false,
     themeCss: `${defaultThemeCss()}\n${CLOUD_BANNER_CSS}`,
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
+    ...(options.resolveCanvas ? { resolveCanvas: options.resolveCanvas } : {}),
   });
   return banner ? html.replace("<body>", `<body>${banner}`) : html;
 }
@@ -58,6 +61,7 @@ export function renderPresentationHtml(
   record: CloudDocumentRecord,
   options: {
     resolveAttachment?: (ref: string) => string | undefined;
+    resolveCanvas?: (ref: string) => string | undefined;
     resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
     styleTokens?: StyleTokenAliases;
     components?: ComponentKit;
@@ -73,6 +77,7 @@ export function renderPresentationHtml(
     allowEscapeHatches: false,
     externalAssets: false,
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
+    ...(options.resolveCanvas ? { resolveCanvas: options.resolveCanvas } : {}),
     ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
     ...(options.styleTokens ? { styleTokens: options.styleTokens } : {}),
     ...(options.components ? { components: options.components } : {}),
@@ -92,11 +97,16 @@ export async function renderSiteHtml(
     .filter((id) => !config.store.isTrashed("document", id))
     .map((id) => ({ id, access: capAccessForDocument(config, id, access) }))
     .filter((entry): entry is { id: string; access: AccessContext } => entry.access !== undefined);
-  const documents = await Promise.all(visible.map(async (entry) => ({ record: await readDocument(config, entry.id), access: entry.access })));
+  const documents = await Promise.all(
+    visible.map(async (entry) => {
+      const record = await readDocument(config, entry.id);
+      return { record, access: entry.access, resolveCanvas: await canvasResolver(config, record.id, record.source) };
+    }),
+  );
   const onSite = new Set(visible.map((entry) => entry.id));
   const pageHref = (id: string): string => (onSite.has(id) ? `#${id}` : cloudPageHref(id));
   const articles = documents
-    .map(({ record, access: documentAccess }) => {
+    .map(({ record, access: documentAccess, resolveCanvas }) => {
       const doc = parse(record.source, { filename: `${record.id}.noma` });
       const body = renderHtml(doc, {
         ...cloudMacroResolvers(config, principal, record.id, { pageHref }),
@@ -105,6 +115,7 @@ export async function renderSiteHtml(
         externalAssets: false,
         interactive: false,
         resolveAttachment: attachmentResolver(config, record.id, documentAccess),
+        resolveCanvas,
         resolveWidgetFrame: widgetFrameResolver(config, record.id, documentAccess),
         styleTokens: { ...documentStyleTokens(config, record.id), ...(site.styleTokens ?? {}) } as StyleTokenAliases,
         components: documentComponentKit(config, record.id, site.id),

@@ -52,7 +52,7 @@ export type ComponentKit = ReadonlyMap<string, ComponentDefinition>;
 export const CORE_DIRECTIVES: ReadonlySet<string> = new Set([
   "abstract", "accordion", "adr", "agent_task", "api", "assumption", "bibliography", "button", "callout", "card",
   "change_request", "changelog", "children", "citation", "claim", "code", "code_cell", "columns", "comment",
-  "component", "component_instance", "computed_metric", "computed_plot", "computed_table", "confidence", "control",
+  "canvas", "component", "component_instance", "computed_metric", "computed_plot", "computed_table", "confidence", "control",
   "counterevidence", "dataset", "decision", "deck", "diagram", "doc_protection", "endnote", "endpoint", "evidence",
   "example", "excerpt", "export_button", "figure", "footer", "footnote", "grid", "header", "hero", "html",
   "hypothesis", "include", "instruction", "issue", "issues", "limitation", "math", "memory", "memory_index",

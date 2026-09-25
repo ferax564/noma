@@ -1350,6 +1350,18 @@ The CLI renders the same presenter with `noma render page.noma --to slides`.
 
 Layout changes stay on the canvas. Anything that cannot be mapped back to text is listed in `skipped` with a reason.
 
+**PowerPoint.** *Export… → PowerPoint (.pptx)* (`export?to=pptx`) writes the
+page's deck, or one slide per section, through the same canvas model. Speaker
+notes, hidden slides, transitions, tables, and charts are native. The
+`x-noma-fidelity` response header lists anything that was approximated or left
+out, and the editor shows it next to the download.
+
+**Canvas embeds.** Upload a PaperDOM canvas `.json` as a page attachment, then
+reference it with `::canvas{id="board" src="att:board.json" page="flow"}`.
+Published pages, the presenter, the space site, and every export draw it as
+static SVG; the editor preview fetches it once and redraws. Only the page's
+own attachments resolve, and canvas JSON above 2 MB is not drawn.
+
 ## Link pages like Obsidian
 
 Noma Cloud supports page-oriented wikilinks for LLM wiki workflows:

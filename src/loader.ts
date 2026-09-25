@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import type { DocumentNode } from "./ast.js";
+import type { DirectiveNode, DocumentNode } from "./ast.js";
 import { walk } from "./ast.js";
 
 export interface InlineSourceOptions {
@@ -38,6 +38,9 @@ export function resolveSourcePath(
  * document's own filename's directory) and contained within it; absolute
  * or escaping paths require `allowExternalPaths`.
  *
+ * `::canvas{src="board.json"}` blocks get the same treatment: the canvas
+ * JSON is read into `body` (`att:` and URL references are left to the host).
+ *
  * Renderers stay pure — they read `body` and `format`, never the filesystem.
  */
 export function inlineDatasetSources(
@@ -51,7 +54,12 @@ export function inlineDatasetSources(
       ? dirname(doc.meta.filename)
       : process.cwd());
   for (const node of walk(doc)) {
-    if (node.type !== "directive" || node.name !== "dataset") continue;
+    if (node.type !== "directive") continue;
+    if (node.name === "canvas") {
+      inlineCanvasSource(node, dir, options);
+      continue;
+    }
+    if (node.name !== "dataset") continue;
     const src = node.attrs.src;
     if (typeof src !== "string" || !src.trim()) continue;
     if (node.body && node.body.trim()) continue;
@@ -73,6 +81,20 @@ export function inlineDatasetSources(
     }
   }
   return doc;
+}
+
+function inlineCanvasSource(node: DirectiveNode, dir: string, options: InlineSourceOptions): void {
+  const src = node.attrs.src;
+  if (typeof src !== "string" || !src.trim()) return;
+  if (/^(?:att:|https?:|data:)/i.test(src)) return;
+  if (node.children.some((child) => child.type === "code") || node.body?.trim()) return;
+  const path = resolveSourcePath(dir, src, options.allowExternalPaths);
+  if (!path) return;
+  try {
+    node.body = readFileSync(path, "utf8");
+  } catch {
+    // An unreadable canvas renders as "not available" with its src.
+  }
 }
 
 export function inlineFigureSources(

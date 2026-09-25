@@ -11,7 +11,8 @@ import { renderNoma } from "./renderer-noma.js";
 import { renderMarkdown } from "./renderer-markdown.js";
 import { renderPaperDom } from "./renderer-paperdom.js";
 import { paperDomToPatchOps, type PaperDomSyncResult } from "./paperdom-sync.js";
-import type { PaperDOMDocument } from "./paperdom-document-model.js";
+import { parsePaperDOMDocument, type PaperDOMDocument } from "./paperdom-document-model.js";
+import { paperDomToPptx } from "./paperdom-pptx.js";
 import { type ComponentKit, componentKitFromSource } from "./components.js";
 import { renderDocx } from "./renderer-docx.js";
 import { extractDocxControlData } from "./docx-control-data.js";
@@ -67,15 +68,17 @@ Usage:
   noma --version                             Print the CLI version
 
 Render options:
-  --to <html|slides|llm|json|noma|markdown|md|site|pdf|docx|paperdom>
+  --to <html|slides|llm|json|noma|markdown|md|site|pdf|docx|paperdom|pptx>
                             Target format (default: html). 'site' renders
                             a book manifest as a multi-page HTML site.
+                            'pptx' also accepts a PaperDOM canvas .json input
+                            and prints a fidelity report to stderr.
   --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
   --kit <file.noma>         Component kit: ::component definitions available to
                             the document (render, check)
-  --deck <id>               slides/paperdom: use this ::deck (default: the first;
+  --deck <id>               slides/paperdom/pptx: use this ::deck (default: the first;
                             documents without a deck present one slide per section)
   --theme <name>            HTML theme: default | dark (default: default)
   --css <path>              Append custom CSS to standalone HTML/site/PDF output
@@ -963,6 +966,20 @@ async function run(argv: string[]): Promise<void> {
     : null;
   const safety = renderSafetyFromArgs(args, manifestForTrust?.trusted_publishing === true);
 
+  if (cmd === "render" && args.to === "pptx" && /\.json$/i.test(filePath)) {
+    let canvas: PaperDOMDocument;
+    try {
+      const parsed = parsePaperDOMDocument(JSON.parse(readFileSync(filePath, "utf8")));
+      if (!parsed.ok) throw new Error(`Invalid PaperDOM document: ${parsed.error}`);
+      canvas = parsed.document;
+      writePptx(canvas, args.out, args.title);
+    } catch (error) {
+      process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.exit(2);
+    }
+    return;
+  }
+
   const doc = isBookManifestPath(filePath)
     ? loadBook(filePath, { allowExternalPaths: args.allowExternalPaths })
     : parse(readFileSync(filePath, "utf8"), { filename: filePath });
@@ -1070,6 +1087,15 @@ async function run(argv: string[]): Promise<void> {
           output(renderMarkdown(doc, kitFromArgs(args)), args.out);
           return;
         }
+        case "pptx": {
+          try {
+            writePptx(renderPaperDom(doc, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}) }), args.out, args.title);
+          } catch (error) {
+            process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.exit(2);
+          }
+          return;
+        }
         case "paperdom": {
           try {
             output(`${JSON.stringify(renderPaperDom(doc, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}) }), null, 2)}\n`, args.out);
@@ -1168,3 +1194,13 @@ main().catch((error) => {
   process.stderr.write(`error: ${message}\n`);
   process.exit(1);
 });
+
+/** Writes a canvas as .pptx and prints what PowerPoint could not carry exactly. */
+function writePptx(canvas: PaperDOMDocument, out: string | undefined, title: string | undefined): void {
+  if (!out) throw new Error("--to pptx requires --out <file.pptx>");
+  const { bytes, report } = paperDomToPptx(title ? { ...canvas, title } : canvas);
+  outputBinary(bytes, out);
+  process.stderr.write(`  ${report.slides} slide${report.slides === 1 ? "" : "s"}; native: ${report.supported.join(", ") || "none"}\n`);
+  for (const item of report.approximated) process.stderr.write(`  ~ approximated: ${item}\n`);
+  for (const item of report.unsupported) process.stderr.write(`  ! not exported: ${item}\n`);
+}
