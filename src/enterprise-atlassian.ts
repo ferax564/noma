@@ -99,7 +99,7 @@ export async function atlassianFetch(
   const url = new URL(path.replace(/^\/+/, ""), siteRoot(auth)).toString();
   assertAllowedUrl(auth, url);
   const headers = new Headers(init.headers);
-  headers.set("accept", "application/json");
+  if (!headers.has("accept")) headers.set("accept", "application/json");
   if (auth.edition === "cloud") {
     if (!auth.email || !auth.apiToken) throw new EnterpriseError("unauthorized", "cloud Atlassian auth requires email and apiToken");
     headers.set("authorization", `Basic ${Buffer.from(`${auth.email}:${auth.apiToken}`).toString("base64")}`);

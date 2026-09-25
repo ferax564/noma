@@ -190,7 +190,7 @@ test("live Confluence Cloud import preserves hierarchy, labels, and provenance, 
     const job = await startImport(cloud.base, alice, live);
     assert.equal(job.status, "succeeded", job.error);
     assert.equal(job.spaceKey, "ENG");
-    assert.deepEqual({ ...job.progress }, { total: 3, processed: 3, created: 3, updated: 0, unchanged: 0, skipped: 0, failed: 0 });
+    assert.deepEqual({ ...job.progress }, { total: 3, processed: 3, created: 3, updated: 0, unchanged: 0, skipped: 0, failed: 0, attachmentsCopied: 0, attachmentsSkipped: 1 });
     assert.deepEqual(job.result?.loss, [{ macro: "roadmap", count: 1 }]);
     assert.equal(job.result?.attachments.referenced, 1);
     assert.ok(confluence.requests.some((line) => line.includes("cursor=next-1")));

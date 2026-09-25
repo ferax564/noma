@@ -5,7 +5,7 @@
  * kept, and re-importing updates pages by Confluence page ID.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { CloudDocumentRecord, CloudImportJob, CloudImportProgress, CloudImportSourceKind, CloudSiteRecord, CloudUserRecord } from "../cloud-db.js";
+import type { CloudDocumentRecord, CloudImportJob, CloudImportProgress, CloudImportSource, CloudImportSourceKind, CloudSiteRecord, CloudUserRecord } from "../cloud-db.js";
 import {
   type ConfluencePage,
   type ConfluenceSpace,
@@ -32,6 +32,7 @@ import {
   writeSite,
 } from "./context.js";
 import { headerValue, HttpError, readJsonBody, sendJson, sha256Hex } from "./http.js";
+import { ImportAttachmentLedger, preparePageAttachments } from "./import-attachments.js";
 import { assertCloudId, optionalCloudId, optionalString } from "./input.js";
 
 const SOURCE_SYSTEM = "confluence";
@@ -189,12 +190,13 @@ async function importSpace(
   const documentByPage = new Map<string, string>();
   const outcomes: ImportedPage[] = [];
   const loss = new Map<string, number>();
+  const ledger = new ImportAttachmentLedger(config, siteId, config.maxAttachmentBytes, config.importMaxBytes ?? DEFAULT_IMPORT_MAX_BYTES);
   let attachments = 0;
 
   for (const page of ordered) {
     await new Promise<void>((resolveTick) => setImmediate(resolveTick));
     try {
-      const outcome = await importPage(config, initialSite, user, space, page, overwrite, loss);
+      const outcome = await importPage(config, initialSite, user, space, page, overwrite, loss, ledger);
       attachments += outcome.attachments;
       outcomes.push(outcome.page);
       const documentId = outcome.page.documentId;
@@ -208,6 +210,8 @@ async function importSpace(
       outcomes.push({ pageId: page.id, title: page.title, action: "failed", reason: error instanceof Error ? error.message.slice(0, 300) : String(error) });
     }
     progress.processed += 1;
+    progress.attachmentsCopied = ledger.copied;
+    progress.attachmentsSkipped = ledger.skipped;
     report();
   }
 
@@ -238,7 +242,8 @@ async function importSpace(
     loss: [...loss].map(([macro, count]) => ({ macro, count })).sort((a, b) => b.count - a.count),
     attachments: {
       referenced: attachments,
-      note: "Attachments are not copied into Noma Cloud; figures keep links to the original Confluence download URLs (or attachments/<pageId>/<file> for file exports).",
+      ...ledger.summary(),
+      ...(space.attachmentsUnavailable ? { note: space.attachmentsUnavailable } : {}),
     },
   };
 }
@@ -251,7 +256,42 @@ async function importPage(
   page: ConfluencePage,
   overwrite: boolean,
   loss: Map<string, number>,
+  ledger: ImportAttachmentLedger,
 ): Promise<{ page: ImportedPage; attachments: number }> {
+  const sourceId = `${space.spaceKey}:${page.id}`;
+  const mapping = config.store.readImportSource(site.id, SOURCE_SYSTEM, sourceId);
+  // A mapped page that has left this space is not updated or re-added: re-adding would hand the space's members access to it.
+  const existing = mapping && site.documentIds.includes(mapping.documentId) ? config.store.readDocument(mapping.documentId) : undefined;
+  const prepared = existing && config.store.isTrashed("document", existing.id)
+    ? undefined
+    : await preparePageAttachments(ledger, space.attachmentSource, space.attachmentsUnavailable, page, existing ? config.store.listAttachments(existing.id) : []);
+  try {
+    const result = await importConvertedPage(config, site, user, space, page, overwrite, loss, mapping, existing, prepared?.refs);
+    const documentId = result.page.documentId;
+    if (prepared && documentId && ["created", "updated", "unchanged"].includes(result.page.action)) await prepared.commit(documentId, user.id);
+    else await prepared?.discard();
+    for (const filename of new Set(result.unresolved)) {
+      if (prepared && !prepared.reasons.has(filename)) ledger.skip(page.id, filename, prepared.sourceReason ?? "Not found among the page's attachments in the source");
+    }
+    return { page: result.page, attachments: result.attachments };
+  } catch (error) {
+    await prepared?.discard();
+    throw error;
+  }
+}
+
+async function importConvertedPage(
+  config: CloudServerConfig,
+  site: CloudSiteRecord,
+  user: CloudUserRecord,
+  space: ConfluenceSpace,
+  page: ConfluencePage,
+  overwrite: boolean,
+  loss: Map<string, number>,
+  mapping: CloudImportSource | undefined,
+  existing: CloudDocumentRecord | undefined,
+  attachmentRefs: Map<string, string> | undefined,
+): Promise<{ page: ImportedPage; attachments: number; unresolved: string[] }> {
   const conversion = convertConfluencePage(page.storage, {
     title: page.title,
     pageId: page.id,
@@ -263,6 +303,7 @@ async function importPage(
     ...(page.updatedAt ? { updatedAt: page.updatedAt } : {}),
     ...(page.version ? { version: page.version } : {}),
     labels: page.labels,
+    ...(attachmentRefs ? { attachmentRef: (filename: string) => attachmentRefs.get(filename) } : {}),
   });
   for (const entry of conversion.loss) loss.set(entry.macro, (loss.get(entry.macro) ?? 0) + entry.count);
   parse(conversion.source, { filename: `${page.id}.noma` });
@@ -270,13 +311,12 @@ async function importPage(
   const sourceId = `${space.spaceKey}:${page.id}`;
   const title = page.title.slice(0, 120) || "Untitled Page";
   const now = config.now().toISOString();
-  const mapping = config.store.readImportSource(site.id, SOURCE_SYSTEM, sourceId);
-  // A mapped page that has left this space is not updated or re-added: re-adding would hand the space's members access to it.
-  const existing = mapping && site.documentIds.includes(mapping.documentId) ? config.store.readDocument(mapping.documentId) : undefined;
   const attachments = conversion.attachments.length;
-  const outcome = (action: ImportedPage["action"], documentId?: string, reason?: string): { page: ImportedPage; attachments: number } => ({
+  const unresolved = conversion.attachments.filter((ref) => !ref.copied).map((ref) => ref.filename);
+  const outcome = (action: ImportedPage["action"], documentId?: string, reason?: string): { page: ImportedPage; attachments: number; unresolved: string[] } => ({
     page: { pageId: page.id, title, ...(documentId ? { documentId } : {}), action, ...(reason ? { reason } : {}) },
     attachments,
+    unresolved,
   });
 
   if (existing) {
@@ -436,5 +476,5 @@ function wrapImportError<T>(run: () => T): T {
 }
 
 function emptyProgress(): CloudImportProgress {
-  return { total: 0, processed: 0, created: 0, updated: 0, unchanged: 0, skipped: 0, failed: 0 };
+  return { total: 0, processed: 0, created: 0, updated: 0, unchanged: 0, skipped: 0, failed: 0, attachmentsCopied: 0, attachmentsSkipped: 0 };
 }

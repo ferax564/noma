@@ -359,16 +359,20 @@ GET  /api/import/jobs/<job-id>
   Cloud v2 REST API (email + API token) or the Data Center REST API (personal
   access token), following pagination. Credentials are used for that one job
   and never stored or returned. The target must be `https` and resolve to a
-  public address. Redirects are refused. Set
-  `NOMA_CLOUD_IMPORT_ALLOW_PRIVATE_HOSTS=1` only for a self-hosted Data Center
-  on a private network.
+  public address. Each request resolves the host once, checks every answer
+  against the private-address guard, and pins the connection to the checked
+  address, so a DNS answer that changes after the check (DNS rebinding) cannot
+  reach an internal host. TLS still verifies the certificate for the hostname.
+  Redirects are refused. Set `NOMA_CLOUD_IMPORT_ALLOW_PRIVATE_HOSTS=1` only for
+  a self-hosted Data Center on a private network.
 - **XML space export** accepts the ZIP from *Space settings → Export space →
   XML*, or its `entities.xml`. Only current pages are imported: historical
   versions, drafts, and deleted pages are skipped. XML entities are never
   expanded. An HTML export is rejected with a hint to export XML instead.
   Uploads are capped by `NOMA_CLOUD_IMPORT_MAX_BYTES` (default 50 MB).
 - **JSON bundle** (`format: "noma-confluence-bundle"`) takes pages with `id`,
-  `title`, `parentId`, `storage` (storage-format XHTML), and `labels`.
+  `title`, `parentId`, `storage` (storage-format XHTML), `labels`, and optional
+  `attachments: [{ filename, dataBase64, id?, mediaType? }]`.
 
 Storage format becomes `.noma`: headings (shifted one level under the page
 title, with explicit IDs), paragraphs, lists, task lists, tables, code and
@@ -377,9 +381,31 @@ lozenges, page links (as `[[wikilinks]]`), images (as `::figure`), and the
 excerpt, include, excerpt-include, children, Jira-issue, page-properties, and
 page-properties-report macros (as the Noma macros above). Other macros are kept
 as readable text in a `::confluence_macro` block and counted in the job's `loss`
-report. Attachments are not copied. Figures link to the original Confluence
-download URL (or `attachments/<pageId>/<file>` for file exports), and the job
-result says how many attachment links there are.
+report.
+
+**Attachments are copied** into Noma Cloud as page attachments:
+
+| Source | Where the bytes come from |
+| --- | --- |
+| Live import | `/rest/api/content/<pageId>/child/attachment` (paginated), downloaded from each file's `_links.download` with the job's credentials and the same pinned, redirect-refusing transport as page fetches |
+| XML export ZIP | `attachments/<pageId>/<attachmentId>/<version>` inside the archive, matched through the `Attachment` objects in `entities.xml` (current versions only) |
+| `entities.xml` alone | none; references keep their links and the result says to upload the whole ZIP |
+| JSON bundle | base64 `attachments` on each page |
+
+Copied files go through the same checks as uploads: the per-file limit
+(`NOMA_CLOUD_MAX_ATTACHMENT_BYTES`), magic-byte sniffing with executables
+refused, and the space's attachment quota (`NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES`).
+One import reads at most `NOMA_CLOUD_IMPORT_MAX_BYTES` of attachment bytes.
+Images (`ri:attachment` in `ac:image`) become `::figure{src="att:<id>"}` and
+attachment links become `[label](att:<id>)`, so they resolve to signed URLs like
+any other page attachment. Files that cannot be copied keep their original
+Confluence download URL (or `attachments/<pageId>/<file>` for file exports).
+The job result's `attachments` block reports `referenced`, `copied`, `reused`,
+`skipped`, and `bytesCopied`, plus `skippedDetails` with each skipped file and
+why (too large, over the import budget or quota, executable, download failed,
+not in the source). Re-importing is idempotent for attachments too: a file
+already on the page with the same name and content hash is reused, not stored
+again, and blobs are content-addressed.
 
 Each page keeps its Confluence ID, space, URL, author, dates, and version in
 frontmatter (`source: confluence`). The parent/child hierarchy becomes the
@@ -387,8 +413,9 @@ space's page tree, and Confluence labels become page labels. Re-importing is
 idempotent: pages are matched by Confluence page ID. Unchanged pages are left
 alone, and changed pages get a new revision. A page edited in Noma since the
 last import is skipped unless `overwrite: true`. The job status reports
-`total`, `processed`, `created`, `updated`, `unchanged`, `skipped`, and
-`failed` counts, with a per-page result list. Only the job's creator or an
+`total`, `processed`, `created`, `updated`, `unchanged`, `skipped`, `failed`,
+`attachmentsCopied`, and `attachmentsSkipped` counts, with a per-page result
+list. Only the job's creator or an
 editor of the space can read it. Only one import per space runs at a time.
 Jobs interrupted by a server restart are marked failed.
 

@@ -42,6 +42,8 @@ export interface ConfluenceAttachmentRef {
   filename: string;
   pageId?: string;
   url: string;
+  /** True when `url` is an `att:` reference to a copied Noma Cloud attachment. */
+  copied?: boolean;
 }
 
 export interface ConfluencePageMeta {
@@ -56,6 +58,11 @@ export interface ConfluencePageMeta {
   updatedAt?: string;
   version?: number | string;
   labels?: string[];
+  /**
+   * Maps a filename attached to this page to a Noma Cloud attachment reference (the part after
+   * `att:`). Unresolved attachments keep their Confluence download URL.
+   */
+  attachmentRef?: (filename: string) => string | undefined;
 }
 
 export interface ConfluenceConversion {
@@ -545,7 +552,11 @@ function figureBlock(image: XmlElement, ctx: ConvertContext, depth: number): str
   if (attachment) {
     filename = attachment.attrs["ri:filename"];
     const owner = childElement(attachment, "ri:page");
-    if (filename) {
+    const copied = filename && !owner ? ctx.meta.attachmentRef?.(filename) : undefined;
+    if (filename && copied) {
+      src = `att:${copied}`;
+      ctx.attachments.push({ filename, ...(ctx.meta.pageId ? { pageId: ctx.meta.pageId } : {}), url: src, copied: true });
+    } else if (filename) {
       const pageId = ctx.meta.pageId;
       src = ctx.meta.baseUrl && pageId && !owner
         ? `${ctx.meta.baseUrl.replace(/\/+$/, "")}/download/attachments/${encodeURIComponent(pageId)}/${encodeURIComponent(filename)}`
@@ -555,7 +566,7 @@ function figureBlock(image: XmlElement, ctx: ConvertContext, depth: number): str
   } else if (external) {
     src = external.attrs["ri:value"];
   }
-  if (!src || !/^(https?:\/\/|attachments\/)/i.test(src)) {
+  if (!src || !/^(https?:\/\/|attachments\/|att:)/i.test(src)) {
     countLoss(ctx, "image");
     return "";
   }
@@ -683,7 +694,14 @@ function linkMarkup(link: XmlElement, ctx: ConvertContext): string {
     const shown = label.replace(/[[\]|]/g, " ").trim();
     return shown && shown !== target ? `[[${target}|${shown}]]` : `[[${target}]]`;
   }
-  if (attachment) return escapeInlineText(label || attachment.attrs["ri:filename"] || "attachment");
+  if (attachment) {
+    const filename = attachment.attrs["ri:filename"];
+    const shown = escapeInlineText(label || filename || "attachment");
+    const copied = filename && !childElement(attachment, "ri:page") ? ctx.meta.attachmentRef?.(filename) : undefined;
+    if (!filename || !copied || !/^[A-Za-z0-9_-]+$/.test(copied)) return shown;
+    ctx.attachments.push({ filename, ...(ctx.meta.pageId ? { pageId: ctx.meta.pageId } : {}), url: `att:${copied}`, copied: true });
+    return `[${shown.replace(/([\[\]])/g, "\\$1")}](att:${copied})`;
+  }
   if (user) return escapeInlineText(label || "@user");
   const anchor = link.attrs["ac:anchor"];
   if (anchor) return escapeInlineText(label || anchor);

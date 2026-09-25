@@ -598,6 +598,10 @@ export interface CloudImportProgress {
   unchanged: number;
   skipped: number;
   failed: number;
+  /** Page attachments stored in Noma Cloud by this import (reused identical files are not counted). */
+  attachmentsCopied?: number;
+  /** Attachments left behind (too large, over budget or quota, executable, download failed, not in the source). */
+  attachmentsSkipped?: number;
 }
 
 export interface CloudImportJob {
