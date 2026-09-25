@@ -2238,6 +2238,18 @@ This release implements every finding and roadmap item in `docs/review-2026-09.m
 - **Security.** Adds HttpOnly cookie sessions with CSRF protection and scoped, expiring PATs. Admin fails closed in production. Per-request work is bounded, backup import is atomic, and legacy JSON is moved after import. Enterprise Yjs uses header/subprotocol auth with eviction and compaction.
 - **Core and packaging.** Fixes quoted-attribute coercion, forgiving frontmatter, Unicode slugs, and fence variants. Patch ops that would inject structure are now rejected, and a seeded property round-trip suite covers these paths. The root npm entry is lean, with the `/cloud` and `/enterprise` subpaths, and Puppeteer is an optional peer. PR CI renders examples and docs and typechecks `web/`.
 
+### §24.45 — Close the "next Notion/Confluence" gaps (2026-09-25)
+
+A status review in `docs/status-2026-09-25.md` compares Noma with Notion and Confluence as of September 2026. This pass closes the gaps it found in `docs/strategy-2026-09.md` Phase 4 and the known limitations listed in `docs/review-2026-09.md`.
+
+- **Agents as teammates.** People hand work to an agent by @-mentioning it in a comment or assigning it a page task. The agent works the assignment over REST or MCP (`assignments`, `reply`, `update_assignment`), replies in the thread, and links proofed proposals. Agents still never write without human approval. Spaces can subscribe to the `agent.assigned` webhook.
+- **Notion import.** Notion's Markdown & CSV export becomes a page tree. Databases become datasets, and row properties are kept (see `CHANGELOG.md`).
+- **Real embeddings.** Pluggable OpenAI-compatible and Voyage providers sit behind hybrid search, backed by a SQLite vector cache, a background backfill, and a hash-vector fallback. The enterprise model policy gates them.
+- **Identity.** Native OpenID Connect login (PKCE, JWKS, SSO-policy aware). SAML stays behind the trusted header.
+- **Storage.** A dependency-free S3-compatible blob store and multipart uploads.
+- **Import.** Confluence import copies attachments and pins connections to checked addresses, which closes the DNS-rebinding window.
+- **UI.** Adds UI for tokens and sessions, template management, and AI page drafts.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can
