@@ -282,6 +282,12 @@ button:disabled {
 
   <main class="login-main">
     <div class="auth-grid">
+      <section id="ssoPanel" class="auth-panel" hidden>
+        <h2>Single sign-on</h2>
+        <p>Sign in with your organization's identity provider. No access token is needed.</p>
+        <div id="ssoButtons"></div>
+      </section>
+
       <form id="loginForm" class="auth-panel">
         <h2>Log in</h2>
         <p>Enter the cloud access token. Add your existing Noma user token if you want this browser to load your workspaces immediately.</p>
@@ -331,9 +337,12 @@ const loginButton = document.getElementById("loginButton");
 const registerButton = document.getElementById("registerButton");
 const loginStatus = document.getElementById("loginStatus");
 const registerStatus = document.getElementById("registerStatus");
+const ssoPanel = document.getElementById("ssoPanel");
+const ssoButtons = document.getElementById("ssoButtons");
 let themeMode = readThemeMode();
 
 applyTheme();
+void loadProviders();
 
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -350,6 +359,32 @@ themeToggle.addEventListener("click", () => {
   localStorage.setItem(themeStorageKey, themeMode);
   applyTheme();
 });
+
+async function loadProviders() {
+  try {
+    const response = await fetch("/api/auth/providers", { credentials: "same-origin", headers: { accept: "application/json" } });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const providers = Array.isArray(payload.providers) ? payload.providers : [];
+    for (const provider of providers) {
+      if (typeof provider.startUrl !== "string" || !provider.startUrl.startsWith("/api/auth/")) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `Sign in with ${provider.label}`;
+      button.addEventListener("click", () => {
+        window.location.assign(`${provider.startUrl}?returnTo=${encodeURIComponent(nextPath)}`);
+      });
+      ssoButtons.append(button);
+    }
+    ssoPanel.hidden = ssoButtons.childElementCount === 0;
+    if (payload.tokenLogin === false) {
+      loginForm.hidden = true;
+      registerForm.hidden = true;
+    }
+  } catch {
+    /* providers unavailable: token login stays available */
+  }
+}
 
 function safeNext(value) {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : "/cloud.html";

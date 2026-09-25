@@ -143,7 +143,8 @@ the invitation code.
 
 The web app never stores a raw token in `localStorage`. Login
 (`POST /api/auth/session` with `userToken`), registration
-(`POST /api/auth/register`), and trusted SSO (`POST /api/auth/sso`) create a
+(`POST /api/auth/register`), trusted SSO (`POST /api/auth/sso`), and OpenID
+Connect (`GET /api/auth/oidc/callback`) create a
 server-side session and set two cookies:
 
 - `noma_session` -- `HttpOnly; SameSite=Lax; Path=/; Max-Age=30 days`, plus
@@ -167,6 +168,100 @@ GET    /api/auth/sessions           own active sessions (?limit=&offset=)
 DELETE /api/auth/sessions/<id>      revoke one of your sessions
 POST   /api/auth/logout             revoke the current session, clear cookies
 ```
+
+### OpenID Connect login {id="openid-connect-login"}
+
+Noma Cloud is a native OpenID Connect relying party. Point it at any
+standards-compliant IdP (Okta, Entra ID, Google Workspace, Auth0, Keycloak,
+Authentik, ...) and the login page and the app's top bar show a
+**Sign in with <label>** button. There are no extra dependencies: discovery,
+JWKS, PKCE and ID-token checks use `node:crypto` and `fetch`.
+
+```bash
+NOMA_CLOUD_OIDC_ISSUER=https://id.example.com \
+NOMA_CLOUD_OIDC_CLIENT_ID=noma-cloud \
+NOMA_CLOUD_OIDC_CLIENT_SECRET_FILE=/data/noma/oidc-client-secret \
+NOMA_CLOUD_OIDC_REDIRECT_URL=https://wiki.example.com/api/auth/oidc/callback \
+NOMA_CLOUD_OIDC_LABEL="Example ID" \
+npm start
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `NOMA_CLOUD_OIDC_ISSUER` | Issuer URL; discovery is read from `<issuer>/.well-known/openid-configuration` and its `issuer` must match |
+| `NOMA_CLOUD_OIDC_CLIENT_ID` | Client ID registered at the IdP |
+| `NOMA_CLOUD_OIDC_CLIENT_SECRET` / `_FILE` | Client secret, inline or from a file (set one, not both) |
+| `NOMA_CLOUD_OIDC_REDIRECT_URL` | Registered callback; defaults to `NOMA_CLOUD_PUBLIC_URL` + `/api/auth/oidc/callback` |
+| `NOMA_CLOUD_OIDC_SCOPES` | Space- or comma-separated scopes (default `openid email profile`; `openid` is always added) |
+| `NOMA_CLOUD_OIDC_ALLOWED_DOMAINS` | Comma-separated email domains; when set, only a *verified* email in one of them may sign in |
+| `NOMA_CLOUD_OIDC_AUTO_PROVISION` | `1` creates a Noma user on first login (default off: unknown identities get `403`) |
+| `NOMA_CLOUD_OIDC_LINK_BY_EMAIL` | `1` links a first login to an existing user by verified email (default off, because Noma profile emails are self-asserted) |
+| `NOMA_CLOUD_OIDC_REQUIRED_GROUP` | Group that must appear in the groups claim |
+| `NOMA_CLOUD_OIDC_GROUPS_CLAIM` | Claim that carries groups (default `groups`) |
+| `NOMA_CLOUD_OIDC_LABEL` | Button label (default `SSO`) |
+| `NOMA_CLOUD_OIDC_TOKEN_AUTH_METHOD` | `client_secret_basic` or `client_secret_post`; default picks from discovery, preferring basic |
+
+Setting any `NOMA_CLOUD_OIDC_*` variable without issuer, client ID, client
+secret, and a redirect URL stops the server at startup. The issuer, redirect
+URL, and discovered endpoints must be `https` (plain `http` only on loopback
+hosts).
+
+```text
+GET /api/auth/providers                 sign-in methods for the login screens
+GET /api/auth/oidc/start?returnTo=/...  sets the flow cookie, redirects to the IdP
+GET /api/auth/oidc/callback             IdP redirect target; opens the session
+```
+
+**The flow.** `/start` creates `state`, `nonce`, and a PKCE verifier (S256)
+and seals them, with the return path, into `noma_oidc_flow`: an AES-256-GCM
+encrypted cookie (`HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=600`,
+`Secure` off loopback). `/callback` clears that cookie, checks `state` in
+constant time, exchanges the code at the token endpoint with the verifier, and
+verifies the ID token: only `RS256/384/512`, `PS256/384/512`, and
+`ES256/384/512` signatures from the IdP JWKS are accepted (`alg: none` and
+`HS*` are refused), then `iss`, `aud` (and `azp` when there are several
+audiences), `exp`, `iat`, `nbf` with 60 seconds of clock skew, and `nonce`.
+Discovery and the JWKS are cached for an hour; a token signed with an unknown
+`kid` refetches the JWKS at most once a minute, so key rotation needs no
+restart. IdP calls time out after 10 seconds and responses are size-capped.
+The callback counts against the auth rate limiter like every `/api/auth/*`
+route.
+
+**Account mapping.** The first match wins:
+
+1. an existing binding of this issuer + `sub` to a Noma user;
+2. an active SCIM identity whose `externalId` equals `sub`;
+3. with `NOMA_CLOUD_OIDC_LINK_BY_EMAIL=1`, exactly one user whose email
+   equals the ID token's email, only when `email_verified` is true and that
+   user is not already bound to a different subject at this issuer (turn this
+   on to migrate token users, and only where you trust who set those emails);
+4. a new user (name from `name`, `preferred_username`, or the email), only
+   with `NOMA_CLOUD_OIDC_AUTO_PROVISION=1`.
+
+The match is stored as an (issuer, subject) binding, so later logins keep
+working when the email changes. The domain allowlist and required group are
+checked on every login. A user whose SCIM identities are all inactive is
+refused as deprovisioned. On success the callback opens the same
+`noma_session` + `noma_csrf` cookie session as every other login (source
+`oidc`, listed under `GET /api/auth/sessions`) and redirects to `returnTo`.
+Only same-origin paths are honoured; absolute, protocol-relative, backslash,
+and `/api/` targets fall back to `/cloud.html`. An OIDC session also passes the
+cloud access gate, so SSO users never need the gate token. Failures render a
+short error page with the HTTP status (`400` state/flow, `401` token, `403`
+policy, `502` IdP).
+
+**Enforced SSO.** When workspace policy enforces SSO (`/api/enterprise`,
+`sso.enforced`), token login and self-registration return `403`, and OIDC
+login satisfies the policy just like the trusted-header route. Enforcement
+can be switched on once either OIDC or `NOMA_CLOUD_SSO_TRUST_SECRET` is
+configured. With `sso.provider: "oidc"` and an `sso.issuer`, the configured
+issuer must match. With SCIM also enabled, first-login provisioning is off and
+every OIDC login needs an active SCIM identity for the user.
+
+**SAML** is not native. Put a SAML-capable proxy (for example an IdP
+gateway or `mod_auth_mellon`) in front of Noma Cloud and use the trusted-header
+route: the proxy authenticates the user and calls `POST /api/auth/sso` with
+`X-Noma-SSO-Trust-Secret` and the SCIM `externalId`.
 
 ### Personal access tokens
 
@@ -1357,7 +1452,8 @@ and `GET /api/auth/sessions`.
 
 ## Enterprise policy
 
-Workspace-owner enterprise policy configures trusted-proxy OIDC/SAML login,
+Workspace-owner enterprise policy configures SSO enforcement -- native
+OpenID Connect (see [[openid-connect-login]]) or trusted-proxy OIDC/SAML login --
 SCIM identity records, platform-metadata retention days and legal hold, declared
 data residency, connector allowlists, model allowlists, zero-retention model
 requirements, and audit export. Connector and
@@ -1368,6 +1464,8 @@ protected by an active legal hold.
 ```text
 GET|PUT  /api/enterprise
 POST      /api/auth/sso
+GET       /api/auth/oidc/start
+GET       /api/auth/oidc/callback
 GET|POST /api/enterprise/scim
 GET|POST /api/enterprise/legal-holds
 GET       /api/enterprise/audit

@@ -43,6 +43,7 @@ import {
   sendCloudAccessDenied,
 } from "./cloud/routes-auth.js";
 import { enforceRequestAuthorization, requestAddress } from "./cloud/security.js";
+import { type NomaCloudOidcOptions, OidcClient, resolveOidcSettings } from "./cloud/oidc.js";
 
 export type {
   CloudDbQuery,
@@ -129,6 +130,8 @@ export interface NomaCloudServerOptions {
   ai?: NomaCloudAiOptions;
   /** Semantic retrieval embeddings; environment variables fill anything left unset. */
   embeddings?: NomaCloudEmbeddingsOptions;
+  /** Native OpenID Connect login; `NOMA_CLOUD_OIDC_*` fills anything left unset, `null` disables it. */
+  oidc?: NomaCloudOidcOptions | null;
 }
 
 /**
@@ -216,6 +219,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const invitationCodeHash = cloudInvitationCodeHash(options);
   const ssoTrustedHeaderHash = cleanSecret(options.ssoTrustedHeaderSecret ?? process.env.NOMA_CLOUD_SSO_TRUST_SECRET);
   const production = options.production ?? process.env.NODE_ENV === "production";
+  const oidcSettings = resolveOidcSettings(options.oidc);
   validateProductionSecurity(options, production, accessTokenHash, invitationCodeHash);
   const now = options.now ?? (() => new Date());
   const adminUserIds = options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean);
@@ -254,6 +258,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
       "attachmentQuotaBytes",
     ),
     ai: cloudAiConfig(options.ai ?? {}),
+    ...(oidcSettings ? { oidc: new OidcClient(oidcSettings, now, options.oidc?.fetch) } : {}),
   };
 }
 

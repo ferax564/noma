@@ -1,9 +1,9 @@
 /** Cloud connection, cookie-backed user session (register/login/logout), API tokens and workspace bootstrap. */
 import { fetchCloudJson } from "./api.js";
-import { forgetCsrfToken, migrateLegacyStoredToken, rememberCsrfToken } from "./auth.js";
+import { fetchSignInProviders, forgetCsrfToken, migrateLegacyStoredToken, rememberCsrfToken, signInWithProvider } from "./auth.js";
 import { refreshAccessManagement, refreshGroups, refreshNotifications, renderAccessManagement, renderCollaborationPanels } from "./collaboration.js";
 import { activeDocumentStorageKey, activeSiteStorageKey, query } from "./constants.js";
-import { cloudInvitationCodeInput, cloudUserNameInput, cloudUserTokenInput, favoriteList, recentList, siteTitleInput } from "./dom.js";
+import { cloudInvitationCodeInput, cloudUserNameInput, cloudUserTokenInput, favoriteList, oidcLoginButton, recentList, siteTitleInput } from "./dom.js";
 import { restoreLatestOfflineDraft } from "./drafts.js";
 import { setCurrentPage } from "./editor.js";
 import { refreshKnowledgeWorkspace, renderSearchResults } from "./knowledge.js";
@@ -24,7 +24,8 @@ export async function initializeCloud(): Promise<void> {
     applySessionUser(status.user);
     if (!state.cloudUser && !shareToken) {
       clearWorkspaceState();
-      setCloudStatus("Register with an invitation code or log in with an existing user token", "warning");
+      const sso = await showSignInProviders();
+      setCloudStatus(sso ? `Sign in with ${sso}, or use an existing user token` : "Register with an invitation code or log in with an existing user token", "warning");
       return;
     }
 
@@ -173,6 +174,22 @@ export async function createCloudUser(options: { silent?: boolean } = {}): Promi
     setBusy(false);
     renderChrome();
   }
+}
+
+/** Reveals the "Sign in with <label>" button when the server offers OpenID Connect; returns the label. */
+async function showSignInProviders(): Promise<string | undefined> {
+  const provider = (await fetchSignInProviders()).find((item) => item.type === "oidc");
+  oidcLoginButton.hidden = !provider;
+  if (!provider) return undefined;
+  oidcLoginButton.textContent = `Sign in with ${provider.label}`;
+  oidcLoginButton.dataset.startUrl = provider.startUrl;
+  return provider.label;
+}
+
+export function startOidcLogin(): void {
+  const startUrl = oidcLoginButton.dataset.startUrl;
+  if (!startUrl) return;
+  signInWithProvider({ startUrl }, `${window.location.pathname}${window.location.search}`);
 }
 
 export async function loginCloudUser(): Promise<void> {

@@ -646,7 +646,7 @@ export interface CloudAuthSession {
   id: string;
   userId: string;
   scopes: CloudTokenScope[];
-  source: "user_token" | "register" | "pat" | "sso";
+  source: "user_token" | "register" | "pat" | "sso" | "oidc";
   patId?: string;
   createdAt: string;
   lastSeenAt: string;
@@ -667,6 +667,36 @@ export interface CloudPersonalAccessToken {
   expiresAt?: string;
   lastUsedAt?: string;
   revokedAt?: string;
+}
+
+/** Binds an OpenID Connect identity (issuer + subject) to a Noma user. */
+export interface CloudOidcIdentity {
+  issuer: string;
+  subject: string;
+  userId: string;
+  email?: string;
+  createdAt: string;
+  lastLoginAt: string;
+}
+
+interface OidcIdentityRow {
+  issuer: string;
+  subject: string;
+  user_id: string;
+  email: string | null;
+  created_at: string;
+  last_login_at: string;
+}
+
+function oidcIdentity(row: OidcIdentityRow): CloudOidcIdentity {
+  return {
+    issuer: row.issuer,
+    subject: row.subject,
+    userId: row.user_id,
+    ...(row.email ? { email: row.email } : {}),
+    createdAt: row.created_at,
+    lastLoginAt: row.last_login_at,
+  };
 }
 
 interface AuthSessionRow {
@@ -3967,6 +3997,38 @@ export class NomaCloudDatabase {
 
   // end auth-hardening
 
+  // native OpenID Connect identity bindings
+
+  readOidcIdentity(issuer: string, subject: string): CloudOidcIdentity | undefined {
+    const row = this.db.prepare("SELECT * FROM oidc_identities WHERE issuer = ? AND subject = ?").get(issuer, subject) as OidcIdentityRow | undefined;
+    return row ? oidcIdentity(row) : undefined;
+  }
+
+  listUserOidcIdentities(userId: string): CloudOidcIdentity[] {
+    return (this.db.prepare("SELECT * FROM oidc_identities WHERE user_id = ? ORDER BY created_at, issuer, subject").all(userId) as OidcIdentityRow[]).map(oidcIdentity);
+  }
+
+  /** Creates or refreshes the binding; `createdAt` is kept from the first login. */
+  upsertOidcIdentity(identity: CloudOidcIdentity): void {
+    this.db
+      .prepare(
+        `INSERT INTO oidc_identities (issuer, subject, user_id, email, created_at, last_login_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(issuer, subject) DO UPDATE SET
+           user_id = excluded.user_id,
+           email = excluded.email,
+           last_login_at = excluded.last_login_at`,
+      )
+      .run(identity.issuer, identity.subject, identity.userId, identity.email ?? null, identity.createdAt, identity.lastLoginAt);
+  }
+
+  /** Users whose notification email matches `email` case-insensitively. */
+  findUsersByEmail(email: string): CloudUserRecord[] {
+    return (this.db.prepare("SELECT record_json FROM users WHERE lower(json_extract(record_json, '$.email')) = lower(?) ORDER BY created_at, id").all(email) as RecordJsonRow[]).map(
+      (row) => parseRecord<CloudUserRecord>(row.record_json),
+    );
+  }
+
   private applySchema(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS meta (
@@ -4600,7 +4662,7 @@ export class NomaCloudDatabase {
         csrf_hash TEXT NOT NULL,
         user_id TEXT NOT NULL,
         scopes_json TEXT NOT NULL,
-        source TEXT NOT NULL CHECK (source IN ('user_token', 'register', 'pat', 'sso')),
+        source TEXT NOT NULL CHECK (source IN ('user_token', 'register', 'pat', 'sso', 'oidc')),
         pat_id TEXT,
         created_at TEXT NOT NULL,
         last_seen_at TEXT NOT NULL,
@@ -4626,7 +4688,19 @@ export class NomaCloudDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_personal_access_tokens_user ON personal_access_tokens(user_id, created_at DESC);
       -- end auth-hardening
+      -- native OpenID Connect: (issuer, subject) → Noma user bindings
+      CREATE TABLE IF NOT EXISTS oidc_identities (
+        issuer TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        email TEXT,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT NOT NULL,
+        PRIMARY KEY (issuer, subject)
+      );
+      CREATE INDEX IF NOT EXISTS idx_oidc_identities_user ON oidc_identities(user_id);
     `);
+    this.migrateAuthSessionSources();
     this.db.exec(`
       INSERT OR IGNORE INTO document_revisions
         (document_id, revision, title, source, hash, created_at, created_by)
@@ -4637,6 +4711,37 @@ export class NomaCloudDatabase {
     this.db
       .prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .run(schemaVersion);
+  }
+
+  /** Older databases predate the `oidc` session source; SQLite cannot alter a CHECK constraint, so rebuild once. */
+  private migrateAuthSessionSources(): void {
+    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auth_sessions'").get() as { sql: string } | undefined;
+    if (!row || row.sql.includes("'oidc'")) return;
+    this.db.transaction(() => {
+      this.db.exec(`
+        ALTER TABLE auth_sessions RENAME TO auth_sessions_pre_oidc;
+        CREATE TABLE auth_sessions (
+          id TEXT PRIMARY KEY,
+          secret_hash TEXT NOT NULL UNIQUE,
+          csrf_hash TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          scopes_json TEXT NOT NULL,
+          source TEXT NOT NULL CHECK (source IN ('user_token', 'register', 'pat', 'sso', 'oidc')),
+          pat_id TEXT,
+          created_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          user_agent TEXT,
+          ip TEXT,
+          revoked_at TEXT
+        );
+        INSERT INTO auth_sessions SELECT id, secret_hash, csrf_hash, user_id, scopes_json, source, pat_id, created_at, last_seen_at, expires_at, user_agent, ip, revoked_at FROM auth_sessions_pre_oidc;
+        DROP TABLE auth_sessions_pre_oidc;
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, revoked_at, expires_at);
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_pat ON auth_sessions(pat_id);
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
+      `);
+    })();
   }
 
   /** SQLite cannot alter a CHECK constraint, so older databases rebuild the notifications table once. */
