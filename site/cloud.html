@@ -32,7 +32,7 @@
     <div id="accountControls" class="topbar-group account-controls" hidden>
       <span id="accountChip" class="account-chip"><span id="accountAvatar" class="account-avatar" aria-hidden="true"></span><span id="accountName"></span></span>
       <button id="copyUserIdButton" type="button" disabled>Copy User ID</button>
-      <button id="copyUserTokenButton" type="button" disabled title="Create a personal access token for scripts and agents">Create API Token</button>
+      <button id="copyUserTokenButton" type="button" disabled title="Personal access tokens and signed-in sessions">Security</button>
       <button id="logoutUserButton" type="button" disabled>Sign Out</button>
     </div>
     <button id="themeToggleButton" type="button" aria-pressed="false">Dark</button>
@@ -102,11 +102,15 @@
         <button id="newFolderButton" type="button">New Folder</button>
         <button id="importPageButton" type="button">Import</button>
         <button id="confluenceImportButton" type="button" aria-label="Import from Confluence">Confluence</button>
+        <button id="aiDraftPageButton" type="button" title="Draft a new page with AI; another collaborator approves it before it is created">Draft with AI</button>
         <input id="importPageInput" type="file" accept=".noma,.md,.markdown,text/plain,text/markdown" hidden />
       </div>
-      <label class="rail-template-field" for="pageTemplateSelect">Page template
-        <select id="pageTemplateSelect"></select>
-      </label>
+      <div class="rail-template-row">
+        <label class="rail-template-field" for="pageTemplateSelect">Page template
+          <select id="pageTemplateSelect"></select>
+        </label>
+        <button id="templateManageButton" type="button" title="Edit or delete workspace and space templates">Manage</button>
+      </div>
       <div id="pageList" class="page-list"></div>
     </div>
     <div class="rail-section">
@@ -637,6 +641,12 @@
       </div>
       <div id="agentStatus" class="panel-status"></div>
       <div id="patchProposalList" class="collaboration-list"></div>
+      <div class="inspector-heading-row">
+        <h3 class="inspector-subheading">AI page proposals</h3>
+        <button id="refreshAiPageProposalsButton" type="button" aria-label="Refresh AI page proposals">Refresh</button>
+      </div>
+      <div id="aiPageProposalStatus" class="panel-status"></div>
+      <div id="aiPageProposalList" class="collaboration-list"></div>
     </section>
 
     <section class="inspector-section">
@@ -753,6 +763,121 @@
     <div class="wiki-dialog-actions">
       <button id="templateVariablesCancel" type="button">Cancel</button>
       <button type="submit">Create page</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="accountSecurityDialog" class="wiki-dialog security-dialog" aria-labelledby="accountSecurityTitle">
+  <div class="wiki-dialog-form">
+    <h2 id="accountSecurityTitle">Security</h2>
+    <section class="security-section" aria-labelledby="securityTokensTitle">
+      <h3 id="securityTokensTitle">Personal access tokens</h3>
+      <p class="security-help">Tokens let scripts and agents call the API as you. Each token is shown once; only a preview is kept.</p>
+      <div id="securityTokenList" class="collaboration-list"></div>
+      <form id="securityTokenForm" class="security-token-form">
+        <label class="wiki-dialog-field" for="securityTokenName">Token name
+          <input id="securityTokenName" type="text" maxlength="80" required placeholder="CI publisher" />
+        </label>
+        <fieldset id="securityTokenScopes" class="security-scopes">
+          <legend>Scopes</legend>
+        </fieldset>
+        <label class="wiki-dialog-field" for="securityTokenExpiry">Expires
+          <select id="securityTokenExpiry">
+            <option value="7">In 7 days</option>
+            <option value="30">In 30 days</option>
+            <option value="90" selected>In 90 days</option>
+            <option value="365">In 1 year</option>
+            <option value="">Never</option>
+          </select>
+        </label>
+        <div class="wiki-dialog-actions">
+          <button id="securityTokenCreateButton" type="submit">Create token</button>
+        </div>
+      </form>
+      <div id="securityTokenSecret" class="security-secret" hidden>
+        <label class="wiki-dialog-field" for="securityTokenSecretValue">New token (copy it now; it will not be shown again)
+          <input id="securityTokenSecretValue" type="text" readonly spellcheck="false" />
+        </label>
+        <div class="wiki-dialog-actions">
+          <button id="securityTokenCopyButton" type="button">Copy token</button>
+        </div>
+      </div>
+    </section>
+    <section class="security-section" aria-labelledby="securitySessionsTitle">
+      <div class="inspector-heading-row">
+        <h3 id="securitySessionsTitle">Signed-in sessions</h3>
+        <button id="securityRevokeOthersButton" type="button">Sign out other sessions</button>
+      </div>
+      <div id="securitySessionList" class="collaboration-list"></div>
+    </section>
+    <div id="securityStatus" class="panel-status" role="status"></div>
+    <div class="wiki-dialog-actions">
+      <button id="securityCloseButton" type="button">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="templateManageDialog" class="wiki-dialog template-manage-dialog" aria-labelledby="templateManageTitle">
+  <div class="wiki-dialog-form">
+    <h2 id="templateManageTitle">Page templates</h2>
+    <p class="security-help">Built-in templates are read-only. Workspace templates are managed by workspace owners, space templates by space editors.</p>
+    <div id="templateManageList" class="collaboration-list"></div>
+    <div id="templateManageStatus" class="panel-status" role="status"></div>
+    <div class="wiki-dialog-actions">
+      <button id="templateManageClose" type="button">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="templateEditDialog" class="wiki-dialog template-edit-dialog" aria-labelledby="templateEditTitle">
+  <form id="templateEditForm" class="wiki-dialog-form">
+    <h2 id="templateEditTitle">Edit template</h2>
+    <label class="wiki-dialog-field" for="templateEditName">Name
+      <input id="templateEditName" type="text" maxlength="120" required />
+    </label>
+    <label class="wiki-dialog-field" for="templateEditDescription">Description
+      <input id="templateEditDescription" type="text" maxlength="400" />
+    </label>
+    <label class="wiki-dialog-field" for="templateEditCategory">Category
+      <select id="templateEditCategory">
+        <option value="general">General</option>
+        <option value="team">Team</option>
+        <option value="project">Project</option>
+        <option value="technical">Technical</option>
+        <option value="research">Research</option>
+      </select>
+    </label>
+    <label class="wiki-dialog-field" for="templateEditSource">Source (use {{title}}, {{title_id}}, {{space}}, {{date}}, {{author}} and declared variables)
+      <textarea id="templateEditSource" class="template-edit-source" spellcheck="false" required></textarea>
+    </label>
+    <fieldset class="template-edit-variables">
+      <legend>Variables</legend>
+      <div id="templateEditVariables"></div>
+      <button id="templateEditAddVariable" type="button">Add variable</button>
+    </fieldset>
+    <div id="templateEditStatus" class="panel-status" role="status"></div>
+    <div class="wiki-dialog-actions">
+      <button id="templateEditCancel" type="button">Cancel</button>
+      <button id="templateEditSave" type="submit">Save template</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="aiDraftPageDialog" class="wiki-dialog" aria-labelledby="aiDraftPageTitle">
+  <form id="aiDraftPageForm" class="wiki-dialog-form">
+    <h2 id="aiDraftPageTitle">Draft a page with AI</h2>
+    <p class="security-help">The model drafts from pages you can read. The draft becomes a page proposal: another collaborator must approve it before the page is created.</p>
+    <label class="wiki-dialog-field" for="aiDraftPageTitleInput">Page title
+      <input id="aiDraftPageTitleInput" type="text" maxlength="120" required />
+    </label>
+    <label class="wiki-dialog-field" for="aiDraftPageInstruction">What should the page cover?
+      <textarea id="aiDraftPageInstruction" class="compact-textarea" maxlength="2000" required></textarea>
+    </label>
+    <label class="wiki-dialog-check" for="aiDraftPageUnderCurrent"><input id="aiDraftPageUnderCurrent" type="checkbox" /> Place under the current page</label>
+    <div id="aiDraftPageStatus" class="panel-status" role="status"></div>
+    <div id="aiDraftPageResult" class="ai-draft-page-result"></div>
+    <div class="wiki-dialog-actions">
+      <button id="aiDraftPageCancel" type="button">Close</button>
+      <button id="aiDraftPageSubmit" type="submit">Draft page</button>
     </div>
   </form>
 </dialog>

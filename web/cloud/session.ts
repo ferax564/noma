@@ -11,8 +11,8 @@ import { renderChrome } from "./layout.js";
 import { confirmDiscardDirty, createStarterWorkspace, loadSite, loadStandaloneDocument, refreshNavigationItems, refreshSites, refreshTemplates, refreshTrash, renderNavigationList, renderTrashList } from "./navigation.js";
 import { refreshMyTasks } from "./tasks.js";
 import { readCloudId, shareToken, state, storedUserViewMode } from "./state.js";
-import type { CloudAuthResponse, CloudPersonalAccessTokenResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
-import { copyText, errorMessage, setBusy, setCloudStatus } from "./util.js";
+import type { CloudAuthResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
+import { errorMessage, setBusy, setCloudStatus } from "./util.js";
 import { refreshWorkManagement, renderWorkManagement } from "./work.js";
 
 export async function initializeCloud(): Promise<void> {
@@ -207,32 +207,6 @@ function activateCloudUser(user: CloudUserSession, csrfToken: string | undefined
   state.viewMode = storedUserViewMode(state.cloudUser.id) ?? state.viewMode;
   rememberCsrfToken(csrfToken);
   cloudUserNameInput.value = user.name;
-}
-
-/** Creates a personal access token (read + write) for scripts and agents and copies it once; it is never stored. */
-export async function createApiToken(): Promise<void> {
-  if (!state.cloudUser) return;
-  const name = window.prompt("Name for the new API token", "Cloud app token")?.trim();
-  if (!name) return;
-  setBusy(true, "Creating API token", "warning");
-  try {
-    const created = await fetchCloudJson<CloudPersonalAccessTokenResponse>("/api/tokens", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, scopes: ["read", "write"], expiresInDays: 90 }),
-    });
-    try {
-      await copyText(created.token, `Copied API token ${created.name}; it will not be shown again`);
-    } catch {
-      window.prompt("Copy your API token now; it will not be shown again", created.token);
-      setCloudStatus(`Created API token ${created.name}`, "ok");
-    }
-  } catch (error) {
-    setCloudStatus(errorMessage(error), "error");
-  } finally {
-    setBusy(false);
-    renderChrome();
-  }
 }
 
 export async function logoutCloudUser(): Promise<void> {

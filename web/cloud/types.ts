@@ -31,14 +31,6 @@ export interface CloudAuthResponse {
   csrfToken?: string;
 }
 
-export interface CloudPersonalAccessTokenResponse {
-  id: string;
-  name: string;
-  scopes: string[];
-  expiresAt?: string;
-  token: string;
-}
-
 export interface CloudStatusResponse {
   ok: boolean;
   user?: {
@@ -82,6 +74,7 @@ export interface CloudPageTemplate {
   siteId?: string;
   variables?: Array<{ name: string; label: string; default?: string; required: boolean }>;
   editable?: boolean;
+  updatedAt?: string;
 }
 
 export interface CloudSearchResult {
@@ -321,6 +314,7 @@ export interface OfflineMergeResponse {
 export interface CloudErrorPayload {
   error?: string;
   code?: string;
+  reason?: string;
   currentHash?: string;
   currentUpdatedAt?: string;
 }
