@@ -27,6 +27,20 @@ export interface RenderPaperDomOptions {
  * `::deck` convert section-per-slide. Pure: no I/O, input is not mutated.
  */
 export function renderPaperDom(source: DocumentNode, options: RenderPaperDomOptions = {}): PaperDOMDocument {
+  return buildPaperDom(source, options).document;
+}
+
+/** Where one canvas page came from: the slide block and the blocks behind each element. */
+export interface PaperDomPageSource {
+  pageId: string;
+  /** The `::slide` block, or a synthetic slide for a section-derived page. */
+  slide: DirectiveNode;
+  /** Element id → the text or table blocks rendered into it, in order. */
+  elements: Map<string, Node[]>;
+}
+
+/** `renderPaperDom` plus provenance, so canvas edits can be mapped back to `.noma` blocks. */
+export function buildPaperDom(source: DocumentNode, options: RenderPaperDomOptions = {}): { document: PaperDOMDocument; pages: PaperDomPageSource[] } {
   const doc = expandComponents(source, { ...(options.components ? { kit: options.components } : {}), wrap: false, dropDefinitions: true });
   const presentation = presentationSlides(doc, options.deck);
   const deck = presentation.deck;
@@ -38,6 +52,7 @@ export function renderPaperDom(source: DocumentNode, options: RenderPaperDomOpti
   const specs: SlideSpec[] = presentation.slides.map((slide, index) => {
     const parts = slideParts(slide);
     return {
+      slide,
       id: slide.id ?? `slide-${index + 1}`,
       title: parts.title,
       layout: slideLayout(slide),
@@ -49,14 +64,17 @@ export function renderPaperDom(source: DocumentNode, options: RenderPaperDomOpti
   });
 
   const used = new Set<string>();
+  const sources: PaperDomPageSource[] = [];
   const pages: CanvasPage[] = specs.map((spec) => {
     const pageId = uniqueId(spec.id, used);
+    const elements = new Map<string, Node[]>();
+    sources.push({ pageId, slide: spec.slide, elements });
     const page: CanvasPage = {
       id: pageId,
       name: spec.title ? inlineToPlain(spec.title) : pageId,
       size,
       background: { color: spec.layout === "section" ? theme.accent : theme.background },
-      elements: layoutElements(pageId, spec, size, theme, used),
+      elements: layoutElements(pageId, spec, size, theme, used, elements),
     };
     if (spec.notes) page.notes = spec.notes;
     if (spec.hidden) page.hidden = true;
@@ -69,18 +87,22 @@ export function renderPaperDom(source: DocumentNode, options: RenderPaperDomOpti
   if (pages.every((page) => page.hidden)) delete pages[0]!.hidden;
 
   return {
-    format: "paperdom",
-    version: "0.1",
-    id: deck?.id ?? slug(title),
-    title,
-    revision: 0,
-    pages,
-    plugins: [],
-    metadata: { createdAt: now, updatedAt: now },
+    document: {
+      format: "paperdom",
+      version: "0.1",
+      id: deck?.id ?? slug(title),
+      title,
+      revision: 0,
+      pages,
+      plugins: [],
+      metadata: { createdAt: now, updatedAt: now },
+    },
+    pages: sources,
   };
 }
 
 interface SlideSpec {
+  slide: DirectiveNode;
   id: string;
   title?: string;
   layout: SlideLayout;
@@ -143,14 +165,17 @@ function layoutElements(
   size: { width: number; height: number },
   theme: DeckTheme,
   used: Set<string>,
+  provenance: Map<string, Node[]>,
 ): CanvasElement[] {
   const { width: W, height: H } = size;
   const margin = Math.round(W * 0.05);
   const inner = W - margin * 2;
   const out: CanvasElement[] = [];
   let z = 1;
-  const push = (part: string, element: Omit<CanvasElement, "id" | "z">): void => {
-    out.push({ ...element, id: uniqueId(`${pageId}--${part}`, used), z: z++ });
+  const push = (part: string, element: Omit<CanvasElement, "id" | "z">, from: Node[] = []): void => {
+    const id = uniqueId(`${pageId}--${part}`, used);
+    provenance.set(id, from);
+    out.push({ ...element, id, z: z++ });
   };
   const titleText = spec.title ? inlineToPlain(spec.title).replace(/\s+/g, " ").trim() : "";
   const ink = spec.layout === "section" ? theme.onAccent : theme.ink;
@@ -174,7 +199,7 @@ function layoutElements(
         fontSize: spec.layout === "statement" ? 36 : 26,
         fontStyle: spec.layout === "quote" ? "italic" : "normal",
         textAlign: align,
-      })));
+      })), spec.body);
     }
     return out;
   }
@@ -203,7 +228,7 @@ function layoutElements(
     if (paragraphs.length > 0) {
       push(`body${suffix}`, textElement(`body${suffix}`, paragraphs, { x, y: top, w: colWidth, h: Math.max(40, Math.round(bodyHeight * textShare)) }, baseStyle(theme, {
         fontSize: spec.layout === "media" ? 20 : 24,
-      })));
+      })), textBlocks);
     }
     let tableY = top + Math.round(bodyHeight * textShare);
     const tableHeight = tables.length ? Math.round((bodyHeight * (1 - textShare)) / tables.length) : 0;
@@ -218,7 +243,7 @@ function layoutElements(
           header: true,
           rows: [table.header, ...table.rows].map((row) => row.map((cell) => inlineToPlain(cell))),
         },
-      });
+      }, [table]);
       tableY += tableHeight;
     });
   });
@@ -244,7 +269,8 @@ function oneLine(text: string): string {
   return inlineToPlain(text).replace(/\s+/g, " ").trim();
 }
 
-function blockParagraphs(node: Node): Paragraph[] {
+/** The paragraphs a block contributes to a canvas text element, in order (the sync mirrors this). */
+export function blockParagraphs(node: Node): Paragraph[] {
   switch (node.type) {
     case "paragraph":
     case "quote":

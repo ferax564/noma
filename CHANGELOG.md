@@ -9,6 +9,12 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Presentations in `.noma`:** `::deck{aspect="16:9|4:3|1:1"}` holds `:::slide{layout="title|section|content|two-column|statement|quote|media|blank"}` children, with speaker notes in `::::notes`. If a slide has no `title=`, a leading heading becomes the title. HTML shows the slides as scaled frames in the page, and a **Present** button opens a fullscreen presenter with keyboard navigation and a URL-hash deep link to the current slide. Markdown writes one `##` section per slide, and LLM output keeps `[SLIDE]` markers. New `presentation` profile; `technical` and `research` also allow decks. Example: `examples/deck.noma`.
+- **PaperDOM → `.noma` text sync:** `noma paperdom-sync <file.noma> <canvas.json>` and `paperDomToPatchOps()` turn text edits made on an exported canvas back into ordinary patch ops, ready for `noma proof --ops` (`--inplace` applies and validates).
+  - **What syncs:** slide titles, paragraphs, list items, quotes, code, pipe-table cells, speaker notes, `hidden`, `transition`, and slide order.
+  - **Formatting survives:** edits are re-applied onto the inline source (`rebaseInlineEdit`), so bold and links are kept.
+  - **Reported, not guessed:** layout changes, added or removed content, component-generated text, and unaddressable paragraphs.
+  - **Noma Cloud:** `export?to=paperdom` downloads the canvas, and `POST /api/documents/:id/paperdom-sync` returns the ops, which become a normal patch proposal that another person approves.
+  - **Also new:** `buildPaperDom()` exposes element provenance, and `renderNomaBlock()` renders one block at a given fence depth. `paperDomToPatchOps` is exported from the `/enterprise` subpath, which carries the PaperDOM kernel, so the root entry stays lean.
 - **Component kits:** `::component{name props slots}` defines a reusable block that is built only from core blocks and style tokens. A page uses it by name (`::pricing_card{id plan price}` with `:::slot{name}` children).
   - **Expansion:** `expandComponents()` fills in the template on the AST, not the source text, so a prop value can never add blocks, attributes, or markup. It is bounded by depth and by a cycle check. A single-root expansion takes the use's `id` and `class`, and other template IDs become `<use-id>--<template-id>`.
   - **Where it applies:** HTML, `--to slides`, Markdown, DOCX, and PaperDOM expand the call. The `.noma` source and the LLM context keep it compact. HTML kit pages preview each definition.

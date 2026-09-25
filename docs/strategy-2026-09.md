@@ -139,7 +139,7 @@ A deck needs two different editing modes, and forcing either into the other fail
    - `renderPaperDom()` / `--to paperdom`.
    - Page id = slide block ID. Element id = `<slide-id>--<part>`.
    - The output is valid under the vendored kernel's `parsePaperDOMDocument`.
-2. **PaperDOM → `.noma` text sync (next).** When someone edits an element's text on the canvas, the id convention maps the edit back to a `patchSource` op on the owning block. It goes through the same proof and approval loop. Geometry stays in PaperDOM, and words stay in `.noma`.
+2. **PaperDOM → `.noma` text sync — shipped.** When someone edits an element's text on the canvas, the id convention maps the edit back to a `patchSource` op on the owning block. It goes through the same proof and approval loop. Geometry stays in PaperDOM, and words stay in `.noma`.
 3. **Embed canvases in pages (next).** `::canvas{src="att:<hash>" id="…"}` renders a PaperDOM document (stored as an attachment) inside a wiki page. This is Noma's whiteboard answer, without cloning Confluence whiteboards.
 4. **Office export through PaperDOM (next).** `.pptx` from the canvas model, with an honest fidelity report (`paperDomFidelityReport` already exists).
 
@@ -204,7 +204,7 @@ file, and the LLM renderer keeps the component call.
 
 ### Phase 3: the canvas bridge (≈6–8 weeks)
 
-- PaperDOM → `.noma` text sync (§5.2).
+- ~~PaperDOM → `.noma` text sync (§5.2)~~ **Done:** `noma paperdom-sync` and Cloud `POST …/paperdom-sync` feed the proof and approval loop.
 - `::canvas` embeds (§5.3).
 - `.pptx` export (§5.4).
 - A real PaperDOM HTML/SVG renderer.

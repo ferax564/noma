@@ -10,6 +10,8 @@ import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
 import { renderMarkdown } from "./renderer-markdown.js";
 import { renderPaperDom } from "./renderer-paperdom.js";
+import { paperDomToPatchOps, type PaperDomSyncResult } from "./paperdom-sync.js";
+import type { PaperDOMDocument } from "./paperdom-document-model.js";
 import { type ComponentKit, componentKitFromSource } from "./components.js";
 import { renderDocx } from "./renderer-docx.js";
 import { extractDocxControlData } from "./docx-control-data.js";
@@ -51,6 +53,8 @@ Usage:
   noma prove <file.noma> [opts]              Alias for proof
   noma schema <name>                         Print bundled JSON Schema
   noma docx-data <file.docx>                 Extract DOCX control/task state as JSON
+  noma paperdom-sync <file.noma> <canvas.json>  Turn canvas text edits into patch ops
+                                             (JSON; --inplace applies and validates)
   noma docx-sync <file.noma> <file.docx>     Update ::control defaults and task state
   noma docx-review-data <file.docx>          Extract Word review data as JSON
   noma docx-review-sync <file.noma> <file.docx> Sync Word review data from DOCX
@@ -742,6 +746,48 @@ async function run(argv: string[]): Promise<void> {
     }
     const data = extractDocxControlData(readFileSync(resolve(args.file)));
     output(JSON.stringify(data, null, 2), args.out);
+    return;
+  }
+
+  if (cmd === "paperdom-sync") {
+    if (!args.file || !args.fileB) {
+      process.stderr.write("noma paperdom-sync: <file.noma> <canvas.json> required\n");
+      process.exit(2);
+    }
+    const filePath = resolve(args.file);
+    if (isBookManifestPath(filePath)) {
+      process.stderr.write(`error: noma paperdom-sync operates on .noma source files, not book manifests\n`);
+      process.exit(2);
+    }
+    const source = readFileSync(filePath, "utf8");
+    let result: PaperDomSyncResult;
+    try {
+      const canvas = JSON.parse(readFileSync(resolve(args.fileB), "utf8")) as PaperDOMDocument;
+      result = paperDomToPatchOps(parse(source, { filename: filePath }), canvas, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}) });
+    } catch (error) {
+      process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.exit(2);
+    }
+    for (const change of result.changes) process.stderr.write(`~ ${change.target}: ${change.description}\n`);
+    for (const skip of result.skipped) process.stderr.write(`! ${[skip.pageId, skip.elementId].filter(Boolean).join(" ")}${skip.pageId || skip.elementId ? ": " : ""}${skip.reason}\n`);
+    if (!args.inplace) {
+      output(`${JSON.stringify(result, null, 2)}\n`, args.out);
+      if (result.ops.length > 0) process.stderr.write(`review: save this JSON and run noma proof ${args.file} --ops <saved.json>, or rerun with --inplace\n`);
+      return;
+    }
+    if (result.ops.length === 0) {
+      process.stderr.write("no text changes to apply\n");
+      return;
+    }
+    const next = patchSource(source, result.ops);
+    const errors = validate(parse(next, { filename: filePath }), validateOptionsFromArgs(args)).filter((d) => d.severity === "error");
+    if (errors.length > 0) {
+      for (const d of errors) process.stderr.write(`error: ${d.code}: ${d.message}\n`);
+      process.stderr.write("error: the synced document does not validate; source not written\n");
+      process.exit(1);
+    }
+    writeFileSync(filePath, next, "utf8");
+    process.stderr.write(`✓ applied ${result.ops.length} op(s) to ${filePath}\n`);
     return;
   }
 

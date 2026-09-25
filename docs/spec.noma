@@ -280,6 +280,11 @@ The targets render decks as follows:
 - **Markdown** renders each slide as a `##` section followed by `---`.
 - **LLM** output keeps `[SLIDE ...]` / `[NOTES]` markers.
 - **`--to paperdom`** exports the deck as a PaperDOM canvas document.
+- **`noma paperdom-sync <file.noma> <canvas.json>`** turns text edits made on an exported PaperDOM canvas back into patch ops (`paperDomToPatchOps`), ready for `noma proof --ops`. `--inplace` applies them and validates first.
+  - **What syncs:** slide titles (the `title=` attribute or the heading), paragraphs, list items, quotes, code lines, pipe-table cells, speaker notes, `hidden`, `transition`, and slide order within a `::deck`.
+  - **Formatting survives:** only the changed span of the inline source is rewritten, so `**$8**` edited to `$9` stays bold.
+  - **How edits are addressed:** a block with an id is rewritten by that id. Anything else is carried by re-rendering its nearest `::slide` (or other directive with an id) at its own fence depth.
+  - **What is reported, not guessed:** added or removed pages, elements, paragraphs, or table rows; layout and style changes (they stay in PaperDOM); text that comes from a component; and plain paragraphs under a heading with no id.
 - **`--to slides`** writes a standalone presenter page. A page without a deck presents as a title slide (the top heading and its intro) plus one slide per section, at the shallowest heading level that has at least two headings. The slide IDs are the section IDs.
 
 `::page_setup{size="Letter|A4|Legal" orientation="portrait|landscape" margin="12mm"}` controls print geometry. DOCX uses the first page setup as the initial section geometry; later `::page_setup` blocks emit native Word section breaks and subsequent Word table columns, dataset tables, and grid/columns layouts size from the active page width and margins. HTML emits an `@page` rule for browser printing. Per-side margins use `margin_top`, `margin_right`, `margin_bottom`, and `margin_left`; lengths accept `in`, `mm`, `cm`, and `pt`.

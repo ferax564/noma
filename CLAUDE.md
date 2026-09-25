@@ -29,6 +29,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   slides.ts                `::deck`/`::slide` helpers + `presentationSlides` (doc-to-deck) for `--to slides` and PaperDOM
   style-tokens.ts          Closed `class=` style-token vocabulary + per-space aliases
   components.ts            Component kits — `::component` definitions, AST-level expansion, use checks
+  paperdom-sync.ts         Canvas → `.noma` text sync: edited PaperDOM doc → proofed patch ops (`noma paperdom-sync`)
   renderer-docx.ts         AST → Word .docx (comments, footnotes, tracked changes, controls, captions)
   renderer-site.ts         Multi-page HTML site for book manifests (`--to site`). Cross-chapter wikilink rewrite.
   pdf.ts                   Rendered HTML → PDF via Puppeteer (`--to pdf`)

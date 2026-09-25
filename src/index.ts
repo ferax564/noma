@@ -13,12 +13,12 @@ export type { HtmlRenderOptions, SlidesRenderOptions } from "./renderer-html.js"
 export { renderLlm } from "./renderer-llm.js";
 export { renderJson } from "./renderer-json.js";
 export type { JsonRenderOptions } from "./renderer-json.js";
-export { renderNoma } from "./renderer-noma.js";
+export { renderNoma, renderNomaBlock } from "./renderer-noma.js";
 export type { NomaRenderOptions } from "./renderer-noma.js";
 export { renderMarkdown } from "./renderer-markdown.js";
 export type { MarkdownRenderOptions } from "./renderer-markdown.js";
-export { renderPaperDom } from "./renderer-paperdom.js";
-export type { RenderPaperDomOptions } from "./renderer-paperdom.js";
+export { buildPaperDom, renderPaperDom } from "./renderer-paperdom.js";
+export type { PaperDomPageSource, RenderPaperDomOptions } from "./renderer-paperdom.js";
 export { DECK_ASPECTS, SLIDE_LAYOUTS, deckSlides, findDecks, slideParts } from "./slides.js";
 export type { SlideLayout, SlideParts } from "./slides.js";
 export { STYLE_TOKENS, STYLE_TOKEN_GROUPS, normalizeStyleTokenAliases, parseStyleTokens, resolveStyleTokenAliases, styleTokenClassNames } from "./style-tokens.js";

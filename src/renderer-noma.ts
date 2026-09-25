@@ -54,6 +54,16 @@ export function renderNoma(doc: DocumentNode, options: NomaRenderOptions = {}): 
   return out.length === 0 ? "" : `${out.join("\n\n").replace(/\n+$/, "")}\n`;
 }
 
+/**
+ * One block → `.noma` source at a given fence depth (`colons`, default 2), so
+ * the result can replace a nested block in place (e.g. a `:::slide` inside a
+ * `::deck` via `replace_block`). `doc` supplies alias context for headings.
+ */
+export function renderNomaBlock(node: Node, colons = 2, doc?: DocumentNode): string {
+  const ctx = doc ? buildContext(doc) : { regenAliases: new Set<string>() };
+  return renderNode(node, Math.max(2, Math.min(64, colons)), ctx).replace(/\n+$/, "");
+}
+
 interface RenderCtx {
   /** Aliases that the parser/loader will re-derive on parse and so don't
    *  need to be emitted on the heading. Filename slug + frontmatter list. */

@@ -14,6 +14,7 @@ import { renderHtml } from "../renderer-html.js";
 import { renderJson } from "../renderer-json.js";
 import { renderLlm } from "../renderer-llm.js";
 import { renderMarkdown } from "../renderer-markdown.js";
+import { renderPaperDom } from "../renderer-paperdom.js";
 import { createZip, type ZipEntryInput } from "../zip.js";
 import { type AccessContext, type CloudServerConfig, type Principal, requireRecordAccess } from "./context.js";
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
@@ -23,7 +24,7 @@ import { documentComponentKit, documentStyleTokens } from "./spaces.js";
 import type { StyleTokenAliases } from "../style-tokens.js";
 import type { ComponentKit } from "../components.js";
 
-export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json"] as const;
+export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json", "paperdom"] as const;
 export const SITE_EXPORT_FORMATS = ["site-zip", "noma-zip"] as const;
 const MAX_SITE_EXPORT_PAGES = 2_000;
 const MAX_CONCURRENT_PDF_RENDERS = 2;
@@ -49,6 +50,9 @@ export async function routeDocumentExport(
       return;
     case "llm":
       sendDownload(res, renderLlm(doc, macros), "text/plain; charset=utf-8", `${base}.llm.txt`);
+      return;
+    case "paperdom":
+      sendDownload(res, `${JSON.stringify(renderPaperDom(expandMacros(doc, macros), { components: documentComponentKit(config, record.id) }), null, 2)}\n`, "application/json; charset=utf-8", `${base}.paperdom.json`);
       return;
     case "json":
       sendDownload(res, renderJson(doc), "application/json; charset=utf-8", `${base}.json`);

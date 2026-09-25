@@ -1342,6 +1342,14 @@ new tab.
 
 The CLI renders the same presenter with `noma render page.noma --to slides`.
 
+**Canvas round trip.**
+
+1. `GET /api/documents/<id>/export?to=paperdom` downloads the page as a PaperDOM canvas, with the space kit's components expanded.
+2. After text edits on the canvas, `POST /api/documents/<id>/paperdom-sync` with `{ "canvas": … }` (editors only) returns `{ ops, changes, skipped, documentHash }`. It does not write.
+3. Post those `ops` to `/api/documents/<id>/patch-proposals` to create an ordinary proofed proposal. Another person approves it, and then it is applied with a hash check.
+
+Layout changes stay on the canvas. Anything that cannot be mapped back to text is listed in `skipped` with a reason.
+
 ## Link pages like Obsidian
 
 Noma Cloud supports page-oriented wikilinks for LLM wiki workflows:

@@ -39,6 +39,8 @@ import {
 import { attachmentResolver } from "./attachments.js";
 import { renderDocumentHtml } from "./render.js";
 import { routeDocumentWidget, widgetFrameResolver } from "./widgets.js";
+import { paperDomToPatchOps } from "../paperdom-sync.js";
+import type { PaperDOMDocument } from "../paperdom-document-model.js";
 import { documentComponentKit, documentStyleTokens } from "./spaces.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics } from "./routes-analytics.js";
@@ -149,6 +151,24 @@ export async function routeDocuments(
 
   if (suffix === "export") {
     await routeDocumentExport(req, res, new URL(req.url ?? "/", "http://noma.local"), config, principal, record);
+    return;
+  }
+
+  if (suffix === "paperdom-sync") {
+    if (method !== "POST") throw new HttpError(405, "Method not allowed");
+    requireAccessRole(requireRecordAccess(config, record, principal, "viewer"), "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    if (!input.canvas || typeof input.canvas !== "object") throw new HttpError(400, "canvas must be a PaperDOM document");
+    const deck = optionalString(input.deck);
+    try {
+      const result = paperDomToPatchOps(parse(record.source, { filename: `${record.id}.noma` }), input.canvas as PaperDOMDocument, {
+        components: documentComponentKit(config, record.id),
+        ...(deck ? { deck } : {}),
+      });
+      sendJson(res, 200, { ...result, documentHash: record.hash });
+    } catch (error) {
+      throw new HttpError(422, error instanceof Error ? error.message : String(error), { code: "invalid_canvas" });
+    }
     return;
   }
 
