@@ -6,6 +6,67 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Slide strip in the Cloud editor:** a filmstrip of the page's slides above the editor, drawn through the canvas model.
+  - **Navigate:** click a slide to reveal it in the source, the visual editor, and the preview. The slide at the source cursor is highlighted.
+  - **Edit:** drag a slide, or use Alt+←/→, to reorder it (`move_block`). **Hide** toggles `hidden`, and **+ Slide** appends a slide at the deck's fence depth. Each action is an ordinary source patch.
+  - **When it shows:** by default on pages with a `::deck`. The **Slides** header button shows the section-derived slides of any page.
+- **`/canvas` slash command** inserts a `::canvas` embed with a fresh id.
+- **Canvas embeds (`::canvas`):** a page can draw a PaperDOM canvas as static SVG, covering shapes, text, connectors, tables, bar and line charts, and images.
+  - **Sources:** a fenced ```` ```json ```` body, a file `src=` (read by the CLI loader and contained to the document directory), or, in Noma Cloud, an `att:` attachment on the same page. `page=` picks one page.
+  - **Safety:** canvas JSON is treated as untrusted. Colours, fonts, and numbers are sanitised, text is escaped, SVG data URIs are never drawn, and remote images load only where the host resolves them.
+  - **Text targets:** LLM, Markdown, and DOCX list each page's text in reading order, not the JSON.
+  - **Validator:** `canvas-missing-source` and `canvas-invalid` (errors), and `canvas-unknown-page` (warning).
+  - **Noma Cloud:** published pages, the presenter, the space site, and every export read the page's canvas attachments. The editor preview fetches them once.
+  - **Library:** `canvasPageSvg`, `canvasOutline`, `readCanvasDocument`, and friends are exported from the root entry, which stays free of runtime PaperDOM imports.
+- **PowerPoint export (`--to pptx`):** `paperDomToPptx()` writes a `.pptx` from the canvas model with the dependency-free ZIP writer.
+  - **Native in PowerPoint:** text boxes with bullets and numbering, preset shapes, connectors, tables, bar and line charts (native chart parts with literal data), embedded images, speaker notes, hidden slides, and transitions.
+  - **Fidelity report:** anything approximated or left out is listed in the report and printed by the CLI.
+  - **Input:** a `.noma` page (its deck, or one slide per section) or a PaperDOM canvas `.json`.
+  - **Noma Cloud:** *Export… → PowerPoint (.pptx)* (`export?to=pptx`) sends the report as the `x-noma-fidelity` header, and the editor shows it. The export menu also offers the PaperDOM canvas.
+- **Presentations in `.noma`:** `::deck{aspect="16:9|4:3|1:1"}` holds `:::slide{layout="title|section|content|two-column|statement|quote|media|blank"}` children, with speaker notes in `::::notes`. If a slide has no `title=`, a leading heading becomes the title. HTML shows the slides as scaled frames in the page, and a **Present** button opens a fullscreen presenter with keyboard navigation and a URL-hash deep link to the current slide. Markdown writes one `##` section per slide, and LLM output keeps `[SLIDE]` markers. New `presentation` profile; `technical` and `research` also allow decks. Example: `examples/deck.noma`.
+- **PaperDOM → `.noma` text sync:** `noma paperdom-sync <file.noma> <canvas.json>` and `paperDomToPatchOps()` turn text edits made on an exported canvas back into ordinary patch ops, ready for `noma proof --ops` (`--inplace` applies and validates).
+  - **What syncs:** slide titles, paragraphs, list items, quotes, code, pipe-table cells, speaker notes, `hidden`, `transition`, and slide order.
+  - **Formatting survives:** edits are re-applied onto the inline source (`rebaseInlineEdit`), so bold and links are kept.
+  - **Reported, not guessed:** layout changes, added or removed content, component-generated text, and unaddressable paragraphs.
+  - **Noma Cloud:** `export?to=paperdom` downloads the canvas, and `POST /api/documents/:id/paperdom-sync` returns the ops, which become a normal patch proposal that another person approves.
+  - **Also new:** `buildPaperDom()` exposes element provenance, and `renderNomaBlock()` renders one block at a given fence depth. `paperDomToPatchOps` is exported from the `/enterprise` subpath, which carries the PaperDOM kernel, so the root entry stays lean.
+- **Component kits:** `::component{name props slots}` defines a reusable block that is built only from core blocks and style tokens. A page uses it by name (`::pricing_card{id plan price}` with `:::slot{name}` children).
+  - **Expansion:** `expandComponents()` fills in the template on the AST, not the source text, so a prop value can never add blocks, attributes, or markup. It is bounded by depth and by a cycle check. A single-root expansion takes the use's `id` and `class`, and other template IDs become `<use-id>--<template-id>`.
+  - **Where it applies:** HTML, `--to slides`, Markdown, DOCX, and PaperDOM expand the call. The `.noma` source and the LLM context keep it compact. HTML kit pages preview each definition.
+  - **CLI:** `--kit <file>` supplies definitions to render and check.
+  - **Validator:** five new `component-*` rules.
+  - **Noma Cloud:** a space's owner can set a **Component kit page**. Its definitions render, present, export, and validate on every page in the space. They also work inside sandboxed widgets, and they appear in the Visual editor's slash menu with props and slots scaffolded. Only the definitions leave the kit page. Example: `examples/kit/`.
+- **Style tokens override built-in block styles:** token rules are now `:root`-scoped, so `class="tone-accent"` recolours a card's border (`article.noma-card` used to win).
+- **Visual editor: deck slash commands and a style-token picker.**
+  - `/deck`, `/slide` (inserted after the current slide, or as a new deck outside one), `/notes` (appended to the current slide), `/grid`, `/card`, and `/widget` (a sandboxed `::html` example).
+  - New decks, slides, and widgets get unused stable IDs.
+  - The slash menu ranks exact matches first.
+  - Each directive card gains a **Style** button: chips for every token group plus the page's space aliases, applied to `class=` on click, with one token per exclusive group (tone, surface, size, align, spacing, span) and removable *unknown* chips.
+- **Present from any Cloud page:** a **Present** button in the page header, and a *Present* link on `/d/:id` pages, open `/d/:id/present`. It shows the page's first `::deck`. Otherwise it shows a title slide plus one slide per section, so every wiki page can be presented. The presenter supports keyboard, swipe, and button navigation, a speaker-notes panel (`N`), an overview grid (`O`), fullscreen (`F`), a progress bar, and `#slide-id` deep links. Share links work (`?share=`), and so do sandboxed widgets, attachments, and space style tokens. The presenter shows the last saved version, and it asks first when the editor has unsaved changes.
+- **`--to slides` render target:** `renderSlidesHtml()` writes the same presenter as a standalone HTML file, with `--deck <id>`. Without JavaScript it lists every slide, and printing gives one slide per page. `presentationSlides()` is the shared doc-to-deck logic; `--to paperdom` now uses it too, so section-derived decks also get the title slide.
+- **Noma → PaperDOM bridge:** `noma render <file> --to paperdom [--deck <id>]` and `renderPaperDom()` export a deck as a PaperDOM canvas document that the vendored kernel validates. Each page id is the slide's block ID, and each element id is `<slide-id>--<part>`. Titles, bullets, numbered lists, tables, speaker notes, transitions, and hidden slides are carried over. A document without a deck converts one section per slide.
+- **Style tokens (`class=`):** any directive can carry a closed, themed vocabulary of composable tokens (`tone-*`, `outline`/`filled`/`elevated`, `lead`, `text-*`, `align-*`, `span-*`, `stack`/`row`, `print-only`/`slides-only`, …). HTML emits them as `n-<token>` classes, and the default and dark themes style them. Unknown words are dropped and reported by the new `unknown-style-token` warning.
+- **Per-space style-token vocabularies:** space owners define aliases in Space settings, such as `brand-callout = tone-accent filled roomy` (`styleTokens` on `/api/sites`). Documents can also define them in `style_tokens:` frontmatter. An alias expands only to core tokens and cannot shadow one. A page gets the union of its spaces' vocabularies. Page responses include the effective `styleTokens`, and the editor preview and diagnostics use them. New `invalid-style-token-alias` warning.
+- **Sandboxed `::html` / `::svg` widgets in Noma Cloud:** blocks with an `id` render as `<iframe sandbox="allow-scripts">` in published pages, sites, and the editor preview, instead of a "disabled" placeholder. Each widget has its own signed URL (`/api/documents/:id/widgets/:blockId`), and access is re-checked on every load. It is served with a `sandbox allow-scripts` CSP and `connect-src 'none'`, so its scripts run in an opaque origin with no network, cookies, or page access. Set the frame height with `height=`. Renderer hosts opt in through `resolveWidgetFrame`. `::script` stays blocked.
+- **Validator:** `slide-outside-deck` (error), plus warnings for `notes-outside-slide`, `slide-unknown-layout`, `deck-unknown-aspect`, and `unknown-style-token`.
+
+### Changed
+
+- **PaperDOM is now a maintained fork.** `src/paperdom-*.ts` no longer uses `@ts-nocheck`. The 48 type errors that hid were fixed, and the files are linted. `paperdom-pin.ts` records the fork base (`PAPERDOM_FORK_BASE_COMMIT`) for provenance, not as a pin to re-vendor.
+
+### Fixed
+
+- **Patch engine:** `replace_block` and `add_block` in `patchSource` now reject a fragment that opens at the wrong fence depth for its position, with `unbalanced_fence_content`. Before this fix, a `::card` spliced into a `::grid` closed the grid early and silently produced a malformed document. The error names the depth that position needs. The Python seed enforces the same rule for `add_block`. Conformance: the `patch/add_block` fixture now nests correctly, and there are new `patch-error/wrong_fence_depth` and `wrong_fence_depth_replace` fixtures (57 in total).
+- `noma render --title <t>` and `--deck <id>` placed before the input file no longer take their value as the file path.
+- The `hide-in-slides` and `slides-only` style tokens now apply in the standalone presenter (`--to slides`, Cloud "Present"). Hidden slides stay out of the presenter overview and print output.
+- Noma Cloud HTML, PDF, and site-ZIP exports now resolve the space's style-token aliases.
+
+- Published Noma Cloud pages (`/d/:id`, `/api/documents/:id/html`) rendered with an empty stylesheet, so cards, callouts, grids, decks, and style tokens appeared unstyled. They now inline the default theme and style the Cloud banner. Space sites (`/s/:id`) also load the theme, before their own chrome CSS. Slide heading rules are more specific, so a host page's heading styles cannot restyle slide titles.
+
+- `paperDomHtmlExport` now escapes element text, page and element ids, and the document title. Before this fix, a PaperDOM document could inject markup into the exported HTML.
+
 ## [0.18.0] — 2026-09-23
 
 ### Added

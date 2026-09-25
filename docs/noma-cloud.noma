@@ -1259,7 +1259,7 @@ such as `decision-1`. Switch to Source at any time to see the exact text.
 
 | Input | Result |
 |---|---|
-| `/` | Block menu: headings, lists, task list, table, code, quote, callout, warning, decision, claim, evidence, figure, math, mermaid, table of contents, child pages, include, divider, raw Noma |
+| `/` | Block menu: headings, lists, task list, table, code, quote, callout, warning, decision, claim, evidence, figure, math, mermaid, table of contents, child pages, include, slide deck, slide, speaker notes, grid of cards, card, HTML widget, canvas, divider, raw Noma. Exact matches rank first |
 | `## `, `- `, `1. `, `[ ] `, `> `, three backticks, `---` | Markdown shortcuts |
 | `**bold**`, `*em*`, backtick code, `[[id]]` | Inline shortcuts |
 | Select text | Floating toolbar: bold, italic, code, link, block link, heading level; table row and column buttons inside tables |
@@ -1273,6 +1273,43 @@ in the page header. If the socket cannot connect, Visual mode keeps working on
 your device and you save as usual. Typing in the raw Source pane pauses live
 editing until that draft is saved, because a source draft is saved the classic
 way with a hash check.
+
+**Decks and widgets.**
+
+- `/deck` inserts a `::deck` with a title slide and a content slide.
+- `/slide` adds a slide after the one you are in. Outside a deck, it starts a new deck.
+- `/notes` adds speaker notes at the end of the current slide.
+- `/widget` inserts a sandboxed `::html` block with a working example.
+- `/canvas` inserts a `::canvas` embed pointing at a page attachment (`att:board.json`).
+- New decks, slides, widgets, and canvases get stable IDs (`deck-1`, `slide-3`, `widget-1`, `canvas-1`) that are not already used on the page, so presenter deep links and agent patches can target them.
+
+**Slide strip.** A page with a `::deck` shows a filmstrip of its slides above
+the editor, drawn through the same canvas model as the PowerPoint export. The
+**Slides** button shows or hides it on any page; a page without a deck shows
+the slides that *Present* would build from its sections.
+
+- Click a slide to jump to it in the source, the visual editor, and the preview. The slide at the source cursor is highlighted.
+- Drag a slide, or focus it and press Alt+← / Alt+→, to reorder. **Hide** marks a slide `hidden` for presenting; **+ Slide** adds one at the end of the deck.
+- Every strip action is an ordinary patch (`move_block`, `update_attribute`, `add_block`) applied to the page source, so it saves, diffs, and goes through proposals like any other edit. Reordering is available when every child of the deck is a `::slide` with an id.
+
+**Components.** Each space can name a **Component kit page** in Space
+settings (owners only). The `::component` definitions on that page are
+available to every page in the space. Type `/` and the component name, for
+example `/pricing`, to insert a use. The use comes with its required props
+and named slots filled in as placeholders, plus a fresh stable ID. Pages
+render, present, export, and validate with the kit. Viewers who cannot open
+the kit page still see its components rendered. The editor receives only the
+definitions, never the rest of the kit page. Changing a definition updates
+every page that uses it.
+
+**Style picker.** Every directive card has a **Style** button next to
+**Attributes**. It opens chips for the style-token groups (tone, surface,
+emphasis, size, align, spacing, span, layout, media). When the page's spaces
+define aliases, they appear first under *space*. Clicking a chip writes it
+into the block's `class=` attribute right away. Tone, surface, size, align,
+spacing, and span allow one token each, so picking `tone-info` replaces
+`tone-accent`. Words that are not tokens show as dashed *unknown* chips you can
+click to remove.
 
 Live edits become normal page history. The server writes a checkpoint
 revision at most once per 30 seconds of activity, and again when the last
@@ -1292,6 +1329,48 @@ connect, after every change to the page record (for example, a collaborator is
 removed or a share link is revoked), and on a timer. Revoked users and trashed
 pages are disconnected. The server replaces each cursor's name and colour with
 the identity it knows, so nobody can pose as someone else.
+
+## Present a page
+
+Any page can be presented. Click **Present** in the page header, or the
+*Present* link on a published `/d/<id>` page, to open `/d/<id>/present` in a
+new tab.
+
+- A page with a `::deck` shows that deck's slides, layouts, and speaker notes.
+- Any other page becomes a title slide (the top heading and its intro) plus one
+  slide per section, so a runbook, handbook, or decision record presents
+  without extra work.
+- Use the arrow keys, Space, PageUp/PageDown, Home/End, the bar buttons, or a
+  swipe to move between slides. `N` toggles the speaker-notes panel, `O` opens
+  the overview grid, and `F` switches to fullscreen.
+- The URL hash follows the current slide (`#setup`), so links open on a slide.
+- Share links work: `/d/<id>/present?share=<token>`. Sandboxed `::html`
+  widgets, attachments, and the space's style tokens render as they do on the
+  page.
+- The presenter shows the last saved version. If the editor has unsaved
+  changes, Noma asks before it opens.
+
+The CLI renders the same presenter with `noma render page.noma --to slides`.
+
+**Canvas round trip.**
+
+1. `GET /api/documents/<id>/export?to=paperdom` downloads the page as a PaperDOM canvas, with the space kit's components expanded.
+2. After text edits on the canvas, `POST /api/documents/<id>/paperdom-sync` with `{ "canvas": … }` (editors only) returns `{ ops, changes, skipped, documentHash }`. It does not write.
+3. Post those `ops` to `/api/documents/<id>/patch-proposals` to create an ordinary proofed proposal. Another person approves it, and then it is applied with a hash check.
+
+Layout changes stay on the canvas. Anything that cannot be mapped back to text is listed in `skipped` with a reason.
+
+**PowerPoint.** *Export… → PowerPoint (.pptx)* (`export?to=pptx`) writes the
+page's deck, or one slide per section, through the same canvas model. Speaker
+notes, hidden slides, transitions, tables, and charts are native. The
+`x-noma-fidelity` response header lists anything that was approximated or left
+out, and the editor shows it next to the download.
+
+**Canvas embeds.** Upload a PaperDOM canvas `.json` as a page attachment, then
+reference it with `::canvas{id="board" src="att:board.json" page="flow"}`.
+Published pages, the presenter, the space site, and every export draw it as
+static SVG; the editor preview fetches it once and redraws. Only the page's
+own attachments resolve, and canvas JSON above 2 MB is not drawn.
 
 ## Link pages like Obsidian
 
@@ -1563,7 +1642,7 @@ can remain side by side.
 Noma Cloud follows the same safety posture as the workbench:
 
 - the preview runs in a sandboxed iframe
-- raw `::html`, `::svg`, and `::script` escape hatches are blocked in preview
+- raw `::html` and `::svg` blocks with an `id` render as sandboxed widget iframes. Published pages run their scripts in an opaque origin with no network access. The editor preview shows the saved widget with scripts inert. `::script` is always blocked
 - external figure, math, diagram, and Plotly loads are disabled in preview
 - permissions are checked on document, site, export, share, collaborator, and DB endpoints
 - group grants are resolved dynamically and participate in the same permission checks

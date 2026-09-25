@@ -1,5 +1,4 @@
-// @ts-nocheck — vendored PaperDOM kernel; host policy lives in enterprise-paperdom-host.ts
-// Vendored from https://github.com/ferax564/paperDOM/blob/a12198cdad8c7487242834941a34ed5adf5d4d74/app/text-formatting.ts (MIT). Do not edit to add Noma host policy.
+// Forked from ferax564/paperDOM@a12198c app/text-formatting.ts (MIT). Maintained in this repository; see src/paperdom-pin.ts.
 export type ListMode = "bullet" | "number";
 import type { Paragraph } from "./paperdom-document-model.js";
 

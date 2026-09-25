@@ -8,14 +8,35 @@ export * from "./ast.js";
 export { parse, slugify } from "./parser.js";
 export type { ParseOptions } from "./parser.js";
 export { renderHtml } from "./renderer-html.js";
-export type { HtmlRenderOptions } from "./renderer-html.js";
+export { renderSlidesHtml } from "./renderer-html.js";
+export type { HtmlRenderOptions, SlidesRenderOptions } from "./renderer-html.js";
 export { renderLlm } from "./renderer-llm.js";
 export { renderJson } from "./renderer-json.js";
 export type { JsonRenderOptions } from "./renderer-json.js";
-export { renderNoma } from "./renderer-noma.js";
+export { renderNoma, renderNomaBlock } from "./renderer-noma.js";
 export type { NomaRenderOptions } from "./renderer-noma.js";
 export { renderMarkdown } from "./renderer-markdown.js";
 export type { MarkdownRenderOptions } from "./renderer-markdown.js";
+export { buildPaperDom, renderPaperDom } from "./renderer-paperdom.js";
+export { canvasOutline, canvasPageSvg, canvasPages, canvasSourceOf, readCanvasDocument, MAX_CANVAS_SOURCE_BYTES } from "./canvas-svg.js";
+export type { CanvasReadResult, CanvasSvgOptions } from "./canvas-svg.js";
+export type { PaperDomPageSource, RenderPaperDomOptions } from "./renderer-paperdom.js";
+export { DECK_ASPECTS, SLIDE_LAYOUTS, deckSlides, findDecks, slideParts } from "./slides.js";
+export type { SlideLayout, SlideParts } from "./slides.js";
+export { STYLE_TOKENS, STYLE_TOKEN_GROUPS, normalizeStyleTokenAliases, parseStyleTokens, resolveStyleTokenAliases, styleTokenClassNames } from "./style-tokens.js";
+export type { StyleToken, StyleTokenAliases } from "./style-tokens.js";
+export {
+  CORE_DIRECTIVES,
+  checkComponentUses,
+  componentKitFrom,
+  componentKitFromSource,
+  componentSignature,
+  componentUseSource,
+  expandComponents,
+  readComponentDefinition,
+  resolveComponentKit,
+} from "./components.js";
+export type { ComponentDefinition, ComponentKit, ComponentProp, ExpandComponentsOptions } from "./components.js";
 export { renderDocx } from "./renderer-docx.js";
 export type { DocxRenderOptions } from "./renderer-docx.js";
 export { extractDocxControlData } from "./docx-control-data.js";

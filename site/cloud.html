@@ -168,6 +168,8 @@
           <button id="reloadPageButton" type="button">Reload</button>
           <button id="favoritePageButton" type="button" aria-pressed="false">Favorite</button>
           <button id="watchPageButton" type="button" aria-pressed="false">Watch</button>
+          <button id="presentPageButton" type="button" title="Present this page (a ::deck, or one slide per section)">Present</button>
+          <button id="slideStripToggleButton" type="button" aria-pressed="false" aria-controls="slideStrip" title="Show or hide the slide strip" hidden>Slides</button>
         </div>
         <details id="pageMoreMenu" class="page-more-menu">
           <summary aria-label="Share and export this page">Share &amp; export</summary>
@@ -182,6 +184,8 @@
             <optgroup label="This page">
               <option value="page:pdf">PDF</option>
               <option value="page:docx">Word (.docx)</option>
+              <option value="page:pptx">PowerPoint (.pptx)</option>
+              <option value="page:paperdom">PaperDOM canvas (.json)</option>
               <option value="page:markdown">Markdown</option>
               <option value="page:html">HTML</option>
               <option value="page:noma">Noma source</option>
@@ -203,6 +207,14 @@
           </div>
         </details>
       </div>
+    </section>
+
+    <section id="slideStrip" class="slide-strip" aria-label="Slides" hidden>
+      <div class="slide-strip-head">
+        <span id="slideStripSummary" class="slide-strip-summary"></span>
+        <button id="slideStripAddButton" type="button" hidden>+ Slide</button>
+      </div>
+      <ol id="slideStripList" class="slide-strip-list"></ol>
     </section>
 
     <section id="documentGrid" class="document-grid" aria-label="Document editor">
@@ -268,6 +280,12 @@
       </label>
       <label class="stack-field" for="spaceHomeSelect">Home page
         <select id="spaceHomeSelect"></select>
+      </label>
+      <label class="stack-field" for="spaceKitSelect">Component kit page (owners)
+        <select id="spaceKitSelect"></select>
+      </label>
+      <label class="stack-field" for="spaceStyleTokensInput">Style tokens (owners; one alias per line)
+        <textarea id="spaceStyleTokensInput" class="compact-textarea" maxlength="4000" spellcheck="false" placeholder="brand-callout = tone-accent filled roomy"></textarea>
       </label>
       <div class="button-row">
         <button id="spaceSettingsSaveButton" type="button">Save settings</button>

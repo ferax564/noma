@@ -6,29 +6,83 @@ import { extname, join, resolve, sep } from "node:path";
 import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
 import { parse } from "../parser.js";
 import type { MacroResolvers } from "../macros.js";
-import { renderHtml } from "../renderer-html.js";
+import { renderHtml, renderSlidesHtml } from "../renderer-html.js";
+import { defaultThemeCss } from "./theme.js";
 import { attachmentResolver } from "./attachments.js";
+import { canvasResolver } from "./canvas.js";
+import { widgetFrameResolver } from "./widgets.js";
+import type { DirectiveNode } from "../ast.js";
+import type { StyleTokenAliases } from "../style-tokens.js";
+import { documentComponentKit, documentStyleTokens } from "./spaces.js";
+import type { ComponentKit } from "../components.js";
 import { type AccessContext, capAccessForDocument, type CloudServerConfig, type Principal, readDocument } from "./context.js";
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
 import { cloudMacroResolvers, cloudPageHref } from "./macros.js";
 
+const CLOUD_BANNER_CSS = `.noma-cloud-banner{position:sticky;top:0;z-index:10;padding:.45rem 1.25rem;font:500 .85rem/1.4 var(--noma-font-sans);color:var(--noma-muted);background:var(--noma-bg);border-bottom:1px solid var(--noma-rule)}
+.noma-cloud-banner a{color:var(--noma-accent);font-weight:650;text-decoration:none}.noma-cloud-banner a:hover{text-decoration:underline}
+@media print{.noma-cloud-banner{display:none}}`;
+
 export function renderDocumentHtml(
   record: CloudDocumentRecord,
   access?: AccessContext,
-  options: { resolveAttachment?: (ref: string) => string | undefined; macros?: MacroResolvers } = {},
+  options: {
+    resolveAttachment?: (ref: string) => string | undefined;
+    resolveCanvas?: (ref: string) => string | undefined;
+    resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
+    styleTokens?: StyleTokenAliases;
+    components?: ComponentKit;
+    macros?: MacroResolvers;
+    /** Share token of the current request, carried into the banner's Present link. */
+    shareToken?: string;
+  } = {},
 ): string {
   const doc = parse(record.source, { filename: `${record.id}.noma` });
   const banner = access
-    ? `<div class="noma-cloud-banner">Noma Cloud · ${escapeHtml(record.title)} · ${escapeHtml(access.role)} access</div>`
+    ? `<div class="noma-cloud-banner">Noma Cloud · ${escapeHtml(record.title)} · ${escapeHtml(access.role)} access · <a href="/d/${encodeURIComponent(record.id)}/present${options.shareToken ? `?share=${encodeURIComponent(options.shareToken)}` : ""}">Present</a></div>`
     : "";
   const html = renderHtml(doc, {
     ...options.macros,
     standalone: true,
     allowEscapeHatches: false,
+    ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
+    ...(options.styleTokens ? { styleTokens: options.styleTokens } : {}),
+    ...(options.components ? { components: options.components } : {}),
     externalAssets: false,
+    themeCss: `${defaultThemeCss()}\n${CLOUD_BANNER_CSS}`,
     ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
+    ...(options.resolveCanvas ? { resolveCanvas: options.resolveCanvas } : {}),
   });
   return banner ? html.replace("<body>", `<body>${banner}`) : html;
+}
+
+/** Presenter page for `/d/:id/present`: the page's first `::deck`, else one slide per section. */
+export function renderPresentationHtml(
+  record: CloudDocumentRecord,
+  options: {
+    resolveAttachment?: (ref: string) => string | undefined;
+    resolveCanvas?: (ref: string) => string | undefined;
+    resolveWidgetFrame?: (node: DirectiveNode) => string | undefined;
+    styleTokens?: StyleTokenAliases;
+    components?: ComponentKit;
+    macros?: MacroResolvers;
+    backHref?: string;
+  } = {},
+): string {
+  const doc = parse(record.source, { filename: `${record.id}.noma` });
+  return renderSlidesHtml(doc, {
+    ...options.macros,
+    title: record.title,
+    themeCss: defaultThemeCss(),
+    allowEscapeHatches: false,
+    externalAssets: false,
+    ...(options.resolveAttachment ? { resolveAttachment: options.resolveAttachment } : {}),
+    ...(options.resolveCanvas ? { resolveCanvas: options.resolveCanvas } : {}),
+    ...(options.resolveWidgetFrame ? { resolveWidgetFrame: options.resolveWidgetFrame } : {}),
+    ...(options.styleTokens ? { styleTokens: options.styleTokens } : {}),
+    ...(options.components ? { components: options.components } : {}),
+    ...(options.backHref ? { backHref: options.backHref } : {}),
+  });
 }
 
 export async function renderSiteHtml(
@@ -43,11 +97,16 @@ export async function renderSiteHtml(
     .filter((id) => !config.store.isTrashed("document", id))
     .map((id) => ({ id, access: capAccessForDocument(config, id, access) }))
     .filter((entry): entry is { id: string; access: AccessContext } => entry.access !== undefined);
-  const documents = await Promise.all(visible.map(async (entry) => ({ record: await readDocument(config, entry.id), access: entry.access })));
+  const documents = await Promise.all(
+    visible.map(async (entry) => {
+      const record = await readDocument(config, entry.id);
+      return { record, access: entry.access, resolveCanvas: await canvasResolver(config, record.id, record.source) };
+    }),
+  );
   const onSite = new Set(visible.map((entry) => entry.id));
   const pageHref = (id: string): string => (onSite.has(id) ? `#${id}` : cloudPageHref(id));
   const articles = documents
-    .map(({ record, access: documentAccess }) => {
+    .map(({ record, access: documentAccess, resolveCanvas }) => {
       const doc = parse(record.source, { filename: `${record.id}.noma` });
       const body = renderHtml(doc, {
         ...cloudMacroResolvers(config, principal, record.id, { pageHref }),
@@ -56,6 +115,10 @@ export async function renderSiteHtml(
         externalAssets: false,
         interactive: false,
         resolveAttachment: attachmentResolver(config, record.id, documentAccess),
+        resolveCanvas,
+        resolveWidgetFrame: widgetFrameResolver(config, record.id, documentAccess),
+        styleTokens: { ...documentStyleTokens(config, record.id), ...(site.styleTokens ?? {}) } as StyleTokenAliases,
+        components: documentComponentKit(config, record.id, site.id),
       });
       const home = record.id === homeId ? ' data-home="true"' : "";
       return `<article class="site-doc" id="${escapeAttr(record.id)}"${home}><header><h2>${escapeHtml(record.title)}</h2><a href="#${escapeAttr(record.id)}">Copy link</a></header>${body}</article>`;
@@ -71,6 +134,7 @@ export async function renderSiteHtml(
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="data:," />
 <title>${escapeHtml(site.title)}</title>
+<style>${defaultThemeCss()}</style>
 <style>
 body{margin:0;background:#f2f4f1;color:#20242a;font:15px/1.52 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .shell{display:grid;grid-template-columns:minmax(180px,260px) minmax(0,1fr);min-height:100vh}

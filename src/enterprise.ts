@@ -102,3 +102,7 @@ export { runIndependentSecurityReview } from "./enterprise-security-review.js";
 export type { SecurityFinding } from "./enterprise-security-review.js";
 export { PILOT_PARTNERS, measureUsabilityTasks, runPaidPilotUsability } from "./enterprise-pilot.js";
 export type { PilotPartner, UsabilityTask } from "./enterprise-pilot.js";
+export { paperDomToPatchOps, rebaseInlineEdit } from "./paperdom-sync.js";
+export { paperDomToPptx } from "./paperdom-pptx.js";
+export type { PptxExport, PptxFidelityReport, PptxOptions } from "./paperdom-pptx.js";
+export type { PaperDomSyncChange, PaperDomSyncResult, PaperDomSyncSkip } from "./paperdom-sync.js";

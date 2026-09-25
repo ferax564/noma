@@ -1,4 +1,4 @@
-/** Space settings panel (key, description, icon, home page) plus archive/unarchive and the archived-spaces toggle. */
+/** Space settings panel (key, description, icon, home page, component kit, style tokens) plus archive/unarchive and the archived-spaces toggle. */
 import { fetchCloudJson } from "./api.js";
 import { renderChrome } from "./layout.js";
 import { loadSite, refreshSites } from "./navigation.js";
@@ -11,6 +11,8 @@ const keyInput = requireElement<HTMLInputElement>("spaceKeyInput");
 const iconInput = requireElement<HTMLInputElement>("spaceIconInput");
 const descriptionInput = requireElement<HTMLTextAreaElement>("spaceDescriptionInput");
 const homeSelect = requireElement<HTMLSelectElement>("spaceHomeSelect");
+const styleTokensInput = requireElement<HTMLTextAreaElement>("spaceStyleTokensInput");
+const kitSelect = requireElement<HTMLSelectElement>("spaceKitSelect");
 const saveButton = requireElement<HTMLButtonElement>("spaceSettingsSaveButton");
 const archiveButton = requireElement<HTMLButtonElement>("spaceArchiveButton");
 const status = requireElement<HTMLElement>("spaceSettingsStatus");
@@ -44,6 +46,8 @@ export function renderSpaceSettings(): void {
   archivedBadge.hidden = !site?.archived;
   for (const control of [iconInput, descriptionInput, homeSelect]) control.disabled = state.busy || !writable;
   keyInput.disabled = state.busy || !writable || !owner;
+  styleTokensInput.disabled = state.busy || !writable || !owner;
+  kitSelect.disabled = state.busy || !writable || !owner;
   saveButton.disabled = state.busy || !writable;
   archiveButton.disabled = state.busy || !site || !owner;
   archiveButton.textContent = site?.archived ? "Unarchive space" : "Archive space";
@@ -52,7 +56,9 @@ export function renderSpaceSettings(): void {
     keyInput.value = "";
     iconInput.value = "";
     descriptionInput.value = "";
+    styleTokensInput.value = "";
     homeSelect.textContent = "";
+    kitSelect.textContent = "";
     return;
   }
   if (renderedSiteId === site.id && renderedSiteUpdatedAt === site.updatedAt && homeSelect.options.length === state.pages.length + 1) return;
@@ -61,10 +67,15 @@ export function renderSpaceSettings(): void {
   keyInput.value = site.key ?? "";
   iconInput.value = site.icon ?? "";
   descriptionInput.value = site.description ?? "";
+  styleTokensInput.value = formatStyleTokens(site.styleTokens);
   homeSelect.textContent = "";
   homeSelect.append(new Option("First page in the tree", ""));
   for (const page of state.pages) homeSelect.append(new Option(page.title, page.id));
   homeSelect.value = site.homeDocumentId ?? "";
+  kitSelect.textContent = "";
+  kitSelect.append(new Option("No kit", ""));
+  for (const page of state.pages) kitSelect.append(new Option(page.title, page.id));
+  kitSelect.value = site.kitDocumentId ?? "";
 }
 
 async function saveSpaceSettings(): Promise<void> {
@@ -77,6 +88,15 @@ async function saveSpaceSettings(): Promise<void> {
   };
   const key = keyInput.value.trim().toUpperCase();
   if (key && key !== site.key) body.key = key;
+  if (kitSelect.value !== (site.kitDocumentId ?? "")) body.kitDocumentId = kitSelect.value || null;
+  if (styleTokensInput.value.trim() !== formatStyleTokens(site.styleTokens).trim()) {
+    const parsed = parseStyleTokenLines(styleTokensInput.value);
+    if (typeof parsed === "string") {
+      setPanelStatus(status, parsed, "error");
+      return;
+    }
+    body.styleTokens = parsed;
+  }
   try {
     const updated = await fetchCloudJson<CloudSiteResponse>(`/api/sites/${encodeURIComponent(site.id)}`, {
       method: "PUT",
@@ -92,6 +112,24 @@ async function saveSpaceSettings(): Promise<void> {
   } finally {
     renderChrome();
   }
+}
+
+/** `name = token token` lines, the editable form of a space's style-token aliases. */
+export function formatStyleTokens(tokens: Record<string, string[]> | undefined): string {
+  return Object.entries(tokens ?? {}).map(([name, list]) => `${name} = ${list.join(" ")}`).join("\n");
+}
+
+/** Parses `name = token token` lines; returns an error message for a malformed line. The server validates the tokens. */
+export function parseStyleTokenLines(text: string): Record<string, string> | string {
+  const out: Record<string, string> = {};
+  for (const [index, raw] of text.split("\n").entries()) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) return `Style tokens line ${index + 1}: use "name = token token"`;
+    out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+  }
+  return out;
 }
 
 async function toggleArchive(): Promise<void> {

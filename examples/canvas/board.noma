@@ -1,0 +1,56 @@
+---
+title: Canvas embeds
+---
+
+# Canvas embeds
+
+A `::canvas` block draws a PaperDOM canvas inside a page as static SVG. The canvas
+stays a separate artifact, a JSON file here or an attachment in Noma Cloud, so
+geometry lives in PaperDOM while the page stays plain, reviewable `.noma`.
+
+## The agent loop {id="loop"}
+
+::canvas{id="agent-loop" src="agent-loop.paperdom.json" page="flow" caption="How an agent edit reaches a page"}
+::
+
+## Metrics {id="metrics"}
+
+::canvas{id="agent-metrics" src="agent-loop.paperdom.json" page="metrics" caption="Proposals per week"}
+::
+
+## Inline canvas {id="inline"}
+
+Small canvases can live in the page itself, as a fenced JSON body:
+
+::canvas{id="inline-sketch" caption="A two-box sketch"}
+```json
+{
+  "format": "paperdom",
+  "version": "0.1",
+  "id": "sketch",
+  "title": "Sketch",
+  "revision": 0,
+  "pages": [
+    {
+      "id": "p1",
+      "name": "Sketch",
+      "size": { "width": 800, "height": 240 },
+      "background": { "color": "#ffffff" },
+      "elements": [
+        { "id": "a", "type": "shape", "name": "a", "z": 1, "frame": { "x": 40, "y": 70, "w": 240, "h": 100, "rotation": 0 },
+          "style": { "fill": "#dfeaf5", "stroke": "#2c5d8f", "strokeWidth": 2, "radius": 12, "opacity": 1, "color": "#1d1c1a", "fontSize": 22, "fontWeight": 600, "textAlign": "center", "fontFamily": "Inter, sans-serif", "fontStyle": "normal", "underline": false, "strike": false, "lineHeight": 1.2, "letterSpacing": 0, "verticalAlign": "middle", "padding": 8 },
+          "content": { "text": "Source (.noma)" } },
+        { "id": "b", "type": "shape", "name": "b", "z": 2, "frame": { "x": 520, "y": 70, "w": 240, "h": 100, "rotation": 0 },
+          "style": { "fill": "#f4dccd", "stroke": "#b9522a", "strokeWidth": 2, "radius": 12, "opacity": 1, "color": "#1d1c1a", "fontSize": 22, "fontWeight": 600, "textAlign": "center", "fontFamily": "Inter, sans-serif", "fontStyle": "normal", "underline": false, "strike": false, "lineHeight": 1.2, "letterSpacing": 0, "verticalAlign": "middle", "padding": 8 },
+          "content": { "text": "Canvas (PaperDOM)" } },
+        { "id": "ab", "type": "connector", "name": "ab", "z": 3, "frame": { "x": 0, "y": 0, "w": 0, "h": 0, "rotation": 0 },
+          "style": { "fill": "transparent", "stroke": "#6b6a66", "strokeWidth": 3, "radius": 0, "opacity": 1, "color": "#1d1c1a", "fontSize": 16, "fontWeight": 400, "textAlign": "center", "fontFamily": "Inter, sans-serif", "fontStyle": "normal", "underline": false, "strike": false, "lineHeight": 1.2, "letterSpacing": 0, "verticalAlign": "middle", "padding": 0 },
+          "from": { "elementId": "a", "anchor": "right" }, "to": { "elementId": "b", "anchor": "left" } }
+      ]
+    }
+  ],
+  "plugins": [],
+  "metadata": { "createdAt": "2026-09-25T00:00:00.000Z", "updatedAt": "2026-09-25T00:00:00.000Z" }
+}
+```
+::

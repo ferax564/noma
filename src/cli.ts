@@ -4,11 +4,16 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { parse } from "./parser.js";
-import { renderHtml } from "./renderer-html.js";
+import { renderHtml, renderSlidesHtml } from "./renderer-html.js";
 import { renderLlm } from "./renderer-llm.js";
 import { renderJson } from "./renderer-json.js";
 import { renderNoma } from "./renderer-noma.js";
 import { renderMarkdown } from "./renderer-markdown.js";
+import { renderPaperDom } from "./renderer-paperdom.js";
+import { paperDomToPatchOps, type PaperDomSyncResult } from "./paperdom-sync.js";
+import { parsePaperDOMDocument, type PaperDOMDocument } from "./paperdom-document-model.js";
+import { paperDomToPptx } from "./paperdom-pptx.js";
+import { type ComponentKit, componentKitFromSource } from "./components.js";
 import { renderDocx } from "./renderer-docx.js";
 import { extractDocxControlData } from "./docx-control-data.js";
 import { syncControlDefaultsFromDocx } from "./docx-control-sync.js";
@@ -49,6 +54,8 @@ Usage:
   noma prove <file.noma> [opts]              Alias for proof
   noma schema <name>                         Print bundled JSON Schema
   noma docx-data <file.docx>                 Extract DOCX control/task state as JSON
+  noma paperdom-sync <file.noma> <canvas.json>  Turn canvas text edits into patch ops
+                                             (JSON; --inplace applies and validates)
   noma docx-sync <file.noma> <file.docx>     Update ::control defaults and task state
   noma docx-review-data <file.docx>          Extract Word review data as JSON
   noma docx-review-sync <file.noma> <file.docx> Sync Word review data from DOCX
@@ -61,12 +68,18 @@ Usage:
   noma --version                             Print the CLI version
 
 Render options:
-  --to <html|llm|json|noma|markdown|md|site|pdf|docx>
+  --to <html|slides|llm|json|noma|markdown|md|site|pdf|docx|paperdom|pptx>
                             Target format (default: html). 'site' renders
                             a book manifest as a multi-page HTML site.
+                            'pptx' also accepts a PaperDOM canvas .json input
+                            and prints a fidelity report to stderr.
   --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
+  --kit <file.noma>         Component kit: ::component definitions available to
+                            the document (render, check)
+  --deck <id>               slides/paperdom/pptx: use this ::deck (default: the first;
+                            documents without a deck present one slide per section)
   --theme <name>            HTML theme: default | dark (default: default)
   --css <path>              Append custom CSS to standalone HTML/site/PDF output
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
@@ -162,6 +175,8 @@ interface CliArgs {
   out?: string;
   standalone: boolean;
   title?: string;
+  deck?: string;
+  kit?: string;
   help: boolean;
   op?: string;
   opsFile?: string;
@@ -234,6 +249,12 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--title") {
       args.title = argv[++i];
+      i++;
+    } else if (a === "--deck") {
+      args.deck = argv[++i];
+      i++;
+    } else if (a === "--kit") {
+      args.kit = argv[++i];
       i++;
     } else if (a === "--theme") {
       args.theme = argv[++i] ?? "default";
@@ -557,8 +578,23 @@ function proofJson(proof: ReturnType<typeof createAgentSafetyProof>): string {
   return JSON.stringify(body, null, 2);
 }
 
+const kitCache = new Map<string, ComponentKit>();
+
+/** `--kit <file>` → component definitions, read once per path. */
+function kitFromArgs(args: CliArgs): { components?: ComponentKit } {
+  if (!args.kit) return {};
+  const path = resolve(args.kit);
+  let kit = kitCache.get(path);
+  if (!kit) {
+    kit = componentKitFromSource(readFileSync(path, "utf8"), args.kit);
+    kitCache.set(path, kit);
+  }
+  return { components: kit };
+}
+
 function validateOptionsFromArgs(args: CliArgs): ValidateOptions {
   return {
+    ...kitFromArgs(args),
     ...(args.staleDays !== undefined ? { staleCitationDays: args.staleDays } : {}),
     ...(args.ignoreRules.length > 0 ? { ignoreRules: args.ignoreRules } : {}),
     ...(args.profiles.length > 0 ? { profiles: args.profiles } : {}),
@@ -713,6 +749,48 @@ async function run(argv: string[]): Promise<void> {
     }
     const data = extractDocxControlData(readFileSync(resolve(args.file)));
     output(JSON.stringify(data, null, 2), args.out);
+    return;
+  }
+
+  if (cmd === "paperdom-sync") {
+    if (!args.file || !args.fileB) {
+      process.stderr.write("noma paperdom-sync: <file.noma> <canvas.json> required\n");
+      process.exit(2);
+    }
+    const filePath = resolve(args.file);
+    if (isBookManifestPath(filePath)) {
+      process.stderr.write(`error: noma paperdom-sync operates on .noma source files, not book manifests\n`);
+      process.exit(2);
+    }
+    const source = readFileSync(filePath, "utf8");
+    let result: PaperDomSyncResult;
+    try {
+      const canvas = JSON.parse(readFileSync(resolve(args.fileB), "utf8")) as PaperDOMDocument;
+      result = paperDomToPatchOps(parse(source, { filename: filePath }), canvas, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}) });
+    } catch (error) {
+      process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.exit(2);
+    }
+    for (const change of result.changes) process.stderr.write(`~ ${change.target}: ${change.description}\n`);
+    for (const skip of result.skipped) process.stderr.write(`! ${[skip.pageId, skip.elementId].filter(Boolean).join(" ")}${skip.pageId || skip.elementId ? ": " : ""}${skip.reason}\n`);
+    if (!args.inplace) {
+      output(`${JSON.stringify(result, null, 2)}\n`, args.out);
+      if (result.ops.length > 0) process.stderr.write(`review: save this JSON and run noma proof ${args.file} --ops <saved.json>, or rerun with --inplace\n`);
+      return;
+    }
+    if (result.ops.length === 0) {
+      process.stderr.write("no text changes to apply\n");
+      return;
+    }
+    const next = patchSource(source, result.ops);
+    const errors = validate(parse(next, { filename: filePath }), validateOptionsFromArgs(args)).filter((d) => d.severity === "error");
+    if (errors.length > 0) {
+      for (const d of errors) process.stderr.write(`error: ${d.code}: ${d.message}\n`);
+      process.stderr.write("error: the synced document does not validate; source not written\n");
+      process.exit(1);
+    }
+    writeFileSync(filePath, next, "utf8");
+    process.stderr.write(`✓ applied ${result.ops.length} op(s) to ${filePath}\n`);
     return;
   }
 
@@ -888,6 +966,20 @@ async function run(argv: string[]): Promise<void> {
     : null;
   const safety = renderSafetyFromArgs(args, manifestForTrust?.trusted_publishing === true);
 
+  if (cmd === "render" && args.to === "pptx" && /\.json$/i.test(filePath)) {
+    let canvas: PaperDOMDocument;
+    try {
+      const parsed = parsePaperDOMDocument(JSON.parse(readFileSync(filePath, "utf8")));
+      if (!parsed.ok) throw new Error(`Invalid PaperDOM document: ${parsed.error}`);
+      canvas = parsed.document;
+      writePptx(canvas, args.out, args.title);
+    } catch (error) {
+      process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.exit(2);
+    }
+    return;
+  }
+
   const doc = isBookManifestPath(filePath)
     ? loadBook(filePath, { allowExternalPaths: args.allowExternalPaths })
     : parse(readFileSync(filePath, "utf8"), { filename: filePath });
@@ -909,6 +1001,7 @@ async function run(argv: string[]): Promise<void> {
         case "html": {
           const themeCss = loadThemeCss(args);
           const html = renderHtml(doc, {
+            ...kitFromArgs(args),
             standalone: args.standalone,
             title: args.title,
             themeCss,
@@ -918,6 +1011,25 @@ async function run(argv: string[]): Promise<void> {
           output(html, args.out);
           return;
         }
+        case "slides": {
+          try {
+            output(
+              renderSlidesHtml(doc, {
+                ...kitFromArgs(args),
+                title: args.title,
+                themeCss: loadThemeCss(args),
+                ...safety,
+                ...(args.math ? { math: args.math } : {}),
+                ...(args.deck ? { deck: args.deck } : {}),
+              }),
+              args.out,
+            );
+          } catch (error) {
+            process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.exit(2);
+          }
+          return;
+        }
         case "pdf": {
           if (!args.out) {
             process.stderr.write(`error: --to pdf requires --out <file.pdf>\n`);
@@ -925,6 +1037,7 @@ async function run(argv: string[]): Promise<void> {
           }
           const themeCss = loadThemeCss(args);
           const html = renderHtml(doc, {
+            ...kitFromArgs(args),
             standalone: true,
             title: args.title,
             themeCss,
@@ -947,7 +1060,7 @@ async function run(argv: string[]): Promise<void> {
           inlineFigureSources(doc, undefined, {
             allowExternalPaths: args.allowExternalPaths,
           });
-          outputBinary(renderDocx(doc, { title: args.title }), args.out);
+          outputBinary(renderDocx(doc, { title: args.title, ...kitFromArgs(args) }), args.out);
           return;
         }
         case "llm": {
@@ -971,7 +1084,25 @@ async function run(argv: string[]): Promise<void> {
         }
         case "markdown":
         case "md": {
-          output(renderMarkdown(doc), args.out);
+          output(renderMarkdown(doc, kitFromArgs(args)), args.out);
+          return;
+        }
+        case "pptx": {
+          try {
+            writePptx(renderPaperDom(doc, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}) }), args.out, args.title);
+          } catch (error) {
+            process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.exit(2);
+          }
+          return;
+        }
+        case "paperdom": {
+          try {
+            output(`${JSON.stringify(renderPaperDom(doc, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}) }), null, 2)}\n`, args.out);
+          } catch (error) {
+            process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.exit(2);
+          }
           return;
         }
         default:
@@ -1063,3 +1194,13 @@ main().catch((error) => {
   process.stderr.write(`error: ${message}\n`);
   process.exit(1);
 });
+
+/** Writes a canvas as .pptx and prints what PowerPoint could not carry exactly. */
+function writePptx(canvas: PaperDOMDocument, out: string | undefined, title: string | undefined): void {
+  if (!out) throw new Error("--to pptx requires --out <file.pptx>");
+  const { bytes, report } = paperDomToPptx(title ? { ...canvas, title } : canvas);
+  outputBinary(bytes, out);
+  process.stderr.write(`  ${report.slides} slide${report.slides === 1 ? "" : "s"}; native: ${report.supported.join(", ") || "none"}\n`);
+  for (const item of report.approximated) process.stderr.write(`  ~ approximated: ${item}\n`);
+  for (const item of report.unsupported) process.stderr.write(`  ! not exported: ${item}\n`);
+}

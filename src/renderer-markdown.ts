@@ -1,3 +1,5 @@
+import { type ComponentKit, expandComponents } from "./components.js";
+import { canvasTextLines } from "./canvas-svg.js";
 import yaml from "js-yaml";
 import type {
   AttrValue,
@@ -14,6 +16,8 @@ import type {
 import { escapePipeTableCell, extractWikilinks, splitPipeRow, unescapeMarkdownTextEscapes } from "./inline.js";
 
 export interface MarkdownRenderOptions {
+  /** Host component kit; component uses are expanded in place and definitions dropped. */
+  components?: ComponentKit;
   /** Include YAML frontmatter when present or when document meta has public keys. Default: true. */
   includeFrontmatter?: boolean;
   /** Drop internal meta keys such as parser filename from generated frontmatter. Default: true. */
@@ -40,10 +44,11 @@ interface RenderCtx {
 const INTERNAL_META_KEYS = new Set(["filename"]);
 const ESCAPE_HATCHES = new Set(["html", "svg", "script"]);
 const CODE_DIRECTIVES = new Set(["code", "code_cell", "output", "query", "example"]);
-const LAYOUT_CONTAINERS = new Set(["grid", "columns", "tabs", "accordion", "hero"]);
+const LAYOUT_CONTAINERS = new Set(["grid", "columns", "tabs", "accordion", "hero", "deck"]);
 const VERBATIM_DIRECTIVES = new Set(["dataset", "diagram", "plotly"]);
 
-export function renderMarkdown(doc: DocumentNode, options: MarkdownRenderOptions = {}): string {
+export function renderMarkdown(source: DocumentNode, options: MarkdownRenderOptions = {}): string {
+  const doc = expandComponents(source, { ...(options.components ? { kit: options.components } : {}), wrap: false, dropDefinitions: true });
   const ctx: RenderCtx = {
     includeFrontmatter: options.includeFrontmatter !== false,
     stripInternal: options.stripInternal !== false,
@@ -152,12 +157,28 @@ function renderDirective(node: DirectiveNode, ctx: RenderCtx, depth: number): st
     return wrapDirective(node, renderFigure(node, ctx, depth), ctx);
   }
 
+  if (node.name === "canvas") {
+    const { pages, error } = canvasTextLines(node);
+    const caption = typeof node.attrs.caption === "string" ? node.attrs.caption : typeof node.attrs.title === "string" ? node.attrs.title : "Canvas";
+    const lines = [`**${caption}**`];
+    if (error) lines.push("", `*(${error})*`);
+    for (const page of pages) {
+      lines.push("", `*${page.page}*`, "");
+      for (const line of page.lines) lines.push(`- ${line}`);
+    }
+    return wrapDirective(node, lines.join("\n"), ctx);
+  }
+
   if (node.name === "agent_task" || node.name === "todo") {
     return wrapDirective(node, renderTask(node, ctx, depth), ctx);
   }
 
   if (isCallout(node)) {
     return wrapDirective(node, renderCallout(node, ctx, depth), ctx);
+  }
+
+  if (node.name === "slide" || node.name === "notes") {
+    return wrapDirective(node, renderSlideMarkdown(node, ctx, depth), ctx);
   }
 
   if (node.name === "card" || node.name === "tab" || node.name === "sidebar") {
@@ -191,6 +212,18 @@ function renderCallout(node: DirectiveNode, ctx: RenderCtx, depth: number): stri
   const lines = [admonition ? `[!${admonition}]` : undefined, title ? `**${renderInline(title, ctx)}**` : undefined, body]
     .filter((line): line is string => Boolean(line && line.trim()));
   return lines.map((line) => quoteMarkdown(line)).join("\n");
+}
+
+function renderSlideMarkdown(node: DirectiveNode, ctx: RenderCtx, depth: number): string {
+  if (node.name === "notes") {
+    return quoteMarkdown(joinBlocks(["**Speaker notes**", renderDirectiveContent(node, ctx, depth)]));
+  }
+  const title = attrText(node, "title");
+  return joinBlocks([
+    title ? `## ${renderInline(title, ctx)}` : "",
+    renderDirectiveContent(node, ctx, depth),
+    "---",
+  ]);
 }
 
 function renderTitledContainer(node: DirectiveNode, ctx: RenderCtx, depth: number): string {
@@ -345,7 +378,7 @@ function renderMetadata(node: DirectiveNode): string {
 }
 
 function metadataParts(node: DirectiveNode): string[] {
-  const skip = new Set(["id", "title", "caption", "label", "Label", "name", "src", "alt"]);
+  const skip = new Set(["id", "title", "caption", "label", "Label", "name", "src", "alt", "class"]);
   const parts: string[] = [];
   if (node.id) parts.push(`id=${node.id}`);
   for (const [key, value] of Object.entries(node.attrs)) {

@@ -1,4 +1,5 @@
 import type { DirectiveNode, DocumentNode, Node, SectionNode } from "./ast.js";
+import { canvasTextLines } from "./canvas-svg.js";
 import { walk } from "./ast.js";
 import {
   buildComputedEvalContext,
@@ -248,7 +249,14 @@ function emitDirective(
   const isIndexWithExclusions =
     node.name === "memory_index" && opts.excludedMemoryIds.size > 0;
   const childForce = forceSubtree || matchesSelector(node, opts.selectSet);
-  if (VERBATIM_BODY.has(node.name) && node.body !== undefined) {
+  if (node.name === "canvas") {
+    const { pages, error } = canvasTextLines(node);
+    if (error) out.push(`(${error})`);
+    for (const page of pages) {
+      out.push(`${page.page}:`);
+      for (const line of page.lines) out.push(`- ${line}`);
+    }
+  } else if (VERBATIM_BODY.has(node.name) && node.body !== undefined) {
     out.push(node.body);
   } else if (node.children.length === 0 && node.body !== undefined) {
     const body = isIndexWithExclusions

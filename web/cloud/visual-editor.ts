@@ -18,6 +18,8 @@ import {
   serializeDirectiveAttrs,
 } from "../../src/editor-model.js";
 import { convertMarkdownToNoma } from "../../src/ingest-markdown.js";
+import { STYLE_TOKEN_GROUPS } from "../../src/style-tokens.js";
+import { type ComponentKit, componentUseSource } from "../../src/components.js";
 import { safeHref } from "../../src/inline.js";
 import { knownMentionName, resolveMentionNames } from "./mentions.js";
 import { visualSchema, wikilinkLabel } from "./visual-schema.js";
@@ -33,6 +35,10 @@ export interface VisualEditorHooks {
   save(): void;
   /** Whether the document is currently editable. */
   editable(): boolean;
+  /** Style-token aliases of the page's spaces, offered in the Style picker. */
+  styleTokens?(): Readonly<Record<string, readonly string[]>>;
+  /** Component kit of the page's spaces, offered in the slash menu. */
+  components?(): ComponentKit;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +74,106 @@ export interface SlashItem {
   build: (content: Fragment) => PMNode | PMNode[];
   /** Keep the current paragraph's text as the new block's content. */
   keepsText?: boolean;
+  /** Context-aware insertion (e.g. a slide goes after the current slide); replaces `build`. */
+  insert?: (view: EditorView, from: number, to: number) => void;
+}
+
+/** A block ID not yet used in the document (`base-1`, `base-2`, …), assigned once like any other ID. */
+export function freshBlockId(doc: PMNode, base: string, reserved: ReadonlySet<string> = new Set()): string {
+  const used = new Set<string>(reserved);
+  doc.descendants((node) => {
+    const raw = typeof node.attrs.attrs === "string" ? node.attrs.attrs : typeof node.attrs.src === "string" ? node.attrs.src : "";
+    for (const match of raw.matchAll(/\bid="([^"]+)"|\bid=([\w.:-]+)/g)) used.add(match[1] ?? match[2] ?? "");
+    return true;
+  });
+  for (let n = 1; ; n++) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+function slideNode(id: string, title: string, layout = "content", children: PMNode[] = [paragraph()]): PMNode {
+  return nodes.directive!.create({ name: "slide", attrs: serializeDirectiveAttrs([["id", id], ["title", title], ["layout", layout]]), colons: 3 }, children);
+}
+
+/** Nearest ancestor directive named `name` around `pos`, with its depth. */
+function ancestorDirective(doc: PMNode, pos: number, name: string): { node: PMNode; depth: number; $pos: ReturnType<PMNode["resolve"]> } | undefined {
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    const node = $pos.node(depth);
+    if (node.type === nodes.directive && node.attrs.name === name) return { node, depth, $pos };
+  }
+  return undefined;
+}
+
+function focusInside(tr: Transaction, pos: number): Transaction {
+  const selection = TextSelection.findFrom(tr.doc.resolve(Math.min(tr.doc.content.size, pos)), 1, true);
+  return selection ? tr.setSelection(selection) : tr;
+}
+
+/** Removes the typed `/query`, and the paragraph too when that leaves it empty. */
+function removeSlashText(tr: Transaction, from: number, to: number): Transaction {
+  tr = tr.delete(from, to);
+  const $pos = tr.doc.resolve(tr.mapping.map(from));
+  if ($pos.parent.type === nodes.paragraph && $pos.parent.content.size === 0 && $pos.depth > 0 && $pos.node($pos.depth - 1).childCount > 1) {
+    tr = tr.delete($pos.before(), $pos.after());
+  }
+  return tr;
+}
+
+function insertDeck(view: EditorView, from: number, to: number): void {
+  const doc = view.state.doc;
+  const deckId = freshBlockId(doc, "deck");
+  const first = freshBlockId(doc, "slide");
+  const second = freshBlockId(doc, "slide", new Set([first]));
+  const deck = nodes.directive!.create({ name: "deck", attrs: serializeDirectiveAttrs([["id", deckId], ["title", "Untitled deck"], ["aspect", "16:9"]]), colons: 2 }, [
+    slideNode(first, "Title slide", "title", [paragraph("Subtitle")]),
+    slideNode(second, "First point", "content", [paragraph()]),
+  ]);
+  applySlashItem(view, { id: "deck", label: "", hint: "", keywords: "", build: () => deck }, from, to);
+}
+
+function insertSlide(view: EditorView, from: number, to: number): void {
+  const slide = ancestorDirective(view.state.doc, from, "slide");
+  const deck = slide ? ancestorDirective(view.state.doc, slide.$pos.before(slide.depth), "deck") : ancestorDirective(view.state.doc, from, "deck");
+  if (!deck) {
+    insertDeck(view, from, to);
+    return;
+  }
+  const id = freshBlockId(view.state.doc, "slide");
+  let tr = removeSlashText(view.state.tr, from, to);
+  const after = slide ? tr.mapping.map(slide.$pos.after(slide.depth)) : tr.mapping.map(deck.$pos.end(deck.depth));
+  tr = tr.insert(after, slideNode(id, "New slide"));
+  view.dispatch(focusInside(tr, after + 1).scrollIntoView());
+  view.focus();
+}
+
+function insertNotes(view: EditorView, from: number, to: number): void {
+  const slide = ancestorDirective(view.state.doc, from, "slide");
+  const notes = directive("notes", "", [paragraph()]);
+  if (!slide) {
+    applySlashItem(view, { id: "notes", label: "", hint: "", keywords: "", build: () => notes }, from, to);
+    return;
+  }
+  let tr = removeSlashText(view.state.tr, from, to);
+  const end = tr.mapping.map(slide.$pos.end(slide.depth));
+  tr = tr.insert(end, notes);
+  view.dispatch(focusInside(tr, end + 1).scrollIntoView());
+  view.focus();
+}
+
+function insertWidget(view: EditorView, from: number, to: number): void {
+  const id = freshBlockId(view.state.doc, "widget");
+  const src = `::html{id="${id}" height=240 title="Widget"}\n<button id="go">Click me</button>\n<p id="out"></p>\n<script>\ndocument.getElementById("go").onclick = () => { document.getElementById("out").textContent = "Hello from a sandboxed widget"; };\n</script>\n::`;
+  applySlashItem(view, { id: "html", label: "", hint: "", keywords: "", build: () => nodes.raw!.create({ src, label: "html" }) }, from, to);
+}
+
+function insertCanvas(view: EditorView, from: number, to: number): void {
+  const id = freshBlockId(view.state.doc, "canvas");
+  const src = `::canvas{id="${id}" src="att:board.json" caption="Canvas"}\n::`;
+  applySlashItem(view, { id: "canvas", label: "", hint: "", keywords: "", build: () => nodes.raw!.create({ src, label: "canvas" }) }, from, to);
+}
+
+function gridOfCards(): PMNode {
+  const card = (title: string) => nodes.directive!.create({ name: "card", attrs: serializeDirectiveAttrs([["title", title]]), colons: 3 }, [paragraph()]);
+  return nodes.directive!.create({ name: "grid", attrs: "columns=2", colons: 2 }, [card("First"), card("Second")]);
 }
 
 export const slashItems: SlashItem[] = [
@@ -91,6 +197,13 @@ export const slashItems: SlashItem[] = [
   { id: "toc", label: "Table of contents", hint: "::toc", keywords: "outline contents", build: () => directive("toc") },
   { id: "children", label: "Child pages", hint: "::children", keywords: "subpages tree", build: () => directive("children") },
   { id: "include", label: "Include page", hint: "::include", keywords: "transclude embed", build: () => directive("include", `src=""`) },
+  { id: "deck", label: "Slide deck", hint: "::deck", keywords: "presentation slides present pitch", build: () => paragraph(), insert: insertDeck },
+  { id: "slide", label: "Slide", hint: ":::slide", keywords: "presentation deck page", build: () => paragraph(), insert: insertSlide },
+  { id: "notes", label: "Speaker notes", hint: "::::notes", keywords: "presenter slide talk", build: () => paragraph(), insert: insertNotes },
+  { id: "grid", label: "Grid of cards", hint: "::grid", keywords: "columns layout cards lego", build: () => gridOfCards() },
+  { id: "card", label: "Card", hint: "::card", keywords: "box panel tile", keepsText: true, build: (content) => directive("card", `title="Card"`, [nodes.paragraph!.create(null, content)]) },
+  { id: "widget", label: "HTML widget", hint: "::html", keywords: "embed interactive calculator app script sandbox", build: () => paragraph(), insert: insertWidget },
+  { id: "canvas", label: "Canvas", hint: "::canvas", keywords: "whiteboard paperdom diagram board drawing embed", build: () => paragraph(), insert: insertCanvas },
   { id: "divider", label: "Divider", hint: "---", keywords: "rule hr separator", build: () => nodes.horizontal_rule!.create() },
   { id: "raw", label: "Raw Noma block", hint: "::", keywords: "source directive custom", build: () => nodes.raw!.create({ src: "::note\nWrite Noma source here.\n::", label: "note" }) },
 ];
@@ -101,6 +214,11 @@ function fragmentText(content: Fragment): string {
     text += node.isText ? (node.text ?? "") : node.type.name === "hard_break" ? "\n" : node.textContent;
   });
   return text;
+}
+
+export function runSlashItem(view: EditorView, item: SlashItem, from: number, to: number): void {
+  if (item.insert) item.insert(view, from, to);
+  else applySlashItem(view, item, from, to);
 }
 
 /** Replace the textblock around the cursor (after removing `from..to`) with the slash item. */
@@ -151,9 +269,39 @@ function slashMatch(state: EditorState): SlashState {
   return { active: true, from: $from.pos - length, to: $from.pos, query: match[1]!.toLowerCase() };
 }
 
-function filteredSlashItems(query: string): SlashItem[] {
-  if (!query) return slashItems;
-  return slashItems.filter((item) => item.label.toLowerCase().includes(query) || item.id.includes(query) || item.keywords.includes(query));
+let componentProvider: () => ComponentKit = () => new Map();
+
+/** Slash entries for the page's components: `/pricing_card` inserts a use with required props and slots scaffolded. */
+export function componentSlashItems(kit: ComponentKit): SlashItem[] {
+  return [...kit.values()].map((definition) => ({
+    id: `component:${definition.name}`,
+    label: definition.name.replace(/_/g, " "),
+    hint: `::${definition.name}`,
+    keywords: `component kit ${definition.name} ${definition.description ?? ""}`.toLowerCase(),
+    build: () => paragraph(),
+    insert: (view, from, to) => {
+      const id = freshBlockId(view.state.doc, definition.name.replace(/_/g, "-"));
+      const parsed = schema.nodeFromJSON(nomaToEditorDoc(componentUseSource(definition, id)));
+      const blocks: PMNode[] = [];
+      parsed.forEach((node) => {
+        blocks.push(node);
+      });
+      applySlashItem(view, { id: definition.name, label: "", hint: "", keywords: "", build: () => blocks }, from, to);
+    },
+  }));
+}
+
+/** Matching items, best first: exact id, then label or id prefix, then any other match (menu order kept within a rank). */
+export function filteredSlashItems(query: string): SlashItem[] {
+  const all = [...slashItems, ...componentSlashItems(componentProvider())];
+  if (!query) return all;
+  const rank = (item: SlashItem): number =>
+    item.id === query || item.id === `component:${query}` ? 0 : item.label.toLowerCase().startsWith(query) || item.id.startsWith(query) || item.hint.startsWith(`::${query}`) ? 1 : 2;
+  return all
+    .filter((item) => item.label.toLowerCase().includes(query) || item.id.includes(query) || item.keywords.includes(query))
+    .map((item, index) => ({ item, index, rank: rank(item) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ item }) => item);
 }
 
 function slashPlugin(): Plugin<SlashState> {
@@ -196,7 +344,7 @@ function slashPlugin(): Plugin<SlashState> {
       button.addEventListener("mousedown", (event) => {
         event.preventDefault();
         close();
-        applySlashItem(view, item, slash.from, slash.to);
+        runSlashItem(view, item, slash.from, slash.to);
       });
       menu!.append(button);
     });
@@ -224,7 +372,7 @@ function slashPlugin(): Plugin<SlashState> {
           const item = items[selected];
           if (!item) return false;
           close();
-          applySlashItem(view, item, slash.from, slash.to);
+          runSlashItem(view, item, slash.from, slash.to);
           return true;
         }
         if (event.key === "Escape") {
@@ -738,12 +886,125 @@ class AttrEditor {
   }
 }
 
+/** Groups where picking a token replaces the group's other tokens (one tone, one size, …). */
+const EXCLUSIVE_TOKEN_GROUPS = new Set(["tone", "surface", "size", "align", "spacing", "span"]);
+
+/** Reads `class=` from a directive's raw attrs as a word list. */
+export function classWords(raw: string): string[] {
+  const value = parseDirectiveAttrs(raw).find(([key]) => key === "class")?.[1];
+  return typeof value === "string" ? value.split(/[\s,]+/).filter(Boolean) : [];
+}
+
+/** Toggles `token` in `class=`; exclusive groups drop their other tokens. Returns the new raw attrs. */
+export function toggleClassToken(raw: string, token: string, group?: readonly string[]): string {
+  const words = classWords(raw);
+  const next = words.includes(token) ? words.filter((word) => word !== token) : [...words.filter((word) => !group?.includes(word)), token];
+  const pairs = parseDirectiveAttrs(raw).filter(([key]) => key !== "class");
+  if (next.length > 0) pairs.push(["class", next.join(" ")]);
+  return serializeDirectiveAttrs(pairs);
+}
+
+/** Chip picker for `class=` style tokens: the core vocabulary plus the space's aliases. Applies on click. */
+class TokenPicker {
+  readonly dom: HTMLElement;
+
+  constructor(private readonly current: () => string, private readonly onChange: (attrs: string) => void, private readonly aliases: () => Readonly<Record<string, readonly string[]>>) {
+    this.dom = document.createElement("div");
+    this.dom.className = "visual-token-picker";
+    this.dom.contentEditable = "false";
+    this.dom.hidden = true;
+    this.dom.setAttribute("role", "group");
+    this.dom.setAttribute("aria-label", "Style tokens");
+  }
+
+  toggle(editable: boolean): void {
+    if (this.dom.hidden) this.open(editable);
+    else this.close();
+  }
+
+  open(editable: boolean): void {
+    this.dom.hidden = false;
+    this.render(editable);
+  }
+
+  close(): void {
+    this.dom.hidden = true;
+    this.dom.textContent = "";
+  }
+
+  private render(editable: boolean): void {
+    this.dom.textContent = "";
+    const raw = this.current();
+    const active = new Set(classWords(raw));
+    const known = new Set<string>();
+    const addGroup = (label: string, tokens: readonly string[], exclusive: boolean, titles?: Record<string, string>): void => {
+      const row = document.createElement("div");
+      row.className = "visual-token-group";
+      const name = document.createElement("span");
+      name.className = "visual-token-group-name";
+      name.textContent = label;
+      row.append(name);
+      for (const token of tokens) {
+        known.add(token);
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "visual-token-chip";
+        chip.dataset.token = token;
+        chip.textContent = token;
+        chip.setAttribute("aria-pressed", String(active.has(token)));
+        if (titles?.[token]) chip.title = titles[token]!;
+        chip.disabled = !editable;
+        chip.addEventListener("mousedown", (event) => event.preventDefault());
+        chip.addEventListener("click", () => {
+          this.onChange(toggleClassToken(this.current(), token, exclusive ? tokens : undefined));
+          this.render(editable);
+        });
+        row.append(chip);
+      }
+      this.dom.append(row);
+    };
+    const aliases = this.aliases();
+    const aliasNames = Object.keys(aliases);
+    if (aliasNames.length > 0) {
+      addGroup("space", aliasNames, false, Object.fromEntries(aliasNames.map((alias) => [alias, `= ${aliases[alias]!.join(" ")}`])));
+    }
+    for (const [group, tokens] of Object.entries(STYLE_TOKEN_GROUPS)) addGroup(group, tokens, EXCLUSIVE_TOKEN_GROUPS.has(group));
+    const unknown = [...active].filter((word) => !known.has(word));
+    if (unknown.length > 0) {
+      const row = document.createElement("div");
+      row.className = "visual-token-group visual-token-unknown";
+      const name = document.createElement("span");
+      name.className = "visual-token-group-name";
+      name.textContent = "unknown";
+      row.append(name);
+      for (const word of unknown) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "visual-token-chip";
+        chip.dataset.token = word;
+        chip.textContent = `${word} ×`;
+        chip.title = "Not a style token here; click to remove";
+        chip.disabled = !editable;
+        chip.addEventListener("mousedown", (event) => event.preventDefault());
+        chip.addEventListener("click", () => {
+          this.onChange(toggleClassToken(this.current(), word));
+          this.render(editable);
+        });
+        row.append(chip);
+      }
+      this.dom.append(row);
+    }
+  }
+}
+
 class DirectiveView implements NodeView {
   dom: HTMLElement;
   contentDOM?: HTMLElement;
   private readonly badge: HTMLElement;
   private readonly summary: HTMLElement;
   private readonly editor: AttrEditor;
+  private readonly picker: TokenPicker;
+  private readonly styleButton: HTMLButtonElement;
 
   constructor(private node: PMNode, private readonly view: EditorView, private readonly getPos: () => number | undefined, private readonly hooks: VisualEditorHooks) {
     const name = String(node.attrs.name);
@@ -764,9 +1025,26 @@ class DirectiveView implements NodeView {
     edit.setAttribute("aria-label", `Edit ${name} attributes`);
     edit.addEventListener("mousedown", (event) => event.preventDefault());
     edit.addEventListener("click", () => this.editor.open(String(this.node.attrs.name), String(this.node.attrs.attrs ?? ""), this.hooks.editable()));
-    header.append(this.badge, this.summary, edit);
+    this.styleButton = document.createElement("button");
+    this.styleButton.type = "button";
+    this.styleButton.className = "nv-directive-edit nv-directive-style";
+    this.styleButton.textContent = "Style";
+    this.styleButton.setAttribute("aria-label", `Style ${name} block`);
+    this.styleButton.setAttribute("aria-expanded", "false");
+    this.styleButton.addEventListener("mousedown", (event) => event.preventDefault());
+    this.styleButton.addEventListener("click", () => {
+      this.editor.close();
+      this.picker.toggle(this.hooks.editable());
+      this.styleButton.setAttribute("aria-expanded", String(!this.picker.dom.hidden));
+    });
+    header.append(this.badge, this.summary, this.styleButton, edit);
     this.editor = new AttrEditor((nextName, attrs) => this.apply(nextName, attrs));
-    this.dom.append(header, this.editor.dom);
+    this.picker = new TokenPicker(
+      () => String(this.node.attrs.attrs ?? ""),
+      (attrs) => this.apply(String(this.node.attrs.name), attrs),
+      () => this.hooks.styleTokens?.() ?? {},
+    );
+    this.dom.append(header, this.editor.dom, this.picker.dom);
     if (kind !== "chip") {
       this.contentDOM = document.createElement("div");
       this.contentDOM.className = "nv-directive-body";
@@ -799,7 +1077,7 @@ class DirectiveView implements NodeView {
   }
 
   stopEvent(event: Event): boolean {
-    return this.editor.dom.contains(event.target as globalThis.Node) || (event.target instanceof HTMLElement && event.target.closest(".nv-directive-header") !== null && event.target.closest(".nv-directive") === this.dom);
+    return this.editor.dom.contains(event.target as globalThis.Node) || this.picker.dom.contains(event.target as globalThis.Node) || (event.target instanceof HTMLElement && event.target.closest(".nv-directive-header") !== null && event.target.closest(".nv-directive") === this.dom);
   }
 
   ignoreMutation(mutation: MutationRecord | { type: "selection"; target: globalThis.Node }): boolean {
@@ -1076,6 +1354,7 @@ export function nomaNodeViews(hooks: VisualEditorHooks): Record<string, NodeView
 
 /** Plugins shared by local and live editing. `history` supplies undo/redo (ProseMirror history or Yjs undo). */
 export function nomaEditorPlugins(hooks: VisualEditorHooks, historyPlugins: Plugin[], undo: Command, redo: Command): Plugin[] {
+  componentProvider = () => hooks.components?.() ?? new Map();
   return [
     ...historyPlugins,
     slashPlugin(),

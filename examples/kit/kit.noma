@@ -1,0 +1,34 @@
+---
+title: Product Marketing Kit
+---
+
+# Product Marketing Kit
+
+Components for the marketing space. Each one is built only from core Noma
+blocks and style tokens, so it renders in every target, validates, and stays
+safe for agents to fill in. Pages use them as `::pricing_card{...}` and keep
+one stable ID per use.
+
+::component{name="pricing_card" props="plan,price,period?,cta?" slots="features" description="A plan in a pricing grid."}
+:::card{title="{{plan}}" class="elevated"}
+**{{price}}** {{period}}
+
+{{slot:features}}
+
+{{cta}}
+:::
+::
+
+::component{name="stat" props="value,label" description="A headline number with a caption."}
+:::card{class="plain align-center"}
+**{{value}}**
+
+{{label}}
+:::
+::
+
+::component{name="feature" props="title" description="A titled feature panel; the body is the default slot."}
+:::card{title="{{title}}" class="tone-info filled"}
+{{slot}}
+:::
+::

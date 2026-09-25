@@ -1,0 +1,9 @@
+::grid{id="g"}
+:::card{id="a"}
+A
+:::
+
+:::card{id="b"}
+B
+:::
+::

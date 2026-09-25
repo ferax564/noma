@@ -1,5 +1,4 @@
-// @ts-nocheck — vendored PaperDOM kernel; host policy lives in enterprise-paperdom-host.ts
-// Vendored from https://github.com/ferax564/paperDOM/blob/a12198cdad8c7487242834941a34ed5adf5d4d74/app/presentation-tools.ts (MIT). Do not edit to add Noma host policy.
+// Forked from ferax564/paperDOM@a12198c app/presentation-tools.ts (MIT). Maintained in this repository; see src/paperdom-pin.ts.
 import type { CanvasElement, CanvasPage, Frame, PaperDOMDocument } from './paperdom-document-model.js';
 import {effectiveLibrary} from './paperdom-starter-library.js';
 import { baseStyle } from './paperdom-component-library.js';
@@ -15,12 +14,13 @@ export function parseTable(text:string):string[][] {
 export function parseChart(text:string):Pick<ChartData,'labels'|'values'|'series'> {
   const rows=text.trim().split('\n').map(row=>row.split('\t'));
   if(!rows.length||rows.length>50)throw new Error('Use at most 50 lines.');
-  if(rows.some(row=>row.length<2||!row[0].trim()||row.slice(1).some(cell=>!cell.trim()||!Number.isFinite(Number(cell)))))throw new Error('Use one label and one or more finite numbers per line, separated by tabs.');
-  const labels=rows.map(r=>r[0]);
-  if(rows[0].length===2)return {labels,values:rows.map(r=>Number(r[1]))};
-  if(rows.some(row=>row.length!==rows[0].length))throw new Error('Use the same number of series in every line.');
-  const series=Array.from({length:rows[0].length-1},(_,s)=>({name:`Series ${s+1}`,values:rows.map(r=>Number(r[s+1]))}));
-  return {labels,values:series[0].values,series};
+  if(rows.some(row=>row.length<2||!row[0]!.trim()||row.slice(1).some(cell=>!cell.trim()||!Number.isFinite(Number(cell)))))throw new Error('Use one label and one or more finite numbers per line, separated by tabs.');
+  const labels=rows.map(r=>r[0]!);
+  const width=rows[0]!.length;
+  if(width===2)return {labels,values:rows.map(r=>Number(r[1]))};
+  if(rows.some(row=>row.length!==width))throw new Error('Use the same number of series in every line.');
+  const series=Array.from({length:width-1},(_,s)=>({name:`Series ${s+1}`,values:rows.map(r=>Number(r[s+1]))}));
+  return {labels,values:series[0]!.values,series};
 }
 export function makeDataElement(type:'table'|'chart',id:string):CanvasElement {
   return {id,type,name:type==='table'?'Table':'Chart',frame:{x:100,y:180,w:640,h:320,rotation:0},z:10,style:{...baseStyle,fill:'#ffffff',stroke:'#cbd5e1',strokeWidth:1,padding:12,fontSize:20},...(type==='table'?{table:{header:true,rows:[['Metric','Current','Target'],['Revenue','120','150'],['Users','800','1000']]}}:{chart:{kind:'bar' as const,labels:['Q1','Q2','Q3','Q4'],values:[24,36,31,48],title:'Quarterly progress'}})};

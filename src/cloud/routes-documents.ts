@@ -37,7 +37,12 @@ import {
   updateDocument,
 } from "./records.js";
 import { attachmentResolver } from "./attachments.js";
+import { canvasResolver } from "./canvas.js";
 import { renderDocumentHtml } from "./render.js";
+import { routeDocumentWidget, widgetFrameResolver } from "./widgets.js";
+import { paperDomToPatchOps } from "../paperdom-sync.js";
+import type { PaperDOMDocument } from "../paperdom-document-model.js";
+import { documentComponentKit, documentStyleTokens } from "./spaces.js";
 import { routeCollaborators, routeGroupCollaborators, routeShares } from "./routes-access.js";
 import { routeDocumentAnalytics } from "./routes-analytics.js";
 import { routeDocumentTasks } from "./routes-tasks.js";
@@ -64,7 +69,7 @@ export async function routeDocuments(
     const user = requireUser(principal);
     const input = await readJsonBody(req, config.maxBodyBytes);
     const record = await createDocument(config, input, user);
-    sendJson(res, 201, documentResponse(record, requireRecordAccess(config, record, principal, "owner")));
+    sendJson(res, 201, documentResponse(record, requireRecordAccess(config, record, principal, "owner"), config));
     return;
   }
 
@@ -150,9 +155,32 @@ export async function routeDocuments(
     return;
   }
 
+  if (suffix === "paperdom-sync") {
+    if (method !== "POST") throw new HttpError(405, "Method not allowed");
+    requireAccessRole(requireRecordAccess(config, record, principal, "viewer"), "editor");
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    if (!input.canvas || typeof input.canvas !== "object") throw new HttpError(400, "canvas must be a PaperDOM document");
+    const deck = optionalString(input.deck);
+    try {
+      const result = paperDomToPatchOps(parse(record.source, { filename: `${record.id}.noma` }), input.canvas as PaperDOMDocument, {
+        components: documentComponentKit(config, record.id),
+        ...(deck ? { deck } : {}),
+      });
+      sendJson(res, 200, { ...result, documentHash: record.hash });
+    } catch (error) {
+      throw new HttpError(422, error instanceof Error ? error.message : String(error), { code: "invalid_canvas" });
+    }
+    return;
+  }
+
+  if (suffix === "widgets") {
+    routeDocumentWidget(req, res, parts[4], config, principal, record);
+    return;
+  }
+
   if (suffix === "html" && method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
-    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDocumentHtml(record, access, { resolveAttachment: attachmentResolver(config, record.id, access), resolveCanvas: await canvasResolver(config, record.id, record.source), resolveWidgetFrame: widgetFrameResolver(config, record.id, access), styleTokens: documentStyleTokens(config, record.id), components: documentComponentKit(config, record.id), macros: cloudMacroResolvers(config, principal, record.id) }), "text/html; charset=utf-8");
     return;
   }
 
@@ -174,7 +202,7 @@ export async function routeDocuments(
   if (method === "GET") {
     const access = requireRecordAccess(config, record, principal, "viewer");
     if (access.user) config.store.recordRecent(access.user.id, "document", record.id, config.now().toISOString());
-    sendJson(res, 200, documentResponse(record, access));
+    sendJson(res, 200, documentResponse(record, access, config));
     return;
   }
 
@@ -183,7 +211,7 @@ export async function routeDocuments(
     const input = await readJsonBody(req, config.maxBodyBytes);
     requireDocumentPrecondition(req, record, input);
     const updated = await updateDocument(config, record, input, access, { assignTaskIds: true });
-    sendJson(res, 200, documentResponse(updated, requireRecordAccess(config, updated, principal, "viewer")));
+    sendJson(res, 200, documentResponse(updated, requireRecordAccess(config, updated, principal, "viewer"), config));
     return;
   }
 
@@ -233,7 +261,7 @@ export async function routeDocumentRevisions(
       { title: revision.title, source: revision.source },
       access,
     );
-    sendJson(res, 200, documentResponse(restored, access));
+    sendJson(res, 200, documentResponse(restored, access, config));
     return;
   }
 

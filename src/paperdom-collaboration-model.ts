@@ -1,5 +1,4 @@
-// @ts-nocheck — vendored PaperDOM kernel; host policy lives in enterprise-paperdom-host.ts
-// Vendored from https://github.com/ferax564/paperDOM/blob/a12198cdad8c7487242834941a34ed5adf5d4d74/app/collaboration-model.ts (MIT). Do not edit to add Noma host policy.
+// Forked from ferax564/paperDOM@a12198c app/collaboration-model.ts (MIT). Maintained in this repository; see src/paperdom-pin.ts.
 import { parsePaperDOMDocument, type PaperDOMDocument } from './paperdom-document-model.js';
 import { mergeText, mergeTextRuns } from './paperdom-text-merge.js';
 import type { TextRun } from './paperdom-advanced-model.js';

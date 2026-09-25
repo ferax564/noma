@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", ".claude/**", "site/assets/**", "packages/**/dist/**", "node_modules/**", "src/paperdom-*.ts"],
+    ignores: ["dist/**", ".claude/**", "site/assets/**", "packages/**/dist/**", "node_modules/**"],
   },
   {
     files: ["src/**/*.ts", "web/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "apps/**/*.ts"],

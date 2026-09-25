@@ -1,12 +1,16 @@
 import yaml from "js-yaml";
 import type { Diagnostic, DirectiveNode, DocumentNode, Node } from "./ast.js";
 import { walk } from "./ast.js";
+import { canvasSourceOf, readCanvasDocument } from "./canvas-svg.js";
 import { computedDomainVars, controlDefaultNumber, formulaText, numericAttr as computedNumericAttr } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
 import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } from "./inline.js";
 import { loadFrontmatterYaml } from "./parser.js";
 import { CHILDREN_SORTS, ISSUE_STATUSES, issueKeyFromNode, issuesRequest } from "./macros.js";
 import { collectTableIdentityStrings } from "./stable-identity.js";
+import { checkComponentUses, componentDefinitionNodes, componentKitFrom, type ComponentKit, resolveComponentKit } from "./components.js";
+import { DECK_ASPECTS, isSlideLayout, SLIDE_LAYOUTS } from "./slides.js";
+import { normalizeStyleTokenAliases, parseStyleTokens, resolveStyleTokenAliases, STYLE_TOKENS, type StyleTokenAliases } from "./style-tokens.js";
 
 export interface ValidateOptions {
   /**
@@ -27,6 +31,10 @@ export interface ValidateOptions {
    * `noverify` flag at file level. Used by `noma check --ignore-rule X`.
    */
   ignoreRules?: string[];
+  /** Host style-token aliases (e.g. a space's vocabulary); `class=` words matching them are valid. */
+  styleTokens?: StyleTokenAliases;
+  /** Host component kit (e.g. a space's kit page); uses of its components are checked. */
+  components?: ComponentKit;
   /**
    * Additional validator profiles to apply without editing source frontmatter.
    * Used by CI and Actions workflows for `noma check --profile technical-docs`.
@@ -99,6 +107,7 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "toc",
     "pagebreak",
     "figure",
+    "canvas",
     "plot",
     "plotly",
     "diagram",
@@ -150,6 +159,7 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
     "dataset",
     "query",
     "plot",
+    "canvas",
     "plotly",
     "diagram",
     "metric",
@@ -179,6 +189,12 @@ const PROFILES: Record<string, ReadonlySet<string>> = {
   memory: new Set(["memory", "memory_index"]),
 };
 
+const DECK_DIRECTIVES = ["deck", "slide", "notes"];
+/** Kit plumbing is allowed under every profile; a component's own output is what the profile governs. */
+const COMPONENT_DIRECTIVES = new Set(["component", "slot"]);
+
+for (const name of ["technical", "research"]) PROFILES[name] = new Set([...PROFILES[name]!, ...DECK_DIRECTIVES]);
+
 const technicalProfile = PROFILES.technical!;
 const researchProfile = PROFILES.research!;
 const memoryProfile = PROFILES.memory!;
@@ -205,6 +221,47 @@ PROFILES.adr = new Set([
   "state_change",
 ]);
 PROFILES.spec = new Set([...technicalProfile, ...researchProfile]);
+PROFILES.presentation = new Set([
+  ...minimalProfile,
+  ...DECK_DIRECTIVES,
+  "hero",
+  "grid",
+  "card",
+  "columns",
+  "callout",
+  "note",
+  "tip",
+  "warning",
+  "figure",
+  "canvas",
+  "plot",
+  "diagram",
+  "dataset",
+  "metric",
+  "claim",
+  "evidence",
+  "decision",
+  "risk",
+]);
+
+/** `::canvas` needs a source; inline JSON (or a loader-inlined file) must be a drawable canvas. */
+function validateCanvas(node: DirectiveNode, diagnostics: Diagnostic[]): void {
+  const at = { pos: node.pos, ...(node.endLine ? { endLine: node.endLine } : {}), ...(node.id ? { nodeId: node.id } : {}) };
+  const { json, src } = canvasSourceOf(node);
+  if (json === undefined) {
+    if (!src) diagnostics.push({ severity: "error", code: "canvas-missing-source", message: `Canvas "${node.id ?? "?"}" needs a \`\`\`json body or a src= (file path or att: attachment).`, ...at });
+    return;
+  }
+  const read = readCanvasDocument(json);
+  if (!read.ok) {
+    diagnostics.push({ severity: "error", code: "canvas-invalid", message: `Canvas "${node.id ?? "?"}": ${read.error}.`, ...at });
+    return;
+  }
+  const page = node.attrs.page;
+  if (typeof page === "string" && !read.document.pages.some((p) => p.id === page)) {
+    diagnostics.push({ severity: "warning", code: "canvas-unknown-page", message: `Canvas "${node.id ?? "?"}" has no page "${page}".`, ...at });
+  }
+}
 
 const MEMORY_TYPES = new Set(["user", "feedback", "project", "reference"]);
 const ISO_DATE_RE =
@@ -212,7 +269,10 @@ const ISO_DATE_RE =
 
 export const KNOWN_PROFILES = Object.keys(PROFILES);
 
-export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diagnostic[] {
+export function validate(source: DocumentNode, options: ValidateOptions = {}): Diagnostic[] {
+  const componentDiagnostics = validateComponents(source, options.components);
+  const doc = withoutComponentTemplates(source);
+  const componentNames = new Set(resolveComponentKit(source, options.components).keys());
   const requireEvidence = options.requireEvidenceForClaims !== false;
   const metaStale = readPositiveNumber(doc.meta.stale_citation_days);
   const staleDays =
@@ -328,7 +388,7 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
 
     if (node.type !== "directive") continue;
 
-    if (profileSet && !suppressed(node) && !profileSet.has(node.name)) {
+    if (profileSet && !suppressed(node) && !profileSet.has(node.name) && !COMPONENT_DIRECTIVES.has(node.name) && !componentNames.has(node.name)) {
       diagnostics.push({
         severity: "warning",
         code: "out-of-profile-directive",
@@ -554,6 +614,8 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
         }
       }
     }
+
+    if (node.name === "canvas" && !suppressed(node)) validateCanvas(node, diagnostics);
 
     if (node.name === "figure" && !suppressed(node) && !node.attrs.alt && !node.attrs.caption) {
       diagnostics.push({
@@ -881,6 +943,13 @@ export function validate(doc: DocumentNode, options: ValidateOptions = {}): Diag
     });
   }
 
+  const frontmatterAliases = normalizeStyleTokenAliases(doc.meta.style_tokens);
+  for (const error of frontmatterAliases.errors) {
+    diagnostics.push({ severity: "warning", code: "invalid-style-token-alias", message: `style_tokens: ${error}.` });
+  }
+  validateDecksAndStyleTokens(doc.children, undefined, diagnostics, resolveStyleTokenAliases(doc.meta.style_tokens, options.styleTokens));
+  diagnostics.push(...componentDiagnostics);
+
   const ignore = options.ignoreRules;
   if (ignore && ignore.length > 0) {
     const known = collectRuleCodes();
@@ -945,6 +1014,9 @@ const KNOWN_RULES = [
   "diagram-missing-source",
   "plotly-missing-spec",
   "plotly-invalid-json",
+  "canvas-missing-source",
+  "canvas-invalid",
+  "canvas-unknown-page",
   "dataset-src-missing",
   "memory-missing-type",
   "memory-invalid-type",
@@ -973,7 +1045,115 @@ const KNOWN_RULES = [
   "issues-invalid-project",
   "issues-invalid-status",
   "page-properties-report-missing-label",
+  "unknown-style-token",
+  "invalid-style-token-alias",
+  "slide-outside-deck",
+  "slide-unknown-layout",
+  "notes-outside-slide",
+  "deck-unknown-aspect",
+  "component-invalid-definition",
+  "component-duplicate",
+  "component-missing-prop",
+  "component-unknown-prop",
+  "component-unknown-slot",
 ];
+
+/**
+ * Component templates hold `{{placeholders}}` and scoped IDs, so the regular
+ * rules skip them; definitions and uses are checked by `validateComponents`.
+ */
+function withoutComponentTemplates(doc: DocumentNode): DocumentNode {
+  const strip = (nodes: Node[]): { nodes: Node[]; changed: boolean } => {
+    let changed = false;
+    const out = nodes.map((node) => {
+      if (node.type === "directive" && node.name === "component") {
+        changed = true;
+        return { ...node, children: [], body: undefined } as DirectiveNode;
+      }
+      if (node.type === "section" || node.type === "directive") {
+        const inner = strip(node.children);
+        if (inner.changed) {
+          changed = true;
+          return { ...node, children: inner.nodes } as Node;
+        }
+      }
+      return node;
+    });
+    return { nodes: changed ? out : nodes, changed };
+  };
+  const result = strip(doc.children);
+  return result.changed ? { ...doc, children: result.nodes } : doc;
+}
+
+function validateComponents(doc: DocumentNode, host: ComponentKit | undefined): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const seen = new Set<string>();
+  const { issues } = componentKitFrom([{ doc }]);
+  for (const issue of issues) {
+    diagnostics.push({ severity: "error", code: "component-invalid-definition", message: `${issue.message}.`, pos: issue.node.pos, nodeId: issue.node.id });
+  }
+  for (const node of componentDefinitionNodes(doc)) {
+    const name = typeof node.attrs.name === "string" ? node.attrs.name : "";
+    if (!name) continue;
+    if (seen.has(name)) {
+      diagnostics.push({ severity: "warning", code: "component-duplicate", message: `Component "${name}" is defined more than once on this page; the first definition wins.`, pos: node.pos, nodeId: node.id });
+    }
+    seen.add(name);
+  }
+  for (const issue of checkComponentUses(doc, resolveComponentKit(doc, host))) {
+    if (issue.node.attrs.noverify === true) continue;
+    diagnostics.push({ severity: issue.code === "component-missing-prop" ? "error" : "warning", code: issue.code, message: issue.message, pos: issue.node.pos, nodeId: issue.node.id });
+  }
+  return diagnostics;
+}
+
+/**
+ * Structural rules for presentations and the style-token vocabulary:
+ * `::slide` lives directly in a `::deck`, `::notes` directly in a `::slide`,
+ * layouts/aspects come from fixed sets, and `class=` holds only known tokens.
+ */
+function validateDecksAndStyleTokens(nodes: Node[], parent: DirectiveNode | undefined, diagnostics: Diagnostic[], aliases: StyleTokenAliases): void {
+  for (const node of nodes) {
+    if (node.type === "directive" && !suppressed(node)) {
+      const at = { pos: node.pos, nodeId: node.id };
+      const { unknown } = parseStyleTokens(node.attrs.class, aliases);
+      if (unknown.length > 0) {
+        diagnostics.push({
+          severity: "warning",
+          code: "unknown-style-token",
+          message: `Unknown style token${unknown.length === 1 ? "" : "s"} ${unknown.map((t) => `"${t}"`).join(", ")} in \`class=\` (dropped when rendering). Known tokens: ${[...STYLE_TOKENS, ...Object.keys(aliases)].join(", ")}.`,
+          ...at,
+        });
+      }
+      if (node.name === "slide") {
+        if (parent?.name !== "deck") {
+          diagnostics.push({ severity: "error", code: "slide-outside-deck", message: "::slide must be a direct child of a ::deck.", ...at });
+        }
+        if (node.attrs.layout !== undefined && !isSlideLayout(node.attrs.layout)) {
+          diagnostics.push({
+            severity: "warning",
+            code: "slide-unknown-layout",
+            message: `Unknown slide layout "${String(node.attrs.layout)}"; rendering as "content". Known: ${SLIDE_LAYOUTS.join(", ")}.`,
+            ...at,
+          });
+        }
+      }
+      if (node.name === "notes" && parent?.name !== "slide") {
+        diagnostics.push({ severity: "warning", code: "notes-outside-slide", message: "::notes is speaker notes and belongs directly inside a ::slide.", ...at });
+      }
+      if (node.name === "deck" && node.attrs.aspect !== undefined && !(typeof node.attrs.aspect === "string" && DECK_ASPECTS[node.attrs.aspect])) {
+        diagnostics.push({
+          severity: "warning",
+          code: "deck-unknown-aspect",
+          message: `Unknown deck aspect "${String(node.attrs.aspect)}"; using 16:9. Known: ${Object.keys(DECK_ASPECTS).join(", ")}.`,
+          ...at,
+        });
+      }
+    }
+    const children = "children" in node && Array.isArray(node.children) ? (node.children as Node[]) : [];
+    if (children.length > 0) validateDecksAndStyleTokens(children, node.type === "directive" ? node : parent, diagnostics, aliases);
+  }
+}
 
 function validateMacroNode(
   node: DirectiveNode,

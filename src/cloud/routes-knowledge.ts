@@ -447,7 +447,7 @@ export async function routeRealtime(req: IncomingMessage, res: ServerResponse, u
       proofStatus: "pass",
       createdAt: config.now().toISOString(),
     };
-    sendJson(res, 201, { operation: config.platform.recordRealtimeOperation(operation), document: documentResponse(updated, access) });
+    sendJson(res, 201, { operation: config.platform.recordRealtimeOperation(operation), document: documentResponse(updated, access, config) });
     return;
   }
   throw new HttpError(405, "Method not allowed");

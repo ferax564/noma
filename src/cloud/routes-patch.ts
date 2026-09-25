@@ -110,7 +110,7 @@ export async function routePatchProposals(
         afterHash: updated.hash,
       });
     }
-    sendJson(res, 200, { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access) });
+    sendJson(res, 200, { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access, config) });
     return;
   }
   throw new HttpError(404, "Unknown patch proposal route");

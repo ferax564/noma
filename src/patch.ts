@@ -2102,9 +2102,54 @@ function applySrcReplace(
   parseFragment(op.content, op);
   const { start, end } = locate(source, op.id, op);
   const lines = source.split("\n");
+  assertFragmentDepth(op.content, fenceDepthForChildOf(parse(source), lines, op.id), op);
   const replacement = op.content.replace(/\n+$/, "").split("\n");
   lines.splice(start - 1, end - start + 1, ...replacement);
   return lines.join("\n");
+}
+
+function openFenceDepth(line: string): number {
+  return /^(:{2,})[A-Za-z_]/.exec(line)?.[1]?.length ?? 0;
+}
+
+/** Colon count a directive written as a direct child of `parent` must open with. */
+function childFenceDepth(parent: Node, lines: string[]): number {
+  if (parent.type !== "directive" || !parent.pos?.line) return 2;
+  return Math.max(2, openFenceDepth(lines[parent.pos.line - 1] ?? "")) + 1;
+}
+
+/** Colon count the block `id` sits at, derived from its parent. */
+function fenceDepthForChildOf(doc: DocumentNode, lines: string[], id: string): number {
+  const parent = findParentNode(doc, id);
+  return parent ? childFenceDepth(parent, lines) : 2;
+}
+
+function findParentNode(node: Node, id: string): Node | null {
+  for (const arr of childArrays(node)) {
+    for (const child of arr.list) {
+      if (child.id === id) return node;
+      const found = findParentNode(child, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Text ops splice the fragment verbatim, so its outer fence must match the
+ * slot it lands in: `::card` inside a `::grid` would close the grid early.
+ */
+function assertFragmentDepth(content: string, expected: number, op: PatchOp): void {
+  const first = content.split("\n").find((line) => line.trim() !== "") ?? "";
+  const actual = openFenceDepth(first.trimStart());
+  if (actual !== expected) {
+    const fence = ":".repeat(expected);
+    throw new PatchError(
+      "unbalanced_fence_content",
+      `fragment opens with ${actual} colons but this position needs ${expected} (write "${fence}name{...}" … "${fence}")`,
+      op,
+    );
+  }
 }
 
 function applySrcDelete(
@@ -2136,6 +2181,7 @@ function applySrcAdd(
   const children = parent.children;
   const pos = Math.max(0, Math.min(op.position ?? children.length, children.length));
   const lines = source.split("\n");
+  assertFragmentDepth(op.content, childFenceDepth(parent, lines), op);
   const fragmentLines = op.content.replace(/\n+$/, "").split("\n");
 
   let insertAt: number;

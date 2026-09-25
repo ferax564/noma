@@ -442,7 +442,7 @@ async function callGatewayTool(
     if (!proof.canWrite || proof.preHash.sha256 !== proposal.documentHash) throw new HttpError(409, "Patch proof no longer matches the current document", { proof: cloudProofRecord(proof) });
     const updated = await updateDocument(config, document, { source: proof.postSource }, access);
     config.store.writePatchProposal({ ...proposal, status: "applied", appliedHash: updated.hash, updatedAt: now });
-    return { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access) };
+    return { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access, config) };
   }
   throw new HttpError(400, `Unknown gateway tool: ${name}`);
 }

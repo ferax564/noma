@@ -192,8 +192,103 @@ section, paragraph, list, list_item, quote, code, thematic_break
 ### Layout blocks
 
 ```
-hero, grid, card, callout, columns, tabs, accordion, sidebar, button, page_setup, header, footer, toc, pagebreak
+hero, grid, card, callout, columns, tabs, accordion, sidebar, button, page_setup, header, footer, toc, pagebreak, deck, slide, notes
 ```
+
+**Style tokens (`class=`).** Any directive may carry `class="..."` with space-separated tokens from a closed vocabulary. Tokens compose like utility classes, but they cannot inject CSS, scripts, or arbitrary layout. HTML emits each known token as `n-<token>` on the block's outer element. Unknown words are dropped when rendering, and the validator reports them as `unknown-style-token`. Other targets ignore tokens.
+
+**Token aliases.** A team can name bundles of core tokens. Put them in a document's frontmatter (`style_tokens: { brand-callout: "tone-accent filled roomy" }`) or in a host setting; in Noma Cloud, each space owner defines them in space settings. An alias expands only to core tokens. It cannot shadow a core token, and its name is 2–40 lowercase letters, digits, or dashes. Host aliases override frontmatter aliases. A page that belongs to several spaces gets the union of their vocabularies, and the first space wins on a clash. The validator reports invalid frontmatter aliases as `invalid-style-token-alias`.
+
+| Group | Tokens |
+|---|---|
+| tone | `tone-neutral`, `tone-accent`, `tone-info`, `tone-success`, `tone-warning`, `tone-danger` |
+| surface | `plain`, `outline`, `filled`, `elevated`, `muted`, `inverse` |
+| emphasis | `lead`, `subtle`, `emphasis`, `mono` |
+| size | `text-sm`, `text-lg`, `text-xl`, `text-2xl` |
+| align | `align-start`, `align-center`, `align-end` |
+| spacing | `tight`, `roomy` |
+| span | `span-2`, `span-3`, `span-full` (inside a grid) |
+| layout | `stack`, `row`, `center-v` |
+| media | `print-only`, `screen-only`, `hide-in-slides`, `slides-only` |
+
+**Component kits.** A `::component` block defines a reusable block that is
+built only from core blocks and style tokens:
+
+```noma
+::component{name="pricing_card" props="plan,price,cta?" slots="features" description="A plan in a pricing grid."}
+:::card{title="{{plan}}" class="elevated"}
+**{{price}}**
+
+{{slot:features}}
+
+{{cta}}
+:::
+::
+```
+
+A page uses the component by name:
+
+```noma
+::pricing_card{id="plan-team" plan="Team" price="$8" class="tone-accent"}
+:::slot{name="features"}
+- Unlimited spaces
+:::
+::
+```
+
+**Definition rules**
+
+- `name` is 2–41 lowercase letters, digits, or underscores, and it can never be a core directive name.
+- `props` lists attribute names. A trailing `?` marks a prop as optional. `id`, `class`, and `noverify` are reserved.
+- `slots` lists named slots. The unnamed default slot is always available.
+
+**How the template is filled in**
+
+- `{{prop}}` is replaced inside text, headings, list items, table cells, directive bodies, and attribute values.
+- A paragraph that is exactly `{{slot:name}}` (or `{{slot}}`) is replaced by the blocks inside that `:::slot{name="..."}`. For `{{slot}}`, it is the use's other children.
+- A paragraph that only held placeholders and ends up empty is dropped.
+
+Substitution happens on the AST, not the source text. A prop value can change words and attribute values, but it can never add blocks, attributes, or markup.
+
+**IDs.** When the template has a single root block, that root takes the use's `id` and `class`. Otherwise template IDs become `<use-id>--<template-id>`, so repeated uses never collide.
+
+**Where the definitions come from.** A page can use its own definitions. It can also use a host kit: `--kit <file>` in the CLI, or the space's kit page in Noma Cloud. The page's own definitions win on a name clash.
+
+**How each output handles components**
+
+- The `.noma` source and the LLM context keep the compact call (`[PRICING_CARD plan="Team" ...]`).
+- HTML, `--to slides`, Markdown, DOCX, and PaperDOM expand the call.
+- Handoff targets drop the definitions.
+- An HTML kit page shows each definition's signature and a preview of its template, with the placeholders visible.
+- Expansion stops at a depth of 8 and at 500 uses. A cycle renders a warning instead of recursing.
+
+**Validator rules**
+
+- `component-invalid-definition` (error)
+- `component-duplicate` (warning)
+- `component-missing-prop` (error)
+- `component-unknown-prop` (warning)
+- `component-unknown-slot` (warning)
+
+Template bodies are skipped by the other rules, and component plumbing is allowed under every profile.
+
+**Decks and slides.** `::deck{id="..." title="..." aspect="16:9|4:3|1:1"}` holds `:::slide` children. `:::slide{id="..." title="..." layout="..."}` is one slide. Its layout is one of `title`, `section`, `content` (the default), `two-column`, `statement`, `quote`, `media`, or `blank`. If a slide has no `title=`, a leading heading becomes the title. Put speaker notes in a `::::notes` block inside the slide. `hidden` skips a slide when presenting. `transition="fade|slide"` is carried into PaperDOM. Each slide is an ordinary block with a stable ID, so agents patch one slide or bullet without rewriting the deck. The validator enforces that `::slide` sits directly in a `::deck` (`slide-outside-deck`, error). It also warns on `notes-outside-slide`, `slide-unknown-layout`, and `deck-unknown-aspect`.
+
+The targets render decks as follows:
+
+- **HTML** renders the slides as scaled frames inside the document. A **Present** button opens a fullscreen presenter: arrow keys, Space, PageUp/PageDown, Home, and End navigate, and Escape exits. The current slide is written to the URL hash.
+- **Markdown** renders each slide as a `##` section followed by `---`.
+- **LLM** output keeps `[SLIDE ...]` / `[NOTES]` markers.
+- **`--to paperdom`** exports the deck as a PaperDOM canvas document.
+- **`noma paperdom-sync <file.noma> <canvas.json>`** turns text edits made on an exported PaperDOM canvas back into patch ops (`paperDomToPatchOps`), ready for `noma proof --ops`. `--inplace` applies them and validates first.
+  - **What syncs:** slide titles (the `title=` attribute or the heading), paragraphs, list items, quotes, code lines, pipe-table cells, speaker notes, `hidden`, `transition`, and slide order within a `::deck`.
+  - **Formatting survives:** only the changed span of the inline source is rewritten, so `**$8**` edited to `$9` stays bold.
+  - **How edits are addressed:** a block with an id is rewritten by that id. Anything else is carried by re-rendering its nearest `::slide` (or other directive with an id) at its own fence depth.
+  - **What is reported, not guessed:** added or removed pages, elements, paragraphs, or table rows; layout and style changes (they stay in PaperDOM); text that comes from a component; and plain paragraphs under a heading with no id.
+- **`--to pptx`** writes a PowerPoint file through the same canvas model (`paperDomToPptx`). Text, shapes, connectors, tables, bar and line charts (native chart parts with literal data, no embedded workbook), embedded PNG/JPEG/GIF images, speaker notes, `hidden`, and transitions map natively. Everything else is listed in a fidelity report (printed by the CLI, and sent as the `x-noma-fidelity` header by Noma Cloud) instead of being dropped silently. The input can also be a PaperDOM canvas `.json`.
+- **`--to slides`** writes a standalone presenter page. A page without a deck presents as a title slide (the top heading and its intro) plus one slide per section, at the shallowest heading level that has at least two headings. The slide IDs are the section IDs.
+
+**Canvases.** `::canvas{id="..." src="board.json" page="..." caption="..."}` draws a PaperDOM canvas inside a page as static SVG: shapes, text, connectors, tables, bar and line charts, and images. The canvas JSON comes from a fenced ```` ```json ```` body, from a file `src=` (read by the CLI loader and contained to the document's directory), or, in Noma Cloud, from an `att:` attachment on the same page. `page=` shows one page; otherwise every visible page is drawn. The geometry stays in PaperDOM while the page stays reviewable `.noma`. Canvas JSON is treated as untrusted: colours, fonts, and numbers are sanitised, text is escaped, SVG data URIs and scripts are never drawn, and remote images only load where the host resolves them. LLM, Markdown, and DOCX output list each page's text in reading order instead of the JSON. The validator reports `canvas-missing-source` and `canvas-invalid` (errors) and `canvas-unknown-page` (warning).
 
 `::page_setup{size="Letter|A4|Legal" orientation="portrait|landscape" margin="12mm"}` controls print geometry. DOCX uses the first page setup as the initial section geometry; later `::page_setup` blocks emit native Word section breaks and subsequent Word table columns, dataset tables, and grid/columns layouts size from the active page width and margins. HTML emits an `@page` rule for browser printing. Per-side margins use `margin_top`, `margin_right`, `margin_bottom`, and `margin_left`; lengths accept `in`, `mm`, `cm`, and `pt`.
 
@@ -340,6 +435,8 @@ html, svg, script
 ```
 
 Allowed but discouraged. The validator warns on every untrusted use. Add the `trusted` flag attribute to silence the warning on a single block; pass `--no-unsafe` to the CLI (or set `allowEscapeHatches: false` on the API) to block escape hatches entirely. Pass `--strict` to also omit external CDN runtimes for math, diagrams, and Plotly and to render computed controls as inert static defaults with disabled inputs and no generated inline runtime. Book manifests with `trusted_publishing: true` apply that same strict static HTML posture to every manifest-driven HTML/site/PDF render. The LLM renderer always strips escape-hatch bodies and replaces them with a placeholder so agent context stays predictable.
+
+**Sandboxed widgets.** A host can pass `resolveWidgetFrame` along with `allowEscapeHatches: false`. Each `::html` / `::svg` block that has an `id` then renders as `<iframe sandbox="allow-scripts">` pointing at a URL the host serves. Set the frame height with `height=` (40–2000 px, default 320) and its accessible label with `title=`. Noma Cloud serves each widget on its own signed URL with a `sandbox allow-scripts` CSP. The widget's scripts therefore run in an opaque origin with no network access (`connect-src 'none'`), no cookies, and no access to the page. `::script` stays blocked in hosts.
 
 ```noma
 ::svg{trusted}
@@ -584,6 +681,9 @@ The default validator detects:
 - **macro checks** — `::include` with no `page=`, `block=`, or `excerpt` (error), a same-page `block=` that does not exist (`broken-reference`), `page=` targets that cannot be checked in single-file mode or do not match a page when the host passes `pageExists` (`include-unknown-page`, warning), invalid `::issue` keys and `::issues` projects (errors), unknown `::issues` statuses and out-of-range `::children` options (warnings), `::page-properties-report` without `label=` (error), and more than one `::excerpt` per page (warning).
 - **warnings** — `evidence` / `counterevidence` with no `for=`, `figure` blocks missing `alt` and `caption`, `claim` blocks with no backing `evidence`, `risk` blocks with no `owner=`, `decision` / `adr` blocks with no `status=`, `agent_task` / `todo` blocks with no `scope=` or body, malformed tracked-revision `change_request` blocks, `citation` blocks whose `accessed=YYYY-MM-DD` is older than the stale window (default 365 days), and `[[wikilinks]]` inside a `memory`-profile document that resolve to a non-`::memory` target.
 
+- **canvas checks** — `::canvas` with no JSON body and no `src=` (`canvas-missing-source`, error), inline canvas JSON that does not parse or has no pages (`canvas-invalid`, error), and a `page=` the canvas does not have (`canvas-unknown-page`, warning).
+- **presentation and style checks** — `::slide` outside a `::deck` (`slide-outside-deck`, error). Warnings for `::notes` outside a `::slide`, unknown slide layouts or deck aspects, and `class=` words outside the style-token vocabulary (`unknown-style-token`).
+
 Per-block opt-out: add the `noverify` flag attribute to silence rules on a single block (e.g. rhetorical claims that aren't expected to carry their own evidence chain).
 
 ```noma
@@ -634,6 +734,7 @@ Built-in profiles:
 | `research-memo`         | Living research memos                     | Alias of `research`, plus claims should carry `confidence=`.                                                                                                                                                                                                                                  |
 | `investment-thesis`     | Living investment theses                  | Alias of `research`, plus claims should carry `confidence=`.                                                                                                                                                                                                                                  |
 | `adr`                   | Architecture decision records             | Minimal + decision/review directives. Expects at least one `::decision` or `::adr`; each `::decision` / `::adr` should carry `status=`, `owner=`, and `date=` or `decided_at=`.                                                                                                               |
+| `presentation`          | Slide decks                               | minimal + `deck`, `slide`, `notes`, `hero`, `grid`, `card`, `columns`, callouts, `figure`, `plot`, `diagram`, `dataset`, `metric`, `claim`, `evidence`, `decision`, `risk`. `technical` and `research` also allow `deck` / `slide` / `notes`. |
 | `spec`                  | Product/technical specs                   | Union of `technical` and `research`, for specs that mix requirements, code examples, risks, open questions, and agent tasks.                                                                                                                                                                  |
 | `memory` / `agent-memory` | Agent memory stores (per-project, per-user) | `memory`, `memory_index` only. Strict: each `::memory` must declare `id` + `type` (one of `user`, `feedback`, `project`, `reference`). `confidence` must be a number in `[0, 1]`; `last_seen` must be an ISO date.                                                                            |
 
@@ -785,7 +886,9 @@ Agent Protocol v1.0 RFC](spec-agent-protocol-v1.noma).
 | `pdf`    | stable  | HTML → Chromium print via Puppeteer. Requires `--out <file.pdf>`              |
 | `docx`   | experimental | WordprocessingML package for Word / Google Docs handoff. Requires `--out <file.docx>` |
 | `epub`   | planned |                                                                               |
-| `slides` | planned |                                                                               |
+| `paperdom` | experimental | `::deck` → PaperDOM canvas JSON (pages = slides, element ids `<slide-id>--<part>`). `--deck <id>` picks a deck; a document without a deck converts one section per slide |
+| `pptx` | experimental | PowerPoint via the PaperDOM canvas model (`paperDomToPptx`). Requires `--out <file.pptx>`; accepts a `.noma` page or a PaperDOM canvas `.json`. Prints a fidelity report of approximated or unexported features. `--deck <id>` picks a deck |
+| `slides` | experimental | Standalone presenter page (`renderSlidesHtml`): the chosen or first `::deck`, else a title slide plus one slide per section. Keyboard, swipe, notes panel, overview grid, fullscreen, `#slide-id` deep links; without JavaScript it lists every slide and prints one per page. `--deck <id>` picks a deck |
 
 **Watch mode (v0.15).** `noma render|check|export <file> --watch` re-runs the
 command whenever the document's directory changes (debounced; output files and

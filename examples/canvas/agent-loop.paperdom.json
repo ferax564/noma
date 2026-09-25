@@ -1,0 +1,524 @@
+{
+  "format": "paperdom",
+  "version": "0.1",
+  "id": "agent-loop-board",
+  "title": "Agent loop board",
+  "revision": 1,
+  "pages": [
+    {
+      "id": "flow",
+      "name": "Flow",
+      "size": {
+        "width": 1280,
+        "height": 720
+      },
+      "background": {
+        "color": "#fbfaf7"
+      },
+      "elements": [
+        {
+          "id": "title",
+          "type": "text",
+          "name": "title",
+          "frame": {
+            "x": 60,
+            "y": 40,
+            "w": 1160,
+            "h": 70,
+            "rotation": 0
+          },
+          "z": 1,
+          "style": {
+            "fill": "transparent",
+            "stroke": "transparent",
+            "strokeWidth": 0,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 40,
+            "fontWeight": 700,
+            "textAlign": "left",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "top",
+            "padding": 0
+          },
+          "content": {
+            "text": "How an agent edit reaches a page"
+          }
+        },
+        {
+          "id": "agent",
+          "type": "shape",
+          "name": "agent",
+          "frame": {
+            "x": 60,
+            "y": 260,
+            "w": 240,
+            "h": 120,
+            "rotation": 0
+          },
+          "z": 2,
+          "style": {
+            "fill": "#dfeaf5",
+            "stroke": "#2c5d8f",
+            "strokeWidth": 2,
+            "radius": 16,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 22,
+            "fontWeight": 500,
+            "textAlign": "center",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "middle",
+            "padding": 8
+          },
+          "content": {
+            "text": "Agent proposes ops"
+          }
+        },
+        {
+          "id": "proof",
+          "type": "shape",
+          "name": "proof",
+          "frame": {
+            "x": 400,
+            "y": 260,
+            "w": 240,
+            "h": 120,
+            "rotation": 0
+          },
+          "z": 3,
+          "style": {
+            "fill": "#f4dccd",
+            "stroke": "#b9522a",
+            "strokeWidth": 2,
+            "radius": 16,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 22,
+            "fontWeight": 500,
+            "textAlign": "center",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "middle",
+            "padding": 8
+          },
+          "content": {
+            "text": "noma proof\nsimulate + validate"
+          }
+        },
+        {
+          "id": "human",
+          "type": "ellipse",
+          "name": "human",
+          "frame": {
+            "x": 740,
+            "y": 250,
+            "w": 220,
+            "h": 140,
+            "rotation": 0
+          },
+          "z": 4,
+          "style": {
+            "fill": "#dff0e3",
+            "stroke": "#2f7d4a",
+            "strokeWidth": 2,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 22,
+            "fontWeight": 500,
+            "textAlign": "center",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "middle",
+            "padding": 8
+          },
+          "content": {
+            "text": "Human approves"
+          }
+        },
+        {
+          "id": "apply",
+          "type": "shape",
+          "name": "apply",
+          "frame": {
+            "x": 1040,
+            "y": 260,
+            "w": 180,
+            "h": 120,
+            "rotation": 0
+          },
+          "z": 5,
+          "style": {
+            "fill": "#ffffff",
+            "stroke": "#1d1c1a",
+            "strokeWidth": 2,
+            "radius": 16,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 22,
+            "fontWeight": 500,
+            "textAlign": "center",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "middle",
+            "padding": 8
+          },
+          "content": {
+            "text": "Hash-checked apply"
+          }
+        },
+        {
+          "id": "c1",
+          "type": "connector",
+          "name": "c1",
+          "frame": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "rotation": 0
+          },
+          "z": 6,
+          "style": {
+            "fill": "transparent",
+            "stroke": "#6b6a66",
+            "strokeWidth": 3,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 22,
+            "fontWeight": 500,
+            "textAlign": "center",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "middle",
+            "padding": 8
+          },
+          "from": {
+            "elementId": "agent",
+            "anchor": "right"
+          },
+          "to": {
+            "elementId": "proof",
+            "anchor": "left"
+          }
+        },
+        {
+          "id": "c2",
+          "type": "connector",
+          "name": "c2",
+          "frame": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "rotation": 0
+          },
+          "z": 7,
+          "style": {
+            "fill": "transparent",
+            "stroke": "#6b6a66",
+            "strokeWidth": 3,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 22,
+            "fontWeight": 500,
+            "textAlign": "center",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "middle",
+            "padding": 8
+          },
+          "from": {
+            "elementId": "proof",
+            "anchor": "right"
+          },
+          "to": {
+            "elementId": "human",
+            "anchor": "left"
+          }
+        },
+        {
+          "id": "c3",
+          "type": "connector",
+          "name": "c3",
+          "frame": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0,
+            "rotation": 0
+          },
+          "z": 8,
+          "style": {
+            "fill": "transparent",
+            "stroke": "#6b6a66",
+            "strokeWidth": 3,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 22,
+            "fontWeight": 500,
+            "textAlign": "center",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "middle",
+            "padding": 8,
+            "lineStyle": "dashed"
+          },
+          "from": {
+            "elementId": "human",
+            "anchor": "right"
+          },
+          "to": {
+            "elementId": "apply",
+            "anchor": "left"
+          }
+        },
+        {
+          "id": "note",
+          "type": "text",
+          "name": "note",
+          "frame": {
+            "x": 60,
+            "y": 480,
+            "w": 1160,
+            "h": 120,
+            "rotation": 0
+          },
+          "z": 9,
+          "style": {
+            "fill": "transparent",
+            "stroke": "transparent",
+            "strokeWidth": 0,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#6b6a66",
+            "fontSize": 22,
+            "fontWeight": 400,
+            "textAlign": "left",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "top",
+            "padding": 0
+          },
+          "content": {
+            "text": "Every step round-trips through .noma source.\nBlock IDs stay stable.",
+            "paragraphs": [
+              {
+                "text": "Every step round-trips through .noma source.",
+                "kind": "bullet",
+                "level": 0
+              },
+              {
+                "text": "Block IDs stay stable.",
+                "kind": "bullet",
+                "level": 0
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "metrics",
+      "name": "Metrics",
+      "size": {
+        "width": 1280,
+        "height": 720
+      },
+      "background": {
+        "color": "#ffffff"
+      },
+      "elements": [
+        {
+          "id": "chart-title",
+          "type": "text",
+          "name": "chart-title",
+          "frame": {
+            "x": 60,
+            "y": 40,
+            "w": 1160,
+            "h": 70,
+            "rotation": 0
+          },
+          "z": 1,
+          "style": {
+            "fill": "transparent",
+            "stroke": "transparent",
+            "strokeWidth": 0,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 36,
+            "fontWeight": 700,
+            "textAlign": "left",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "top",
+            "padding": 0
+          },
+          "content": {
+            "text": "Proposals per week"
+          }
+        },
+        {
+          "id": "chart",
+          "type": "chart",
+          "name": "chart",
+          "frame": {
+            "x": 60,
+            "y": 130,
+            "w": 720,
+            "h": 520,
+            "rotation": 0
+          },
+          "z": 2,
+          "style": {
+            "fill": "transparent",
+            "stroke": "transparent",
+            "strokeWidth": 0,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 16,
+            "fontWeight": 500,
+            "textAlign": "center",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "middle",
+            "padding": 8
+          },
+          "chart": {
+            "kind": "bar",
+            "labels": [
+              "W1",
+              "W2",
+              "W3",
+              "W4"
+            ],
+            "values": [
+              4,
+              9,
+              14,
+              21
+            ],
+            "title": "Approved agent proposals",
+            "grid": true
+          }
+        },
+        {
+          "id": "table",
+          "type": "table",
+          "name": "table",
+          "frame": {
+            "x": 840,
+            "y": 160,
+            "w": 380,
+            "h": 220,
+            "rotation": 0
+          },
+          "z": 3,
+          "style": {
+            "fill": "transparent",
+            "stroke": "#cbd5e1",
+            "strokeWidth": 1,
+            "radius": 0,
+            "opacity": 1,
+            "color": "#1d1c1a",
+            "fontSize": 18,
+            "fontWeight": 500,
+            "textAlign": "left",
+            "fontFamily": "Inter, system-ui, sans-serif",
+            "fontStyle": "normal",
+            "underline": false,
+            "strike": false,
+            "lineHeight": 1.25,
+            "letterSpacing": 0,
+            "verticalAlign": "top",
+            "padding": 8
+          },
+          "table": {
+            "header": true,
+            "rows": [
+              [
+                "Week",
+                "Approved"
+              ],
+              [
+                "W1",
+                "4"
+              ],
+              [
+                "W2",
+                "9"
+              ],
+              [
+                "W3",
+                "14"
+              ],
+              [
+                "W4",
+                "21"
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "plugins": [],
+  "metadata": {
+    "createdAt": "2026-09-25T00:00:00.000Z",
+    "updatedAt": "2026-09-25T00:00:00.000Z"
+  }
+}

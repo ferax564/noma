@@ -13,6 +13,8 @@ import { applyThemeMode, handleSplitResizeKeydown, renderChrome, setViewMode, st
 import { copyArtifactLink, copyPageLink, copySiteLink, createFolder, createPage, createStarterWorkspace, importPage, openPublishedSite, refreshTrash, replaceFirstHeading, saveCurrentSite, toggleFavorite } from "./navigation.js";
 import { addLabel, toggleWatch } from "./page-meta.js";
 import { installExportMenu } from "./export.js";
+import { installPresentButton } from "./present.js";
+import { installSlideStrip } from "./slide-strip.js";
 import { installConfluenceImport } from "./import.js";
 import { installPreviewEditing } from "./preview.js";
 import { installCommentSelectionCapture } from "./comments.js";
@@ -128,6 +130,9 @@ function bindEvents(): void {
   favoritePageButton.addEventListener("click", () => {
     if (state.currentPage) void toggleFavorite("document", state.currentPage.id);
   });
+
+  installPresentButton();
+  installSlideStrip();
 
   watchPageButton.addEventListener("click", () => {
     void toggleWatch();

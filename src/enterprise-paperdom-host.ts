@@ -1,4 +1,5 @@
 import { EnterpriseError } from "./enterprise-contracts.js";
+import { escapeAttr, escapeHtml } from "./inline.js";
 import {
   applyDocumentTransaction,
   parsePaperDOMDocument,
@@ -78,12 +79,12 @@ export function paperDomHtmlExport(document: PaperDOMDocument): string {
       const items = page.elements
         .filter((el) => !el.hidden)
         .sort((a, b) => a.z - b.z)
-        .map((el) => `<p data-id="${el.id}">${el.content?.text ?? el.name}</p>`)
+        .map((el) => `<p data-id="${escapeAttr(el.id)}">${escapeHtml(el.content?.text ?? el.name)}</p>`)
         .join("");
-      return `<section data-page="${page.id}">${items}</section>`;
+      return `<section data-page="${escapeAttr(page.id)}">${items}</section>`;
     })
     .join("");
-  return `<!doctype html><html><head><title>${title}</title></head><body>${body}</body></html>`;
+  return `<!doctype html><html><head><title>${escapeHtml(title)}</title></head><body>${body}</body></html>`;
 }
 
 export function paperDomFidelityReport(document: PaperDOMDocument, target: "pptx" | "svg" | "html"): {

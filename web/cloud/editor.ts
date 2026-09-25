@@ -4,6 +4,8 @@ import { validate } from "../../src/validator.js";
 import { renderHtml } from "../../src/renderer-html.js";
 import { renderLlm } from "../../src/renderer-llm.js";
 import { type Diagnostic, walk } from "../../src/ast.js";
+import type { StyleTokenAliases } from "../../src/style-tokens.js";
+import { type ComponentKit, componentKitFromSource } from "../../src/components.js";
 import { CloudRequestError, fetchCloudJson } from "./api.js";
 import { refreshActivity, refreshApprovals, refreshPageCollaboration, renderCollaborationPanels } from "./collaboration.js";
 import { activeDocumentStorageKey } from "./constants.js";
@@ -15,7 +17,8 @@ import { renderChrome } from "./layout.js";
 import { clearMacroCache, flushMacroRequests, previewMacroResolvers } from "./macros.js";
 import { confirmDiscardDirty, pageFolder, recordRecent, replacePage, sourceTitle, updateAddress } from "./navigation.js";
 import { refreshPageMeta } from "./page-meta.js";
-import { refreshAttachments, resolveAttachmentUrl } from "./attachments.js";
+import { refreshAttachments, resolveAttachmentUrl, resolveCanvasJson } from "./attachments.js";
+import { renderSlideStrip } from "./slide-strip.js";
 import { refreshRestrictions } from "./restrictions.js";
 import { canEditPage } from "./permissions.js";
 import { previewDocument, previewError } from "./preview.js";
@@ -144,11 +147,37 @@ export function setCurrentPage(page: CloudDocumentResponse | undefined): void {
   void recordRecent("document", page.id);
 }
 
+let cachedKitSource: string | undefined;
+let cachedKit: ComponentKit = new Map();
+
+/** The page's space component kit, parsed once per distinct kit source. */
+export function pageComponentKit(): ComponentKit {
+  const source = state.currentPage?.componentKit ?? "";
+  if (source !== cachedKitSource) {
+    cachedKitSource = source;
+    cachedKit = source ? componentKitFromSource(source, "space kit") : new Map();
+  }
+  return cachedKit;
+}
+
+function pageStyleTokens(): StyleTokenAliases {
+  return (state.currentPage?.styleTokens ?? {}) as StyleTokenAliases;
+}
+
+/** Saved widget body; the preview frame has no `allow-scripts`, so scripts stay inert here and run on the published page. */
+function previewWidgetFrame(node: { id?: string }): string | undefined {
+  const pageId = state.currentPage?.id;
+  if (!pageId || !node.id) return undefined;
+  return `/api/documents/${encodeURIComponent(pageId)}/widgets/${encodeURIComponent(node.id)}`;
+}
+
 export function renderCurrent(): void {
   const source = sourceInput.value;
   try {
     const doc = parse(source, { filename: `${state.currentPage?.id ?? "draft"}.noma` });
-    const diagnostics = validate(doc);
+    const styleTokens = pageStyleTokens();
+    const components = pageComponentKit();
+    const diagnostics = validate(doc, { styleTokens, components });
     const macros = previewMacroResolvers();
     const body = renderHtml(doc, {
       ...macros,
@@ -158,6 +187,10 @@ export function renderCurrent(): void {
       interactive: false,
       sourcePositions: true,
       resolveAttachment: resolveAttachmentUrl,
+      resolveCanvas: resolveCanvasJson,
+      resolveWidgetFrame: previewWidgetFrame,
+      styleTokens,
+      components,
     });
     state.renderState = {
       doc,
@@ -166,6 +199,7 @@ export function renderCurrent(): void {
     };
     previewFrame.srcdoc = previewDocument(body);
     flushMacroRequests(renderCurrent);
+    renderSlideStrip(components);
   } catch (error) {
     state.renderState = {
       doc: null,
@@ -174,6 +208,7 @@ export function renderCurrent(): void {
       error: error instanceof Error ? error : new Error(String(error)),
     };
     previewFrame.srcdoc = previewError(errorMessage(error));
+    renderSlideStrip();
   }
   renderDiagnostics();
   renderOutline();

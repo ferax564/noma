@@ -1,5 +1,4 @@
-// @ts-nocheck — vendored PaperDOM kernel; host policy lives in enterprise-paperdom-host.ts
-// Vendored from https://github.com/ferax564/paperDOM/blob/a12198cdad8c7487242834941a34ed5adf5d4d74/app/starter-library.ts (MIT). Do not edit to add Noma host policy.
+// Forked from ferax564/paperDOM@a12198c app/starter-library.ts (MIT). Maintained in this repository; see src/paperdom-pin.ts.
 import { baseStyle, defaultTheme, makeInstance, instantiateTemplate, type ComponentDefinition, type ComponentLibrary, type Theme } from './paperdom-component-library.js';
 import type { CanvasElement, CanvasPage, ElementStyle, PaperDOMDocument } from './paperdom-document-model.js';
 

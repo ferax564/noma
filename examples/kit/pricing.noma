@@ -1,0 +1,45 @@
+---
+title: Pricing
+date: 2026-09-24
+---
+
+# Pricing
+
+Render with the kit: `noma render examples/kit/pricing.noma --kit examples/kit/kit.noma`.
+Each use below is one small block with one stable ID; the kit decides how it
+looks. Change the kit and every page updates.
+
+::grid{columns=3}
+:::pricing_card{id="plan-free" plan="Free" price="$0"}
+::::slot{name="features"}
+- Up to 3 spaces
+- Community support
+::::
+:::
+
+:::pricing_card{id="plan-team" plan="Team" price="$8" period="per user / month" cta="Most teams start here." class="tone-accent"}
+::::slot{name="features"}
+- Unlimited spaces
+- Agent proposals with proof
+::::
+:::
+
+:::pricing_card{id="plan-enterprise" plan="Enterprise" price="Custom" cta="SSO, SCIM, audit export."}
+::::slot{name="features"}
+- EU data residency
+- Legal holds
+::::
+:::
+::
+
+::grid{columns=2}
+:::stat{id="stat-agents" value="100%" label="agent edits proofed before apply"}
+:::
+
+:::stat{id="stat-diff" value="1 block" label="touched per agent patch"}
+:::
+::
+
+::feature{id="feature-source" title="Plain-text source"}
+Every page is reviewable `.noma`, diffable in Git.
+::

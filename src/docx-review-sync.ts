@@ -1076,6 +1076,7 @@ const SPECIAL_BODY_SYNC_EXCLUDED_DIRECTIVES = new Set([
   "endnote",
   "export_button",
   "figure",
+  "canvas",
   "footer",
   "footnote",
   "grid",

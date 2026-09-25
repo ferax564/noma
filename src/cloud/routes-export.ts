@@ -3,10 +3,7 @@
  * `GET /api/sites/:id/export?to=site-zip|noma-zip`. Macros are resolved for
  * the requesting viewer; escape hatches and external assets stay off.
  */
-import { readFileSync } from "node:fs";
 import type { ServerResponse } from "node:http";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import type { CloudDocumentRecord, CloudSiteRecord } from "../cloud-db.js";
 import { expandMacros } from "../macros.js";
@@ -17,12 +14,19 @@ import { renderHtml } from "../renderer-html.js";
 import { renderJson } from "../renderer-json.js";
 import { renderLlm } from "../renderer-llm.js";
 import { renderMarkdown } from "../renderer-markdown.js";
+import { renderPaperDom } from "../renderer-paperdom.js";
 import { createZip, type ZipEntryInput } from "../zip.js";
 import { type AccessContext, type CloudServerConfig, type Principal, requireRecordAccess } from "./context.js";
 import { escapeAttr, escapeHtml, HttpError, setSecurityHeaders } from "./http.js";
 import { cloudMacroResolvers } from "./macros.js";
+import { defaultThemeCss } from "./theme.js";
+import { documentComponentKit, documentStyleTokens } from "./spaces.js";
+import type { StyleTokenAliases } from "../style-tokens.js";
+import type { ComponentKit } from "../components.js";
+import { canvasResolver, inlineResolvedCanvases } from "./canvas.js";
+import { paperDomToPptx } from "../paperdom-pptx.js";
 
-export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json"] as const;
+export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json", "paperdom", "pptx"] as const;
 export const SITE_EXPORT_FORMATS = ["site-zip", "noma-zip"] as const;
 const MAX_SITE_EXPORT_PAGES = 2_000;
 const MAX_CONCURRENT_PDF_RENDERS = 2;
@@ -41,6 +45,8 @@ export async function routeDocumentExport(
   const to = formatInput(url.searchParams.get("to"), DOCUMENT_EXPORT_FORMATS);
   const base = fileSlug(record.title, record.id);
   const doc = parse(record.source, { filename: `${record.id}.noma` });
+  const resolveCanvas = await canvasResolver(config, record.id, doc);
+  if (to !== "noma" && to !== "json") inlineResolvedCanvases(doc, resolveCanvas);
   const macros = cloudMacroResolvers(config, principal, record.id);
   switch (to) {
     case "noma":
@@ -49,17 +55,26 @@ export async function routeDocumentExport(
     case "llm":
       sendDownload(res, renderLlm(doc, macros), "text/plain; charset=utf-8", `${base}.llm.txt`);
       return;
+    case "paperdom":
+      sendDownload(res, `${JSON.stringify(renderPaperDom(expandMacros(doc, macros), { components: documentComponentKit(config, record.id) }), null, 2)}\n`, "application/json; charset=utf-8", `${base}.paperdom.json`);
+      return;
+    case "pptx": {
+      const { bytes, report } = paperDomToPptx(renderPaperDom(expandMacros(doc, macros), { components: documentComponentKit(config, record.id) }), { creator: "Noma Cloud" });
+      res.setHeader("x-noma-fidelity", JSON.stringify(report).replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`));
+      sendDownload(res, bytes, "application/vnd.openxmlformats-officedocument.presentationml.presentation", `${base}.pptx`);
+      return;
+    }
     case "json":
       sendDownload(res, renderJson(doc), "application/json; charset=utf-8", `${base}.json`);
       return;
     case "markdown":
-      sendDownload(res, renderMarkdown(expandMacros(doc, macros)), "text/markdown; charset=utf-8", `${base}.md`);
+      sendDownload(res, renderMarkdown(expandMacros(doc, macros), { components: documentComponentKit(config, record.id) }), "text/markdown; charset=utf-8", `${base}.md`);
       return;
     case "html":
-      sendDownload(res, standaloneHtml(record, macros), "text/html; charset=utf-8", `${base}.html`);
+      sendDownload(res, standaloneHtml(record, macros, documentComponentKit(config, record.id), documentStyleTokens(config, record.id), resolveCanvas), "text/html; charset=utf-8", `${base}.html`);
       return;
     case "docx": {
-      const docx = renderDocx(expandMacros(doc, macros), { title: record.title, creator: "Noma Cloud" });
+      const docx = renderDocx(expandMacros(doc, macros), { title: record.title, creator: "Noma Cloud", components: documentComponentKit(config, record.id) });
       sendDownload(res, docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", `${base}.docx`);
       return;
     }
@@ -70,7 +85,7 @@ export async function routeDocumentExport(
       }
       activePdfRenders += 1;
       try {
-        sendDownload(res, await renderPdfBuffer(standaloneHtml(record, macros)), "application/pdf", `${base}.pdf`);
+        sendDownload(res, await renderPdfBuffer(standaloneHtml(record, macros, documentComponentKit(config, record.id), documentStyleTokens(config, record.id), resolveCanvas)), "application/pdf", `${base}.pdf`);
       } catch (error) {
         if (error instanceof PdfUnavailableError) {
           throw new HttpError(501, "PDF export is not available on this server: install Puppeteer and its Chrome build (npx puppeteer browsers install chrome).", {
@@ -110,7 +125,7 @@ export async function routeSiteExport(
   const entries: ZipEntryInput[] =
     to === "noma-zip"
       ? nomaArchive(config, site, pages, paths, parents, exportedAt)
-      : siteArchive(config, principal, site, pages, paths, parents, access, exportedAt);
+      : siteArchive(config, principal, site, pages, paths, parents, access, exportedAt, await siteCanvasResolvers(config, pages));
   sendDownload(res, createZip(entries.map((entry) => ({ ...entry, modifiedAt: exportedAt }))), "application/zip", `${base}-${to}.zip`);
 }
 
@@ -150,6 +165,12 @@ function nomaArchive(
   ];
 }
 
+async function siteCanvasResolvers(config: CloudServerConfig, pages: CloudDocumentRecord[]): Promise<Map<string, (ref: string) => string | undefined>> {
+  const out = new Map<string, (ref: string) => string | undefined>();
+  for (const page of pages) out.set(page.id, await canvasResolver(config, page.id, page.source));
+  return out;
+}
+
 function siteArchive(
   config: CloudServerConfig,
   principal: Principal,
@@ -159,6 +180,7 @@ function siteArchive(
   parents: Record<string, string>,
   access: AccessContext,
   exportedAt: Date,
+  canvases: Map<string, (ref: string) => string | undefined>,
 ): ZipEntryInput[] {
   const pageHref = (id: string): string | undefined => {
     const path = paths.get(id);
@@ -169,6 +191,9 @@ function siteArchive(
     const macros = cloudMacroResolvers(config, principal, page.id, { pageHref });
     const html = renderHtml(parse(page.source, { filename: `${page.id}.noma` }), {
       ...macros,
+      components: documentComponentKit(config, page.id),
+      styleTokens: documentStyleTokens(config, page.id),
+      ...(canvases.get(page.id) ? { resolveCanvas: canvases.get(page.id)! } : {}),
       standalone: true,
       title: page.title,
       allowEscapeHatches: false,
@@ -245,9 +270,12 @@ function uniquePagePaths(pages: CloudDocumentRecord[]): Map<string, string> {
   return paths;
 }
 
-function standaloneHtml(record: CloudDocumentRecord, macros: ReturnType<typeof cloudMacroResolvers>): string {
+function standaloneHtml(record: CloudDocumentRecord, macros: ReturnType<typeof cloudMacroResolvers>, components: ComponentKit, styleTokens: StyleTokenAliases, resolveCanvas: (ref: string) => string | undefined): string {
   return renderHtml(parse(record.source, { filename: `${record.id}.noma` }), {
     ...macros,
+    resolveCanvas,
+    components,
+    styleTokens,
     standalone: true,
     title: record.title,
     allowEscapeHatches: false,
@@ -257,21 +285,8 @@ function standaloneHtml(record: CloudDocumentRecord, macros: ReturnType<typeof c
   });
 }
 
-let cachedThemeCss: string | undefined;
-
 function themeCss(): string {
-  if (cachedThemeCss !== undefined) return cachedThemeCss;
-  const here = dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [resolve(here, "..", "..", "themes", "default.css"), resolve(here, "..", "..", "..", "themes", "default.css")]) {
-    try {
-      cachedThemeCss = readFileSync(candidate, "utf8");
-      return cachedThemeCss;
-    } catch {
-      continue;
-    }
-  }
-  cachedThemeCss = "";
-  return cachedThemeCss;
+  return defaultThemeCss();
 }
 
 function formatInput<T extends string>(value: string | null, formats: readonly T[]): T {
