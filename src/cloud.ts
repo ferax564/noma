@@ -7,5 +7,6 @@
 export { createNomaCloudServer } from "./cloud-server.js";
 export type { NomaCloudServerOptions } from "./cloud-server.js";
 export * from "./cloud-db.js";
+export * from "./cloud-embeddings.js";
 export * from "./cloud-platform.js";
 export * from "./cloud-templates.js";

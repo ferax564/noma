@@ -255,6 +255,16 @@ function backoffMs(attempt: number): number {
   return Math.min(8_000, 500 * 2 ** attempt);
 }
 
+/**
+ * Enterprise model gate shared by the LLM and embedding layers. An untouched default policy (never
+ * saved by an admin) allows the operator-configured model; once a workspace admin saves a policy, its
+ * `modelAllowlist` is authoritative.
+ */
+export function modelAllowedByPolicy(policy: { modelAllowlist: string[]; updatedBy: string }, model: string, configuredModel: string): boolean {
+  if (policy.modelAllowlist.includes(model)) return true;
+  return policy.updatedBy === "system" && model === configuredModel;
+}
+
 export type FakeLlmHandler = (request: LlmCompletionRequest) => string | { text: string; usage?: Partial<LlmUsage>; refused?: boolean; model?: string };
 
 /**

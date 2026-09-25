@@ -388,8 +388,11 @@ async function callGatewayTool(
     const query = stringInput(args, "query").slice(0, 1_000);
     const siteId = optionalCloudId(args.siteId, "Site");
     const documents = knowledgeDocuments(config, user, siteId, agentId);
-    if (name === "search") return { query, results: config.platform.search({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 12, 1, 100, "limit") }) };
-    return config.platform.ask({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 8, 1, 25, "limit") }) as unknown as Record<string, unknown>;
+    if (name === "search") {
+      const { results, retrieval } = await config.platform.searchWithRetrieval({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 12, 1, 100, "limit") });
+      return { query, results, retrieval };
+    }
+    return (await config.platform.askWithRetrieval({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 8, 1, 25, "limit") })) as unknown as Record<string, unknown>;
   }
   if (name === "llm_export") {
     const agentId = stringInput(args, "agentId");

@@ -242,7 +242,7 @@ The left rail provides workspace navigation beyond the page tree:
 
 | Control | Behavior |
 |---|---|
-| Search | Hybrid lexical, local-embedding, typed-block, graph, trust, and freshness search over visible source blocks. Results preserve the exact source span, version hash, and access decision and open the matching page and source line. |
+| Search | Hybrid lexical, semantic (local hash vector or a configured embedding model), typed-block, graph, trust, and freshness search over visible source blocks. Results preserve the exact source span, version hash, and access decision and open the matching page and source line. |
 | Page template | Starts a new page from a built-in template (blank, meeting-notes, decision-record, project-overview, technical-spec, research-paper), a workspace template, or a template of the current space. Blueprints with variables open a form first. **Manage** lists every template and lets you edit or delete the ones you manage. |
 | Draft with AI | Drafts a new page in the current space from a title and instructions. The draft becomes a page proposal under Agent Review. See [[generative-ai-on-the-trust-loop]]. |
 | Import | Uploads `.noma`, `.md`, `.markdown`, or plain text into the current space. Markdown intake pins stable heading IDs. |
@@ -881,6 +881,59 @@ Evaluation fixtures declare required and forbidden sources plus abstention,
 latency, and cost expectations. Each run records source recall, forbidden
 hits, citation coverage, permission leakage, stale-source use, abstention
 correctness, latency, and estimated cost.
+
+### Semantic retrieval and embeddings {id="semantic-retrieval-embeddings"}
+
+Knowledge search scores every visible block on lexical overlap, semantic
+similarity, typed-block match, graph links, verification, and freshness. The
+semantic part is pluggable. By default it uses a deterministic 96-dimension
+local hash vector: offline, no text leaves the server, and results are
+reproducible. Configure a real embedding model to match meaning rather than
+shared words ("outage playbook" finding a "failover after a disaster" block).
+
+| Variable | Meaning |
+|---|---|
+| `NOMA_CLOUD_EMBEDDINGS` | `local` (default, hash vector), `openai` (any OpenAI-compatible `/v1/embeddings` API: OpenAI, gateways, Ollama, local servers), or `voyage` (Voyage AI) |
+| `NOMA_CLOUD_EMBEDDINGS_MODEL` | Model ID (defaults `text-embedding-3-small` / `voyage-3.5`) |
+| `NOMA_CLOUD_EMBEDDINGS_URL` | Base URL or full `/embeddings` endpoint (for example `http://localhost:11434` for Ollama) |
+| `NOMA_CLOUD_EMBEDDINGS_API_KEY`, `NOMA_CLOUD_EMBEDDINGS_API_KEY_FILE` | Bearer key; Voyage also reads `VOYAGE_API_KEY`, OpenAI `OPENAI_API_KEY`. A keyless `openai` URL is allowed for local servers |
+| `NOMA_CLOUD_EMBEDDINGS_DIMENSIONS` | Optional vector length, sent to models that support shortening and checked on every response |
+| `NOMA_CLOUD_EMBEDDINGS_TIMEOUT_MS`, `NOMA_CLOUD_EMBEDDINGS_MAX_RETRIES`, `NOMA_CLOUD_EMBEDDINGS_BATCH_SIZE` | Per-request timeout (default 30000), retries on 408/409/429/5xx and network errors (default 2), and inputs per request (256 OpenAI, 128 Voyage) |
+| `NOMA_CLOUD_EMBEDDINGS_QUERY_TIMEOUT_MS` | Deadline for embedding a search query before falling back (default 2000) |
+| `NOMA_CLOUD_EMBEDDINGS_ZERO_RETENTION` | Operator attestation that the embedding account has zero data retention |
+
+Indexing stays synchronous and always stores the hash vector. Provider vectors
+are computed in the background by the queue tick (and by `POST
+/api/knowledge/reindex`, which reports an `embeddings` backfill summary). They
+are cached in SQLite by provider, model, and SHA-256 of the block text, so
+re-indexing unchanged text never re-embeds it. At query time the query is
+embedded with the same provider under a short deadline. Blocks with a cached
+vector of the same length are scored against it. Every other block, or every
+block when the provider is slow, down, or blocked by policy, falls back to
+lexical plus hash scoring. Vectors of different models or lengths are never
+compared.
+
+Search, Ask Noma, and the agent gateway report the mode that served each query:
+
+```json
+"retrieval": {
+  "semantic": "voyage:voyage-3.5",
+  "provider": "voyage:voyage-3.5",
+  "coverage": { "embedded": 412, "total": 415 }
+}
+```
+
+`semantic` is `local-hash` whenever the provider did not score the query, and
+`fallback` then says why: `not_embedded` (the backfill has not covered these
+blocks yet), `provider_unavailable` (errors put the provider on a one-minute
+cooldown), `query_timeout`, `policy_model_not_allowed`, or
+`policy_zero_retention_required`.
+
+A remote embedding provider follows the same enterprise policy as the language
+model. Once an admin saves a policy, its `modelAllowlist` must list the
+embedding model (`voyage-3.5` or `voyage:voyage-3.5`), and
+`requireZeroRetentionModels` requires the zero-retention attestation. Until
+then, no workspace text is sent to the provider, for either backfill or queries.
 
 ## Scoped agents and the shared change inbox
 
