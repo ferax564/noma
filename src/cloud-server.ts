@@ -12,6 +12,8 @@ import { attachCloudCollab, type CloudCollabOptions } from "./cloud-collab.js";
 import { CloudChatStore } from "./cloud-chat.js";
 import { CloudAgentOpsStore } from "./cloud-agent-ops.js";
 import { CloudComplianceStore } from "./cloud-compliance.js";
+import { CloudIntegrationsStore } from "./cloud-integrations.js";
+import { type SlackConfig, slackConfigFromEnv } from "./cloud/integrations.js";
 import { type SiemTarget, siemTargetFromEnv } from "./cloud/siem.js";
 import { CloudDevLoopStore } from "./cloud-devloop.js";
 import { routeHooks } from "./cloud/routes-devloop.js";
@@ -146,6 +148,8 @@ export interface NomaCloudServerOptions {
   runProvider?: RunProvider | null;
   /** SIEM that receives the audit log as NDJSON; defaults to `NOMA_CLOUD_SIEM_URL` + `NOMA_CLOUD_SIEM_TOKEN`. `null` disables it. */
   siem?: SiemTarget | null;
+  /** Slack app for the two-way channel bridge; defaults to `NOMA_CLOUD_SLACK_BOT_TOKEN` + `NOMA_CLOUD_SLACK_SIGNING_SECRET`. `null` disables it. */
+  slack?: SlackConfig | null;
   /** How often chat streams read events written by other processes on the same database (ms; default 500, 0 disables). */
   chatTailIntervalMs?: number;
 }
@@ -175,7 +179,7 @@ export interface NomaCloudAiOptions {
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
   const config = createCloudServerConfig(options);
-  const { store, platform, chat, devloop, agentOps, compliance } = config;
+  const { store, platform, chat, devloop, agentOps, compliance, integrations } = config;
   const stopMaintenance = startMaintenanceScheduler(config);
   if (config.production && config.adminUserIds.length === 0) {
     console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
@@ -209,6 +213,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     devloop.close();
     agentOps.close();
     compliance.close();
+    integrations.close();
     platform.close();
     store.close();
   });
@@ -229,6 +234,7 @@ export async function runNomaCloudMaintenanceOnce(options: NomaCloudServerOption
     config.devloop.close();
     config.agentOps.close();
     config.compliance.close();
+    config.integrations.close();
     config.platform.close();
     config.store.close();
   }
@@ -254,6 +260,8 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const devloop = new CloudDevLoopStore(dbPath);
   const agentOps = new CloudAgentOpsStore(dbPath);
   const compliance = new CloudComplianceStore(dbPath);
+  const integrations = new CloudIntegrationsStore(dbPath);
+  const slack = options.slack === null ? undefined : options.slack ?? slackConfigFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const siem = options.siem === null ? undefined : options.siem ?? siemTargetFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const runProvider = options.runProvider === null ? undefined : options.runProvider ?? createRunProviderFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   return {
@@ -283,6 +291,8 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     devloop,
     agentOps,
     compliance,
+    integrations,
+    ...(slack ? { slack } : {}),
     ...(siem ? { siem } : {}),
     ...(runProvider ? { runProvider } : {}),
     blobs: options.blobStore ?? createBlobStoreFromEnv(storageRoot),

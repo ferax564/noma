@@ -347,7 +347,7 @@ people and agents under one permission model. It ships in five steps:
    queue, a kill switch. (Shipped.)
 4. Enterprise scale and compliance: cross-process fan-out, SIEM audit export,
    DLP, an admin console. (Shipped.)
-5. Make switching easy: Slack import and bridge, Jira import.
+5. Make switching easy: Slack import and bridge, Jira import. (Shipped.)
 
 PLAN.md §23.22 holds the detail.
 ::

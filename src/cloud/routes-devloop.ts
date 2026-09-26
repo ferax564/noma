@@ -3,6 +3,7 @@
  * `/api/hooks/github/:projectId` (served before the Cloud access gate — the HMAC is the credential),
  * `/deploy` and `/test` chat commands, and the `run_request` gateway tool.
  */
+import { handleSlackEvent, verifySlackSignature } from "./integrations.js";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CloudAgentIdentity } from "../cloud-platform.js";
@@ -135,6 +136,10 @@ export async function routeProjectDevLoop(
 /** `POST /api/hooks/github/:projectId` — authenticated by the repository's webhook secret, not a Cloud session. */
 export async function routeHooks(req: IncomingMessage, res: ServerResponse, url: URL, config: CloudServerConfig): Promise<void> {
   const parts = url.pathname.split("/").filter(Boolean);
+  if (parts[2] === "slack" && parts.length === 3) {
+    await routeSlackHook(req, res, config);
+    return;
+  }
   if (parts[2] !== "github" || !parts[3] || parts.length !== 4) throw new HttpError(404, "Unknown hook");
   if ((req.method ?? "GET") !== "POST") throw new HttpError(405, "Method not allowed");
   const body = await readRawBody(req, HOOK_MAX_BYTES);
@@ -298,4 +303,25 @@ function validSignature(body: Buffer, secret: string, header: string | undefined
   const expected = Buffer.from(`sha256=${createHmac("sha256", secret).update(body).digest("hex")}`);
   const given = Buffer.from(header);
   return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+/** `POST /api/hooks/slack` — Slack Events API, authenticated by the app's signing secret. */
+async function routeSlackHook(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig): Promise<void> {
+  if ((req.method ?? "GET") !== "POST") throw new HttpError(405, "Method not allowed");
+  if (!config.slack) throw new HttpError(404, "The Slack bridge is not configured");
+  const body = await readRawBody(req, 1_000_000);
+  if (!verifySlackSignature(config.slack, body, headerValue(req, "x-slack-request-timestamp"), headerValue(req, "x-slack-signature"), config.now().getTime())) {
+    throw new HttpError(401, "Invalid Slack signature");
+  }
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
+  } catch {
+    throw new HttpError(400, "Invalid JSON body");
+  }
+  if (payload.type === "url_verification" && typeof payload.challenge === "string") {
+    sendJson(res, 200, { challenge: payload.challenge });
+    return;
+  }
+  sendJson(res, 200, await handleSlackEvent(config, payload));
 }

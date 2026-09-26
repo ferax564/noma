@@ -20,6 +20,8 @@ import type { BlobStore } from "../cloud-blobs.js";
 import type { CloudChatStore } from "../cloud-chat.js";
 import type { CloudAgentOpsStore } from "../cloud-agent-ops.js";
 import type { CloudComplianceStore } from "../cloud-compliance.js";
+import type { CloudIntegrationsStore } from "../cloud-integrations.js";
+import type { SlackConfig } from "./integrations.js";
 import type { SiemTarget } from "./siem.js";
 import type { CloudDevLoopStore } from "../cloud-devloop.js";
 import type { RunProvider } from "./run-provider.js";
@@ -59,6 +61,10 @@ export interface CloudServerConfig {
   chat: CloudChatStore;
   /** Linked repositories, pull requests, and deploy/test runs (`/api/projects/:id/repo|pulls|runs`). */
   devloop: CloudDevLoopStore;
+  /** Import ledgers and the Slack bridge (links, message map, people cache, outbox). */
+  integrations: CloudIntegrationsStore;
+  /** Slack app credentials for the two-way bridge; absent when not configured. */
+  slack?: SlackConfig;
   /** DLP policy and findings, and the SIEM forwarder's cursor. */
   compliance: CloudComplianceStore;
   /** Where the audit log is shipped as NDJSON; absent when no SIEM is configured. */

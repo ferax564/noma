@@ -8,6 +8,19 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Moving in from Slack and Jira (Noma Cloud):**
+  - **Slack export import:** `POST /api/import/slack?siteId=` with the workspace export ZIP, or **Import Slack** in the Chat section.
+    - Brings public and private channels, threads, reactions, and file links into the space.
+    - People are matched by email to members of the space. Anyone unmatched is kept as a name on the message.
+    - Re-importing skips messages already brought in. Direct messages are counted but not imported.
+  - **Jira import:** `POST /api/import/jira {projectId, search}` with the JSON of a Jira search (one page, several pages, or an issue array), or **Import Jira** in Work.
+    - Maps types, statuses (including review states), priorities, labels, due dates and story points.
+    - Keeps parents as subtasks, blocks/relates/duplicates links, and comments. Atlassian Document Format becomes Markdown, and assignees are matched by email.
+    - Re-importing creates nothing twice.
+  - **Two-way Slack bridge:** with a Slack app configured (`NOMA_CLOUD_SLACK_BOT_TOKEN`, `NOMA_CLOUD_SLACK_SIGNING_SECRET`), a channel admin links a Noma channel to a Slack channel (`PUT /api/channels/:id/bridge`, or ⇄ in the chat header).
+    - Noma posts go to Slack with the author's name through a retrying outbox. Signed Slack events (`POST /api/hooks/slack`) come back into Noma.
+    - Threads map both ways. Retries, bot posts and echoes are ignored, and DLP applies to inbound text.
+
 - **Enterprise scale and compliance (Noma Cloud):**
   - **Chat across processes:** every chat event is also written to a short-lived shared log that other processes on the same database tail (500 ms by default), so live chat streams work behind a load balancer.
   - **Data-loss prevention:** workspace admins set `off`, `warn` or `block` (`/api/enterprise/dlp`). Detectors cover AWS keys, GitHub and Slack tokens, private keys, API keys, and Luhn-valid card numbers, and apply to chat messages and edits, issue text and comments, and page saves.
