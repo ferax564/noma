@@ -10,6 +10,7 @@
  * grant on the space can read public channels (private ones once added as a member), answer its
  * mentions, and post. Agent posts never create agent mentions, so agents cannot ping-pong.
  */
+import { enforceDlp } from "./dlp.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ChatChannel, ChatChannelVisibility, ChatFile, ChatMember, ChatMessage, ChatMessageKind } from "../cloud-chat.js";
 import type { CloudIssue, CloudIssuePriority, CloudIssueType, CloudSiteRecord, CloudUserRecord } from "../cloud-db.js";
@@ -659,6 +660,7 @@ async function routeMessages(
     if (message.deletedAt) throw new HttpError(409, "Message was deleted");
     const input = await readJsonBody(req, config.maxBodyBytes);
     const body = messageBodyInput(input.body);
+    enforceDlp(config, { text: body, previous: message.body, actorId: context.user.id, resourceType: "chat_message", resourceId: message.id, ...(context.channel.siteId ? { siteId: context.channel.siteId } : {}) });
     const agent = message.agentId ? config.platform.readAgent(message.agentId) : undefined;
     const previous = new Set(extractMentions(message.body));
     const mentions = resolveMentions(config, context.channel, body, context.user, agent);
@@ -713,6 +715,7 @@ function postMessage(config: CloudServerConfig, context: ChannelContext, input: 
   } else requireCanPost(context);
   const files = agent ? [] : shareableFiles(config, context, input.fileIds ?? []);
   const body = files.length > 0 && !input.body.trim() ? files.map((file) => file.filename).join(", ") : messageBodyInput(input.body);
+  enforceDlp(config, { text: body, actorId: context.user.id, resourceType: "chat_channel", resourceId: context.channel.id, ...(context.channel.siteId ? { siteId: context.channel.siteId } : {}) });
   const threadId = input.threadId ? threadRootInput(config, context.channel, input.threadId) : undefined;
   const now = config.now().toISOString();
   if (!agent && !context.member) context.member = joinChannel(config, context);

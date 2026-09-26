@@ -1,4 +1,5 @@
 /** `/api/projects`: projects, issues, and sprints. */
+import { enforceDlp } from "./dlp.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
   CloudIssue,
@@ -168,6 +169,7 @@ async function routeProjectIssues(
   if (!issueId && method === "POST") {
     requireAccessRole(access, "editor");
     const input = await readJsonBody(req, config.maxBodyBytes);
+    enforceDlp(config, { text: `${optionalString(input.summary) ?? ""}\n${optionalString(input.description) ?? ""}`, actorId: user.id, resourceType: "issue", resourceId: project.id, siteId: project.siteId });
     const assigneeId = await issueAssignee(config, project, input.assigneeId);
     const sprintId = issueSprint(config, project.id, input.sprintId);
     const parentId = issueParent(config, project.id, input.parentId);
@@ -207,6 +209,7 @@ async function routeProjectIssues(
     }
     if (method === "POST") {
       const input = await readJsonBody(req, config.maxBodyBytes);
+      enforceDlp(config, { text: stringInput(input, "body"), actorId: user.id, resourceType: "issue", resourceId: issue.id, siteId: project.siteId });
       const now = config.now().toISOString();
       const comment: Omit<CloudIssueComment, "createdByName"> = {
         id: uniqueId(config),
@@ -279,6 +282,14 @@ async function routeProjectIssues(
     const assigneeId = input.assigneeId === undefined ? issue.assigneeId : await issueAssignee(config, project, input.assigneeId);
     const sprintId = input.sprintId === undefined ? issue.sprintId : issueSprint(config, project.id, input.sprintId);
     const parentId = input.parentId === undefined ? issue.parentId : issueParent(config, project.id, input.parentId, issue.id);
+    enforceDlp(config, {
+      text: `${optionalString(input.summary) ?? issue.summary}\n${optionalString(input.description) ?? issue.description ?? ""}`,
+      previous: `${issue.summary}\n${issue.description ?? ""}`,
+      actorId: user.id,
+      resourceType: "issue",
+      resourceId: issue.id,
+      siteId: project.siteId,
+    });
     const next: CloudIssue = {
       ...issue,
       summary: optionalString(input.summary)?.slice(0, 240) ?? issue.summary,

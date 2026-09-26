@@ -1,4 +1,5 @@
 /** Approvals (one queue for agent runs, patches, AI pages, page approvals), the workspace agent kill switch, and hosted/scheduled agents. */
+import { refreshWorkspaceAdmin } from "./admin.js";
 import { fetchCloudJson } from "./api.js";
 import {
   agentHostedInput,
@@ -92,6 +93,7 @@ export async function refreshApprovalQueue(): Promise<void> {
   try {
     const queue = await fetchCloudJson<{ items: QueueItem[]; paused: boolean; killSwitch?: KillSwitch }>("/api/approvals");
     killSwitch = queue.killSwitch;
+    void refreshWorkspaceAdmin(Boolean(queue.killSwitch));
     renderKillSwitch(queue.paused);
     approvalQueueList.replaceChildren(...(queue.items.length ? queue.items.map(queueRow) : [emptyState("Nothing is waiting for you")]));
   } catch (error) {

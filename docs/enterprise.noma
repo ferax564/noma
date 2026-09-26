@@ -30,6 +30,7 @@ The `EnterpriseWorkspace` kernel (`src/enterprise.ts` and `src/enterprise-*.ts`)
 | HTTP / worker | `apps/server`, `apps/worker`, `apps/workspace` entry points over the same kernel, including `/yjs` | `test/enterprise-http.test.ts` |
 | Packages | Extraction boundaries under `packages/{document-core,document-ui,platform,work,knowledge,connectors,contracts,paperdom-core,paperdom-react,paperdom-io}` re-export the CLI kernel (no dual-write copies); `document-core` uses the lean root entry, the rest use `@ferax564/noma-cli/enterprise` | package `src/index.ts` files |
 | E2E | Section 17 demonstration: two humans, one agent, connector, pin, stale apply, revocation, restore | `test/enterprise-e2e.test.ts` |
+| Cloud compliance | Noma Cloud DLP detectors (warn / block) on chat, issues, and pages; audit log as NDJSON and a SIEM forwarder with a crash-safe cursor; workspace admin overview; workspace agent kill switch; chat fan-out across processes sharing one database | `test/cloud-compliance.test.ts`, `test/cloud-agent-ops.test.ts` |
 
 ## Hardening notes
 
@@ -45,10 +46,12 @@ What the collaboration, merge, connector, and infrastructure modules do today, a
 These remain operational or partner-environment concerns even though the in-repo contracts pass:
 
 - A live corporate IdP for the enterprise kernel (it still uses the OIDC adapter plus fixture identities). Noma Cloud itself now has native OpenID Connect login -- discovery, JWKS with key rotation, authorization code + PKCE, ID-token verification, (issuer, subject) bindings, JIT provisioning, domain and group gates, and enforced-SSO policy -- tested against an in-process IdP in `test/cloud-oidc.test.ts`; see the Noma Cloud guide. SAML is not native: it still goes through a SAML-capable proxy and the trusted-header `POST /api/auth/sso` route.
-- Multi-process realtime fan-out (the Yjs relay has no pub/sub between processes; use sticky routing per document)
+- Multi-process realtime fan-out for co-editing (the Yjs relay has no pub/sub between processes; use sticky routing per document). Noma Cloud chat does fan out: every event goes to a shared log that other processes on the same database tail, so chat streams work behind a load balancer.
+- PostgreSQL as Noma Cloud's datastore. Cloud still runs on SQLite (WAL, one file shared by its processes); the enterprise kernel has PostgreSQL DDL, but Cloud has not been ported.
+- Native SAML (see the IdP item above)
 - A CloudFormation stack that has actually been deployed. The template passes `cfn-lint` and the in-repo self-check, but it has not been applied to a live account.
 - An applied AWS account, RDS snapshots, Bedrock quotas, or a malware-scanning appliance
-- A third-party firm's signed pentest report (the independent review pack is executable in CI)
+- A third-party firm's signed pentest report (the independent review pack is executable in CI). DLP detectors are pattern-based and are not a substitute for a data-classification service.
 - Blinded human studies on partner laptops (the paid-pilot harness measures kernel tasks)
 - Complete Microsoft Office theme/PPTX fidelity
 - Comparative LLM-vs-Markdown agent scoring with a partner corpus (the 40-task harness is scripted)

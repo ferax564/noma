@@ -2,10 +2,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { EnterprisePolicy, LegalHold, ScimIdentity } from "../cloud-platform.js";
 import { type CloudServerConfig, type Principal, requireUser, requireWorkspaceOwner, uniqueId } from "./context.js";
+import { DLP_DETECTORS, type DlpDetector } from "../cloud-compliance.js";
 import { HttpError, readJsonBody, sendJson } from "./http.js";
+import { auditNdjson, shipAuditToSiem } from "./siem.js";
 import {
   absoluteUrl,
   boundedInteger,
+  numberQuery,
   optionalRecord,
   optionalString,
   optionalStringArray,
@@ -16,6 +19,12 @@ import { connectorKinds } from "./routes-agents.js";
 import { channelExport, enforceChatRetention } from "./routes-chat.js";
 import { platformInput } from "./routes-knowledge.js";
 import { pageQuery, requestUrl } from "./security.js";
+
+function siemView(config: CloudServerConfig): Record<string, unknown> {
+  const status = config.compliance.siemStatus();
+  const latest = config.platform.auditStats(config.now().toISOString()).latestSequence;
+  return { configured: Boolean(config.siem), ...(config.siem ? { url: new URL(config.siem.url).origin } : {}), ...status, lag: Math.max(0, latest - status.cursor) };
+}
 
 function isoParam(value: string, label: string): string {
   if (Number.isNaN(Date.parse(value))) throw new HttpError(400, `${label} must be an ISO date`);
@@ -103,6 +112,73 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
     if (!resourceType) throw new HttpError(400, "resourceType must be document, site, user, or chat_channel");
     const hold: LegalHold = { id: uniqueId(config), resourceType, resourceId: stringInput(input, "resourceId"), reason: stringInput(input, "reason").slice(0, 2_000), createdBy: user.id, createdAt: config.now().toISOString() };
     sendJson(res, 201, platformInput(() => config.platform.putLegalHold(hold)));
+    return;
+  }
+  if (action === "audit.ndjson" && method === "GET") {
+    if (!config.platform.enterprisePolicy().auditExportEnabled) throw new HttpError(403, "Audit export is disabled");
+    const url = requestUrl(req);
+    const after = boundedInteger(numberQuery(url.searchParams.get("after")), 0, 0, Number.MAX_SAFE_INTEGER, "after");
+    const limit = boundedInteger(numberQuery(url.searchParams.get("limit")), 1_000, 1, 10_000, "limit");
+    const records = config.platform.auditAfter(after, limit);
+    config.platform.recordAudit(user.id, "audit.exported", "workspace", "workspace", { format: "ndjson", after, records: records.length }, config.now().toISOString());
+    res.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-noma-next-after": String(records.at(-1)?.sequence ?? after) });
+    res.end(auditNdjson(records));
+    return;
+  }
+  if (action === "dlp" && method === "GET") {
+    sendJson(res, 200, { ...config.compliance.dlpPolicy(), available: DLP_DETECTORS });
+    return;
+  }
+  if (action === "dlp" && method === "PUT") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    const mode = input.mode;
+    if (mode !== "off" && mode !== "warn" && mode !== "block") throw new HttpError(400, "mode must be off, warn, or block");
+    const detectors = input.detectors === undefined ? [...DLP_DETECTORS] : Array.isArray(input.detectors) ? input.detectors : undefined;
+    if (!detectors || detectors.some((detector) => !(DLP_DETECTORS as readonly unknown[]).includes(detector))) throw new HttpError(400, `detectors must be a subset of ${DLP_DETECTORS.join(", ")}`);
+    const now = config.now().toISOString();
+    const saved = config.compliance.setDlpPolicy({ mode, detectors: [...new Set(detectors as DlpDetector[])], updatedBy: user.id, updatedAt: now });
+    config.platform.recordAudit(user.id, "dlp.policy_updated", "workspace", "workspace", { mode: saved.mode, detectors: saved.detectors }, now);
+    sendJson(res, 200, { ...saved, available: DLP_DETECTORS });
+    return;
+  }
+  if (action === "dlp-findings" && method === "GET") {
+    const since = new Date(config.now().getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    sendJson(res, 200, { findings: config.compliance.listFindings(since, 200) });
+    return;
+  }
+  if (action === "siem" && method === "GET" && !parts[3]) {
+    sendJson(res, 200, siemView(config));
+    return;
+  }
+  if (action === "siem" && parts[3] === "ship" && method === "POST") {
+    if (!config.siem) throw new HttpError(409, "No SIEM is configured (set NOMA_CLOUD_SIEM_URL and NOMA_CLOUD_SIEM_TOKEN)", { code: "siem_not_configured" });
+    await shipAuditToSiem(config);
+    sendJson(res, 200, siemView(config));
+    return;
+  }
+  if (action === "overview" && method === "GET") {
+    const now = config.now();
+    const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const workspace = config.store.workspaceCounts(since);
+    const chat = config.chat.stats(since);
+    sendJson(res, 200, {
+      generatedAt: now.toISOString(),
+      window: { since, monthStart },
+      people: { users: workspace.users, activeLast30d: workspace.activeUsers },
+      knowledge: { spaces: workspace.spaces, pages: workspace.pages },
+      work: { projects: workspace.projects, openIssues: workspace.openIssues },
+      chat,
+      storage: { attachmentBytes: workspace.attachmentBytes, chatFileBytes: chat.fileBytes },
+      ai: { spendLast30dUsd: Math.round(workspace.aiSpendUsd * 100) / 100, agents: config.platform.agentCounts(), paused: config.agentOps.killSwitch().paused },
+      runs: { environment: config.runProvider?.name ?? null, ...config.devloop.stats(monthStart) },
+      compliance: {
+        dlp: { mode: config.compliance.dlpPolicy().mode, ...config.compliance.findingCounts(since) },
+        audit: { ...config.platform.auditStats(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()), exportEnabled: config.platform.enterprisePolicy().auditExportEnabled },
+        siem: siemView(config),
+        chatRetentionDays: config.platform.enterprisePolicy().chatRetentionDays ?? 0,
+      },
+    });
     return;
   }
   if (action === "audit" && method === "GET") {

@@ -346,7 +346,7 @@ people and agents under one permission model. It ships in five steps:
 3. Agents that work unattended: hosted and scheduled agents, one approval
    queue, a kill switch. (Shipped.)
 4. Enterprise scale and compliance: cross-process fan-out, SIEM audit export,
-   DLP, an admin console.
+   DLP, an admin console. (Shipped.)
 5. Make switching easy: Slack import and bridge, Jira import.
 
 PLAN.md §23.22 holds the detail.

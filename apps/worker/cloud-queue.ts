@@ -1,8 +1,11 @@
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { CloudComplianceStore } from "../../src/cloud-compliance.js";
 import { openNomaCloudDatabase } from "../../src/cloud-db.js";
 import { createEmbeddingProviderFromEnv } from "../../src/cloud-embeddings.js";
 import { CloudKnowledgePlatform } from "../../src/cloud-platform.js";
 import { runCloudQueueTick } from "../../src/cloud/queue.js";
+import { shipAuditToSiem, siemTargetFromEnv } from "../../src/cloud/siem.js";
 
 const dataDir = resolve(process.env.NOMA_CLOUD_DATA_DIR ?? ".noma-cloud/documents");
 const storageRoot = dirname(dataDir);
@@ -14,10 +17,14 @@ const store = openNomaCloudDatabase({
   sitesDir: resolve(process.env.NOMA_CLOUD_SITES_DIR ?? join(storageRoot, "sites")),
 });
 const platform = new CloudKnowledgePlatform(dbPath, { embeddings: createEmbeddingProviderFromEnv() });
+const compliance = new CloudComplianceStore(dbPath);
+const siem = siemTargetFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
 try {
   const result = await runCloudQueueTick(store, () => new Date(), undefined, platform);
-  process.stdout.write(`${JSON.stringify(result)}\n`);
+  const shipped = siem ? await shipAuditToSiem({ platform, compliance, siem, now: () => new Date() }) : undefined;
+  process.stdout.write(`${JSON.stringify({ ...result, ...(shipped ? { siem: shipped } : {}) })}\n`);
 } finally {
+  compliance.close();
   platform.close();
   store.close();
 }

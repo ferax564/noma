@@ -6,6 +6,7 @@
  * Every message takes the next per-channel `seq`, thread replies included, so a client can poll
  * `after=<seq>` or follow the in-process event stream and never miss a write.
  */
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -175,22 +176,42 @@ interface MessageRow {
   deleted_at: string | null;
 }
 
+/**
+ * A new stream also receives events other processes wrote this recently, covering the gap between a
+ * client loading its timeline and opening its stream, without replaying older history.
+ */
+const STREAM_CATCH_UP_MS = 30_000;
+
 export class CloudChatStore {
   private readonly db: SqliteDatabase;
   private readonly events = new EventEmitter();
   private readonly streams = new Map<() => void, string>();
 
-  constructor(dbPath: string) {
+  /** Identifies this process in the shared event log so it skips its own events when tailing. */
+  private readonly origin = randomUUID();
+  private tailCursor = 0;
+  private tailTimer: NodeJS.Timeout | undefined;
+  private lastPrune = 0;
+  private readonly tailIntervalMs: number;
+
+  /**
+   * `tailIntervalMs` sets how often a process with live subscribers reads events written by other
+   * processes on the same database (default 500 ms), so SSE streams fan out across workers.
+   */
+  constructor(dbPath: string, options: { tailIntervalMs?: number } = {}) {
     mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new DatabaseConstructor(dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("busy_timeout = 5000");
     this.events.setMaxListeners(0);
     this.applySchema();
+    this.tailIntervalMs = options.tailIntervalMs ?? 500;
+    this.tailCursor = (this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM chat_event_log").get() as { id: number }).id;
   }
 
   close(): void {
     this.closeStreams();
+    this.stopTail();
     this.db.close();
   }
 
@@ -670,7 +691,56 @@ export class CloudChatStore {
   subscribe(channelId: string, listener: (event: ChatEvent) => void): () => void {
     const key = `channel:${channelId}`;
     this.events.on(key, listener);
-    return () => this.events.off(key, listener);
+    this.startTail();
+    return () => {
+      this.events.off(key, listener);
+      if (this.events.eventNames().every((name) => this.events.listenerCount(name) === 0)) this.stopTail();
+    };
+  }
+
+  /** Channel, conversation, message, and file totals for the admin overview. */
+  stats(since: string): { channels: number; directMessages: number; messages: number; files: number; fileBytes: number } {
+    const count = (sql: string, ...params: string[]) => (this.db.prepare(sql).get(...params) as { n: number }).n;
+    return {
+      channels: count("SELECT COUNT(*) AS n FROM chat_channels WHERE kind = 'channel' AND archived_at IS NULL"),
+      directMessages: count("SELECT COUNT(*) AS n FROM chat_channels WHERE kind = 'dm'"),
+      messages: count("SELECT COUNT(*) AS n FROM chat_messages WHERE kind = 'message' AND deleted_at IS NULL AND created_at >= ?", since),
+      files: count("SELECT COUNT(*) AS n FROM chat_files"),
+      fileBytes: count("SELECT COALESCE(SUM(size), 0) AS n FROM chat_files"),
+    };
+  }
+
+  /** Emits events other processes wrote since the last read; returns how many were delivered. */
+  tailOnce(): number {
+    const rows = this.db.prepare("SELECT id, origin, event_json FROM chat_event_log WHERE id > ? ORDER BY id LIMIT 1000").all(this.tailCursor) as Array<{ id: number; origin: string; event_json: string }>;
+    let delivered = 0;
+    for (const row of rows) {
+      this.tailCursor = row.id;
+      if (row.origin === this.origin) continue;
+      const event = JSON.parse(row.event_json) as ChatEvent;
+      this.events.emit(`channel:${event.channelId}`, event);
+      delivered += 1;
+    }
+    return delivered;
+  }
+
+  private startTail(): void {
+    if (this.tailTimer || this.tailIntervalMs <= 0) return;
+    const settled = (this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM chat_event_log WHERE created_at < ?").get(Date.now() - STREAM_CATCH_UP_MS) as { id: number }).id;
+    this.tailCursor = Math.max(this.tailCursor, settled);
+    this.tailTimer = setInterval(() => {
+      try {
+        this.tailOnce();
+      } catch {
+        this.stopTail();
+      }
+    }, this.tailIntervalMs);
+    this.tailTimer.unref();
+  }
+
+  private stopTail(): void {
+    if (this.tailTimer) clearInterval(this.tailTimer);
+    this.tailTimer = undefined;
   }
 
   /**
@@ -692,6 +762,12 @@ export class CloudChatStore {
 
   private publish(event: ChatEvent): void {
     this.events.emit(`channel:${event.channelId}`, event);
+    const now = Date.now();
+    this.db.prepare("INSERT INTO chat_event_log (origin, channel_id, event_json, created_at) VALUES (?, ?, ?, ?)").run(this.origin, event.channelId, JSON.stringify(event), now);
+    if (now - this.lastPrune > 60_000) {
+      this.lastPrune = now;
+      this.db.prepare("DELETE FROM chat_event_log WHERE created_at < ?").run(now - 10 * 60_000);
+    }
   }
 
   private publishReaction(messageId: string): void {
@@ -701,6 +777,14 @@ export class CloudChatStore {
 
   private applySchema(): void {
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS chat_event_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        origin TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        event_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS chat_event_log_created ON chat_event_log (created_at);
       CREATE TABLE IF NOT EXISTS chat_channels (
         id TEXT PRIMARY KEY,
         site_id TEXT NOT NULL,

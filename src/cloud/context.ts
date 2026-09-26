@@ -19,6 +19,8 @@ import type {
 import type { BlobStore } from "../cloud-blobs.js";
 import type { CloudChatStore } from "../cloud-chat.js";
 import type { CloudAgentOpsStore } from "../cloud-agent-ops.js";
+import type { CloudComplianceStore } from "../cloud-compliance.js";
+import type { SiemTarget } from "./siem.js";
 import type { CloudDevLoopStore } from "../cloud-devloop.js";
 import type { RunProvider } from "./run-provider.js";
 import type { LlmProvider } from "../cloud-llm.js";
@@ -57,6 +59,10 @@ export interface CloudServerConfig {
   chat: CloudChatStore;
   /** Linked repositories, pull requests, and deploy/test runs (`/api/projects/:id/repo|pulls|runs`). */
   devloop: CloudDevLoopStore;
+  /** DLP policy and findings, and the SIEM forwarder's cursor. */
+  compliance: CloudComplianceStore;
+  /** Where the audit log is shipped as NDJSON; absent when no SIEM is configured. */
+  siem?: SiemTarget;
   /** Hosted and scheduled agents, their job queue, and the workspace agent kill switch. */
   agentOps: CloudAgentOpsStore;
   /** Where `/deploy` and `/test` runs execute (ezkeel); absent when no run environment is configured. */

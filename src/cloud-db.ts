@@ -3434,6 +3434,21 @@ export class NomaCloudDatabase {
   }
 
   /** Total AI spend by one user since `since` (ISO timestamp). */
+  /** Workspace-wide counts for the admin overview. */
+  workspaceCounts(since: string): { users: number; activeUsers: number; spaces: number; pages: number; projects: number; openIssues: number; aiSpendUsd: number; attachmentBytes: number } {
+    const count = (sql: string, ...params: string[]) => (this.db.prepare(sql).get(...params) as { n: number }).n;
+    return {
+      users: count("SELECT COUNT(*) AS n FROM users"),
+      activeUsers: count("SELECT COUNT(DISTINCT actor_id) AS n FROM activity_events WHERE created_at >= ?", since),
+      spaces: count("SELECT COUNT(*) AS n FROM sites WHERE id NOT IN (SELECT resource_id FROM trashed_resources WHERE resource_type = 'site')"),
+      pages: count("SELECT COUNT(*) AS n FROM documents WHERE id NOT IN (SELECT resource_id FROM trashed_resources WHERE resource_type = 'document')"),
+      projects: count("SELECT COUNT(*) AS n FROM projects"),
+      openIssues: count("SELECT COUNT(*) AS n FROM issues WHERE status != 'done'"),
+      aiSpendUsd: (this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS n FROM ai_usage WHERE created_at >= ?").get(since) as { n: number }).n,
+      attachmentBytes: count("SELECT COALESCE(SUM(size), 0) AS n FROM attachments WHERE deleted_at IS NULL"),
+    };
+  }
+
   aiSpendSince(userId: string, since: string): number {
     const row = this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS total FROM ai_usage WHERE user_id = ? AND created_at >= ?").get(userId, since) as { total: number };
     return row.total;
