@@ -53,6 +53,7 @@ import {
   updateAgentAssignment,
 } from "./agent-assignments.js";
 import { documentHasBlock, documentResponse, updateDocument } from "./records.js";
+import { agentChatInbox, callChatGatewayTool } from "./routes-chat.js";
 import { createComment } from "./routes-comments.js";
 import { knowledgeDocuments, ownedAgent, platformInput } from "./routes-knowledge.js";
 import {
@@ -119,6 +120,11 @@ export async function routeAgents(req: IncomingMessage, res: ServerResponse, par
     const now = config.now().toISOString();
     const grant: AgentAccessGrant = { id: uniqueId(config), agentId: agent.id, resourceType, resourceId, role, createdAt: now, updatedAt: now };
     sendJson(res, 201, platformInput(() => config.platform.grantAgentAccess(grant, user.id, now)));
+    return;
+  }
+  if (action === "chat" && !childId && method === "GET") {
+    const url = requestUrl(req);
+    sendJson(res, 200, { mentions: agentChatInbox(config, agent, url.searchParams.get("status") ?? undefined, pageQuery(url, 25, 100).limit) });
     return;
   }
   if (action === "assignments" && !childId && method === "GET") {
@@ -459,6 +465,9 @@ async function callGatewayTool(
   if (name === "update_assignment") {
     const agent = ownedAgent(config, user, stringInput(args, "agentId"));
     return { assignment: assignmentResponse(config, setAssignmentStatus(config, agent, stringInput(args, "assignmentId"), args)) };
+  }
+  if (name === "chat_inbox" || name === "chat_history" || name === "chat_post") {
+    return await callChatGatewayTool(name, args, config, principal, ownedAgent(config, user, stringInput(args, "agentId")));
   }
   if (name === "review") {
     const documentId = stringInput(args, "documentId");

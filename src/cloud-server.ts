@@ -9,6 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type BlobStore, LocalDiskBlobStore, S3BlobStore, type S3ServerSideEncryption } from "./cloud-blobs.js";
 import { attachCloudCollab, type CloudCollabOptions } from "./cloud-collab.js";
+import { CloudChatStore } from "./cloud-chat.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
 import { createEmbeddingProviderFromEnv, type EmbeddingProvider } from "./cloud-embeddings.js";
 import { createLlmProviderFromEnv, type LlmProvider } from "./cloud-llm.js";
@@ -159,7 +160,7 @@ export interface NomaCloudAiOptions {
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
   const config = createCloudServerConfig(options);
-  const { store, platform } = config;
+  const { store, platform, chat } = config;
   const stopMaintenance = startMaintenanceScheduler(config);
   if (config.production && config.adminUserIds.length === 0) {
     console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
@@ -180,6 +181,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
   const closeServer = server.close.bind(server);
   server.close = ((callback?: (error?: Error) => void) => {
     void collab.shutdown();
+    chat.closeStreams();
     return closeServer(callback);
   }) as Server["close"];
   const queueIntervalMs = options.queueIntervalMs ?? Number(process.env.NOMA_CLOUD_QUEUE_INTERVAL_MS ?? 5_000);
@@ -188,6 +190,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
   server.on("close", () => {
     if (queueTimer) clearInterval(queueTimer);
     stopMaintenance();
+    chat.close();
     platform.close();
     store.close();
   });
@@ -204,6 +207,7 @@ export async function runNomaCloudMaintenanceOnce(options: NomaCloudServerOption
   try {
     return await runDueMaintenance(config);
   } finally {
+    config.chat.close();
     config.platform.close();
     config.store.close();
   }
@@ -225,6 +229,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const adminUserIds = options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean);
   const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir, adminUserIds, bootstrapFirstUserAdmin: !production });
   const platform = new CloudKnowledgePlatform(dbPath, cloudEmbeddingsConfig(options.embeddings ?? {}));
+  const chat = new CloudChatStore(dbPath);
   return {
     dataDir,
     usersDir,
@@ -248,6 +253,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     now,
     store,
     platform,
+    chat,
     blobs: options.blobStore ?? createBlobStoreFromEnv(storageRoot),
     maxAttachmentBytes: positiveInteger(
       options.maxAttachmentBytes ?? Number(process.env.NOMA_CLOUD_MAX_ATTACHMENT_BYTES ?? 25 * 1024 * 1024),

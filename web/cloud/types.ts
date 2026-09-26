@@ -189,6 +189,52 @@ export interface CloudProject {
   access?: { role: CloudRole };
 }
 
+export interface ChatChannel {
+  id: string;
+  siteId: string;
+  projectId?: string;
+  name: string;
+  topic?: string;
+  visibility: "public" | "private";
+  lastSeq: number;
+  lastMessageAt?: string;
+  archivedAt?: string;
+  joined: boolean;
+  lastReadSeq?: number;
+  unread?: number;
+  mentions?: number;
+}
+
+export interface ChatChannelDetail extends ChatChannel {
+  project?: { id: string; key: string; name: string };
+  space: { id: string; title: string };
+  memberRole?: "member" | "admin";
+  access: { role: CloudRole; canManage: boolean; canPost: boolean };
+  members: Array<{ id: string; name: string; type: "user" | "agent"; role: "member" | "admin" }>;
+  agents: Array<{ id: string; name: string }>;
+}
+
+export interface ChatMessage {
+  id: string;
+  channelId: string;
+  seq: number;
+  threadId?: string;
+  kind: "message" | "system";
+  authorId: string;
+  authorName: string;
+  agent?: { id: string; name: string };
+  body: string;
+  replyCount: number;
+  lastReplyAt?: string;
+  createdAt: string;
+  editedAt?: string;
+  deletedAt?: string;
+  reactions: Array<{ emoji: string; memberIds: string[] }>;
+  mentions: Array<{ id: string; name: string; agent?: true }>;
+  refs: Array<{ id: string; key: string; summary: string; status: string }>;
+  links: { issues: Array<{ id: string; key: string; summary: string; status: string }>; documents: Array<{ id: string; title: string }> };
+}
+
 export interface CloudIssue {
   id: string;
   key: string;

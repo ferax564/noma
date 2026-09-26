@@ -264,7 +264,7 @@ Capacity could be constrained.
     assert.ok(collections.find((collection) => collection.id === "open_decisions")?.items.some((item) => item.blockId === "open-decision"));
     assert.ok(collections.find((collection) => collection.id === "claims_missing_evidence")?.items.some((item) => item.blockId === "unsupported-claim"));
     assert.ok(collections.find((collection) => collection.id === "risks_by_owner")?.items.some((item) => item.ownerId === "bob"));
-    assert.deepEqual(platform.gatewayCapabilities().map((capability) => capability.operation), ["search", "cited_answer", "list_ids", "llm_export", "proof", "proposal", "review", "apply", "webhook", "assignments", "reply", "update_assignment"]);
+    assert.deepEqual(platform.gatewayCapabilities().map((capability) => capability.operation), ["search", "cited_answer", "list_ids", "llm_export", "proof", "proposal", "review", "apply", "webhook", "assignments", "reply", "update_assignment", "chat_inbox", "chat_history", "chat_post"]);
   });
 });
 

@@ -486,6 +486,52 @@
       <div id="revisionDiffOutput" class="revision-diff" aria-live="polite" hidden></div>
     </section>
 
+    <section id="chatSection" class="inspector-section chat-panel">
+      <div class="inspector-heading-row">
+        <h2>Chat</h2>
+        <button id="refreshChatButton" type="button" aria-label="Refresh channels">Refresh</button>
+      </div>
+      <label class="stack-field" for="chatChannelSelect">Channel
+        <select id="chatChannelSelect"></select>
+      </label>
+      <div id="chatChannelMeta" class="history-meta"></div>
+      <div id="chatAgentChips" class="chat-agent-chips" aria-label="Agents you can mention in this channel"></div>
+      <div id="chatThreadBanner" class="chat-thread-banner" hidden>
+        <span id="chatThreadLabel">Thread</span>
+        <button id="chatCloseThreadButton" type="button">Back to channel</button>
+      </div>
+      <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+      <label class="stack-field" for="chatComposerInput">Message · @ to mention · Ctrl+Enter to send
+        <textarea id="chatComposerInput" class="compact-textarea" placeholder="Message the channel"></textarea>
+      </label>
+      <div class="button-row">
+        <button id="chatSendButton" type="button">Send</button>
+        <button id="chatJoinButton" type="button" hidden>Join channel</button>
+      </div>
+      <details class="work-subsection">
+        <summary>New channel</summary>
+        <div class="work-create-grid">
+          <label class="stack-field" for="chatNewNameInput">Name
+            <input id="chatNewNameInput" type="text" maxlength="80" placeholder="release-train" />
+          </label>
+          <label class="stack-field" for="chatNewVisibilitySelect">Visibility
+            <select id="chatNewVisibilitySelect">
+              <option value="public">Public</option>
+              <option value="private">Private</option>
+            </select>
+          </label>
+        </div>
+        <label class="stack-field" for="chatNewTopicInput">Topic
+          <input id="chatNewTopicInput" type="text" maxlength="500" placeholder="What this channel is about" />
+        </label>
+        <label class="stack-field" for="chatNewProjectSelect">Work project (optional)
+          <select id="chatNewProjectSelect"></select>
+        </label>
+        <button id="chatCreateChannelButton" type="button">Create Channel</button>
+      </details>
+      <div id="chatStatus" class="panel-status"></div>
+    </section>
+
     <section class="inspector-section">
       <div class="inspector-heading-row">
         <h2>Work</h2>

@@ -17,6 +17,7 @@ import type {
   NomaCloudDatabase,
 } from "../cloud-db.js";
 import type { BlobStore } from "../cloud-blobs.js";
+import type { CloudChatStore } from "../cloud-chat.js";
 import type { LlmProvider } from "../cloud-llm.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
@@ -49,6 +50,8 @@ export interface CloudServerConfig {
   now: () => Date;
   store: NomaCloudDatabase;
   platform: CloudKnowledgePlatform;
+  /** Channels, threads, and messages (`/api/channels`). */
+  chat: CloudChatStore;
   blobs: BlobStore;
   /** Largest single attachment upload, in bytes. */
   maxAttachmentBytes: number;

@@ -6,6 +6,16 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Chat (Noma Cloud):** Slack-style channels inside each space, organised by Work project or by topic, with public and private channels, threads, reactions, edits, read markers, and unread/mention counts.
+  - **Access:** space viewers read and post in public channels (posting joins them). Private channels are members-only and return 404 to everyone else. Space editors create channels, and archived channels and spaces are read-only.
+  - **Mentions and search:** `@{user-id}` sends the usual `mention` notification to people who can read the channel. Issue keys such as `SHIP-12` unfurl to summary and status for projects in the same space. `GET /api/chat/search?q=` searches every readable channel.
+  - **Live updates:** `GET /api/channels/:id/stream` is a Server-Sent Events stream of content-free notices. Every message gets a gap-free per-channel `seq` for `?after=` polling.
+  - **Chat → work:** `POST …/messages/:id/issue` turns a message into a Work issue (label `chat`, linked back from the thread). `POST …/messages/:id/page` saves a thread as a `.noma` page with one `:::message{id="msg-…"}` block per turn, so conversations reach reviewable source.
+  - **Agents as members:** an active agent with the new `chat` capability and a grant on the space can read public channels (and private ones once added), is listed for mentions, and answers through the gateway tools `chat_inbox`, `chat_history`, and `chat_post` or `GET /api/agents/:id/chat`. Mentioning it notifies its owner, and a reply in the thread clears the pending mention. Agent posts never mention other agents.
+  - **UI:** a **Chat** inspector with a channel picker, thread view, composer with the @ picker and agent chips, and **→ Issue** / **→ Page** actions.
+
 ### Changed
 
 - **Release workflow:** the release now also runs on pushes to `main`. When `package.json`'s version has no tag yet, merging the release PR runs the full gate, tags the version, publishes to npm, and creates the GitHub release, with no tag push or manual dispatch. Other pushes to `main` skip it. Release runs are serialized, so a manual dispatch and a push for the same version do not both tag.
