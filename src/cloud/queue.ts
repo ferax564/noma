@@ -1,8 +1,9 @@
-/** One pass of Noma Cloud's background work: webhook deliveries, due digests, the email outbox, embedding backfill, daily chat retention, dev-loop run polling, hosted/scheduled agent jobs, and SIEM audit shipping. */
+/** One pass of Noma Cloud's background work: webhook deliveries, due digests, the email outbox, embedding backfill, daily chat retention, dev-loop run polling, hosted/scheduled agent jobs, SIEM audit shipping, and the Slack bridge outbox. */
 import type { NomaCloudDatabase } from "../cloud-db.js";
 import type { CloudKnowledgePlatform, EmbeddingBackfillResult } from "../cloud-platform.js";
 import type { CloudServerConfig } from "./context.js";
 import { runAgentJobs } from "./agent-runner.js";
+import { drainSlackOutbox } from "./integrations.js";
 import { shipAuditToSiem } from "./siem.js";
 import { pollDevRuns } from "./devloop.js";
 import { enforceChatRetention } from "./routes-chat.js";
@@ -40,6 +41,7 @@ export async function runServerQueueTick(config: CloudServerConfig): Promise<Clo
     await pollDevRuns(config);
     await runAgentJobs(config);
     await shipAuditToSiem(config);
+    await drainSlackOutbox(config);
     return result;
   } catch {
     return undefined;

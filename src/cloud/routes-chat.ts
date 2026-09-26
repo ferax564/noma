@@ -10,6 +10,7 @@
  * grant on the space can read public channels (private ones once added as a member), answer its
  * mentions, and post. Agent posts never create agent mentions, so agents cannot ping-pong.
  */
+import { enqueueSlackOutbound } from "./integrations.js";
 import { enforceDlp } from "./dlp.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ChatChannel, ChatChannelVisibility, ChatFile, ChatMember, ChatMessage, ChatMessageKind } from "../cloud-chat.js";
@@ -145,6 +146,10 @@ export async function routeChannels(req: IncomingMessage, res: ServerResponse, u
     config.chat.deleteUnattachedFile(file.id);
     await collectAttachmentGarbage(config, [file.sha256]);
     sendJson(res, 200, { removed: file.id });
+    return;
+  }
+  if (action === "bridge") {
+    await routeBridge(req, res, config, context);
     return;
   }
   if (action === "export" && method === "GET") {
@@ -738,6 +743,7 @@ function postMessage(config: CloudServerConfig, context: ChannelContext, input: 
   if (!agent) config.chat.markRead(context.channel.id, context.user.id, message.seq);
   notifyMentions(config, context, message, mentions, agent);
   if (context.channel.kind === "dm") notifyDmMembers(config, context, message, mentions);
+  enqueueSlackOutbound(config, context.channel, message);
   return message;
 }
 
@@ -1206,4 +1212,34 @@ function issueRefs(config: CloudServerConfig, channel: ChatChannel, body: string
     const project = config.store.readProject(issue.projectId);
     return project && project.siteId === channel.siteId ? [{ id: issue.id, key: issue.key, summary: issue.summary, status: issue.status }] : [];
   });
+}
+
+/** `GET|PUT|DELETE /api/channels/:id/bridge` — link a channel to a Slack channel (channel admins; needs the Slack app configured). */
+async function routeBridge(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig, context: ChannelContext): Promise<void> {
+  const method = req.method ?? "GET";
+  requireSpace(context);
+  if (method === "GET") {
+    sendJson(res, 200, { configured: Boolean(config.slack), bridge: config.integrations.readBridge(context.channel.id) ?? null });
+    return;
+  }
+  if (!context.canManage) throw new HttpError(403, "Channel admin access is required");
+  if (method === "DELETE") {
+    if (!config.integrations.deleteBridge(context.channel.id)) throw new HttpError(404, "This channel is not bridged");
+    config.platform.recordAudit(context.user.id, "chat.bridge_removed", "site", context.channel.siteId, { channelId: context.channel.id }, config.now().toISOString());
+    sendJson(res, 200, { removed: true });
+    return;
+  }
+  if (method !== "PUT") throw new HttpError(405, "Method not allowed");
+  if (!config.slack) throw new HttpError(409, "Set NOMA_CLOUD_SLACK_BOT_TOKEN and NOMA_CLOUD_SLACK_SIGNING_SECRET to bridge channels", { code: "slack_not_configured" });
+  const input = await readJsonBody(req, config.maxBodyBytes);
+  const slackChannelId = stringInput(input, "slackChannelId");
+  if (!/^[CG][A-Z0-9]{6,20}$/.test(slackChannelId)) throw new HttpError(400, "slackChannelId must be a Slack channel ID such as C0123ABCD");
+  const linked = config.integrations.bridgeForSlackChannel(slackChannelId);
+  if (linked && linked.channelId !== context.channel.id) throw new HttpError(409, "That Slack channel is already bridged to another Noma channel");
+  const now = config.now().toISOString();
+  const current = config.integrations.readBridge(context.channel.id);
+  const bridge = config.integrations.writeBridge({ channelId: context.channel.id, slackChannelId, enabled: input.enabled !== false, createdBy: current?.createdBy ?? context.user.id, createdAt: current?.createdAt ?? now, updatedAt: now });
+  config.platform.recordAudit(context.user.id, "chat.bridge_linked", "site", context.channel.siteId, { channelId: context.channel.id, slackChannelId }, now);
+  systemMessage(config, context.channel, context.user, `bridged this channel with Slack (${slackChannelId})`);
+  sendJson(res, 200, { configured: true, bridge });
 }

@@ -1762,6 +1762,74 @@ GET       /api/agents/<agent-id>/chat?status=pending|all
 ```
 
 
+## Moving in from Slack and Jira {id="switching"}
+
+Teams rarely switch tools in one day. Noma Cloud imports the history you
+already have and bridges live Slack channels while people move over.
+
+**Slack export.** A Slack workspace admin exports the workspace from
+*Settings → Import/Export Data*. In a space, press **Import Slack** in the
+Chat section and pick the ZIP, or call `POST /api/import/slack?siteId=<space>`
+with the ZIP as the body.
+
+- Public channels become public channels, and private channels (`groups.json`)
+  become private ones. A channel with the same name is reused only when its
+  visibility matches (and, for a private channel, you are already a member);
+  otherwise the import makes `name-private` or `name-2`.
+- Messages keep their original time and thread. Reactions, `@` mentions,
+  channel links, and link labels carry over. Slack formatting becomes Markdown.
+- People are matched by email to members of the space. A matched person
+  authors their own messages and reactions. Anyone else is kept as a bold name
+  on the message.
+- Files are listed as links; their bytes stay in Slack. Join and leave notices
+  are dropped. Direct messages are counted but not imported, because they are
+  personal.
+- Re-importing the same export adds nothing. The response reports channels,
+  messages, threads, reactions, and who could not be matched.
+
+**Jira.** Save the JSON of a Jira search, for example
+`/rest/api/3/search?jql=project=OLD&fields=*all&expand=renderedFields`. A
+single page, several pages, or a bare issue array all work. Import it with
+**Import Jira** in Work, which targets the selected project, or with
+`POST /api/import/jira {"projectId": "...", "search": ...}`.
+
+| Jira | Noma Work |
+|---|---|
+| Bug / Story / Epic / other types | `bug` / `story` / `epic` / `task` |
+| Status category *To Do*, *In Progress*, *Done*; names with *Review*, *QA*, *Testing* | `todo`, `in_progress`, `done`; `in_review` |
+| Priority (Blocker/Highest … Trivial/Lowest) | `highest` … `lowest` |
+| Parent | subtask of the imported parent |
+| Blocks / Duplicates / other links | `blocks` / `duplicates` / `relates` |
+| Description and comments (ADF or text) | Markdown; comments keep their time and author |
+
+Labels are kept, plus a `jira` label, and each description ends with
+*Imported from Jira KEY*. People are matched by email. Unmatched people are
+named in the text. Links are read from either end (`outwardIssue` or
+`inwardIssue`) and created once. Every issue and comment is checked against
+data-loss prevention before anything is written, so a blocked import leaves
+nothing half done. Re-importing creates nothing twice.
+
+**Two-way Slack bridge.** Create a Slack app with the bot scopes `chat:write`,
+`chat:write.customize`, `users:read`, `users:read.email`, and
+`channels:history`. Point its Event Subscriptions at
+`https://<cloud>/api/hooks/slack` and subscribe to `message.channels`. Then
+set `NOMA_CLOUD_SLACK_BOT_TOKEN` and `NOMA_CLOUD_SLACK_SIGNING_SECRET` (or
+`_FILE`). A channel admin presses ⇄ in the chat header, or calls
+`PUT /api/channels/<id>/bridge {"slackChannelId": "C0123ABCD"}`. After that:
+
+- messages posted in Noma, by people or agents, go to Slack under the
+  author's name, through an outbox that retries up to five times. Each row is
+  leased before it is posted, so several processes never post it twice, and
+  the standalone queue worker (`apps/worker/cloud-queue.ts`) drains it too;
+- messages posted in the Slack channel come into Noma. Events are verified
+  with the v0 signature and a five-minute timestamp window. People matched by
+  email post as themselves; everyone else posts under the bridge owner with
+  their Slack name;
+- replies stay in their thread on both sides. Retries, bot posts, and our own
+  echoes are ignored, and data-loss prevention applies to inbound text.
+
+`DELETE /api/channels/<id>/bridge` ends the bridge.
+
 ## Compliance and administration {id="compliance"}
 
 Workspace admins get one **Workspace admin** section in the inspector. It shows

@@ -1368,7 +1368,7 @@ people and agents under one permission model. Five steps, shipped in order:
    `docs/noma-cloud.noma#compliance`.
 5. **Make switching easy.** Import Slack exports into channels, bridge Slack
    channels in both directions during a migration, and import Jira projects
-   into Work.
+   into Work. *Shipped (unreleased):* see `docs/noma-cloud.noma#switching`.
 
 `docs/direction.noma` mirrors this section.
 

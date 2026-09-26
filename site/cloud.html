@@ -565,6 +565,8 @@
       <div class="inspector-heading-row">
         <h2>Chat</h2>
         <button id="openChatButton" type="button" aria-label="Open chat">Open chat</button>
+        <button id="slackImportButton" type="button" aria-label="Import a Slack export into this space" title="Import a Slack export (.zip)">Import Slack</button>
+        <input id="slackImportInput" type="file" accept=".zip,application/zip" hidden />
       </div>
       <div id="chatLauncherList" class="chat-launcher-list" aria-label="Channels in this space"></div>
       <div id="chatStatus" class="panel-status"></div>
@@ -573,6 +575,8 @@
     <section class="inspector-section">
       <div class="inspector-heading-row">
         <h2>Work</h2>
+        <button id="jiraImportButton" type="button" aria-label="Import Jira issues into this project" title="Import Jira search JSON">Import Jira</button>
+        <input id="jiraImportInput" type="file" accept=".json,application/json" hidden />
         <button id="refreshWorkButton" type="button" aria-label="Refresh work board">Refresh</button>
       </div>
       <label class="stack-field" for="workProjectSelect">Project
@@ -1055,6 +1059,7 @@
         <div class="chat-header-actions">
           <div id="chatAgentChips" class="chat-agent-chips" aria-label="Agents you can mention"></div>
           <button id="chatJoinButton" type="button" class="chat-primary" hidden>Join channel</button>
+          <button id="chatBridgeButton" type="button" class="chat-icon-button" aria-label="Bridge with a Slack channel" title="Bridge with a Slack channel" hidden>⇄</button>
           <button id="chatExportButton" type="button" class="chat-icon-button" aria-label="Export conversation as .noma" title="Export conversation as .noma" hidden>⤓</button>
           <button id="chatCloseButton" type="button" class="chat-icon-button" aria-label="Close chat" title="Close chat (Esc)">✕</button>
         </div>

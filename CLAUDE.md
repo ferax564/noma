@@ -49,8 +49,11 @@ src/                       TypeScript core — parser, AST, renderers, validator
   ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
   verify.ts                Conformance fixture runner (`noma verify`)
   cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
-  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, DMs, files, agent chat, eDiscovery, retention, thread → .noma), routes-find.ts (⌘K search across pages/issues/chat), routes-devloop.ts + devloop.ts + run-provider.ts (GitHub webhook, PR/CI → issues + threads, /deploy + /test runs on ezkeel), agent-runner.ts + routes-agent-ops.ts (hosted/scheduled agents, kill switch), routes-approvals.ts (one approval queue), dlp.ts + siem.ts (DLP detectors, audit NDJSON → SIEM), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
+  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, DMs, files, agent chat, eDiscovery, retention, thread → .noma), routes-find.ts (⌘K search across pages/issues/chat), routes-devloop.ts + devloop.ts + run-provider.ts (GitHub webhook, PR/CI → issues + threads, /deploy + /test runs on ezkeel), agent-runner.ts + routes-agent-ops.ts (hosted/scheduled agents, kill switch), routes-approvals.ts (one approval queue), dlp.ts + siem.ts (DLP detectors, audit NDJSON → SIEM), integrations.ts (Slack/Jira import, two-way Slack bridge), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
   cloud-db.ts              SQLite persistence for Noma Cloud
+  cloud-integrations.ts    Import ledgers + Slack bridge state (links, message map, people cache, outbox)
+  slack-import.ts          Slack export ZIP → channels/messages; mrkdwn ↔ Markdown (pure)
+  jira-import.ts           Jira search JSON → Work issues; ADF → Markdown (pure)
   cloud-compliance.ts      Compliance state — DLP policy + findings, SIEM cursor
   cloud-agent-ops.ts       Unattended agents — hosting, schedules, job queue, workspace kill switch
   cloud-devloop.ts         Dev-loop persistence — linked repos, pull requests, webhook dedupe, deploy/test runs

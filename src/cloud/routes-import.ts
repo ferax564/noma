@@ -30,6 +30,8 @@ import {
   readSite,
   recordActivity,
   requireNotTrashed,
+  requireAccessRole,
+  requireProjectAccess,
   requireRecordAccess,
   requireUser,
   uniqueId,
@@ -37,6 +39,9 @@ import {
   writeSite,
 } from "./context.js";
 import { headerValue, HttpError, readJsonBody, sendJson, sha256Hex } from "./http.js";
+import { importJiraIssues, importSlackExport } from "./integrations.js";
+import { JiraImportError, parseJiraExport } from "../jira-import.js";
+import { parseSlackExport, SlackImportError } from "../slack-import.js";
 import { assertCloudId, optionalCloudId, optionalString } from "./input.js";
 import { attachmentIdFor } from "./routes-attachments.js";
 import { ImportAttachmentLedger, preparePageAttachments } from "./import-attachments.js";
@@ -67,6 +72,45 @@ export async function routeImport(
       ? await startNotionImport(req, url, config, principal, user)
       : await startConfluenceImport(req, url, config, principal, user);
     sendJson(res, 202, { job: started, statusUrl: `/api/import/jobs/${started.id}` });
+    return;
+  }
+
+  if (parts[2] === "slack" && !parts[3]) {
+    if (method !== "POST") throw new HttpError(405, "Method not allowed");
+    const siteId = optionalCloudId(url.searchParams.get("siteId"), "Site");
+    if (!siteId) throw new HttpError(400, "siteId is required");
+    const site = await readSite(config, siteId);
+    requireNotTrashed(config, "site", site.id);
+    requireRecordAccess(config, site, principal, "editor");
+    const maxBytes = config.importMaxBytes ?? DEFAULT_IMPORT_MAX_BYTES;
+    const contentType = (headerValue(req, "content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+    const data = contentType === "application/json" ? base64Input(String((await readJsonBody(req, maxBytes * 2)).archiveBase64 ?? ""), maxBytes) : await readRawBody(req, maxBytes);
+    let parsed;
+    try {
+      parsed = parseSlackExport(data);
+    } catch (error) {
+      if (error instanceof SlackImportError) throw new HttpError(400, error.message);
+      throw error;
+    }
+    sendJson(res, 200, importSlackExport(config, user, site, parsed));
+    return;
+  }
+
+  if (parts[2] === "jira" && !parts[3]) {
+    if (method !== "POST") throw new HttpError(405, "Method not allowed");
+    const input = await readJsonBody(req, config.importMaxBytes ?? DEFAULT_IMPORT_MAX_BYTES);
+    const project = config.store.readProject(typeof input.projectId === "string" ? input.projectId : "");
+    if (!project) throw new HttpError(404, "Project not found");
+    const access = requireProjectAccess(config, project, principal, "editor");
+    requireAccessRole(access, "editor");
+    let issues;
+    try {
+      issues = parseJiraExport(input.issues ?? input.pages ?? input.search);
+    } catch (error) {
+      if (error instanceof JiraImportError) throw new HttpError(400, error.message);
+      throw error;
+    }
+    sendJson(res, 200, importJiraIssues(config, user, project, issues));
     return;
   }
 

@@ -2,6 +2,7 @@
 import { installAccountSecurity, openAccountSecurity } from "./account-security.js";
 import { installChat } from "./chat.js";
 import { installWorkspaceAdmin } from "./admin.js";
+import { installSwitching } from "./switching.js";
 import { installAgentOps } from "./agent-ops.js";
 import { installDevLoop } from "./devloop.js";
 import { installCommandPalette } from "./palette.js";
@@ -59,6 +60,7 @@ function bindEvents(): void {
   installDevLoop();
   installAgentOps();
   installWorkspaceAdmin();
+  installSwitching();
   document.addEventListener("click", () => closeContextMenu());
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeContextMenu();

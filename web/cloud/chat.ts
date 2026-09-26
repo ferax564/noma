@@ -12,6 +12,7 @@ import {
   chatDmResults,
   chatDmSearchInput,
   chatDmSelected,
+  chatBridgeButton,
   chatExportButton,
   chatFileInput,
   chatNewDmForm,
@@ -105,6 +106,7 @@ export function installChat(): void {
   chatAttachButton.addEventListener("click", () => chatFileInput.click());
   chatFileInput.addEventListener("change", () => void uploadFiles([...(chatFileInput.files ?? [])]));
   chatExportButton.addEventListener("click", () => void exportConversation());
+  chatBridgeButton.addEventListener("click", () => void configureBridge());
   chatSearchInput.addEventListener("input", () => {
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => void runSearch(), 250);
@@ -505,6 +507,30 @@ function renderPendingFiles(): void {
   );
 }
 
+/** Links the open channel to a Slack channel (or unlinks it with an empty answer). */
+async function configureBridge(): Promise<void> {
+  if (!detail) return;
+  const endpoint = `/api/channels/${encodeURIComponent(detail.id)}/bridge`;
+  try {
+    const current = await fetchCloudJson<{ configured: boolean; bridge: { slackChannelId: string } | null }>(endpoint);
+    if (!current.configured) {
+      setPanelStatus(chatStatus, "The Slack bridge is not configured on this server (NOMA_CLOUD_SLACK_BOT_TOKEN)", "warning");
+      return;
+    }
+    const answer = window.prompt("Slack channel ID to bridge with (e.g. C0123ABCD). Leave empty to remove the bridge.", current.bridge?.slackChannelId ?? "");
+    if (answer === null) return;
+    if (!answer.trim()) {
+      if (current.bridge) await fetchCloudJson(endpoint, { method: "DELETE" });
+      setPanelStatus(chatStatus, "Slack bridge removed", "ok");
+      return;
+    }
+    await fetchCloudJson(endpoint, { method: "PUT", body: JSON.stringify({ slackChannelId: answer.trim() }) });
+    setPanelStatus(chatStatus, `Bridged with Slack ${answer.trim()}`, "ok");
+  } catch (error) {
+    setPanelStatus(chatStatus, errorMessage(error), "error");
+  }
+}
+
 async function exportConversation(): Promise<void> {
   if (!detail) return;
   try {
@@ -562,6 +588,7 @@ export function renderChat(): void {
   const canPost = Boolean(detail?.access.canPost);
   chatAttachButton.disabled = !canPost;
   chatExportButton.hidden = !detail || (detail.kind !== "dm" && !detail.access.canManage);
+  chatBridgeButton.hidden = !detail || detail.kind === "dm" || !detail.access.canManage;
   chatComposerInput.disabled = !canPost;
   chatSendButton.disabled = !canPost;
   chatThreadInput.disabled = !canPost;
