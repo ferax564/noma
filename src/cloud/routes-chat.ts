@@ -38,6 +38,7 @@ import { afterDocumentSaved } from "./page-hooks.js";
 import { createDocument, documentResponse } from "./records.js";
 import { ownedAgent } from "./routes-knowledge.js";
 import { collectAttachmentGarbage, isImageAttachment } from "./attachments.js";
+import { enqueueMention, requireAgentsRunning } from "./agent-runner.js";
 import { runChatCommand } from "./routes-devloop.js";
 import { attachmentIdFor, personalStorageBytes, serveStoredBlob, spaceStorageBytes, stageUpload } from "./routes-attachments.js";
 import { attachPageToSite } from "./routes-sites.js";
@@ -302,6 +303,31 @@ export async function callChatGatewayTool(name: string, args: Record<string, unk
     return { message: messageResponse(config, message, nameResolver(config)) };
   }
   throw new HttpError(400, `Unknown gateway tool: ${name}`);
+}
+
+/**
+ * Posts as a hosted or scheduled agent, exactly like the `chat_post` gateway tool: the agent must be
+ * able to chat in the channel, and a `/deploy` or `/test` line goes through the run guardrails.
+ */
+export async function postAsAgent(config: CloudServerConfig, owner: CloudUserRecord, agent: CloudAgentIdentity, channelId: string, body: string, threadId?: string): Promise<ChatMessage> {
+  const principal: Principal = { user: owner };
+  const context = await channelContext(config, principal, channelId, agent);
+  const message = postMessage(config, context, { body, ...(threadId ? { threadId } : {}) }, agent);
+  await runChatCommand(config, principal, context.channel, message, agent);
+  recordActivity(config, owner, "chat.agent_posted", "site", context.channel.siteId, { channelId, messageId: message.id, agentId: agent.id, transport: "hosted" });
+  return message;
+}
+
+/** `Name: text` lines for a thread (root first) or, without `rootId`, the channel's recent top-level messages. */
+export function channelTranscript(config: CloudServerConfig, channelId: string, options: { rootId?: string; after?: string; limit: number }): string[] {
+  const names = nameResolver(config);
+  const messages = options.rootId
+    ? [config.chat.readMessage(options.rootId), ...config.chat.listMessages(channelId, { threadId: options.rootId, limit: options.limit })].filter((message): message is ChatMessage => Boolean(message))
+    : config.chat.listMessages(channelId, { limit: options.limit });
+  return messages
+    .filter((message) => !message.deletedAt && (!options.after || message.createdAt > options.after))
+    .slice(-options.limit)
+    .map((message) => `${message.kind === "system" ? "(system)" : names(message.agentId ?? message.authorId, Boolean(message.agentId))}: ${displayBody(config, message.body)}`);
 }
 
 // channels
@@ -605,6 +631,7 @@ async function routeMessages(
   if (!messageId && method === "POST") {
     const input = await readJsonBody(req, config.maxBodyBytes);
     const agentId = optionalString(input.agentId);
+    if (agentId) requireAgentsRunning(config);
     const agent = agentId ? ownedAgent(config, context.user, agentId) : undefined;
     if (agent && !agentChannelAccess(config, agent.id, context.channel)) throw new HttpError(403, "The agent cannot chat in this channel");
     const threadId = optionalString(input.threadId);
@@ -768,7 +795,9 @@ function notifyMentions(config: CloudServerConfig, context: ChannelContext, mess
       continue;
     }
     const mentioned = config.platform.readAgent(mention.id);
-    if (!mentioned || mentioned.createdBy === context.user.id) continue;
+    if (!mentioned) continue;
+    if (!agent) enqueueMention(config, mentioned.id, context.channel, message);
+    if (mentioned.createdBy === context.user.id) continue;
     writeNotification(config, mentioned.createdBy, "task_assigned", `${mentioned.name} was asked in #${context.channel.name}`, `${speaker}: ${excerpt}`, "site", context.channel.siteId);
   }
 }

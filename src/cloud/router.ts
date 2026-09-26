@@ -1,4 +1,5 @@
 /** `/api/:resource` dispatch. To add a resource, add one entry to `apiRoutes`. */
+import { routeApprovals } from "./routes-approvals.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CloudServerConfig, Principal } from "./context.js";
 import { HttpError } from "./http.js";
@@ -72,6 +73,7 @@ export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, A
   ["projects", (req, res, url, parts, config, principal) => routeProjects(req, res, url, parts, config, principal)],
   ["ask", (req, res, _url, _parts, config, principal) => routeAskNoma(req, res, config, principal)],
   ["knowledge", (req, res, url, parts, config, principal) => routeKnowledge(req, res, url, parts, config, principal)],
+  ["approvals", (req, res, _url, parts, config, principal) => routeApprovals(req, res, parts, config, principal)],
   ["agent-inbox", (req, res, url, _parts, config, principal) => routeAgentInbox(req, res, url, config, principal)],
   ["agents", (req, res, _url, parts, config, principal) => routeAgents(req, res, parts, config, principal)],
   ["connectors", (req, res, _url, parts, config, principal) => routeConnectors(req, res, parts, config, principal)],

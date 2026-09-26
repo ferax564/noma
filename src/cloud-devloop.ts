@@ -10,8 +10,8 @@ import DatabaseConstructor from "better-sqlite3";
 type SqliteDatabase = InstanceType<typeof DatabaseConstructor>;
 
 export type DevRunKind = "deploy" | "test";
-/** `removed`: a successful preview that was torn down afterwards. */
-export type DevRunStatus = "queued" | "running" | "success" | "failed" | "canceled" | "removed";
+/** `removed`: a successful preview torn down afterwards. `pending_approval`/`rejected`: an agent's run waiting on, or declined by, a person. */
+export type DevRunStatus = "pending_approval" | "rejected" | "queued" | "running" | "success" | "failed" | "canceled" | "removed";
 export type DevPullState = "open" | "merged" | "closed";
 export type DevCiStatus = "pending" | "success" | "failure";
 
@@ -33,6 +33,8 @@ export interface DevRepo {
   maxConcurrent: number;
   /** Least space role that may request runs: `editor` (default) or `owner`. */
   minRole: "editor" | "owner";
+  /** Runs requested by agents wait for a person's approval (default true). */
+  agentRunsNeedApproval: boolean;
   linkedBy: string;
   createdAt: string;
   updatedAt: string;
@@ -70,6 +72,8 @@ export interface DevRun {
   threadId?: string;
   requestedBy: string;
   agentId?: string;
+  /** Who approved or rejected an agent's run. */
+  reviewedBy?: string;
   error?: string;
   log?: string;
   createdAt: string;
@@ -90,6 +94,7 @@ interface RepoRow {
   monthly_minutes: number;
   max_concurrent: number;
   min_role: "editor" | "owner";
+  agent_runs_need_approval: number;
   linked_by: string;
   created_at: string;
   updated_at: string;
@@ -125,6 +130,7 @@ interface RunRow {
   thread_id: string | null;
   requested_by: string;
   agent_id: string | null;
+  reviewed_by: string | null;
   error: string | null;
   log: string | null;
   created_at: string;
@@ -153,11 +159,11 @@ export class CloudDevLoopStore {
   writeRepo(repo: DevRepo): DevRepo {
     this.db
       .prepare(
-        `INSERT INTO dev_repos (project_id, site_id, provider, repo, webhook_secret, default_branch, runs_enabled, auto_preview, monthly_minutes, max_concurrent, min_role, linked_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO dev_repos (project_id, site_id, provider, repo, webhook_secret, default_branch, runs_enabled, auto_preview, monthly_minutes, max_concurrent, min_role, agent_runs_need_approval, linked_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(project_id) DO UPDATE SET repo = excluded.repo, webhook_secret = excluded.webhook_secret, default_branch = excluded.default_branch,
            runs_enabled = excluded.runs_enabled, auto_preview = excluded.auto_preview, monthly_minutes = excluded.monthly_minutes,
-           max_concurrent = excluded.max_concurrent, min_role = excluded.min_role, updated_at = excluded.updated_at`,
+           max_concurrent = excluded.max_concurrent, min_role = excluded.min_role, agent_runs_need_approval = excluded.agent_runs_need_approval, updated_at = excluded.updated_at`,
       )
       .run(
         repo.projectId,
@@ -171,6 +177,7 @@ export class CloudDevLoopStore {
         repo.monthlyMinutes,
         repo.maxConcurrent,
         repo.minRole,
+        repo.agentRunsNeedApproval ? 1 : 0,
         repo.linkedBy,
         repo.createdAt,
         repo.updatedAt,
@@ -257,8 +264,8 @@ export class CloudDevLoopStore {
   insertRun(run: DevRun): DevRun {
     this.db
       .prepare(
-        `INSERT INTO dev_runs (id, project_id, kind, ref, status, app_name, provider_ref, url, issue_id, pull_number, channel_id, thread_id, requested_by, agent_id, error, log, created_at, started_at, finished_at, minutes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO dev_runs (id, project_id, kind, ref, status, app_name, provider_ref, url, issue_id, pull_number, channel_id, thread_id, requested_by, agent_id, reviewed_by, error, log, created_at, started_at, finished_at, minutes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         run.id,
@@ -275,6 +282,7 @@ export class CloudDevLoopStore {
         run.threadId ?? null,
         run.requestedBy,
         run.agentId ?? null,
+        run.reviewedBy ?? null,
         run.error ?? null,
         run.log ?? null,
         run.createdAt,
@@ -285,13 +293,13 @@ export class CloudDevLoopStore {
     return this.readRun(run.id)!;
   }
 
-  updateRun(id: string, patch: Partial<Pick<DevRun, "status" | "providerRef" | "url" | "error" | "log" | "startedAt" | "finishedAt" | "minutes" | "channelId" | "threadId">>): DevRun | undefined {
+  updateRun(id: string, patch: Partial<Pick<DevRun, "status" | "providerRef" | "url" | "error" | "log" | "startedAt" | "finishedAt" | "minutes" | "channelId" | "threadId" | "reviewedBy">>): DevRun | undefined {
     const current = this.readRun(id);
     if (!current) return undefined;
     const next = { ...current, ...patch };
     this.db
-      .prepare("UPDATE dev_runs SET status = ?, provider_ref = ?, url = ?, error = ?, log = ?, started_at = ?, finished_at = ?, minutes = ?, channel_id = ?, thread_id = ? WHERE id = ?")
-      .run(next.status, next.providerRef ?? null, next.url ?? null, next.error ?? null, next.log ?? null, next.startedAt ?? null, next.finishedAt ?? null, next.minutes, next.channelId ?? null, next.threadId ?? null, id);
+      .prepare("UPDATE dev_runs SET status = ?, provider_ref = ?, url = ?, error = ?, log = ?, started_at = ?, finished_at = ?, minutes = ?, channel_id = ?, thread_id = ?, reviewed_by = ? WHERE id = ?")
+      .run(next.status, next.providerRef ?? null, next.url ?? null, next.error ?? null, next.log ?? null, next.startedAt ?? null, next.finishedAt ?? null, next.minutes, next.channelId ?? null, next.threadId ?? null, next.reviewedBy ?? null, id);
     return this.readRun(id);
   }
 
@@ -317,6 +325,14 @@ export class CloudDevLoopStore {
       ? (this.db.prepare("SELECT * FROM dev_runs WHERE project_id = ? AND issue_id = ? ORDER BY created_at DESC, id DESC LIMIT ?").all(projectId, filter.issueId, filter.limit ?? 50) as RunRow[])
       : (this.db.prepare("SELECT * FROM dev_runs WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT ?").all(projectId, filter.limit ?? 50) as RunRow[]);
     return rows.map(runFromRow);
+  }
+
+  /** Agent-requested runs waiting for a person, newest first, across the given projects. */
+  listPendingApprovals(projectIds: string[]): DevRun[] {
+    if (projectIds.length === 0) return [];
+    return (
+      this.db.prepare("SELECT * FROM dev_runs WHERE status = 'pending_approval' AND project_id IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC, id DESC LIMIT 200").all(JSON.stringify(projectIds)) as RunRow[]
+    ).map(runFromRow);
   }
 
   /** Runs still queued or running, oldest first — the poller's work list. */
@@ -404,6 +420,13 @@ export class CloudDevLoopStore {
       CREATE INDEX IF NOT EXISTS dev_runs_project ON dev_runs (project_id, created_at);
       CREATE INDEX IF NOT EXISTS dev_runs_status ON dev_runs (status);
     `);
+    this.addColumn("dev_repos", "agent_runs_need_approval", "INTEGER NOT NULL DEFAULT 1");
+    this.addColumn("dev_runs", "reviewed_by", "TEXT");
+  }
+
+  private addColumn(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((item) => item.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 }
 
@@ -420,6 +443,7 @@ function repoFromRow(row: RepoRow): DevRepo {
     monthlyMinutes: row.monthly_minutes,
     maxConcurrent: row.max_concurrent,
     minRole: row.min_role,
+    agentRunsNeedApproval: row.agent_runs_need_approval !== 0,
     linkedBy: row.linked_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -459,6 +483,7 @@ function runFromRow(row: RunRow): DevRun {
     ...(row.thread_id ? { threadId: row.thread_id } : {}),
     requestedBy: row.requested_by,
     ...(row.agent_id ? { agentId: row.agent_id } : {}),
+    ...(row.reviewed_by ? { reviewedBy: row.reviewed_by } : {}),
     ...(row.error ? { error: row.error } : {}),
     ...(row.log ? { log: row.log } : {}),
     createdAt: row.created_at,

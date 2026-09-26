@@ -10,6 +10,7 @@ import type { CloudProject, CloudUserRecord } from "../cloud-db.js";
 import type { ChatChannel, ChatMessage } from "../cloud-chat.js";
 import type { DevRepo, DevRun, DevRunKind } from "../cloud-devloop.js";
 import { type AccessContext, type CloudServerConfig, type Principal, randomId, requireAccessRole, requireProjectAccess, requireUser } from "./context.js";
+import { requireAgentsRunning } from "./agent-runner.js";
 import { ownedAgent } from "./routes-knowledge.js";
 import { handleGithubEvent, refInput, refreshRun, requestRun, stopRun } from "./devloop.js";
 import { HttpError, headerValue, readJsonBody, readRawBody, sendJson } from "./http.js";
@@ -58,6 +59,7 @@ export async function routeProjectDevLoop(
         monthlyMinutes: boundedInteger(input.monthlyMinutes, current?.monthlyMinutes ?? 600, 0, 100_000, "monthlyMinutes"),
         maxConcurrent: boundedInteger(input.maxConcurrent, current?.maxConcurrent ?? 2, 1, 20, "maxConcurrent"),
         minRole: input.minRole === undefined ? current?.minRole ?? "editor" : minRoleInput(input.minRole),
+        agentRunsNeedApproval: typeof input.agentRunsNeedApproval === "boolean" ? input.agentRunsNeedApproval : current?.agentRunsNeedApproval ?? true,
         linkedBy: current?.linkedBy ?? user.id,
         createdAt: current?.createdAt ?? now,
         updatedAt: now,
@@ -230,6 +232,7 @@ export async function callRunGatewayTool(args: Record<string, unknown>, config: 
 }
 
 function runAgent(config: CloudServerConfig, user: CloudUserRecord, agentId: string, project: CloudProject): CloudAgentIdentity {
+  requireAgentsRunning(config);
   const agent = ownedAgent(config, user, agentId);
   if (agent.status !== "active") throw new HttpError(403, "The agent is not active");
   if (!agent.capabilities.includes(AGENT_RUN_CAPABILITY)) throw new HttpError(403, `Agent lacks capability: ${AGENT_RUN_CAPABILITY}`);

@@ -1358,7 +1358,8 @@ people and agents under one permission model. Five steps, shipped in order:
 3. **Agents that work unattended.** Hosted agents answer mentions on the Claude
    API within their budgets. Scheduled agents run digests and triage. One
    approval queue collects page patches, AI pages, and run requests, and a
-   workspace kill switch pauses every agent.
+   workspace kill switch pauses every agent. *Shipped (unreleased):* see
+   `docs/noma-cloud.noma#unattended-agents`.
 4. **Enterprise scale and compliance.** Chat events fan out across processes,
    the audit log exports as NDJSON to a SIEM, data-loss-prevention rules check
    messages, and an admin console shows usage. PostgreSQL, native SAML, a live

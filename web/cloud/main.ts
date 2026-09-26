@@ -1,6 +1,7 @@
 /** Noma Cloud browser app entry: wires event listeners and boots the app. */
 import { installAccountSecurity, openAccountSecurity } from "./account-security.js";
 import { installChat } from "./chat.js";
+import { installAgentOps } from "./agent-ops.js";
 import { installDevLoop } from "./devloop.js";
 import { installCommandPalette } from "./palette.js";
 import { installAttachments } from "./attachments.js";
@@ -55,6 +56,7 @@ function bindEvents(): void {
   installChat();
   installCommandPalette();
   installDevLoop();
+  installAgentOps();
   document.addEventListener("click", () => closeContextMenu());
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeContextMenu();

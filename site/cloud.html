@@ -487,6 +487,56 @@
       <div id="revisionDiffOutput" class="revision-diff" aria-live="polite" hidden></div>
     </section>
 
+    <section id="approvalsSection" class="inspector-section">
+      <div class="inspector-heading-row">
+        <h2>Approvals</h2>
+        <button id="refreshApprovalQueueButton" type="button" aria-label="Refresh approval queue">Refresh</button>
+      </div>
+      <div id="agentKillSwitch" class="agent-kill-switch" hidden>
+        <span id="agentKillSwitchState"></span>
+        <button id="agentKillSwitchButton" type="button"></button>
+      </div>
+      <div id="approvalQueueList" class="dev-run-list" aria-label="Waiting for your approval"></div>
+      <div id="approvalQueueStatus" class="panel-status"></div>
+    </section>
+
+    <section id="myAgentsSection" class="inspector-section">
+      <details id="myAgentsDetails">
+        <summary><h2>My agents</h2></summary>
+        <label class="stack-field" for="myAgentSelect">Agent
+          <select id="myAgentSelect"></select>
+        </label>
+        <div id="myAgentBudget" class="diagnostics-summary"></div>
+        <label class="ai-toggle" for="agentHostedInput"><input id="agentHostedInput" type="checkbox" /> Hosted — answers @mentions in chat</label>
+        <label class="stack-field" for="agentInstructionsInput">Standing instructions
+          <textarea id="agentInstructionsInput" class="compact-textarea" placeholder="You shepherd releases for the Shop team…"></textarea>
+        </label>
+        <button id="agentHostingSaveButton" type="button">Save hosting</button>
+        <h3 class="inspector-subheading">Schedules</h3>
+        <div id="agentScheduleList" class="dev-run-list"></div>
+        <div class="work-create-grid">
+          <label class="stack-field" for="agentScheduleChannelSelect">Channel
+            <select id="agentScheduleChannelSelect"></select>
+          </label>
+          <label class="stack-field" for="agentScheduleCadenceSelect">Every
+            <select id="agentScheduleCadenceSelect">
+              <option value="daily">Day</option>
+              <option value="weekly">Week (Mon)</option>
+              <option value="hourly">Hour</option>
+            </select>
+          </label>
+        </div>
+        <label class="stack-field" for="agentScheduleTitleInput">Title
+          <input id="agentScheduleTitleInput" type="text" placeholder="Morning triage" />
+        </label>
+        <label class="stack-field" for="agentSchedulePromptInput">What to post
+          <textarea id="agentSchedulePromptInput" class="compact-textarea" placeholder="List what blocks the release and who owns it."></textarea>
+        </label>
+        <button id="agentScheduleAddButton" type="button">Add schedule</button>
+        <div id="myAgentsStatus" class="panel-status"></div>
+      </details>
+    </section>
+
     <section id="chatSection" class="inspector-section chat-launcher">
       <div class="inspector-heading-row">
         <h2>Chat</h2>

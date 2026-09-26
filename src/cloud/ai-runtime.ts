@@ -15,7 +15,8 @@ export type AiUnavailableReason =
   | "agent_budget_exhausted"
   | "agent_inactive"
   | "provider_error"
-  | "refused";
+  | "refused"
+  | "agents_paused";
 
 export class AiUnavailable extends Error {
   constructor(readonly reason: AiUnavailableReason, message: string) {
@@ -23,7 +24,7 @@ export class AiUnavailable extends Error {
   }
 }
 
-export type AiFeature = "ask" | "summarize" | "draft" | "refresh" | "draft_page" | "maintenance_refresh";
+export type AiFeature = "ask" | "summarize" | "draft" | "refresh" | "draft_page" | "maintenance_refresh" | "agent_chat" | "agent_schedule";
 
 export interface AiCallRequest {
   feature: AiFeature;
@@ -158,6 +159,7 @@ export function modelAllowed(policy: EnterprisePolicy, model: string, configured
 }
 
 function resolveAgent(config: CloudServerConfig, user: CloudUserRecord, agentId: string | undefined): CloudAgentIdentity {
+  if (config.agentOps.killSwitch().paused) throw new AiUnavailable("agents_paused", "Agents are paused by a workspace admin");
   if (!agentId) return ensureSystemAgent(config, user);
   const agent = config.platform.readAgent(agentId);
   if (!agent || agent.createdBy !== user.id) throw new AiUnavailable("agent_inactive", "Agent not found for this user");
