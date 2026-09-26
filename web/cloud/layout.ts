@@ -58,9 +58,10 @@ export function renderChrome(): void {
   themeToggleButton.setAttribute("aria-pressed", String(state.themeMode === "dark"));
   newSpaceButton.disabled = state.busy || !state.cloudAvailable || !state.cloudUser;
   saveSpaceButton.disabled = state.busy || !canEditSite();
-  newPageButton.disabled = state.busy || !canCreatePage();
+  const canStartSpace = Boolean(state.cloudAvailable && state.cloudUser && !state.currentSite);
+  newPageButton.disabled = state.busy || !(canCreatePage() || canStartSpace);
   newFolderButton.disabled = state.busy || !canEditSite();
-  importPageButton.disabled = state.busy || !canCreatePage();
+  importPageButton.disabled = state.busy || !(canCreatePage() || canStartSpace);
   pageTemplateSelect.disabled = state.busy || !canCreatePage() || state.pageTemplates.length === 0;
   renderConfluenceImportChrome();
   renderTemplateToolsChrome();

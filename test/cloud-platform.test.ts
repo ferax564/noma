@@ -84,6 +84,39 @@ The confidential acquisition price is 900 million francs.
   });
 });
 
+test("search and ask drop unrelated blocks and repeated excerpts", async () => {
+  await withPlatform((platform) => {
+    const deployment = document("minipc", "Minipc smoke test", `# Minipc smoke test
+
+Noma Cloud is running on this machine.
+
+::claim{id="deploy-ok" confidence=0.9}
+The minipc deployment serves the cloud app over Tailscale.
+::
+`);
+    const paper = document("paper-a", "Research Paper Draft", `# Research Paper Draft
+
+::abstract{id="abstract" status="draft"}
+Research Workspace draft abstract. State the research question, method, primary result, and confidence in one paragraph.
+::
+`);
+    const copy = document("paper-b", "Research Paper Draft", paper.source);
+    const access = allowed(deployment, paper, copy);
+    const results = platform.search({ principalId: "alice", query: "Tailscale", documents: access, now });
+    assert.ok(results.length > 0);
+    assert.ok(results.every((result) => result.documentId === deployment.id));
+    assert.ok(results.every((result) => /tailscale/i.test(result.exactSource)));
+
+    const answer = platform.ask({ principalId: "alice", query: "Where does the Tailscale deployment serve the cloud app?", documents: access, now: "2026-07-14T10:03:00.000Z" });
+    assert.equal(answer.state, "answered");
+    assert.match(answer.answer, /Tailscale/);
+    assert.ok(answer.citations.every((citation) => citation.documentId === deployment.id));
+    assert.ok(answer.confidence.label === "medium" || answer.confidence.label === "high");
+    const excerpts = new Set(answer.citations.map((citation) => citation.exactSource.trim()));
+    assert.equal(excerpts.size, answer.citations.length);
+  });
+});
+
 test("RAG evaluations measure source recall, forbidden use, leakage, stale use, abstention, latency, and cost", async () => {
   await withPlatform((platform) => {
     const current = document("current", "Current policy", `# Current policy
