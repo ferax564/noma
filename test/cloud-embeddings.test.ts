@@ -358,10 +358,12 @@ test("a down or slow provider falls back to lexical + hash scoring", async () =>
   };
   await withPlatform({ embeddings: hung, queryEmbeddingTimeoutMs: 30 }, async (platform) => {
     const started = Date.now();
-    const outcome = await platform.searchWithRetrieval(request);
+    const outcome = await platform.searchWithRetrieval({ ...request, query: "standby cluster failover" });
     assert.ok(Date.now() - started < 2_000);
     assert.deepEqual(outcome.retrieval, { semantic: "local-hash", provider: "hung:never", fallback: "query_timeout" });
-    assert.equal(outcome.results.length, 4);
+    assert.equal(outcome.results[0]?.blockId, "failover-plan", "lexical scoring answers while the provider hangs");
+    const synonymsOnly = await platform.searchWithRetrieval(request);
+    assert.deepEqual(synonymsOnly.results, [], "without the provider, hash similarity alone is not relevance");
   });
 });
 
