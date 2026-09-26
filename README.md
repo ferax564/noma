@@ -373,17 +373,15 @@ See [`PLAN.md`](PLAN.md) for the long-term vision, [`docs/direction.noma`](docs/
 
 ## Status
 
-**Status:** v0.18.0 — Noma Cloud becomes a Confluence-class wiki for the agentic-AI era. Spaces now have a page tree, labels, watching, version diffs, attachments, page restrictions, wiki macros and transclusion, Confluence import, templates, PDF/DOCX export, search filters, @mentions, inline tasks, webhooks, and email digests. A Visual block editor with live co-editing and presence round-trips through `.noma` source with stable block IDs. Generative Ask and AI page actions run inside the proof → independent approval → hash-checked apply loop, backed by stale-knowledge sweeps and Git-native space sync. Security is hardened with cookie sessions, CSRF protection, scoped personal access tokens, and a fail-closed production admin. The core parser and patch engine gain property-tested fixes, and the npm root entry is lean, with the `/cloud` and `/enterprise` subpaths. See [`CHANGELOG.md`](CHANGELOG.md), `PLAN.md` §24.43–§24.44, and [`docs/review-2026-09.md`](docs/review-2026-09.md).
+**Status:** v0.19.0 is the "next Notion and Confluence for the agentic era" release.
 
-**Unreleased (on `main`, next release):** this release closes the remaining gaps against Notion and Confluence for agent-first teams.
-
-- **Agents as teammates.** @-mention an agent in a comment or assign it a page task. It works the assignment over REST or MCP, replies in the thread, and links proofed proposals that still need a person's approval.
-- **Imports.** Notion import (Markdown & CSV export, databases, and properties) and a Confluence import that now copies attachments.
+- **Agents are teammates.** @-mention an agent in a comment or assign it a page task. It works the assignment over REST or MCP, replies in the thread, and links proofed proposals that still need a person's approval.
+- **Migration.** Notion import (Markdown & CSV export, databases, and properties), and Confluence import that now copies attachments.
 - **Search.** Pluggable real embeddings (OpenAI-compatible or Voyage) behind hybrid search.
 - **Enterprise.** Native OpenID Connect login and S3-compatible attachment storage.
-- **Composition and presentations.** Decks, style tokens, component kits, sandboxed widgets, `::canvas`, and `.pptx` export.
+- **Composition and presentations.** Pages compose like Lego with style tokens, component kits, and sandboxed widgets. Decks present in the browser, `::canvas` embeds PaperDOM canvases, and `.pptx` export comes with a fidelity report.
 
-What is still missing, and why, is in the gap analysis [`docs/status-2026-09-25.md`](docs/status-2026-09-25.md) and in `PLAN.md` §24.45.
+v0.18.0 made Noma Cloud a Confluence-class wiki with a Visual block editor, live co-editing, and generative AI on the proof → approval → apply loop. See [`CHANGELOG.md`](CHANGELOG.md), `PLAN.md` §24.43–§24.46, [`docs/review-2026-09.md`](docs/review-2026-09.md), and the gap analysis in [`docs/status-2026-09-25.md`](docs/status-2026-09-25.md) for what is still missing.
 
 ## License
 
