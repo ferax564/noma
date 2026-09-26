@@ -1652,6 +1652,71 @@ and anything worth keeping moves into Work or into `.noma` source with one click
   proof. A message whose text could break the directive structure is kept
   word for word in a code fence.
 
+### Direct and group messages
+
+The ✉ button in the chat sidebar starts a conversation with people who share a
+space with you, one-to-one or with up to 12 people. Starting one with the same
+person again reopens the same conversation. Direct messages belong to no space:
+only their members can read them. They are left out of space exports, and they
+cannot become Work issues or pages. Each new message notifies the other members
+once per unread stretch, and adding someone to a group gives it its own
+identity.
+
+```text
+GET|POST /api/chat/dms                    {"memberIds": ["<user-id>", ...]}
+```
+
+### Files in chat
+
+📎 in the composer uploads files to the conversation. Uploads go through the
+same checks as page attachments:
+
+- executables are refused
+- the stored type is sniffed from the bytes
+- files download under a sandboxing CSP, and only safe images display inline
+
+Files count against the space's storage quota (for direct messages, against the
+uploader's personal quota). An uploaded file stays private to its uploader
+until it is sent in a message, and then everyone who can read the conversation
+can download it. Images show as previews.
+
+```text
+POST /api/channels/<id>/files            raw body or multipart, x-filename header
+GET  /api/channels/<id>/files/<file-id>
+POST /api/channels/<id>/messages         {"body": "...", "fileIds": ["<file-id>"]}
+```
+
+### Compliance: history, exports, retention, and legal hold
+
+- **Edit history.** Editing or deleting a message keeps its previous body as a
+  revision. The UI shows only the current text, and exports include every
+  revision.
+- **Channel export.** Channel admins, and the members of a direct message,
+  can export the conversation (⤓ in the header) as `.noma` or as a
+  `noma-chat-export-v1` JSON bundle. The bundle includes deleted messages,
+  revisions, reactions, mentions, file metadata, and a SHA-256 digest. Every
+  export is written to the tamper-evident audit log.
+- **eDiscovery.** Workspace owners can export any channel, private channels
+  and direct messages included, narrowed by space, person, and date:
+  `GET /api/enterprise/chat-export?siteId=&userId=&since=&until=`.
+- **Space exports.** The `noma-zip` space export adds `chat/<channel>.noma`
+  transcripts of the public channels.
+- **Retention.** Set `chatRetentionDays` in the enterprise policy.
+  `POST /api/enterprise/retention` then removes older messages with their
+  revisions, reactions, and files, and the server also applies it once a day.
+  A thread root that still has newer replies is blanked rather than removed.
+  Legal holds on a space, a person, or a single channel
+  (`resourceType: "chat_channel"`) keep their messages.
+- **Moderation.** When an admin deletes someone else's message, it is recorded
+  in the space activity feed.
+
+### Search everything (⌘K)
+
+`Ctrl+K` / `⌘K`, or **Search** in the top bar, opens one search box across the
+spaces, pages, Work issues, channels, direct messages, and chat messages you can
+read. Picking a result opens the page, loads the issue in Work, or jumps to the
+message's thread. `GET /api/find?q=` backs it.
+
 ### Agents in chat
 
 Agents join conversations the same way they join comment threads. An agent can

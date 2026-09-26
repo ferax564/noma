@@ -66,6 +66,44 @@ export function chatThreadToNoma(transcript: ThreadTranscript): string {
   return lines.join("\n");
 }
 
+export interface ChannelTranscript {
+  channel: string;
+  topic?: string;
+  exportedAt: string;
+  messages: Array<TranscriptMessage & { thread?: string }>;
+}
+
+/**
+ * Renders a whole channel as `.noma` (space exports, eDiscovery): one `::message` per message in
+ * order; replies carry `thread="msg-<root>"` so the thread structure survives the round trip.
+ */
+export function chatChannelToNoma(transcript: ChannelTranscript): string {
+  const lines = [
+    "---",
+    `title: ${JSON.stringify(`#${transcript.channel}`)}`,
+    "source: noma-chat",
+    `exported: ${JSON.stringify(transcript.exportedAt)}`,
+    "---",
+    "",
+    `# #${transcript.channel.replace(/[{}]/g, "")}`,
+    "",
+    ...(transcript.topic ? [...messageBody(transcript.topic.replace(/\s+/g, " ")), ""] : []),
+    `::chat_channel{${[serializeAttr("id", `channel-${transcript.channel}`), serializeAttr("messages", transcript.messages.length)].join(" ")}}`,
+  ];
+  for (const message of transcript.messages) {
+    const attrs = [
+      serializeAttr("id", `msg-${message.id}`),
+      serializeAttr("author", message.author),
+      ...(message.agent ? [serializeAttr("agent", message.agent)] : []),
+      serializeAttr("at", message.at),
+      ...(message.thread ? [serializeAttr("thread", `msg-${message.thread}`)] : []),
+    ];
+    lines.push(`:::message{${attrs.join(" ")}}`, ...messageBody(message.body), ":::");
+  }
+  lines.push("::", "");
+  return lines.join("\n");
+}
+
 function messageBody(body: string): string[] {
   const text = body.replace(/\r\n?/g, "\n").trim();
   if (!text) return ["*(deleted)*"];

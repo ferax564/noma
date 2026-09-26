@@ -191,6 +191,9 @@ export interface CloudProject {
 
 export interface ChatChannel {
   id: string;
+  kind: "channel" | "dm";
+  /** Other members' names, for direct messages. */
+  title?: string;
   siteId: string;
   projectId?: string;
   name: string;
@@ -207,7 +210,7 @@ export interface ChatChannel {
 
 export interface ChatChannelDetail extends ChatChannel {
   project?: { id: string; key: string; name: string };
-  space: { id: string; title: string };
+  space?: { id: string; title: string };
   memberRole?: "member" | "admin";
   access: { role: CloudRole; canManage: boolean; canPost: boolean };
   members: Array<{ id: string; name: string; type: "user" | "agent"; role: "member" | "admin" }>;
@@ -232,7 +235,16 @@ export interface ChatMessage {
   reactions: Array<{ emoji: string; memberIds: string[] }>;
   mentions: Array<{ id: string; name: string; agent?: true }>;
   refs: Array<{ id: string; key: string; summary: string; status: string }>;
-  links: { issues: Array<{ id: string; key: string; summary: string; status: string }>; documents: Array<{ id: string; title: string }> };
+  links: { issues: Array<{ id: string; key: string; summary: string; status: string }>; documents: Array<{ id: string; title: string }>; files?: ChatFile[] };
+}
+
+export interface ChatFile {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  image: boolean;
+  url: string;
 }
 
 export interface CloudIssue {

@@ -1358,6 +1358,11 @@ export class CloudKnowledgePlatform {
     return row.count;
   }
 
+  /** Appends a record to the tamper-evident audit chain (compliance actions outside the platform, such as chat exports). */
+  recordAudit(actorId: string, action: string, resourceType: string, resourceId: string, detail: Record<string, unknown>, createdAt: string): AuditRecord {
+    return this.audit(actorId, action, resourceType, resourceId, detail, createdAt);
+  }
+
   private audit(actorId: string, action: string, resourceType: string, resourceId: string, detail: Record<string, unknown>, createdAt: string): AuditRecord {
     const record: AuditRecord = {
       id: sha256Hex(`${actorId}:${action}:${resourceType}:${resourceId}:${createdAt}:${JSON.stringify(detail)}`).slice(0, 32),
@@ -1720,6 +1725,8 @@ export interface EnterprisePolicy {
   sso: { enabled: boolean; provider: "none" | "oidc" | "saml"; issuer?: string; enforced: boolean };
   scim: { enabled: boolean; baseUrl?: string };
   retentionDays: number;
+  /** Chat messages older than this are removed by retention runs; 0 keeps chat forever. */
+  chatRetentionDays?: number;
   legalHoldEnabled: boolean;
   dataResidency: string;
   connectorAllowlist: ConnectorKind[];
@@ -2010,7 +2017,7 @@ export interface ScimIdentity {
 
 export interface LegalHold {
   id: string;
-  resourceType: "document" | "site" | "user";
+  resourceType: "document" | "site" | "user" | "chat_channel";
   resourceId: string;
   reason: string;
   createdBy: string;

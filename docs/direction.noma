@@ -335,6 +335,23 @@ They run on the `ezkeel` stack, need a capability the space owner grants, and
 post their results back to the thread.
 ::
 
+::decision{id="collaboration-roadmap" status="accepted" owner="ferax564" date="2026-09-26"}
+The loop to close is conversation → decision → code → verified deploy, run by
+people and agents under one permission model. It ships in five steps:
+
+1. Finish chat for enterprises: DMs, files, retention, eDiscovery, and one ⌘K
+   search.
+2. Close the loop with GitHub and ezkeel: PR and CI events drive issues, and
+   `/deploy` and `/test` run from threads.
+3. Agents that work unattended: hosted and scheduled agents, one approval
+   queue, a kill switch.
+4. Enterprise scale and compliance: cross-process fan-out, SIEM audit export,
+   DLP, an admin console.
+5. Make switching easy: Slack import and bridge, Jira import.
+
+PLAN.md §23.22 holds the detail.
+::
+
 ::risk{id="scope-creep" severity="medium" owner="ferax564"}
 Still out of scope: a plugin marketplace, a complex CSS theming engine,
 whiteboards, databases, and any editor, importer, or agent path that cannot

@@ -1,4 +1,4 @@
-/** `/api/enterprise`: policy, SCIM, legal hold, audit export. */
+/** `/api/enterprise`: policy, SCIM, legal hold, audit export, retention, chat eDiscovery. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { EnterprisePolicy, LegalHold, ScimIdentity } from "../cloud-platform.js";
 import { type CloudServerConfig, type Principal, requireUser, requireWorkspaceOwner, uniqueId } from "./context.js";
@@ -13,8 +13,14 @@ import {
   stringInput,
 } from "./input.js";
 import { connectorKinds } from "./routes-agents.js";
+import { channelExport, enforceChatRetention } from "./routes-chat.js";
 import { platformInput } from "./routes-knowledge.js";
 import { pageQuery, requestUrl } from "./security.js";
+
+function isoParam(value: string, label: string): string {
+  if (Number.isNaN(Date.parse(value))) throw new HttpError(400, `${label} must be an ISO date`);
+  return new Date(value).toISOString();
+}
 
 export async function routeEnterprise(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
   const user = requireUser(principal);
@@ -39,6 +45,7 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
       },
       scim: { enabled: scim.enabled === true, ...(optionalString(scim.baseUrl) ? { baseUrl: absoluteUrl(scim.baseUrl, "scim.baseUrl") } : {}) },
       retentionDays: boundedInteger(input.retentionDays, 365, 1, 36_500, "retentionDays"),
+      chatRetentionDays: boundedInteger(input.chatRetentionDays, 0, 0, 36_500, "chatRetentionDays"),
       legalHoldEnabled: input.legalHoldEnabled === true,
       dataResidency: stringInput(input, "dataResidency", "local").slice(0, 100),
       connectorAllowlist: connectorKinds(input.connectorAllowlist),
@@ -92,8 +99,8 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
   }
   if (action === "legal-holds" && method === "POST") {
     const input = await readJsonBody(req, config.maxBodyBytes);
-    const resourceType = input.resourceType === "document" || input.resourceType === "site" || input.resourceType === "user" ? input.resourceType : undefined;
-    if (!resourceType) throw new HttpError(400, "resourceType must be document, site, or user");
+    const resourceType = input.resourceType === "document" || input.resourceType === "site" || input.resourceType === "user" || input.resourceType === "chat_channel" ? input.resourceType : undefined;
+    if (!resourceType) throw new HttpError(400, "resourceType must be document, site, user, or chat_channel");
     const hold: LegalHold = { id: uniqueId(config), resourceType, resourceId: stringInput(input, "resourceId"), reason: stringInput(input, "reason").slice(0, 2_000), createdBy: user.id, createdAt: config.now().toISOString() };
     sendJson(res, 201, platformInput(() => config.platform.putLegalHold(hold)));
     return;
@@ -104,7 +111,24 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
     return;
   }
   if (action === "retention" && method === "POST") {
-    sendJson(res, 200, config.platform.enforceRetention(config.now().toISOString()));
+    const platform = config.platform.enforceRetention(config.now().toISOString());
+    const chatDays = config.platform.enterprisePolicy().chatRetentionDays ?? 0;
+    sendJson(res, 200, { ...platform, ...(chatDays > 0 ? { chat: await enforceChatRetention(config, chatDays, user.id) } : {}) });
+    return;
+  }
+  if (action === "chat-export" && method === "GET") {
+    const url = requestUrl(req);
+    const channelId = url.searchParams.get("channelId");
+    const siteId = url.searchParams.get("siteId");
+    const userId = url.searchParams.get("userId");
+    const channels = channelId
+      ? [config.chat.readChannel(channelId)].filter((channel) => channel !== undefined)
+      : config.chat.listAllChannels(siteId ? [siteId] : undefined).filter((channel) => !userId || channel.kind === "channel" || config.chat.readMember(channel.id, userId));
+    if (channelId && channels.length === 0) throw new HttpError(404, "Channel not found");
+    const window = { ...(url.searchParams.get("since") ? { since: isoParam(url.searchParams.get("since")!, "since") } : {}), ...(url.searchParams.get("until") ? { until: isoParam(url.searchParams.get("until")!, "until") } : {}) };
+    const exports = channels.slice(0, 500).map((channel) => channelExport(config, channel, window, user, userId ?? undefined));
+    config.platform.recordAudit(user.id, "chat.ediscovery_exported", "workspace", "workspace", { channels: exports.length, ...(siteId ? { siteId } : {}), ...(userId ? { userId } : {}), ...window }, config.now().toISOString());
+    sendJson(res, 200, { format: "noma-chat-ediscovery-v1", exportedAt: config.now().toISOString(), exportedBy: user.id, channels: exports, truncated: channels.length > 500 });
     return;
   }
   throw new HttpError(404, "Unknown enterprise route");

@@ -31,6 +31,7 @@
       <button id="oidcLoginButton" type="button" hidden>Sign in with SSO</button>
     </div>
     <div id="accountControls" class="topbar-group account-controls" hidden>
+      <button id="commandPaletteButton" type="button" class="command-palette-trigger" aria-label="Search everything (Ctrl+K)" title="Search everything (Ctrl+K)">Search <kbd>⌘K</kbd></button>
       <span id="accountChip" class="account-chip"><span id="accountAvatar" class="account-avatar" aria-hidden="true"></span><span id="accountName"></span></span>
       <button id="copyUserIdButton" type="button" disabled>Copy User ID</button>
       <button id="copyUserTokenButton" type="button" disabled title="Personal access tokens and signed-in sessions">Security</button>
@@ -899,7 +900,10 @@
           <span class="chat-space-kicker">Chat</span>
           <strong id="chatSpaceTitle">Space</strong>
         </div>
-        <button id="chatNewChannelToggle" type="button" class="chat-icon-button" aria-label="New channel" title="New channel">＋</button>
+        <div class="chat-sidebar-actions">
+          <button id="chatNewDmToggle" type="button" class="chat-icon-button" aria-label="New direct message" title="New direct message">✉</button>
+          <button id="chatNewChannelToggle" type="button" class="chat-icon-button" aria-label="New channel" title="New channel">＋</button>
+        </div>
       </div>
       <label class="chat-search" for="chatSearchInput">
         <span class="chat-visually-hidden">Search messages</span>
@@ -926,6 +930,17 @@
           <button id="chatCancelChannelButton" type="button">Cancel</button>
         </div>
       </form>
+      <form id="chatNewDmForm" class="chat-new-channel" hidden>
+        <label class="stack-field" for="chatDmSearchInput">Message people
+          <input id="chatDmSearchInput" type="search" placeholder="Search people in your spaces" autocomplete="off" />
+        </label>
+        <div id="chatDmResults" class="chat-dm-results" aria-label="People"></div>
+        <div id="chatDmSelected" class="chat-dm-selected" aria-label="Selected people"></div>
+        <div class="chat-form-actions">
+          <button id="chatStartDmButton" type="submit" class="chat-primary">Start conversation</button>
+          <button id="chatCancelDmButton" type="button">Cancel</button>
+        </div>
+      </form>
       <nav id="chatChannelList" class="chat-channel-list" aria-label="Channel list"></nav>
     </aside>
     <section class="chat-main" aria-label="Conversation">
@@ -937,11 +952,15 @@
         <div class="chat-header-actions">
           <div id="chatAgentChips" class="chat-agent-chips" aria-label="Agents you can mention"></div>
           <button id="chatJoinButton" type="button" class="chat-primary" hidden>Join channel</button>
+          <button id="chatExportButton" type="button" class="chat-icon-button" aria-label="Export conversation as .noma" title="Export conversation as .noma" hidden>⤓</button>
           <button id="chatCloseButton" type="button" class="chat-icon-button" aria-label="Close chat" title="Close chat (Esc)">✕</button>
         </div>
       </header>
       <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+      <div id="chatPendingFiles" class="chat-pending-files" aria-label="Files to send"></div>
       <div class="chat-composer">
+        <button id="chatAttachButton" type="button" class="chat-attach" aria-label="Attach files" title="Attach files">📎</button>
+        <input id="chatFileInput" type="file" multiple hidden aria-label="Choose files to attach" />
         <label class="chat-visually-hidden" for="chatComposerInput">Message</label>
         <textarea id="chatComposerInput" rows="1" placeholder="Message"></textarea>
         <button id="chatSendButton" type="button" class="chat-send" aria-label="Send message" title="Send (Enter)">➤</button>
@@ -963,6 +982,13 @@
         <button id="chatThreadSendButton" type="button" class="chat-send" aria-label="Send reply" title="Send (Enter)">➤</button>
       </div>
     </section>
+  </div>
+  <div id="commandPalette" class="command-palette" role="dialog" aria-modal="true" aria-label="Search everything" hidden>
+    <div class="command-palette-panel">
+      <input id="commandPaletteInput" type="search" aria-label="Search everything" placeholder="Search pages, issues, channels, people, messages…" autocomplete="off" />
+      <div id="commandPaletteResults" class="command-palette-results" role="listbox" aria-label="Results"></div>
+      <p class="command-palette-hint"><kbd>↑</kbd><kbd>↓</kbd> to move · <kbd>Enter</kbd> to open · <kbd>Esc</kbd> to close</p>
+    </div>
   </div>
 <script src="assets/cloud-app.js"></script>
 </body>

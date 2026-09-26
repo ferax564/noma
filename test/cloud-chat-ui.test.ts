@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -117,3 +117,76 @@ async function text(page: Page, selector: string): Promise<string> {
 async function waitForText(page: Page, selector: string, expected: string): Promise<void> {
   await page.waitForFunction((nextSelector, nextExpected) => document.querySelector(nextSelector)?.textContent?.includes(nextExpected), { timeout: 10_000 }, selector, expected);
 }
+
+test("cloud UI chat: direct messages, file uploads, and the command palette", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "noma-chat-ui-dm-"));
+  const server = createNomaCloudServer({ dataDir: join(root, "documents"), publicDir: resolve("site"), ai: { provider: null, maintenanceTickMs: 0 } });
+  await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  t.after(async () => {
+    await new Promise<void>((resolveClose, reject) => server.close((error) => (error ? reject(error) : resolveClose())));
+    await rm(root, { recursive: true, force: true });
+  });
+  const api = async <T = Record<string, string>>(path: string, token: string | undefined, method = "GET", body?: unknown): Promise<T> => {
+    const response = await fetch(origin + path, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const payload = (await response.json()) as T;
+    assert.ok(response.ok, `${path} ${response.status} ${JSON.stringify(payload)}`);
+    return payload;
+  };
+  const ada = await api("/api/users", undefined, "POST", { name: "Ada Lovelace" });
+  const bob = await api("/api/users", undefined, "POST", { name: "Bob Builder" });
+  const site = await api("/api/sites", ada.token, "POST", { title: "Delivery", documentIds: [] });
+  await api(`/api/sites/${site.id}/documents`, ada.token, "POST", { source: "# Rollout checklist\n\nCanary first.\n" });
+  await api(`/api/sites/${site.id}/collaborators`, ada.token, "POST", { userId: bob.id, role: "editor" });
+  const channel = await api("/api/channels", ada.token, "POST", { siteId: site.id, name: "general" });
+  const threadRoot = await api(`/api/channels/${channel.id}/messages`, bob.token, "POST", { body: "Canary plan?" });
+  await api(`/api/channels/${channel.id}/messages`, bob.token, "POST", { body: "Canary at 5% for an hour", threadId: threadRoot.id });
+
+  const browser: Browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto(`${origin}/cloud.html`, { waitUntil: "load" });
+  await page.locator("#cloudUserToken").fill(ada.token);
+  await page.locator("#loginUserButton").click();
+  await waitForText(page, "#cloudStatus", "Logged in");
+  await page.goto(`${origin}/cloud.html?site=${site.id}`, { waitUntil: "load" });
+  await waitForText(page, "#chatLauncherList", "#general");
+  await page.$eval("#openChatButton", (button) => (button as HTMLButtonElement).click());
+  await page.waitForFunction(() => !(document.querySelector("#chatDrawer") as HTMLElement).hidden, { timeout: 10_000 });
+
+  await page.$eval("#chatNewDmToggle", (button) => (button as HTMLButtonElement).click());
+  await page.locator("#chatDmSearchInput").fill("Bob");
+  await page.waitForSelector("#chatDmResults .chat-person", { timeout: 10_000 });
+  await page.$eval("#chatDmResults .chat-person", (button) => (button as HTMLButtonElement).click());
+  await page.$eval("#chatStartDmButton", (button) => (button as HTMLButtonElement).click());
+  await waitForText(page, "#chatChannelTitle", "Bob Builder");
+  await waitForText(page, "#chatChannelMeta", "Direct message");
+  await waitForText(page, "#chatChannelList", "Direct messages");
+  assert.equal(await page.$eval("#chatExportButton", (button) => (button as HTMLElement).hidden), false, "DM members can export their conversation");
+
+  const input = await page.$("#chatFileInput");
+  const pngPath = join(root, "diagram.png");
+  await writeFile(pngPath, Buffer.from("89504e470d0a1a0a0000000d4948445200000001000000010806000000", "hex"));
+  await (input as unknown as { uploadFile(path: string): Promise<void> }).uploadFile(pngPath);
+  await waitForText(page, "#chatPendingFiles", "diagram.png");
+  await page.locator("#chatComposerInput").fill("Here's the diagram");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("#chatMessages .chat-image img", { timeout: 10_000 });
+  assert.equal(await text(page, "#chatPendingFiles"), "", "sent files leave the tray");
+  const dmMessages = await api<{ dms: Array<{ id: string }> }>("/api/chat/dms", bob.token);
+  assert.equal(dmMessages.dms.length, 1);
+
+  await page.keyboard.down("Control");
+  await page.keyboard.press("k");
+  await page.keyboard.up("Control");
+  await page.waitForFunction(() => !(document.querySelector("#commandPalette") as HTMLElement).hidden, { timeout: 10_000 });
+  await page.locator("#commandPaletteInput").fill("canary");
+  await waitForText(page, "#commandPaletteResults", "Rollout checklist");
+  await waitForText(page, "#commandPaletteResults", "Canary at 5% for an hour");
+  await page.$$eval("#commandPaletteResults .command-palette-option", (options) => (options.find((option) => option.textContent?.includes("Canary at 5%")) as HTMLButtonElement).click());
+  await page.waitForFunction(() => !(document.querySelector("#chatThreadPane") as HTMLElement).hidden && document.querySelector("#chatThreadMessages")?.textContent?.includes("Canary at 5%"), { timeout: 10_000 });
+  assert.equal(await text(page, "#chatChannelTitle"), "#general");
+  assert.deepEqual(pageErrors, []);
+});

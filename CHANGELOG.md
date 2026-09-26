@@ -8,6 +8,15 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Chat for enterprises (Noma Cloud):**
+  - **Direct and group messages:** `/api/chat/dms` (members only, up to 12 people, one conversation per member set) with per-stretch notifications.
+  - **Files in chat:** uploads use the attachment checks (type sniffing, executables refused, sandboxed downloads) and share the space's storage quota. Images preview inline.
+  - **Edit history:** edits and deletes keep revisions.
+  - **Exports:** channel exports as `.noma` or a digested JSON bundle, and a workspace eDiscovery export (`/api/enterprise/chat-export`), both written to the tamper-evident audit log. Public channel transcripts now ship in `noma-zip` space exports.
+  - **Retention and legal hold:** `chatRetentionDays`, applied on demand and daily. Legal holds now also cover single channels (`chat_channel`).
+  - **Moderation:** admin deletions of other people's messages are recorded in space activity.
+- **Search everything (⌘K):** `/api/find` and a command palette across spaces, pages, Work issues, channels, direct messages and chat messages, each filtered by what the caller may read.
+
 - **Chat (Noma Cloud):** Slack-style channels inside each space, organised by Work project or by topic, with public and private channels, threads, reactions, edits, read markers, and unread/mention counts.
   - **Access:** space viewers read and post in public channels (posting joins them). Private channels are members-only and return 404 to everyone else. Space editors create channels, and archived channels and spaces are read-only.
   - **Mentions and search:** `@{user-id}` sends the usual `mention` notification to people who can read the channel. Issue keys such as `SHIP-12` unfurl to summary and status for projects in the same space. `GET /api/chat/search?q=` searches every readable channel.
