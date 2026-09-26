@@ -1808,7 +1808,8 @@ returns the audit log as newline-delimited JSON, oldest first, with a
 background queue ships new records in batches of 500 as `application/x-ndjson`.
 Each batch carries `Authorization: Bearer <token>` and
 `X-Noma-Signature: sha256=<HMAC of the body>`. The cursor moves only after a
-2xx, so an outage delays delivery without losing records.
+2xx, so an outage delays delivery without losing records. The standalone
+queue worker (`apps/worker/cloud-queue.ts`) ships too.
 `GET /api/enterprise/siem` shows the target, cursor, lag, and last error.
 `POST /api/enterprise/siem/ship` ships now.
 

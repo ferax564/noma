@@ -19,17 +19,23 @@ const CARD_CANDIDATE = /\b(?:\d[ -]?){13,19}\b/g;
 
 /** How many times each enabled detector matches `text`. */
 export function scanText(text: string, detectors: readonly DlpDetector[]): Map<DlpDetector, number> {
-  const found = new Map<DlpDetector, number>();
+  return new Map([...matchText(text, detectors)].map(([detector, values]) => [detector, values.length]));
+}
+
+/** The values each enabled detector matches in `text` (card numbers without separators). */
+function matchText(text: string, detectors: readonly DlpDetector[]): Map<DlpDetector, string[]> {
+  const found = new Map<DlpDetector, string[]>();
   for (const detector of detectors) {
-    const count = detector === "credit_card" ? cardNumbers(text) : (text.match(PATTERNS[detector]) ?? []).length;
-    if (count > 0) found.set(detector, count);
+    const values = detector === "credit_card" ? cardNumbers(text) : text.match(PATTERNS[detector]) ?? [];
+    if (values.length > 0) found.set(detector, values);
   }
   return found;
 }
 
 /**
- * Applies the workspace DLP policy to new text. With `previous`, only detectors whose match count grew
- * count, so an edit near an old, already-flagged value is not blocked again.
+ * Applies the workspace DLP policy to new text. With `previous`, only values that were not already there
+ * count, so an edit near an old, already-flagged value is not blocked again — but swapping it for a
+ * different secret is.
  */
 export function enforceDlp(
   config: CloudServerConfig,
@@ -37,9 +43,9 @@ export function enforceDlp(
 ): DlpDetector[] {
   const policy = config.compliance.dlpPolicy();
   if (policy.mode === "off" || policy.detectors.length === 0) return [];
-  const now = scanText(input.text, policy.detectors);
-  const before = input.previous === undefined ? new Map<DlpDetector, number>() : scanText(input.previous, policy.detectors);
-  const detectors = [...now].filter(([detector, count]) => count > (before.get(detector) ?? 0)).map(([detector]) => detector);
+  const now = matchText(input.text, policy.detectors);
+  const before = input.previous === undefined ? new Map<DlpDetector, string[]>() : matchText(input.previous, policy.detectors);
+  const detectors = [...now].filter(([detector, values]) => introducesNew(values, before.get(detector) ?? [])).map(([detector]) => detector);
   if (detectors.length === 0) return [];
   const outcome = policy.mode === "block" ? "blocked" : "flagged";
   const createdAt = config.now().toISOString();
@@ -68,13 +74,25 @@ function describe(detector: DlpDetector): string {
   }
 }
 
-function cardNumbers(text: string): number {
-  let count = 0;
+/** True when `values` holds some value more often than `previous` does. */
+function introducesNew(values: string[], previous: string[]): boolean {
+  const remaining = new Map<string, number>();
+  for (const value of previous) remaining.set(value, (remaining.get(value) ?? 0) + 1);
+  for (const value of values) {
+    const left = remaining.get(value) ?? 0;
+    if (left === 0) return true;
+    remaining.set(value, left - 1);
+  }
+  return false;
+}
+
+function cardNumbers(text: string): string[] {
+  const found: string[] = [];
   for (const match of text.matchAll(CARD_CANDIDATE)) {
     const digits = match[0].replace(/[ -]/g, "");
-    if (digits.length >= 13 && digits.length <= 19 && !/^(\d)\1+$/.test(digits) && luhn(digits)) count += 1;
+    if (digits.length >= 13 && digits.length <= 19 && !/^(\d)\1+$/.test(digits) && luhn(digits)) found.push(digits);
   }
-  return count;
+  return found;
 }
 
 function luhn(digits: string): boolean {

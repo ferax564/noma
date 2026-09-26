@@ -57,6 +57,7 @@ test("DLP warn records findings; block refuses chat, issue, and page writes with
     const edited = await json<{ hash: string }>(`${base}/api/documents/${page.id}`, { method: "PUT", token: ada.token, body: { expectedHash: page.hash, source: `# Keys\n\nLegacy key ${AWS_KEY} (rotated). Next rotation in May.\n` } });
     assert.ok(edited.hash, "an edit that keeps an existing value is not blocked again");
     await json(`${base}/api/documents/${page.id}`, { method: "PUT", token: ada.token, body: { expectedHash: edited.hash, source: `# Keys\n\nLegacy key ${AWS_KEY}.\nNew: ${GITHUB_TOKEN}\n` }, expectedStatus: 422 });
+    await json(`${base}/api/documents/${page.id}`, { method: "PUT", token: ada.token, body: { expectedHash: edited.hash, source: "# Keys\n\nLegacy key AKIAABCDEFGHIJKLMNOP (rotated). Next rotation in May.\n" }, expectedStatus: 422 });
     await json(`${base}/api/sites/${site.id}/documents`, { method: "POST", token: ada.token, body: { source: `# New\n\n${GITHUB_TOKEN}\n` }, expectedStatus: 422 });
 
     const findings = await json<{ findings: Array<{ outcome: string; detectors: string[]; resourceType: string }> }>(`${base}/api/enterprise/dlp-findings`, { token: ada.token });
@@ -186,6 +187,13 @@ test("chat events fan out across processes sharing one database", async () => {
     assert.equal(seenByFirst.length, 1, "a process does not replay its own events");
     stopSecond();
     stopFirst();
+
+    first.postMessage({ id: "m2", channelId: "c1", kind: "message", authorId: "u1", body: "while nobody listened", links: {}, createdAt: now });
+    const late: ChatEvent[] = [];
+    const stopLate = second.subscribe("c1", (event) => late.push(event));
+    for (let attempt = 0; attempt < 100 && late.length === 0; attempt++) await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.deepEqual(late.map((event) => event.messageId), ["m2"], "an event written just before a stream opens still reaches it");
+    stopLate();
   } finally {
     first.close();
     second.close();

@@ -4,8 +4,8 @@
  * after a 2xx, so a SIEM outage delays delivery but never drops records.
  */
 import { createHmac } from "node:crypto";
-import type { SiemStatus } from "../cloud-compliance.js";
-import type { CloudServerConfig } from "./context.js";
+import type { CloudComplianceStore, SiemStatus } from "../cloud-compliance.js";
+import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 
 export interface SiemTarget {
   url: string;
@@ -19,8 +19,16 @@ export function auditNdjson(records: ReadonlyArray<object>): string {
   return records.map((record) => JSON.stringify(record)).join("\n") + (records.length ? "\n" : "");
 }
 
+/** What shipping needs: the server config satisfies it, and so does the standalone queue worker. */
+export interface SiemDeps {
+  platform: CloudKnowledgePlatform;
+  compliance: CloudComplianceStore;
+  siem?: SiemTarget;
+  now: () => Date;
+}
+
 /** Sends every audit record past the cursor, one batch at a time. Returns the updated status. */
-export async function shipAuditToSiem(config: CloudServerConfig, maxBatches = 5): Promise<SiemStatus> {
+export async function shipAuditToSiem(config: SiemDeps, maxBatches = 5): Promise<SiemStatus> {
   const target = config.siem;
   let status = config.compliance.siemStatus();
   if (!target) return status;

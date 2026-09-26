@@ -176,6 +176,12 @@ interface MessageRow {
   deleted_at: string | null;
 }
 
+/**
+ * A new stream also receives events other processes wrote this recently, covering the gap between a
+ * client loading its timeline and opening its stream, without replaying older history.
+ */
+const STREAM_CATCH_UP_MS = 30_000;
+
 export class CloudChatStore {
   private readonly db: SqliteDatabase;
   private readonly events = new EventEmitter();
@@ -720,7 +726,8 @@ export class CloudChatStore {
 
   private startTail(): void {
     if (this.tailTimer || this.tailIntervalMs <= 0) return;
-    this.tailCursor = Math.max(this.tailCursor, (this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM chat_event_log").get() as { id: number }).id);
+    const settled = (this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM chat_event_log WHERE created_at < ?").get(Date.now() - STREAM_CATCH_UP_MS) as { id: number }).id;
+    this.tailCursor = Math.max(this.tailCursor, settled);
     this.tailTimer = setInterval(() => {
       try {
         this.tailOnce();
