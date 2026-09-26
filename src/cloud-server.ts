@@ -11,6 +11,8 @@ import { type BlobStore, LocalDiskBlobStore, S3BlobStore, type S3ServerSideEncry
 import { attachCloudCollab, type CloudCollabOptions } from "./cloud-collab.js";
 import { CloudChatStore } from "./cloud-chat.js";
 import { CloudAgentOpsStore } from "./cloud-agent-ops.js";
+import { CloudComplianceStore } from "./cloud-compliance.js";
+import { type SiemTarget, siemTargetFromEnv } from "./cloud/siem.js";
 import { CloudDevLoopStore } from "./cloud-devloop.js";
 import { routeHooks } from "./cloud/routes-devloop.js";
 import { createRunProviderFromEnv, type RunProvider } from "./cloud/run-provider.js";
@@ -142,6 +144,10 @@ export interface NomaCloudServerOptions {
    * `NOMA_CLOUD_EZKEEL_TOKEN` (or `_FILE`) are set; `null` disables runs.
    */
   runProvider?: RunProvider | null;
+  /** SIEM that receives the audit log as NDJSON; defaults to `NOMA_CLOUD_SIEM_URL` + `NOMA_CLOUD_SIEM_TOKEN`. `null` disables it. */
+  siem?: SiemTarget | null;
+  /** How often chat streams read events written by other processes on the same database (ms; default 500, 0 disables). */
+  chatTailIntervalMs?: number;
 }
 
 /**
@@ -169,7 +175,7 @@ export interface NomaCloudAiOptions {
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
   const config = createCloudServerConfig(options);
-  const { store, platform, chat, devloop, agentOps } = config;
+  const { store, platform, chat, devloop, agentOps, compliance } = config;
   const stopMaintenance = startMaintenanceScheduler(config);
   if (config.production && config.adminUserIds.length === 0) {
     console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
@@ -202,6 +208,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     chat.close();
     devloop.close();
     agentOps.close();
+    compliance.close();
     platform.close();
     store.close();
   });
@@ -221,6 +228,7 @@ export async function runNomaCloudMaintenanceOnce(options: NomaCloudServerOption
     config.chat.close();
     config.devloop.close();
     config.agentOps.close();
+    config.compliance.close();
     config.platform.close();
     config.store.close();
   }
@@ -242,9 +250,11 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const adminUserIds = options.adminUserIds ?? (process.env.NOMA_CLOUD_ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean);
   const store = openNomaCloudDatabase({ dbPath, dataDir, usersDir, sitesDir, adminUserIds, bootstrapFirstUserAdmin: !production });
   const platform = new CloudKnowledgePlatform(dbPath, cloudEmbeddingsConfig(options.embeddings ?? {}));
-  const chat = new CloudChatStore(dbPath);
+  const chat = new CloudChatStore(dbPath, options.chatTailIntervalMs === undefined ? {} : { tailIntervalMs: options.chatTailIntervalMs });
   const devloop = new CloudDevLoopStore(dbPath);
   const agentOps = new CloudAgentOpsStore(dbPath);
+  const compliance = new CloudComplianceStore(dbPath);
+  const siem = options.siem === null ? undefined : options.siem ?? siemTargetFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const runProvider = options.runProvider === null ? undefined : options.runProvider ?? createRunProviderFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   return {
     dataDir,
@@ -272,6 +282,8 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     chat,
     devloop,
     agentOps,
+    compliance,
+    ...(siem ? { siem } : {}),
     ...(runProvider ? { runProvider } : {}),
     blobs: options.blobStore ?? createBlobStoreFromEnv(storageRoot),
     maxAttachmentBytes: positiveInteger(

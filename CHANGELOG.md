@@ -8,6 +8,16 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Enterprise scale and compliance (Noma Cloud):**
+  - **Chat across processes:** every chat event is also written to a short-lived shared log that other processes on the same database tail (500 ms by default), so live chat streams work behind a load balancer.
+  - **Data-loss prevention:** workspace admins set `off`, `warn` or `block` (`/api/enterprise/dlp`). Detectors cover AWS keys, GitHub and Slack tokens, private keys, API keys, and Luhn-valid card numbers, and apply to chat messages and edits, issue text and comments, and page saves.
+    - An edit that keeps an existing value is not re-flagged.
+    - A block returns `422 dlp_blocked` with the detector names, never the matched text.
+    - Findings (`/api/enterprise/dlp-findings`) and audit records hold only where a match happened and who wrote it, never the matched text.
+  - **Audit export:** `GET /api/enterprise/audit.ndjson?after=&limit=` streams the audit log as NDJSON with sequence numbers. A SIEM forwarder (`NOMA_CLOUD_SIEM_URL`, `NOMA_CLOUD_SIEM_TOKEN`) ships it in batches with a bearer token and an HMAC signature. The cursor only moves after a 2xx, so an outage delays delivery but loses nothing.
+  - **Admin overview:** `GET /api/enterprise/overview` covers people, spaces and pages, open issues, chat volume, storage, AI spend and agents, runs and minutes, DLP findings, audit and SIEM lag, and chat retention.
+  - **UI:** a **Workspace admin** inspector section, for admins only, shows the overview tiles, the DLP mode, SIEM status with a ship-now button, and an audit download.
+
 - **Agents that work unattended (Noma Cloud):**
   - **Hosted agents:** an agent's owner turns on hosting (`PUT /api/agents/:id/hosting`) and writes standing instructions. When a person @mentions the agent in a channel it can chat in, the agent answers in the thread on the configured model (Claude by default). Each answer is charged to the agent's budget and the owner's 30-day AI budget. When an answer fails, for example over budget, the thread and the owner are told.
   - **Scheduled agents:** hourly, daily or weekly schedules (`/api/agents/:id/schedules`) post a digest to a channel. The digest uses the channel's recent messages and, for project channels, the Work board as context. Schedules can also run on demand.

@@ -500,6 +500,30 @@
       <div id="approvalQueueStatus" class="panel-status"></div>
     </section>
 
+    <section id="workspaceAdminSection" class="inspector-section" hidden>
+      <details id="workspaceAdminDetails">
+        <summary><h2>Workspace admin</h2></summary>
+        <div id="workspaceOverview" class="admin-overview" aria-label="Workspace overview"></div>
+        <h3 class="inspector-subheading">Data-loss prevention</h3>
+        <div class="dev-run-form">
+          <select id="dlpModeSelect" aria-label="DLP mode">
+            <option value="off">Off</option>
+            <option value="warn">Warn (record)</option>
+            <option value="block">Block</option>
+          </select>
+          <span id="dlpSummary" class="admin-note"></span>
+          <button id="dlpSaveButton" type="button">Save</button>
+        </div>
+        <h3 class="inspector-subheading">Audit &amp; SIEM</h3>
+        <div id="siemSummary" class="diagnostics-summary"></div>
+        <div class="button-row">
+          <button id="siemShipButton" type="button">Ship to SIEM now</button>
+          <a id="auditDownloadLink" class="button-link" href="/api/enterprise/audit.ndjson?limit=10000" download="noma-audit.ndjson">Download audit (NDJSON)</a>
+        </div>
+        <div id="workspaceAdminStatus" class="panel-status"></div>
+      </details>
+    </section>
+
     <section id="myAgentsSection" class="inspector-section">
       <details id="myAgentsDetails">
         <summary><h2>My agents</h2></summary>

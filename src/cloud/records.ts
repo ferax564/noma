@@ -2,6 +2,7 @@
  * Document/user record operations and response shaping shared by several route modules (create/update
  * documents, source inspection, preconditions).
  */
+import { enforceDlp } from "./dlp.js";
 import type { IncomingMessage } from "node:http";
 import { type Diagnostic, walk } from "../ast.js";
 import type { CloudDocumentRecord, CloudUserRecord } from "../cloud-db.js";
@@ -69,6 +70,7 @@ export async function createDocument(
   const template = resolveCreateTemplate(config, input.templateId, siteId);
   const requestedTitle = optionalString(input.title) ?? template?.title ?? "Untitled document";
   const source = assignTaskIds(template ? template.instantiate(requestedTitle, spaceTitle, input.variables, user) : sourceFromCreateInput(input));
+  enforceDlp(config, { text: source, actorId: user.id, resourceType: "document", resourceId: id, ...(siteId ? { siteId } : {}) });
   inspectSource(source, id);
   const now = config.now().toISOString();
   const record: CloudDocumentRecord = {
@@ -103,6 +105,7 @@ export async function updateDocument(
   requirePageWritable(config, existing.id);
   const submitted = input.source === undefined ? existing.source : sourceFromInput(input);
   const source = options.assignTaskIds && input.source !== undefined ? assignTaskIds(submitted) : submitted;
+  if (source !== existing.source) enforceDlp(config, { text: source, previous: existing.source, actorId: access.user?.id ?? `share:${access.share?.id ?? "unknown"}`, resourceType: "document", resourceId: existing.id });
   inspectSource(source, existing.id);
   const record: CloudDocumentRecord = {
     ...existing,

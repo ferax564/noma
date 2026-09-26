@@ -3766,3 +3766,63 @@ button.wiki-row {
 #approvalQueueList .dev-run-actions > span {
   color: var(--faint);
 }
+
+/* Workspace admin */
+.admin-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.admin-tile {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.admin-tile span {
+  color: var(--faint);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin-tile strong {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-tile small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.admin-note {
+  align-self: center;
+  color: var(--faint);
+  font-size: 0.7rem;
+}
+
+#siemSummary[data-state="error"] {
+  color: var(--error);
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 7px;
+  color: var(--ink);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.button-link:hover {
+  background: var(--button-hover);
+}

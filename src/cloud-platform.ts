@@ -1360,6 +1360,28 @@ export class CloudKnowledgePlatform {
   }
 
   /** Appends a record to the tamper-evident audit chain (compliance actions outside the platform, such as chat exports). */
+  /** Agents by status across the workspace (system assistants excluded). */
+  agentCounts(): { active: number; paused: number; revoked: number } {
+    const rows = this.db.prepare("SELECT json_extract(data_json, '$.status') AS status, COUNT(*) AS n FROM cloud_platform_records WHERE kind = 'agent' AND id NOT LIKE 'noma-ai-%' GROUP BY status").all() as Array<{ status: string; n: number }>;
+    const by = (status: string) => rows.find((row) => row.status === status)?.n ?? 0;
+    return { active: by("active"), paused: by("paused"), revoked: by("revoked") };
+  }
+
+  /** Audit records after `sequence`, oldest first, with their sequence numbers — for NDJSON and SIEM export. */
+  auditAfter(sequence: number, limit: number): Array<AuditRecord & { sequence: number }> {
+    const rows = this.db
+      .prepare("SELECT sequence, id, actor_id, action, resource_type, resource_id, detail_json, created_at FROM cloud_platform_audit WHERE sequence > ? ORDER BY sequence LIMIT ?")
+      .all(sequence, limit) as Array<{ sequence: number; id: string; actor_id: string; action: string; resource_type: string; resource_id: string; detail_json: string; created_at: string }>;
+    return rows.map((row) => ({ sequence: row.sequence, id: row.id, actorId: row.actor_id, action: row.action, resourceType: row.resource_type, resourceId: row.resource_id, detail: JSON.parse(row.detail_json) as Record<string, unknown>, createdAt: row.created_at }));
+  }
+
+  /** The newest audit sequence and how many records were written since `since`. */
+  auditStats(since: string): { latestSequence: number; recent: number } {
+    const latest = (this.db.prepare("SELECT COALESCE(MAX(sequence), 0) AS n FROM cloud_platform_audit").get() as { n: number }).n;
+    const recent = (this.db.prepare("SELECT COUNT(*) AS n FROM cloud_platform_audit WHERE created_at >= ?").get(since) as { n: number }).n;
+    return { latestSequence: latest, recent };
+  }
+
   recordAudit(actorId: string, action: string, resourceType: string, resourceId: string, detail: Record<string, unknown>, createdAt: string): AuditRecord {
     return this.audit(actorId, action, resourceType, resourceId, detail, createdAt);
   }

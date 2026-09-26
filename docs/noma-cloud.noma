@@ -1762,6 +1762,62 @@ GET       /api/agents/<agent-id>/chat?status=pending|all
 ```
 
 
+## Compliance and administration {id="compliance"}
+
+Workspace admins get one **Workspace admin** section in the inspector. It shows
+an overview (`GET /api/enterprise/overview`):
+
+- people
+- spaces and pages
+- open issues
+- messages
+- AI spend and agents
+- runs and minutes
+- storage
+- chat retention
+
+It also holds data-loss prevention and the audit export controls.
+
+**Data-loss prevention.** `PUT /api/enterprise/dlp {"mode": "off" | "warn" |
+"block", "detectors": [...]}` checks what people and agents write:
+
+- chat messages and edits
+- issue summaries, descriptions, and comments
+- page saves
+
+| Detector | Matches |
+|---|---|
+| `aws_access_key` | `AKIA…` / `ASIA…` access key IDs |
+| `github_token` | `ghp_…`, `gho_…`, `ghs_…`, `github_pat_…` |
+| `slack_token` | `xoxb-…`, `xoxp-…` and friends |
+| `private_key` | PEM / OpenSSH private key headers |
+| `api_key` | `sk-…`, `sk-ant-…`, `sk-proj-…` style keys |
+| `credit_card` | 13–19 digit numbers that pass the Luhn check |
+
+In `warn` mode the write goes through and a finding is recorded. In `block` mode
+the write returns `422 dlp_blocked` with the detector names. An edit that only
+keeps a value that was already there is not flagged again. Findings
+(`GET /api/enterprise/dlp-findings`) and audit records (`dlp.flagged`,
+`dlp.blocked`) never contain the matched text. The detectors are
+pattern-based. They catch accidents, not determined exfiltration.
+
+**Audit export and SIEM.** `GET /api/enterprise/audit.ndjson?after=<sequence>&limit=`
+returns the audit log as newline-delimited JSON, oldest first, with a
+`sequence` per record and `x-noma-next-after` for paging. With
+`NOMA_CLOUD_SIEM_URL` and `NOMA_CLOUD_SIEM_TOKEN` (or `_FILE`) set, the
+background queue ships new records in batches of 500 as `application/x-ndjson`.
+Each batch carries `Authorization: Bearer <token>` and
+`X-Noma-Signature: sha256=<HMAC of the body>`. The cursor moves only after a
+2xx, so an outage delays delivery without losing records.
+`GET /api/enterprise/siem` shows the target, cursor, lag, and last error.
+`POST /api/enterprise/siem/ship` ships now.
+
+**Running more than one process.** All Noma Cloud processes can share one
+SQLite database in WAL mode. Chat live updates fan out between them: each event
+also goes to a short-lived shared log (event IDs only, never message text).
+Every process with open streams tails that log, every 500 ms by default
+(`chatTailIntervalMs`). Live co-editing still needs sticky routing per page.
+
 ## Agents that work unattended {id="unattended-agents"}
 
 Agents do not have to wait for their owner to drive them over the gateway.

@@ -1364,7 +1364,8 @@ people and agents under one permission model. Five steps, shipped in order:
    the audit log exports as NDJSON to a SIEM, data-loss-prevention rules check
    messages, and an admin console shows usage. PostgreSQL, native SAML, a live
    AWS deployment, and a third-party pentest stay listed as open work in
-   `docs/enterprise.noma`.
+   `docs/enterprise.noma`. *Shipped (unreleased):* see
+   `docs/noma-cloud.noma#compliance`.
 5. **Make switching easy.** Import Slack exports into channels, bridge Slack
    channels in both directions during a migration, and import Jira projects
    into Work.

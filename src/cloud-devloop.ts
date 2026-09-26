@@ -335,6 +335,18 @@ export class CloudDevLoopStore {
     ).map(runFromRow);
   }
 
+  /** Workspace run totals since `since` (the start of the month) for the admin overview. */
+  stats(since: string): { linkedRepos: number; runs: number; minutes: number; failed: number; pendingApproval: number } {
+    const count = (sql: string, ...params: string[]) => (this.db.prepare(sql).get(...params) as { n: number }).n;
+    return {
+      linkedRepos: count("SELECT COUNT(*) AS n FROM dev_repos"),
+      runs: count("SELECT COUNT(*) AS n FROM dev_runs WHERE created_at >= ?", since),
+      minutes: count("SELECT COALESCE(SUM(minutes), 0) AS n FROM dev_runs WHERE created_at >= ?", since),
+      failed: count("SELECT COUNT(*) AS n FROM dev_runs WHERE status = 'failed' AND created_at >= ?", since),
+      pendingApproval: count("SELECT COUNT(*) AS n FROM dev_runs WHERE status = 'pending_approval'"),
+    };
+  }
+
   /** Runs still queued or running, oldest first — the poller's work list. */
   listActiveRuns(limit = 100): DevRun[] {
     return (this.db.prepare("SELECT * FROM dev_runs WHERE status IN ('queued', 'running') ORDER BY created_at, id LIMIT ?").all(limit) as RunRow[]).map(runFromRow);
