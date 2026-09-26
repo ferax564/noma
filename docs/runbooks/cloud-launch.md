@@ -136,7 +136,7 @@ git tag v0.17.0
 git push origin main v0.17.0
 ```
 
-or manually dispatch `.github/workflows/release.yml` with `tag=v0.17.0`. The workflow validates the version, runs the complete gate, creates a missing manual tag only after the gate passes, publishes missing npm versions, and creates the GitHub release from the v0.17.0 changelog slice.
+or manually dispatch `.github/workflows/release.yml` with `tag=v0.17.0`. Since v0.19.0 there is a third path: merging a release PR whose `package.json` version has no tag yet starts the same workflow on the push to `main`, and it tags the release itself. Use this when neither a tag push nor a manual dispatch is available, as in Claude Code cloud sessions. The workflow validates the version, runs the complete gate, creates a missing manual tag only after the gate passes, publishes missing npm versions, and creates the GitHub release from the v0.17.0 changelog slice.
 
 After publication, verify all four npm packages, the GitHub release, MCP registry descriptor, GitHub Pages, container health, and the installation smoke test from `docs/runbooks/npm-publish.md`.
 
