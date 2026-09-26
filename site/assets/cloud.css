@@ -3741,3 +3741,28 @@ button.wiki-row {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+/* Approvals + kill switch */
+.agent-kill-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 0.76rem;
+}
+
+.agent-kill-switch[data-state="paused"] {
+  border-color: var(--error);
+  background: var(--danger-soft);
+  color: var(--error);
+  font-weight: 600;
+}
+
+#approvalQueueList .dev-run-actions > span {
+  color: var(--faint);
+}

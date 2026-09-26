@@ -116,6 +116,20 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
     sendJson(res, 200, { ...platform, ...(chatDays > 0 ? { chat: await enforceChatRetention(config, chatDays, user.id) } : {}) });
     return;
   }
+  if (action === "agents" && method === "GET") {
+    sendJson(res, 200, config.agentOps.killSwitch());
+    return;
+  }
+  if (action === "agents" && method === "PUT") {
+    const input = await readJsonBody(req, config.maxBodyBytes);
+    if (typeof input.paused !== "boolean") throw new HttpError(400, "paused must be true or false");
+    const now = config.now().toISOString();
+    const reason = optionalString(input.reason)?.slice(0, 500);
+    const saved = config.agentOps.setKillSwitch({ paused: input.paused, ...(reason ? { reason } : {}), updatedBy: user.id, updatedAt: now });
+    config.platform.recordAudit(user.id, input.paused ? "agents.paused" : "agents.resumed", "workspace", "workspace", { ...(reason ? { reason } : {}) }, now);
+    sendJson(res, 200, saved);
+    return;
+  }
   if (action === "chat-export" && method === "GET") {
     const url = requestUrl(req);
     const channelId = url.searchParams.get("channelId");

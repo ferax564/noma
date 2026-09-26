@@ -8,6 +8,13 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Agents that work unattended (Noma Cloud):**
+  - **Hosted agents:** an agent's owner turns on hosting (`PUT /api/agents/:id/hosting`) and writes standing instructions. When a person @mentions the agent in a channel it can chat in, the agent answers in the thread on the configured model (Claude by default). Each answer is charged to the agent's budget and the owner's 30-day AI budget. When an answer fails, for example over budget, the thread and the owner are told.
+  - **Scheduled agents:** hourly, daily or weekly schedules (`/api/agents/:id/schedules`) post a digest to a channel. The digest uses the channel's recent messages and, for project channels, the Work board as context. Schedules can also run on demand.
+  - **Approval queue:** `GET /api/approvals` gathers everything waiting on you: deploy/test runs that agents asked for, agent page patches, AI-drafted pages, and page approvals. A run asked for by an agent now waits in `pending_approval`, a per-project setting that is on by default. A different person must approve it (`POST /api/approvals/runs/:id`), never the agent's owner.
+  - **Kill switch:** workspace admins pause every agent at once (`PUT /api/enterprise/agents {paused, reason}`). While paused, agent chat posts, gateway calls with an `agentId`, runs, assignments, hosted replies, schedules and Noma AI all stop with `423 agents_paused`. The switch is audited.
+  - **UI:** an **Approvals** inspector section, with the kill switch for admins, and a **My agents** section for hosting and schedules.
+
 - **Code, CI and run environments (Noma Cloud):** the loop from conversation to verified deploy.
   - **Repositories:** space owners link a GitHub repository to a Work project (`PUT /api/projects/:id/repo`) and paste the shown payload URL and secret into a GitHub webhook.
   - **Pull requests and CI:** `POST /api/hooks/github/:projectId` is HMAC-verified (`X-Hub-Signature-256`) and deduplicated by delivery ID, and served before the Cloud access gate. A pull request that names an issue key (`SHIP-12`) in its title, body or branch links to that issue, adds a comment, moves the issue to *in review*, and posts in the issue's chat thread. Merging moves the issue to *done*. `workflow_run` and `check_suite` results post ✅/❌ into the same thread.

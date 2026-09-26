@@ -1762,6 +1762,81 @@ GET       /api/agents/<agent-id>/chat?status=pending|all
 ```
 
 
+## Agents that work unattended {id="unattended-agents"}
+
+Agents do not have to wait for their owner to drive them over the gateway.
+Noma Cloud can run them itself, on the configured language model, inside the
+same permissions and budgets.
+
+**Hosted agents.** In **My agents**, an agent's owner turns on *Hosted* and
+writes standing instructions (`PUT /api/agents/<id>/hosting`). The agent's
+model policy must match the server's model, and it needs the `chat`
+capability. From then on, when a person @mentions the agent in a channel it can
+chat in, the server:
+
+1. reads the thread (at most 40 messages) as quoted data,
+2. calls the model with the agent's instructions and fixed rules,
+3. posts the answer in the thread as the agent.
+
+Each answer is charged to the agent's budget and the owner's 30-day AI budget.
+If a call cannot run, for example over budget, the thread gets a ⚠️ notice and
+the owner gets a notification. Agents' own posts never trigger other agents.
+A hosted agent that wants a deploy or test replies with a `/deploy <ref>` or
+`/test <ref>` line. That line goes through the approval step below.
+
+**Scheduled agents.** A schedule (`POST /api/agents/<id>/schedules`) has:
+
+- a channel,
+- an hourly, daily, or weekly cadence (with a UTC hour, and a weekday for
+  weekly),
+- a title,
+- a prompt.
+
+When it is due, the agent gets the channel's messages since the last window
+and, for a project channel, the Work board (status counts and the issues that
+matter). It posts one digest message. `POST …/schedules/<id>/run` runs a
+schedule now. `GET /api/agents/<id>/jobs` lists every hosted and scheduled
+run with its outcome and cost.
+
+**One approval queue.** `GET /api/approvals` (the **Approvals** section) lists
+what waits on you:
+
+| Kind | Where it comes from | Decided |
+|---|---|---|
+| Run | An agent asked for `/deploy` or `/test` (`run_request`, chat, or a hosted reply) | Here: **Approve** starts it, **Reject** declines it |
+| Page patch | An agent or colleague proposed block edits on a page you can edit | On the page |
+| AI page | An AI-drafted page in a space you can edit | In the space |
+| Page approval | Someone asked you to approve a page | On the page |
+
+Runs asked for by agents wait in `pending_approval` until a person with the
+project's minimum role decides. The agent's owner cannot approve their own
+agent's request. A project owner can turn this off with
+`agentRunsNeedApproval: false` on the repository link.
+
+**Kill switch.** A workspace admin can press **Pause all agents** or call
+`PUT /api/enterprise/agents {"paused": true, "reason": "…"}`. While agents
+are paused, all of these return `423 agents_paused`:
+
+- chat posts made as an agent
+- MCP gateway calls that carry an `agentId`
+- agent runs and assignments
+- hosted replies and schedules
+- Noma AI
+
+Mentions are not queued while paused. Resuming restores everything. Both
+actions are written to the tamper-evident audit log.
+
+```text
+GET|PUT        /api/agents/<id>/hosting            {enabled, instructions}
+GET|POST       /api/agents/<id>/schedules          {channelId, title, prompt, cadence: hourly|daily|weekly, hourUtc?, weekday?}
+PATCH|DELETE   /api/agents/<id>/schedules/<schedule-id>
+POST           /api/agents/<id>/schedules/<schedule-id>/run
+GET            /api/agents/<id>/jobs
+GET            /api/approvals
+POST           /api/approvals/runs/<run-id>        {decision: approve|reject}
+GET|PUT        /api/enterprise/agents              {paused, reason?}   (workspace admins)
+```
+
 ## Code, CI, and run environments {id="dev-loop"}
 
 A Work project can link to a GitHub repository. From then on, pull requests,

@@ -1,6 +1,7 @@
 /** Work management: projects, issues and sprints. */
 import { fetchCloudJson } from "./api.js";
 import { collaborationRow } from "./collaboration.js";
+import { refreshApprovalQueue, refreshMyAgents } from "./agent-ops.js";
 import { refreshDevLoop } from "./devloop.js";
 import { workIssueStatuses } from "./constants.js";
 import { issueAssigneeInput, issueCommentInput, issueDetailList, issueFilterSelect, issueLabelsInput, issueLinkTargetInput, issueLinkTypeSelect, issuePrioritySelect, issueSearchInput, issueSprintSelect, issueSummaryInput, issueTypeSelect, manageSprintSelect, projectKeyInput, projectNameInput, selectedIssueSummary, sprintNameInput, workBoard, workProjectSelect, workStatus } from "./dom.js";
@@ -20,6 +21,8 @@ export async function refreshWorkManagement(): Promise<void> {
     return;
   }
   const selectedId = workProjectSelect.value;
+  void refreshApprovalQueue();
+  void refreshMyAgents();
   try {
     const response = await fetchCloudJson<{ projects: CloudProject[] }>("/api/projects");
     const available = state.currentSite ? response.projects.filter((project) => project.siteId === state.currentSite?.id) : response.projects;

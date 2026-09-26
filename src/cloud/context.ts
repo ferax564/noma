@@ -18,6 +18,7 @@ import type {
 } from "../cloud-db.js";
 import type { BlobStore } from "../cloud-blobs.js";
 import type { CloudChatStore } from "../cloud-chat.js";
+import type { CloudAgentOpsStore } from "../cloud-agent-ops.js";
 import type { CloudDevLoopStore } from "../cloud-devloop.js";
 import type { RunProvider } from "./run-provider.js";
 import type { LlmProvider } from "../cloud-llm.js";
@@ -56,6 +57,8 @@ export interface CloudServerConfig {
   chat: CloudChatStore;
   /** Linked repositories, pull requests, and deploy/test runs (`/api/projects/:id/repo|pulls|runs`). */
   devloop: CloudDevLoopStore;
+  /** Hosted and scheduled agents, their job queue, and the workspace agent kill switch. */
+  agentOps: CloudAgentOpsStore;
   /** Where `/deploy` and `/test` runs execute (ezkeel); absent when no run environment is configured. */
   runProvider?: RunProvider;
   blobs: BlobStore;

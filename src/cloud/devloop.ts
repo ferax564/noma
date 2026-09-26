@@ -43,27 +43,24 @@ export function issuesMentioned(config: CloudServerConfig, project: CloudProject
   });
 }
 
-/** Starts a deploy or test run and announces it; failures to start are recorded on the run, not thrown. */
+/**
+ * Creates a deploy or test run and starts it, or — when an agent asks and the project requires it —
+ * parks it as `pending_approval` for a person. Failures to start are recorded on the run, not thrown.
+ */
 export async function requestRun(config: CloudServerConfig, request: RunRequest): Promise<DevRun> {
   const { project, repo, actor } = request;
-  const provider = config.runProvider;
-  if (!provider) throw new HttpError(503, "No run environment is configured (set NOMA_CLOUD_EZKEEL_URL and NOMA_CLOUD_EZKEEL_TOKEN)", { code: "run_environment_unavailable" });
-  if (!repo.runsEnabled) throw new HttpError(409, "Runs are turned off for this project", { code: "runs_disabled" });
+  const provider = requireRunnable(config, project, repo);
   const ref = refInput(request.ref, repo.defaultBranch);
-  if (config.devloop.activeRunCount(project.id) >= repo.maxConcurrent) {
-    throw new HttpError(429, `This project already has ${repo.maxConcurrent} runs in flight`, { code: "run_concurrency_limit" });
-  }
-  const used = config.devloop.minutesUsed(project.id, monthStart(config.now()));
-  if (used >= repo.monthlyMinutes) throw new HttpError(429, `This project used its ${repo.monthlyMinutes} run minutes for the month`, { code: "run_budget_exhausted", used });
   const issue = request.issueId ? config.store.readIssue(request.issueId) : issuesMentioned(config, project, ref)[0];
   const id = randomId();
   const now = config.now().toISOString();
+  const needsApproval = Boolean(request.agentId && repo.agentRunsNeedApproval);
   const run = config.devloop.insertRun({
     id,
     projectId: project.id,
     kind: request.kind,
     ref,
-    status: "queued",
+    status: needsApproval ? "pending_approval" : "queued",
     appName: runAppName(project, request.kind, ref, id),
     ...(issue && issue.projectId === project.id ? { issueId: issue.id } : {}),
     ...(request.pullNumber !== undefined ? { pullNumber: request.pullNumber } : {}),
@@ -74,18 +71,64 @@ export async function requestRun(config: CloudServerConfig, request: RunRequest)
     createdAt: now,
     minutes: 0,
   });
-  config.platform.recordAudit(actor.id, "run.requested", "site", project.siteId, { projectId: project.id, runId: run.id, kind: run.kind, ref, provider: provider.name, ...(request.agentId ? { agentId: request.agentId } : {}) }, now);
+  config.platform.recordAudit(actor.id, "run.requested", "site", project.siteId, { projectId: project.id, runId: run.id, kind: run.kind, ref, provider: provider.name, ...(request.agentId ? { agentId: request.agentId } : {}), ...(needsApproval ? { pendingApproval: true } : {}) }, now);
   recordActivity(config, actor, "run.requested", "site", project.siteId, { projectId: project.id, runId: run.id, kind: run.kind, ref });
   if (run.issueId) recordIssueEvent(config, actor, run.issueId, "run.requested", { runId: run.id, kind: run.kind, ref });
+  if (needsApproval) {
+    const agentName = config.platform.readAgent(request.agentId!)?.name ?? "An agent";
+    const placed = announce(config, project, actor, `🤖 ${agentName} asks to ${run.kind === "deploy" ? "deploy" : "test"} \`${ref}\` · waiting for a person to approve run ${run.id} in the approval queue`, run);
+    return config.devloop.updateRun(run.id, placed) ?? run;
+  }
+  return await startRun(config, run, project, actor);
+}
+
+/** A person approves or rejects an agent's pending run; the agent's owner cannot approve it. */
+export async function decideRun(config: CloudServerConfig, run: DevRun, reviewer: CloudUserRecord, decision: "approve" | "reject"): Promise<DevRun> {
+  if (run.status !== "pending_approval") throw new HttpError(409, "Only runs waiting for approval can be decided");
+  if (decision === "approve" && run.requestedBy === reviewer.id) throw new HttpError(409, "A different person must approve a run your agent asked for");
+  const project = config.store.readProject(run.projectId);
+  const repo = project ? config.devloop.readRepo(project.id) : undefined;
+  if (!project || !repo) throw new HttpError(404, "Project or repository not found");
+  const now = config.now().toISOString();
+  config.platform.recordAudit(reviewer.id, decision === "approve" ? "run.approved" : "run.rejected", "site", project.siteId, { projectId: project.id, runId: run.id, agentId: run.agentId }, now);
+  if (decision === "reject") {
+    const rejected = config.devloop.transitionRun(run.id, ["pending_approval"], { status: "rejected", reviewedBy: reviewer.id, finishedAt: now });
+    if (!rejected) throw new HttpError(409, "The run was already decided");
+    announce(config, project, reviewer, `🙅 ${reviewer.name} declined the ${run.kind} of \`${run.ref}\``, rejected);
+    return rejected;
+  }
+  requireRunnable(config, project, repo);
+  const approved = config.devloop.transitionRun(run.id, ["pending_approval"], { status: "queued", reviewedBy: reviewer.id });
+  if (!approved) throw new HttpError(409, "The run was already decided");
+  const actor = config.store.readUser(run.requestedBy) ?? reviewer;
+  return await startRun(config, approved, project, actor, reviewer);
+}
+
+function requireRunnable(config: CloudServerConfig, project: CloudProject, repo: DevRepo): NonNullable<CloudServerConfig["runProvider"]> {
+  const provider = config.runProvider;
+  if (!provider) throw new HttpError(503, "No run environment is configured (set NOMA_CLOUD_EZKEEL_URL and NOMA_CLOUD_EZKEEL_TOKEN)", { code: "run_environment_unavailable" });
+  if (!repo.runsEnabled) throw new HttpError(409, "Runs are turned off for this project", { code: "runs_disabled" });
+  if (config.devloop.activeRunCount(project.id) >= repo.maxConcurrent) {
+    throw new HttpError(429, `This project already has ${repo.maxConcurrent} runs in flight`, { code: "run_concurrency_limit" });
+  }
+  const used = config.devloop.minutesUsed(project.id, monthStart(config.now()));
+  if (used >= repo.monthlyMinutes) throw new HttpError(429, `This project used its ${repo.monthlyMinutes} run minutes for the month`, { code: "run_budget_exhausted", used });
+  return provider;
+}
+
+async function startRun(config: CloudServerConfig, run: DevRun, project: CloudProject, actor: CloudUserRecord, approver?: CloudUserRecord): Promise<DevRun> {
+  const provider = config.runProvider!;
+  const repo = config.devloop.readRepo(project.id)!;
   const verb = run.kind === "deploy" ? "🚀 Deploying" : "🧪 Testing";
-  const placed = announce(config, project, actor, `${verb} \`${ref}\` on ${provider.name}${request.agentId ? " (requested by an agent)" : ""} · run ${run.id}`, run);
+  const by = approver ? ` (approved by ${approver.name})` : run.agentId ? " (requested by an agent)" : "";
+  const placed = announce(config, project, actor, `${verb} \`${run.ref}\` on ${provider.name}${by} · run ${run.id}`, run);
   try {
-    const started = await provider.start({ appName: run.appName, repoUrl: `https://github.com/${repo.repo}.git`, ref, kind: run.kind });
+    const started = await provider.start({ appName: run.appName, repoUrl: `https://github.com/${repo.repo}.git`, ref: run.ref, kind: run.kind });
     return config.devloop.updateRun(run.id, { status: "running", startedAt: config.now().toISOString(), ...placed, ...(started.providerRef ? { providerRef: started.providerRef } : {}), ...(started.url ? { url: started.url } : {}) })!;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const failed = config.devloop.updateRun(run.id, { status: "failed", error: message.slice(0, 500), finishedAt: config.now().toISOString(), ...placed })!;
-    announce(config, project, actor, `❌ Could not start the ${run.kind} of \`${ref}\`: ${message.slice(0, 300)}`, failed);
+    announce(config, project, actor, `❌ Could not start the ${run.kind} of \`${run.ref}\`: ${message.slice(0, 300)}`, failed);
     return failed;
   }
 }
@@ -139,7 +182,7 @@ export async function pollDevRuns(config: CloudServerConfig): Promise<number> {
 /** Cancels an active run or removes a preview, tearing the app down on the run environment. */
 export async function stopRun(config: CloudServerConfig, run: DevRun, actor: CloudUserRecord): Promise<DevRun> {
   const project = config.store.readProject(run.projectId);
-  if (config.runProvider) await config.runProvider.teardown(run.appName);
+  if (config.runProvider && run.status !== "pending_approval") await config.runProvider.teardown(run.appName);
   const next = retireRun(config, run) ?? run;
   const now = config.now().toISOString();
   config.platform.recordAudit(actor.id, "run.stopped", "site", project?.siteId ?? run.projectId, { projectId: run.projectId, runId: run.id, appName: run.appName }, now);
@@ -156,7 +199,7 @@ function retireRun(config: CloudServerConfig, run: DevRun): DevRun | undefined {
   if (run.status === "success" && run.kind === "deploy") return config.devloop.transitionRun(run.id, ["success"], { status: "removed" });
   const started = run.startedAt ?? (run.status === "running" ? run.createdAt : undefined);
   const minutes = started ? Math.max(1, Math.ceil((now.getTime() - Date.parse(started)) / 60_000)) : 0;
-  return config.devloop.transitionRun(run.id, ["queued", "running"], { status: "canceled", finishedAt: now.toISOString(), minutes });
+  return config.devloop.transitionRun(run.id, ["pending_approval", "queued", "running"], { status: "canceled", finishedAt: now.toISOString(), minutes });
 }
 
 async function settleRun(config: CloudServerConfig, run: DevRun): Promise<void> {

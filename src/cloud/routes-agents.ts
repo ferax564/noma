@@ -1,4 +1,6 @@
 /** Agent identities, connectors, recipes, and the agent gateway. */
+import { requireAgentsRunning } from "./agent-runner.js";
+import { routeAgentOps } from "./routes-agent-ops.js";
 import { callRunGatewayTool } from "./routes-devloop.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { walk } from "../ast.js";
@@ -102,6 +104,8 @@ export async function routeAgents(req: IncomingMessage, res: ServerResponse, par
     return;
   }
   const agent = ownedAgent(config, user, stringPathPart(agentId, "Agent ID"));
+  if (await routeAgentOps(req, res, action, childId, parts[5], config, user, agent)) return;
+  if (method !== "GET" && (action === "assignments" || action === "runs")) requireAgentsRunning(config);
   if (!action && method === "GET") {
     sendJson(res, 200, { ...agent, access: config.platform.listAgentAccess(agent.id), runs: config.platform.listAgentRuns(agent.id) });
     return;
@@ -364,6 +368,7 @@ export async function routeAgentGateway(req: IncomingMessage, res: ServerRespons
       const params = optionalRecord(input.params, "params") ?? {};
       const name = stringInput(params, "name");
       const args = optionalRecord(params.arguments, "params.arguments") ?? {};
+      if (args.agentId !== undefined) requireAgentsRunning(config);
       const result = await callGatewayTool(name, args, config, principal, user);
       sendJson(res, 200, { jsonrpc: "2.0", id: requestId, result: { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result } });
       return;

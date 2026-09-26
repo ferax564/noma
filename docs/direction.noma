@@ -344,7 +344,7 @@ people and agents under one permission model. It ships in five steps:
 2. Close the loop with GitHub and ezkeel: PR and CI events drive issues, and
    `/deploy` and `/test` run from threads. (Shipped.)
 3. Agents that work unattended: hosted and scheduled agents, one approval
-   queue, a kill switch.
+   queue, a kill switch. (Shipped.)
 4. Enterprise scale and compliance: cross-process fan-out, SIEM audit export,
    DLP, an admin console.
 5. Make switching easy: Slack import and bridge, Jira import.

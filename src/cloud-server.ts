@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { type BlobStore, LocalDiskBlobStore, S3BlobStore, type S3ServerSideEncryption } from "./cloud-blobs.js";
 import { attachCloudCollab, type CloudCollabOptions } from "./cloud-collab.js";
 import { CloudChatStore } from "./cloud-chat.js";
+import { CloudAgentOpsStore } from "./cloud-agent-ops.js";
 import { CloudDevLoopStore } from "./cloud-devloop.js";
 import { routeHooks } from "./cloud/routes-devloop.js";
 import { createRunProviderFromEnv, type RunProvider } from "./cloud/run-provider.js";
@@ -168,7 +169,7 @@ export interface NomaCloudAiOptions {
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
   const config = createCloudServerConfig(options);
-  const { store, platform, chat, devloop } = config;
+  const { store, platform, chat, devloop, agentOps } = config;
   const stopMaintenance = startMaintenanceScheduler(config);
   if (config.production && config.adminUserIds.length === 0) {
     console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
@@ -200,6 +201,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     stopMaintenance();
     chat.close();
     devloop.close();
+    agentOps.close();
     platform.close();
     store.close();
   });
@@ -218,6 +220,7 @@ export async function runNomaCloudMaintenanceOnce(options: NomaCloudServerOption
   } finally {
     config.chat.close();
     config.devloop.close();
+    config.agentOps.close();
     config.platform.close();
     config.store.close();
   }
@@ -241,6 +244,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const platform = new CloudKnowledgePlatform(dbPath, cloudEmbeddingsConfig(options.embeddings ?? {}));
   const chat = new CloudChatStore(dbPath);
   const devloop = new CloudDevLoopStore(dbPath);
+  const agentOps = new CloudAgentOpsStore(dbPath);
   const runProvider = options.runProvider === null ? undefined : options.runProvider ?? createRunProviderFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   return {
     dataDir,
@@ -267,6 +271,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     platform,
     chat,
     devloop,
+    agentOps,
     ...(runProvider ? { runProvider } : {}),
     blobs: options.blobStore ?? createBlobStoreFromEnv(storageRoot),
     maxAttachmentBytes: positiveInteger(
