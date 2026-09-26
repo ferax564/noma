@@ -1773,7 +1773,9 @@ Chat section and pick the ZIP, or call `POST /api/import/slack?siteId=<space>`
 with the ZIP as the body.
 
 - Public channels become public channels, and private channels (`groups.json`)
-  become private ones. A channel with the same name is reused.
+  become private ones. A channel with the same name is reused only when its
+  visibility matches (and, for a private channel, you are already a member);
+  otherwise the import makes `name-private` or `name-2`.
 - Messages keep their original time and thread. Reactions, `@` mentions,
   channel links, and link labels carry over. Slack formatting becomes Markdown.
 - People are matched by email to members of the space. A matched person
@@ -1802,7 +1804,10 @@ single page, several pages, or a bare issue array all work. Import it with
 
 Labels are kept, plus a `jira` label, and each description ends with
 *Imported from Jira KEY*. People are matched by email. Unmatched people are
-named in the text. Re-importing creates nothing twice.
+named in the text. Links are read from either end (`outwardIssue` or
+`inwardIssue`) and created once. Every issue and comment is checked against
+data-loss prevention before anything is written, so a blocked import leaves
+nothing half done. Re-importing creates nothing twice.
 
 **Two-way Slack bridge.** Create a Slack app with the bot scopes `chat:write`,
 `chat:write.customize`, `users:read`, `users:read.email`, and
@@ -1813,7 +1818,9 @@ set `NOMA_CLOUD_SLACK_BOT_TOKEN` and `NOMA_CLOUD_SLACK_SIGNING_SECRET` (or
 `PUT /api/channels/<id>/bridge {"slackChannelId": "C0123ABCD"}`. After that:
 
 - messages posted in Noma, by people or agents, go to Slack under the
-  author's name, through an outbox that retries up to five times;
+  author's name, through an outbox that retries up to five times. Each row is
+  leased before it is posted, so several processes never post it twice, and
+  the standalone queue worker (`apps/worker/cloud-queue.ts`) drains it too;
 - messages posted in the Slack channel come into Noma. Events are verified
   with the v0 signature and a five-minute timestamp window. People matched by
   email post as themselves; everyone else posts under the bridge owner with

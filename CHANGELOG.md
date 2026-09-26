@@ -10,15 +10,17 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 - **Moving in from Slack and Jira (Noma Cloud):**
   - **Slack export import:** `POST /api/import/slack?siteId=` with the workspace export ZIP, or **Import Slack** in the Chat section.
-    - Brings public and private channels, threads, reactions, and file links into the space.
+    - Brings public and private channels, threads, reactions, and file links into the space. A private channel never lands in a public one with the same name; it gets its own `name-private` channel.
+    - Imports are tracked per space, so one export can be imported into several spaces.
     - People are matched by email to members of the space. Anyone unmatched is kept as a name on the message.
     - Re-importing skips messages already brought in. Direct messages are counted but not imported.
   - **Jira import:** `POST /api/import/jira {projectId, search}` with the JSON of a Jira search (one page, several pages, or an issue array), or **Import Jira** in Work.
     - Maps types, statuses (including review states), priorities, labels, due dates and story points.
-    - Keeps parents as subtasks, blocks/relates/duplicates links, and comments. Atlassian Document Format becomes Markdown, and assignees are matched by email.
+    - Keeps parents as subtasks, blocks/relates/duplicates links (from either end), and comments. Atlassian Document Format becomes Markdown, and assignees are matched by email.
+    - Issues and comments are all checked against DLP before anything is written.
     - Re-importing creates nothing twice.
   - **Two-way Slack bridge:** with a Slack app configured (`NOMA_CLOUD_SLACK_BOT_TOKEN`, `NOMA_CLOUD_SLACK_SIGNING_SECRET`), a channel admin links a Noma channel to a Slack channel (`PUT /api/channels/:id/bridge`, or ⇄ in the chat header).
-    - Noma posts go to Slack with the author's name through a retrying outbox. Signed Slack events (`POST /api/hooks/slack`) come back into Noma.
+    - Noma posts go to Slack with the author's name through a retrying outbox, leased per row so several processes never double-post; the standalone queue worker drains it too. Signed Slack events (`POST /api/hooks/slack`) come back into Noma.
     - Threads map both ways. Retries, bot posts and echoes are ignored, and DLP applies to inbound text.
 
 - **Enterprise scale and compliance (Noma Cloud):**

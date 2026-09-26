@@ -77,6 +77,7 @@ export class CloudIntegrationsStore {
         message_id TEXT NOT NULL UNIQUE,
         attempts INTEGER NOT NULL DEFAULT 0,
         last_error TEXT,
+        claimed_until TEXT,
         created_at TEXT NOT NULL
       );
     `);
@@ -157,10 +158,16 @@ export class CloudIntegrationsStore {
     return this.db.prepare("INSERT OR IGNORE INTO slack_outbox (id, channel_id, message_id, attempts, last_error, created_at) VALUES (?, ?, ?, 0, NULL, ?)").run(item.id, item.channelId, item.messageId, item.createdAt).changes > 0;
   }
 
-  pendingOutbound(limit = 50): SlackOutboxItem[] {
+  /** Rows no process currently holds a lease on. */
+  pendingOutbound(now: string, limit = 50): SlackOutboxItem[] {
     return (
-      this.db.prepare("SELECT * FROM slack_outbox ORDER BY created_at, id LIMIT ?").all(limit) as Array<{ id: string; channel_id: string; message_id: string; attempts: number; last_error: string | null; created_at: string }>
+      this.db.prepare("SELECT * FROM slack_outbox WHERE claimed_until IS NULL OR claimed_until < ? ORDER BY created_at, id LIMIT ?").all(now, limit) as Array<{ id: string; channel_id: string; message_id: string; attempts: number; last_error: string | null; created_at: string }>
     ).map((row) => ({ id: row.id, channelId: row.channel_id, messageId: row.message_id, attempts: row.attempts, ...(row.last_error ? { lastError: row.last_error } : {}), createdAt: row.created_at }));
+  }
+
+  /** Atomically leases a row until `until`; false when another process holds it (so only one process posts it). */
+  claimOutbound(id: string, now: string, until: string): boolean {
+    return this.db.prepare("UPDATE slack_outbox SET claimed_until = ? WHERE id = ? AND (claimed_until IS NULL OR claimed_until < ?)").run(until, id, now).changes > 0;
   }
 
   completeOutbound(id: string): void {
@@ -168,7 +175,7 @@ export class CloudIntegrationsStore {
   }
 
   failOutbound(id: string, error: string, maxAttempts: number): void {
-    this.db.prepare("UPDATE slack_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?").run(error.slice(0, 300), id);
+    this.db.prepare("UPDATE slack_outbox SET attempts = attempts + 1, last_error = ?, claimed_until = NULL WHERE id = ?").run(error.slice(0, 300), id);
     this.db.prepare("DELETE FROM slack_outbox WHERE id = ? AND attempts >= ?").run(id, maxAttempts);
   }
 }

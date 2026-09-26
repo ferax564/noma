@@ -21,6 +21,8 @@ export interface JiraComment {
 
 export interface JiraLink {
   type: "blocks" | "relates" | "duplicates";
+  /** `outward`: this issue → the other (this blocks it); `inward`: the other → this issue (this is blocked by it). */
+  direction: "outward" | "inward";
   /** The other issue's key. */
   key: string;
 }
@@ -131,8 +133,10 @@ function jiraIssue(raw: Record<string, unknown>): JiraIssue | undefined {
   for (const link of arrayOf(fields.issuelinks).map(record)) {
     const kind = (text(record(link.type).name) ?? "").toLowerCase();
     const outward = text(record(link.outwardIssue).key);
-    if (!outward) continue;
-    links.push({ type: kind.includes("block") ? "blocks" : kind.includes("duplic") ? "duplicates" : "relates", key: outward });
+    const inward = text(record(link.inwardIssue).key);
+    const other = outward ?? inward;
+    if (!other) continue;
+    links.push({ type: kind.includes("block") ? "blocks" : kind.includes("duplic") ? "duplicates" : "relates", direction: outward ? "outward" : "inward", key: other });
   }
   const estimate = typeof fields.customfield_10016 === "number" ? fields.customfield_10016 : typeof fields.story_points === "number" ? fields.story_points : undefined;
   return {

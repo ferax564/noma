@@ -4,11 +4,12 @@
  * name on the content, never invented as an account. Re-running an import updates nothing twice.
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import type { ChatChannel, ChatMessage } from "../cloud-chat.js";
+import type { ChatChannel, ChatMessage, CloudChatStore } from "../cloud-chat.js";
 import type { CloudIssue, CloudIssueLinkType, CloudProject, CloudSiteRecord, CloudUserRecord } from "../cloud-db.js";
+import type { CloudIntegrationsStore } from "../cloud-integrations.js";
 import type { JiraIssue, JiraPerson } from "../jira-import.js";
 import { markdownToSlackText, type SlackExport, slackEmoji, slackTextToMarkdown } from "../slack-import.js";
-import { channelNameInput, CHAT_MESSAGE_MAX } from "./chat.js";
+import { CHANNEL_NAME_MAX, channelNameInput, CHAT_MESSAGE_MAX } from "./chat.js";
 import { type CloudServerConfig, randomId, recordActivity, recordIssueEvent, uniqueId } from "./context.js";
 import { enforceDlp } from "./dlp.js";
 import { HttpError } from "./http.js";
@@ -70,18 +71,17 @@ export function importSlackExport(config: CloudServerConfig, importer: CloudUser
   };
   const now = config.now().toISOString();
   for (const source of data.channels) {
-    const name = safeChannelName(source.name);
-    const existing = config.chat.readChannelByName(site.id, name);
+    const visibility = source.private ? "private" : "public";
+    const { name, existing } = importTarget(config, site.id, importer.id, safeChannelName(source.name), visibility);
     const channel: ChatChannel =
-      existing && existing.kind === "channel"
-        ? existing
-        : config.chat.createChannel({
+      existing ??
+      config.chat.createChannel({
             id: randomId(),
             kind: "channel",
             siteId: site.id,
             name,
             ...(source.topic || source.purpose ? { topic: (source.topic ?? source.purpose)!.slice(0, 250) } : {}),
-            visibility: source.private ? "private" : "public",
+            visibility,
             createdBy: importer.id,
             createdAt: now,
             updatedAt: now,
@@ -97,7 +97,7 @@ export function importSlackExport(config: CloudServerConfig, importer: CloudUser
     const roots = new Map<string, string>();
     let count = 0;
     for (const message of source.messages) {
-      const ledgerKey = `${source.id}:${message.ts}`;
+      const ledgerKey = `${site.id}:${source.id}:${message.ts}`;
       const existingId = config.integrations.ledger("slack", ledgerKey);
       if (existingId) {
         roots.set(message.ts, existingId);
@@ -182,7 +182,7 @@ export function importJiraIssues(config: CloudServerConfig, importer: CloudUserR
   const keys = new Map<string, string>();
   const report: JiraImportReport = { created: 0, alreadyImported: 0, comments: 0, links: 0, subtasks: 0, matchedPeople: 0, unmatchedPeople: [], keys: {} };
   const ordered = [...issues].sort((left, right) => Number(Boolean(left.parentKey)) - Number(Boolean(right.parentKey)));
-  const fresh: JiraIssue[] = [];
+  const pending: Array<{ item: JiraIssue; assigneeId?: string; reporterId?: string; description: string; comments: Array<{ body: string; authorId?: string; createdAt: string }> }> = [];
   for (const item of ordered) {
     const existing = config.integrations.ledger(source, item.key);
     if (existing && config.store.readIssue(existing)) {
@@ -194,6 +194,16 @@ export function importJiraIssues(config: CloudServerConfig, importer: CloudUserR
     const reporterId = personId(item.reporter);
     const description = [item.description, `_Imported from Jira ${item.key}${item.reporter && !reporterId ? `, reported by ${item.reporter.name}` : ""}${item.assignee && !assigneeId ? `, assigned to ${item.assignee.name}` : ""}._`].filter(Boolean).join("\n\n").slice(0, 20_000);
     enforceDlp(config, { text: `${item.summary}\n${description}`, actorId: importer.id, resourceType: "issue", resourceId: project.id, siteId: project.siteId });
+    const comments = item.comments.flatMap((comment) => {
+      const authorId = personId(comment.author);
+      const body = `${authorId ? "" : `**${comment.author.name}** (Jira): `}${comment.body}`.slice(0, 10_000);
+      if (!body.trim()) return [];
+      enforceDlp(config, { text: body, actorId: importer.id, resourceType: "issue", resourceId: project.id, siteId: project.siteId });
+      return [{ body, ...(authorId ? { authorId } : {}), createdAt: Number.isNaN(Date.parse(comment.created)) ? now : new Date(comment.created).toISOString() }];
+    });
+    pending.push({ item, ...(assigneeId ? { assigneeId } : {}), ...(reporterId ? { reporterId } : {}), description, comments });
+  }
+  for (const { item, assigneeId, reporterId, description } of pending) {
     const issue = config.store.createIssue(
       {
         id: uniqueId(config),
@@ -214,12 +224,11 @@ export function importJiraIssues(config: CloudServerConfig, importer: CloudUserR
       project.key,
     );
     recordIssueEvent(config, importer, issue.id, "issue.created", { source: "jira", jiraKey: item.key });
-    config.integrations.recordImport(source, item.key, issue.id, now);
     keys.set(item.key, issue.id);
-    fresh.push(item);
     report.created += 1;
   }
-  for (const item of fresh) {
+  const linked = new Set<string>();
+  for (const { item, comments } of pending) {
     const issueId = keys.get(item.key)!;
     if (item.parentKey && keys.has(item.parentKey)) {
       const issue = config.store.readIssue(issueId) as CloudIssue;
@@ -227,23 +236,24 @@ export function importJiraIssues(config: CloudServerConfig, importer: CloudUserR
       report.subtasks += 1;
     }
     for (const link of item.links) {
-      const target = keys.get(link.key);
-      if (!target || target === issueId) continue;
+      const other = keys.get(link.key);
+      if (!other || other === issueId) continue;
+      const [sourceIssueId, targetIssueId] = link.direction === "inward" ? [other, issueId] : [issueId, other];
+      const identity = link.type === "relates" ? `relates:${[sourceIssueId, targetIssueId].sort().join(":")}` : `${link.type}:${sourceIssueId}:${targetIssueId}`;
+      if (linked.has(identity)) continue;
+      linked.add(identity);
       try {
-        config.store.writeIssueLink({ id: uniqueId(config), sourceIssueId: issueId, targetIssueId: target, type: link.type as CloudIssueLinkType, createdBy: importer.id, createdAt: now });
+        config.store.writeIssueLink({ id: uniqueId(config), sourceIssueId, targetIssueId, type: link.type as CloudIssueLinkType, createdBy: importer.id, createdAt: now });
         report.links += 1;
       } catch {
         continue;
       }
     }
-    for (const comment of item.comments) {
-      const authorId = personId(comment.author);
-      const body = `${authorId ? "" : `**${comment.author.name}** (Jira): `}${comment.body}`.slice(0, 10_000);
-      if (!body.trim()) continue;
-      const createdAt = Number.isNaN(Date.parse(comment.created)) ? now : new Date(comment.created).toISOString();
-      config.store.writeIssueComment({ id: uniqueId(config), issueId, body, createdBy: authorId ?? importer.id, createdAt, updatedAt: createdAt });
+    for (const comment of comments) {
+      config.store.writeIssueComment({ id: uniqueId(config), issueId, body: comment.body, createdBy: comment.authorId ?? importer.id, createdAt: comment.createdAt, updatedAt: comment.createdAt });
       report.comments += 1;
     }
+    config.integrations.recordImport(source, item.key, issueId, now);
   }
   report.matchedPeople = matched.size;
   report.unmatchedPeople = [...unmatched].sort().slice(0, 200);
@@ -264,42 +274,58 @@ export function enqueueSlackOutbound(config: CloudServerConfig, channel: ChatCha
   setImmediate(() => void drainSlackOutbox(config).catch(() => undefined));
 }
 
-const draining = new WeakSet<CloudServerConfig>();
+/** What draining the outbox needs — the server config satisfies it, and so does the standalone queue worker. */
+export interface SlackDrainDeps {
+  slack?: SlackConfig;
+  integrations: CloudIntegrationsStore;
+  chat: CloudChatStore;
+  store: Pick<CloudServerConfig["store"], "readUser">;
+  platform: Pick<CloudServerConfig["platform"], "readAgent">;
+  now: () => Date;
+}
 
-/** Posts queued messages to Slack with `chat.postMessage`, keeping thread structure; retries up to 5 times. */
-export async function drainSlackOutbox(config: CloudServerConfig): Promise<number> {
-  const slack = config.slack;
-  if (!slack || draining.has(config)) return 0;
-  draining.add(config);
+const draining = new WeakSet<SlackDrainDeps>();
+const OUTBOX_LEASE_MS = 60_000;
+
+/**
+ * Posts queued messages to Slack with `chat.postMessage`, keeping thread structure; retries up to 5 times.
+ * Each row is leased before the request, so several processes sharing the database never post it twice.
+ */
+export async function drainSlackOutbox(deps: SlackDrainDeps): Promise<number> {
+  const slack = deps.slack;
+  if (!slack || draining.has(deps)) return 0;
+  draining.add(deps);
   let sent = 0;
   try {
-    for (const item of config.integrations.pendingOutbound()) {
-      const message = config.chat.readMessage(item.messageId);
-      const bridge = config.integrations.readBridge(item.channelId);
+    for (const item of deps.integrations.pendingOutbound(deps.now().toISOString())) {
+      const now = deps.now();
+      if (!deps.integrations.claimOutbound(item.id, now.toISOString(), new Date(now.getTime() + OUTBOX_LEASE_MS).toISOString())) continue;
+      const message = deps.chat.readMessage(item.messageId);
+      const bridge = deps.integrations.readBridge(item.channelId);
       if (!message || message.deletedAt || !bridge?.enabled) {
-        config.integrations.completeOutbound(item.id);
+        deps.integrations.completeOutbound(item.id);
         continue;
       }
-      const parent = message.threadId ? config.integrations.slackForNomaMessage(message.threadId) : undefined;
-      const author = message.agentId ? config.platform.readAgent(message.agentId)?.name : config.store.readUser(message.authorId)?.name;
+      const parent = message.threadId ? deps.integrations.slackForNomaMessage(message.threadId) : undefined;
+      const author = message.agentId ? deps.platform.readAgent(message.agentId)?.name : deps.store.readUser(message.authorId)?.name;
       try {
         const result = await slackCall(slack, "chat.postMessage", {
           channel: bridge.slackChannelId,
-          text: markdownToSlackText(displayMentions(config, message.body)),
+          text: markdownToSlackText(displayMentions(deps, message.body)),
           ...(parent ? { thread_ts: parent.slackTs } : {}),
           ...(author ? { username: `${author}${message.agentId ? " (agent)" : ""} · Noma` } : {}),
           unfurl_links: false,
         });
         const ts = typeof result.ts === "string" ? result.ts : undefined;
-        if (ts) config.integrations.mapMessage(message.id, bridge.slackChannelId, ts, "out");
-        config.integrations.completeOutbound(item.id);
+        if (ts) deps.integrations.mapMessage(message.id, bridge.slackChannelId, ts, "out");
+        deps.integrations.completeOutbound(item.id);
         sent += 1;
       } catch (error) {
-        config.integrations.failOutbound(item.id, error instanceof Error ? error.message : String(error), 5);
+        deps.integrations.failOutbound(item.id, error instanceof Error ? error.message : String(error), 5);
       }
     }
   } finally {
-    draining.delete(config);
+    draining.delete(deps);
   }
   return sent;
 }
@@ -395,8 +421,24 @@ export function slackConfigFromEnv(env: NodeJS.ProcessEnv, readSecretFile: (path
   return botToken && signingSecret ? { botToken, signingSecret } : undefined;
 }
 
-function displayMentions(config: CloudServerConfig, body: string): string {
-  return body.replace(/@\{([A-Za-z0-9_-]{8,80})\}/g, (_match, id: string) => `@${config.store.readUser(id)?.name ?? config.platform.readAgent(id)?.name ?? id}`);
+function displayMentions(deps: Pick<SlackDrainDeps, "store" | "platform">, body: string): string {
+  return body.replace(/@\{([A-Za-z0-9_-]{8,80})\}/g, (_match, id: string) => `@${deps.store.readUser(id)?.name ?? deps.platform.readAgent(id)?.name ?? id}`);
+}
+
+/**
+ * The channel an imported Slack channel lands in: an existing channel with the same name only when its
+ * visibility matches (a private channel's history never lands in a public one) and, for a private channel,
+ * the importer is already a member (an import never joins someone else's private channel); otherwise a fresh
+ * `name-private` / `name-2` channel.
+ */
+function importTarget(config: CloudServerConfig, siteId: string, importerId: string, base: string, visibility: "public" | "private"): { name: string; existing?: ChatChannel } {
+  const candidates = [base, ...(visibility === "private" ? [channelNameInput(`${base.slice(0, CHANNEL_NAME_MAX - 8)}-private`)] : []), ...Array.from({ length: 50 }, (_, index) => channelNameInput(`${base.slice(0, CHANNEL_NAME_MAX - 4)}-${index + 2}`))];
+  for (const name of candidates) {
+    const existing = config.chat.readChannelByName(siteId, name);
+    if (!existing) return { name };
+    if (existing.kind === "channel" && existing.visibility === visibility && (visibility === "public" || config.chat.readMember(existing.id, importerId))) return { name, existing };
+  }
+  throw new HttpError(409, `No free channel name for #${base}`);
 }
 
 function safeChannelName(name: string): string {

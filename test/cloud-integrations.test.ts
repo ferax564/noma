@@ -47,7 +47,7 @@ test("Slack mrkdwn, Noma Markdown, and Jira ADF convert both ways", () => {
       },
     ],
   });
-  assert.deepEqual([issue!.type, issue!.status, issue!.priority, issue!.assignee?.email, issue!.links], ["bug", "in_review", "highest", "bob@example.com", [{ type: "blocks", key: "SHOP-8" }]]);
+  assert.deepEqual([issue!.type, issue!.status, issue!.priority, issue!.assignee?.email, issue!.links], ["bug", "in_review", "highest", "bob@example.com", [{ type: "blocks", direction: "outward", key: "SHOP-8" }]]);
 });
 
 function slackExportZip(): Buffer {
@@ -88,10 +88,11 @@ test("a Slack export becomes channels, threads, and reactions, matched to member
     const bad = await fetch(`${base}/api/import/slack?siteId=${site.id}`, { method: "POST", headers: { authorization: `Bearer ${ada.token}`, "content-type": "application/zip" }, body: createZip([{ path: "x.txt", data: "hi" }]) });
     assert.equal(bad.status, 400);
 
+    const publicLeads = await json<{ id: string }>(`${base}/api/channels`, { method: "POST", token: ada.token, body: { siteId: site.id, name: "leads" } });
     const first = await upload(ada.token);
     assert.equal(first.status, 200);
     const report = first.body as { channels: Array<{ id: string; name: string; messages: number }>; messages: number; threads: number; reactions: number; skipped: Record<string, number>; matchedPeople: number; unmatchedPeople: string[] };
-    assert.deepEqual(report.channels.map((channel) => [channel.name, channel.messages]), [["general", 3], ["leads", 1]]);
+    assert.deepEqual(report.channels.map((channel) => [channel.name, channel.messages]), [["general", 3], ["leads-private", 1]], "a private Slack channel never lands in a public channel of the same name");
     assert.deepEqual([report.messages, report.threads, report.reactions, report.matchedPeople], [4, 1, 1, 1]);
     assert.deepEqual(report.unmatchedPeople, ["Zed Outsider"]);
     assert.deepEqual([report.skipped.files, report.skipped.directMessages], [1, 1]);
@@ -112,10 +113,17 @@ test("a Slack export becomes channels, threads, and reactions, matched to member
     assert.equal(detail.visibility, "private");
     assert.ok(detail.members.some((member) => member.id === bob.id));
     await json(`${base}/api/channels/${leads}`, { token: vic.token, expectedStatus: 404 });
+    assert.equal((await json<{ messages: MessageResponse[] }>(`${base}/api/channels/${publicLeads.id}/messages`, { token: vic.token })).messages.length, 0);
 
     const again = await upload(ada.token);
     assert.deepEqual([(again.body as { messages: number }).messages, (again.body as { skipped: { alreadyImported: number } }).skipped.alreadyImported], [0, 4]);
     assert.equal((await json<{ messages: MessageResponse[] }>(`${base}/api/channels/${general}/messages`, { token: bob.token })).messages.length, 2);
+
+    const { site: other } = await createSpace(base, ada.token, "Second space", []);
+    const elsewhere = await fetch(`${base}/api/import/slack?siteId=${other.id}`, { method: "POST", headers: { authorization: `Bearer ${ada.token}`, "content-type": "application/zip" }, body: slackExportZip() });
+    const otherReport = (await elsewhere.json()) as { messages: number; channels: Array<{ id: string }> };
+    assert.equal(otherReport.messages, 4, "the same export imports in full into another space");
+    assert.notEqual(otherReport.channels[0]!.id, general);
   } finally {
     await harness.close();
   }
@@ -133,15 +141,15 @@ test("Jira issues import with types, statuses, people, subtasks, links, and comm
     const project = await json<{ id: string }>(`${base}/api/projects`, { method: "POST", token: ada.token, body: { siteId: site.id, key: "SHOP", name: "Shop" } });
     const search = {
       issues: [
-        { key: "OLD-2", fields: { summary: "Checkout flow", issuetype: { name: "Story" }, status: { name: "In Progress", statusCategory: { key: "indeterminate" } }, priority: { name: "High" }, parent: { key: "OLD-1" }, assignee: { displayName: "Bob Builder", emailAddress: "bob@example.com" }, comment: { comments: [{ author: { displayName: "Bob Builder", emailAddress: "bob@example.com" }, body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Started" }] }] }, created: "2026-01-02T10:00:00.000+0000" }, { author: { displayName: "Pat Former" }, body: "Legacy note", created: "2026-01-03T10:00:00.000+0000" }] } } },
-        { key: "OLD-1", fields: { summary: "Payments epic", issuetype: { name: "Epic" }, status: { name: "To Do", statusCategory: { key: "new" } }, labels: ["Q1 Goals"] } },
+        { key: "OLD-2", fields: { summary: "Checkout flow", issuetype: { name: "Story" }, status: { name: "In Progress", statusCategory: { key: "indeterminate" } }, priority: { name: "High" }, parent: { key: "OLD-1" }, issuelinks: [{ type: { name: "Blocks" }, inwardIssue: { key: "OLD-3" } }], assignee: { displayName: "Bob Builder", emailAddress: "bob@example.com" }, comment: { comments: [{ author: { displayName: "Bob Builder", emailAddress: "bob@example.com" }, body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Started" }] }] }, created: "2026-01-02T10:00:00.000+0000" }, { author: { displayName: "Pat Former" }, body: "Legacy note", created: "2026-01-03T10:00:00.000+0000" }] } } },
+        { key: "OLD-1", fields: { summary: "Payments epic", issuetype: { name: "Epic" }, status: { name: "To Do", statusCategory: { key: "new" } }, labels: ["Q1 Goals"], issuelinks: [{ type: { name: "Relates" }, inwardIssue: { key: "OLD-3" } }] } },
         { key: "OLD-3", fields: { summary: "Card declined", issuetype: { name: "Bug" }, status: { name: "Done", statusCategory: { key: "done" } }, priority: { name: "Lowest" }, issuelinks: [{ type: { name: "Blocks" }, outwardIssue: { key: "OLD-2" } }], description: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Steps to reproduce" }] }] } } },
       ],
     };
     await json(`${base}/api/import/jira`, { method: "POST", token: bob.token, body: { projectId: project.id, search }, expectedStatus: 403 });
     await json(`${base}/api/import/jira`, { method: "POST", token: ada.token, body: { projectId: project.id, search: { issues: [] } }, expectedStatus: 400 });
     const report = await json<{ created: number; comments: number; links: number; subtasks: number; unmatchedPeople: string[]; keys: Record<string, string> }>(`${base}/api/import/jira`, { method: "POST", token: ada.token, body: { projectId: project.id, search } });
-    assert.deepEqual([report.created, report.comments, report.links, report.subtasks], [3, 2, 1, 1]);
+    assert.deepEqual([report.created, report.comments, report.links, report.subtasks], [3, 2, 2, 1], "inward links import once, oriented from the other issue");
     assert.deepEqual(report.unmatchedPeople, ["Pat Former"]);
     const story = await json<{ id: string; type: string; status: string; priority: string; assigneeId: string; parentId: string; comments: Array<{ body: string; createdBy: string }>; description: string }>(`${base}/api/projects/${project.id}/issues/${report.keys["OLD-2"]}`, { token: ada.token });
     const epic = await json<{ id: string; type: string; labels: string[] }>(`${base}/api/projects/${project.id}/issues/${report.keys["OLD-1"]}`, { token: ada.token });
@@ -150,11 +158,38 @@ test("Jira issues import with types, statuses, people, subtasks, links, and comm
     assert.deepEqual(story.comments.map((comment) => [comment.body, comment.createdBy === bob.id]), [["Started", true], ["**Pat Former** (Jira): Legacy note", false]]);
     assert.match(story.description, /Imported from Jira OLD-2/);
     const bug = await json<{ status: string; links: Array<{ targetIssueKey: string; type: string }>; description: string }>(`${base}/api/projects/${project.id}/issues/${report.keys["OLD-3"]}`, { token: ada.token });
-    assert.deepEqual([bug.status, bug.links.map((link) => [link.targetIssueKey, link.type])], ["done", [[report.keys["OLD-2"], "blocks"]]]);
+    bug.links.sort((left, right) => left.targetIssueKey.localeCompare(right.targetIssueKey));
+    assert.deepEqual([bug.status, bug.links.map((link) => [link.targetIssueKey, link.type])], ["done", [[report.keys["OLD-1"], "relates"], [report.keys["OLD-2"], "blocks"]]]);
     assert.match(bug.description, /^Steps to reproduce/);
 
     const again = await json<{ created: number; alreadyImported: number }>(`${base}/api/import/jira`, { method: "POST", token: ada.token, body: { projectId: project.id, search } });
     assert.deepEqual([again.created, again.alreadyImported], [0, 3]);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("a Jira import is checked against DLP in full — comments too — before anything is written", async () => {
+  const harness = await startCloudServer("noma-jira-dlp-");
+  const { base } = harness;
+  try {
+    const ada = await createCloudUser(base, "Ada Admin");
+    const { site } = await createSpace(base, ada.token, "Delivery", []);
+    const project = await json<{ id: string }>(`${base}/api/projects`, { method: "POST", token: ada.token, body: { siteId: site.id, key: "SHOP", name: "Shop" } });
+    await json(`${base}/api/enterprise/dlp`, { method: "PUT", token: ada.token, body: { mode: "block" } });
+    const search = {
+      issues: [
+        { key: "OLD-1", fields: { summary: "Clean parent", issuetype: { name: "Task" }, status: { name: "To Do" } } },
+        { key: "OLD-2", fields: { summary: "Leaky child", issuetype: { name: "Task" }, status: { name: "To Do" }, parent: { key: "OLD-1" }, comment: { comments: [{ author: { displayName: "Pat" }, body: "key AKIAIOSFODNN7EXAMPLE", created: "2026-01-02T10:00:00.000+0000" }] } } },
+      ],
+    };
+    await json(`${base}/api/import/jira`, { method: "POST", token: ada.token, body: { projectId: project.id, search }, expectedStatus: 422 });
+    const issues = await json<{ issues: unknown[] }>(`${base}/api/projects/${project.id}/issues`, { token: ada.token });
+    assert.equal(issues.issues.length, 0, "a blocked comment stops the import before any issue is created");
+
+    search.issues[1]!.fields.comment!.comments[0]!.body = "key rotated";
+    const report = await json<{ created: number; subtasks: number; comments: number }>(`${base}/api/import/jira`, { method: "POST", token: ada.token, body: { projectId: project.id, search } });
+    assert.deepEqual([report.created, report.subtasks, report.comments], [2, 1, 1]);
   } finally {
     await harness.close();
   }
@@ -243,5 +278,31 @@ test("the bridge needs the Slack app configured", async () => {
     assert.equal((await request(`${harness.base}/api/hooks/slack`, { method: "POST", body: {} })).status, 404);
   } finally {
     await harness.close();
+  }
+});
+
+test("an outbox row is leased to one process before it is posted", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { CloudIntegrationsStore } = await import("../src/cloud-integrations.js");
+  const root = await mkdtemp(join(tmpdir(), "noma-outbox-"));
+  const first = new CloudIntegrationsStore(join(root, "db.sqlite"));
+  const second = new CloudIntegrationsStore(join(root, "db.sqlite"));
+  try {
+    first.enqueueOutbound({ id: "o1", channelId: "c1", messageId: "m1", attempts: 0, createdAt: "2026-01-01T00:00:00.000Z" });
+    const now = "2026-01-01T00:00:01.000Z";
+    const until = "2026-01-01T00:01:01.000Z";
+    assert.equal(first.claimOutbound("o1", now, until), true);
+    assert.equal(second.claimOutbound("o1", now, until), false, "a second process cannot take a leased row");
+    assert.deepEqual(second.pendingOutbound(now), [], "leased rows are not pending");
+    first.failOutbound("o1", "boom", 5);
+    assert.equal(second.pendingOutbound(now).length, 1, "a failed attempt releases the lease for a retry");
+    assert.equal(second.claimOutbound("o1", now, until), true);
+    assert.equal(first.pendingOutbound("2026-01-01T00:02:00.000Z").length, 1, "an expired lease (a crashed process) is taken over");
+  } finally {
+    first.close();
+    second.close();
+    await rm(root, { recursive: true, force: true });
   }
 });
