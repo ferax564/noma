@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import { walk } from "../src/ast.js";
 import { parse } from "../src/parser.js";
 import { validate } from "../src/validator.js";
@@ -83,9 +84,15 @@ test("direct and group messages: members only, one conversation per member set, 
     assert.notEqual(group.id, dm.id);
     assert.equal(group.title, "Bob Builder, Cyrus Chen");
     await json(`${base}/api/channels/${dm.id}/members`, { method: "POST", token: ada.token, body: { memberId: eve.id }, expectedStatus: 400 });
+    await json(`${base}/api/channels/${dm.id}/members`, { method: "POST", token: ada.token, body: { memberId: bob.id } });
+    const same = await json<ChannelResponse>(`${base}/api/chat/dms`, { method: "POST", token: ada.token, body: { memberIds: [bob.id] } });
+    assert.equal(same.id, dm.id, "re-adding an existing member keeps the pair's conversation");
     await json(`${base}/api/channels/${dm.id}/members`, { method: "POST", token: ada.token, body: { memberId: cy.id } });
     const fresh = await json<ChannelResponse>(`${base}/api/chat/dms`, { method: "POST", token: ada.token, body: { memberIds: [bob.id] } });
     assert.notEqual(fresh.id, dm.id, "a DM that grew into a group no longer stands in for the pair");
+    await json(`${base}/api/channels/${fresh.id}/members/${ada.id}`, { method: "DELETE", token: ada.token });
+    const rejoined = await json<ChannelResponse>(`${base}/api/chat/dms`, { method: "POST", token: ada.token, body: { memberIds: [bob.id] } });
+    assert.notEqual(rejoined.id, fresh.id, "leaving through the members route retires the pair's conversation");
 
     const found = await json<{ dms: Array<{ id: string }>; messages: Array<{ channelId: string }> }>(`${base}/api/find?q=lunch`, { token: bob.token });
     assert.deepEqual(found.messages.map((message) => message.channelId), [dm.id]);
@@ -128,6 +135,14 @@ test("chat files: upload, share, download by members only, type and quota checks
     assert.match(download.headers.get("content-security-policy") ?? "", /sandbox/);
     assert.deepEqual(Buffer.from(await download.arrayBuffer()), PNG);
     assert.equal((await request(`${base}/api/channels/${channel.id}/files/${png.body.id}`, { token: eve.token })).status, 404);
+
+    const draft = await upload(base, ada.token, channel.id, Buffer.alloc(2_000, 66), "draft.txt", "text/plain");
+    assert.equal(draft.status, 201);
+    assert.equal((await upload(base, ada.token, channel.id, Buffer.alloc(2_000, 67), "second.txt", "text/plain")).status, 413);
+    await json(`${base}/api/channels/${channel.id}/files/${draft.body.id}`, { method: "DELETE", token: bob.token, expectedStatus: 404 });
+    await json(`${base}/api/channels/${channel.id}/files/${png.body.id}`, { method: "DELETE", token: ada.token, expectedStatus: 409 });
+    await json(`${base}/api/channels/${channel.id}/files/${draft.body.id}`, { method: "DELETE", token: ada.token });
+    assert.equal((await upload(base, ada.token, channel.id, Buffer.alloc(2_000, 67), "second.txt", "text/plain")).status, 201, "removing a pending upload frees its quota");
 
     const big = await upload(base, ada.token, channel.id, Buffer.alloc(3_990, 65), "notes.txt", "text/plain");
     assert.equal(big.status, 413, "chat files count against the space's storage quota");
@@ -173,12 +188,15 @@ test("edit history, channel exports, eDiscovery, and audit", async () => {
     assert.ok([...walk(doc)].some((node) => node.id === `msg-${original.id}`));
 
     await json(`${base}/api/enterprise/chat-export`, { token: bob.token, expectedStatus: 403 });
-    const discovery = await json<{ channels: Array<{ channel: { id: string; kind: string }; messages: Array<{ body: string }> }> }>(`${base}/api/enterprise/chat-export?userId=${bob.id}`, { token: admin.token });
+    const discovery = await json<{ channels: Array<{ channel: { id: string; kind: string }; digest: string; messages: Array<{ body: string }> }> }>(`${base}/api/enterprise/chat-export?userId=${bob.id}`, { token: admin.token });
     const byChannel = new Map(discovery.channels.map((item) => [item.channel.id, item]));
     assert.ok(byChannel.has(dm.id), "admins can export DMs");
     assert.ok(byChannel.has(secret.id), "and private channels");
     assert.deepEqual(byChannel.get(secret.id)!.messages, [], "a userId filter keeps only that person's messages");
     assert.deepEqual(byChannel.get(dm.id)!.messages.map((message) => message.body), ["quick question"]);
+    for (const item of discovery.channels) {
+      assert.equal(item.digest, createHash("sha256").update(JSON.stringify(item.messages)).digest("hex"), "the digest covers exactly the filtered messages");
+    }
 
     const audit = await json<{ events: Array<{ action: string }> }>(`${base}/api/enterprise/audit`, { token: admin.token });
     assert.ok(audit.events.some((event) => event.action === "chat.channel_exported"));
@@ -237,7 +255,7 @@ test("space exports carry public channel transcripts; the finder spans the produ
     const { site } = await createSpace(base, ada.token, "Delivery", ["# Release plan\n\nThe release train leaves Friday.\n"]);
     const project = await json<{ id: string }>(`${base}/api/projects`, { method: "POST", token: ada.token, body: { siteId: site.id, key: "SHIP", name: "Ship it" } });
     await json(`${base}/api/projects/${project.id}/issues`, { method: "POST", token: ada.token, body: { summary: "Release train checklist" } });
-    const general = await json<ChannelResponse>(`${base}/api/channels`, { method: "POST", token: ada.token, body: { siteId: site.id, name: "release-train", topic: "Shipping" } });
+    const general = await json<ChannelResponse>(`${base}/api/channels`, { method: "POST", token: ada.token, body: { siteId: site.id, name: "release-train", topic: "::note Shipping" } });
     const secret = await json<ChannelResponse>(`${base}/api/channels`, { method: "POST", token: ada.token, body: { siteId: site.id, name: "secret", visibility: "private" } });
     await json(`${base}/api/channels/${general.id}/messages`, { method: "POST", token: ada.token, body: { body: "Release train boards at 9" } });
     await json(`${base}/api/channels/${secret.id}/messages`, { method: "POST", token: ada.token, body: { body: "Release train salary talk" } });
@@ -247,6 +265,9 @@ test("space exports carry public channel transcripts; the finder spans the produ
     assert.ok(entries.has("chat/release-train.noma"));
     assert.equal(entries.has("chat/secret.noma"), false, "private channels stay out of space exports");
     assert.match(entries.get("chat/release-train.noma")!, /Release train boards at 9/);
+    const transcript = parse(entries.get("chat/release-train.noma")!, { filename: "release-train.noma" });
+    assert.deepEqual(validate(transcript).filter((diagnostic) => diagnostic.severity === "error"), []);
+    assert.equal([...walk(transcript)].filter((node) => node.type === "directive" && node.name === "chat_channel").length, 1, "a block-like topic cannot swallow the channel block");
     const manifest = JSON.parse(entries.get("manifest.json")!) as { chat: Array<{ name: string; messages: number }> };
     assert.deepEqual(manifest.chat.map((channel) => [channel.name, channel.messages]), [["release-train", 1]]);
 

@@ -87,7 +87,7 @@ export function chatChannelToNoma(transcript: ChannelTranscript): string {
     "",
     `# #${transcript.channel.replace(/[{}]/g, "")}`,
     "",
-    ...(transcript.topic ? [transcript.topic.replace(/\s+/g, " "), ""] : []),
+    ...(transcript.topic ? [...messageBody(transcript.topic.replace(/\s+/g, " ")), ""] : []),
     `::chat_channel{${[serializeAttr("id", `channel-${transcript.channel}`), serializeAttr("messages", transcript.messages.length)].join(" ")}}`,
   ];
   for (const message of transcript.messages) {

@@ -498,6 +498,7 @@ function renderPendingFiles(): void {
       chip.addEventListener("click", () => {
         pendingFiles = pendingFiles.filter((pending) => pending.id !== file.id);
         renderPendingFiles();
+        if (detail) void fetchCloudJson(`/api/channels/${encodeURIComponent(detail.id)}/files/${encodeURIComponent(file.id)}`, { method: "DELETE" }).catch(() => undefined);
       });
       return chip;
     }),

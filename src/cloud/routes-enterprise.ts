@@ -126,10 +126,7 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
       : config.chat.listAllChannels(siteId ? [siteId] : undefined).filter((channel) => !userId || channel.kind === "channel" || config.chat.readMember(channel.id, userId));
     if (channelId && channels.length === 0) throw new HttpError(404, "Channel not found");
     const window = { ...(url.searchParams.get("since") ? { since: isoParam(url.searchParams.get("since")!, "since") } : {}), ...(url.searchParams.get("until") ? { until: isoParam(url.searchParams.get("until")!, "until") } : {}) };
-    const exports = channels.slice(0, 500).map((channel) => {
-      const bundle = channelExport(config, channel, window, user);
-      return userId ? { ...bundle, messages: bundle.messages.filter((message) => message.authorId === userId || (message.mentions as string[]).includes(userId)) } : bundle;
-    });
+    const exports = channels.slice(0, 500).map((channel) => channelExport(config, channel, window, user, userId ?? undefined));
     config.platform.recordAudit(user.id, "chat.ediscovery_exported", "workspace", "workspace", { channels: exports.length, ...(siteId ? { siteId } : {}), ...(userId ? { userId } : {}), ...window }, config.now().toISOString());
     sendJson(res, 200, { format: "noma-chat-ediscovery-v1", exportedAt: config.now().toISOString(), exportedBy: user.id, channels: exports, truncated: channels.length > 500 });
     return;

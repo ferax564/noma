@@ -135,6 +135,15 @@ export async function routeChannels(req: IncomingMessage, res: ServerResponse, u
     await serveStoredBlob(req, res, config, file, "same-origin");
     return;
   }
+  if (action === "files" && childId && method === "DELETE") {
+    const file = config.chat.readFile(stringPathPart(childId, "File ID"));
+    if (!file || file.channelId !== context.channel.id || file.uploadedBy !== user.id) throw new HttpError(404, "File not found");
+    if (file.messageId) throw new HttpError(409, "Shared files are removed by deleting their message");
+    config.chat.deleteUnattachedFile(file.id);
+    await collectAttachmentGarbage(config, [file.sha256]);
+    sendJson(res, 200, { removed: file.id });
+    return;
+  }
   if (action === "export" && method === "GET") {
     if (context.channel.kind !== "dm" && !context.canManage) throw new HttpError(403, "Channel admin access is required to export");
     const bundle = channelExport(config, context.channel, { ...exportWindow(url) }, user);
@@ -501,6 +510,7 @@ async function routeMembers(req: IncomingMessage, res: ServerResponse, memberId:
   if (memberId && method === "DELETE") {
     if (memberId !== context.user.id && !context.canManage) throw new HttpError(403, "Channel admin access is required");
     if (!config.chat.removeMember(context.channel.id, memberId)) throw new HttpError(404, "Member not found");
+    if (context.channel.kind === "dm") config.chat.clearDmKey(context.channel.id);
     if (context.site) recordActivity(config, context.user, "chat.member_removed", "site", context.site.id, { channelId: context.channel.id, memberId });
     sendJson(res, 200, { removed: memberId });
     return;
@@ -511,6 +521,8 @@ async function routeMembers(req: IncomingMessage, res: ServerResponse, memberId:
 /** Grows a group DM with a person who shares a space with the one adding them. */
 function addDmMember(config: CloudServerConfig, context: ChannelContext, memberId: string): ChatMember | undefined {
   if (config.store.userNames(context.user.id, [memberId]).length === 0) return undefined;
+  const existing = config.chat.readMember(context.channel.id, memberId);
+  if (existing) return existing;
   if (config.chat.listMembers(context.channel.id).length >= MAX_DM_MEMBERS) throw new HttpError(409, `Group messages are limited to ${MAX_DM_MEMBERS} people`);
   const member = config.chat.addMember({ channelId: context.channel.id, memberId, memberType: "user", role: "member", joinedAt: config.now().toISOString() });
   config.chat.clearDmKey(context.channel.id);
@@ -948,12 +960,19 @@ function exportWindow(url: URL): { since?: string; until?: string } {
  * eDiscovery bundle for one channel: every message in the window with deleted ones, their previous
  * bodies, reactions, mentions and file metadata, plus a SHA-256 digest of the message list.
  */
-export function channelExport(config: CloudServerConfig, channel: ChatChannel, window: { since?: string; until?: string }, exporter: CloudUserRecord): { format: string; channel: Record<string, unknown>; exportedAt: string; exportedBy: string; messages: Array<Record<string, unknown>>; digest: string } {
-  const messages = config.chat.exportMessages(channel.id, window);
+export function channelExport(
+  config: CloudServerConfig,
+  channel: ChatChannel,
+  window: { since?: string; until?: string },
+  exporter: CloudUserRecord,
+  involving?: string,
+): { format: string; channel: Record<string, unknown>; exportedAt: string; exportedBy: string; messages: Array<Record<string, unknown>>; digest: string } {
+  const all = config.chat.exportMessages(channel.id, window);
+  const mentions = config.chat.listMessageMentions(all.map((message) => message.id));
+  const messages = involving ? all.filter((message) => message.authorId === involving || (mentions.get(message.id) ?? []).includes(involving)) : all;
   const ids = messages.map((message) => message.id);
   const revisions = config.chat.listRevisions(ids);
   const reactions = config.chat.listReactions(ids);
-  const mentions = config.chat.listMessageMentions(ids);
   const files = new Map(config.chat.listFiles(messages.flatMap((message) => message.links.fileIds ?? [])).map((file) => [file.id, file]));
   const rows = messages.map((message) => ({
     id: message.id,

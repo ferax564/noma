@@ -551,6 +551,11 @@ export class CloudChatStore {
     return (this.db.prepare("SELECT * FROM chat_files WHERE id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id").all(JSON.stringify(ids)) as FileRow[]).map(fileFromRow);
   }
 
+  /** Removes an upload that was never shared in a message. Returns false when it is gone or already shared. */
+  deleteUnattachedFile(id: string): boolean {
+    return this.db.prepare("DELETE FROM chat_files WHERE id = ? AND message_id IS NULL").run(id).changes > 0;
+  }
+
   /** Binds uploaded, still-unattached files to the message that shares them. */
   attachFiles(messageId: string, fileIds: string[]): void {
     const attach = this.db.prepare("UPDATE chat_files SET message_id = ? WHERE id = ? AND message_id IS NULL");
