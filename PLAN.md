@@ -2250,6 +2250,10 @@ A status review in `docs/status-2026-09-25.md` compares Noma with Notion and Con
 - **Import.** Confluence import copies attachments and pins connections to checked addresses, which closes the DNS-rebinding window.
 - **UI.** Adds UI for tokens and sessions, template management, and AI page drafts.
 
+### §24.46 — v0.19.0 the next Notion and Confluence for the agentic era (2026-09-26)
+
+This release ships two bodies of work. The first is composable knowledge and presentations (§23.20, pull request #42): `::deck`/`::slide`, style tokens, component kits, sandboxed widgets, `::canvas`, and `.pptx` export. The second is the gap closure in §24.45 (pull request #43): agents as teammates, Notion import, real embeddings, native OIDC, S3 attachment storage, and Confluence attachment copy. The version is bumped in lockstep across `package.json`, the workspace packages, `docs/spec.noma`, `docs/agent-protocol.noma`, and the MCP registry manifest.
+
 ## 25. Road to v1.0 — Spec Freeze and Second Implementation
 
 A format becomes a standard when someone else can implement it and a user can

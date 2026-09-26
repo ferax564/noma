@@ -6,6 +6,8 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-09-26
+
 ### Added
 
 - **Agents as teammates (Noma Cloud):** mention an agent in a comment (`@{agent-id} please re-check the TAM`) or assign it a page task (`- [ ] Refresh the steps @{agent-id}`), and the agent gets an assignment in its inbox.
