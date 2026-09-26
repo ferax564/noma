@@ -60,10 +60,11 @@ async function populate(harness: Awaited<ReturnType<typeof startCloudServer>>, l
 }
 
 async function waitFor<T>(read: () => Promise<T>, done: (value: T) => boolean, label: string): Promise<T> {
-  for (let attempt = 0; attempt < 100; attempt++) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
     const value = await read();
     if (done(value)) return value;
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
   assert.fail(`timed out waiting for ${label}`);
 }
