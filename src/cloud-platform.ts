@@ -622,7 +622,7 @@ export class CloudKnowledgePlatform {
           scoreParts: { lexical: round(lexical), semantic: round(semantic), typed: round(typed), graph: round(graph), verification, freshness: round(freshness) },
         };
       })
-      .filter((result) => result.score > 0.04)
+      .filter((result) => relevantRetrieval(queryTokens, result))
       .sort((left, right) => right.score - left.score || left.documentId.localeCompare(right.documentId) || left.sourceSpan.line - right.sourceSpan.line);
     return scored.slice(0, request.limit ?? 12);
   }
@@ -640,8 +640,8 @@ export class CloudKnowledgePlatform {
   }
 
   private answer(request: KnowledgeSearchRequest, results: KnowledgeRetrievalRecord[], started: number): AskNomaResult {
-    const citations = uniqueCitations(results).slice(0, 5);
-    const confidenceScore = citations.length === 0 ? 0 : round(citations.reduce((sum, item) => sum + item.score, 0) / citations.length);
+    const citations = selectCitations(results);
+    const confidenceScore = citationConfidence(citations);
     const strongest = citations[0];
     const insufficient = !strongest || strongest.score < 0.16 || confidenceScore < 0.12 || (strongest.scoreParts.lexical < 0.45 && strongest.scoreParts.semantic < 0.55);
     const conflicts = detectConflicts(citations);
@@ -1511,6 +1511,14 @@ function retrievalFromIndexed(block: IndexedBlock, now: string): KnowledgeRetrie
   };
 }
 
+/** Drop hash-similarity noise: a keyword query must share a word, unless a real embedding is a strong paraphrase. */
+function relevantRetrieval(queryTokens: string[], result: KnowledgeRetrievalRecord): boolean {
+  if (queryTokens.length === 0) return result.score > 0.04;
+  const lexical = result.scoreParts.lexical > 0;
+  const paraphrase = result.scoreParts.semantic >= 0.75;
+  return (lexical || paraphrase) && result.score > 0.08;
+}
+
 function uniqueCitations(results: KnowledgeRetrievalRecord[]): KnowledgeRetrievalRecord[] {
   const seen = new Set<string>();
   return results.filter((result) => {
@@ -1519,6 +1527,31 @@ function uniqueCitations(results: KnowledgeRetrievalRecord[]): KnowledgeRetrieva
     seen.add(key);
     return true;
   });
+}
+
+/** Keep citations close to the best hit and collapse repeated excerpts from copied pages. */
+function selectCitations(results: KnowledgeRetrievalRecord[]): KnowledgeRetrievalRecord[] {
+  const unique = uniqueCitations(results);
+  const best = unique[0];
+  if (!best) return [];
+  const floor = Math.max(0.16, best.score * 0.45);
+  const seenText = new Set<string>();
+  return unique
+    .filter((result) => result.score >= floor && (result.scoreParts.lexical > 0 || result.scoreParts.semantic >= 0.75))
+    .filter((result) => {
+      const key = summarizeSource(result.exactSource).toLocaleLowerCase();
+      if (!key || seenText.has(key)) return false;
+      seenText.add(key);
+      return true;
+    })
+    .slice(0, 5);
+}
+
+function citationConfidence(citations: KnowledgeRetrievalRecord[]): number {
+  if (citations.length === 0) return 0;
+  const top = citations[0]?.score ?? 0;
+  const mean = citations.reduce((sum, item) => sum + item.score, 0) / citations.length;
+  return round(top * 0.7 + mean * 0.3);
 }
 
 function answerFromCitations(citations: KnowledgeRetrievalRecord[], conflicts: AskNomaResult["conflicts"]): string {

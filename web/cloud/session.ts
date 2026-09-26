@@ -56,7 +56,7 @@ async function openInitialWorkspace(): Promise<void> {
   } else {
     const firstSite = state.sites[0];
     if (firstSite) await loadSite(firstSite.id);
-    else await createStarterWorkspace("Research Workspace");
+    else await createStarterWorkspace("Research Workspace", "research");
   }
   await refreshWorkspaceTools();
 }

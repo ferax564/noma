@@ -183,7 +183,8 @@ export async function loadStandaloneDocument(documentId: string): Promise<void> 
     state.currentSite = undefined;
     state.activeFolder = "";
     state.pages = [page];
-    siteTitleInput.value = "Standalone Page";
+    siteTitleInput.value = "";
+    localStorage.removeItem(activeSiteStorageKey);
     setCurrentPage(page);
     updateAddress();
     await Promise.all([refreshWorkManagement(), refreshAccessManagement(), refreshChat()]);
@@ -193,7 +194,7 @@ export async function loadStandaloneDocument(documentId: string): Promise<void> 
   }
 }
 
-export async function createStarterWorkspace(name: string): Promise<void> {
+export async function createStarterWorkspace(name: string, template: "research" | "blank" = "blank"): Promise<void> {
   if (!state.cloudAvailable) return;
   if (!state.cloudUser) {
     setCloudStatus("Register a user before creating workspaces", "error");
@@ -207,8 +208,8 @@ export async function createStarterWorkspace(name: string): Promise<void> {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        title: "Research Paper Draft",
-        source: starterPage("Research Paper Draft", name),
+        title: template === "research" ? "Research Paper Draft" : name,
+        source: template === "research" ? starterPage("Research Paper Draft", name) : blankPage(name),
       }),
     });
     const site = await fetchCloudJson<CloudSiteResponse>("/api/sites", {
@@ -620,14 +621,17 @@ export function selectPage(pageId: string): boolean {
 
 export function renderNavigation(): void {
   siteList.textContent = "";
-  if (state.sites.length === 0 && !state.currentSite) {
+  if (!state.currentSite && state.currentPage) {
+    siteList.append(standaloneSiteRow());
+  }
+  if (state.sites.length === 0 && !state.currentSite && !state.currentPage) {
     siteList.append(emptyState("No spaces"));
   } else {
     for (const site of state.sites) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "site-row";
-      button.setAttribute("aria-current", String(state.currentSite?.id === site.id));
+      markCurrent(button, state.currentSite?.id === site.id);
       button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
       const title = button.querySelector<HTMLElement>(".row-title");
       const meta = button.querySelector<HTMLElement>(".row-meta");
@@ -680,7 +684,7 @@ function pageTreeOrder(groupPages: CloudDocumentResponse[]): Array<{ page: Cloud
 function folderRow(folder: string, pageCount: number): HTMLElement {
   const row = document.createElement("div");
   row.className = "folder-row";
-  row.setAttribute("aria-current", String(sameFolder(state.activeFolder, folder)));
+  markCurrent(row, sameFolder(state.activeFolder, folder));
 
   const label = document.createElement("button");
   label.type = "button";
@@ -688,7 +692,7 @@ function folderRow(folder: string, pageCount: number): HTMLElement {
   label.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
   const title = label.querySelector<HTMLElement>(".row-title");
   const meta = label.querySelector<HTMLElement>(".row-meta");
-  if (title) title.textContent = folder || "Pages";
+  if (title) title.textContent = folder || (state.currentSite ? "Pages" : "This page");
   if (meta) meta.textContent = `${pageCount} page${pageCount === 1 ? "" : "s"}`;
   label.addEventListener("click", () => {
     state.activeFolder = folder;
@@ -725,7 +729,7 @@ function pageRow(page: CloudDocumentResponse, depth = 0): HTMLElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "page-row";
-  button.setAttribute("aria-current", String(state.currentPage?.id === page.id));
+  markCurrent(button, state.currentPage?.id === page.id);
   button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
   const title = button.querySelector<HTMLElement>(".row-title");
   const meta = button.querySelector<HTMLElement>(".row-meta");
@@ -825,6 +829,32 @@ export async function runWithLoadedSite(siteId: string, action: () => void | Pro
 export function runAfterSelectPage(pageId: string, action: () => void | Promise<void>): void {
   if (!selectPage(pageId)) return;
   void action();
+}
+
+function standaloneSiteRow(): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "site-row";
+  button.disabled = true;
+  markCurrent(button, true);
+  button.innerHTML = `<span class="row-title"></span><span class="row-meta"></span>`;
+  const title = button.querySelector<HTMLElement>(".row-title");
+  const meta = button.querySelector<HTMLElement>(".row-meta");
+  if (title) title.textContent = "Not in a space";
+  if (meta) meta.textContent = "Standalone page";
+  return button;
+}
+
+function markCurrent(element: HTMLElement, current: boolean): void {
+  if (current) element.setAttribute("aria-current", "true");
+  else element.removeAttribute("aria-current");
+}
+
+function blankPage(title: string): string {
+  return `# ${title} {id="${slug(title) || "home"}"}
+
+Start writing here.
+`;
 }
 
 function starterPage(title: string, siteName: string): string {
