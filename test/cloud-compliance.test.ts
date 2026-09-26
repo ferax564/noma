@@ -141,6 +141,10 @@ test("the admin overview summarises people, content, chat, AI, runs, and complia
     await json(`${base}/api/projects/${project.id}/issues`, { method: "POST", token: ada.token, body: { summary: "A" } });
     await json(`${base}/api/enterprise/dlp`, { method: "PUT", token: ada.token, body: { mode: "off" } });
     await json(`${base}/api/enterprise/overview`, { token: bob.token, expectedStatus: 403 });
+    const readOnly = await json<{ token: string }>(`${base}/api/tokens`, { method: "POST", token: ada.token, body: { name: "Reporter", scopes: ["read"] } });
+    await json(`${base}/api/enterprise/overview`, { token: readOnly.token, expectedStatus: 403 });
+    assert.equal((await json<{ killSwitch?: unknown }>(`${base}/api/approvals`, { token: readOnly.token })).killSwitch, undefined, "a token without the admin scope is not offered admin controls it cannot use");
+    assert.ok((await json<{ killSwitch?: unknown }>(`${base}/api/approvals`, { token: ada.token })).killSwitch);
     const overview = await json<{
       people: { users: number };
       knowledge: { spaces: number; pages: number };

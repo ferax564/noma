@@ -33,7 +33,7 @@ export async function routeApprovals(req: IncomingMessage, res: ServerResponse, 
   const method = req.method ?? "GET";
   if (!parts[2] && method === "GET") {
     const killSwitch = config.agentOps.killSwitch();
-    sendJson(res, 200, { items: approvalQueue(config, user), paused: killSwitch.paused, ...(canAdminister(config, user) ? { killSwitch } : {}) });
+    sendJson(res, 200, { items: approvalQueue(config, user), paused: killSwitch.paused, ...(canAdminister(config, principal, user) ? { killSwitch } : {}) });
     return;
   }
   if (parts[2] === "runs" && parts[3] && method === "POST") {
@@ -53,7 +53,9 @@ export async function routeApprovals(req: IncomingMessage, res: ServerResponse, 
   throw new HttpError(404, "Unknown approvals route");
 }
 
-function canAdminister(config: CloudServerConfig, user: NonNullable<Principal["user"]>): boolean {
+/** Workspace admins whose credential also carries the `admin` scope that `/api/enterprise` requires. */
+function canAdminister(config: CloudServerConfig, principal: Principal, user: NonNullable<Principal["user"]>): boolean {
+  if (principal.auth && !principal.auth.scopes.includes("admin")) return false;
   try {
     return isWorkspaceAdmin(config, user);
   } catch {
