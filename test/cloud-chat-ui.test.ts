@@ -51,10 +51,12 @@ test("cloud UI chat: threads, agent replies, live updates, and chat → issue/pa
   await waitForText(page, "#cloudStatus", "Logged in");
   await page.goto(`${origin}/cloud.html?site=${site.id}`, { waitUntil: "load" });
   await waitForText(page, "#chatLauncherList", "#release-train");
+  assert.equal(await page.$eval("#chatLauncherList .chat-count", (badge) => badge.textContent), "1", "loading the space does not mark the channel read");
   assert.equal(await page.$eval("#chatDrawer", (element) => element.hasAttribute("hidden")), true, "the drawer starts closed");
   await page.locator("#openChatButton").click();
   await waitForText(page, "#chatMessages", "Login fails on Safari");
   assert.equal(await text(page, "#chatChannelTitle"), "#release-train");
+  await page.waitForFunction(() => !document.querySelector("#chatChannelList .chat-count"), { timeout: 10_000 });
   assert.match(await text(page, "#chatChannelMeta"), /Everything shipping next · Project SHIP/);
   assert.match(await text(page, "#chatAgentChips"), /Test Runner/);
 
@@ -82,12 +84,16 @@ test("cloud UI chat: threads, agent replies, live updates, and chat → issue/pa
   await page.locator("#chatCloseThreadButton").click();
   await waitForText(page, "#chatMessages", "3 replies");
 
-  await page.locator("#chatSearchInput").fill("Safari fix");
+  await page.$eval("#chatCloseButton", (button) => (button as HTMLButtonElement).click());
+  await page.$eval("#openChatButton", (button) => (button as HTMLButtonElement).click());
+  await page.locator("#chatSearchInput").fill("41 passed");
   await waitForText(page, "#chatMessages", "Results for");
+  await page.$eval(".chat-search-result", (button) => (button as HTMLButtonElement).click());
+  await waitForText(page, "#chatThreadMessages", "41 passed");
   await page.locator("#chatSearchInput").fill("");
-  await page.locator("#chatNewChannelToggle").click();
+  await page.$eval("#chatNewChannelToggle", (button) => (button as HTMLButtonElement).click());
   await page.locator("#chatNewNameInput").fill("Incident Review");
-  await page.locator("#chatCreateChannelButton").click();
+  await page.$eval("#chatCreateChannelButton", (button) => (button as HTMLButtonElement).click());
   await waitForText(page, "#chatChannelTitle", "#incident-review");
   await waitForText(page, "#chatChannelList", "#incident-review");
 

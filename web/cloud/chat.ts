@@ -117,7 +117,10 @@ async function openDrawer(channelId?: string): Promise<void> {
   chatDrawer.hidden = false;
   document.body.dataset.chatOpen = "true";
   if (channelId && channelId !== detail?.id) await selectChannel(channelId);
-  else renderChat();
+  else {
+    if (detail?.joined) await markRead().catch((error: unknown) => setPanelStatus(chatStatus, errorMessage(error), "error"));
+    renderChat();
+  }
   (detail?.access.canPost ? chatComposerInput : chatCloseButton).focus();
 }
 
@@ -153,7 +156,7 @@ async function openChannel(channelId: string): Promise<void> {
   detail = await fetchCloudJson<ChatChannelDetail>(`/api/channels/${encodeURIComponent(channelId)}`);
   await Promise.all([loadTimeline(), loadThread()]);
   connectStream(channelId);
-  if (detail.joined) await markRead();
+  if (detail.joined && !chatDrawer.hidden) await markRead();
   renderChat();
 }
 
@@ -692,8 +695,13 @@ function searchRow(result: SearchResult): HTMLElement {
   button.addEventListener("click", () => {
     void (async () => {
       await selectChannel(result.channel.id);
-      const root = result.message.threadId ? messages.find((message) => message.id === result.message.threadId) : undefined;
-      if (root) await openThread(root);
+      if (!result.message.threadId) return;
+      try {
+        const thread = await fetchCloudJson<{ root?: ChatMessage }>(`/api/channels/${encodeURIComponent(result.channel.id)}/messages/${encodeURIComponent(result.message.id)}`);
+        if (thread.root) await openThread(thread.root);
+      } catch (error) {
+        setPanelStatus(chatStatus, errorMessage(error), "error");
+      }
     })();
   });
   return button;

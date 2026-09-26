@@ -165,6 +165,9 @@ test("agents lose chat when their grant, capability, or status goes away", async
     assert.equal(again.mentions.length, 1);
     assert.equal((await json<{ mentions: unknown[] }>(`${base}/api/agents/${agent.id}/chat`, { token: ada.token })).mentions.length, 1);
     await json(`${base}/api/agents/${agent.id}/chat?status=bogus`, { token: ada.token, expectedStatus: 400 });
+    const unmentioned = await json<MessageResponse>(`${base}/api/channels/${channel.id}/messages/${again.id}`, { method: "PATCH", token: ada.token, body: { body: "never mind, done by hand" } });
+    assert.deepEqual(unmentioned.mentions, [], "editing a mention away removes it");
+    assert.equal((await json<{ mentions: unknown[] }>(`${base}/api/agents/${agent.id}/chat?status=all`, { token: ada.token })).mentions.length, 0, "the agent no longer sees a request that was edited away");
     const stranger = await createCloudUser(base, "Mallory");
     assert.equal(await mcpStatus(base, stranger.token, "chat_inbox", { agentId: agent.id }), 403, "only the owner drives the agent");
   } finally {
@@ -193,6 +196,28 @@ test("live streams are capped per user", async () => {
     assert.equal(await open(), 200, "closing a stream frees a slot");
   } finally {
     for (const controller of controllers) controller.abort();
+    await harness.close();
+  }
+});
+
+test("capturing a long thread keeps every reply", async () => {
+  const harness = await startCloudServer("noma-chat-capture-");
+  const { base } = harness;
+  try {
+    const ada = await createCloudUser(base, "Ada Lovelace");
+    const { site } = await createSpace(base, ada.token, "Delivery", []);
+    const channel = await json<ChannelResponse>(`${base}/api/channels`, { method: "POST", token: ada.token, body: { siteId: site.id, name: "long" } });
+    const root = await json<MessageResponse>(`${base}/api/channels/${channel.id}/messages`, { method: "POST", token: ada.token, body: { body: "Long discussion" } });
+    const replies: MessageResponse[] = [];
+    for (let index = 1; index <= 205; index++) {
+      replies.push(await json<MessageResponse>(`${base}/api/channels/${channel.id}/messages`, { method: "POST", token: ada.token, body: { body: `turn ${index}`, threadId: root.id } }));
+    }
+    const captured = await json<{ document: { source: string } }>(`${base}/api/channels/${channel.id}/messages/${root.id}/page`, { method: "POST", token: ada.token, body: {} });
+    const turns = captured.document.source.match(/:::message\{/g) ?? [];
+    assert.equal(turns.length, 206, "root plus all 205 replies");
+    assert.match(captured.document.source, new RegExp(`msg-${replies[0]!.id}`), "the oldest reply is kept");
+    assert.match(captured.document.source, new RegExp(`msg-${replies[204]!.id}`));
+  } finally {
     await harness.close();
   }
 });

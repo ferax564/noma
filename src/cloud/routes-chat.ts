@@ -48,6 +48,7 @@ const TOPIC_MAX = 500;
 const MAX_REACTIONS_PER_MESSAGE = 50;
 const STREAM_HEARTBEAT_MS = 25_000;
 const MAX_STREAMS_PER_USER = 20;
+const MAX_CAPTURED_REPLIES = 5_000;
 const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]{1,9}-\d{1,7}\b/g;
 
 interface ChannelContext {
@@ -467,9 +468,9 @@ async function routeMessages(
     const body = messageBodyInput(input.body);
     const agent = message.agentId ? config.platform.readAgent(message.agentId) : undefined;
     const previous = new Set(extractMentions(message.body));
-    const mentions = resolveMentions(config, context.channel, body, context.user, agent).filter((mention) => !previous.has(mention.id));
+    const mentions = resolveMentions(config, context.channel, body, context.user, agent);
     const edited = config.chat.editMessage(message.id, body, config.now().toISOString(), mentions)!;
-    notifyMentions(config, context, edited, mentions, agent);
+    notifyMentions(config, context, edited, mentions.filter((mention) => !previous.has(mention.id)), agent);
     sendJson(res, 200, messagesResponse(config, context.channel, [edited], names)[0]);
     return;
   }
@@ -636,7 +637,7 @@ async function threadToPage(config: CloudServerConfig, principal: Principal, con
   const rootId = message.threadId ?? message.id;
   const root = config.chat.readMessage(rootId);
   if (!root) throw new HttpError(404, "Thread not found");
-  const replies = config.chat.listMessages(context.channel.id, { threadId: rootId, limit: 200 }).filter((item) => item.kind === "message");
+  const replies = threadReplies(config, context.channel.id, rootId).filter((item) => item.kind === "message");
   const names = nameResolver(config);
   const turns = [root, ...replies].filter((item) => !item.deletedAt);
   const firstLine = displayBody(config, root.body).split("\n").find((line) => line.trim()) ?? `#${context.channel.name} thread`;
@@ -666,6 +667,18 @@ async function threadToPage(config: CloudServerConfig, principal: Principal, con
     document: documentResponse(document, requireRecordAccess(config, document, principal, "viewer"), config),
     message: messagesResponse(config, context.channel, [config.chat.readMessage(root.id)!], names)[0],
   };
+}
+
+/** Every reply in a thread, oldest first; refuses threads too long to capture in one page. */
+function threadReplies(config: CloudServerConfig, channelId: string, rootId: string): ChatMessage[] {
+  const replies: ChatMessage[] = [];
+  for (let after = 0; ; ) {
+    const page = config.chat.listMessages(channelId, { threadId: rootId, after, limit: 200 });
+    replies.push(...page);
+    if (page.length < 200) return replies;
+    if (replies.length >= MAX_CAPTURED_REPLIES) throw new HttpError(413, `Threads over ${MAX_CAPTURED_REPLIES} replies are too long to capture as one page`);
+    after = page[page.length - 1]!.seq;
+  }
 }
 
 function issueTypeInput(value: unknown): CloudIssueType {

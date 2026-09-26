@@ -334,11 +334,15 @@ export class CloudChatStore {
     return rows.reverse().map(messageFromRow);
   }
 
+  /** Replaces the body and the stored mention set; mentions kept from the old body keep their original time. */
   editMessage(id: string, body: string, editedAt: string, mentions: Array<{ id: string; isAgent: boolean }> = []): ChatMessage | undefined {
     const current = this.readMessage(id);
     if (!current) return undefined;
     this.db.transaction(() => {
       this.db.prepare("UPDATE chat_messages SET body = ?, edited_at = ? WHERE id = ?").run(body, editedAt, id);
+      this.db
+        .prepare("DELETE FROM chat_mentions WHERE message_id = ? AND mentioned_id NOT IN (SELECT value FROM json_each(?))")
+        .run(id, JSON.stringify(mentions.map((mention) => mention.id)));
       const mention = this.db.prepare("INSERT OR IGNORE INTO chat_mentions (message_id, channel_id, mentioned_id, is_agent, created_at) VALUES (?, ?, ?, ?, ?)");
       for (const item of mentions) mention.run(id, current.channelId, item.id, item.isAgent ? 1 : 0, editedAt);
     })();
