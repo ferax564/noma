@@ -152,7 +152,14 @@ jobs:
         run: |
           set -euo pipefail
           if git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "$TAG was created while the gates ran — leaving it as is"
+            git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+            tagged=$(git rev-parse "$TAG^{commit}")
+            head=$(git rev-parse HEAD)
+            if [ "$tagged" != "$head" ]; then
+              echo "::error::$TAG was created while the gates ran, but it points at $tagged, not the gated commit $head. Refusing to publish artifacts that disagree with the tag." >&2
+              exit 1
+            fi
+            echo "$TAG was created while the gates ran and points at this commit — continuing"
             exit 0
           fi
           git config user.name "github-actions[bot]"
