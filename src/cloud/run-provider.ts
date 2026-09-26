@@ -61,8 +61,14 @@ export class EzkeelRunProvider implements RunProvider {
     const created = await this.call("POST", "/api/apps", { name: input.appName, repo_url: input.repoUrl });
     if (created.status !== 201 && created.status !== 409) throw new Error(`ezkeel refused the app: ${errorText(created)}`);
     const appUrl = stringField(record(created.body.app), "url") ?? this.appUrl(input.appName);
-    const deployed = await this.call("POST", `/api/apps/${encodeURIComponent(input.appName)}/deploy`, { ref: input.ref });
-    if (deployed.status !== 202) throw new Error(`ezkeel refused the deploy: ${errorText(deployed)}`);
+    let deployed: Awaited<ReturnType<EzkeelRunProvider["call"]>>;
+    try {
+      deployed = await this.call("POST", `/api/apps/${encodeURIComponent(input.appName)}/deploy`, { ref: input.ref });
+      if (deployed.status !== 202) throw new Error(`ezkeel refused the deploy: ${errorText(deployed)}`);
+    } catch (error) {
+      if (created.status === 201) await this.teardown(input.appName).catch(() => undefined);
+      throw error;
+    }
     const deployId = stringField(deployed.body, "deploy_id");
     return { ...(deployId ? { providerRef: deployId } : {}), ...(appUrl ? { url: appUrl } : {}) };
   }

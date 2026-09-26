@@ -191,6 +191,10 @@ test("pull requests and CI move issues and land in the issue's chat thread", asy
     const [pull] = (await json<{ pulls: Array<{ ciStatus: string; ciUrl: string }> }>(`${base}/api/projects/${project.id}/pulls`, { token: bob.token })).pulls;
     assert.equal(pull?.ciStatus, "failure");
 
+    await hook(base, project.id, secret, "workflow_run", { action: "requested", repository: { full_name: "acme/shop" }, workflow_run: { name: "CI", head_sha: "abc123", head_branch: "feature/checkout" } });
+    assert.equal((await json<{ pulls: Array<{ ciStatus?: string }> }>(`${base}/api/projects/${project.id}/pulls`, { token: bob.token })).pulls[0]?.ciStatus, "pending");
+    await hook(base, project.id, secret, "workflow_run", { action: "completed", repository: { full_name: "acme/shop" }, workflow_run: { name: "CI", conclusion: "cancelled", head_sha: "abc123", head_branch: "feature/checkout" } });
+    assert.equal((await json<{ pulls: Array<{ ciStatus?: string }> }>(`${base}/api/projects/${project.id}/pulls`, { token: bob.token })).pulls[0]?.ciStatus, undefined, "a cancelled run clears the pending state");
     await hook(base, project.id, secret, "workflow_run", { action: "completed", repository: { full_name: "acme/shop" }, workflow_run: { name: "CI", conclusion: "success", head_sha: "abc123", head_branch: "feature/checkout" } });
     assert.equal((await hook(base, project.id, secret, "pull_request", { ...pullPayload("opened"), repository: { full_name: "evil/fork" } })).body.handled, false);
 
@@ -260,8 +264,13 @@ test("/deploy and /test run on the run environment, report back, and file bugs f
     assert.equal(busy.code, "run_concurrency_limit");
     runs = (await json<{ runs: RunResponse[] }>(`${base}/api/projects/${project.id}/runs`, { token: bob.token })).runs;
     const one = runs.find((run) => run.ref === "one")!;
+    harness.clock.advance(5 * 60_000);
     const stopped = await json<RunResponse>(`${base}/api/projects/${project.id}/runs/${one.id}`, { method: "DELETE", token: bob.token });
     assert.equal(stopped.status, "canceled");
+    assert.equal(stopped.minutes, 5, "canceled runs are billed for the minutes they used");
+    const removed = await json<RunResponse>(`${base}/api/projects/${project.id}/runs/${deploy.id}`, { method: "DELETE", token: bob.token });
+    assert.equal(removed.status, "removed", "removing a live preview is recorded");
+    assert.ok(provider.tornDown.includes(deploy.appName));
 
     await json(`${base}/api/projects/${project.id}/repo`, { method: "PUT", token: ada.token, body: { monthlyMinutes: 3 } });
     const broke = await json<{ code: string }>(`${base}/api/projects/${project.id}/runs`, { method: "POST", token: bob.token, body: { kind: "test" }, expectedStatus: 429 });
@@ -331,4 +340,9 @@ test("the ezkeel provider speaks ezkeel's headless API", async () => {
   assert.deepEqual(status, { status: "failed", providerRef: "d-1", error: "build failed", log: "line1\nline2\nexit 1" });
   await provider.teardown("ship-main");
   await assert.rejects(provider.start({ appName: "nope", repoUrl: "x", ref: "main", kind: "test" }), /refused the deploy: 500/);
+  assert.equal(calls.at(-1)?.url, "POST /api/apps/nope/deploy", "an app that already existed is left alone");
+  replies["POST /api/apps"] = { status: 201, body: { app: { name: "fresh" } } };
+  replies["DELETE /api/apps/fresh?purge=1"] = { status: 200, body: {} };
+  await assert.rejects(provider.start({ appName: "fresh", repoUrl: "x", ref: "main", kind: "test" }), /refused the deploy: 500/);
+  assert.equal(calls.at(-1)?.url, "DELETE /api/apps/fresh?purge=1", "an app created for a refused deploy is torn down");
 });

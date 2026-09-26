@@ -10,7 +10,8 @@ import DatabaseConstructor from "better-sqlite3";
 type SqliteDatabase = InstanceType<typeof DatabaseConstructor>;
 
 export type DevRunKind = "deploy" | "test";
-export type DevRunStatus = "queued" | "running" | "success" | "failed" | "canceled";
+/** `removed`: a successful preview that was torn down afterwards. */
+export type DevRunStatus = "queued" | "running" | "success" | "failed" | "canceled" | "removed";
 export type DevPullState = "open" | "merged" | "closed";
 export type DevCiStatus = "pending" | "success" | "failure";
 

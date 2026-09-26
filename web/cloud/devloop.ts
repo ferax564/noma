@@ -36,7 +36,7 @@ interface DevRun {
   id: string;
   kind: "deploy" | "test";
   ref: string;
-  status: "queued" | "running" | "success" | "failed" | "canceled";
+  status: "queued" | "running" | "success" | "failed" | "canceled" | "removed";
   url?: string;
   issueKey?: string;
   error?: string;
@@ -54,7 +54,7 @@ interface DevPull {
   issues: Array<{ key: string }>;
 }
 
-const statusIcon: Record<DevRun["status"], string> = { queued: "⏳", running: "⏳", success: "✅", failed: "❌", canceled: "⏹" };
+const statusIcon: Record<DevRun["status"], string> = { queued: "⏳", running: "⏳", success: "✅", failed: "❌", canceled: "⏹", removed: "🧹" };
 const ciIcon: Record<NonNullable<DevPull["ciStatus"]>, string> = { pending: "⏳", success: "✅", failure: "❌" };
 
 let projectId = "";

@@ -140,11 +140,23 @@ export async function pollDevRuns(config: CloudServerConfig): Promise<number> {
 export async function stopRun(config: CloudServerConfig, run: DevRun, actor: CloudUserRecord): Promise<DevRun> {
   const project = config.store.readProject(run.projectId);
   if (config.runProvider) await config.runProvider.teardown(run.appName);
+  const next = retireRun(config, run) ?? run;
   const now = config.now().toISOString();
-  const next = config.devloop.transitionRun(run.id, ["queued", "running"], { status: "canceled", finishedAt: now }) ?? run;
   config.platform.recordAudit(actor.id, "run.stopped", "site", project?.siteId ?? run.projectId, { projectId: run.projectId, runId: run.id, appName: run.appName }, now);
   if (project) announce(config, project, actor, run.kind === "deploy" ? `🧹 Removed the \`${run.ref}\` preview` : `⏹ Stopped the test run of \`${run.ref}\``, next);
   return config.devloop.readRun(run.id) ?? next;
+}
+
+/**
+ * Ends a run after its app was torn down: an active run is `canceled` and billed for the minutes it
+ * used; a live preview becomes `removed`. Undefined when the run was already over.
+ */
+function retireRun(config: CloudServerConfig, run: DevRun): DevRun | undefined {
+  const now = config.now();
+  if (run.status === "success" && run.kind === "deploy") return config.devloop.transitionRun(run.id, ["success"], { status: "removed" });
+  const started = run.startedAt ?? (run.status === "running" ? run.createdAt : undefined);
+  const minutes = started ? Math.max(1, Math.ceil((now.getTime() - Date.parse(started)) / 60_000)) : 0;
+  return config.devloop.transitionRun(run.id, ["queued", "running"], { status: "canceled", finishedAt: now.toISOString(), minutes });
 }
 
 async function settleRun(config: CloudServerConfig, run: DevRun): Promise<void> {
@@ -294,7 +306,7 @@ async function pullRequestEvent(config: CloudServerConfig, project: CloudProject
     const preview = headRef ? config.devloop.latestPreview(project.id, headRef) : undefined;
     if (preview && config.runProvider) {
       await config.runProvider.teardown(preview.appName).catch(() => undefined);
-      config.devloop.transitionRun(preview.id, ["queued", "running"], { status: "canceled", finishedAt: config.now().toISOString() });
+      retireRun(config, preview);
       if (issues[0]) announceToIssue(config, project, actor, issues[0], `🧹 Removed the \`${headRef}\` preview`);
     }
   }
@@ -320,9 +332,16 @@ function ciPending(config: CloudServerConfig, project: CloudProject, sha: unknow
 
 function ciResult(config: CloudServerConfig, project: CloudProject, actor: CloudUserRecord, check: { name: string; conclusion?: string; sha?: string; branch?: string; url?: string }): GithubEventResult {
   const passed = check.conclusion === "success";
-  const failed = check.conclusion === "failure" || check.conclusion === "timed_out" || check.conclusion === "action_required";
-  if (!passed && !failed) return { handled: false, event: "ci", action: check.conclusion ?? "unknown" };
+  const failed = check.conclusion === "failure" || check.conclusion === "timed_out" || check.conclusion === "action_required" || check.conclusion === "startup_failure";
   const pulls = config.devloop.pullsForHead(project.id, check.sha, check.branch);
+  if (!passed && !failed) {
+    for (const pull of pulls) {
+      if (pull.ciStatus !== "pending") continue;
+      const { ciStatus: _pending, ...rest } = pull;
+      config.devloop.writePull({ ...rest, updatedAt: config.now().toISOString() });
+    }
+    return { handled: false, event: "ci", action: check.conclusion ?? "unknown" };
+  }
   const touched: string[] = [];
   for (const pull of pulls) {
     const ciUrl = check.url ?? pull.url;
