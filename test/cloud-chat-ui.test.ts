@@ -88,8 +88,9 @@ test("cloud UI chat: threads, agent replies, live updates, and chat → issue/pa
   await page.$eval("#openChatButton", (button) => (button as HTMLButtonElement).click());
   await page.locator("#chatSearchInput").fill("41 passed");
   await waitForText(page, "#chatMessages", "Results for");
+  assert.equal(await text(page, "#chatThreadMessages"), "", "closing a thread clears its pane");
   await page.$eval(".chat-search-result", (button) => (button as HTMLButtonElement).click());
-  await waitForText(page, "#chatThreadMessages", "41 passed");
+  await page.waitForFunction(() => !(document.querySelector("#chatThreadPane") as HTMLElement).hidden && document.querySelector("#chatThreadMessages")?.textContent?.includes("41 passed"), { timeout: 10_000 });
   await page.locator("#chatSearchInput").fill("");
   await page.$eval("#chatNewChannelToggle", (button) => (button as HTMLButtonElement).click());
   await page.locator("#chatNewNameInput").fill("Incident Review");

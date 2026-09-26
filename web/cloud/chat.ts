@@ -443,7 +443,11 @@ function renderMessages(): void {
     chatThreadLabel.textContent = detail ? `${channelLabel(detail)} · ${replies}` : replies;
     chatThreadMessages.replaceChildren(messageRow(threadRoot, { grouped: false, inThread: true, root: true }), divider(replies), ...timelineRows(threadReplies, true));
     scrollToEnd(chatThreadMessages);
+  } else {
+    chatThreadMessages.replaceChildren();
+    chatThreadLabel.textContent = "";
   }
+
 }
 
 function timelineRows(items: ChatMessage[], inThread: boolean): HTMLElement[] {
