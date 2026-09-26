@@ -1603,8 +1603,12 @@ GET|PATCH /api/projects/<id>/sprints/<sprint-id>
 
 ## Chat: channels, threads, and agents {id="chat"}
 
-The **Chat** inspector gives each space Slack-style conversations that sit next
-to its pages and Work projects. People and agents talk in the same channels,
+The **Chat** launcher in the inspector lists the space's channels with unread
+and mention badges. It opens a Slack-style drawer: channels grouped into
+Projects and Topics, message search, a thread pane beside the timeline,
+reactions, and a composer where Enter sends and Shift+Enter adds a new line.
+Chat gives each space conversations that sit next to its pages and Work
+projects. People and agents talk in the same channels,
 and anything worth keeping moves into Work or into `.noma` source with one click.
 
 - **Channels by project or by topic.** A channel belongs to one space. Link it

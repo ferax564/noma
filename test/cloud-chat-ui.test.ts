@@ -50,32 +50,57 @@ test("cloud UI chat: threads, agent replies, live updates, and chat → issue/pa
   await page.locator("#loginUserButton").click();
   await waitForText(page, "#cloudStatus", "Logged in");
   await page.goto(`${origin}/cloud.html?site=${site.id}`, { waitUntil: "load" });
+  await waitForText(page, "#chatLauncherList", "#release-train");
+  assert.equal(await page.$eval("#chatDrawer", (element) => element.hasAttribute("hidden")), true, "the drawer starts closed");
+  await page.locator("#openChatButton").click();
   await waitForText(page, "#chatMessages", "Login fails on Safari");
-  assert.match(await text(page, "#chatChannelMeta"), /project SHIP · Everything shipping next/);
-  assert.match(await text(page, "#chatAgentChips"), /@Test Runner/);
+  assert.equal(await text(page, "#chatChannelTitle"), "#release-train");
+  assert.match(await text(page, "#chatChannelMeta"), /Everything shipping next · Project SHIP/);
+  assert.match(await text(page, "#chatAgentChips"), /Test Runner/);
 
-  await clickButton(page, "1 reply");
-  await waitForText(page, "#chatMessages", "41 passed");
-  assert.match(await text(page, "#chatMessages"), /Test Runner\s*agent/);
-  await page.locator("#chatComposerInput").fill("I'll take the Safari fix.");
-  await page.locator("#chatSendButton").click();
-  await waitForText(page, "#chatMessages", "Safari fix");
+  await page.locator("#chatComposerInput").fill("Release notes <img src=x onerror=alert(1)> at https://example.com/notes");
+  await page.keyboard.press("Enter");
+  await waitForText(page, "#chatMessages", "Release notes");
+  assert.equal(await page.$$eval("#chatMessages img", (images) => images.length), 0, "message bodies render as text");
+  assert.deepEqual(await page.$$eval("#chatMessages a", (links) => links.map((link) => link.getAttribute("href"))), ["https://example.com/notes"]);
+
+  await page.evaluate(() => (document.querySelector("#chatMessages .chat-replies") as HTMLButtonElement).click());
+  await waitForText(page, "#chatThreadMessages", "41 passed");
+  assert.match(await text(page, "#chatThreadMessages"), /Test Runner\s*Agent/);
+  await page.locator("#chatThreadInput").fill("I'll take the Safari fix.");
+  await page.keyboard.press("Enter");
+  await waitForText(page, "#chatThreadMessages", "Safari fix");
   await api(`/api/channels/${channel.id}/messages`, bob.token, "POST", { body: "Pairing after lunch", threadId: root1.id });
-  await waitForText(page, "#chatMessages", "Pairing after lunch");
+  await waitForText(page, "#chatThreadMessages", "Pairing after lunch");
+  await waitForText(page, "#chatThreadLabel", "3 replies");
 
-  await clickButton(page, "→ Issue");
+  await clickRootAction(page, "Create a Work issue from this message");
   await waitForText(page, "#chatStatus", "Created SHIP-1");
-  await clickButton(page, "→ Page");
+  await clickRootAction(page, "Save this thread as a .noma page");
   await waitForText(page, "#chatStatus", "Saved thread as");
-  await waitForText(page, "#chatMessages", "saved this thread as the page");
+  await waitForText(page, "#chatThreadMessages", "saved this thread as the page");
   await page.locator("#chatCloseThreadButton").click();
   await waitForText(page, "#chatMessages", "3 replies");
+
+  await page.locator("#chatSearchInput").fill("Safari fix");
+  await waitForText(page, "#chatMessages", "Results for");
+  await page.locator("#chatSearchInput").fill("");
+  await page.locator("#chatNewChannelToggle").click();
+  await page.locator("#chatNewNameInput").fill("Incident Review");
+  await page.locator("#chatCreateChannelButton").click();
+  await waitForText(page, "#chatChannelTitle", "#incident-review");
+  await waitForText(page, "#chatChannelList", "#incident-review");
+
+  await page.focus("#chatComposerInput");
+  await page.keyboard.press("Escape");
+  assert.equal(await page.$eval("#chatDrawer", (element) => element.hasAttribute("hidden")), true, "Escape closes the drawer");
   assert.deepEqual(pageErrors, []);
 });
 
-async function clickButton(page: Page, label: string): Promise<void> {
-  await page.waitForFunction((wanted) => [...document.querySelectorAll<HTMLButtonElement>("#chatMessages button")].some((button) => button.textContent === wanted && !button.disabled), { timeout: 10_000 }, label);
-  await page.evaluate((wanted) => [...document.querySelectorAll<HTMLButtonElement>("#chatMessages button")].find((button) => button.textContent === wanted)!.click(), label);
+async function clickRootAction(page: Page, label: string): Promise<void> {
+  const selector = `#chatThreadMessages .chat-message[data-root="true"] .chat-actions button[aria-label="${label}"]`;
+  await page.waitForSelector(selector, { timeout: 10_000 });
+  await page.$eval(selector, (button) => (button as HTMLButtonElement).click());
 }
 
 async function text(page: Page, selector: string): Promise<string> {

@@ -49,8 +49,9 @@ src/                       TypeScript core — parser, AST, renderers, validator
   ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
   verify.ts                Conformance fixture runner (`noma verify`)
   cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
-  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
+  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, agent chat, thread → .noma), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
   cloud-db.ts              SQLite persistence for Noma Cloud
+  cloud-chat.ts            Chat persistence — channels, threaded messages, reactions, mentions, read markers, in-process event bus for SSE
   cloud-blobs.ts           Content-addressed attachment blob store (local disk + dependency-free SigV4 S3 driver)
   cloud-embeddings.ts      Embedding providers for hybrid search (local hash default, OpenAI-compatible, Voyage)
   cloud-llm.ts             LLM provider layer for Cloud AI (Claude Messages API over fetch, fake provider, pricing)
@@ -218,10 +219,17 @@ hash-checked apply loop. The format and the hosted wiki (Noma Cloud) are one
 product. WYSIWYG block editing, realtime co-editing, attachments, enterprise
 auth, and Confluence import are **in scope** for Cloud.
 
+**2026-09-26:** Noma is growing into one collaboration surface for building
+software. It has four parts: the wiki (Confluence/Notion), Work (Jira), Chat
+(Slack: channels by project or topic, threads, agents as members), and next run
+environments (deploys and test runs on the `ezkeel` stack). Chat must always
+be able to land in source: message → issue, thread → `.noma` page. See PLAN.md
+§23.21.
+
 Still out of scope:
 - a plugin marketplace
 - a complex CSS theming engine
-- feature-for-feature clones of non-wiki Atlassian products (whiteboards, databases)
+- whiteboards and databases
 - anything that makes the `.noma` source lossy or non-reviewable — every editor,
   importer, and agent path must round-trip through source with stable IDs
 
