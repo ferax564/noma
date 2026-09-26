@@ -16,9 +16,13 @@ export type ChatChannelVisibility = "public" | "private";
 export type ChatMemberRole = "member" | "admin";
 export type ChatMemberType = "user" | "agent";
 export type ChatMessageKind = "message" | "system";
+/** `channel` lives in a space; `dm` is a direct or group conversation between members only. */
+export type ChatChannelKind = "channel" | "dm";
 
 export interface ChatChannel {
   id: string;
+  kind: ChatChannelKind;
+  /** Empty for direct messages. */
   siteId: string;
   projectId?: string;
   name: string;
@@ -45,6 +49,37 @@ export interface ChatMember {
 export interface ChatMessageLinks {
   issueIds?: string[];
   documentIds?: string[];
+  fileIds?: string[];
+}
+
+/** A file uploaded into a channel; its bytes live in the attachment blob store by SHA-256. */
+export interface ChatFile {
+  id: string;
+  channelId: string;
+  messageId?: string;
+  sha256: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  uploadedBy: string;
+  createdAt: string;
+}
+
+/** A previous body of an edited or deleted message, kept for eDiscovery until retention removes it. */
+export interface ChatRevision {
+  messageId: string;
+  body: string;
+  action: "edit" | "delete";
+  revisedBy: string;
+  revisedAt: string;
+}
+
+export interface ChatPurgeResult {
+  deletedMessages: number;
+  blankedRoots: number;
+  protectedMessages: number;
+  deletedFiles: number;
+  fileHashes: string[];
 }
 
 export interface ChatMessage {
@@ -99,6 +134,8 @@ export interface ChatMessagePage {
 
 interface ChannelRow {
   id: string;
+  kind: ChatChannelKind;
+  dm_key: string | null;
   site_id: string;
   project_id: string | null;
   name: string;
@@ -159,14 +196,40 @@ export class CloudChatStore {
 
   // channels
 
-  createChannel(channel: Omit<ChatChannel, "lastSeq" | "lastMessageAt">): ChatChannel {
+  createChannel(channel: Omit<ChatChannel, "lastSeq" | "lastMessageAt">, dmKey?: string): ChatChannel {
     this.db
       .prepare(
-        `INSERT INTO chat_channels (id, site_id, project_id, name, topic, visibility, created_by, created_at, updated_at, archived_at, last_seq, last_message_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
+        `INSERT INTO chat_channels (id, kind, dm_key, site_id, project_id, name, topic, visibility, created_by, created_at, updated_at, archived_at, last_seq, last_message_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
       )
-      .run(channel.id, channel.siteId, channel.projectId ?? null, channel.name, channel.topic ?? null, channel.visibility, channel.createdBy, channel.createdAt, channel.updatedAt, channel.archivedAt ?? null);
+      .run(channel.id, channel.kind, dmKey ?? null, channel.siteId, channel.projectId ?? null, channel.name, channel.topic ?? null, channel.visibility, channel.createdBy, channel.createdAt, channel.updatedAt, channel.archivedAt ?? null);
     return this.readChannel(channel.id)!;
+  }
+
+  /** The direct-message conversation for exactly this member set, if one exists. */
+  readDmByKey(dmKey: string): ChatChannel | undefined {
+    const row = this.db.prepare("SELECT * FROM chat_channels WHERE dm_key = ?").get(dmKey) as ChannelRow | undefined;
+    return row ? channelFromRow(row) : undefined;
+  }
+
+  /** Direct-message conversations `memberId` belongs to, most recently active first. */
+  listDms(memberId: string): ChatChannel[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT c.* FROM chat_channels c JOIN chat_members m ON m.channel_id = c.id AND m.member_id = ?
+           WHERE c.kind = 'dm' ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id`,
+        )
+        .all(memberId) as ChannelRow[]
+    ).map(channelFromRow);
+  }
+
+  /** Every channel (DMs included) for compliance exports and retention, optionally narrowed to spaces. */
+  listAllChannels(siteIds?: string[]): ChatChannel[] {
+    const rows = siteIds
+      ? (this.db.prepare("SELECT * FROM chat_channels WHERE site_id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id").all(JSON.stringify(siteIds)) as ChannelRow[])
+      : (this.db.prepare("SELECT * FROM chat_channels ORDER BY created_at, id").all() as ChannelRow[]);
+    return rows.map(channelFromRow);
   }
 
   readChannel(id: string): ChatChannel | undefined {
@@ -182,7 +245,7 @@ export class CloudChatStore {
   /** Channels in the given spaces, most recently active first. */
   listChannels(siteIds: string[], filter: { projectId?: string; includeArchived?: boolean } = {}): ChatChannel[] {
     if (siteIds.length === 0) return [];
-    const clauses = ["site_id IN (SELECT value FROM json_each(?))"];
+    const clauses = ["kind = 'channel'", "site_id IN (SELECT value FROM json_each(?))"];
     const params: Array<string> = [JSON.stringify(siteIds)];
     if (filter.projectId) {
       clauses.push("project_id = ?");
@@ -241,6 +304,11 @@ export class CloudChatStore {
       )
       .run(member.channelId, member.memberId, member.memberType, member.role, member.joinedAt, member.lastReadSeq ?? 0);
     return this.readMember(member.channelId, member.memberId)!;
+  }
+
+  /** Detaches a group DM from its original member set once people join or leave it. */
+  clearDmKey(channelId: string): void {
+    this.db.prepare("UPDATE chat_channels SET dm_key = NULL WHERE id = ?").run(channelId);
   }
 
   removeMember(channelId: string, memberId: string): boolean {
@@ -335,10 +403,11 @@ export class CloudChatStore {
   }
 
   /** Replaces the body and the stored mention set; mentions kept from the old body keep their original time. */
-  editMessage(id: string, body: string, editedAt: string, mentions: Array<{ id: string; isAgent: boolean }> = []): ChatMessage | undefined {
+  editMessage(id: string, body: string, editedAt: string, mentions: Array<{ id: string; isAgent: boolean }> = [], editedBy?: string): ChatMessage | undefined {
     const current = this.readMessage(id);
     if (!current) return undefined;
     this.db.transaction(() => {
+      this.insertRevision({ messageId: id, body: current.body, action: "edit", revisedBy: editedBy ?? current.authorId, revisedAt: editedAt });
       this.db.prepare("UPDATE chat_messages SET body = ?, edited_at = ? WHERE id = ?").run(body, editedAt, id);
       this.db
         .prepare("DELETE FROM chat_mentions WHERE message_id = ? AND mentioned_id NOT IN (SELECT value FROM json_each(?))")
@@ -351,11 +420,15 @@ export class CloudChatStore {
     return next;
   }
 
-  /** Blanks the body and drops mentions and reactions; the row stays so thread structure survives. */
-  deleteMessage(id: string, deletedAt: string): ChatMessage | undefined {
+  /**
+   * Blanks the body and drops mentions and reactions; the row stays so thread structure survives,
+   * and the old body is kept as a revision for eDiscovery.
+   */
+  deleteMessage(id: string, deletedAt: string, deletedBy?: string): ChatMessage | undefined {
     const current = this.readMessage(id);
     if (!current) return undefined;
     this.db.transaction(() => {
+      if (!current.deletedAt) this.insertRevision({ messageId: id, body: current.body, action: "delete", revisedBy: deletedBy ?? current.authorId, revisedAt: deletedAt });
       this.db.prepare("UPDATE chat_messages SET body = '', deleted_at = ? WHERE id = ?").run(deletedAt, id);
       this.db.prepare("DELETE FROM chat_mentions WHERE message_id = ?").run(id);
       this.db.prepare("DELETE FROM chat_reactions WHERE message_id = ?").run(id);
@@ -370,6 +443,7 @@ export class CloudChatStore {
     const merged: ChatMessageLinks = {
       ...(links.issueIds || current.links.issueIds ? { issueIds: [...new Set([...(current.links.issueIds ?? []), ...(links.issueIds ?? [])])].slice(-50) } : {}),
       ...(links.documentIds || current.links.documentIds ? { documentIds: [...new Set([...(current.links.documentIds ?? []), ...(links.documentIds ?? [])])].slice(-50) } : {}),
+      ...(links.fileIds || current.links.fileIds ? { fileIds: [...new Set([...(current.links.fileIds ?? []), ...(links.fileIds ?? [])])].slice(-20) } : {}),
     };
     this.db.prepare("UPDATE chat_messages SET links_json = ? WHERE id = ?").run(JSON.stringify(merged), id);
     this.publish({ type: "message_updated", channelId: current.channelId, seq: current.seq, messageId: id, ...(current.threadId ? { threadId: current.threadId } : {}) });
@@ -456,6 +530,122 @@ export class CloudChatStore {
       )
       .all(agentId, filter.limit) as Array<{ message_id: string; channel_id: string; mentioned_id: string; is_agent: number; created_at: string }>;
     return rows.map((row) => ({ messageId: row.message_id, channelId: row.channel_id, mentionedId: row.mentioned_id, isAgent: row.is_agent === 1, createdAt: row.created_at }));
+  }
+
+  // files
+
+  insertFile(file: ChatFile): ChatFile {
+    this.db
+      .prepare("INSERT INTO chat_files (id, channel_id, message_id, sha256, filename, content_type, size, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(file.id, file.channelId, file.messageId ?? null, file.sha256, file.filename, file.contentType, file.size, file.uploadedBy, file.createdAt);
+    return this.readFile(file.id)!;
+  }
+
+  readFile(id: string): ChatFile | undefined {
+    const row = this.db.prepare("SELECT * FROM chat_files WHERE id = ?").get(id) as FileRow | undefined;
+    return row ? fileFromRow(row) : undefined;
+  }
+
+  listFiles(ids: string[]): ChatFile[] {
+    if (ids.length === 0) return [];
+    return (this.db.prepare("SELECT * FROM chat_files WHERE id IN (SELECT value FROM json_each(?)) ORDER BY created_at, id").all(JSON.stringify(ids)) as FileRow[]).map(fileFromRow);
+  }
+
+  /** Binds uploaded, still-unattached files to the message that shares them. */
+  attachFiles(messageId: string, fileIds: string[]): void {
+    const attach = this.db.prepare("UPDATE chat_files SET message_id = ? WHERE id = ? AND message_id IS NULL");
+    this.db.transaction(() => {
+      for (const id of fileIds) attach.run(messageId, id);
+    })();
+  }
+
+  /** Bytes of chat files in the space's channels. */
+  siteFileBytes(siteId: string): number {
+    return (this.db.prepare("SELECT COALESCE(SUM(f.size), 0) AS total FROM chat_files f JOIN chat_channels c ON c.id = f.channel_id WHERE c.site_id = ?").get(siteId) as { total: number }).total;
+  }
+
+  /** Bytes of files a user shared in direct messages. */
+  dmFileBytes(userId: string): number {
+    return (this.db.prepare("SELECT COALESCE(SUM(f.size), 0) AS total FROM chat_files f JOIN chat_channels c ON c.id = f.channel_id WHERE c.kind = 'dm' AND f.uploaded_by = ?").get(userId) as { total: number }).total;
+  }
+
+  isBlobReferenced(sha256: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 FROM chat_files WHERE sha256 = ? LIMIT 1").get(sha256));
+  }
+
+  // compliance
+
+  listRevisions(messageIds: string[]): Map<string, ChatRevision[]> {
+    const grouped = new Map<string, ChatRevision[]>();
+    if (messageIds.length === 0) return grouped;
+    const rows = this.db
+      .prepare("SELECT * FROM chat_revisions WHERE message_id IN (SELECT value FROM json_each(?)) ORDER BY revised_at, rowid")
+      .all(JSON.stringify(messageIds)) as Array<{ message_id: string; body: string; action: "edit" | "delete"; revised_by: string; revised_at: string }>;
+    for (const row of rows) {
+      grouped.set(row.message_id, [...(grouped.get(row.message_id) ?? []), { messageId: row.message_id, body: row.body, action: row.action, revisedBy: row.revised_by, revisedAt: row.revised_at }]);
+    }
+    return grouped;
+  }
+
+  /** Every message of a channel in `seq` order, deleted ones included, optionally within a time window. */
+  exportMessages(channelId: string, window: { since?: string; until?: string } = {}): ChatMessage[] {
+    return (
+      this.db
+        .prepare("SELECT * FROM chat_messages WHERE channel_id = ? AND created_at >= ? AND created_at <= ? ORDER BY seq")
+        .all(channelId, window.since ?? "", window.until ?? "\uffff") as MessageRow[]
+    ).map(messageFromRow);
+  }
+
+  /**
+   * Retention: removes messages created before `cutoff` in channels `keep` does not protect, with
+   * their revisions, mentions, reactions and files. A root whose thread still has newer replies is
+   * blanked instead, so the surviving replies keep their thread.
+   */
+  purgeBefore(cutoff: string, keep: (channel: ChatChannel) => boolean, keepAuthor: (authorId: string) => boolean): ChatPurgeResult {
+    const result: ChatPurgeResult = { deletedMessages: 0, blankedRoots: 0, protectedMessages: 0, deletedFiles: 0, fileHashes: [] };
+    const channels = new Map(this.listAllChannels().map((channel) => [channel.id, channel]));
+    const old = this.db.prepare("SELECT * FROM chat_messages WHERE created_at < ? ORDER BY seq DESC").all(cutoff) as MessageRow[];
+    this.db.transaction(() => {
+      for (const row of old) {
+        const channel = channels.get(row.channel_id);
+        if (!channel || keep(channel) || keepAuthor(row.author_id)) {
+          result.protectedMessages += 1;
+          continue;
+        }
+        const files = this.db.prepare("SELECT id, sha256 FROM chat_files WHERE message_id = ?").all(row.id) as Array<{ id: string; sha256: string }>;
+        for (const file of files) result.fileHashes.push(file.sha256);
+        result.deletedFiles += files.length;
+        this.db.prepare("DELETE FROM chat_files WHERE message_id = ?").run(row.id);
+        this.db.prepare("DELETE FROM chat_revisions WHERE message_id = ?").run(row.id);
+        this.db.prepare("DELETE FROM chat_mentions WHERE message_id = ?").run(row.id);
+        this.db.prepare("DELETE FROM chat_reactions WHERE message_id = ?").run(row.id);
+        const newerReplies = this.db.prepare("SELECT 1 FROM chat_messages WHERE thread_id = ? LIMIT 1").get(row.id);
+        if (newerReplies) {
+          this.db.prepare("UPDATE chat_messages SET body = '', links_json = '{}', deleted_at = COALESCE(deleted_at, ?) WHERE id = ?").run(cutoff, row.id);
+          result.blankedRoots += 1;
+        } else {
+          this.db.prepare("DELETE FROM chat_messages WHERE id = ?").run(row.id);
+          if (row.thread_id) this.db.prepare("UPDATE chat_messages SET reply_count = MAX(reply_count - 1, 0) WHERE id = ?").run(row.thread_id);
+          result.deletedMessages += 1;
+        }
+      }
+      const orphans = this.db.prepare("SELECT id, channel_id, sha256 FROM chat_files WHERE message_id IS NULL AND created_at < ?").all(cutoff) as Array<{ id: string; channel_id: string; sha256: string }>;
+      for (const file of orphans) {
+        const channel = channels.get(file.channel_id);
+        if (channel && keep(channel)) continue;
+        this.db.prepare("DELETE FROM chat_files WHERE id = ?").run(file.id);
+        result.fileHashes.push(file.sha256);
+        result.deletedFiles += 1;
+      }
+    })();
+    result.fileHashes = [...new Set(result.fileHashes)];
+    return result;
+  }
+
+  private insertRevision(revision: ChatRevision): void {
+    this.db
+      .prepare("INSERT INTO chat_revisions (message_id, body, action, revised_by, revised_at) VALUES (?, ?, ?, ?, ?)")
+      .run(revision.messageId, revision.body, revision.action, revision.revisedBy, revision.revisedAt);
   }
 
   // realtime
@@ -559,13 +749,67 @@ export class CloudChatStore {
         PRIMARY KEY (message_id, mentioned_id)
       );
       CREATE INDEX IF NOT EXISTS chat_mentions_mentioned ON chat_mentions (mentioned_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS chat_files (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        message_id TEXT,
+        sha256 TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        uploaded_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS chat_files_message ON chat_files (message_id);
+      CREATE INDEX IF NOT EXISTS chat_files_sha ON chat_files (sha256);
+
+      CREATE TABLE IF NOT EXISTS chat_revisions (
+        message_id TEXT NOT NULL,
+        body TEXT NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('edit', 'delete')),
+        revised_by TEXT NOT NULL,
+        revised_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS chat_revisions_message ON chat_revisions (message_id);
     `);
+    const columns = new Set((this.db.prepare("PRAGMA table_info(chat_channels)").all() as Array<{ name: string }>).map((column) => column.name));
+    if (!columns.has("kind")) this.db.exec("ALTER TABLE chat_channels ADD COLUMN kind TEXT NOT NULL DEFAULT 'channel'");
+    if (!columns.has("dm_key")) this.db.exec("ALTER TABLE chat_channels ADD COLUMN dm_key TEXT");
+    this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS chat_channels_dm_key ON chat_channels (dm_key) WHERE dm_key IS NOT NULL");
   }
+}
+
+interface FileRow {
+  id: string;
+  channel_id: string;
+  message_id: string | null;
+  sha256: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  uploaded_by: string;
+  created_at: string;
+}
+
+function fileFromRow(row: FileRow): ChatFile {
+  return {
+    id: row.id,
+    channelId: row.channel_id,
+    ...(row.message_id ? { messageId: row.message_id } : {}),
+    sha256: row.sha256,
+    filename: row.filename,
+    contentType: row.content_type,
+    size: row.size,
+    uploadedBy: row.uploaded_by,
+    createdAt: row.created_at,
+  };
 }
 
 function channelFromRow(row: ChannelRow): ChatChannel {
   return {
     id: row.id,
+    kind: row.kind ?? "channel",
     siteId: row.site_id,
     ...(row.project_id ? { projectId: row.project_id } : {}),
     name: row.name,

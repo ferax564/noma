@@ -125,12 +125,12 @@ function textSample(head: Buffer): string | undefined {
   return replacements > 2 ? undefined : text;
 }
 
-export function servedContentType(attachment: CloudAttachment): string {
+export function servedContentType(attachment: Pick<CloudAttachment, "contentType">): string {
   if (ACTIVE_CONTENT_TYPES.has(attachment.contentType)) return "application/octet-stream";
   return attachment.contentType.startsWith("text/") ? `${attachment.contentType}; charset=utf-8` : attachment.contentType;
 }
 
-export function isInlineSafe(attachment: CloudAttachment): boolean {
+export function isInlineSafe(attachment: Pick<CloudAttachment, "contentType">): boolean {
   return INLINE_SAFE_TYPES.has(attachment.contentType);
 }
 
@@ -138,7 +138,7 @@ export function isImageAttachment(attachment: Pick<CloudAttachment, "contentType
   return INLINE_SAFE_TYPES.has(attachment.contentType) && attachment.contentType.startsWith("image/");
 }
 
-export function contentDisposition(attachment: CloudAttachment): string {
+export function contentDisposition(attachment: Pick<CloudAttachment, "contentType" | "filename">): string {
   const kind = isInlineSafe(attachment) ? "inline" : "attachment";
   const ascii = attachment.filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
   return `${kind}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`;
@@ -214,11 +214,11 @@ export function attachmentResolver(config: CloudServerConfig, documentId: string
   };
 }
 
-/** Deletes blobs that no attachment row references any more. Best effort: a failed delete leaves an orphaned blob, never a dangling row. */
+/** Deletes blobs that no page attachment or chat file references any more. Best effort: a failed delete leaves an orphaned blob, never a dangling row. */
 export async function collectAttachmentGarbage(config: CloudServerConfig, hashes: string[]): Promise<number> {
   let removed = 0;
   for (const sha256 of new Set(hashes)) {
-    if (config.store.isBlobReferenced(sha256)) continue;
+    if (config.store.isBlobReferenced(sha256) || config.chat.isBlobReferenced(sha256)) continue;
     try {
       await config.blobs.delete(sha256);
       removed += 1;

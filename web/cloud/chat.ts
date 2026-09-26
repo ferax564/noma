@@ -1,12 +1,22 @@
 /**
- * Chat: a Slack-style drawer with channels per space (by Work project or by topic), a timeline,
- * a thread pane, reactions, search, and chat → issue/page hand-offs. The inspector keeps a compact
- * launcher listing the space's channels with unread badges.
+ * Chat: a Slack-style drawer with channels per space (by Work project or by topic), direct and group
+ * messages, a timeline, a thread pane, reactions, files, search, exports, and chat → issue/page
+ * hand-offs. The inspector keeps a compact launcher listing the space's channels with unread badges.
  */
 import { fetchCloudJson } from "./api.js";
 import {
   chatAgentChips,
+  chatAttachButton,
   chatCancelChannelButton,
+  chatCancelDmButton,
+  chatDmResults,
+  chatDmSearchInput,
+  chatDmSelected,
+  chatExportButton,
+  chatFileInput,
+  chatNewDmForm,
+  chatNewDmToggle,
+  chatPendingFiles,
   chatChannelList,
   chatChannelMeta,
   chatChannelTitle,
@@ -39,7 +49,7 @@ import { attachMentionPicker, mentionDisplay } from "./mentions.js";
 import { loadSite } from "./navigation.js";
 import { canEditSite } from "./permissions.js";
 import { state } from "./state.js";
-import type { ChatChannel, ChatChannelDetail, ChatMessage } from "./types.js";
+import type { ChatChannel, ChatChannelDetail, ChatFile, ChatMessage } from "./types.js";
 import { emptyState, errorMessage, setPanelStatus } from "./util.js";
 
 const QUICK_REACTIONS = ["👍", "✅", "👀", "🎉"];
@@ -52,6 +62,10 @@ interface SearchResult {
 }
 
 let channels: ChatChannel[] = [];
+let dms: ChatChannel[] = [];
+let pendingFiles: ChatFile[] = [];
+let dmSelected: Array<{ id: string; name: string }> = [];
+let dmSearchTimer: number | undefined;
 let detail: ChatChannelDetail | undefined;
 let messages: ChatMessage[] = [];
 let threadRoot: ChatMessage | undefined;
@@ -78,6 +92,19 @@ export function installChat(): void {
     event.preventDefault();
     void createChannel();
   });
+  chatNewDmToggle.addEventListener("click", () => toggleNewDm(chatNewDmForm.hidden));
+  chatCancelDmButton.addEventListener("click", () => toggleNewDm(false));
+  chatNewDmForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void startDm();
+  });
+  chatDmSearchInput.addEventListener("input", () => {
+    window.clearTimeout(dmSearchTimer);
+    dmSearchTimer = window.setTimeout(() => void searchPeople(), 200);
+  });
+  chatAttachButton.addEventListener("click", () => chatFileInput.click());
+  chatFileInput.addEventListener("change", () => void uploadFiles([...(chatFileInput.files ?? [])]));
+  chatExportButton.addEventListener("click", () => void exportConversation());
   chatSearchInput.addEventListener("input", () => {
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => void runSearch(), 250);
@@ -92,10 +119,11 @@ export function installChat(): void {
   }, POLL_MS);
 }
 
-/** Reloads the current space's channels and reopens the selected (or first joined) one. */
+/** Reloads the current space's channels and DMs and reopens the selected (or first joined) one. */
 export async function refreshChat(): Promise<void> {
-  if (!state.cloudUser || !state.currentSite) {
+  if (!state.cloudUser) {
     channels = [];
+    dms = [];
     closeChannel();
     closeDrawer();
     renderChat();
@@ -103,7 +131,7 @@ export async function refreshChat(): Promise<void> {
   }
   try {
     await refreshChannelList();
-    const selected = channels.find((channel) => channel.id === detail?.id) ?? channels.find((channel) => channel.joined) ?? channels[0];
+    const selected = [...channels, ...dms].find((channel) => channel.id === detail?.id) ?? channels.find((channel) => channel.joined) ?? channels[0] ?? dms[0];
     if (selected) await openChannel(selected.id);
     else closeChannel();
   } catch (error) {
@@ -130,10 +158,26 @@ function closeDrawer(): void {
 }
 
 async function refreshChannelList(): Promise<void> {
-  if (!state.currentSite) return;
-  const response = await fetchCloudJson<{ channels: ChatChannel[] }>(`/api/channels?siteId=${encodeURIComponent(state.currentSite.id)}`);
-  channels = response.channels;
+  const [channelResponse, dmResponse] = await Promise.all([
+    state.currentSite ? fetchCloudJson<{ channels: ChatChannel[] }>(`/api/channels?siteId=${encodeURIComponent(state.currentSite.id)}`) : Promise.resolve({ channels: [] }),
+    fetchCloudJson<{ dms: ChatChannel[] }>("/api/chat/dms"),
+  ]);
+  channels = channelResponse.channels;
+  dms = dmResponse.dms;
   renderChannelLists();
+}
+
+/** Opens the drawer on a channel or DM, optionally with a thread; used by the command palette. */
+export async function openChatAt(channelId: string, threadId?: string): Promise<void> {
+  await refreshChannelList().catch(() => undefined);
+  await openDrawer(channelId);
+  if (!threadId) return;
+  try {
+    const thread = await fetchCloudJson<{ root?: ChatMessage }>(`/api/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(threadId)}`);
+    if (thread.root) await openThread(thread.root);
+  } catch (error) {
+    setPanelStatus(chatStatus, errorMessage(error), "error");
+  }
 }
 
 async function selectChannel(channelId: string): Promise<void> {
@@ -227,11 +271,16 @@ async function markRead(): Promise<void> {
 
 async function sendMessage(input: HTMLTextAreaElement, root: ChatMessage | undefined): Promise<void> {
   const body = input.value.trim();
-  if (!detail || !body) return;
+  const files = input === chatComposerInput ? pendingFiles : [];
+  if (!detail || (!body && files.length === 0)) return;
   input.disabled = true;
   try {
-    await fetchCloudJson(`/api/channels/${encodeURIComponent(detail.id)}/messages`, jsonInit("POST", { body, ...(root ? { threadId: root.id } : {}) }));
+    await fetchCloudJson(`/api/channels/${encodeURIComponent(detail.id)}/messages`, jsonInit("POST", { body, ...(root ? { threadId: root.id } : {}), ...(files.length ? { fileIds: files.map((file) => file.id) } : {}) }));
     input.value = "";
+    if (files.length) {
+      pendingFiles = [];
+      renderPendingFiles();
+    }
     autoGrow(input);
     if (!detail.joined) detail = await fetchCloudJson<ChatChannelDetail>(`/api/channels/${encodeURIComponent(detail.id)}`);
     await Promise.all([loadTimeline(), loadThread()]);
@@ -338,17 +387,180 @@ async function messageAction(message: ChatMessage, action: MessageAction): Promi
   renderMessages();
 }
 
+// direct messages
+
+function toggleNewDm(open: boolean): void {
+  chatNewDmForm.hidden = !open;
+  chatNewDmToggle.setAttribute("aria-expanded", String(open));
+  if (open) {
+    toggleNewChannel(false);
+    dmSelected = [];
+    chatDmSearchInput.value = "";
+    chatDmResults.replaceChildren();
+    renderDmSelected();
+    chatDmSearchInput.focus();
+  }
+}
+
+async function searchPeople(): Promise<void> {
+  const q = chatDmSearchInput.value.trim();
+  if (!q) {
+    chatDmResults.replaceChildren();
+    return;
+  }
+  try {
+    const response = await fetchCloudJson<{ users: Array<{ id: string; name: string; agent?: true }> }>(`/api/users?q=${encodeURIComponent(q)}`);
+    const people = response.users.filter((user) => !user.agent && user.id !== state.cloudUser?.id && !dmSelected.some((picked) => picked.id === user.id));
+    chatDmResults.replaceChildren(
+      ...(people.length ? [] : [emptyState("No one found in your spaces")]),
+      ...people.slice(0, 8).map((person) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "chat-person";
+        button.append(avatar(person.id, person.name, false), document.createTextNode(person.name));
+        button.addEventListener("click", () => {
+          dmSelected.push(person);
+          chatDmSearchInput.value = "";
+          chatDmResults.replaceChildren();
+          renderDmSelected();
+          chatDmSearchInput.focus();
+        });
+        return button;
+      }),
+    );
+  } catch (error) {
+    setPanelStatus(chatStatus, errorMessage(error), "error");
+  }
+}
+
+function renderDmSelected(): void {
+  chatDmSelected.replaceChildren(
+    ...dmSelected.map((person) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chat-reaction";
+      chip.textContent = `${person.name} ✕`;
+      chip.setAttribute("aria-label", `Remove ${person.name}`);
+      chip.addEventListener("click", () => {
+        dmSelected = dmSelected.filter((picked) => picked.id !== person.id);
+        renderDmSelected();
+      });
+      return chip;
+    }),
+  );
+}
+
+async function startDm(): Promise<void> {
+  if (dmSelected.length === 0) {
+    setPanelStatus(chatStatus, "Pick at least one person", "error");
+    chatDmSearchInput.focus();
+    return;
+  }
+  try {
+    const dm = await fetchCloudJson<ChatChannelDetail>("/api/chat/dms", jsonInit("POST", { memberIds: dmSelected.map((person) => person.id) }));
+    toggleNewDm(false);
+    await refreshChannelList();
+    await selectChannel(dm.id);
+  } catch (error) {
+    setPanelStatus(chatStatus, errorMessage(error), "error");
+  }
+}
+
+// files and export
+
+async function uploadFiles(files: File[]): Promise<void> {
+  chatFileInput.value = "";
+  if (!detail || files.length === 0) return;
+  for (const file of files.slice(0, 10)) {
+    try {
+      const uploaded = await fetchCloudJson<ChatFile>(`/api/channels/${encodeURIComponent(detail.id)}/files`, {
+        method: "POST",
+        headers: { "content-type": file.type || "application/octet-stream", "x-filename": encodeURIComponent(file.name) },
+        body: file,
+      });
+      pendingFiles.push(uploaded);
+      renderPendingFiles();
+    } catch (error) {
+      setPanelStatus(chatStatus, `${file.name}: ${errorMessage(error)}`, "error");
+    }
+  }
+  chatComposerInput.focus();
+}
+
+function renderPendingFiles(): void {
+  chatPendingFiles.replaceChildren(
+    ...pendingFiles.map((file) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chat-file-chip";
+      chip.textContent = `📄 ${file.filename} ✕`;
+      chip.setAttribute("aria-label", `Remove ${file.filename}`);
+      chip.addEventListener("click", () => {
+        pendingFiles = pendingFiles.filter((pending) => pending.id !== file.id);
+        renderPendingFiles();
+      });
+      return chip;
+    }),
+  );
+}
+
+async function exportConversation(): Promise<void> {
+  if (!detail) return;
+  try {
+    const response = await fetch(`/api/channels/${encodeURIComponent(detail.id)}/export?format=noma`, { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const url = URL.createObjectURL(new Blob([await response.text()], { type: "text/plain" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${detail.kind === "dm" ? "conversation" : detail.name}.noma`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    setPanelStatus(chatStatus, "Exported conversation", "ok");
+  } catch (error) {
+    setPanelStatus(chatStatus, errorMessage(error), "error");
+  }
+}
+
+function fileBlock(file: ChatFile): HTMLElement {
+  const link = document.createElement("a");
+  link.href = file.url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  if (file.image) {
+    link.className = "chat-image";
+    const image = document.createElement("img");
+    image.src = file.url;
+    image.alt = file.filename;
+    image.loading = "lazy";
+    link.append(image);
+  } else {
+    link.className = "chat-file";
+    link.textContent = `📄 ${file.filename} · ${formatBytes(file.size)}`;
+    link.download = file.filename;
+  }
+  return link;
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 // rendering
 
 export function renderChat(): void {
   const signedIn = Boolean(state.cloudUser && state.currentSite);
-  openChatButton.disabled = !signedIn;
+  openChatButton.disabled = !state.cloudUser;
   chatSpaceTitle.textContent = state.currentSite?.title ?? "No space";
+  chatNewDmToggle.disabled = !state.cloudUser;
   chatNewChannelToggle.disabled = !signedIn || !canEditSite();
   chatCreateChannelButton.disabled = !signedIn || !canEditSite();
   renderChannelLists();
   renderProjectOptions();
   const canPost = Boolean(detail?.access.canPost);
+  chatAttachButton.disabled = !canPost;
+  chatExportButton.hidden = !detail || (detail.kind !== "dm" && !detail.access.canManage);
   chatComposerInput.disabled = !canPost;
   chatSendButton.disabled = !canPost;
   chatThreadInput.disabled = !canPost;
@@ -363,7 +575,8 @@ export function renderChat(): void {
     chatAgentChips.replaceChildren();
   } else {
     chatChannelTitle.textContent = channelLabel(detail);
-    const parts = [detail.topic ?? "", detail.project ? `Project ${detail.project.key}` : "", `${detail.members.length} member${detail.members.length === 1 ? "" : "s"}`, detail.archivedAt ? "Archived" : ""];
+    const people = `${detail.members.length} ${detail.kind === "dm" ? (detail.members.length === 1 ? "person" : "people") : detail.members.length === 1 ? "member" : "members"}`;
+    const parts = detail.kind === "dm" ? ["Direct message", people] : [detail.topic ?? "", detail.project ? `Project ${detail.project.key}` : "", people, detail.archivedAt ? "Archived" : ""];
     chatChannelMeta.textContent = parts.filter(Boolean).join(" · ");
     chatAgentChips.replaceChildren(...detail.agents.map((agent) => agentChip(agent)));
   }
@@ -377,10 +590,12 @@ function renderChannelLists(): void {
     ...(channels.length === 0 ? [emptyState(state.currentSite ? "No channels yet" : "Open a space")] : []),
     ...channelGroup("Projects", projects),
     ...channelGroup("Topics", topics),
+    ...channelGroup("Direct messages", dms),
   );
+  const unreadDms = dms.filter((dm) => dm.unread);
   chatLauncherList.replaceChildren(
-    ...(channels.length === 0 ? [emptyState(state.currentSite ? "No channels yet — open chat to create one" : "Open a space to chat")] : []),
-    ...channels.slice(0, 8).map((channel) => channelButton(channel, "chat-launcher-row")),
+    ...(channels.length === 0 && unreadDms.length === 0 ? [emptyState(state.currentSite ? "No channels yet — open chat to create one" : "Open a space to chat")] : []),
+    ...[...channels.slice(0, 8), ...unreadDms.slice(0, 4)].map((channel) => channelButton(channel, "chat-launcher-row")),
   );
 }
 
@@ -416,7 +631,8 @@ function channelButton(channel: ChatChannel, className: string): HTMLButtonEleme
   return button;
 }
 
-function channelLabel(channel: Pick<ChatChannel, "name" | "visibility">): string {
+function channelLabel(channel: Pick<ChatChannel, "name" | "visibility" | "kind" | "title">): string {
+  if (channel.kind === "dm") return channel.title ?? "Direct message";
   return `${channel.visibility === "private" ? "🔒 " : "#"}${channel.name}`;
 }
 
@@ -528,6 +744,12 @@ function messageRow(message: ChatMessage, options: { grouped: boolean; inThread:
   content.append(body);
   const chips = linkChips(message);
   if (chips) content.append(chips);
+  if (!message.deletedAt && message.links.files?.length) {
+    const files = document.createElement("div");
+    files.className = "chat-files";
+    files.append(...message.links.files.map(fileBlock));
+    content.append(files);
+  }
   if (message.reactions.length) content.append(reactionBar(message));
   if (!options.inThread && message.replyCount > 0) {
     const replies = document.createElement("button");
@@ -556,7 +778,7 @@ function hoverActions(message: ChatMessage, options: { inThread: boolean; root: 
   }
   if (!options.inThread && !message.threadId) bar.append(toolButton("Reply", "Reply in thread", () => void openThread(message)));
   if (detail?.projectId && canEditSite()) bar.append(toolButton("Issue", "Create a Work issue from this message", () => void messageAction(message, "issue"), !canPost));
-  if (canEditSite()) bar.append(toolButton("Page", "Save this thread as a .noma page", () => void messageAction(message, "page"), !canPost));
+  if (detail?.kind !== "dm" && canEditSite()) bar.append(toolButton("Page", "Save this thread as a .noma page", () => void messageAction(message, "page"), !canPost));
   if (message.authorId === me || detail?.access.canManage) bar.append(toolButton("Delete", "Delete message", () => void messageAction(message, "delete"), !canPost, true));
   return bar;
 }

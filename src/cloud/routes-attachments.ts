@@ -93,6 +93,21 @@ export async function routeAttachments(
   } else if (!documentAccessAnywhere(config, document, principal)) {
     throw new HttpError(principal.user || principal.shareTokenHash ? 403 : 401, "viewer access is required");
   }
+  await serveStoredBlob(req, res, config, attachment, grant ? "cross-origin" : "same-origin");
+}
+
+/**
+ * Streams a stored upload with the attachment safety headers: sandboxing CSP, sniffed content type,
+ * inline only for safe types, ETag by content hash.
+ */
+export async function serveStoredBlob(
+  req: IncomingMessage,
+  res: ServerResponse,
+  config: CloudServerConfig,
+  attachment: Pick<CloudAttachment, "sha256" | "contentType" | "filename">,
+  crossOrigin: "cross-origin" | "same-origin",
+): Promise<void> {
+  const method = req.method ?? "GET";
   const blob = await config.blobs.get(attachment.sha256);
   if (!blob) throw new HttpError(404, "Attachment content is missing");
   const etag = `"${attachment.sha256}"`;
@@ -101,7 +116,7 @@ export async function routeAttachments(
   res.setHeader("cache-control", "private, max-age=0, must-revalidate");
   res.setHeader("etag", etag);
   // Rendered artifacts are CSP-sandboxed (opaque origin), so their signed <img> loads count as cross-origin.
-  res.setHeader("cross-origin-resource-policy", grant ? "cross-origin" : "same-origin");
+  res.setHeader("cross-origin-resource-policy", crossOrigin);
   res.setHeader("content-type", servedContentType(attachment));
   res.setHeader("content-disposition", contentDisposition(attachment));
   if (res.statusCode === 304 || method === "HEAD") {
@@ -122,13 +137,21 @@ export async function routeAttachments(
   });
 }
 
-async function uploadAttachment(
-  req: IncomingMessage,
-  res: ServerResponse,
-  config: CloudServerConfig,
-  document: CloudDocumentRecord,
-  access: AccessContext,
-): Promise<CloudAttachment> {
+export interface StagedUpload {
+  sha256: string;
+  size: number;
+  filename: string;
+  contentType: string;
+  /** Stores the bytes; call after quota checks pass. */
+  commit(): Promise<void>;
+  discard(): Promise<void>;
+}
+
+/**
+ * Reads a raw or multipart upload body into the blob store's staging area, enforcing the size limit,
+ * and sniffs its type (executables are refused). Nothing is stored until `commit()`.
+ */
+export async function stageUpload(req: IncomingMessage, res: ServerResponse, config: CloudServerConfig): Promise<StagedUpload> {
   const requestType = headerValue(req, "content-type") ?? "application/octet-stream";
   const multipart = /^multipart\//i.test(requestType);
   const boundary = multipart ? multipartBoundary(requestType) : undefined;
@@ -150,10 +173,26 @@ async function uploadAttachment(
   const declaredType = (form ? form.result.contentType : requestType) ?? "application/octet-stream";
   const formFilename = form?.result.filename;
   const filename = sanitizeAttachmentFilename(formFilename !== undefined ? encodeURIComponent(formFilename) : headerValue(req, "x-filename"));
-  let contentType: string;
   try {
     if (staged.size === 0) throw new HttpError(400, "Attachment body is empty");
-    contentType = sniffAttachmentType(staged.head, declaredType, filename);
+    const contentType = sniffAttachmentType(staged.head, declaredType, filename);
+    return { sha256: staged.sha256, size: staged.size, filename, contentType, commit: () => staged.commit(), discard: () => staged.discard() };
+  } catch (error) {
+    await staged.discard();
+    throw error;
+  }
+}
+
+async function uploadAttachment(
+  req: IncomingMessage,
+  res: ServerResponse,
+  config: CloudServerConfig,
+  document: CloudDocumentRecord,
+  access: AccessContext,
+): Promise<CloudAttachment> {
+  const staged = await stageUpload(req, res, config);
+  const { filename, contentType } = staged;
+  try {
     requireAttachmentQuota(config, document, access, staged.size);
     await staged.commit();
   } catch (error) {
@@ -213,8 +252,8 @@ function requireAttachmentQuota(config: CloudServerConfig, document: CloudDocume
   const siteIds = config.store.documentSiteIds(document.id);
   const uploader = uploaderId(access);
   const scopes = siteIds.length > 0
-    ? siteIds.map((siteId) => ({ scope: "site" as const, id: siteId, used: config.store.siteAttachmentBytes(siteId) }))
-    : [{ scope: "user" as const, id: uploader, used: config.store.unspacedAttachmentBytes(uploader) }];
+    ? siteIds.map((siteId) => ({ scope: "site" as const, id: siteId, used: spaceStorageBytes(config, siteId) }))
+    : [{ scope: "user" as const, id: uploader, used: personalStorageBytes(config, uploader) }];
   const exceeded = scopes.find((scope) => scope.used + size > config.attachmentQuotaBytes);
   if (exceeded) {
     throw new HttpError(413, "Attachment storage quota exceeded", {
@@ -225,6 +264,16 @@ function requireAttachmentQuota(config: CloudServerConfig, document: CloudDocume
       quotaBytes: config.attachmentQuotaBytes,
     });
   }
+}
+
+/** Page attachments plus chat files in the space: one storage budget. */
+export function spaceStorageBytes(config: CloudServerConfig, siteId: string): number {
+  return config.store.siteAttachmentBytes(siteId) + config.chat.siteFileBytes(siteId);
+}
+
+/** Attachments on pages outside any space plus files the user shared in direct messages. */
+export function personalStorageBytes(config: CloudServerConfig, userId: string): number {
+  return config.store.unspacedAttachmentBytes(userId) + config.chat.dmFileBytes(userId);
 }
 
 function uploaderId(access: AccessContext): string {

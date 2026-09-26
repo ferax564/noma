@@ -49,7 +49,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
   verify.ts                Conformance fixture runner (`noma verify`)
   cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
-  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, agent chat, thread → .noma), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
+  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, DMs, files, agent chat, eDiscovery, retention, thread → .noma), routes-find.ts (⌘K search across pages/issues/chat), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
   cloud-db.ts              SQLite persistence for Noma Cloud
   cloud-chat.ts            Chat persistence — channels, threaded messages, reactions, mentions, read markers, in-process event bus for SSE
   cloud-blobs.ts           Content-addressed attachment blob store (local disk + dependency-free SigV4 S3 driver)

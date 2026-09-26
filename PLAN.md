@@ -1339,6 +1339,35 @@ only through a capability the space owner grants, and every run records who
 asked, what ran, and its logs. Whiteboards, databases, and a plugin marketplace
 stay out of scope. `docs/direction.noma` mirrors this section.
 
+### 23.22 Roadmap to the collaboration surface (2026-09-26)
+
+The loop to close is **conversation → decision → code → verified deploy**, run by
+people and agents under one permission model. Five steps, shipped in order:
+
+1. **Finish chat for enterprises.** Direct and group messages, files in chat,
+   chat in space exports, retention and legal hold for chat, edit history and
+   eDiscovery exports, audit records, and one search (⌘K) across pages,
+   issues and messages.
+2. **Close the loop with GitHub and ezkeel.** Projects link to repositories. PR
+   and CI events move issues and post into their threads. `/deploy` and
+   `/test` in a thread start an ezkeel run under a space-owner capability and
+   budget, and the result posts back. A green run moves the issue to review,
+   and a failed test opens a follow-up issue.
+3. **Agents that work unattended.** Hosted agents answer mentions on the Claude
+   API within their budgets. Scheduled agents run digests and triage. One
+   approval queue collects page patches, AI pages, and run requests, and a
+   workspace kill switch pauses every agent.
+4. **Enterprise scale and compliance.** Chat events fan out across processes,
+   the audit log exports as NDJSON to a SIEM, data-loss-prevention rules check
+   messages, and an admin console shows usage. PostgreSQL, native SAML, a live
+   AWS deployment, and a third-party pentest stay listed as open work in
+   `docs/enterprise.noma`.
+5. **Make switching easy.** Import Slack exports into channels, bridge Slack
+   channels in both directions during a migration, and import Jira projects
+   into Work.
+
+`docs/direction.noma` mirrors this section.
+
 ## 24. Shipped Tracker
 
 This section closes the loop between the plan and the code. As §23 items

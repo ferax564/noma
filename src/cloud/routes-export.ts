@@ -24,6 +24,7 @@ import { documentComponentKit, documentStyleTokens } from "./spaces.js";
 import type { StyleTokenAliases } from "../style-tokens.js";
 import type { ComponentKit } from "../components.js";
 import { canvasResolver, inlineResolvedCanvases } from "./canvas.js";
+import { spaceChatTranscripts } from "./routes-chat.js";
 import { paperDomToPptx } from "../paperdom-pptx.js";
 
 export const DOCUMENT_EXPORT_FORMATS = ["pdf", "docx", "markdown", "html", "noma", "llm", "json", "paperdom", "pptx"] as const;
@@ -137,6 +138,7 @@ function nomaArchive(
   parents: Record<string, string>,
   exportedAt: Date,
 ): ZipEntryInput[] {
+  const chat = spaceChatTranscripts(config, site.id);
   const manifest = {
     format: "noma-space-export",
     version: 1,
@@ -152,6 +154,7 @@ function nomaArchive(
       hash: page.hash,
       updatedAt: page.updatedAt,
     })),
+    chat: chat.map((channel) => ({ id: channel.id, name: channel.name, path: channel.path, messages: channel.messages })),
   };
   const book = yaml.dump({
     title: site.title,
@@ -162,6 +165,7 @@ function nomaArchive(
     { path: "manifest.json", data: `${JSON.stringify(manifest, null, 2)}\n` },
     { path: "book.noma.yml", data: book },
     ...pages.map((page) => ({ path: `pages/${paths.get(page.id)}.noma`, data: page.source })),
+    ...chat.map((channel) => ({ path: channel.path, data: channel.source })),
   ];
 }
 

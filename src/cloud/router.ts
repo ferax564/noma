@@ -7,6 +7,7 @@ import { routeAttachments } from "./routes-attachments.js";
 import { routeAi, routeDocumentAi, routeSiteAi } from "./routes-ai.js";
 import { routeChannels, routeChat } from "./routes-chat.js";
 import { routeCollab } from "./routes-collab.js";
+import { routeFind } from "./routes-find.js";
 import { routeDatabase } from "./routes-database.js";
 import { routeDocuments } from "./routes-documents.js";
 import { routeEnterprise } from "./routes-enterprise.js";
@@ -91,6 +92,7 @@ export const apiRoutes: ReadonlyMap<string, ApiRouteHandler> = new Map<string, A
   ["collab", (req, res, _url, parts, config, principal) => routeCollab(req, res, parts, config, principal)],
   ["channels", (req, res, url, parts, config, principal) => routeChannels(req, res, url, parts, config, principal)],
   ["chat", (req, res, url, parts, config, principal) => routeChat(req, res, url, parts, config, principal)],
+  ["find", (req, res, url, _parts, config, principal) => routeFind(req, res, url, config, principal)],
 ]);
 
 /** `/api/sites/:id/{ai,maintenance,sync-manifest}` live in their feature modules; everything else is `routeSites`. */
