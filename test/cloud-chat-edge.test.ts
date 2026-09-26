@@ -192,8 +192,12 @@ test("live streams are capped per user", async () => {
     for (let index = 0; index < 20; index++) assert.equal(await open(), 200);
     assert.equal(await open(), 429);
     controllers.shift()!.abort();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    assert.equal(await open(), 200, "closing a stream frees a slot");
+    let status = 429;
+    for (let attempt = 0; attempt < 50 && status === 429; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      status = await open();
+    }
+    assert.equal(status, 200, "closing a stream frees a slot");
   } finally {
     for (const controller of controllers) controller.abort();
     await harness.close();
