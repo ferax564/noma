@@ -340,9 +340,9 @@ The loop to close is conversation → decision → code → verified deploy, run
 people and agents under one permission model. It ships in five steps:
 
 1. Finish chat for enterprises: DMs, files, retention, eDiscovery, and one ⌘K
-   search.
+   search. (Shipped.)
 2. Close the loop with GitHub and ezkeel: PR and CI events drive issues, and
-   `/deploy` and `/test` run from threads.
+   `/deploy` and `/test` run from threads. (Shipped.)
 3. Agents that work unattended: hosted and scheduled agents, one approval
    queue, a kill switch.
 4. Enterprise scale and compliance: cross-process fan-out, SIEM audit export,

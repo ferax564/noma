@@ -3626,3 +3626,118 @@ button.wiki-row {
   padding: 8px 14px;
   font-size: 0.7rem;
 }
+
+/* Work → Code & runs */
+.dev-loop-env {
+  font-size: 0.68rem;
+  color: var(--faint);
+}
+
+.dev-loop-env[data-state="ok"] {
+  color: var(--ok);
+}
+
+.dev-loop-setup {
+  display: grid;
+  gap: 6px;
+}
+
+.dev-hook-info {
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 0.72rem;
+}
+
+.dev-hook-info div {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.dev-hook-info span {
+  color: var(--faint);
+}
+
+.dev-hook-info code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.dev-run-form {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.dev-run-list {
+  display: grid;
+  gap: 4px;
+}
+
+.dev-run-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 0.78rem;
+}
+
+.dev-run-row > strong,
+.dev-run-row > a:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-run-row > span {
+  color: var(--faint);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.dev-run-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.dev-run-row[data-status="success"],
+.dev-run-row[data-status="merged"] {
+  border-left-color: var(--ok);
+}
+
+.dev-run-row[data-status="failed"] {
+  border-left-color: var(--error);
+}
+
+.dev-run-row[data-status="running"],
+.dev-run-row[data-status="queued"],
+.dev-run-row[data-status="open"] {
+  border-left-color: var(--accent);
+}
+
+#devLoopSection {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#devLoopSection > *,
+.dev-run-form > * {
+  min-width: 0;
+}
+
+#devLoopRepo {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

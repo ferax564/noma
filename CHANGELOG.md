@@ -8,6 +8,13 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Code, CI and run environments (Noma Cloud):** the loop from conversation to verified deploy.
+  - **Repositories:** space owners link a GitHub repository to a Work project (`PUT /api/projects/:id/repo`) and paste the shown payload URL and secret into a GitHub webhook.
+  - **Pull requests and CI:** `POST /api/hooks/github/:projectId` is HMAC-verified (`X-Hub-Signature-256`) and deduplicated by delivery ID, and served before the Cloud access gate. A pull request that names an issue key (`SHIP-12`) in its title, body or branch links to that issue, adds a comment, moves the issue to *in review*, and posts in the issue's chat thread. Merging moves the issue to *done*. `workflow_run` and `check_suite` results post ✅/❌ into the same thread.
+  - **Runs:** `/deploy [ref]` and `/test [ref]` in a project channel, `POST /api/projects/:id/runs`, or the `run_request` gateway tool start a run on ezkeel (`NOMA_CLOUD_EZKEEL_URL`, `NOMA_CLOUD_EZKEEL_TOKEN`). The result posts back in the thread. A live preview moves in-progress work to review. A failing test run is torn down and files a high-priority `ci` bug linked to the issue. Optional previews for every pull request are removed when it closes.
+  - **Guardrails:** runs are off until a space owner enables them. Each project has a monthly minutes budget, a concurrency cap, and a minimum role. Agents need the new `run` capability and a grant on the space. Every link, run, stop and outcome goes to the tamper-evident audit log.
+  - **UI:** a **Code & runs** panel in Work shows the repository, the webhook setup, recent runs with preview links, and pull requests with CI state.
+
 - **Chat for enterprises (Noma Cloud):**
   - **Direct and group messages:** `/api/chat/dms` (members only, up to 12 people, one conversation per member set) with per-stretch notifications.
   - **Files in chat:** uploads use the attachment checks (type sniffing, executables refused, sandboxed downloads) and share the space's storage quota. Images preview inline.

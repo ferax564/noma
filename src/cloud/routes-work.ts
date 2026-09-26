@@ -30,6 +30,7 @@ import {
   uniqueId,
 } from "./context.js";
 import { HttpError, readJsonBody, sendJson } from "./http.js";
+import { routeProjectDevLoop } from "./routes-devloop.js";
 import { boundedInteger, numberQuery, optionalString, stringInput } from "./input.js";
 
 const issueStatuses: CloudIssueStatus[] = ["backlog", "todo", "in_progress", "in_review", "done"];
@@ -116,6 +117,10 @@ export async function routeProjects(
   }
   if (resource === "issues") {
     await routeProjectIssues(req, res, url, resourceId, subresource, config, principal, user, project, access);
+    return;
+  }
+  if (resource === "repo" || resource === "pulls" || resource === "runs") {
+    await routeProjectDevLoop(req, res, url, resource, resourceId, config, principal, user, project, access);
     return;
   }
   if (resource === "sprints") {

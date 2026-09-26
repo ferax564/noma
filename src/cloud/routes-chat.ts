@@ -38,6 +38,7 @@ import { afterDocumentSaved } from "./page-hooks.js";
 import { createDocument, documentResponse } from "./records.js";
 import { ownedAgent } from "./routes-knowledge.js";
 import { collectAttachmentGarbage, isImageAttachment } from "./attachments.js";
+import { runChatCommand } from "./routes-devloop.js";
 import { attachmentIdFor, personalStorageBytes, serveStoredBlob, spaceStorageBytes, stageUpload } from "./routes-attachments.js";
 import { attachPageToSite } from "./routes-sites.js";
 import { requestUrl } from "./security.js";
@@ -296,6 +297,7 @@ export async function callChatGatewayTool(name: string, args: Record<string, unk
   if (name === "chat_post") {
     const context = await channelContext(config, principal, channel.id, agent);
     const message = postMessage(config, context, { body: stringInput(args, "body"), ...(optionalString(args.threadId) ? { threadId: optionalString(args.threadId)! } : {}) }, agent);
+    await runChatCommand(config, principal, channel, message, agent);
     recordActivity(config, user, "chat.agent_posted", "site", channel.siteId, { channelId: channel.id, messageId: message.id, agentId: agent.id, transport: "mcp" });
     return { message: messageResponse(config, message, nameResolver(config)) };
   }
@@ -608,6 +610,7 @@ async function routeMessages(
     const threadId = optionalString(input.threadId);
     const fileIds = Array.isArray(input.fileIds) ? (input.fileIds as unknown[]).filter((id): id is string => typeof id === "string") : [];
     const message = postMessage(config, context, { body: typeof input.body === "string" ? input.body : "", ...(threadId ? { threadId } : {}), ...(fileIds.length ? { fileIds } : {}) }, agent);
+    await runChatCommand(config, principal, context.channel, message, agent);
     sendJson(res, 201, messagesResponse(config, context.channel, [message], names)[0]);
     return;
   }

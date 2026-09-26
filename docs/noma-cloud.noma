@@ -1761,6 +1761,79 @@ GET       /api/chat/search?q=&siteId=
 GET       /api/agents/<agent-id>/chat?status=pending|all
 ```
 
+
+## Code, CI, and run environments {id="dev-loop"}
+
+A Work project can link to a GitHub repository. From then on, pull requests,
+CI results, and deploy and test runs land where the work is discussed: in the
+issue's chat thread, on the issue, and in the audit log.
+
+**Link a repository.** In Work → **Code & runs**, a space owner enters
+`owner/name` and saves. The panel shows a payload URL
+(`https://<cloud>/api/hooks/github/<project-id>`) and a secret. Add them as a
+GitHub webhook with content type `application/json` and the *Pull requests*,
+*Workflow runs*, and *Check suites* events. Deliveries are verified with
+`X-Hub-Signature-256` and deduplicated by `X-GitHub-Delivery`. The hook is
+served before the Cloud access gate, because the HMAC is its credential.
+
+**Pull requests and CI.**
+
+| GitHub event | What happens in Noma |
+|---|---|
+| Pull request opened, reopened, or ready | Issue keys in the title, body, or branch (`feature/SHIP-12-login`) link the PR. Each issue gets a comment, moves to *in review*, and gets a message in its chat thread. |
+| Pull request edited | Newly named issues are linked the same way. |
+| Workflow run or check suite completed | ✅ or ❌ posts in the thread of every linked issue. A failure also comments on the issue. |
+| Pull request merged | Linked issues move to *done*, and the merge posts in their threads. |
+| Pull request closed | Its preview, if any, is torn down. |
+
+An issue's thread is the chat thread the issue was created from. When there is
+none, the first message goes to the project's public channel and later ones
+reply to it.
+
+**Runs.** With a run environment configured, an editor can type `/deploy
+feature/SHIP-12-login` or `/test main` in a project channel. They can also use
+the **Run** form, `POST /api/projects/<id>/runs`, or, for agents, the
+`run_request` gateway tool. A run posts in the thread where it started and
+reports back there:
+
+- **Deploy** builds the ref as a preview app (`<key>-<branch>`) and posts its
+  URL. A live preview moves an in-progress issue to *in review*.
+- **Test** builds the ref on a throwaway app, so a Dockerfile that runs the
+  suite counts as the test. On success the app is torn down. On failure the
+  last lines of the build log post in the thread, and a high-priority `ci` bug
+  is filed and linked to the issue as *relates*.
+
+**Guardrails.**
+
+- Runs are off until a space owner turns them on.
+- Each project has a monthly minutes budget (default 600), a concurrency cap
+  (default 2), and a minimum role (`editor` or `owner`). A run over a limit
+  returns `429` with code `run_budget_exhausted` or `run_concurrency_limit`.
+- Refs must look like a branch, tag, or SHA, and never start with `-`.
+- Agents need the `run` capability and a grant on the space.
+- Linking, runs, stops, and outcomes are written to the tamper-evident audit log.
+
+**Run environment.** Noma Cloud drives [ezkeel](https://github.com/ferax564/ezkeel)'s
+headless API: `POST /api/apps`, `POST /api/apps/{name}/deploy` with
+`{"ref"}`, `GET /api/deploys/{id}`, and `DELETE /api/apps/{name}`.
+
+| Variable | Meaning |
+|---|---|
+| `NOMA_CLOUD_EZKEEL_URL` | ezkeel control plane, for example `https://app.ezkeel.com` |
+| `NOMA_CLOUD_EZKEEL_TOKEN` (or `_FILE`) | an `ezk_…` API key |
+| `NOMA_CLOUD_EZKEEL_APPS_DOMAIN` | optional; builds preview URLs when ezkeel does not return one |
+
+The background queue polls running runs. Reading a run also refreshes it. A
+run that is still unfinished after six hours fails.
+
+```text
+GET|PUT|DELETE /api/projects/<id>/repo      {repo, defaultBranch, runsEnabled, autoPreview, monthlyMinutes, maxConcurrent, minRole, rotateSecret}
+GET            /api/projects/<id>/pulls     ?issue=<key>
+GET|POST       /api/projects/<id>/runs      ?issue=<key> · {kind: deploy|test, ref?, issueId?, channelId?, threadId?, agentId?}
+GET|DELETE     /api/projects/<id>/runs/<run-id>
+POST           /api/hooks/github/<project-id>   (GitHub webhook, HMAC-signed)
+```
+
 ## Edit a page
 
 The center of the app has two panes:

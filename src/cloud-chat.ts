@@ -437,6 +437,17 @@ export class CloudChatStore {
     return this.readMessage(id);
   }
 
+  /** The first live message that links `issueId` — its thread is the issue's conversation. */
+  findIssueMessage(issueId: string): ChatMessage | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM chat_messages WHERE deleted_at IS NULL AND EXISTS (SELECT 1 FROM json_each(json_extract(links_json, '$.issueIds')) WHERE value = ?)
+         ORDER BY created_at, seq LIMIT 1`,
+      )
+      .get(issueId) as MessageRow | undefined;
+    return row ? messageFromRow(row) : undefined;
+  }
+
   addMessageLinks(id: string, links: ChatMessageLinks): ChatMessage | undefined {
     const current = this.readMessage(id);
     if (!current) return undefined;

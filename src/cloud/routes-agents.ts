@@ -1,4 +1,5 @@
 /** Agent identities, connectors, recipes, and the agent gateway. */
+import { callRunGatewayTool } from "./routes-devloop.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { walk } from "../ast.js";
 import type { CloudPatchProposal, CloudRole, CloudUserRecord } from "../cloud-db.js";
@@ -469,6 +470,7 @@ async function callGatewayTool(
   if (name === "chat_inbox" || name === "chat_history" || name === "chat_post") {
     return await callChatGatewayTool(name, args, config, principal, ownedAgent(config, user, stringInput(args, "agentId")));
   }
+  if (name === "run_request") return await callRunGatewayTool(args, config, principal);
   if (name === "review") {
     const documentId = stringInput(args, "documentId");
     const document = await readDocument(config, documentId);

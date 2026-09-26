@@ -23,7 +23,8 @@ export function headerValue(req: IncomingMessage, name: string): string | undefi
   return Array.isArray(value) ? value[0] : value;
 }
 
-export async function readJsonBody(req: IncomingMessage, maxBodyBytes: number): Promise<Record<string, unknown>> {
+/** The raw request body, for callers that verify a signature over the exact bytes. */
+export async function readRawBody(req: IncomingMessage, maxBodyBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   let tooLarge = false;
@@ -37,7 +38,11 @@ export async function readJsonBody(req: IncomingMessage, maxBodyBytes: number): 
     chunks.push(buffer);
   }
   if (tooLarge) throw new HttpError(413, "Request body is too large");
-  const text = Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks);
+}
+
+export async function readJsonBody(req: IncomingMessage, maxBodyBytes: number): Promise<Record<string, unknown>> {
+  const text = (await readRawBody(req, maxBodyBytes)).toString("utf8");
   if (!text.trim()) throw new HttpError(400, "JSON body is required");
   try {
     const parsed = JSON.parse(text) as unknown;
