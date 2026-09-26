@@ -56,6 +56,7 @@ export async function runAgentJobs(config: CloudServerConfig, limit = 5): Promis
   for (const schedule of config.agentOps.dueSchedules(now.toISOString())) enqueueSchedule(config, schedule);
   const finished: AgentJob[] = [];
   for (const queued of config.agentOps.queuedJobs(limit)) {
+    if (config.agentOps.killSwitch().paused) break;
     const job = config.agentOps.claimJob(queued.id, config.now().toISOString());
     if (!job) continue;
     finished.push(await runJob(config, job));
@@ -72,6 +73,7 @@ async function runJob(config: CloudServerConfig, job: AgentJob): Promise<AgentJo
     if (job.kind === "mention") return await runMention(config, job, agent, owner, finish);
     return await runSchedule(config, job, agent, owner, finish);
   } catch (error) {
+    if (error instanceof HttpError && error.status === 423) return finish({ status: "skipped", error: "Agents were paused before the answer was posted" });
     const reason = error instanceof AiUnavailable || error instanceof HttpError || error instanceof Error ? error.message : String(error);
     return finish({ status: "failed", error: reason.slice(0, 500) });
   }

@@ -193,6 +193,10 @@ test("the approval queue collects agent runs, patches, and page approvals; owner
     assert.deepEqual(bobQueue.items.map((item) => [item.kind, item.decidable]), [["run", false]], "the agent's owner sees the run but cannot decide it");
 
     await json(`${base}/api/approvals/runs/${runs[0]!.id}`, { method: "POST", token: bob.token, body: { decision: "approve" }, expectedStatus: 409 });
+    await json(`${base}/api/enterprise/agents`, { method: "PUT", token: ada.token, body: { paused: true } });
+    await json(`${base}/api/approvals/runs/${runs[0]!.id}`, { method: "POST", token: ada.token, body: { decision: "approve" }, expectedStatus: 423 });
+    assert.equal(provider.started.length, 0, "an agent's run cannot be approved while agents are paused");
+    await json(`${base}/api/enterprise/agents`, { method: "PUT", token: ada.token, body: { paused: false } });
     const approved = await json<{ status: string; reviewedBy: string }>(`${base}/api/approvals/runs/${runs[0]!.id}`, { method: "POST", token: ada.token, body: { decision: "approve" } });
     assert.deepEqual([approved.status, approved.reviewedBy], ["running", ada.id]);
     assert.equal(provider.started[0]?.ref, "feature/SHIP-1");
@@ -248,6 +252,38 @@ test("the workspace kill switch stops every agent until an admin resumes them", 
     const audit = await json<{ events: Array<{ action: string }> }>(`${base}/api/enterprise/audit`, { token: ada.token });
     assert.ok(audit.events.some((event) => event.action === "agents.paused"));
     assert.ok(audit.events.some((event) => event.action === "agents.resumed"));
+  } finally {
+    await harness.close();
+  }
+});
+
+test("pausing agents while a hosted answer is being generated stops it from being posted", async () => {
+  let pause: () => Promise<void> = async () => undefined;
+  const provider = {
+    id: "slow",
+    model: "fake-model",
+    zeroRetention: true,
+    async complete() {
+      await pause();
+      return { text: "late answer", usage: { inputTokens: 10, outputTokens: 5 }, model: "fake-model", stopReason: "end_turn", refused: false };
+    },
+  };
+  const harness = await startCloudServer("noma-agent-pause-midway-", { ai: { provider: provider as unknown as FakeLlmProvider, maintenanceTickMs: 0 }, runProvider: null, queueIntervalMs: 0 });
+  try {
+    const { base, ada, bob, channel, agent } = await populate(harness, provider as unknown as FakeLlmProvider, {});
+    pause = async () => {
+      await json(`${base}/api/enterprise/agents`, { method: "PUT", token: ada.token, body: { paused: true } });
+    };
+    await json(`${base}/api/agents/${agent.id}/hosting`, { method: "PUT", token: bob.token, body: { enabled: true } });
+    const asked = await json<MessageResponse>(`${base}/api/channels/${channel.id}/messages`, { method: "POST", token: ada.token, body: { body: `@{${agent.id}} status?` } });
+    const [job] = await waitFor(
+      async () => (await json<{ jobs: JobResponse[] }>(`${base}/api/agents/${agent.id}/jobs`, { token: bob.token })).jobs,
+      (jobs) => jobs[0]?.status === "skipped" || jobs[0]?.status === "done" || jobs[0]?.status === "failed",
+      "the job to settle",
+    );
+    assert.equal(job?.status, "skipped");
+    const replies = (await json<{ replies: MessageResponse[] }>(`${base}/api/channels/${channel.id}/messages/${asked.id}`, { token: ada.token })).replies;
+    assert.equal(replies.filter((reply) => reply.agentId === agent.id).length, 0, "nothing is posted after the pause");
   } finally {
     await harness.close();
   }

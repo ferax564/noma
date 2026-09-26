@@ -5,6 +5,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { type CloudServerConfig, isWorkspaceAdmin, type Principal, requireProjectAccess, requireUser, roleRank } from "./context.js";
+import { requireAgentsRunning } from "./agent-runner.js";
 import { decideRun } from "./devloop.js";
 import { HttpError, readJsonBody, sendJson } from "./http.js";
 import { stringPathPart } from "./input.js";
@@ -45,6 +46,7 @@ export async function routeApprovals(req: IncomingMessage, res: ServerResponse, 
     if (roleRank[access.role] < roleRank[repo.minRole]) throw new HttpError(403, `${repo.minRole} access is required`);
     const input = await readJsonBody(req, config.maxBodyBytes);
     if (input.decision !== "approve" && input.decision !== "reject") throw new HttpError(400, "decision must be approve or reject");
+    if (input.decision === "approve" && run.agentId) requireAgentsRunning(config);
     sendJson(res, 200, await decideRun(config, run, user, input.decision));
     return;
   }

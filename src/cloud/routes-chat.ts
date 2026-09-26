@@ -310,6 +310,7 @@ export async function callChatGatewayTool(name: string, args: Record<string, unk
  * able to chat in the channel, and a `/deploy` or `/test` line goes through the run guardrails.
  */
 export async function postAsAgent(config: CloudServerConfig, owner: CloudUserRecord, agent: CloudAgentIdentity, channelId: string, body: string, threadId?: string): Promise<ChatMessage> {
+  requireAgentsRunning(config);
   const principal: Principal = { user: owner };
   const context = await channelContext(config, principal, channelId, agent);
   const message = postMessage(config, context, { body, ...(threadId ? { threadId } : {}) }, agent);
