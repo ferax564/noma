@@ -4,11 +4,18 @@ name: Release
 # and @ferax564/noma-agent-sdk to npm with provenance, and cuts the GitHub
 # release from the CHANGELOG slice.
 #
-# Two entry points:
-#   - push a v* tag (the local-tag-then-push flow from CLAUDE.md), or
+# Three entry points:
+#   - push a v* tag (the local-tag-then-push flow from CLAUDE.md),
 #   - run the workflow manually with a `tag` input — CI then creates the tag
 #     on the current default-branch HEAD itself (useful when the operator
-#     cannot push tags directly).
+#     cannot push tags directly), or
+#   - push to main: the `detect` job reads package.json, and when its version
+#     has no v<version> tag yet (a merged release PR), the release runs and
+#     creates the tag itself. Any other push to main is a no-op.
+#
+# Runs are serialized (concurrency group `release`), so a push-to-main run
+# queued behind a manual dispatch for the same version sees the tag the
+# dispatch created and skips.
 #
 # npm publishing: versions already on the registry are skipped, so the
 # local-publish flow (npm login + npm publish before pushing the tag) keeps
@@ -19,6 +26,7 @@ name: Release
 on:
   push:
     tags: ['v*.*.*']
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -30,8 +38,37 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  detect:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is package.json's version untagged?
+        id: version
+        run: |
+          set -euo pipefail
+          tag="v$(node -p "require('./package.json').version")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag already exists — nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$tag is not tagged yet — releasing"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
+    needs: detect
+    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || needs.detect.outputs.release == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,10 +77,13 @@ jobs:
         id: tag
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          DETECTED_TAG: ${{ needs.detect.outputs.tag }}
         run: |
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             tag="$INPUT_TAG"
+          elif [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            tag="$DETECTED_TAG"
           else
             tag="$GITHUB_REF_NAME"
           fi
@@ -105,12 +145,16 @@ jobs:
       - name: Run complete release gate
         run: npm run test:full
 
-      - name: Create tag after gates (manual dispatch only)
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.source.outputs.tag_exists != 'true' }}
+      - name: Create tag after gates (manual dispatch or push to main)
+        if: ${{ (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') && steps.source.outputs.tag_exists != 'true' }}
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
+          if git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG was created while the gates ran — leaving it as is"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "$TAG"

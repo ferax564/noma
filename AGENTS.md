@@ -329,3 +329,5 @@ done
 ```
 
 GitHub Actions tags created by GITHUB_TOKEN cannot trigger other workflows. Local-tag-then-push (step 4) avoids that trap; that's why the flow above does not let CI cut the tag.
+
+**Automatic path:** `.github/workflows/release.yml` also runs on every push to `main`. When `package.json`'s version has no `v<version>` tag yet, it runs the full gate, creates the tag, publishes to npm, and creates the GitHub release. The tag, publish, and release happen inside the same run, so the GITHUB_TOKEN trap does not apply. Merging a release PR is therefore enough to ship it. Runs share a concurrency group, so a manual dispatch and a push-to-main run for the same version never both tag.

@@ -6,6 +6,10 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Release workflow:** the release now also runs on pushes to `main`. When `package.json`'s version has no tag yet, merging the release PR runs the full gate, tags the version, publishes to npm, and creates the GitHub release, with no tag push or manual dispatch. Other pushes to `main` skip it. Release runs are serialized, so a manual dispatch and a push for the same version do not both tag.
+
 ## [0.19.0] — 2026-09-26
 
 ### Added
