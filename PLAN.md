@@ -1314,6 +1314,31 @@ a second visual model stay out. The maintainer made four decisions on
 `docs/strategy-2026-09.md` holds the competitor analysis and the phased plan,
 and `docs/direction.noma` mirrors this section.
 
+### 23.21 One collaboration surface for building software (2026-09-26)
+
+Noma is becoming the place where humans and agents build software together.
+It combines four surfaces over one permission model and one source of truth:
+
+- the wiki (Confluence / Notion)
+- Work projects (Jira)
+- Chat (Slack)
+- run environments (VMs and test runs)
+
+Chat is the first new surface. Channels belong to a space and are organised by
+Work project or by topic. They have threads, reactions, mentions, and read
+markers, and agents take part as members through the gateway (`chat_inbox`,
+`chat_history`, `chat_post`). Conversation is not a second source of truth.
+A message becomes a Work issue in one step, and a thread becomes a `.noma` page
+with one stable-ID block per message, so decisions reach reviewable source.
+
+Next is run environments. An agent or a person asks in a channel or on an issue
+to deploy a branch or run a test suite, and the result posts back as a thread
+reply linked to the issue. The deploy target is the existing `ezkeel` stack:
+one-command deploys to our own VPS, with Hetzner provisioning. VMs are started
+only through a capability the space owner grants, and every run records who
+asked, what ran, and its logs. Whiteboards, databases, and a plugin marketplace
+stay out of scope. `docs/direction.noma` mirrors this section.
+
 ## 24. Shipped Tracker
 
 This section closes the loop between the plan and the code. As §23 items

@@ -17,6 +17,7 @@ import type { CloudDocumentResponse, CloudNavigationItem, CloudPageTemplate, Clo
 import { absoluteUrl, copyText, emptyState, errorMessage, formatDate, iconButton, promptName, relativeTime, setBusy, setCloudStatus, shortId, slug } from "./util.js";
 import { installPageRowReordering } from "./page-tree.js";
 import { spaceLabel, spaceListArchivedParam } from "./spaces.js";
+import { refreshChat } from "./chat.js";
 import { refreshWorkManagement } from "./work.js";
 
 export async function refreshSites(options: { silent?: boolean } = {}): Promise<void> {
@@ -167,7 +168,7 @@ export async function loadSite(siteId: string, preferredDocumentId?: string): Pr
     const selected = preferred ? state.pages.find((page) => page.id === preferred) : undefined;
     setCurrentPage(selected ?? state.pages[0]);
     updateAddress();
-    if (state.cloudUser) await Promise.all([refreshSites({ silent: true }), refreshWorkManagement(), refreshAccessManagement(), refreshTemplates()]);
+    if (state.cloudUser) await Promise.all([refreshSites({ silent: true }), refreshWorkManagement().then(() => refreshChat()), refreshAccessManagement(), refreshTemplates()]);
   } finally {
     setBusy(false);
     renderChrome();
@@ -186,7 +187,7 @@ export async function loadStandaloneDocument(documentId: string): Promise<void> 
     localStorage.removeItem(activeSiteStorageKey);
     setCurrentPage(page);
     updateAddress();
-    await Promise.all([refreshWorkManagement(), refreshAccessManagement()]);
+    await Promise.all([refreshWorkManagement(), refreshAccessManagement(), refreshChat()]);
   } finally {
     setBusy(false);
     renderChrome();

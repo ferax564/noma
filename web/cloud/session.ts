@@ -13,6 +13,7 @@ import { refreshMyTasks } from "./tasks.js";
 import { readCloudId, shareToken, state, storedUserViewMode } from "./state.js";
 import type { CloudAuthResponse, CloudStatusResponse, CloudUserSession } from "./types.js";
 import { errorMessage, setBusy, setCloudStatus } from "./util.js";
+import { refreshChat } from "./chat.js";
 import { refreshWorkManagement, renderWorkManagement } from "./work.js";
 
 export async function initializeCloud(): Promise<void> {
@@ -127,6 +128,7 @@ export async function refreshWorkspaceTools(): Promise<void> {
     renderWorkspaceTools();
     renderCollaborationPanels();
     renderWorkManagement();
+    void refreshChat();
     renderAccessManagement();
     void refreshMyTasks();
     return;
@@ -138,7 +140,7 @@ export async function refreshWorkspaceTools(): Promise<void> {
     refreshTrash(),
     refreshNotifications(),
     refreshGroups(),
-    refreshWorkManagement(),
+    refreshWorkManagement().then(() => refreshChat()),
     refreshAccessManagement(),
     refreshKnowledgeWorkspace(),
   ]);

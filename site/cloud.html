@@ -486,6 +486,15 @@
       <div id="revisionDiffOutput" class="revision-diff" aria-live="polite" hidden></div>
     </section>
 
+    <section id="chatSection" class="inspector-section chat-launcher">
+      <div class="inspector-heading-row">
+        <h2>Chat</h2>
+        <button id="openChatButton" type="button" aria-label="Open chat">Open chat</button>
+      </div>
+      <div id="chatLauncherList" class="chat-launcher-list" aria-label="Channels in this space"></div>
+      <div id="chatStatus" class="panel-status"></div>
+    </section>
+
     <section class="inspector-section">
       <div class="inspector-heading-row">
         <h2>Work</h2>
@@ -883,6 +892,78 @@
     </div>
   </form>
 </dialog>
+  <div id="chatDrawer" class="chat-drawer" role="dialog" aria-modal="false" aria-labelledby="chatChannelTitle" hidden>
+    <aside class="chat-sidebar" aria-label="Channels">
+      <div class="chat-sidebar-head">
+        <div class="chat-space">
+          <span class="chat-space-kicker">Chat</span>
+          <strong id="chatSpaceTitle">Space</strong>
+        </div>
+        <button id="chatNewChannelToggle" type="button" class="chat-icon-button" aria-label="New channel" title="New channel">＋</button>
+      </div>
+      <label class="chat-search" for="chatSearchInput">
+        <span class="chat-visually-hidden">Search messages</span>
+        <input id="chatSearchInput" type="search" placeholder="Search messages" autocomplete="off" />
+      </label>
+      <form id="chatNewChannelForm" class="chat-new-channel" hidden>
+        <label class="stack-field" for="chatNewNameInput">Name
+          <input id="chatNewNameInput" type="text" maxlength="80" placeholder="release-train" />
+        </label>
+        <label class="stack-field" for="chatNewTopicInput">Topic
+          <input id="chatNewTopicInput" type="text" maxlength="500" placeholder="What this channel is about" />
+        </label>
+        <label class="stack-field" for="chatNewProjectSelect">Work project
+          <select id="chatNewProjectSelect"></select>
+        </label>
+        <label class="stack-field" for="chatNewVisibilitySelect">Visibility
+          <select id="chatNewVisibilitySelect">
+            <option value="public">Public — everyone in the space</option>
+            <option value="private">Private — invited members only</option>
+          </select>
+        </label>
+        <div class="chat-form-actions">
+          <button id="chatCreateChannelButton" type="submit" class="chat-primary">Create channel</button>
+          <button id="chatCancelChannelButton" type="button">Cancel</button>
+        </div>
+      </form>
+      <nav id="chatChannelList" class="chat-channel-list" aria-label="Channel list"></nav>
+    </aside>
+    <section class="chat-main" aria-label="Conversation">
+      <header class="chat-header">
+        <div class="chat-header-copy">
+          <h2 id="chatChannelTitle">Chat</h2>
+          <p id="chatChannelMeta" class="chat-header-meta"></p>
+        </div>
+        <div class="chat-header-actions">
+          <div id="chatAgentChips" class="chat-agent-chips" aria-label="Agents you can mention"></div>
+          <button id="chatJoinButton" type="button" class="chat-primary" hidden>Join channel</button>
+          <button id="chatCloseButton" type="button" class="chat-icon-button" aria-label="Close chat" title="Close chat (Esc)">✕</button>
+        </div>
+      </header>
+      <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+      <div class="chat-composer">
+        <label class="chat-visually-hidden" for="chatComposerInput">Message</label>
+        <textarea id="chatComposerInput" rows="1" placeholder="Message"></textarea>
+        <button id="chatSendButton" type="button" class="chat-send" aria-label="Send message" title="Send (Enter)">➤</button>
+      </div>
+      <p class="chat-hint"><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line · <kbd>@</kbd> to mention</p>
+    </section>
+    <section id="chatThreadPane" class="chat-thread" aria-label="Thread" hidden>
+      <header class="chat-header">
+        <div class="chat-header-copy">
+          <h3>Thread</h3>
+          <p id="chatThreadLabel" class="chat-header-meta"></p>
+        </div>
+        <button id="chatCloseThreadButton" type="button" class="chat-icon-button" aria-label="Close thread" title="Close thread">✕</button>
+      </header>
+      <div id="chatThreadMessages" class="chat-messages" aria-live="polite"></div>
+      <div class="chat-composer">
+        <label class="chat-visually-hidden" for="chatThreadInput">Reply</label>
+        <textarea id="chatThreadInput" rows="1" placeholder="Reply in thread"></textarea>
+        <button id="chatThreadSendButton" type="button" class="chat-send" aria-label="Send reply" title="Send (Enter)">➤</button>
+      </div>
+    </section>
+  </div>
 <script src="assets/cloud-app.js"></script>
 </body>
 </html>

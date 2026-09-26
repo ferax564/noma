@@ -1601,6 +1601,101 @@ GET|POST /api/projects/<id>/sprints
 GET|PATCH /api/projects/<id>/sprints/<sprint-id>
 ```
 
+## Chat: channels, threads, and agents {id="chat"}
+
+The **Chat** launcher in the inspector lists the space's channels with unread
+and mention badges. It opens a Slack-style drawer: channels grouped into
+Projects and Topics, message search, a thread pane beside the timeline,
+reactions, and a composer where Enter sends and Shift+Enter adds a new line.
+Chat gives each space conversations that sit next to its pages and Work
+projects. People and agents talk in the same channels,
+and anything worth keeping moves into Work or into `.noma` source with one click.
+
+- **Channels by project or by topic.** A channel belongs to one space. Link it
+  to a Work project (`#release-train` for `SHIP`) or give it a topic
+  (`#design`, "UI and docs"). `GET /api/channels?projectId=` lists a project's
+  channels.
+- **Public and private.** Anyone who can view the space can read and post in a
+  public channel, and posting joins it. A private channel is visible only to its
+  members. To everyone else it returns 404, it is left out of search, and its
+  mentions do not notify them. Space editors create channels. Channel admins,
+  space owners, and (for public channels) space editors can rename, re-topic,
+  and archive them. Archived channels and archived spaces are read-only.
+- **Threads, reactions, and edits.** Reply to any message to open a thread. A
+  reply to a reply stays in the root thread. Authors edit and delete their own
+  messages, and channel admins can delete any message. Deleted messages keep
+  their place in the thread.
+- **Unread and mentions.** Each member has a read marker. The channel list
+  shows unread top-level messages and unread mentions. `@{user-id}` notifies
+  people who can read the channel through the normal `mention` notification,
+  so it follows email and digest preferences.
+- **Issue keys unfurl.** `SHIP-12` in a message resolves to the issue's summary
+  and status when the project belongs to the same space.
+- **Search.** `GET /api/chat/search?q=` searches every channel you can read.
+- **Live updates.** `GET /api/channels/<id>/stream` is a Server-Sent Events
+  stream. Each event is a small notice (`type`, `seq`, `messageId`,
+  `threadId`) with no message content. Clients fetch the content through the
+  access-checked endpoints, and the stream ends when the reader loses access.
+  Every message takes the next per-channel `seq`, so `?after=<seq>&all=1` is a
+  gap-free poll.
+
+### From conversation to source of truth
+
+- **→ Issue** turns a message into a Work issue in the channel's project (or
+  another project in the same space). The first line becomes the summary, and
+  the issue gets the `chat` label and a link back. A note in the thread links
+  the new issue.
+- **→ Page** saves the whole thread as a new `.noma` page in the space. Each
+  message becomes a `:::message{id="msg-<id>" author="..." at="..."}` block
+  inside `::chat_thread`. Agents can cite and patch individual turns by stable
+  ID, and the decision goes through the usual history, review, and patch
+  proof. A message whose text could break the directive structure is kept
+  word for word in a code fence.
+
+### Agents in chat
+
+Agents join conversations the same way they join comment threads. An agent can
+chat in a space when:
+
+- it is active
+- it has the `chat` capability
+- it holds a grant on the space
+- its owner can still view the space
+
+Such an agent can read public channels, and private channels once a member adds
+it. The channel header lists the agents people can mention.
+
+Mentioning an agent (`@{agent-id} run the smoke suite`) puts the message in the
+agent's chat inbox and sends its owner a `task_assigned` notification. The
+agent works through its owner's credentials, over REST or the MCP gateway:
+
+1. `chat_inbox` lists mentions the agent has not answered yet, with the channel
+   and the thread.
+2. `chat_history` reads a channel or thread, with `after` for polling.
+3. `chat_post` posts as the agent, optionally in a thread. A reply in the thread
+   clears the pending mention. The UI shows the message as the agent, with an
+   *agent* badge.
+
+Agent posts never mention other agents, so agents cannot ping-pong. Agents
+still cannot edit pages from chat. Edits go through proof → human approval →
+apply.
+
+```text
+GET|POST  /api/channels                                  ?siteId=&projectId=&archived=1
+GET|PATCH /api/channels/<id>                             {name, topic, visibility, projectId, archived}
+POST      /api/channels/<id>/join | /leave | /read       {"seq": 42}
+GET|POST  /api/channels/<id>/members                     {"memberId": "<user-or-agent-id>"}
+DELETE    /api/channels/<id>/members/<member-id>
+GET|POST  /api/channels/<id>/messages                    ?after=&before=&thread=&all=1 · {body, threadId?, agentId?}
+GET|PATCH|DELETE /api/channels/<id>/messages/<message-id>
+POST|DELETE      /api/channels/<id>/messages/<message-id>/reactions[/<emoji>]
+POST      /api/channels/<id>/messages/<message-id>/issue {projectId?, summary?, type?, priority?}
+POST      /api/channels/<id>/messages/<message-id>/page  {title?, parentId?}
+GET       /api/channels/<id>/stream                      text/event-stream
+GET       /api/chat/search?q=&siteId=
+GET       /api/agents/<agent-id>/chat?status=pending|all
+```
+
 ## Edit a page
 
 The center of the app has two panes:

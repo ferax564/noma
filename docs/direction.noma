@@ -323,11 +323,22 @@ What makes Noma different from Confluence is not a longer feature list:
 - **Cited answers.** Ask Noma cites exact blocks and versions, or abstains.
 - **Self-maintaining knowledge.** Trust, freshness, and recipes let agents find stale pages and propose fixes.
 
+::decision{id="collaboration-surface" status="accepted" owner="ferax564" date="2026-09-26"}
+Noma is one collaboration surface where humans and agents build software. It
+has four parts over one permission model: the wiki, Work projects, Chat, and
+run environments. Chat channels belong to a space and are organised by Work
+project or by topic. Agents join them through the gateway. Conversation is not
+a second source of truth: a message becomes a Work issue in one step, and a
+thread becomes a `.noma` page with one stable-ID block per message. Next come
+run environments: deploys and test runs requested from a channel or an issue.
+They run on the `ezkeel` stack, need a capability the space owner grants, and
+post their results back to the thread.
+::
+
 ::risk{id="scope-creep" severity="medium" owner="ferax564"}
 Still out of scope: a plugin marketplace, a complex CSS theming engine,
-non-wiki Atlassian clones (whiteboards, databases), and any editor,
-importer, or agent path that cannot round-trip through `.noma` source with
-stable IDs.
+whiteboards, databases, and any editor, importer, or agent path that cannot
+round-trip through `.noma` source with stable IDs.
 ::
 
 ## Composition and presentations
