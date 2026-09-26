@@ -583,6 +583,35 @@
         <div id="workBoard" class="work-board"></div>
       </div>
 
+      <div id="devLoopSection" class="work-subsection">
+        <div class="inspector-heading-row">
+          <h3>Code &amp; runs</h3>
+          <span id="devLoopEnv" class="dev-loop-env"></span>
+        </div>
+        <div id="devLoopRepo" class="diagnostics-summary">Select a project</div>
+        <div id="devLoopSetup" class="dev-loop-setup" hidden>
+          <label class="stack-field" for="devRepoInput">GitHub repository
+            <input id="devRepoInput" type="text" placeholder="owner/name" autocomplete="off" spellcheck="false" />
+          </label>
+          <div class="button-row">
+            <label class="ai-toggle" for="devRunsEnabledInput"><input id="devRunsEnabledInput" type="checkbox" /> Deploy &amp; test runs</label>
+            <label class="ai-toggle" for="devAutoPreviewInput"><input id="devAutoPreviewInput" type="checkbox" /> PR previews</label>
+          </div>
+          <button id="devLinkRepoButton" type="button">Save repository</button>
+          <div id="devHookInfo" class="dev-hook-info" hidden></div>
+        </div>
+        <div class="dev-run-form">
+          <select id="devRunKindSelect" aria-label="Run kind">
+            <option value="deploy">Deploy</option>
+            <option value="test">Test</option>
+          </select>
+          <input id="devRunRefInput" type="text" placeholder="branch, tag, or SHA" aria-label="Ref to run" spellcheck="false" />
+          <button id="devRunButton" type="button">Run</button>
+        </div>
+        <div id="devRunList" class="dev-run-list" aria-label="Recent runs"></div>
+        <div id="devPullList" class="dev-run-list" aria-label="Pull requests"></div>
+      </div>
+
       <div class="work-subsection">
         <h3>Selected issue</h3>
         <div id="selectedIssueSummary" class="diagnostics-summary">Select an issue</div>

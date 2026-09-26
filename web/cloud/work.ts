@@ -1,6 +1,7 @@
 /** Work management: projects, issues and sprints. */
 import { fetchCloudJson } from "./api.js";
 import { collaborationRow } from "./collaboration.js";
+import { refreshDevLoop } from "./devloop.js";
 import { workIssueStatuses } from "./constants.js";
 import { issueAssigneeInput, issueCommentInput, issueDetailList, issueFilterSelect, issueLabelsInput, issueLinkTargetInput, issueLinkTypeSelect, issuePrioritySelect, issueSearchInput, issueSprintSelect, issueSummaryInput, issueTypeSelect, manageSprintSelect, projectKeyInput, projectNameInput, selectedIssueSummary, sprintNameInput, workBoard, workProjectSelect, workStatus } from "./dom.js";
 import { renderChrome } from "./layout.js";
@@ -29,6 +30,7 @@ export async function refreshWorkManagement(): Promise<void> {
       state.workIssues = [];
       state.workSprints = [];
       state.selectedIssue = undefined;
+      void refreshDevLoop("", "viewer");
     }
   } catch (error) {
     setPanelStatus(workStatus, errorMessage(error), "error");
@@ -46,6 +48,7 @@ export async function loadWorkProject(projectId: string): Promise<void> {
   ]);
   state.workIssues = issueResponse.issues;
   state.workSprints = sprintResponse.sprints;
+  void refreshDevLoop(projectId, state.workProjects.find((project) => project.id === projectId)?.access?.role ?? "viewer");
   const nextIssue = previousIssueId ? state.workIssues.find((issue) => issue.id === previousIssueId) : undefined;
   if (nextIssue) await selectWorkIssue(nextIssue.id);
   else state.selectedIssue = undefined;

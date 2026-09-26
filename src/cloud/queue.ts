@@ -1,7 +1,8 @@
-/** One pass of Noma Cloud's background work: webhook deliveries, due digests, the email outbox, embedding backfill, and daily chat retention. */
+/** One pass of Noma Cloud's background work: webhook deliveries, due digests, the email outbox, embedding backfill, daily chat retention, and dev-loop run polling. */
 import type { NomaCloudDatabase } from "../cloud-db.js";
 import type { CloudKnowledgePlatform, EmbeddingBackfillResult } from "../cloud-platform.js";
 import type { CloudServerConfig } from "./context.js";
+import { pollDevRuns } from "./devloop.js";
 import { enforceChatRetention } from "./routes-chat.js";
 import { buildDueDigests, drainEmailOutbox, type EmailDrainResult, type MailTransport } from "./mail.js";
 import { type DrainResult, drainWebhookQueue } from "./webhooks.js";
@@ -34,6 +35,7 @@ export async function runServerQueueTick(config: CloudServerConfig): Promise<Clo
   try {
     const result = await runCloudQueueTick(config.store, config.now, undefined, config.platform);
     await runDueChatRetention(config);
+    await pollDevRuns(config);
     return result;
   } catch {
     return undefined;

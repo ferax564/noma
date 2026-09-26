@@ -1076,6 +1076,7 @@ export class CloudKnowledgePlatform {
       { operation: "chat_inbox", method: "GET", path: "/api/agents/:id/chat", permission: "viewer" },
       { operation: "chat_history", method: "GET", path: "/api/channels/:id/messages", permission: "viewer" },
       { operation: "chat_post", method: "POST", path: "/api/channels/:id/messages", permission: "viewer" },
+      { operation: "run_request", method: "POST", path: "/api/projects/:id/runs", permission: "editor" },
     ];
   }
 
@@ -1902,7 +1903,7 @@ export interface SemanticCollection {
 }
 
 export interface AgentGatewayCapability {
-  operation: "search" | "cited_answer" | "list_ids" | "llm_export" | "proof" | "proposal" | "review" | "apply" | "webhook" | "assignments" | "reply" | "update_assignment" | "chat_inbox" | "chat_history" | "chat_post";
+  operation: "search" | "cited_answer" | "list_ids" | "llm_export" | "proof" | "proposal" | "review" | "apply" | "webhook" | "assignments" | "reply" | "update_assignment" | "chat_inbox" | "chat_history" | "chat_post" | "run_request";
   method: "GET" | "POST";
   path: string;
   permission: "viewer" | "editor";

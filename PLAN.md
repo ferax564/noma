@@ -1347,12 +1347,14 @@ people and agents under one permission model. Five steps, shipped in order:
 1. **Finish chat for enterprises.** Direct and group messages, files in chat,
    chat in space exports, retention and legal hold for chat, edit history and
    eDiscovery exports, audit records, and one search (⌘K) across pages,
-   issues and messages.
+   issues and messages. *Shipped (unreleased).*
 2. **Close the loop with GitHub and ezkeel.** Projects link to repositories. PR
    and CI events move issues and post into their threads. `/deploy` and
    `/test` in a thread start an ezkeel run under a space-owner capability and
    budget, and the result posts back. A green run moves the issue to review,
-   and a failed test opens a follow-up issue.
+   and a failed test opens a follow-up issue. *Shipped (unreleased):* see
+   `docs/noma-cloud.noma#dev-loop`. ezkeel's deploy endpoint gained `{"ref"}`
+   for this.
 3. **Agents that work unattended.** Hosted agents answer mentions on the Claude
    API within their budgets. Scheduled agents run digests and triage. One
    approval queue collects page patches, AI pages, and run requests, and a
