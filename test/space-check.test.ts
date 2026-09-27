@@ -38,8 +38,17 @@ test("validateSpace resolves links across pages and flags ambiguous IDs", () => 
   assert.deepEqual(home!.diagnostics.filter((d) => d.code === "broken-reference").map((d) => d.message), ['Reference to unknown block ID "missing-page".']);
   assert.deepEqual(ops!.diagnostics.filter((d) => d.severity === "error"), []);
   const dup = home!.diagnostics.find((d) => d.code === "duplicate-space-id");
-  assert.match(dup?.message ?? "", /"shared" is also defined in home\/ops\.noma/);
+  assert.match(dup?.message ?? "", /ID "shared" is also an ID or alias in home\/ops\.noma/);
   assert.equal(validateSpace(pages, { ignoreRules: ["duplicate-space-id"] })[0]!.diagnostics.some((d) => d.code === "duplicate-space-id"), false);
+});
+
+test("an alias shared across pages, or equal to another page's ID, is ambiguous", () => {
+  const [a, b] = validateSpace([
+    { path: "a.noma", doc: parse('# A {id="a-home" aliases="shared"}\n') },
+    { path: "b.noma", doc: parse('# B {id="shared"}\n') },
+  ]);
+  assert.match(a!.diagnostics.find((d) => d.code === "duplicate-space-id")?.message ?? "", /Alias "shared" is also an ID or alias in b\.noma/);
+  assert.match(b!.diagnostics.find((d) => d.code === "duplicate-space-id")?.message ?? "", /ID "shared" is also an ID or alias in a\.noma/);
 });
 
 test("noma check <dir> validates a wiki directory as one space", () => {

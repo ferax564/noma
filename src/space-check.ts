@@ -45,13 +45,12 @@ export function validateSpace(pages: SpacePage[], options: ValidateOptions = {})
   for (const page of pages) {
     const keys = new Set<string>();
     for (const node of walk(page.doc)) {
-      if (node.id) {
-        keys.add(node.id);
-        const owners = idOwners.get(node.id) ?? [];
+      for (const key of nodeKeys(node)) {
+        keys.add(key);
+        const owners = idOwners.get(key) ?? [];
         if (!owners.includes(page.path)) owners.push(page.path);
-        idOwners.set(node.id, owners);
+        idOwners.set(key, owners);
       }
-      for (const alias of node.aliases ?? []) keys.add(alias);
     }
     keysByPage.set(page.path, keys);
   }
@@ -65,16 +64,19 @@ export function validateSpace(pages: SpacePage[], options: ValidateOptions = {})
     const diagnostics = validate(page.doc, { ...options, spaceIds });
     const duplicates: Diagnostic[] = [];
     for (const node of walk(page.doc)) {
-      const owners = node.id ? idOwners.get(node.id) : undefined;
-      if (!node.id || !owners || owners.length < 2) continue;
-      const others = owners.filter((path) => path !== page.path);
-      duplicates.push({
-        severity: "warning",
-        code: "duplicate-space-id",
-        message: `ID "${node.id}" is also defined in ${others.join(", ")}; a [[${node.id}]] link in this space is ambiguous.`,
-        ...(node.pos ? { pos: node.pos } : {}),
-        nodeId: node.id,
-      });
+      for (const key of nodeKeys(node)) {
+        const owners = idOwners.get(key);
+        if (!owners || owners.length < 2) continue;
+        const others = owners.filter((path) => path !== page.path);
+        const kind = key === node.id ? "ID" : "Alias";
+        duplicates.push({
+          severity: "warning",
+          code: "duplicate-space-id",
+          message: `${kind} "${key}" is also an ID or alias in ${others.join(", ")}; a [[${key}]] link in this space is ambiguous.`,
+          ...(node.pos ? { pos: node.pos } : {}),
+          ...(node.id ? { nodeId: node.id } : {}),
+        });
+      }
     }
     const ignored = new Set(options.ignoreRules ?? []);
     return { path: page.path, diagnostics: [...diagnostics, ...duplicates.filter((d) => !ignored.has(d.code))] };
@@ -85,4 +87,8 @@ export function validateSpace(pages: SpacePage[], options: ValidateOptions = {})
 export function checkSpaceDirectory(dir: string, options: ValidateOptions = {}): SpaceFileResult[] {
   const pages = spaceFiles(dir).map((path) => ({ path, doc: parse(readFileSync(join(dir, path), "utf8"), { filename: join(dir, path) }) }));
   return validateSpace(pages, options);
+}
+
+function nodeKeys(node: { id?: string; aliases?: string[] }): string[] {
+  return [...new Set([...(node.id ? [node.id] : []), ...(node.aliases ?? [])])];
 }

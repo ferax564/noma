@@ -769,7 +769,7 @@ noma check chapters/03-risks.noma --ignore-rule broken-reference
 
 Unknown rule names produce an `info` note; they do not fail the run.
 
-**Checking a wiki directory as one space.** `noma check <dir>` validates every `.noma` file under the directory (dot entries skipped) as the pages of one space, the way a Noma Cloud space resolves links: a `[[id]]` wikilink may point at a block or heading ID, or an alias, on any page of the directory. Attribute references (`for=`, `ref=`, `block=`, ...) must still resolve inside their own page. An explicit ID defined on two pages gets a `duplicate-space-id` warning, because a space-wide link to it is ambiguous. The command prints one summary line and exits 1 when any page has an error. Library callers pass the other pages' IDs as `ValidateOptions.spaceIds`, or use `validateSpace` / `checkSpaceDirectory` from `src/space-check.ts`.
+**Checking a wiki directory as one space.** `noma check <dir>` validates every `.noma` file under the directory (dot entries skipped) as the pages of one space, the way a Noma Cloud space resolves links: a `[[id]]` wikilink may point at a block or heading ID, or an alias, on any page of the directory. Attribute references (`for=`, `ref=`, `block=`, ...) must still resolve inside their own page. An ID or alias that two pages define (including a page's automatic filename alias) gets a `duplicate-space-id` warning, because a space-wide link to it is ambiguous. The command prints one summary line and exits 1 when any page has an error. Library callers pass the other pages' IDs as `ValidateOptions.spaceIds`, or use `validateSpace` / `checkSpaceDirectory` from `src/space-check.ts`.
 
 ```bash
 noma check wiki/            # 5 page(s) checked as one space: 0 error(s), 0 warning(s)

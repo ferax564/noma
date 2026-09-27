@@ -270,14 +270,23 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
     await mirrorLocalRenamesAndDeletes(client, keys, manifest, local, { siteId: options.siteId, pull, push, dryRun }, actions, settled, restorePaths);
   }
 
+  const occupied = new Set(local.files.map((file) => file.path));
+  const blocked = new Set<string>();
   for (const manifestPage of manifest.pages) {
     if (settled.has(manifestPage.id)) continue;
     const file = local.byId.get(manifestPage.id);
-    const page = file && keepLocalPaths ? { ...manifestPage, path: wikiMoveTarget(dir, file, manifestPage, local) ?? file.path } : manifestPage;
+    let page = file && keepLocalPaths ? { ...manifestPage, path: wikiMoveTarget(dir, file, manifestPage, local) ?? file.path } : manifestPage;
+    if (file && page.path !== file.path && occupied.has(page.path)) page = { ...page, path: file.path };
     if (!file) {
       if (!pull) continue;
       const restorePath = restorePaths.get(page.id);
       const target = restorePath ? { ...page, path: restorePath } : page;
+      if (occupied.has(target.path)) {
+        blocked.add(target.path);
+        actions.push({ kind: "conflict", path: target.path, documentId: page.id, detail: "a local file that is not synced yet already uses this path; rename or remove one of them" });
+        continue;
+      }
+      occupied.add(target.path);
       if (!dryRun) {
         const document = await client.document(page.id);
         writeManagedFile(keys, dir, target, document.source, document.hash);
@@ -340,6 +349,7 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
   const createdByPath = new Map<string, string>();
   const parentFirst = [...local.files].sort((a, b) => a.path.split("/").length - b.path.split("/").length || a.path.localeCompare(b.path));
   for (const file of parentFirst) {
+    if (blocked.has(file.path)) continue;
     const cloudId = typeof file.meta.cloudId === "string" ? file.meta.cloudId : undefined;
     if (cloudId) {
       if (manifestIds.has(cloudId)) continue;

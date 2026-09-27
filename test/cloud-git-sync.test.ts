@@ -289,6 +289,35 @@ test("--state mirrors renames, moves, and deletes in both directions without los
   }
 });
 
+test("a pull never overwrites a local file that is not synced yet", async () => {
+  const harness = await startCloudServer();
+  const repo = await mkdtemp(join(tmpdir(), "noma-git-sync-collide-"));
+  const stateFile = join(repo, "..", `${basename(repo)}.state.json`);
+  try {
+    const alice = await createCloudUser(harness.base, "Alice");
+    const client = new CloudSyncClient({ server: harness.base, token: alice.token });
+    const site = await client.createSite("Collide", "COL");
+    await json(`${harness.base}/api/sites/${site.id}/documents`, { method: "POST", token: alice.token, body: { title: "Notes", source: "# Notes\n\nFrom the wiki.\n" } });
+    const local = "# Notes\n\nFrom Git.\n";
+    await writeFile(join(repo, "notes.noma"), local, "utf8");
+    for (const options of [{ stateFile }, {}]) {
+      const report = await syncSpace(client, { siteId: site.id, dir: repo, ...options });
+      assert.deepEqual(report.actions.map((action) => [action.kind, action.path]), [["conflict", "notes.noma"]]);
+      assert.equal(readFileSync(join(repo, "notes.noma"), "utf8"), local, "the local file is untouched");
+      const manifest = await client.manifest(site.id);
+      assert.equal(manifest.pages.length, 1, "no duplicate page is uploaded");
+    }
+    await rename(join(repo, "notes.noma"), join(repo, "git-notes.noma"));
+    const resolved = await syncSpace(client, { siteId: site.id, dir: repo, stateFile });
+    assert.deepEqual(resolved.actions.map((action) => [action.kind, action.path]).sort(), [["created", "git-notes.noma"], ["pulled", "notes.noma"]]);
+    assert.match(readFileSync(join(repo, "notes.noma"), "utf8"), /From the wiki/);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(stateFile, { force: true });
+    await harness.close();
+  }
+});
+
 async function captureStdout(run: () => Promise<number>): Promise<string> {
   const chunks: string[] = [];
   const previous = process.stdout.write.bind(process.stdout);
