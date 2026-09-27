@@ -6,6 +6,7 @@ import { readDoc } from "./tools/read-doc.js";
 import { listIds } from "./tools/list-ids.js";
 import { validateDoc } from "./tools/validate-doc.js";
 import { patchBlock } from "./tools/patch-block.js";
+import { renderSlide } from "./tools/render-slide.js";
 import type { PatchOp } from "@ferax564/noma-cli";
 
 const PatchOpSchema = z.discriminatedUnion("op", [
@@ -218,6 +219,30 @@ server.tool(
       return { content: [{ type: "text", text: JSON.stringify(body) }] };
     }
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
+  },
+);
+
+server.tool(
+  "render_slide",
+  "Render one deck slide (by slide block ID) as a sanitised SVG, plus a PNG image when png=true and a headless browser is available. Documents without a ::deck present one slide per section (slide ID = section ID).",
+  {
+    file: z.string().describe("Absolute path to the .noma file"),
+    slide: z.string().describe("Slide block ID (or section ID for documents without a ::deck)"),
+    deck: z.string().optional().describe("::deck ID when the document has several (default: the first)"),
+    png: z.boolean().optional().describe("Also return a PNG screenshot (needs Puppeteer + Chrome)"),
+  },
+  async ({ file, slide, deck, png }) => {
+    try {
+      const result = await renderSlide({ file, slide, ...(deck ? { deck } : {}), ...(png ? { png } : {}) });
+      const { png: image, ...meta } = result;
+      const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
+        { type: "text", text: JSON.stringify(meta) },
+      ];
+      if (image) content.push({ type: "image", data: image, mimeType: "image/png" });
+      return { content };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: String(e) }] };
+    }
   },
 );
 

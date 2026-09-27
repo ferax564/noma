@@ -27,6 +27,9 @@ src/                       TypeScript core — parser, AST, renderers, validator
   renderer-markdown.ts     AST → portable Markdown (`--to markdown`)
   renderer-paperdom.ts     AST → PaperDOM canvas JSON (`--to paperdom`); slides keyed by block ID
   canvas-svg.ts            PaperDOM canvas → sanitised static SVG + text outline (`::canvas`, slide strip); type-only PaperDOM imports
+  canvas-text-metrics.ts   Pure text-fit estimate + page audit (overflow, off-page) — `slide-text-overflow`, pptx report warnings
+  canvas-review.ts         Canvas element diff (moved/resized/text) + before/after slide SVG review for `noma proof`
+  slide-png.ts             Slide → PNG via Puppeteer from sanitised SVG, JS off (`--to png`, MCP `render_slide`)
   slides.ts                `::deck`/`::slide` helpers + `presentationSlides` (doc-to-deck) for `--to slides` and PaperDOM
   style-tokens.ts          Closed `class=` style-token vocabulary + per-space aliases
   components.ts            Component kits — `::component` definitions, AST-level expansion, use checks
@@ -82,7 +85,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
 bin/noma.mjs               Node CLI shim
 apps/                      Enterprise HTTP, worker, and Docs/Visuals/Work shell entry points
 packages/
-  mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block over stdio
+  mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block/render_slide over stdio
   agent-sdk/               @ferax564/noma-agent-sdk — TS workflow layer (safePatch, capability checks, transcript replay)
   agent-sdk-py/            Python agent SDK starter
   noma-py-seed/            Native Python second-implementation seed — parser + ids + 3 patch ops vs conformance corpus (no Node dep)

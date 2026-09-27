@@ -7,6 +7,7 @@ import { inlineDatasetSources } from "./loader.js";
 import { parse } from "./parser.js";
 import { PatchError, patchSource, type PatchOp } from "./patch.js";
 import { renderHtml, type HtmlRenderOptions } from "./renderer-html.js";
+import { describeChange, reviewSlideChanges, SLIDE_REVIEW_CSS, slideReviewHtml, type SlideReview } from "./canvas-review.js";
 import { renderLlm, type RenderLlmOptions } from "./renderer-llm.js";
 import { formatDiagnostics, validate, type ValidateOptions } from "./validator.js";
 
@@ -71,6 +72,11 @@ export interface AgentSafetyProof {
   artifactPreviewHtml: string;
   error?: ProofPatchError;
   postSource: string;
+  /**
+   * Before/after previews and per-element changes for `::deck` slides and
+   * inline `::canvas` pages the ops changed. Absent when nothing visual changed.
+   */
+  slideReview?: SlideReview;
 }
 
 export function createAgentSafetyProof(options: ProofOptions): AgentSafetyProof {
@@ -124,6 +130,7 @@ export function createAgentSafetyProof(options: ProofOptions): AgentSafetyProof 
   const postHash = hashSource(postSource);
   const sourceMetrics = measureSourcePreservation(options.source, postSource);
   const status = proofStatus({ patchResult, prevalidateBlocked, postvalidateBlocked, postValidation });
+  const slideReview = patchResult === "applied" ? reviewSlideChanges(preDoc, postDoc, options.validateOptions?.components ? { components: options.validateOptions.components } : {}) : undefined;
 
   return {
     status,
@@ -154,6 +161,7 @@ export function createAgentSafetyProof(options: ProofOptions): AgentSafetyProof 
           }),
     ...(error ? { error } : {}),
     postSource,
+    ...(slideReview ? { slideReview } : {}),
   };
 }
 
@@ -164,6 +172,11 @@ export function renderProofMarkdownSummary(proof: AgentSafetyProof): string {
   const diagnostics = proof.postDiagnostics.length === 0
     ? "No post-patch diagnostics."
     : formatDiagnostics(proof.postDiagnostics, proof.file);
+  const visual = proof.slideReview
+    ? `\n\n### Visual Review\n\n${proof.slideReview.pages
+        .map((page) => `- \`${page.source}:${page.containerId}/${page.pageId}\` ${page.changes.map((change) => `${change.elementId ?? "page"} (${describeChange(change)})`).join("; ")}${page.warnings.length ? ` — ${page.warnings.length} layout warning${page.warnings.length === 1 ? "" : "s"}` : ""}`)
+        .join("\n")}`
+    : "";
   const error = proof.error
     ? `\n\n**Patch error:** \`${proof.error.code}\` ${proof.error.message}`
     : "";
@@ -194,7 +207,7 @@ ${diagnostics}
 ### Review Notes
 
 - Agent context was scoped to ${proof.llmContext.length} characters.
-- Proof includes the ID registry, source diff, hashes, and sandboxed post-patch preview when rendered as HTML.${error}
+- Proof includes the ID registry, source diff, hashes, and sandboxed post-patch preview when rendered as HTML.${visual}${error}
 `;
 }
 
@@ -286,6 +299,7 @@ export function renderProofHtml(proof: AgentSafetyProof): string {
   .llm { background: #f9fafb; border: 1px solid var(--rule); border-radius: 8px; padding: 14px; max-height: 520px; overflow: auto; font-size: .86rem; }
   iframe { width: 100%; min-height: 560px; border: 1px solid var(--rule); border-radius: 8px; background: white; }
   .proof-error { border-color: rgba(167,55,47,.45); }
+${proof.slideReview ? SLIDE_REVIEW_CSS : ""}
   @media (max-width: 860px) {
     main { padding: 16px; }
     .hero-top, .grid { display: block; }
@@ -355,6 +369,8 @@ export function renderProofHtml(proof: AgentSafetyProof): string {
     <h2>ID Registry</h2>
     <div class="table-scroll"><table><thead><tr><th>ID</th><th>Type</th><th>Line</th><th>Title / aliases</th></tr></thead><tbody>${idRows}</tbody></table></div>
   </section>
+
+  ${proof.slideReview ? slideReviewHtml(proof.slideReview) : ""}
 
   <section class="proof-section">
     <h2>Source Diff</h2>
