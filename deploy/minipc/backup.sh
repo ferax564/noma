@@ -25,4 +25,5 @@ docker compose -f "$here/compose.yaml" exec -T noma-cloud sh -ec '
 mv "$out.partial" "$out"
 echo "wrote $out ($(du -h "$out" | cut -f1))"
 
+# shellcheck disable=SC2012  # our own timestamped names, no spaces
 ls -1t "$dir"/noma-*.tar.gz | tail -n +"$((keep + 1))" | xargs -r rm -f

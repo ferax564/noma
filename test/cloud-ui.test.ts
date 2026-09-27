@@ -37,6 +37,11 @@ test("cloud UI supports account sessions, history restore, and conflict-safe dra
   const browser: Browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
   t.after(() => browser.close());
   const page = await browser.newPage();
+  await page.setRequestInterception(true);
+  page.on("request", (request) => {
+    if (request.url().startsWith("https://rsms.me/")) void request.respond({ status: 200, contentType: "text/css", body: "" });
+    else void request.continue();
+  });
   const browserErrors: string[] = [];
   page.on("pageerror", (error) => browserErrors.push(error.message));
   page.on("console", (message) => {

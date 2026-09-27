@@ -12,3 +12,4 @@ coverage/
 *.vsix
 site/assets/enterprise-collab.js
 .claude/worktrees/
+.venv/
