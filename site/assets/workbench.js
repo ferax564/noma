@@ -132,6 +132,12 @@
         buf += ch;
         continue;
       }
+      const wikilink = inBacktick ? void 0 : wikilinkAt(trimmed, i);
+      if (wikilink) {
+        buf += wikilink;
+        i += wikilink.length - 1;
+        continue;
+      }
       if (ch === "|" && !inBacktick) {
         cells.push(buf.trim());
         buf = "";
@@ -152,6 +158,12 @@
         out += ch;
         continue;
       }
+      const wikilink = inBacktick ? void 0 : wikilinkAt(cell, i);
+      if (wikilink) {
+        out += wikilink;
+        i += wikilink.length - 1;
+        continue;
+      }
       if (ch === "|" && !inBacktick && cell[i - 1] !== "\\") {
         out += "\\|";
         continue;
@@ -159,6 +171,11 @@
       out += ch;
     }
     return out;
+  }
+  function wikilinkAt(text, index) {
+    if (text[index] !== "[" || text[index + 1] !== "[") return void 0;
+    const match = /^\[\[[^\[\]\n]+?\]\]/.exec(text.slice(index));
+    return match?.[0];
   }
   function splitDelimitedRow(line, delimiter) {
     const cells = [];
@@ -3648,11 +3665,13 @@
     });
     const rows = [];
     const cellIds = [];
+    const raggedRows = [];
     let j = i + 2;
     while (j < to && TABLE_ROW_RE.test(lines[j] ?? "")) {
       const cells = splitRow(lines[j] ?? "");
+      if (cells.length !== header.length) raggedRows.push([rows.length, cells.length]);
       while (cells.length < header.length) cells.push("");
-      if (cells.length > header.length) cells.length = header.length;
+      if (cells.length > header.length) cells.splice(header.length - 1, cells.length, cells.slice(header.length - 1).join(" \\| "));
       const parsed = cells.map(parseInlineStableId);
       rows.push(parsed.map((cell) => cell.content));
       cellIds.push(parsed.map((cell) => cell.id ?? ""));
@@ -3667,6 +3686,7 @@
     };
     if (headerIds.some(Boolean)) node.headerIds = headerIds;
     if (cellIds.some((row) => row.some(Boolean))) node.cellIds = cellIds;
+    if (raggedRows.length > 0) node.raggedRows = raggedRows;
     return { node, next: j };
   }
   function matchCodeFenceOpen(line) {
@@ -11151,6 +11171,15 @@ ${fence}`;
         }
       }
       if (node.type === "table") {
+        for (const [rowIndex, cellCount] of node.raggedRows ?? []) {
+          const line = node.pos ? node.pos.line + 2 + rowIndex : void 0;
+          diagnostics.push({
+            severity: "warning",
+            code: "table-row-cells",
+            message: `Table row ${rowIndex + 1} has ${cellCount} cell(s) but the header has ${node.header.length}. ${cellCount > node.header.length ? "The extra cells are kept in the last column." : "Missing cells render empty."}`,
+            ...line !== void 0 ? { pos: { line, column: 1 } } : {}
+          });
+        }
         for (const tableId of collectTableIdentityStrings(node)) {
           if (ids.has(tableId)) {
             diagnostics.push({
@@ -11375,6 +11404,16 @@ ${fence}`;
         }
       }
       if (node.name === "canvas" && !suppressed(node)) validateCanvas(node, diagnostics);
+      if (node.name === "callout" && "type" in node.attrs && !("tone" in node.attrs) && !suppressed(node)) {
+        diagnostics.push({
+          severity: "warning",
+          code: "callout-type-attribute",
+          message: `Callouts read tone=, not type=; this one renders with the default "info" tone. Write tone="${String(node.attrs.type)}".`,
+          pos: node.pos,
+          nodeId: node.id,
+          ...node.id ? { fix: { op: "update_attribute", id: node.id, key: "tone", value: node.attrs.type } } : {}
+        });
+      }
       if (node.name === "figure" && !suppressed(node) && !node.attrs.alt && !node.attrs.caption) {
         diagnostics.push({
           severity: "warning",
@@ -11585,6 +11624,7 @@ ${fence}`;
     }
     for (const target of referenced) {
       if (ids.has(target) || aliasIds.has(target)) continue;
+      if (options.spaceIds?.has(target) && wikilinkRefs.has(target) && refSites.every((site) => site.target !== target || !site.attrKey)) continue;
       const suggestion = nearestId(target, [...ids.keys(), ...aliasIds]);
       const hint = suggestion ? ` Did you mean "${suggestion}"?` : "";
       const sites = refSites.filter((site) => site.target === target);
@@ -11707,6 +11747,9 @@ ${fence}`;
   }
   var KNOWN_RULES = [
     "invalid-frontmatter",
+    "table-row-cells",
+    "callout-type-attribute",
+    "duplicate-space-id",
     "duplicate-id",
     "out-of-profile-directive",
     "unknown-profile",
