@@ -27,6 +27,9 @@ src/                       TypeScript core — parser, AST, renderers, validator
   renderer-markdown.ts     AST → portable Markdown (`--to markdown`)
   renderer-paperdom.ts     AST → PaperDOM canvas JSON (`--to paperdom`); slides keyed by block ID
   canvas-svg.ts            PaperDOM canvas → sanitised static SVG + text outline (`::canvas`, slide strip); type-only PaperDOM imports
+  canvas-text-metrics.ts   Pure text-fit estimate + page audit (overflow, off-page) — `slide-text-overflow`, pptx report warnings
+  canvas-review.ts         Canvas element diff (moved/resized/text) + before/after slide SVG review for `noma proof`
+  slide-png.ts             Slide → PNG via Puppeteer from sanitised SVG, JS off (`--to png`, MCP `render_slide`)
   slides.ts                `::deck`/`::slide` helpers + `presentationSlides` (doc-to-deck) for `--to slides` and PaperDOM
   style-tokens.ts          Closed `class=` style-token vocabulary + per-space aliases
   components.ts            Component kits — `::component` definitions, AST-level expansion, use checks
@@ -49,11 +52,12 @@ src/                       TypeScript core — parser, AST, renderers, validator
   ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
   verify.ts                Conformance fixture runner (`noma verify`)
   cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
-  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, DMs, files, agent chat, eDiscovery, retention, thread → .noma), routes-find.ts (⌘K search across pages/issues/chat), routes-devloop.ts + devloop.ts + run-provider.ts (GitHub webhook, PR/CI → issues + threads, /deploy + /test runs on ezkeel), agent-runner.ts + routes-agent-ops.ts (hosted/scheduled agents, kill switch), routes-approvals.ts (one approval queue), dlp.ts + siem.ts (DLP detectors, audit NDJSON → SIEM), integrations.ts (Slack/Jira import, two-way Slack bridge), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
+  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, DMs, files, agent chat, eDiscovery, retention, thread → .noma), routes-find.ts (⌘K search across pages/issues/chat), routes-devloop.ts + devloop.ts + run-provider.ts (GitHub webhook, PR/CI → issues + threads, /deploy + /test runs on ezkeel), agent-runner.ts + routes-agent-ops.ts (hosted/scheduled agents, kill switch), routes-approvals.ts (one approval queue), capabilities.ts + governance.ts (agent action registry, single gate, hash-bound approvals; keepop model), codixing.ts + code-intel.ts (optional per-repo codixing sidecar: PR blast radius, ⌘K code, agent context), attachment-text.ts (optional ferrox/officeconvert sidecars: attachment text, DLP, PDF previews), dlp.ts + siem.ts (DLP detectors, audit NDJSON → SIEM), integrations.ts (Slack/Jira import, two-way Slack bridge), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
   cloud-db.ts              SQLite persistence for Noma Cloud
   cloud-integrations.ts    Import ledgers + Slack bridge state (links, message map, people cache, outbox)
   slack-import.ts          Slack export ZIP → channels/messages; mrkdwn ↔ Markdown (pure)
   jira-import.ts           Jira search JSON → Work issues; ADF → Markdown (pure)
+  cloud-governance.ts      Agent governance persistence — append-only `agent_decisions` (trigger-enforced), per-space trust tiers, bright-line proposals
   cloud-compliance.ts      Compliance state — DLP policy + findings, SIEM cursor
   cloud-agent-ops.ts       Unattended agents — hosting, schedules, job queue, workspace kill switch
   cloud-devloop.ts         Dev-loop persistence — linked repos, pull requests, webhook dedupe, deploy/test runs
@@ -78,12 +82,13 @@ src/                       TypeScript core — parser, AST, renderers, validator
   enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM host, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops, Yjs, Atlassian, AWS, security review, paid-pilot
   paperdom-*.ts            PaperDOM canvas/slide kernel — maintained fork of github.com/ferax564/paperDOM (MIT, type-checked here)
   paperdom-pin.ts          PaperDOM fork provenance (base commit + license)
+  init-docs-repo.ts        `noma init --template docs-repo` files (mirrors ferax564/noma-docs-template; Action + CLI pinned)
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
   index.ts                 Lean core library exports (root npm entry; no cloud/enterprise/native deps)
 bin/noma.mjs               Node CLI shim
 apps/                      Enterprise HTTP, worker, and Docs/Visuals/Work shell entry points
 packages/
-  mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block over stdio
+  mcp-server/              @ferax564/noma-mcp-server — read_doc/list_ids/validate_doc/patch_block/render_slide over stdio
   agent-sdk/               @ferax564/noma-agent-sdk — TS workflow layer (safePatch, capability checks, transcript replay)
   agent-sdk-py/            Python agent SDK starter
   noma-py-seed/            Native Python second-implementation seed — parser + ids + 3 patch ops vs conformance corpus (no Node dep)
