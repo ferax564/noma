@@ -151,7 +151,7 @@ repos (EZKeel, Stratos) runs on the minipc. Their workflows ask for
 `runs-on: [self-hosted, linux, minipc]` unless the repository variable `CI_RUNS_ON`
 overrides it (set it to `"ubuntu-latest"` to go back to hosted runners). Public repos
 (Noma, OrgFlow) stay on GitHub-hosted runners, which are free for public repositories
-and also cover macOS.
+and also cover macOS and Windows (OrgFlow's Windows desktop build runs there).
 
 ```bash
 # per repository: Settings → Actions → Runners → New self-hosted runner → copy the token
