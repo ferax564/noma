@@ -1393,6 +1393,10 @@ changes nothing. Shared foundations come first (one sign-in and permission
 model, one approval queue, one audit log). The codebases stay separate
 (TypeScript on SQLite, Go on Postgres). The enterprise gaps (PostgreSQL,
 native SAML, multi-process realtime) still come before new surfaces.
+*Shipped (unreleased):* keepop governance in Noma Cloud (`docs/noma-cloud.noma#agent-governance`)
+and in ezkeel's API-key gate, codixing (`#code-intelligence`), attachment text and
+previews, the paperDOM ports (`--to png`, `slide-text-overflow`, visual review in
+proofs, MCP `render_slide`), and `noma init --template docs-repo`.
 `docs/direction.noma` mirrors this section.
 
 ## 24. Shipped Tracker
