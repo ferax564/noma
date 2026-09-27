@@ -32,6 +32,34 @@ test("noma init creates a renderable starter document", () => {
   assert.match(render.stdout, /Agent-Safe Spec/);
 });
 
+test("noma init --template docs-repo scaffolds a pinned, valid docs repo", () => {
+  const dir = join(scratch(), "docs-repo");
+  const res = spawnSync("npx", ["tsx", "src/cli.ts", "init", dir, "--template", "docs-repo"], { encoding: "utf8" });
+  assert.equal(res.status, 0, res.stderr);
+  const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+  const workflow = readFileSync(join(dir, ".github/workflows/noma-ci.yml"), "utf8");
+  assert.match(workflow, new RegExp(`uses: ferax564/noma@v${pkg.version.replace(/\./g, "\\.")}`));
+  assert.match(workflow, new RegExp(`@ferax564/noma-cli@${pkg.version.replace(/\./g, "\\.")}`));
+  assert.doesNotMatch(workflow, /@main|@latest/);
+  for (const path of ["AGENTS.md", "README.md", ".gitignore"]) {
+    assert.doesNotMatch(readFileSync(join(dir, path), "utf8"), /__NOMA_VERSION__/);
+  }
+
+  const check = spawnSync("npx", ["tsx", "src/cli.ts", "check", join(dir, "docs/project.noma")], { encoding: "utf8" });
+  assert.equal(check.status, 0, check.stderr + check.stdout);
+  const proof = spawnSync(
+    "npx",
+    ["tsx", "src/cli.ts", "proof", join(dir, "docs/project.noma"), "--ops", join(dir, "patches/example-ops.json"), "--out", join(dir, "proof.html")],
+    { encoding: "utf8" },
+  );
+  assert.equal(proof.status, 0, proof.stderr + proof.stdout);
+
+  const again = spawnSync("npx", ["tsx", "src/cli.ts", "init", dir, "--template", "docs-repo"], { encoding: "utf8" });
+  assert.equal(again.status, 2);
+  const unknown = spawnSync("npx", ["tsx", "src/cli.ts", "init", join(scratch(), "x"), "--template", "nope"], { encoding: "utf8" });
+  assert.equal(unknown.status, 2);
+});
+
 test("noma render --strict blocks escape hatches and external assets", () => {
   const dir = scratch();
   const input = join(dir, "strict.noma");

@@ -375,6 +375,22 @@ widgets run in sandboxed iframes. PaperDOM is maintained as a fork in this
 repository. The full reasoning is in `docs/strategy-2026-09.md`.
 ::
 
+## Umbrella
+
+::decision{id="noma-umbrella" status="accepted" owner="ferax564" date="2026-09-27"}
+Noma is the product and the brand; the owner's other projects fold in as
+layers joined through APIs, not merged into one codebase. ezkeel is the
+engine behind Noma's deploys and test runs and stays sellable on its own.
+keepop's governance model (capability classes with bright lines, trust tiers,
+hash-bound append-only approvals) moves into Noma's approval queue and
+ezkeel's action gate instead of shipping as a third product. codixing stays
+standalone open source and runs as a per-repo sidecar for PR blast radius,
+code search and agent context. ferrox and officeconvert are optional sidecars
+that make PDF and Office attachments searchable and previewable. Upstream
+paperDOM pieces are ported into the fork, and `noma init --template docs-repo`
+is the adoption path. Every sidecar is optional and off by default.
+::
+
 ## See also
 
 - `PLAN.md` — full vision, including §23 refinements

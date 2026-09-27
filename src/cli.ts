@@ -32,6 +32,7 @@ import { collectIdRegistry } from "./ids.js";
 import { writePdfFromHtml, type PdfMarginOptions } from "./pdf.js";
 import { createAgentSafetyProof, renderProofHtml, renderProofMarkdownSummary } from "./proof.js";
 import { convertMarkdownToNoma } from "./ingest-markdown.js";
+import { docsRepoTemplateFiles } from "./init-docs-repo.js";
 import { NotionImportError, notionOutputFiles, parseNotionBundle, parseNotionExport } from "./notion-import.js";
 import type { RenderLlmOptions } from "./renderer-llm.js";
 import type { DocumentNode } from "./ast.js";
@@ -53,6 +54,7 @@ Usage:
   noma ingest <export.zip> --from notion --out <dir>
                                              Convert a Notion export into a .noma tree
   noma init [dir]                            Create a starter .noma document
+  noma init <dir> --template docs-repo       Scaffold an agent-maintained docs repo (proof-on-PR CI)
   noma ids <file.noma|book.yml>              Print canonical ID and alias registry
   noma prove <file.noma> [opts]              Alias for proof
   noma schema <name>                         Print bundled JSON Schema
@@ -208,6 +210,7 @@ interface CliArgs {
   profiles: string[];
   addStableIds: boolean;
   from?: string;
+  template?: string;
   math?: "katex" | "none";
   excludeStaleDays?: number;
   llmSelect: string[];
@@ -363,6 +366,8 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--from") {
       args.from = argv[++i];
+    } else if (a === "--template") {
+      args.template = argv[++i];
       i++;
     } else if (a === "--reason") {
       args.diffReason = argv[++i];
@@ -724,6 +729,27 @@ async function run(argv: string[]): Promise<void> {
 
   const cmd = args.command;
   if (cmd === "init") {
+    if (args.template !== undefined && args.template !== "docs-repo") {
+      process.stderr.write(`noma init: unknown --template ${args.template} (expected docs-repo)\n`);
+      process.exit(2);
+    }
+    if (args.template === "docs-repo") {
+      const targetDir = resolve(args.file ?? "noma-docs");
+      const files = docsRepoTemplateFiles(packageVersion());
+      const existing = Object.keys(files).filter((path) => existsSync(resolve(targetDir, path)));
+      if (existing.length > 0) {
+        process.stderr.write(`error: ${targetDir} already has ${existing.join(", ")}\n`);
+        process.exit(2);
+      }
+      for (const [path, content] of Object.entries(files)) {
+        const target = resolve(targetDir, path);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, content, "utf8");
+        process.stderr.write(`✓ wrote ${target}\n`);
+      }
+      process.stdout.write(`Next: cd ${targetDir} && noma ids docs/project.noma && noma proof docs/project.noma --ops patches/example-ops.json --out proof.html\n`);
+      return;
+    }
     const targetDir = resolve(args.file ?? "noma-starter");
     const targetFile = resolve(targetDir, "demo.noma");
     if (existsSync(targetFile)) {

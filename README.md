@@ -330,6 +330,7 @@ Five artifacts exercise the full block surface end-to-end. The main demos render
 - [Comparison guide](docs/comparison.noma) — when to choose Noma vs Markdown, MDX, raw HTML, or collaborative docs.
 - [LaTeX/Markdown/HTML pain research](docs/research-markdown-html-pains.noma) — external evidence behind the source/artifact/agent wedge.
 - [Starter templates](docs/templates.noma) — copyable research memo, decision record, technical spec, and agent refresh templates under `examples/templates/`.
+- Agent-maintained docs repo — `noma init my-docs --template docs-repo` (or the [noma-docs-template](https://github.com/ferax564/noma-docs-template) GitHub template) scaffolds a knowledge base, an `AGENTS.md` contract, and proof-on-PR CI pinned to your CLI version.
 - [Web workbench guide](docs/workbench.noma) — screenshots and workflows for the browser-based Word-style `.noma` editor.
 - [Noma Cloud guide](docs/noma-cloud.noma) — guide for hybrid retrieval, cited Ask, knowledge health, scoped agents, connectors/recipes, offline and realtime collaboration, enterprise controls, workspaces, permissions, publishing, and deployment.
 - [Noma Cloud launch runbook](docs/runbooks/cloud-launch.md) — technical-preview boundaries, no-go criteria, staging smoke tests, production secrets, backups, rollback, and release verification.
