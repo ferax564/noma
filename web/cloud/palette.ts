@@ -14,6 +14,8 @@ interface FindResponse {
   channels: Array<{ id: string; name: string; siteId: string; visibility: string; topic?: string }>;
   dms: Array<{ id: string; title: string }>;
   messages: Array<{ id: string; channelId: string; channel: string; threadId?: string; author: string; excerpt: string }>;
+  /** Present only when a visible project links a repository with a codixing server. */
+  code?: Array<{ repo: string; filePath: string; lineStart: number; lineEnd: number; signature: string; snippet: string; url: string }>;
 }
 
 interface PaletteItem {
@@ -132,6 +134,14 @@ function paletteItems(found: FindResponse): PaletteItem[] {
       title: message.excerpt,
       detail: `${message.channel} · ${message.author}`,
       open: () => openChatAt(message.channelId, message.threadId),
+    })),
+    ...(found.code ?? []).map((hit) => ({
+      group: "Code",
+      title: `${hit.filePath}:${hit.lineStart}-${hit.lineEnd}`,
+      detail: `${hit.repo} · ${hit.signature || hit.snippet.split("\n")[0] || ""}`,
+      open: async () => {
+        if (hit.url.startsWith("https://github.com/")) window.open(hit.url, "_blank", "noopener");
+      },
     })),
   ];
 }

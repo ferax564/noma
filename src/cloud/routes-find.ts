@@ -1,15 +1,17 @@
 /**
  * `GET /api/find?q=` — one search box across the product: spaces, pages, Work issues, channels,
- * direct messages and chat messages, each already filtered by what the caller may read. Backs the
- * command palette (Cmd/Ctrl+K).
+ * direct messages and chat messages, each already filtered by what the caller may read. When a
+ * visible project links a repository with a codixing server, a `code` group carries code hits from it.
+ * Backs the command palette (Cmd/Ctrl+K).
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { type CloudServerConfig, type Principal, requireUser } from "./context.js";
 import { HttpError, sendJson } from "./http.js";
 import { boundedInteger, numberQuery } from "./input.js";
 import { findInChat } from "./routes-chat.js";
+import { findCode } from "./code-intel.js";
 
-export function routeFind(req: IncomingMessage, res: ServerResponse, url: URL, config: CloudServerConfig, principal: Principal): void {
+export async function routeFind(req: IncomingMessage, res: ServerResponse, url: URL, config: CloudServerConfig, principal: Principal): Promise<void> {
   if ((req.method ?? "GET") !== "GET") throw new HttpError(405, "Method not allowed");
   const user = requireUser(principal);
   const q = (url.searchParams.get("q") ?? "").trim().slice(0, 200);
@@ -32,5 +34,7 @@ export function routeFind(req: IncomingMessage, res: ServerResponse, url: URL, c
     .flatMap((project) => config.store.listIssues(project.id, { q, limit }).map((issue) => ({ project, issue })))
     .slice(0, limit)
     .map(({ project, issue }) => ({ id: issue.id, key: issue.key, summary: issue.summary, status: issue.status, projectId: project.id, siteId: project.siteId }));
-  sendJson(res, 200, { q, spaces, pages, issues, ...findInChat(config, principal, user, q, limit) });
+  const chat = findInChat(config, principal, user, q, limit);
+  const code = await findCode(config, user, q, limit);
+  sendJson(res, 200, { q, spaces, pages, issues, ...chat, ...(code ? { code } : {}) });
 }

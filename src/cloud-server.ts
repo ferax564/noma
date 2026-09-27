@@ -18,6 +18,7 @@ import { type SiemTarget, siemTargetFromEnv } from "./cloud/siem.js";
 import { CloudDevLoopStore } from "./cloud-devloop.js";
 import { routeHooks } from "./cloud/routes-devloop.js";
 import { createRunProviderFromEnv, type RunProvider } from "./cloud/run-provider.js";
+import { type CodixingSettings, DEFAULT_CODIXING_SETTINGS } from "./cloud/codixing.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
 import { createEmbeddingProviderFromEnv, type EmbeddingProvider } from "./cloud-embeddings.js";
 import { createLlmProviderFromEnv, type LlmProvider } from "./cloud-llm.js";
@@ -150,6 +151,12 @@ export interface NomaCloudServerOptions {
   siem?: SiemTarget | null;
   /** Slack app for the two-way channel bridge; defaults to `NOMA_CLOUD_SLACK_BOT_TOKEN` + `NOMA_CLOUD_SLACK_SIGNING_SECRET`. `null` disables it. */
   slack?: SlackConfig | null;
+  /**
+   * Code intelligence: codixing servers are linked per repository; these are the server-wide knobs.
+   * Env: `NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS`, `NOMA_CLOUD_CODIXING_TIMEOUT_MS`,
+   * `NOMA_CLOUD_GITHUB_API_URL`, `NOMA_CLOUD_GITHUB_TOKEN` (or `_FILE`).
+   */
+  codixing?: Partial<CodixingSettings>;
   /** How often chat streams read events written by other processes on the same database (ms; default 500, 0 disables). */
   chatTailIntervalMs?: number;
 }
@@ -295,6 +302,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     ...(slack ? { slack } : {}),
     ...(siem ? { siem } : {}),
     ...(runProvider ? { runProvider } : {}),
+    codixing: codixingSettings(options.codixing ?? {}),
     blobs: options.blobStore ?? createBlobStoreFromEnv(storageRoot),
     maxAttachmentBytes: positiveInteger(
       options.maxAttachmentBytes ?? Number(process.env.NOMA_CLOUD_MAX_ATTACHMENT_BYTES ?? 25 * 1024 * 1024),
@@ -446,6 +454,18 @@ function s3ServerSideEncryption(raw: string | undefined): S3ServerSideEncryption
   if (normalized === "aes256") return "AES256";
   if (normalized === "aws:kms" || normalized === "kms") return "aws:kms";
   throw new Error('NOMA_CLOUD_S3_SSE must be "AES256", "aws:kms", or "none"');
+}
+
+function codixingSettings(options: Partial<CodixingSettings>): CodixingSettings {
+  const githubToken = options.githubToken ?? envSecret(process.env, "NOMA_CLOUD_GITHUB_TOKEN");
+  const githubApiUrl = options.githubApiUrl ?? (process.env.NOMA_CLOUD_GITHUB_API_URL?.trim() || DEFAULT_CODIXING_SETTINGS.githubApiUrl);
+  if (!/^https?:\/\//.test(githubApiUrl)) throw new Error("NOMA_CLOUD_GITHUB_API_URL must be an http(s) URL");
+  return {
+    allowPrivateHosts: options.allowPrivateHosts ?? enabledEnvironmentFlag("NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS"),
+    timeoutMs: positiveInteger(options.timeoutMs ?? Number(process.env.NOMA_CLOUD_CODIXING_TIMEOUT_MS ?? DEFAULT_CODIXING_SETTINGS.timeoutMs), "codixing.timeoutMs"),
+    githubApiUrl,
+    ...(githubToken ? { githubToken } : {}),
+  };
 }
 
 /** Reads `NAME`, or the file named by `NAME_FILE`; an empty secret file is an error. */
