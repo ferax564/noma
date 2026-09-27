@@ -113,6 +113,7 @@ scripts/                   Build/demo helpers — render PDFs, build-web-ui, sta
                            package-smoke, deploy-hetzner, check-memory-drift, release
 tools/vscode-noma/         VS Code language extension (TextMate grammar + bundled LSP client)
 .claude-plugin/            Claude Code plugin + marketplace manifests (`/plugin marketplace add ferax564/noma`)
+.claude/hooks/             SessionStart hook for Claude Code on the web — npm deps, .venv for the Python SDK, Puppeteer → preinstalled Chromium
 skills/noma-docs/          Claude Code skill — teaches agents the ids → proof → patch loop
 test/                      node:test suites — parser, patch, validator, roundtrip, docx, cloud-server, conformance, …
 .github/workflows/         CI — pages.yml (typecheck+tests+conformance+site → GitHub Pages),

@@ -35,9 +35,14 @@ test("cloud UI workspace admin: overview, DLP policy, and audit export for admin
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
     await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 2 });
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      if (request.url().startsWith("https://rsms.me/")) void request.respond({ status: 200, contentType: "text/css", body: "" });
+      else void request.continue();
+    });
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => {
-      if (message.type() === "error" && !/fonts|rsms|ERR_TUNNEL_CONNECTION_FAILED/.test(message.text())) errors.push(message.text());
+      if (message.type() === "error") errors.push(message.text());
     });
     await page.goto(`${origin}/cloud.html`, { waitUntil: "load" });
     await page.locator("#cloudUserToken").fill(token);
