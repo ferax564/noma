@@ -1545,6 +1545,43 @@ changed on both sides, the local file is kept, the server version is written
 next to it as `<file>.noma.conflict`, and the command exits with status 1.
 Resolve the conflict, set `cloudHash` to the server hash, and sync again.
 
+To keep a Git checkout exactly as written, pass `--state <file>`. The sync keys
+then live in that JSON file (keyed by path, outside the checkout) instead of in
+each file's frontmatter, so a clean checkout stays clean until the wiki really
+changes a page, and the same files can be synced to more than one server. In
+this mode the directory's layout belongs to Git: a synced file keeps its path
+whatever its page is titled, and only pages that have no local file yet are
+written at the server's path. A new file's parent is the page whose file sits
+next to its directory (`guide.noma` for `guide/setup.noma`), and parents are
+created before their children. To resolve a conflict, merge the server version
+into the page, delete the `.noma.conflict` file, and sync again: the merge is
+pushed on top of the server revision the conflict was written from.
+
+With `--state`, moves and deletes are mirrored too, and never at the cost of an
+edit:
+
+| Change | Mirrored as | Unless |
+|---|---|---|
+| File renamed or moved in the directory | The same page (same ID and history), moved under the page of its new directory | Its source also changed; then it is a delete plus a new page |
+| File deleted in the directory | The page is trashed | The page changed on the server since the last sync; then the server version is restored at the old path (`restored`) |
+| Page trashed in the wiki | The file is deleted (`deleted`) | The file changed locally; then it is kept and reported (`remote_missing`) |
+| Page moved to another parent in the wiki | The file moves into the directory of its new parent, keeping its name | The file changed locally, or the target path is taken |
+
+A page that is only hidden from the sync token (`403`) is never treated as
+deleted.
+
+Scripts can find or create the space first:
+
+```bash
+noma cloud spaces [--json]                                  # id, key, title
+noma cloud create-space --title "Stratos" --key STR         # prints {"id":…,"created":…}; reuses the space with that key
+noma cloud sync --site <space-id> --dir wiki --state ~/.local/share/noma-sync/stratos.json
+```
+
+`deploy/minipc/` in the repository runs Noma Cloud on one home server with
+Docker Compose and Tailscale, and uses these commands to keep one space per
+project in step with each repository's `wiki/` directory.
+
 A scheduled GitHub Action keeps a repository and a space in step:
 
 ```yaml

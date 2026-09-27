@@ -1,0 +1,118 @@
+---
+title: Noma
+description: Space home for the Noma project wiki — what Noma is, where it stands, and where to read more.
+tags: [wiki, home, noma]
+---
+
+# Noma {id="nm-home"}
+
+::summary{id="nm-home-summary"}
+Noma is a plain-text document format (`.noma`) plus a hosted team workspace
+(Noma Cloud) built on it. The format and Cloud are **one product**: pages are
+readable source with stable block IDs, and agents edit them one block at a
+time through proof, human approval, and a hash-checked apply. The current
+release is **v0.19.0** (2026-09-26); five more Cloud work packages have
+already merged to `main` under `[Unreleased]`.
+::
+
+This wiki is the curated entry point. It summarizes and links to the deep
+docs in the repository (`docs/*.noma`, `PLAN.md`, `CHANGELOG.md`); it does
+not replace them. When this wiki and the repo disagree, the repo wins —
+file a Work issue labelled `dogfood` and fix the page.
+
+## What Noma is {id="nm-home-what"}
+
+One-liner from `docs/direction.noma`: *Noma is the wiki for the agentic-AI
+era: a Confluence-class team wiki whose pages agents can safely edit.*
+
+Since 2026-09-26 (`PLAN.md` §23.21) Noma is growing into one collaboration
+surface for building software, with four parts over one permission model and
+one source of truth:
+
+::grid{columns=2}
+:::card{title="Wiki (Confluence / Notion)"}
+Spaces, page tree, labels, comments, history and diffs, restrictions,
+macros, templates, attachments, a Visual block editor, and live co-editing.
+Pages are `.noma` source and sync two-way with Git.
+:::
+
+:::card{title="Work (Jira)"}
+Projects, issues, boards, and inline page tasks. Issues can be created from
+a chat message in one step. Jira JSON imports into Work (unreleased).
+:::
+
+:::card{title="Chat (Slack)"}
+Channels per project or topic, threads, DMs, files, ⌘K search. Agents are
+members. A thread can be saved as a `.noma` page with one block per message.
+:::
+
+:::card{title="Run environments (ezkeel)"}
+`/deploy` and `/test` in a project channel start a run on the ezkeel stack;
+results post back to the thread and move the linked issue. Unreleased.
+:::
+::
+
+The rule that ties them together: **chat must always be able to land in
+source** — message → issue, thread → `.noma` page — so decisions end up in
+reviewable, diffable text (`PLAN.md` §23.21).
+
+## Status {id="nm-home-status"}
+
+| Item | Value | Source |
+|---|---|---|
+| Latest release | v0.19.0, 2026-09-26 | `package.json`, `CHANGELOG.md` |
+| Release headline | "the next Notion and Confluence for the agentic era" | `PLAN.md` §24.46 |
+| Unreleased on `main` | Chat for enterprises, GitHub/CI dev loop + ezkeel runs, unattended agents, DLP/SIEM/admin overview, Slack/Jira import and Slack bridge | `CHANGELOG.md` `[Unreleased]`, `PLAN.md` §23.22 |
+| Conformance suite | 57/57 fixtures pass (at v0.19.0) | `docs/status-2026-09-25.md` §6 |
+| Test suite | 1,165 of 1,166 pass at v0.19.0; the one failure is a sandbox-only font fetch in `test/cloud-ui.test.ts` | `docs/status-2026-09-25.md` §6 |
+| Cloud datastore | SQLite (WAL). PostgreSQL is a documented target, not ported | `docs/enterprise.noma` |
+| Cloud deployment label | Self-hosted technical preview, not managed SaaS | `docs/runbooks/cloud-launch.md` |
+| Open GitHub issues | 1 (#32, scheduled docs freshness report) | GitHub, checked 2026-09-27 |
+| v1.0 spec freeze | Not reached; exit criteria 2, 3 and 5 still open | `PLAN.md` §25.3 |
+
+## Pages in this space {id="nm-home-map"}
+
+| Page | What it covers |
+|---|---|
+| [[nm-arch|Architecture]] | Format kernel, Cloud server, browser app, packages, PaperDOM fork, barrels |
+| [[nm-roadmap|Roadmap]] | Now / Next / Later, risks, decisions, agent follow-ups, dogfooding |
+| [[nm-ops|Operations]] | Dev setup, verification gates, releases, Cloud deploys, backups, env vars |
+| [[nm-format|Format cheat sheet]] | Block syntax, IDs and aliases, directives, patch ops, the proof loop |
+
+The page tree follows the Git-native space layout: a page is `<slug>.noma`
+and its children live in the `<slug>/` directory (`docs/noma-cloud.noma`,
+"Git-native spaces").
+
+## Where the deep docs live {id="nm-home-deep-docs"}
+
+| Need | Read |
+|---|---|
+| Positioning and accepted direction decisions | `docs/direction.noma` (mirrors `PLAN.md` §23) |
+| Full product vision, shipped tracker per release | `PLAN.md` (§23 direction, §24 shipped, §25 road to v1.0, §26 Cloud knowledge roadmap) |
+| Format specification | `docs/spec.noma` |
+| Agent Protocol RFC (normative patch ops, transcripts, capabilities) | `docs/spec-agent-protocol-v1.noma` |
+| Module-by-module architecture | `docs/architecture.noma` |
+| Noma Cloud user and operator guide | `docs/noma-cloud.noma` |
+| Enterprise boundary: implemented vs still open | `docs/enterprise.noma` |
+| Stability register (what is frozen) | `docs/compatibility.noma` |
+| Agent how-to (ids → proof → patch) | `docs/agent-guide.noma`, `skills/noma-docs/` |
+| Security findings | `docs/security-review.noma`, `docs/review-2026-09.md` §3 |
+| Latest gap analysis vs Notion/Confluence | `docs/status-2026-09-25.md` |
+| Format and presentation strategy | `docs/strategy-2026-09.md` |
+| Cloud launch runbook | `docs/runbooks/cloud-launch.md` |
+| Publish runbooks (npm, PyPI, VS Code, MCP registry) | `docs/runbooks/` |
+| Release history | `CHANGELOG.md` |
+
+::callout{tone="info"}
+**For agents.** Read this page, then the child page you need. To edit a
+wiki page, target blocks by ID (every id in this space starts with `nm-`),
+run a proof first, and let a human approve. Do not rewrite whole pages.
+::
+
+## Out of scope {id="nm-home-non-goals"}
+
+From `docs/direction.noma` and `CLAUDE.md`: a plugin marketplace, a complex
+CSS theming engine, whiteboards and databases as feature-for-feature
+clones, and anything that makes `.noma` source lossy or non-reviewable.
+Every editor, importer, and agent path must round-trip through source with
+stable IDs.

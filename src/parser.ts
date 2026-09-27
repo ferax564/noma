@@ -484,11 +484,13 @@ function parseTable(
 
   const rows: string[][] = [];
   const cellIds: string[][] = [];
+  const raggedRows: Array<[number, number]> = [];
   let j = i + 2;
   while (j < to && TABLE_ROW_RE.test(lines[j] ?? "")) {
     const cells = splitRow(lines[j] ?? "");
+    if (cells.length !== header.length) raggedRows.push([rows.length, cells.length]);
     while (cells.length < header.length) cells.push("");
-    if (cells.length > header.length) cells.length = header.length;
+    if (cells.length > header.length) cells.splice(header.length - 1, cells.length, cells.slice(header.length - 1).join(" \\| "));
     const parsed = cells.map(parseInlineStableId);
     rows.push(parsed.map((cell) => cell.content));
     cellIds.push(parsed.map((cell) => cell.id ?? ""));
@@ -504,6 +506,7 @@ function parseTable(
   };
   if (headerIds.some(Boolean)) node.headerIds = headerIds;
   if (cellIds.some((row) => row.some(Boolean))) node.cellIds = cellIds;
+  if (raggedRows.length > 0) node.raggedRows = raggedRows;
 
   return { node, next: j };
 }

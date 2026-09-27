@@ -65,7 +65,8 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud-blobs.ts           Content-addressed attachment blob store (local disk + dependency-free SigV4 S3 driver)
   cloud-embeddings.ts      Embedding providers for hybrid search (local hash default, OpenAI-compatible, Voyage)
   cloud-llm.ts             LLM provider layer for Cloud AI (Claude Messages API over fetch, fake provider, pricing)
-  cloud-git-sync.ts        `noma cloud export-space|sync` — two-way space ↔ .noma directory sync
+  cloud-git-sync.ts        `noma cloud spaces|create-space|export-space|sync` — two-way space ↔ .noma directory sync (`--state` sidecar keys; mirrors renames/moves/deletes)
+  space-check.ts           `noma check <dir>` — validate a wiki directory as one space (cross-page [[id]] links, duplicate-space-id)
   cloud-collab.ts          Live co-editing relay for the Cloud Visual editor (Yjs rooms, checkpoints back to .noma, presence)
   editor-model.ts          Visual editor document model — .noma ↔ ProseMirror-style block tree (round-trips stable IDs)
   editor-yjs.ts            Yjs binding for the editor model (shared by browser and collab relay)
@@ -123,6 +124,8 @@ test/                      node:test suites — parser, patch, validator, roundt
                            ci.yml (PR matrix tests), freshness.yml (scheduled docs staleness check)
 action.yml                 Reusable GitHub Action — validate/render/proof .noma artifacts in CI (strict by default)
 infra/                     AWS/EU CloudFormation reference (eu-central-1, KMS, RDS, S3, Secrets Manager)
+deploy/minipc/             Dogfood deployment — Compose + tailscale serve, install/sync/backup scripts; sync.sh keeps one Cloud space per project in step with each repo's wiki/ (`noma cloud sync --state`)
+wiki/                      Noma's own project wiki (.noma) — synced to the NOMA space; wiki/noma.noma is the home, wiki/noma/*.noma its children
 Dockerfile, ezkeel.yaml    Noma Cloud container build + deployment config
 tsconfig.web.json          Browser typecheck config for web/ (DOM libs, bundler resolution) — `npm run typecheck:web`
 dist/                      Build output (gitignored). GH Pages deploys this.

@@ -60,6 +60,7 @@ export class EzkeelRunProvider implements RunProvider {
   async start(input: RunStartInput): Promise<RunStartResult> {
     const created = await this.call("POST", "/api/apps", { name: input.appName, repo_url: input.repoUrl });
     if (created.status !== 201 && created.status !== 409) throw new Error(`ezkeel refused the app: ${errorText(created)}`);
+    if (created.status === 409) await this.requireOwnApp(input.appName, input.repoUrl);
     const appUrl = stringField(record(created.body.app), "url") ?? this.appUrl(input.appName);
     let deployed: Awaited<ReturnType<EzkeelRunProvider["call"]>>;
     try {
@@ -99,6 +100,21 @@ export class EzkeelRunProvider implements RunProvider {
   async teardown(appName: string): Promise<void> {
     const response = await this.call("DELETE", `/api/apps/${encodeURIComponent(appName)}?purge=1`);
     if (response.status >= 400 && response.status !== 404) throw new Error(`ezkeel teardown failed: ${errorText(response)}`);
+  }
+
+  /**
+   * A 409 on create means the name is taken. Deploy into that app only when it is ours and builds the
+   * same repository; otherwise a preview or test run would ship someone else's code under our name.
+   */
+  private async requireOwnApp(appName: string, repoUrl: string): Promise<void> {
+    const response = await this.call("GET", "/api/apps");
+    const apps = response.status === 200 && Array.isArray(response.body.apps) ? response.body.apps.map(record) : [];
+    const app = apps.find((entry) => stringField(entry, "name") === appName);
+    if (!app) throw new Error(`ezkeel app name ${appName} is taken by an app this token cannot see`);
+    const existingRepo = stringField(app, "forgejo_repo");
+    if (!existingRepo || normalizeRepoUrl(existingRepo) !== normalizeRepoUrl(repoUrl)) {
+      throw new Error(`ezkeel app ${appName} builds ${existingRepo ?? "another repository"}, not ${repoUrl}; refusing to deploy into it`);
+    }
   }
 
   private appUrl(appName: string): string | undefined {
@@ -183,4 +199,14 @@ function errorText(response: { status: number; body: Record<string, unknown> }):
 
 function tail(text: string, lines: number): string {
   return text.split("\n").slice(-lines).join("\n").slice(-8_000);
+}
+
+function normalizeRepoUrl(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, "").replace(/\.git$/i, "");
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.protocol}//${parsed.host.toLowerCase()}${parsed.pathname.toLowerCase()}`;
+  } catch {
+    return trimmed.toLowerCase();
+  }
 }
