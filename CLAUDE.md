@@ -61,7 +61,8 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud-blobs.ts           Content-addressed attachment blob store (local disk + dependency-free SigV4 S3 driver)
   cloud-embeddings.ts      Embedding providers for hybrid search (local hash default, OpenAI-compatible, Voyage)
   cloud-llm.ts             LLM provider layer for Cloud AI (Claude Messages API over fetch, fake provider, pricing)
-  cloud-git-sync.ts        `noma cloud export-space|sync` — two-way space ↔ .noma directory sync
+  cloud-git-sync.ts        `noma cloud spaces|create-space|export-space|sync` — two-way space ↔ .noma directory sync (`--state` sidecar keys; mirrors renames/moves/deletes)
+  space-check.ts           `noma check <dir>` — validate a wiki directory as one space (cross-page [[id]] links, duplicate-space-id)
   cloud-collab.ts          Live co-editing relay for the Cloud Visual editor (Yjs rooms, checkpoints back to .noma, presence)
   editor-model.ts          Visual editor document model — .noma ↔ ProseMirror-style block tree (round-trips stable IDs)
   editor-yjs.ts            Yjs binding for the editor model (shared by browser and collab relay)
