@@ -52,11 +52,12 @@ src/                       TypeScript core — parser, AST, renderers, validator
   ingest-markdown.ts       Markdown → Noma converter (`noma ingest`)
   verify.ts                Conformance fixture runner (`noma verify`)
   cloud-server.ts          Noma Cloud HTTP server entry (config, top-level routing; renders with escape hatches OFF)
-  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, DMs, files, agent chat, eDiscovery, retention, thread → .noma), routes-find.ts (⌘K search across pages/issues/chat), routes-devloop.ts + devloop.ts + run-provider.ts (GitHub webhook, PR/CI → issues + threads, /deploy + /test runs on ezkeel), agent-runner.ts + routes-agent-ops.ts (hosted/scheduled agents, kill switch), routes-approvals.ts (one approval queue), dlp.ts + siem.ts (DLP detectors, audit NDJSON → SIEM), integrations.ts (Slack/Jira import, two-way Slack bridge), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
+  cloud/                   Cloud route modules — router.ts (`/api/:resource` table), routes-*.ts per resource, shared http/input/context/records/render; agent-assignments.ts (agents as teammates), routes-chat.ts + chat.ts (channels, DMs, files, agent chat, eDiscovery, retention, thread → .noma), routes-find.ts (⌘K search across pages/issues/chat), routes-devloop.ts + devloop.ts + run-provider.ts (GitHub webhook, PR/CI → issues + threads, /deploy + /test runs on ezkeel), agent-runner.ts + routes-agent-ops.ts (hosted/scheduled agents, kill switch), routes-approvals.ts (one approval queue), capabilities.ts + governance.ts (agent action registry, single gate, hash-bound approvals; keepop model), codixing.ts + code-intel.ts (optional per-repo codixing sidecar: PR blast radius, ⌘K code, agent context), attachment-text.ts (optional ferrox/officeconvert sidecars: attachment text, DLP, PDF previews), dlp.ts + siem.ts (DLP detectors, audit NDJSON → SIEM), integrations.ts (Slack/Jira import, two-way Slack bridge), oidc.ts + routes-oidc.ts (native OIDC login), multipart.ts, import-attachments.ts
   cloud-db.ts              SQLite persistence for Noma Cloud
   cloud-integrations.ts    Import ledgers + Slack bridge state (links, message map, people cache, outbox)
   slack-import.ts          Slack export ZIP → channels/messages; mrkdwn ↔ Markdown (pure)
   jira-import.ts           Jira search JSON → Work issues; ADF → Markdown (pure)
+  cloud-governance.ts      Agent governance persistence — append-only `agent_decisions` (trigger-enforced), per-space trust tiers, bright-line proposals
   cloud-compliance.ts      Compliance state — DLP policy + findings, SIEM cursor
   cloud-agent-ops.ts       Unattended agents — hosting, schedules, job queue, workspace kill switch
   cloud-devloop.ts         Dev-loop persistence — linked repos, pull requests, webhook dedupe, deploy/test runs
@@ -80,6 +81,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   enterprise-*.ts          Enterprise modules — contracts, store, adapter, PaperDOM host, workspace, demo, CRDT, connectors, knowledge, HTTP, worker, bench, recipes, reports, ops, Yjs, Atlassian, AWS, security review, paid-pilot
   paperdom-*.ts            PaperDOM canvas/slide kernel — maintained fork of github.com/ferax564/paperDOM (MIT, type-checked here)
   paperdom-pin.ts          PaperDOM fork provenance (base commit + license)
+  init-docs-repo.ts        `noma init --template docs-repo` files (mirrors ferax564/noma-docs-template; Action + CLI pinned)
   cli.ts                   `noma parse|render|check|export|patch|proof|ingest|init|ids|schema|docx-*|fmt|verify|diff`
   index.ts                 Lean core library exports (root npm entry; no cloud/enterprise/native deps)
 bin/noma.mjs               Node CLI shim
