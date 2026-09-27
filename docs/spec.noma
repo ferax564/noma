@@ -117,7 +117,9 @@ GitHub-style pipe tables. The parser detects a row of pipe-separated cells immed
 | **bold** | `code`   | [link](#)|
 ```
 
-The separator row sets per-column alignment: `:---` left, `:---:` center, `---:` right, `---` default. Inline markdown inside cells is preserved — bold, italic, code, and links all render. Use `\|` for a literal pipe inside a non-code cell; renderers show the pipe outside code spans while preserving the source escape. Pipes inside inline code spans do not split cells and do not need escaping, so serializers preserve `` `x|y` `` as code text while escaping separator-like pipes elsewhere.
+The separator row sets per-column alignment: `:---` left, `:---:` center, `---:` right, `---` default. Inline markdown inside cells is preserved — bold, italic, code, and links all render. Use `\|` for a literal pipe inside a non-code cell; renderers show the pipe outside code spans while preserving the source escape. Pipes inside inline code spans do not split cells and do not need escaping, so serializers preserve `` `x|y` `` as code text while escaping separator-like pipes elsewhere. The `|` inside a `[[target|label]]` wikilink never splits a cell either, so labelled wikilinks work in tables unescaped.
+
+Every body row should have as many cells as the header. A short row is padded with empty cells; a long row keeps its extra cells in the last column, joined with an escaped pipe (`2 \| 3`), so no text is lost. Either way the table records the row in `raggedRows` (`[rowIndex, sourceCellCount]`) and the validator reports `table-row-cells` (warning) on the row's line.
 
 The HTML renderer emits a real `<table class="noma-table">` with `text-align` styles per cell. The Markdown and LLM renderers keep the pipe format aligned to column widths so output stays readable in sharing and agent contexts.
 
@@ -766,6 +768,14 @@ noma check chapters/03-risks.noma --ignore-rule broken-reference
 ```
 
 Unknown rule names produce an `info` note; they do not fail the run.
+
+**Checking a wiki directory as one space.** `noma check <dir>` validates every `.noma` file under the directory (dot entries skipped) as the pages of one space, the way a Noma Cloud space resolves links: a `[[id]]` wikilink may point at a block or heading ID, or an alias, on any page of the directory. Attribute references (`for=`, `ref=`, `block=`, ...) must still resolve inside their own page. An ID or alias that two pages define (including a page's automatic filename alias) gets a `duplicate-space-id` warning, because a space-wide link to it is ambiguous. The command prints one summary line and exits 1 when any page has an error. Library callers pass the other pages' IDs as `ValidateOptions.spaceIds`, or use `validateSpace` / `checkSpaceDirectory` from `src/space-check.ts`.
+
+```bash
+noma check wiki/            # 5 page(s) checked as one space: 0 error(s), 0 warning(s)
+```
+
+**Callout tone.** `::callout` reads `tone=` (`info` default, `note`, `tip`, `warning`). A callout written with `type=` and no `tone=` renders with the default tone and gets a `callout-type-attribute` warning whose fix sets `tone=` to the same value.
 
 ## Memory profile (v0.8)
 

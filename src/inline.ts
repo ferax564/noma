@@ -169,7 +169,8 @@ export function escapeAttr(s: string): string {
 /**
  * Split a pipe-table row respecting `code spans` and `\|` escapes — pipes
  * inside backticks or escaped with a backslash are kept verbatim inside the
- * cell. Used by the parser and by `noma fmt` so both agree on cell counts.
+ * cell, and so is the `|` of a `[[target|label]]` wikilink. Used by the parser and by `noma fmt`
+ * so both agree on cell counts.
  */
 export function splitPipeRow(line: string): string[] {
   const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
@@ -186,6 +187,12 @@ export function splitPipeRow(line: string): string[] {
     if (ch === "`") {
       inBacktick = !inBacktick;
       buf += ch;
+      continue;
+    }
+    const wikilink = inBacktick ? undefined : wikilinkAt(trimmed, i);
+    if (wikilink) {
+      buf += wikilink;
+      i += wikilink.length - 1;
       continue;
     }
     if (ch === "|" && !inBacktick) {
@@ -209,6 +216,12 @@ export function escapePipeTableCell(cell: string): string {
       out += ch;
       continue;
     }
+    const wikilink = inBacktick ? undefined : wikilinkAt(cell, i);
+    if (wikilink) {
+      out += wikilink;
+      i += wikilink.length - 1;
+      continue;
+    }
     if (ch === "|" && !inBacktick && cell[i - 1] !== "\\") {
       out += "\\|";
       continue;
@@ -216,6 +229,13 @@ export function escapePipeTableCell(cell: string): string {
     out += ch;
   }
   return out;
+}
+
+/** The `[[target|label]]` wikilink starting at `index`, if any; its `|` never separates table cells. */
+function wikilinkAt(text: string, index: number): string | undefined {
+  if (text[index] !== "[" || text[index + 1] !== "[") return undefined;
+  const match = /^\[\[[^\[\]\n]+?\]\]/.exec(text.slice(index));
+  return match?.[0];
 }
 
 export type DelimitedRowDelimiter = "," | "\t";

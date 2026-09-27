@@ -1,0 +1,177 @@
+---
+title: Roadmap
+description: Now / Next / Later for Noma, with risks, decisions, agent follow-ups, and the dogfooding plan. Every item cites its source.
+tags: [wiki, roadmap, planning, noma]
+---
+
+# Roadmap {id="nm-roadmap"}
+
+::summary{id="nm-roadmap-summary"}
+The loop Noma is closing is **conversation → decision → code → verified
+deploy**, run by people and agents under one permission model (`PLAN.md`
+§23.22). All five steps of that roadmap have merged to `main` but are not
+yet released. The near-term job is to ship them, run Noma on itself
+(dogfooding), and then work down the scale and enterprise gaps listed in
+`docs/status-2026-09-25.md` §5 and `docs/enterprise.noma`.
+::
+
+Status words: **shipped** = in a tagged release; **merged** = on `main`,
+listed under `CHANGELOG.md` `[Unreleased]`; **open** = not built. This
+page was written on 2026-09-27; check `CHANGELOG.md` for anything newer.
+
+## Now {id="nm-roadmap-now"}
+
+| # | Item | State | Source |
+|---|---|---|---|
+| 1 | Cut the next release with the five merged §23.22 steps: enterprise chat, GitHub/CI + ezkeel runs, unattended agents, DLP/SIEM/admin overview, Slack/Jira import + Slack bridge. Version number not decided (unknown) | merged, unreleased | `CHANGELOG.md` `[Unreleased]`, `PLAN.md` §23.22 |
+| 2 | Dogfood Noma Cloud on a self-hosted box with one space per project (see Dogfooding below) | starting | this wiki |
+| 3 | Validate the dev loop end to end against a real ezkeel deployment: repo link, PR/CI events, `/deploy`, `/test`, approval of agent-requested runs | merged, untested outside CI (unknown) | `docs/noma-cloud.noma` "Code, CI, and run environments" |
+| 4 | Keep docs in lockstep on release: `package.json`, `docs/spec.noma`, `docs/agent-protocol.noma`, README status, `PLAN.md` §24 | recurring | `CLAUDE.md` "Versioned Locations" |
+| 5 | Scheduled docs freshness report | open issue #32 | GitHub issue #32 |
+
+## Next {id="nm-roadmap-next"}
+
+Ordered by how much each would matter in an enterprise evaluation
+(`docs/status-2026-09-25.md` §5), plus the items `PLAN.md` §23.22 step 4
+leaves open.
+
+| Item | Why | Source |
+|---|---|---|
+| Multi-node collaboration fan-out for the Yjs relay (Redis or Postgres `LISTEN/NOTIFY`, keep persist-before-ack) | Today multi-node needs sticky routing per document | status §5 #1 |
+| Same-block concurrent edits (character-level Yjs text inside a block) | Two people editing one paragraph keep both versions | status §5 #2 |
+| PostgreSQL as the Cloud datastore | Cloud runs on SQLite; only DDL exists for Postgres | `docs/enterprise.noma`, `PLAN.md` §23.22 step 4 |
+| Native SAML | Some IdPs are SAML-only; today SAML goes through a trusted-header proxy | status §5 #3, `docs/enterprise.noma` |
+| Embedding score calibration per provider | Thresholds were tuned for hash vectors | status §5 #4 |
+| Instance-role S3 credentials and `noma cloud migrate-blobs` | Run on AWS without static keys | status §5 #6 |
+| OIDC logout, group sync, multiple IdPs | Enterprise identity depth | status §5 #7 |
+| Real AWS/EU staging deployment with a smoke test | CloudFormation is validated, never deployed | status §5 #8, `docs/review-2026-09.md` status update |
+| Third-party pentest report | Only the in-repo review pack exists | `docs/enterprise.noma` |
+| Webhooks for standalone pages | They fire only for pages inside spaces | `docs/review-2026-09.md` status update |
+
+## Later {id="nm-roadmap-later"}
+
+| Item | Source |
+|---|---|
+| Database *views* (board, table, calendar) over page properties; source stays `.noma`, no separate database store | status §5 #5 |
+| Unify the PaperDOM and flow-deck visual models | `docs/strategy-2026-09.md` §6 Phase 3 |
+| Native mobile apps (keep the PWA until after v1.0) | status §5 #9 |
+| v1.0 spec freeze: an external consumer runs the agent → proof → merge loop for 30 days; a second implementation lives outside this repo; six weeks without a breaking change | `PLAN.md` §25.3 criteria 2, 3, 5 |
+| Grow `packages/noma-py-seed` to full conformance | status §5 #10, `PLAN.md` §25.5 |
+| Validate top problems with five to eight target teams before broad connector or realtime work | `PLAN.md` §26.6 |
+
+## Dogfooding {id="nm-roadmap-dogfooding"}
+
+Noma Cloud now runs **self-hosted on a home mini PC**, with **one space per
+project**: Noma, EZKeel, Stratos, and OrgFlow. Each space is synced from
+that repository's `wiki/` directory (this page lives at
+`wiki/noma/roadmap.noma`). The deployment kit is `deploy/minipc/`; see the
+[[nm-ops|Operations]] page.
+
+::callout{tone="warning"}
+This is a single home host. Treat it as a technical preview: backups and a
+restore rehearsal come before anyone relies on it (`docs/runbooks/cloud-launch.md`,
+"Backup and restore").
+::
+
+What dogfooding should validate:
+
+| Area | What to check | Done when |
+|---|---|---|
+| Wiki editing + Git round-trip | Edit in the Visual editor and in source; run `noma cloud sync` against each repo's `wiki/`; conflicts produce `.noma.conflict` files | A week of edits with no lost change and byte-identical round-trips |
+| Agent proof → approve → apply | An agent proposes block patches; a different human approves; a stale `baseHash` is refused | At least one real agent change applied per space |
+| Work issues | Plan real work as issues; chat message → issue; inline page tasks | Day-to-day tasks tracked in Work, not elsewhere |
+| Chat | Project and topic channels; threads saved as `.noma` pages; agents answering mentions | One decision captured from a thread into a page |
+| `/deploy` and `/test` via ezkeel | Runs start from a thread, need approval when an agent asks, post results back, move issues | A green run moves an issue to review; a red test files a follow-up |
+| Search and Ask | ⌘K across pages, issues, chat; Ask returns block-level citations or abstains | Failed searches and wrong answers are logged as issues |
+
+::decision{id="nm-dogfood-feedback-loop" status="proposed" owner="maintainer"}
+Every friction found while dogfooding becomes a **Work issue labelled
+`dogfood`** in the affected project's space, filed the same day, with the
+page or channel link and what was expected. Triage the `dogfood` label
+weekly; fixes that change behaviour get a `CHANGELOG.md` entry.
+::
+
+## Decisions {id="nm-roadmap-decisions"}
+
+Accepted decisions live in `docs/direction.noma`; they are summarized here.
+
+::decision{id="nm-dec-wiki-direction" status="accepted" owner="maintainer"}
+Noma is the wiki for the agentic-AI era; the format and Noma Cloud are one
+product (2026-09-23). Source: `docs/direction.noma` `wiki-direction`,
+`PLAN.md` §23.19.
+::
+
+::decision{id="nm-dec-collaboration-surface" status="accepted" owner="maintainer"}
+Noma grows into one collaboration surface: wiki, Work, Chat, and run
+environments on ezkeel. Chat must always land in source (2026-09-26).
+Source: `docs/direction.noma` `collaboration-surface`, `PLAN.md` §23.21.
+::
+
+::decision{id="nm-dec-lego" status="accepted" owner="maintainer"}
+`.noma` is the standard; HTML is a projection and a sandboxed escape hatch.
+Per-space style-token vocabularies, sandboxed `::html` widgets in Cloud,
+PaperDOM forked in-repo (2026-09-24). Source: `docs/strategy-2026-09.md` §8.
+::
+
+::decision{id="nm-dec-next-release-version" status="open" owner="maintainer"}
+Version number and headline for the release that ships the `[Unreleased]`
+work. Not decided as of 2026-09-27.
+::
+
+## Risks {id="nm-roadmap-risks"}
+
+::risk{id="nm-risk-scope" severity="high" owner="maintainer"}
+Scope sprawl. The review found Cloud, enterprise, and PaperDOM at about 40%
+of `src/` with little depth where users spend time. Four product surfaces
+now share one repo. Mitigation: dogfood, and prefer depth fixes from
+`dogfood` issues over new surfaces. Source: `docs/review-2026-09.md` §1.
+::
+
+::risk{id="nm-risk-scale" severity="medium" owner="maintainer"}
+Single-node limits. SQLite datastore and single-process Yjs fan-out mean
+one host per workspace. Fine for dogfooding, blocks larger deployments.
+Source: `docs/status-2026-09-25.md` §5, `docs/enterprise.noma`.
+::
+
+::risk{id="nm-risk-unreleased" severity="medium" owner="maintainer"}
+A large body of merged work is unreleased and only tested in CI. Bugs will
+surface first in dogfooding. Source: `CHANGELOG.md` `[Unreleased]`.
+::
+
+::risk{id="nm-risk-same-block" severity="medium" owner="maintainer"}
+Same-block concurrent edits keep both versions instead of merging, which
+can look like data duplication to users. Source: `docs/status-2026-09-25.md` §5 #2.
+::
+
+::risk{id="nm-risk-runs" severity="medium" owner="maintainer"}
+`/deploy` and `/test` start real workloads on ezkeel. Guardrails exist
+(owner opt-in, minutes budget, concurrency cap, `run` capability, approval
+by a different person), but have not been exercised outside tests.
+Source: `docs/noma-cloud.noma` "Code, CI, and run environments".
+::
+
+::risk{id="nm-risk-v1" severity="low" owner="maintainer"}
+v1.0 needs an external consumer and an out-of-repo second implementation;
+neither exists yet. Source: `PLAN.md` §25.3.
+::
+
+## Agent follow-ups {id="nm-roadmap-agent-tasks"}
+
+::agent_task{id="nm-task-wiki-sync-check" scope="wiki"}
+After each merge to `main`, compare `CHANGELOG.md` `[Unreleased]` and
+`PLAN.md` §24 with this page and the space home. Propose block patches (by
+`nm-` ID) for anything that moved between Now, Next, and shipped. Do not
+rewrite whole pages.
+::
+
+::agent_task{id="nm-task-dogfood-triage" scope="work"}
+Weekly: list open Work issues labelled `dogfood` across the four spaces,
+group them by area (wiki, agents, Work, Chat, runs, search), and post a
+digest in the Noma space's topic channel.
+::
+
+::agent_task{id="nm-task-status-gaps" scope="docs"}
+When a gap from `docs/status-2026-09-25.md` §5 ships, propose moving its
+row from Next to shipped here and check that `docs/enterprise.noma` says
+the same.
+::

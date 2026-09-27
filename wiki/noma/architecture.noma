@@ -1,0 +1,195 @@
+---
+title: Architecture
+description: How the Noma codebase fits together — format kernel, Cloud server, browser app, packages, PaperDOM fork, and public barrels.
+tags: [wiki, architecture, noma]
+---
+
+# Architecture {id="nm-arch"}
+
+::summary{id="nm-arch-summary"}
+One TypeScript repo (`src/` is about 55k lines) holds three layers: the
+**format kernel** (parser → AST → validator / renderers / patch / proof),
+**Noma Cloud** (a Node HTTP server over SQLite with route modules per
+resource), and the **browser app** (`web/cloud/`, bundled with esbuild).
+Satellite packages (MCP server, agent SDKs, LSP) wrap the kernel. The
+module-by-module reference is `docs/architecture.noma`; the layout table in
+`CLAUDE.md` is the most current file map.
+::
+
+## Big picture {id="nm-arch-big-picture"}
+
+```text
+                 .noma source (Git, Cloud pages, wiki/ dirs)
+                              │
+                              ▼  src/parser.ts (forgiving)
+                        typed AST (src/ast.ts)
+        ┌──────────────┬──────┴───────┬────────────────┬──────────────┐
+        ▼              ▼              ▼                ▼              ▼
+  validator.ts    renderers       patch.ts          proof.ts        ids.ts
+  (strict,        html, llm,      patchSource:      simulate ops,   ID/alias
+  diagnostics,    json, noma,     25 block ops,     validate, hash, registry
+  fixits)         markdown,       baseHash          preview
+                  docx, pdf,      preconditions
+                  site, paperdom,
+                  slides, pptx
+        └──────────────┴──────┬───────┴────────────────┴──────────────┘
+                              │ used by
+       ┌──────────────────────┼─────────────────────────────┐
+       ▼                      ▼                             ▼
+   src/cli.ts           src/cloud-server.ts          packages/*
+   (noma CLI)           + src/cloud/ routes          mcp-server, agent-sdk,
+                        + cloud-db.ts (SQLite)       agent-sdk-py, lsp-server,
+                        + blobs, collab, chat,       noma-py-seed
+                          devloop, agents
+                              ▲
+                              │ HTTP / SSE / WebSocket (Yjs)
+                        web/cloud/*.ts (browser app)
+```
+
+## Format kernel {id="nm-arch-kernel"}
+
+The kernel follows the Iron Rules in `CLAUDE.md`: `src/ast.ts` is the
+single source of truth, renderers are pure, the parser is forgiving and the
+validator is strict, block IDs are public API, and examples are tests.
+
+| Module | Role |
+|---|---|
+| `src/ast.ts` | Discriminated `Node` union: document, section, paragraph, code, list, list_item, quote, thematic_break, table, directive |
+| `src/parser.ts` | Hand-written line-based recursive descent; fence depth by colon count (max 64); attribute grammar; heading `{id aliases}` |
+| `src/inline.ts` | Lazy inline Markdown, shared `splitPipeRow` for tables |
+| `src/validator.ts` | Diagnostics with spans, profiles, `--ignore-rule`, mechanical fixits |
+| `src/renderer-*.ts` | HTML, LLM, JSON, `.noma`, Markdown, DOCX, site, PaperDOM; `src/pdf.ts` drives Chromium |
+| `src/patch.ts` | 25 block-level ops; `patchSource` (source-preserving) is canonical |
+| `src/patch-book.ts` | Book-wide transactions routed to the owning chapter |
+| `src/proof.ts` | Agent safety proof: simulate, validate, hash, sandboxed preview |
+| `src/ids.ts`, `src/stable-identity.ts` | ID/alias registry; persistent block, table, and cell IDs |
+| `src/hash.ts` | Dependency-free sha256 behind `blockSourceHash` |
+| `src/components.ts`, `src/style-tokens.ts`, `src/slides.ts` | Component kits, closed `class=` vocabulary, decks |
+| `src/macros.ts` | Wiki macros (`::include`, `::excerpt`, `::children`, `::issue(s)`, `::page-properties`) as pure resolvers |
+| `src/ingest-markdown.ts`, `src/confluence-*.ts`, `src/notion-import.ts` | Importers with loss reports |
+| `src/cli.ts` | The `noma` command |
+
+`src/index.ts` is the lean root npm entry: it loads no Cloud, enterprise,
+or native dependencies (`PLAN.md` §24.44).
+
+## Noma Cloud server {id="nm-arch-cloud"}
+
+::grid{columns=2}
+:::card{title="Entry and routing"}
+`src/cloud-server.ts` (about 650 lines) reads config and does top-level
+routing. `src/cloud/router.ts` maps `/api/:resource` to one `routes-*.ts`
+module per resource (documents, sites, chat, work, devloop, agents,
+approvals, enterprise, import, find, …). Shared helpers live in
+`src/cloud/{http,input,context,records,render}.ts`.
+:::
+
+:::card{title="Persistence"}
+`src/cloud-db.ts` (about 5,800 lines) is the SQLite store. Feature state is
+split out: `cloud-chat.ts`, `cloud-devloop.ts`, `cloud-agent-ops.ts`,
+`cloud-compliance.ts`, `cloud-integrations.ts`. One WAL database file is
+shared by the web process and the workers.
+:::
+
+:::card{title="Attachments"}
+`src/cloud-blobs.ts`: content-addressed blob store, local disk by default,
+or a dependency-free SigV4 S3 driver (`NOMA_CLOUD_BLOB_STORE=s3`).
+Multipart uploads in `src/cloud/multipart.ts`.
+:::
+
+:::card{title="Live co-editing"}
+`src/cloud-collab.ts`: Yjs rooms with persist-before-ack, presence, and
+checkpoints written back to `.noma` as normal revisions.
+`src/editor-model.ts` maps `.noma` ↔ a ProseMirror-style block tree and
+round-trips stable IDs. Merge granularity is the top-level block.
+:::
+
+:::card{title="Chat"}
+`src/cloud/routes-chat.ts` + `src/cloud/chat.ts` + `src/cloud-chat.ts`:
+channels, threads, DMs, files, reactions, read markers, SSE streams. Events
+also go to a short-lived shared log so other processes can tail them.
+:::
+
+:::card{title="Dev loop"}
+`src/cloud/routes-devloop.ts`, `devloop.ts`, `run-provider.ts`: GitHub
+webhook (HMAC, deduped), PR/CI → issues and threads, `/deploy` and `/test`
+runs on ezkeel.
+:::
+
+:::card{title="Agents"}
+Scoped agent identities and the MCP/API gateway (`routes-agents.ts`),
+assignments (`agent-assignments.ts`), hosted and scheduled agents
+(`agent-runner.ts`, `routes-agent-ops.ts`), one approval queue
+(`routes-approvals.ts`), workspace kill switch.
+:::
+
+:::card{title="AI, search, compliance"}
+`cloud-llm.ts` (Claude Messages API over fetch, fake provider),
+`cloud-embeddings.ts` (local hash default, OpenAI-compatible, Voyage),
+`cloud-platform.ts` (RAG, trust, recipes, policy), `routes-find.ts` (⌘K),
+`dlp.ts` and `siem.ts` (DLP detectors, audit NDJSON to a SIEM).
+:::
+::
+
+Other Cloud modules: `src/cloud/oidc.ts` (native OIDC login),
+`src/cloud-git-sync.ts` (`noma cloud export-space|sync`),
+`src/cloud/integrations.ts` + `src/slack-import.ts` + `src/jira-import.ts`
+(switching), `src/cloud-templates.ts`, `src/zip.ts`.
+
+Background work runs in-process on a timer, or in the standalone workers
+under `apps/worker/` (`cloud-queue.ts`, `cloud-maintenance.ts`).
+
+## Browser app {id="nm-arch-web"}
+
+`web/cloud/` holds about 50 modules for the Cloud UI: `main.ts` (listeners
+and boot), `state.ts` (one shared state object), `api.ts`, `navigation.ts`,
+`editor.ts` and `visual-editor.ts` (ProseMirror), `visual-collab.ts` (Yjs),
+`chat.ts`, `work.ts`, `devloop.ts`, `palette.ts` (⌘K), `admin.ts`, and more.
+`web/workbench.ts` is the standalone editor with the proof panel.
+`scripts/build-web-ui.ts` bundles them with esbuild into `site/assets/`, and
+`npm run typecheck:web` checks them against `tsconfig.web.json`.
+
+The landing page `site/index.html` is hand-written HTML, not rendered from
+`.noma`.
+
+## Packages {id="nm-arch-packages"}
+
+| Package | What it is |
+|---|---|
+| `packages/mcp-server` | `@ferax564/noma-mcp-server`: stdio MCP with `read_doc`, `list_ids`, `validate_doc`, `patch_block` |
+| `packages/agent-sdk` | `@ferax564/noma-agent-sdk`: TS workflow layer (safe patch, capability checks, transcript replay) |
+| `packages/agent-sdk-py` | Python agent SDK starter |
+| `packages/noma-py-seed` | Native Python second implementation seed: parser, ids, 3 patch ops against the conformance corpus |
+| `packages/lsp-server` | `@ferax564/noma-lsp`: diagnostics, symbols, definition, completion; bundled by `tools/vscode-noma/` |
+| `packages/{document-core,work,platform,…}` | Enterprise extraction boundaries. They re-export the CLI kernel and add no isolation yet (`docs/review-2026-09.md` §5) |
+
+## PaperDOM fork {id="nm-arch-paperdom"}
+
+`src/paperdom-*.ts` is a maintained fork of the MIT-licensed PaperDOM
+canvas/slide kernel. `src/paperdom-pin.ts` records the base repo and commit
+for provenance. Since 2026-09-24 the fork is type-checked and linted like
+the rest of `src/` (maintainer decision 4 in `docs/strategy-2026-09.md` §8).
+It backs `--to paperdom`, `::canvas` (`src/canvas-svg.ts`), `--to pptx`
+(`src/paperdom-pptx.ts`), and canvas → `.noma` sync
+(`src/paperdom-sync.ts`).
+
+## Public entry points {id="nm-arch-barrels"}
+
+| Import | File | Loads |
+|---|---|---|
+| `@ferax564/noma-cli` | `src/index.ts` | Kernel only |
+| `@ferax564/noma-cli/cloud` | `src/cloud.ts` | Cloud server and store; needs `better-sqlite3` |
+| `@ferax564/noma-cli/enterprise` | `src/enterprise.ts` | Enterprise Docs / Visuals / Work kernel (`src/enterprise-*.ts`) |
+
+The enterprise modules include real code and design spikes. Treat
+`docs/enterprise.noma` as the authority on which parts are implemented and
+which remain open.
+
+## Where to change what {id="nm-arch-change-guide"}
+
+| Change | Start in | Also touch |
+|---|---|---|
+| New directive name | a renderer case in `src/renderer-html.ts` | `docs/spec.noma`, an example, validator rule if it has invariants |
+| New AST node variant | `src/ast.ts` | every renderer switch, parser, tests (`CLAUDE.md` checklist) |
+| New patch op | `src/patch.ts` | `schemas/patch-op.schema.json`, conformance fixture, RFC |
+| New Cloud API resource | new `src/cloud/routes-*.ts` | one entry in `src/cloud/router.ts` |
+| New Cloud UI panel | `web/cloud/` | `npm run build:web-ui`, `typecheck:web` |

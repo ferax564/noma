@@ -46,6 +46,12 @@ export interface ValidateOptions {
    * and each one produces an `include-unknown-page` warning.
    */
   pageExists?: (page: string) => boolean;
+  /**
+   * IDs and aliases defined by the other pages of the same space (a wiki directory or a Cloud
+   * space). A `[[wikilink]]` to one of them resolves to that page, so it is not a broken reference.
+   * Attribute references (`for=`, `ref=`, ...) still have to resolve inside this document.
+   */
+  spaceIds?: ReadonlySet<string>;
 }
 
 const DEFAULT_STALE_DAYS = 365;
@@ -365,6 +371,15 @@ export function validate(source: DocumentNode, options: ValidateOptions = {}): D
       }
     }
     if (node.type === "table") {
+      for (const [rowIndex, cellCount] of node.raggedRows ?? []) {
+        const line = node.pos ? node.pos.line + 2 + rowIndex : undefined;
+        diagnostics.push({
+          severity: "warning",
+          code: "table-row-cells",
+          message: `Table row ${rowIndex + 1} has ${cellCount} cell(s) but the header has ${node.header.length}. ${cellCount > node.header.length ? "The extra cells are kept in the last column." : "Missing cells render empty."}`,
+          ...(line !== undefined ? { pos: { line, column: 1 } } : {}),
+        });
+      }
       for (const tableId of collectTableIdentityStrings(node)) {
         if (ids.has(tableId)) {
           diagnostics.push({
@@ -617,6 +632,17 @@ export function validate(source: DocumentNode, options: ValidateOptions = {}): D
 
     if (node.name === "canvas" && !suppressed(node)) validateCanvas(node, diagnostics);
 
+    if (node.name === "callout" && "type" in node.attrs && !("tone" in node.attrs) && !suppressed(node)) {
+      diagnostics.push({
+        severity: "warning",
+        code: "callout-type-attribute",
+        message: `Callouts read tone=, not type=; this one renders with the default "info" tone. Write tone="${String(node.attrs.type)}".`,
+        pos: node.pos,
+        nodeId: node.id,
+        ...(node.id ? { fix: { op: "update_attribute", id: node.id, key: "tone", value: node.attrs.type } } : {}),
+      });
+    }
+
     if (node.name === "figure" && !suppressed(node) && !node.attrs.alt && !node.attrs.caption) {
       diagnostics.push({
         severity: "warning",
@@ -854,6 +880,7 @@ export function validate(source: DocumentNode, options: ValidateOptions = {}): D
 
   for (const target of referenced) {
     if (ids.has(target) || aliasIds.has(target)) continue;
+    if (options.spaceIds?.has(target) && wikilinkRefs.has(target) && refSites.every((site) => site.target !== target || !site.attrKey)) continue;
     const suggestion = nearestId(target, [...ids.keys(), ...aliasIds]);
     const hint = suggestion ? ` Did you mean "${suggestion}"?` : "";
     const sites = refSites.filter((site) => site.target === target);
@@ -990,6 +1017,9 @@ function readDeclaredProfiles(meta: Record<string, unknown>, optionProfiles: str
 
 const KNOWN_RULES = [
   "invalid-frontmatter",
+  "table-row-cells",
+  "callout-type-attribute",
+  "duplicate-space-id",
   "duplicate-id",
   "out-of-profile-directive",
   "unknown-profile",

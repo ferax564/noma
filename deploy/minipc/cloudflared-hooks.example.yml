@@ -1,0 +1,16 @@
+# Public ingress for Noma Cloud webhooks only, through the minipc's existing Cloudflare tunnel.
+# Everything else stays tailnet-only. Merge the rule into the tunnel's config.yml (keep your
+# existing rules, e.g. SSH), then: sudo systemctl restart cloudflared
+# and add a DNS route: cloudflared tunnel route dns <tunnel> noma-hooks.<your-domain>
+#
+# The hooks are authenticated by their own secrets (the repository webhook secret for GitHub,
+# the signing secret for Slack), not by the Cloud access token, so they work from the internet.
+# Any other path on this hostname gets 404 from Cloudflare and never reaches the server.
+ingress:
+  - hostname: noma-hooks.example.com
+    path: ^/api/hooks/(github/[A-Za-z0-9_-]+|slack)$
+    service: http://127.0.0.1:8140
+  - hostname: noma-hooks.example.com
+    service: http_status:404
+  # ...your existing rules...
+  - service: http_status:404

@@ -8,6 +8,15 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Dogfooding kit for a home server (`deploy/minipc/`):** Docker Compose + `tailscale serve` deployment of Noma Cloud with an idempotent `install.sh` (secrets, health wait, refuses to start in the wrong Docker engine when two are running), a nightly online `backup.sh` (SQLite backup API + documents and blobs), and `sync.sh`, which keeps one space per project in step with each repository's `wiki/` directory. Wiki edits come back as a `noma-wiki-sync-<project>` branch to merge. Runbook in `deploy/minipc/README.md`.
+- **Project wiki for Noma (`wiki/`):** overview, architecture, roadmap (with the dogfooding plan), operations, and a format cheat sheet, written in `.noma` and synced to the Noma space.
+- **`noma cloud sync --state <file>`:** keeps the sync keys in a sidecar JSON file instead of page frontmatter, so a Git checkout holds only the page sources and keeps its own file names. Deleting a `.noma.conflict` file marks the conflict resolved; the next sync pushes the merge.
+- **`noma cloud spaces` and `noma cloud create-space --title --key`:** list spaces and create one idempotently by key, so sync scripts need no curl.
+- **`noma cloud sync --state` mirrors renames, moves, and deletes both ways.** A file renamed in Git keeps its page (same ID and history) and moves under its new directory's page; a deleted file trashes its page; a page trashed in the wiki deletes its file; a page moved in the wiki moves its file next to the new parent. Nothing is mirrored over an edit: a file deleted after its page was edited in the wiki is restored, and an edited file whose page was trashed is kept. A pull never overwrites a local file that is not synced yet: a new wiki page and a new local file at the same path are reported as a conflict.
+- **`noma check <dir>` checks a wiki directory as one space.** `[[id]]` links resolve to any page of the directory, the way a Noma Cloud space resolves them, and an ID or alias defined on two pages gets a `duplicate-space-id` warning. Library: `validateSpace` / `checkSpaceDirectory`, or `ValidateOptions.spaceIds`.
+- **Validator:** `table-row-cells` warns on a table row whose cell count differs from the header, and `callout-type-attribute` warns on `::callout{type=…}` (callouts read `tone=`) with a fix.
+- **Minipc kit:** `cloudflared-hooks.example.yml` exposes only the GitHub and Slack webhook paths through a Cloudflare tunnel, so the dev loop works while the wiki stays tailnet-only.
+
 - **Moving in from Slack and Jira (Noma Cloud):**
   - **Slack export import:** `POST /api/import/slack?siteId=` with the workspace export ZIP, or **Import Slack** in the Chat section.
     - Brings public and private channels, threads, reactions, and file links into the space. A private channel never lands in a public one with the same name; it gets its own `name-private` channel.
@@ -67,6 +76,13 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
     - **Messages:** avatars, messages from the same author grouped, day dividers, highlighted mentions, links, issue and page cards, and reaction pills. Hovering a message shows actions: react, reply, **Issue**, **Page**, delete.
     - **Composer:** grows with the text. Enter sends, Shift+Enter adds a new line, and agent chips insert mentions.
     - **Also:** live updates, Esc to close, dark mode, and a stacked layout on phones.
+
+### Fixed
+
+- **A labelled wikilink no longer splits a table cell.** The `|` in `[[id|label]]` started a new column, so labelled wikilinks were unusable in tables; `splitPipeRow` and the table serializer now treat a wikilink as one unit.
+- **Long table rows no longer lose cells.** The parser truncated a row with more cells than the header, and any re-render, `noma fmt`, or patch then dropped that text. The extra cells now stay in the last column (joined with an escaped pipe) and the table records the row in `raggedRows`.
+- **`/deploy` and `/test` never deploy into an app for another repository.** When ezkeel answered 409 (name taken) Noma deployed into the existing app regardless; it now checks that the app is visible to its token and builds the same repository, and refuses otherwise.
+- **`noma cloud sync` creates parent pages before their children.** On a fresh directory, `guide/setup.noma` could be created before `guide.noma` and land at the top of the space instead of under its parent.
 
 ### Changed
 
