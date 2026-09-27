@@ -65,7 +65,7 @@ Noma Cloud now runs **self-hosted on a home mini PC**, with **one space per
 project**: Noma, EZKeel, Stratos, and OrgFlow. Each space is synced from
 that repository's `wiki/` directory (this page lives at
 `wiki/noma/roadmap.noma`). The deployment kit is `deploy/minipc/`; see the
-Operations page (`wiki/noma/operations.noma`).
+[[nm-ops|Operations]] page.
 
 ::callout{tone="warning"}
 This is a single home host. Treat it as a technical preview: backups and a

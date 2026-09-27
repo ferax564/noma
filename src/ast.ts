@@ -107,6 +107,12 @@ export interface TableNode extends NodeBase {
   rowIds?: string[];
   /** Persistent identities for body cells. `cellIds[r][c]` matches `rows[r][c]`. */
   cellIds?: string[][];
+  /**
+   * Body rows whose source cell count differed from the header, as `[rowIndex, sourceCellCount]`.
+   * Short rows are padded with empty cells; the extra cells of long rows are kept in the last cell,
+   * joined with an escaped pipe, so no text is lost. The validator warns on each entry.
+   */
+  raggedRows?: Array<[number, number]>;
 }
 
 /**

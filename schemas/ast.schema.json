@@ -169,6 +169,15 @@
             "cellIds": {
               "type": "array",
               "items": { "type": "array", "items": { "type": "string" } }
+            },
+            "raggedRows": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 0 }],
+                "minItems": 2,
+                "maxItems": 2
+              }
             }
           }
         }

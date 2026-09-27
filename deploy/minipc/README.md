@@ -91,10 +91,12 @@ clones Stratos over SSH; use the same key or per-repo deploy keys). Set
   server version is written next to it as `<page>.noma.conflict` (ignored by Git) and
   the script exits 1. Merge the two by hand in the clone, then re-run; the sync pushes
   the result with the server hash as base.
-- New pages can be created in either place. Moves and deletes are not mirrored yet:
-  a page trashed in the wiki is reported (`remote_missing`) and stays in Git, and a
-  file deleted in Git is pulled back from the wiki (at a path derived from its title).
-  Delete in both places for now.
+- New pages, renames, moves, and deletes are mirrored both ways (`docs/noma-cloud.noma`,
+  "Git-native spaces"): a file deleted in Git trashes its page, a page trashed in the
+  wiki deletes its file, and a rename in Git keeps the page's ID and history. A change
+  is never mirrored over an edit: a deleted file whose page was edited in the wiki
+  comes back (`restored`), and an edited file whose page was trashed stays
+  (`remote_missing`).
 
 ## Update
 
@@ -129,13 +131,26 @@ tailscale serve status                                       # :8444 → 127.0.0
 tail -n 30 ~/.local/share/noma-dogfood/sync.log              # last sync: no conflicts
 ```
 
-## Not covered yet
+## GitHub and Slack webhooks
 
-- **GitHub → Work/Chat dev loop.** `POST /api/hooks/github/:projectId` must be reachable
-  from GitHub. The box is tailnet-only; expose just that path through the existing
-  Cloudflare tunnel (or Tailscale Funnel on a path) before linking repositories.
-- **`/deploy` and `/test` from Chat** need `NOMA_CLOUD_EZKEEL_URL` and a token file
-  (`.env.example`). They run on the EZKeel control plane, not on the minipc: EZKeel's
-  server-host SSRF guard rejects LAN and Tailscale (CGNAT) addresses, so the minipc
-  cannot be added as a BYOV server today.
-- **Moves and deletes** are not mirrored in either direction.
+The box is tailnet-only, but GitHub (PR and CI events → Work issues and project
+threads) and Slack (the two-way bridge) must reach `POST /api/hooks/…`. Expose only
+those paths through the minipc's Cloudflare tunnel with
+`cloudflared-hooks.example.yml`: one hostname whose path rule admits
+`/api/hooks/github/<projectId>` and `/api/hooks/slack`, and `404` for everything
+else. The hooks are authenticated by their own secrets, not by the access token.
+Then link a repository in the project's settings and give GitHub the webhook URL
+`https://noma-hooks.<your-domain>/api/hooks/github/<projectId>` with the secret Noma
+shows.
+
+## `/deploy` and `/test` from Chat
+
+They run on EZKeel: set `NOMA_CLOUD_EZKEEL_URL` and a token file
+(`NOMA_CLOUD_EZKEEL_TOKEN_FILE`, see `.env.example`) and re-run `install.sh`. Use a
+dedicated EZKeel account on a tier that allows several apps, because each preview and
+each test run is an app. Runs happen on that account's servers, not on the minipc.
+
+To run them on the minipc itself, the EZKeel control plane has to reach it over SSH.
+A self-hosted control plane that is on the tailnet can register the minipc as a BYOV
+server once its operator sets `EZKEEL_BYOV_ALLOWED_CIDRS` (e.g. `100.64.0.0/10`).
+Never set that on the shared multi-tenant control plane.

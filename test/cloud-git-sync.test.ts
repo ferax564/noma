@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
@@ -213,6 +213,75 @@ test("a --state sidecar keeps a Git checkout clean: spaces bootstrap, tree from 
 
     const other = await client.createSite("Other");
     await assert.rejects(syncSpace(client, { siteId: other.id, dir: repo, stateFile }), /belongs to space/);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(stateFile, { force: true });
+    await harness.close();
+  }
+});
+
+test("--state mirrors renames, moves, and deletes in both directions without losing edits", async () => {
+  const harness = await startCloudServer();
+  const repo = await mkdtemp(join(tmpdir(), "noma-git-sync-layout-"));
+  const stateFile = join(repo, "..", `${basename(repo)}.state.json`);
+  try {
+    const alice = await createCloudUser(harness.base, "Alice");
+    const client = new CloudSyncClient({ server: harness.base, token: alice.token });
+    const site = await client.createSite("Layout", "LAY");
+    await mkdir(join(repo, "home"), { recursive: true });
+    const files: Record<string, string> = {
+      "home.noma": "# Home\n\nRoot.\n",
+      "home/a.noma": "# Page A\n\nA.\n",
+      "home/b.noma": "# Page B\n\nB.\n",
+      "home/c.noma": "# Page C\n\nC.\n",
+      "other.noma": "# Other\n\nO.\n",
+    };
+    for (const [path, source] of Object.entries(files)) await writeFile(join(repo, path), source, "utf8");
+    const sync = () => syncSpace(client, { siteId: site.id, dir: repo, stateFile });
+    const changes = (report: Awaited<ReturnType<typeof sync>>) => report.actions.filter((action) => action.kind !== "unchanged").map((action) => [action.kind, action.path]);
+    await sync();
+    const state = () => (JSON.parse(readFileSync(stateFile, "utf8")) as { files: Record<string, { cloudId: string; cloudParent?: string }> }).files;
+    const ids = Object.fromEntries(Object.entries(state()).map(([path, entry]) => [path, entry.cloudId]));
+    const doc = (id: string) => fetch(`${harness.base}/api/documents/${id}`, { headers: { authorization: `Bearer ${alice.token}` } });
+
+    await rename(join(repo, "home", "a.noma"), join(repo, "home", "alpha.noma"));
+    await rename(join(repo, "other.noma"), join(repo, "home", "other.noma"));
+    const renamed = await sync();
+    assert.deepEqual(changes(renamed), [["moved", "home/alpha.noma"], ["moved", "home/other.noma"]]);
+    assert.equal(state()["home/alpha.noma"]!.cloudId, ids["home/a.noma"], "a Git rename keeps the page and its history");
+    assert.equal(state()["home/other.noma"]!.cloudParent, ids["home.noma"], "moving into a directory moves the page under its parent");
+    const tree = await json<{ pages: Array<{ id: string; children: Array<{ id: string }> }> }>(`${harness.base}/api/sites/${site.id}/tree`, { token: alice.token });
+    assert.equal(tree.pages.length, 1);
+    assert.ok(tree.pages[0]!.children.some((child) => child.id === ids["other.noma"]));
+
+    await rm(join(repo, "home", "b.noma"));
+    const serverC = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${ids["home/c.noma"]}`, { token: alice.token });
+    await json(`${harness.base}/api/documents/${ids["home/c.noma"]}`, { method: "PUT", token: alice.token, body: { source: "# Page C\n\nC, edited in the wiki.\n", expectedHash: serverC.hash } });
+    await rm(join(repo, "home", "c.noma"));
+    const deleted = await sync();
+    assert.deepEqual(changes(deleted), [["trashed", "home/b.noma"], ["restored", "home/c.noma"]]);
+    assert.equal((await doc(ids["home/b.noma"]!)).status, 410, "an unchanged page deleted in Git is trashed");
+    assert.equal(readFileSync(join(repo, "home", "c.noma"), "utf8"), "# Page C\n\nC, edited in the wiki.\n", "a delete never discards a newer wiki edit");
+    assert.deepEqual(changes(await sync()), [], "the layout settles");
+
+    await json(`${harness.base}/api/trash/document/${ids["home/a.noma"]}`, { method: "POST", token: alice.token });
+    await writeFile(join(repo, "home", "c.noma"), "# Page C\n\nC, edited in Git.\n", "utf8");
+    await json(`${harness.base}/api/trash/document/${ids["home/c.noma"]}`, { method: "POST", token: alice.token });
+    const trashed = await sync();
+    assert.deepEqual(trashed.actions.filter((action) => ["deleted", "remote_missing"].includes(action.kind)).map((action) => [action.kind, action.path]), [
+      ["deleted", "home/alpha.noma"],
+      ["remote_missing", "home/c.noma"],
+    ]);
+    assert.equal(existsSync(join(repo, "home", "alpha.noma")), false, "a page trashed in the wiki is deleted from the directory");
+    assert.match(readFileSync(join(repo, "home", "c.noma"), "utf8"), /edited in Git/, "a file with local edits is kept");
+    await rm(join(repo, "home", "c.noma"));
+
+    await json(`${harness.base}/api/sites/${site.id}/documents/${ids["other.noma"]}/parent`, { method: "PUT", token: alice.token, body: { parentId: null } });
+    const moved = await sync();
+    assert.deepEqual(changes(moved), [["moved", "other.noma"]]);
+    assert.equal(readFileSync(join(repo, "other.noma"), "utf8"), files["other.noma"], "a wiki move moves the file next to its new parent");
+    assert.equal(existsSync(join(repo, "home", "other.noma")), false);
+    assert.deepEqual(changes(await sync()), []);
   } finally {
     await rm(repo, { recursive: true, force: true });
     await rm(stateFile, { force: true });

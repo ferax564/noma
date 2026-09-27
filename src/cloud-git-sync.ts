@@ -32,7 +32,7 @@ export interface SyncManifest {
   pages: SyncManifestPage[];
 }
 
-export type SyncActionKind = "pulled" | "pushed" | "created" | "moved" | "converged" | "conflict" | "remote_missing" | "unchanged";
+export type SyncActionKind = "pulled" | "pushed" | "created" | "moved" | "converged" | "conflict" | "remote_missing" | "trashed" | "deleted" | "restored" | "unchanged";
 
 export interface SyncAction {
   kind: SyncActionKind;
@@ -91,6 +91,8 @@ interface SyncKeyStore {
   forget(path: string): void;
   /** Remembers the server revision a `.conflict` file was written from, so deleting that file resolves it. */
   conflict(path: string, serverHash: string): void;
+  /** Synced pages whose file is gone from the directory (deleted or renamed since the last sync). */
+  orphans(): Array<{ path: string; cloudId: string; cloudHash: string; cloudParent?: string }>;
   save(dir: string): void;
 }
 
@@ -99,6 +101,7 @@ const frontmatterKeyStore: SyncKeyStore = {
   render: (_path, source, keys) => withSyncFrontmatter(source, keys),
   forget: () => undefined,
   conflict: () => undefined,
+  orphans: () => [],
   save: () => undefined,
 };
 
@@ -131,6 +134,10 @@ function sidecarKeyStore(stateFile: string, siteId: string, dir: string): SyncKe
       const entry = state.files[file];
       if (entry) entry.conflictHash = serverHash;
     },
+    orphans: () =>
+      Object.entries(state.files)
+        .filter(([file]) => !existsSync(join(dir, file)))
+        .map(([path, entry]) => ({ path, cloudId: entry.cloudId, cloudHash: entry.cloudHash, ...(entry.cloudParent ? { cloudParent: entry.cloudParent } : {}) })),
     save: (dir) => {
       const files = Object.fromEntries(Object.entries(state.files).filter(([file]) => existsSync(join(dir, file))).sort(([a], [b]) => a.localeCompare(b)));
       mkdirSync(dirname(path), { recursive: true });
@@ -171,6 +178,26 @@ export class CloudSyncClient {
 
   updateDocument(id: string, source: string, expectedHash: string): Promise<{ id: string; hash: string }> {
     return this.request("PUT", `/api/documents/${encodeURIComponent(id)}`, { source, expectedHash });
+  }
+
+  movePage(siteId: string, documentId: string, parentId: string | null): Promise<unknown> {
+    return this.request("PUT", `/api/sites/${encodeURIComponent(siteId)}/documents/${encodeURIComponent(documentId)}/parent`, { parentId });
+  }
+
+  trashPage(documentId: string): Promise<unknown> {
+    return this.request("POST", `/api/trash/document/${encodeURIComponent(documentId)}`);
+  }
+
+  /** `gone` when the page is trashed or deleted; `present` when it exists, or is only hidden from this token. */
+  async pageState(documentId: string): Promise<"gone" | "present"> {
+    try {
+      await this.document(documentId);
+      return "present";
+    } catch (error) {
+      if (error instanceof CloudApiError && (error.status === 404 || error.status === 410)) return "gone";
+      if (error instanceof CloudApiError && error.status === 403) return "present";
+      throw error;
+    }
   }
 
   createPage(siteId: string, source: string, parentId?: string): Promise<{ id: string; hash: string; title: string }> {
@@ -237,17 +264,27 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
   const local = indexLocalFiles(dir, keys);
   const actions: SyncAction[] = [];
   const manifestIds = new Set(manifest.pages.map((page) => page.id));
+  const settled = new Set<string>();
+  const restorePaths = new Map<string, string>();
+  if (keepLocalPaths) {
+    await mirrorLocalRenamesAndDeletes(client, keys, manifest, local, { siteId: options.siteId, pull, push, dryRun }, actions, settled, restorePaths);
+  }
 
   for (const manifestPage of manifest.pages) {
+    if (settled.has(manifestPage.id)) continue;
     const file = local.byId.get(manifestPage.id);
-    const page = file && keepLocalPaths ? { ...manifestPage, path: file.path } : manifestPage;
+    const page = file && keepLocalPaths ? { ...manifestPage, path: wikiMoveTarget(dir, file, manifestPage, local) ?? file.path } : manifestPage;
     if (!file) {
       if (!pull) continue;
+      const restorePath = restorePaths.get(page.id);
+      const target = restorePath ? { ...page, path: restorePath } : page;
       if (!dryRun) {
         const document = await client.document(page.id);
-        writeManagedFile(keys, dir, page, document.source, document.hash);
+        writeManagedFile(keys, dir, target, document.source, document.hash);
       }
-      actions.push({ kind: "pulled", path: page.path, documentId: page.id });
+      actions.push(restorePath
+        ? { kind: "restored", path: restorePath, documentId: page.id, detail: "deleted locally but changed on the server since the last sync; server version restored" }
+        : { kind: "pulled", path: page.path, documentId: page.id });
       continue;
     }
     const base = typeof file.meta.cloudHash === "string" ? file.meta.cloudHash : "";
@@ -305,7 +342,19 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
   for (const file of parentFirst) {
     const cloudId = typeof file.meta.cloudId === "string" ? file.meta.cloudId : undefined;
     if (cloudId) {
-      if (!manifestIds.has(cloudId)) actions.push({ kind: "remote_missing", path: file.path, documentId: cloudId, detail: "page was removed, trashed, or is no longer visible" });
+      if (manifestIds.has(cloudId)) continue;
+      const unchangedLocally = typeof file.meta.cloudHash === "string" && sha256(file.body) === file.meta.cloudHash;
+      if (keepLocalPaths && pull && unchangedLocally && (await client.pageState(cloudId)) === "gone") {
+        if (!dryRun) removeManagedFile(keys, file);
+        actions.push({ kind: "deleted", path: file.path, documentId: cloudId, detail: "trashed in the wiki" });
+        continue;
+      }
+      actions.push({
+        kind: "remote_missing",
+        path: file.path,
+        documentId: cloudId,
+        detail: keepLocalPaths && unchangedLocally === false ? "page is gone from the space but the file changed locally; kept" : "page was removed, trashed, or is no longer visible",
+      });
       continue;
     }
     if (!push) continue;
@@ -335,6 +384,84 @@ async function recordConflict(client: CloudSyncClient, keys: SyncKeyStore, dir: 
   writeFileSync(conflictPath, conflictSource, "utf8");
   keys.conflict(file.path, document.hash);
   return { kind: "conflict", path: file.path, documentId: page.id, detail: `${reason}; server version written to ${relative(dir, conflictPath).split(sep).join("/")}` };
+}
+
+/**
+ * `--state` mode: a synced file that disappeared was deleted or renamed in the directory. A new file
+ * with exactly its last synced source is the same page under a new path (moved under the page of its
+ * new directory); otherwise the page is trashed, unless the server changed it since the last sync, in
+ * which case the server version is restored at the old path.
+ */
+async function mirrorLocalRenamesAndDeletes(
+  client: CloudSyncClient,
+  keys: SyncKeyStore,
+  manifest: SyncManifest,
+  local: { files: LocalFile[]; byId: Map<string, LocalFile> },
+  options: { siteId: string; pull: boolean; push: boolean; dryRun: boolean },
+  actions: SyncAction[],
+  settled: Set<string>,
+  restorePaths: Map<string, string>,
+): Promise<void> {
+  const pages = new Map(manifest.pages.map((page) => [page.id, page]));
+  const unclaimed = local.files.filter((file) => typeof file.meta.cloudId !== "string");
+  for (const orphan of keys.orphans()) {
+    const page = pages.get(orphan.cloudId);
+    if (!page) {
+      if (!options.dryRun) keys.forget(orphan.path);
+      continue;
+    }
+    if (local.byId.has(orphan.cloudId)) continue;
+    const renamed = unclaimed.find((file) => sha256(file.body) === orphan.cloudHash);
+    if (renamed) {
+      unclaimed.splice(unclaimed.indexOf(renamed), 1);
+      renamed.meta = { cloudId: orphan.cloudId, cloudHash: orphan.cloudHash, ...(orphan.cloudParent ? { cloudParent: orphan.cloudParent } : {}) };
+      local.byId.set(orphan.cloudId, renamed);
+      const parentId = parentFromDirectory(manifest.pages, local.files, renamed.path, new Map());
+      if (options.push && (parentId ?? null) !== (page.parentId ?? null)) {
+        if (!options.dryRun) await client.movePage(options.siteId, page.id, parentId ?? null);
+        if (parentId) page.parentId = parentId;
+        else delete page.parentId;
+      }
+      renamed.meta = { cloudId: orphan.cloudId, cloudHash: orphan.cloudHash, ...(page.parentId ? { cloudParent: page.parentId } : {}) };
+      if (!options.dryRun) {
+        keys.forget(orphan.path);
+        keys.render(renamed.path, renamed.body, { id: page.id, hash: orphan.cloudHash, ...(page.parentId ? { parentId: page.parentId } : {}), labels: page.labels });
+      }
+      actions.push({ kind: "moved", path: renamed.path, documentId: page.id, detail: `renamed from ${orphan.path}` });
+      continue;
+    }
+    if (page.hash !== orphan.cloudHash) {
+      restorePaths.set(page.id, orphan.path);
+      continue;
+    }
+    if (!options.push) continue;
+    if (!options.dryRun) {
+      await client.trashPage(page.id);
+      keys.forget(orphan.path);
+    }
+    settled.add(page.id);
+    actions.push({ kind: "trashed", path: orphan.path, documentId: page.id, detail: "deleted in the directory" });
+  }
+}
+
+/**
+ * `--state` mode: a page moved to another parent in the wiki moves its (locally unchanged) file into
+ * the directory of the new parent's file, keeping its file name. Returns undefined when nothing moves.
+ */
+function wikiMoveTarget(dir: string, file: LocalFile, page: SyncManifestPage, local: { byId: Map<string, LocalFile> }): string | undefined {
+  const knownParent = typeof file.meta.cloudParent === "string" ? file.meta.cloudParent : undefined;
+  if ((page.parentId ?? undefined) === knownParent) return undefined;
+  if (typeof file.meta.cloudHash !== "string" || sha256(file.body) !== file.meta.cloudHash) return undefined;
+  const name = file.path.slice(file.path.lastIndexOf("/") + 1);
+  let directory = "";
+  if (page.parentId) {
+    const parent = local.byId.get(page.parentId);
+    if (!parent) return undefined;
+    directory = `${parent.path.slice(0, -".noma".length)}/`;
+  }
+  const target = `${directory}${name}`;
+  if (target === file.path || existsSync(join(dir, target))) return undefined;
+  return target;
 }
 
 function writeManagedFile(keys: SyncKeyStore, dir: string, page: Pick<SyncManifestPage, "id" | "path" | "parentId" | "labels">, source: string, hash: string): void {

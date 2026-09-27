@@ -72,12 +72,12 @@ reviewable, diffable text (`PLAN.md` §23.21).
 
 ## Pages in this space {id="nm-home-map"}
 
-| Page | Repo path | What it covers |
-|---|---|---|
-| Architecture | `wiki/noma/architecture.noma` | Format kernel, Cloud server, browser app, packages, PaperDOM fork, barrels |
-| Roadmap | `wiki/noma/roadmap.noma` | Now / Next / Later, risks, decisions, agent follow-ups, dogfooding |
-| Operations | `wiki/noma/operations.noma` | Dev setup, verification gates, releases, Cloud deploys, backups, env vars |
-| Format cheat sheet | `wiki/noma/format.noma` | Block syntax, IDs and aliases, directives, patch ops, the proof loop |
+| Page | What it covers |
+|---|---|
+| [[nm-arch|Architecture]] | Format kernel, Cloud server, browser app, packages, PaperDOM fork, barrels |
+| [[nm-roadmap|Roadmap]] | Now / Next / Later, risks, decisions, agent follow-ups, dogfooding |
+| [[nm-ops|Operations]] | Dev setup, verification gates, releases, Cloud deploys, backups, env vars |
+| [[nm-format|Format cheat sheet]] | Block syntax, IDs and aliases, directives, patch ops, the proof loop |
 
 The page tree follows the Git-native space layout: a page is `<slug>.noma`
 and its children live in the `<slug>/` directory (`docs/noma-cloud.noma`,

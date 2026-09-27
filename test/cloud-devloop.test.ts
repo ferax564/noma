@@ -320,6 +320,7 @@ test("the ezkeel provider speaks ezkeel's headless API", async () => {
   const calls: Array<{ method: string; url: string; body?: string; auth?: string }> = [];
   const replies: Record<string, { status: number; body: unknown }> = {
     "POST /api/apps": { status: 409, body: { error: "app name already taken" } },
+    "GET /api/apps": { status: 200, body: { apps: [{ name: "ship-main", forgejo_repo: "https://GitHub.com/acme/shop/" }, { name: "nope", forgejo_repo: "https://github.com/acme/shop.git" }, { name: "theirs", forgejo_repo: "https://github.com/other/app.git" }] } },
     "POST /api/apps/ship-main/deploy": { status: 202, body: { deploy_id: "d-1", status: "running" } },
     "GET /api/deploys/d-1": { status: 200, body: { deploy: { status: "failed", error: "build failed" }, steps: [{ step_name: "clone_build", status: "failed", output: "line1\nline2", error: "exit 1" }] } },
     "DELETE /api/apps/ship-main?purge=1": { status: 404, body: { error: "app not found" } },
@@ -334,12 +335,17 @@ test("the ezkeel provider speaks ezkeel's headless API", async () => {
   const provider = new EzkeelRunProvider({ url: "https://ezkeel.test/", token: "ezk_x", appsDomain: "apps.ezkeel.test", fetch: fakeFetch });
   const started = await provider.start({ appName: "ship-main", repoUrl: "https://github.com/acme/shop.git", ref: "main", kind: "deploy" });
   assert.deepEqual(started, { providerRef: "d-1", url: "https://ship-main.apps.ezkeel.test" });
-  assert.equal(calls[1]?.body, JSON.stringify({ ref: "main" }), "the ref rides the deploy body");
+  assert.equal(calls[1]?.url, "GET /api/apps", "a taken name is checked before deploying");
+  assert.equal(calls[2]?.body, JSON.stringify({ ref: "main" }), "the ref rides the deploy body");
   assert.equal(calls[0]?.auth, "Bearer ezk_x");
   const status = await provider.status("ship-main", "d-1");
   assert.deepEqual(status, { status: "failed", providerRef: "d-1", error: "build failed", log: "line1\nline2\nexit 1" });
   await provider.teardown("ship-main");
-  await assert.rejects(provider.start({ appName: "nope", repoUrl: "x", ref: "main", kind: "test" }), /refused the deploy: 500/);
+  const before = calls.length;
+  await assert.rejects(provider.start({ appName: "theirs", repoUrl: "https://github.com/acme/shop.git", ref: "main", kind: "test" }), /builds https:\/\/github\.com\/other\/app\.git, not https:\/\/github\.com\/acme\/shop\.git/);
+  await assert.rejects(provider.start({ appName: "hidden", repoUrl: "https://github.com/acme/shop.git", ref: "main", kind: "test" }), /taken by an app this token cannot see/);
+  assert.ok(calls.slice(before).every((call) => !call.url.endsWith("/deploy")), "nothing is deployed into an app for another repository");
+  await assert.rejects(provider.start({ appName: "nope", repoUrl: "https://github.com/acme/shop", ref: "main", kind: "test" }), /refused the deploy: 500/);
   assert.equal(calls.at(-1)?.url, "POST /api/apps/nope/deploy", "an app that already existed is left alone");
   replies["POST /api/apps"] = { status: 201, body: { app: { name: "fresh" } } };
   replies["DELETE /api/apps/fresh?purge=1"] = { status: 200, body: {} };

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync, mkdirSync, watch as fsWatch } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, watch as fsWatch } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { parse } from "./parser.js";
@@ -43,6 +43,8 @@ Usage:
   noma parse <file.noma|book.yml>            Print the AST as JSON
   noma render <file.noma|book.yml> [opts]    Render to a target format
   noma check <file.noma|book.yml>            Validate the document
+  noma check <dir>                           Validate a wiki directory as one space ([[id]] links
+                                             resolve across its pages)
   noma export <file.noma|book.yml> [opts]    Alias for render --to json
   noma patch <file.noma|book.yml> [opts]     Apply block-level patch ops; book
                                              manifests route ops to the owning
@@ -915,6 +917,23 @@ async function run(argv: string[]): Promise<void> {
   }
 
   const filePath = resolve(args.file);
+  if (cmd === "check" && existsSync(filePath) && statSync(filePath).isDirectory()) {
+    const { checkSpaceDirectory } = await import("./space-check.js");
+    const results = checkSpaceDirectory(filePath, validateOptionsFromArgs(args));
+    if (results.length === 0) {
+      process.stderr.write(`error: no .noma files under ${args.file}\n`);
+      process.exit(2);
+    }
+    let errors = 0;
+    let warnings = 0;
+    for (const result of results) {
+      errors += result.diagnostics.filter((d) => d.severity === "error").length;
+      warnings += result.diagnostics.filter((d) => d.severity === "warning").length;
+      if (result.diagnostics.length > 0) process.stdout.write(formatDiagnostics(result.diagnostics, join(args.file, result.path)) + "\n");
+    }
+    process.stdout.write(`${errors === 0 && warnings === 0 ? "✓ " : ""}${results.length} page(s) checked as one space: ${errors} error(s), ${warnings} warning(s)\n`);
+    process.exit(errors > 0 ? 1 : 0);
+  }
   if (cmd === "fmt") {
     if (isBookManifestPath(filePath)) {
       process.stderr.write(`error: noma fmt operates on .noma source files, not book manifests\n`);

@@ -12,6 +12,10 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **Project wiki for Noma (`wiki/`):** overview, architecture, roadmap (with the dogfooding plan), operations, and a format cheat sheet, written in `.noma` and synced to the Noma space.
 - **`noma cloud sync --state <file>`:** keeps the sync keys in a sidecar JSON file instead of page frontmatter, so a Git checkout holds only the page sources and keeps its own file names. Deleting a `.noma.conflict` file marks the conflict resolved; the next sync pushes the merge.
 - **`noma cloud spaces` and `noma cloud create-space --title --key`:** list spaces and create one idempotently by key, so sync scripts need no curl.
+- **`noma cloud sync --state` mirrors renames, moves, and deletes both ways.** A file renamed in Git keeps its page (same ID and history) and moves under its new directory's page; a deleted file trashes its page; a page trashed in the wiki deletes its file; a page moved in the wiki moves its file next to the new parent. Nothing is mirrored over an edit: a file deleted after its page was edited in the wiki is restored, and an edited file whose page was trashed is kept.
+- **`noma check <dir>` checks a wiki directory as one space.** `[[id]]` links resolve to any page of the directory, the way a Noma Cloud space resolves them, and an ID defined on two pages gets a `duplicate-space-id` warning. Library: `validateSpace` / `checkSpaceDirectory`, or `ValidateOptions.spaceIds`.
+- **Validator:** `table-row-cells` warns on a table row whose cell count differs from the header, and `callout-type-attribute` warns on `::callout{type=…}` (callouts read `tone=`) with a fix.
+- **Minipc kit:** `cloudflared-hooks.example.yml` exposes only the GitHub and Slack webhook paths through a Cloudflare tunnel, so the dev loop works while the wiki stays tailnet-only.
 
 - **Moving in from Slack and Jira (Noma Cloud):**
   - **Slack export import:** `POST /api/import/slack?siteId=` with the workspace export ZIP, or **Import Slack** in the Chat section.
@@ -75,6 +79,9 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A labelled wikilink no longer splits a table cell.** The `|` in `[[id|label]]` started a new column, so labelled wikilinks were unusable in tables; `splitPipeRow` and the table serializer now treat a wikilink as one unit.
+- **Long table rows no longer lose cells.** The parser truncated a row with more cells than the header, and any re-render, `noma fmt`, or patch then dropped that text. The extra cells now stay in the last column (joined with an escaped pipe) and the table records the row in `raggedRows`.
+- **`/deploy` and `/test` never deploy into an app for another repository.** When ezkeel answered 409 (name taken) Noma deployed into the existing app regardless; it now checks that the app is visible to its token and builds the same repository, and refuses otherwise.
 - **`noma cloud sync` creates parent pages before their children.** On a fresh directory, `guide/setup.noma` could be created before `guide.noma` and land at the top of the space instead of under its parent.
 
 ### Changed
