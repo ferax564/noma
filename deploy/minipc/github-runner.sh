@@ -13,8 +13,9 @@
 #
 # Each runner lives in /srv/gh-runner/<repo>-<n>, runs as the `gh-runner` user (in the
 # docker group, which is root-equivalent: private repos only) under systemd, and has
-# the labels self-hosted, linux, x64, minipc. Re-running is safe; registered runners
-# are left alone.
+# the labels self-hosted, linux, x64, minipc, and its own Go caches (GOPATH, GOCACHE in
+# <dir>/_cache, set in <dir>/.env). Re-running is safe: registered runners are only
+# given their own Go caches if they lack them.
 set -euo pipefail
 
 repo="${1:-}"
@@ -95,12 +96,35 @@ if [[ "$prepare_only" == 1 ]]; then
   exit 0
 fi
 
+# All runners share the gh-runner HOME, so by default every job on every runner uses
+# the same ~/go and ~/.cache/go-build; one job's cache restore can then rewrite files
+# another runner's build is reading (seen as SIGBUS in cmd/link). The runner service
+# exports its directory's .env into every job, so give each runner its own Go caches
+# there. Idempotent; restarts the runner only when the file changed.
+isolate_go_caches() {
+  local dir="$1" name="$2" env_file="$1/.env" changed=0
+  install -d -o gh-runner -g gh-runner "$dir/_cache" "$dir/_cache/gopath" "$dir/_cache/go-build"
+  touch "$env_file" && chown gh-runner: "$env_file"
+  for kv in "GOPATH=$dir/_cache/gopath" "GOCACHE=$dir/_cache/go-build"; do
+    if ! grep -qxF "$kv" "$env_file"; then
+      sed -i "/^${kv%%=*}=/d" "$env_file"
+      echo "$kv" >>"$env_file"
+      changed=1
+    fi
+  done
+  if [[ "$changed" == 1 && -f "$dir/.service" ]]; then
+    say "$name: per-runner Go caches set, restarting (a job running on it now is cancelled)"
+    (cd "$dir" && ./svc.sh stop >/dev/null && ./svc.sh start >/dev/null)
+  fi
+}
+
 slug="${repo//\//-}"
 for n in $(seq 1 "$count"); do
   dir="/srv/gh-runner/$slug-$n"
   name="minipc-$slug-$n"
   if [[ -f "$dir/.runner" ]]; then
     say "$name already registered"
+    isolate_go_caches "$dir" "$name"
     continue
   fi
   say "registering $name"
@@ -110,6 +134,7 @@ for n in $(seq 1 "$count"); do
   sudo -u gh-runner "$dir/config.sh" --unattended --replace \
     --url "https://github.com/$repo" --token "$token" \
     --name "$name" --labels minipc --work _work
+  isolate_go_caches "$dir" "$name"
   (cd "$dir" && ./svc.sh install gh-runner >/dev/null && ./svc.sh start >/dev/null)
 done
 

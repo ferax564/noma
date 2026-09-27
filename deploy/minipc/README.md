@@ -165,6 +165,11 @@ systemctl list-units 'actions.runner.*'
 - Runners run as `gh-runner` under systemd, in `/srv/gh-runner/<repo>-<n>`. The user is
   in the `docker` group because the EZKeel tests start containers; that is
   root-equivalent, which is acceptable only because every job comes from a private repo.
+- Each runner has its own Go caches (`GOPATH` and `GOCACHE` under `<dir>/_cache`, set
+  in `<dir>/.env`). The runners share one HOME, and with shared caches one job's cache
+  restore rewrote files another runner's build was reading (SIGBUS in the Go linker).
+  Re-running the script adds this to runners registered before it, restarting each
+  runner once.
 - The script installs build tools, `jq`, `gh`, and Playwright's browser libraries once;
   workflows skip `playwright install --with-deps` on self-hosted runners.
 - Jobs use whichever Docker engine owns `/var/run/docker.sock`. With the two-engine
