@@ -147,6 +147,8 @@ secrets.
 | `NOMA_CLOUD_LLM_PROVIDER`, `ANTHROPIC_API_KEY` | Generative AI and hosted agents (`anthropic`, `fake`, `none`) |
 | `NOMA_CLOUD_EMBEDDINGS`, `NOMA_CLOUD_EMBEDDINGS_URL`, `_MODEL`, `_API_KEY_FILE` | Real embeddings for search |
 | `NOMA_CLOUD_EZKEEL_URL`, `NOMA_CLOUD_EZKEEL_TOKEN_FILE` | `/deploy` and `/test` runs on ezkeel |
+| `NOMA_CLOUD_PDF_EXTRACT_URL`, `NOMA_CLOUD_OFFICE_CONVERT_URL` (+ `_TOKEN_FILE`) | Optional ferrox-server / officeconvert sidecars for attachment text and PDF previews |
+| `NOMA_CLOUD_GITHUB_TOKEN_FILE`, `NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS` | PR file lists for codixing blast radius; allow codixing on a private network |
 | `NOMA_CLOUD_SLACK_BOT_TOKEN`, `NOMA_CLOUD_SLACK_SIGNING_SECRET` | Two-way Slack bridge |
 | `NOMA_CLOUD_SIEM_URL`, `NOMA_CLOUD_SIEM_TOKEN_FILE` | Audit NDJSON forwarding |
 | `NOMA_CLOUD_SMTP_URL`, `NOMA_CLOUD_MAIL_FROM` | Email notifications and digests |
