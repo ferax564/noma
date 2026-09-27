@@ -44,6 +44,7 @@ import { runDueMaintenance, startMaintenanceScheduler } from "./cloud/routes-mai
 import { routeApi } from "./cloud/router.js";
 import { recordPageView } from "./cloud/routes-analytics.js";
 import { runServerQueueTick } from "./cloud/queue.js";
+import { type AttachmentTextSettings, attachmentTextSettingsFromEnv } from "./cloud/attachment-text.js";
 import {
   isCloudAppShell,
   redirectWithCloudAccessCookie,
@@ -124,6 +125,12 @@ export interface NomaCloudServerOptions {
    * content-addressed files under `<storage root>/blobs`) or `s3` (see `createBlobStoreFromEnv`).
    */
   blobStore?: BlobStore;
+  /**
+   * Attachment text extraction and PDF previews via the ferrox-server and officeconvert sidecars.
+   * Defaults to `NOMA_CLOUD_PDF_EXTRACT_URL` / `NOMA_CLOUD_OFFICE_CONVERT_URL` (see
+   * `attachmentTextSettingsFromEnv`); `null` disables it.
+   */
+  attachmentText?: AttachmentTextSettings | null;
   /** Allow Confluence imports from private/loopback hosts (tests, on-prem Data Center). */
   importAllowPrivateHosts?: boolean;
   /** Maximum Confluence import upload size in bytes (default 50 MB). */
@@ -271,6 +278,8 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const slack = options.slack === null ? undefined : options.slack ?? slackConfigFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const siem = options.siem === null ? undefined : options.siem ?? siemTargetFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const runProvider = options.runProvider === null ? undefined : options.runProvider ?? createRunProviderFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
+  const attachmentText =
+    options.attachmentText === null ? undefined : options.attachmentText ?? attachmentTextSettingsFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   return {
     dataDir,
     usersDir,
@@ -312,6 +321,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
       options.attachmentQuotaBytes ?? Number(process.env.NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES ?? 1024 * 1024 * 1024),
       "attachmentQuotaBytes",
     ),
+    ...(attachmentText ? { attachmentText } : {}),
     ai: cloudAiConfig(options.ai ?? {}),
     ...(oidcSettings ? { oidc: new OidcClient(oidcSettings, now, options.oidc?.fetch) } : {}),
   };

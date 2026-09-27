@@ -522,6 +522,7 @@ export function knowledgeDocuments(config: CloudServerConfig, user: CloudUserRec
     }
   }
   const access: KnowledgeDocumentAccess[] = [];
+  const attachmentVersions = config.store.attachmentTextVersions(summaries.map((summary) => summary.id));
   for (const summary of summaries) {
     if (config.store.isTrashed("document", summary.id)) continue;
     const humanAccess = config.store.resourceAccess(user.id, "document", summary.id);
@@ -537,7 +538,14 @@ export function knowledgeDocuments(config: CloudServerConfig, user: CloudUserRec
       via = "agent";
     }
     const document = config.store.readDocument(summary.id);
-    if (document) access.push({ document, role, via });
+    if (!document) continue;
+    const attachmentVersion = attachmentVersions.get(document.id);
+    access.push({
+      document,
+      role,
+      via,
+      ...(attachmentVersion ? { attachmentText: { version: attachmentVersion, load: () => config.store.attachmentSearchTexts(document.id) } } : {}),
+    });
   }
   return access;
 }

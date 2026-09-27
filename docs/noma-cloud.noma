@@ -1043,6 +1043,123 @@ web-identity credentials, embed Noma Cloud and pass
 `createNomaCloudServer`. Existing local blobs are not migrated automatically.
 Copy the `blobs/` tree into the bucket under the same prefix before you switch.
 
+### Attachment text and previews {id="attachment-text-previews"}
+
+Uploaded PDFs and Office files can be made searchable, DLP-scanned, and
+previewable in the browser. Two optional sidecars do the work. Both are off
+unless their URL is set, and without them attachments behave as before: only
+the filename is searchable.
+
+- **ferrox-server** (Rust PDF engine) extracts text from PDFs with
+  `POST /api/v1/process`, a PDF body, and `x-ferrox-config: {"op":"extract_text"}`.
+- **officeconvert** (Rust plus headless LibreOffice) turns Office files into
+  PDF with `POST /v1/convert` (multipart field `file`).
+
+| Variable | Meaning |
+|---|---|
+| `NOMA_CLOUD_PDF_EXTRACT_URL` | ferrox-server base URL, for example `http://ferrox:3001`. Enables PDF text extraction. |
+| `NOMA_CLOUD_PDF_EXTRACT_TOKEN` | Bearer token for ferrox-server (its `--auth-token` / `FERROX_AUTH_TOKEN`). Also `_FILE`. |
+| `NOMA_CLOUD_OFFICE_CONVERT_URL` | officeconvert base URL, for example `http://officeconvert:8085`. Enables Office previews. |
+| `NOMA_CLOUD_OFFICE_CONVERT_TOKEN` | Bearer token sent to officeconvert, for a proxy in front of it (officeconvert itself has no auth). Also `_FILE`. |
+| `NOMA_CLOUD_ATTACHMENT_TEXT_TIMEOUT_MS` | Deadline for each sidecar request (default 60000). |
+| `NOMA_CLOUD_ATTACHMENT_TEXT_MAX_INPUT_BYTES` | Largest document sent to a sidecar (default 2000000, just under the stock sidecars' 2 MB request limit). Larger files are skipped. |
+
+**How it runs.** Uploads never wait for a sidecar. The upload returns at once
+and starts a background pass, and the in-process queue picks up anything left
+over. That includes imported attachments and older ones when a sidecar is
+first configured.
+
+- A PDF goes to ferrox for text.
+- A `.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`, `.odp`, `.doc`, `.xls`,
+  `.ppt`, or `.rtf` file goes to officeconvert first. The name must match the
+  sniffed type, so a renamed HTML file is never sent. The PDF it returns is
+  stored as a preview blob and then sent to ferrox for text. HTML and CSV are
+  not converted.
+- Identical bytes are converted and extracted once, and later uploads reuse
+  the result.
+- Each attachment has an `extraction` status: `pending`, `done`, `failed`, or
+  `skipped`. Unreachable sidecars, timeouts, HTTP 5xx, 401, 403, 408, and 429
+  are retried after 1 and then 4 minutes. After three attempts the status is
+  `failed`. Malformed responses fail at once.
+- Files over the input cap are `skipped` with `too_large`.
+
+**Search and retrieval.** The text is stored per attachment, up to 1 MB of
+UTF-8. It is indexed as the attachment's `att:<id>` block. ⌘K search
+(`/api/find`) returns an `attachments` group, and `/api/search` matches it too.
+Knowledge search, Ask Noma, and embeddings see it as `attachment` blocks,
+embedded in chunks of 1,500 characters, up to 16 chunks per file. Results
+follow the page's permissions and restrictions exactly. Anyone who cannot
+read the page does not see its attachments' text. Deleting an attachment
+removes its text from the index.
+
+**DLP.** The text is scanned with the workspace detectors. A match records a
+finding with `resourceType: "attachment"` and the attachment ID, plus a
+`dlp.flagged` or `dlp.blocked` audit event, like message and page findings.
+The file is already stored, so `block` mode cannot refuse it. Instead, the
+text is withheld from search and retrieval (`extraction.dlpWithheld: true`).
+
+**Preview.** `GET /api/attachments/<id>/preview` serves the derived PDF of an
+Office upload. It uses the same access rules as the download route: page
+access, or the attachment's signed URL parameters. It also uses the same
+headers: `application/pdf`, `Content-Disposition: inline`, `nosniff`, and the
+sandboxing CSP. Attachment listings include `previewUrl` (signed) when a
+preview exists, and the Attachments panel shows a **Preview (PDF)** link. PDF
+uploads need no preview, because they already open inline.
+
+**Quota.** A preview counts toward the same storage quota as the upload
+(`NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES`, per space or per user). If storing it
+would exceed the quota, the preview is dropped. The text is still extracted,
+and the status carries `preview_over_quota`. A preview can be no larger than
+`NOMA_CLOUD_MAX_ATTACHMENT_BYTES`. Preview blobs are garbage-collected with
+their attachment when a page is purged.
+
+**Untrusted sidecars.** Every call has a timeout, refuses redirects, and caps
+the response: 8 MB of JSON from ferrox, and the attachment size limit for PDFs
+from officeconvert. The response content type is checked, and a converted
+file must start with `%PDF-`. Text is sanitised before indexing:
+- It is normalised to NFC.
+- Control, zero-width, and bidi-override characters are removed.
+- Whitespace is collapsed.
+- It is cut on a character boundary.
+
+Error messages name only the sidecar and the HTTP status.
+
+Workspace owners can check progress with `GET /api/enterprise/attachment-text`,
+which shows which sidecars are configured and the counts by status. They can
+run a pass on demand with `POST /api/enterprise/attachment-text/run`.
+
+Run both sidecars next to Noma Cloud on a private network:
+
+```yaml
+services:
+  noma:
+    image: noma-cloud:latest
+    environment:
+      NOMA_CLOUD_PDF_EXTRACT_URL: http://ferrox:3001
+      NOMA_CLOUD_PDF_EXTRACT_TOKEN: ${FERROX_TOKEN}
+      NOMA_CLOUD_OFFICE_CONVERT_URL: http://officeconvert:8085
+  ferrox:
+    # Image built from the ferrox repo: cargo build --release -p ferrox-server
+    image: ferrox-server:local
+    command: ["ferrox-server", "--host", "0.0.0.0", "--port", "3001"]
+    environment:
+      FERROX_AUTH_TOKEN: ${FERROX_TOKEN}
+  officeconvert:
+    build: ../officeconvert # its Dockerfile installs libreoffice-nogui
+    environment:
+      OFFICECONVERT_BIND: 0.0.0.0:8085
+```
+
+`ferrox-server` reads its token from `--auth-token` or `FERROX_AUTH_TOKEN`.
+Keep officeconvert off the public network, because it has no authentication
+of its own. The Compose default network is private to these services.
+
+Both sidecars can also run as ezkeel apps (`ezkeel up <repo>`). officeconvert
+ships a Dockerfile with a `/health` check. ezkeel apps are published at
+`<name>.<apps domain>`, so start ferrox-server with a token. Put officeconvert
+behind an authenticating proxy and set `NOMA_CLOUD_OFFICE_CONVERT_TOKEN`, or
+give it a private network route.
+
 ## Page restrictions
 
 Space permissions decide who can reach a page. **Restrictions** can then narrow

@@ -30,6 +30,7 @@ import type { LlmProvider } from "../cloud-llm.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
 import { assertCloudId } from "./input.js";
+import type { AttachmentTextSettings } from "./attachment-text.js";
 import type { OidcClient } from "./oidc.js";
 import { routeNotificationByPreference } from "./mail.js";
 import { resolveSessionUser, resolveTokenUser } from "./security.js";
@@ -81,6 +82,8 @@ export interface CloudServerConfig {
   maxAttachmentBytes: number;
   /** Live attachment bytes allowed per space (or per user for pages outside any space). */
   attachmentQuotaBytes: number;
+  /** PDF text extraction (ferrox-server) and Office → PDF previews (officeconvert); absent when neither sidecar is configured. */
+  attachmentText?: AttachmentTextSettings;
   ai: CloudAiConfig;
   /** Called after every successful document write (live-editing rooms merge external changes here). */
   onDocumentWritten?: (record: CloudDocumentRecord) => void;

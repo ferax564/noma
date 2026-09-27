@@ -1,6 +1,6 @@
 /**
  * Data-loss prevention: detectors for secrets and card numbers in chat messages, issue comments and
- * descriptions, and page source. `warn` records a finding and lets the write through; `block` refuses
+ * descriptions, page source, and text extracted from attachments. `warn` records a finding and lets the write through; `block` refuses
  * it with `422 dlp_blocked`. Responses and findings name the detector, never the matched text.
  */
 import type { DlpDetector, DlpFinding } from "../cloud-compliance.js";
@@ -48,13 +48,40 @@ export function enforceDlp(
   const detectors = [...now].filter(([detector, values]) => introducesNew(values, before.get(detector) ?? [])).map(([detector]) => detector);
   if (detectors.length === 0) return [];
   const outcome = policy.mode === "block" ? "blocked" : "flagged";
-  const createdAt = config.now().toISOString();
-  config.compliance.recordFinding({ id: randomId(), detectors, outcome, resourceType: input.resourceType, resourceId: input.resourceId, ...(input.siteId ? { siteId: input.siteId } : {}), actorId: input.actorId, createdAt });
-  config.platform.recordAudit(input.actorId, outcome === "blocked" ? "dlp.blocked" : "dlp.flagged", input.siteId ? "site" : "workspace", input.siteId ?? "workspace", { detectors, resourceType: input.resourceType, resourceId: input.resourceId }, createdAt);
+  recordDlpFinding(config, input, detectors, outcome);
   if (outcome === "blocked") {
     throw new HttpError(422, `This looks like it contains ${detectors.map(describe).join(" and ")}; workspace policy blocks sharing it here`, { code: "dlp_blocked", detectors });
   }
   return detectors;
+}
+
+/**
+ * Scans text that is already stored (for example text extracted from an uploaded attachment in the
+ * background) and records a finding like `enforceDlp` does, without throwing: `warn` flags it, and
+ * `block` reports `blocked`, which callers honour by keeping the text out of search and retrieval.
+ */
+export function scanStoredText(
+  config: CloudServerConfig,
+  input: { text: string; actorId: string; resourceType: DlpFinding["resourceType"]; resourceId: string; siteId?: string },
+): { detectors: DlpDetector[]; outcome?: DlpFinding["outcome"] } {
+  const policy = config.compliance.dlpPolicy();
+  if (policy.mode === "off" || policy.detectors.length === 0) return { detectors: [] };
+  const detectors = [...matchText(input.text, policy.detectors).keys()];
+  if (detectors.length === 0) return { detectors };
+  const outcome = policy.mode === "block" ? "blocked" : "flagged";
+  recordDlpFinding(config, input, detectors, outcome);
+  return { detectors, outcome };
+}
+
+function recordDlpFinding(
+  config: CloudServerConfig,
+  input: { actorId: string; resourceType: DlpFinding["resourceType"]; resourceId: string; siteId?: string },
+  detectors: DlpDetector[],
+  outcome: DlpFinding["outcome"],
+): void {
+  const createdAt = config.now().toISOString();
+  config.compliance.recordFinding({ id: randomId(), detectors, outcome, resourceType: input.resourceType, resourceId: input.resourceId, ...(input.siteId ? { siteId: input.siteId } : {}), actorId: input.actorId, createdAt });
+  config.platform.recordAudit(input.actorId, outcome === "blocked" ? "dlp.blocked" : "dlp.flagged", input.siteId ? "site" : "workspace", input.siteId ?? "workspace", { detectors, resourceType: input.resourceType, resourceId: input.resourceId }, createdAt);
 }
 
 function describe(detector: DlpDetector): string {

@@ -1,4 +1,4 @@
-/** `/api/documents/:id/attachments` (list/upload/delete) and `/api/attachments/:id` (download). */
+/** `/api/documents/:id/attachments` (list/upload/delete), `/api/attachments/:id` (download) and `/api/attachments/:id/preview` (derived PDF). */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CloudAttachment, CloudDocumentRecord } from "../cloud-db.js";
 import {
@@ -22,6 +22,7 @@ import {
   sniffAttachmentType,
   verifySignedAttachmentUrl,
 } from "./attachments.js";
+import { extractionResponse, runAttachmentExtraction } from "./attachment-text.js";
 import { decodePathSegment, headerValue, HttpError, sendJson, setSecurityHeaders } from "./http.js";
 import { assertCloudId } from "./input.js";
 import { MULTIPART_OVERHEAD_BYTES, multipartBoundary, readMultipartUpload } from "./multipart.js";
@@ -69,7 +70,11 @@ export async function routeDocumentAttachments(
   throw new HttpError(attachmentId ? 405 : 404, attachmentId ? "Method not allowed" : "Unknown attachment route");
 }
 
-/** `GET|HEAD /api/attachments/:id` — bearer/share access to the owning page, or a signed URL. */
+/**
+ * `GET|HEAD /api/attachments/:id` — bearer/share access to the owning page, or a signed URL.
+ * `GET|HEAD /api/attachments/:id/preview` serves the derived PDF preview of an Office upload under
+ * the same access rules (the attachment's signed URL parameters work for it too).
+ */
 export async function routeAttachments(
   req: IncomingMessage,
   res: ServerResponse,
@@ -81,7 +86,8 @@ export async function routeAttachments(
   const method = req.method ?? "GET";
   if (method !== "GET" && method !== "HEAD") throw new HttpError(405, "Method not allowed");
   const attachmentId = decodePathSegment(parts[2] ?? "");
-  if (!attachmentId || parts.length > 3) throw new HttpError(404, "Unknown attachment route");
+  const preview = parts[3] === "preview";
+  if (!attachmentId || parts.length > 4 || (parts.length === 4 && !preview)) throw new HttpError(404, "Unknown attachment route");
   assertCloudId(attachmentId, "Attachment");
   const grant = verifySignedAttachmentUrl(config, attachmentId, url);
   const attachment = config.store.readAttachment(attachmentId);
@@ -93,7 +99,21 @@ export async function routeAttachments(
   } else if (!documentAccessAnywhere(config, document, principal)) {
     throw new HttpError(principal.user || principal.shareTokenHash ? 403 : 401, "viewer access is required");
   }
-  await serveStoredBlob(req, res, config, attachment, grant ? "cross-origin" : "same-origin");
+  const crossOrigin = grant ? "cross-origin" : "same-origin";
+  if (!preview) {
+    await serveStoredBlob(req, res, config, attachment, crossOrigin);
+    return;
+  }
+  const extraction = config.store.attachmentExtraction(attachment.id);
+  if (!extraction?.previewSha256 || extraction.sha256 !== attachment.sha256) {
+    throw new HttpError(404, "No PDF preview is available for this attachment", { code: "attachment_preview_unavailable", ...(extraction ? { status: extraction.status } : {}) });
+  }
+  await serveStoredBlob(req, res, config, { sha256: extraction.previewSha256, contentType: "application/pdf", filename: previewFilename(attachment.filename) }, crossOrigin);
+}
+
+function previewFilename(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  return `${dot > 0 ? filename.slice(0, dot) : filename}.pdf`;
 }
 
 /**
@@ -216,6 +236,7 @@ async function uploadAttachment(
     throw error;
   }
   config.store.reindexAttachments(document.id);
+  if (config.attachmentText) void runAttachmentExtraction(config);
   if (access.user) {
     recordActivity(config, access.user, "attachment.uploaded", "document", document.id, {
       attachmentId: attachment.id,
@@ -290,6 +311,8 @@ export function attachmentIdFor(config: CloudServerConfig): string {
 
 export function attachmentResponse(config: CloudServerConfig, attachment: CloudAttachment, access: AccessContext): Record<string, unknown> {
   const grant = attachmentGrant(access);
+  const extraction = config.store.attachmentExtraction(attachment.id);
+  const url = grant ? signedAttachmentUrl(config, attachment.id, grant) : undefined;
   return {
     id: attachment.id,
     documentId: attachment.documentId,
@@ -302,6 +325,8 @@ export function attachmentResponse(config: CloudServerConfig, attachment: CloudA
     createdAt: attachment.createdAt,
     image: isImageAttachment(attachment),
     reference: `att:${attachment.id}`,
-    ...(grant ? { url: signedAttachmentUrl(config, attachment.id, grant) } : {}),
+    ...(url ? { url } : {}),
+    ...(extraction ? { extraction: extractionResponse(extraction) } : {}),
+    ...(url && extraction?.previewSha256 ? { previewUrl: url.replace(/^(\/api\/attachments\/[^?]+)\?/, "$1/preview?") } : {}),
   };
 }

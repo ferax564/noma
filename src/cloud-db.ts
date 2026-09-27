@@ -532,6 +532,49 @@ export interface CloudAttachment {
   deletedAt?: string;
 }
 
+export type CloudAttachmentExtractionStatus = "pending" | "done" | "failed" | "skipped";
+
+/** Background text extraction / PDF preview state of one page attachment (`attachment_extractions`). */
+export interface CloudAttachmentExtraction {
+  attachmentId: string;
+  sha256: string;
+  status: CloudAttachmentExtractionStatus;
+  attempts: number;
+  nextAttemptAt?: string;
+  error?: string;
+  /** Characters of stored extracted text (0 when none). */
+  textLength: number;
+  textSha256?: string;
+  textTruncated: boolean;
+  /** Content address of the derived PDF preview (Office uploads only). */
+  previewSha256?: string;
+  previewSize: number;
+  /** DLP `block` mode found a secret: the text is kept out of search and retrieval. */
+  dlpWithheld: boolean;
+  updatedAt: string;
+}
+
+/** Outcome written when an extraction attempt settles or is rescheduled. */
+export interface CloudAttachmentExtractionUpdate {
+  status: CloudAttachmentExtractionStatus;
+  attempts: number;
+  nextAttemptAt?: string;
+  error?: string;
+  text?: string;
+  textSha256?: string;
+  textTruncated?: boolean;
+  previewSha256?: string;
+  previewSize?: number;
+  dlpWithheld?: boolean;
+  updatedAt: string;
+}
+
+/** Which live attachments the extraction job should pick up: PDFs and/or Office files by extension + sniffed type. */
+export interface CloudAttachmentExtractionCandidates {
+  pdf: boolean;
+  office: Array<{ extension: string; contentTypes: string[] }>;
+}
+
 export type CloudRestrictionKind = "view" | "edit";
 
 export interface CloudRestrictionPrincipals {
@@ -1848,6 +1891,7 @@ export class NomaCloudDatabase {
       this.db.prepare("DELETE FROM notifications WHERE resource_type = ? AND resource_id = ?").run(type, id);
       if (type === "document") {
         this.db.prepare("DELETE FROM comment_reactions WHERE comment_id IN (SELECT id FROM comments WHERE document_id = ?)").run(id);
+        this.db.prepare("DELETE FROM attachment_extractions WHERE attachment_id IN (SELECT id FROM attachments WHERE document_id = ?)").run(id);
         for (const owned of ["document_revisions", "blocks", "comments", "approvals", "patch_proposals", "document_labels", "page_views", "page_tasks", "attachments", "page_restrictions", "import_sources", "collab_rooms", "collab_updates"]) {
           this.db.prepare(`DELETE FROM ${owned} WHERE document_id = ?`).run(id);
         }
@@ -3199,23 +3243,25 @@ export class NomaCloudDatabase {
     return this.db.prepare("UPDATE attachments SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL").run(deletedAt, id).changes > 0;
   }
 
-  /** Bytes of live attachments on pages in the space; each upload counts even when its blob is shared. */
+  /** Bytes of live attachments (plus their derived PDF previews) on pages in the space; each upload counts even when its blob is shared. */
   siteAttachmentBytes(siteId: string): number {
     const row = this.db
       .prepare(
-        `SELECT COALESCE(SUM(a.size), 0) AS bytes FROM attachments a
+        `SELECT COALESCE(SUM(a.size + COALESCE(e.preview_size, 0)), 0) AS bytes FROM attachments a
          JOIN site_documents sd ON sd.document_id = a.document_id
+         LEFT JOIN attachment_extractions e ON e.attachment_id = a.id
          WHERE sd.site_id = ? AND a.deleted_at IS NULL`,
       )
       .get(siteId) as { bytes: number };
     return row.bytes;
   }
 
-  /** Bytes of live attachments a user uploaded to pages that belong to no space. */
+  /** Bytes of live attachments (plus derived PDF previews) a user uploaded to pages that belong to no space. */
   unspacedAttachmentBytes(userId: string): number {
     const row = this.db
       .prepare(
-        `SELECT COALESCE(SUM(a.size), 0) AS bytes FROM attachments a
+        `SELECT COALESCE(SUM(a.size + COALESCE(e.preview_size, 0)), 0) AS bytes FROM attachments a
+         LEFT JOIN attachment_extractions e ON e.attachment_id = a.id
          WHERE a.uploaded_by = ? AND a.deleted_at IS NULL
            AND NOT EXISTS (SELECT 1 FROM site_documents sd WHERE sd.document_id = a.document_id)`,
       )
@@ -3231,11 +3277,22 @@ export class NomaCloudDatabase {
 
   /** Every blob hash a document's attachments point at, including soft-deleted attachments. */
   attachmentBlobHashes(documentId: string): string[] {
-    return (this.db.prepare("SELECT DISTINCT sha256 FROM attachments WHERE document_id = ?").all(documentId) as Array<{ sha256: string }>).map((row) => row.sha256);
+    return (
+      this.db
+        .prepare(
+          `SELECT sha256 FROM attachments WHERE document_id = ?
+           UNION
+           SELECT e.preview_sha256 AS sha256 FROM attachment_extractions e JOIN attachments a ON a.id = e.attachment_id
+           WHERE a.document_id = ? AND e.preview_sha256 IS NOT NULL`,
+        )
+        .all(documentId, documentId) as Array<{ sha256: string }>
+    ).map((row) => row.sha256);
   }
 
   isBlobReferenced(sha256: string): boolean {
-    return Boolean(this.db.prepare("SELECT 1 AS found FROM attachments WHERE sha256 = ? LIMIT 1").get(sha256));
+    return Boolean(
+      this.db.prepare("SELECT 1 AS found FROM attachments WHERE sha256 = ? UNION ALL SELECT 1 FROM attachment_extractions WHERE preview_sha256 = ? LIMIT 1").get(sha256, sha256),
+    );
   }
 
   /** Re-indexes a document's attachment filenames into `blocks`/`search_index` as `attachment` rows. */
@@ -3265,13 +3322,149 @@ export class NomaCloudDatabase {
        VALUES (?, ?, ?, '[]', 'attachment', NULL, ?, ?, NULL, 0, ?)`,
     );
     const searchInsert = this.db.prepare("INSERT INTO search_index (row_key, document_id, document_title, block_id, text) VALUES (?, ?, ?, ?, ?)");
+    const extractedText = new Map(this.attachmentSearchTexts(documentId).map((item) => [item.attachmentId, item.text]));
     this.listAttachments(documentId).forEach((attachment, index) => {
       const rowKey = `${documentId}:attachment:${attachment.id}`;
       const blockId = `att:${attachment.id}`;
       const text = `${attachment.filename} ${attachment.contentType}`;
       insert.run(rowKey, documentId, blockId, attachment.filename, text, 1_000_000 + index);
-      searchInsert.run(rowKey, documentId, documentTitle, blockId, `${attachment.filename}\n${text}`);
+      const extracted = extractedText.get(attachment.id);
+      searchInsert.run(rowKey, documentId, documentTitle, blockId, `${attachment.filename}\n${text}${extracted ? `\n${extracted}` : ""}`);
     });
+  }
+
+  // ---- attachment text extraction ----
+
+  /** Queues pending extraction rows for live attachments that match `candidates` and have none yet. */
+  queueAttachmentExtractions(candidates: CloudAttachmentExtractionCandidates, now: string, limit: number): number {
+    const clauses: string[] = [];
+    const params: unknown[] = [now];
+    if (candidates.pdf) clauses.push("a.content_type = 'application/pdf'");
+    for (const office of candidates.office) {
+      if (office.contentTypes.length === 0) continue;
+      clauses.push(`(lower(a.filename) LIKE ? AND a.content_type IN (${office.contentTypes.map(() => "?").join(", ")}))`);
+      params.push(`%.${office.extension}`, ...office.contentTypes);
+    }
+    if (clauses.length === 0) return 0;
+    params.push(limit);
+    return this.db
+      .prepare(
+        `INSERT INTO attachment_extractions (attachment_id, sha256, status, attempts, updated_at)
+         SELECT a.id, a.sha256, 'pending', 0, ? FROM attachments a
+         WHERE a.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM attachment_extractions e WHERE e.attachment_id = a.id)
+           AND (${clauses.join(" OR ")})
+         ORDER BY a.created_at, a.rowid
+         LIMIT ?`,
+      )
+      .run(...params).changes;
+  }
+
+  /** Pending extractions whose retry time has come, oldest first. */
+  dueAttachmentExtractions(now: string, limit: number): CloudAttachmentExtraction[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT ${extractionColumns} FROM attachment_extractions
+           WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+           ORDER BY COALESCE(next_attempt_at, updated_at), attachment_id
+           LIMIT ?`,
+        )
+        .all(now, limit) as ExtractionRow[]
+    ).map(cloudAttachmentExtraction);
+  }
+
+  attachmentExtraction(attachmentId: string): CloudAttachmentExtraction | undefined {
+    const row = this.db.prepare(`SELECT ${extractionColumns} FROM attachment_extractions WHERE attachment_id = ?`).get(attachmentId) as ExtractionRow | undefined;
+    return row ? cloudAttachmentExtraction(row) : undefined;
+  }
+
+  /** Extraction state of every attachment on a page, by attachment ID. */
+  attachmentExtractions(documentId: string): Map<string, CloudAttachmentExtraction> {
+    const rows = this.db
+      .prepare(`SELECT ${extractionColumns} FROM attachment_extractions WHERE attachment_id IN (SELECT id FROM attachments WHERE document_id = ?)`)
+      .all(documentId) as ExtractionRow[];
+    return new Map(rows.map((row) => [row.attachment_id, cloudAttachmentExtraction(row)]));
+  }
+
+  /** A finished extraction of the same bytes, so identical uploads are converted and extracted once. */
+  reusableAttachmentExtraction(sha256: string, excludeAttachmentId: string): (CloudAttachmentExtraction & { text?: string }) | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT ${extractionColumns}, text FROM attachment_extractions
+         WHERE sha256 = ? AND status = 'done' AND attachment_id <> ?
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .get(sha256, excludeAttachmentId) as (ExtractionRow & { text: string | null }) | undefined;
+    if (!row) return undefined;
+    return { ...cloudAttachmentExtraction(row), ...(row.text !== null ? { text: row.text } : {}) };
+  }
+
+  updateAttachmentExtraction(attachmentId: string, update: CloudAttachmentExtractionUpdate): void {
+    this.db
+      .prepare(
+        `UPDATE attachment_extractions SET
+           status = @status, attempts = @attempts, next_attempt_at = @nextAttemptAt, error = @error,
+           text = COALESCE(@text, text), text_sha256 = COALESCE(@textSha256, text_sha256),
+           text_truncated = COALESCE(@textTruncated, text_truncated),
+           preview_sha256 = COALESCE(@previewSha256, preview_sha256), preview_size = COALESCE(@previewSize, preview_size),
+           dlp_withheld = COALESCE(@dlpWithheld, dlp_withheld), updated_at = @updatedAt
+         WHERE attachment_id = @attachmentId`,
+      )
+      .run({
+        attachmentId,
+        status: update.status,
+        attempts: update.attempts,
+        nextAttemptAt: update.nextAttemptAt ?? null,
+        error: update.error ?? null,
+        text: update.text ?? null,
+        textSha256: update.textSha256 ?? null,
+        textTruncated: update.textTruncated === undefined ? null : update.textTruncated ? 1 : 0,
+        previewSha256: update.previewSha256 ?? null,
+        previewSize: update.previewSize ?? null,
+        dlpWithheld: update.dlpWithheld === undefined ? null : update.dlpWithheld ? 1 : 0,
+        updatedAt: update.updatedAt,
+      });
+  }
+
+  /** Extraction rows by status, for the workspace admin view. */
+  attachmentExtractionCounts(): Record<CloudAttachmentExtractionStatus, number> {
+    const counts: Record<CloudAttachmentExtractionStatus, number> = { pending: 0, done: 0, failed: 0, skipped: 0 };
+    for (const row of this.db.prepare("SELECT status, COUNT(*) AS n FROM attachment_extractions GROUP BY status").all() as Array<{ status: CloudAttachmentExtractionStatus; n: number }>) {
+      counts[row.status] = row.n;
+    }
+    return counts;
+  }
+
+  /** Searchable extracted text of a page's live attachments (withheld text excluded). */
+  attachmentSearchTexts(documentId: string): Array<{ attachmentId: string; filename: string; text: string }> {
+    return (
+      this.db
+        .prepare(
+          `SELECT a.id AS attachment_id, a.filename, e.text FROM attachments a
+           JOIN attachment_extractions e ON e.attachment_id = a.id
+           WHERE a.document_id = ? AND a.deleted_at IS NULL AND e.status = 'done' AND e.dlp_withheld = 0 AND e.text IS NOT NULL AND e.text <> ''
+           ORDER BY a.created_at, a.rowid`,
+        )
+        .all(documentId) as Array<{ attachment_id: string; filename: string; text: string }>
+    ).map((row) => ({ attachmentId: row.attachment_id, filename: row.filename, text: row.text }));
+  }
+
+  /** Per page, a fingerprint of its searchable attachment text; pages without any are absent. */
+  attachmentTextVersions(documentIds: string[]): Map<string, string> {
+    const versions = new Map<string, string>();
+    if (documentIds.length === 0) return versions;
+    const rows = this.db
+      .prepare(
+        `SELECT a.document_id, a.id AS attachment_id, e.text_sha256 FROM attachments a
+         JOIN attachment_extractions e ON e.attachment_id = a.id
+         WHERE a.document_id IN (SELECT value FROM json_each(?)) AND a.deleted_at IS NULL
+           AND e.status = 'done' AND e.dlp_withheld = 0 AND e.text_sha256 IS NOT NULL
+         ORDER BY a.document_id, a.id`,
+      )
+      .all(JSON.stringify(documentIds)) as Array<{ document_id: string; attachment_id: string; text_sha256: string }>;
+    for (const row of rows) versions.set(row.document_id, `${versions.get(row.document_id) ?? ""}${row.attachment_id}:${row.text_sha256.slice(0, 16)};`);
+    return versions;
   }
 
   // ---- page restrictions ----
@@ -4566,6 +4759,24 @@ export class NomaCloudDatabase {
       CREATE INDEX IF NOT EXISTS idx_attachments_document ON attachments(document_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_attachments_sha256 ON attachments(sha256);
       CREATE INDEX IF NOT EXISTS idx_attachments_uploader ON attachments(uploaded_by, deleted_at);
+      CREATE TABLE IF NOT EXISTS attachment_extractions (
+        attachment_id TEXT PRIMARY KEY,
+        sha256 TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'done', 'failed', 'skipped')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT,
+        error TEXT,
+        text TEXT,
+        text_sha256 TEXT,
+        text_truncated INTEGER NOT NULL DEFAULT 0,
+        preview_sha256 TEXT,
+        preview_size INTEGER NOT NULL DEFAULT 0,
+        dlp_withheld INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_attachment_extractions_due ON attachment_extractions(status, next_attempt_at);
+      CREATE INDEX IF NOT EXISTS idx_attachment_extractions_sha256 ON attachment_extractions(sha256, status);
+      CREATE INDEX IF NOT EXISTS idx_attachment_extractions_preview ON attachment_extractions(preview_sha256);
 
       -- page restrictions
       CREATE TABLE IF NOT EXISTS page_restrictions (
@@ -5683,6 +5894,43 @@ function rankToRole(rank: number): CloudRole {
 
 function likePattern(value: string): string {
   return `%${value.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
+}
+
+const extractionColumns =
+  "attachment_id, sha256, status, attempts, next_attempt_at, error, COALESCE(length(text), 0) AS text_length, text_sha256, text_truncated, preview_sha256, preview_size, dlp_withheld, updated_at";
+
+interface ExtractionRow {
+  attachment_id: string;
+  sha256: string;
+  status: CloudAttachmentExtractionStatus;
+  attempts: number;
+  next_attempt_at: string | null;
+  error: string | null;
+  text_length: number;
+  text_sha256: string | null;
+  text_truncated: number;
+  preview_sha256: string | null;
+  preview_size: number;
+  dlp_withheld: number;
+  updated_at: string;
+}
+
+function cloudAttachmentExtraction(row: ExtractionRow): CloudAttachmentExtraction {
+  return {
+    attachmentId: row.attachment_id,
+    sha256: row.sha256,
+    status: row.status,
+    attempts: row.attempts,
+    ...(row.next_attempt_at ? { nextAttemptAt: row.next_attempt_at } : {}),
+    ...(row.error ? { error: row.error } : {}),
+    textLength: row.text_length,
+    ...(row.text_sha256 ? { textSha256: row.text_sha256 } : {}),
+    textTruncated: row.text_truncated === 1,
+    ...(row.preview_sha256 ? { previewSha256: row.preview_sha256 } : {}),
+    previewSize: row.preview_size,
+    dlpWithheld: row.dlp_withheld === 1,
+    updatedAt: row.updated_at,
+  };
 }
 
 function searchResult(row: SearchResultRow): CloudSearchResult {
