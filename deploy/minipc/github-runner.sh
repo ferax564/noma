@@ -2,6 +2,7 @@
 # Register the minipc as a self-hosted GitHub Actions runner for one PRIVATE repository.
 #
 #   sudo deploy/minipc/github-runner.sh <owner/repo> <registration-token> [count]
+#   sudo deploy/minipc/github-runner.sh prepare     # host setup + runner download only
 #
 # Get the token from the repository: Settings → Actions → Runners → New self-hosted
 # runner (it is shown in the ./config.sh line and is valid for one hour). `count`
@@ -19,6 +20,12 @@ set -euo pipefail
 repo="${1:-}"
 token="${2:-}"
 count="${3:-1}"
+prepare_only=0
+if [[ "$repo" == "prepare" ]]; then
+  prepare_only=1
+  repo="prepare/only"
+  token="unused"
+fi
 if [[ ! "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || [[ -z "$token" ]] || [[ ! "$count" =~ ^[1-9]$ ]]; then
   sed -n '2,15p' "$0" >&2
   exit 2
@@ -27,9 +34,10 @@ fi
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 
-# Anonymous lookup: 200 means GitHub shows the repo to anyone, so `.private` must be
+# Anonymous lookup (skipped in prepare mode): 200 means GitHub shows the repo to anyone, so `.private` must be
 # true (read with tostring: jq's `//` would turn `false` into the fallback); 404 means
 # it is not visible anonymously, i.e. private. Anything else stops the script.
+if [[ "$prepare_only" == 0 ]]; then
 repo_json="$(mktemp)"
 status="$(curl -sS -o "$repo_json" -w '%{http_code}' "https://api.github.com/repos/$repo" 2>/dev/null || echo 000)"
 private="$(jq -r '.private | tostring' "$repo_json" 2>/dev/null || echo unknown)"
@@ -45,11 +53,14 @@ case "$status:$private" in
       exit 1
     fi ;;
 esac
+fi
 
 say "host packages (build tools, jq, gh, Playwright browser libraries)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq curl jq git build-essential unzip zip ca-certificates gnupg nodejs npm >/dev/null
+apt-get install -y -qq curl jq git build-essential unzip zip ca-certificates gnupg >/dev/null
+# Keep an existing Node (e.g. NodeSource, which bundles npm): Ubuntu's npm package conflicts with it.
+command -v npx >/dev/null || apt-get install -y -qq nodejs npm >/dev/null
 if ! command -v gh >/dev/null; then
   install -d -m 0755 /etc/apt/keyrings
   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
@@ -77,6 +88,11 @@ if [[ ! -f "$tarball" ]]; then
   echo "$sha  $tarball.partial" | sha256sum -c --quiet
   mv "$tarball.partial" "$tarball"
   chown gh-runner: "$tarball"
+fi
+
+if [[ "$prepare_only" == 1 ]]; then
+  say "prepared: host packages, gh-runner user and actions/runner v$version are ready"
+  exit 0
 fi
 
 slug="${repo//\//-}"
