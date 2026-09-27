@@ -25,6 +25,7 @@ import type { SlackConfig } from "./integrations.js";
 import type { SiemTarget } from "./siem.js";
 import type { CloudDevLoopStore } from "../cloud-devloop.js";
 import type { RunProvider } from "./run-provider.js";
+import type { CodixingSettings } from "./codixing.js";
 import type { LlmProvider } from "../cloud-llm.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
@@ -73,6 +74,8 @@ export interface CloudServerConfig {
   agentOps: CloudAgentOpsStore;
   /** Where `/deploy` and `/test` runs execute (ezkeel); absent when no run environment is configured. */
   runProvider?: RunProvider;
+  /** Code intelligence (codixing servers linked per repository, GitHub PR file listing); defaults apply when absent. */
+  codixing?: CodixingSettings;
   blobs: BlobStore;
   /** Largest single attachment upload, in bytes. */
   maxAttachmentBytes: number;

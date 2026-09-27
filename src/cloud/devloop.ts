@@ -6,6 +6,7 @@
 import type { CloudIssue, CloudIssueStatus, CloudProject, CloudUserRecord } from "../cloud-db.js";
 import type { DevPullRequest, DevRepo, DevRun, DevRunKind } from "../cloud-devloop.js";
 import type { ChatChannel, ChatMessage } from "../cloud-chat.js";
+import { blastRadiusReport } from "./code-intel.js";
 import { type CloudServerConfig, randomId, recordActivity, recordIssueEvent, uniqueId } from "./context.js";
 import { HttpError } from "./http.js";
 
@@ -339,6 +340,9 @@ async function pullRequestEvent(config: CloudServerConfig, project: CloudProject
     });
     if (run) runs.push(run.id);
   }
+  if ((action === "opened" || action === "reopened" || action === "synchronize" || action === "ready_for_review") && repo.codixingUrl) {
+    void reportBlastRadius(config, project, repo, actor, pull, issues[0]);
+  }
   if (action === "closed") {
     for (const issue of issues) {
       if (merged) {
@@ -354,6 +358,18 @@ async function pullRequestEvent(config: CloudServerConfig, project: CloudProject
     }
   }
   return { handled: true, event: "pull_request", action, issues: issues.map((issue) => issue.key), ...(runs.length ? { runs } : {}) };
+}
+
+/** Posts the pull request's blast radius in its issue's thread (or the project channel); never throws. */
+async function reportBlastRadius(config: CloudServerConfig, project: CloudProject, repo: DevRepo, actor: CloudUserRecord, pull: DevPullRequest, issue: CloudIssue | undefined): Promise<void> {
+  try {
+    const body = await blastRadiusReport(config, repo, pull);
+    if (!body) return;
+    if (issue) announceToIssue(config, project, actor, config.store.readIssue(issue.id) ?? issue, body);
+    else announce(config, project, actor, body);
+  } catch (error) {
+    console.warn(`noma cloud: could not post the blast radius of ${repo.repo}#${pull.number}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function linkPullToIssue(config: CloudServerConfig, actor: CloudUserRecord, issue: CloudIssue, pull: DevPullRequest, what: "opened" | "merged"): void {

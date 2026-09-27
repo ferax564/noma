@@ -35,6 +35,10 @@ export interface DevRepo {
   minRole: "editor" | "owner";
   /** Runs requested by agents wait for a person's approval (default true). */
   agentRunsNeedApproval: boolean;
+  /** Base URL of the codixing server that indexes this repository (code intelligence); absent when off. */
+  codixingUrl?: string;
+  /** Bearer token for the proxy in front of the codixing server; never returned by the API. */
+  codixingToken?: string;
   linkedBy: string;
   createdAt: string;
   updatedAt: string;
@@ -95,6 +99,8 @@ interface RepoRow {
   max_concurrent: number;
   min_role: "editor" | "owner";
   agent_runs_need_approval: number;
+  codixing_url: string | null;
+  codixing_token: string | null;
   linked_by: string;
   created_at: string;
   updated_at: string;
@@ -159,11 +165,12 @@ export class CloudDevLoopStore {
   writeRepo(repo: DevRepo): DevRepo {
     this.db
       .prepare(
-        `INSERT INTO dev_repos (project_id, site_id, provider, repo, webhook_secret, default_branch, runs_enabled, auto_preview, monthly_minutes, max_concurrent, min_role, agent_runs_need_approval, linked_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO dev_repos (project_id, site_id, provider, repo, webhook_secret, default_branch, runs_enabled, auto_preview, monthly_minutes, max_concurrent, min_role, agent_runs_need_approval, codixing_url, codixing_token, linked_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(project_id) DO UPDATE SET repo = excluded.repo, webhook_secret = excluded.webhook_secret, default_branch = excluded.default_branch,
            runs_enabled = excluded.runs_enabled, auto_preview = excluded.auto_preview, monthly_minutes = excluded.monthly_minutes,
-           max_concurrent = excluded.max_concurrent, min_role = excluded.min_role, agent_runs_need_approval = excluded.agent_runs_need_approval, updated_at = excluded.updated_at`,
+           max_concurrent = excluded.max_concurrent, min_role = excluded.min_role, agent_runs_need_approval = excluded.agent_runs_need_approval,
+           codixing_url = excluded.codixing_url, codixing_token = excluded.codixing_token, updated_at = excluded.updated_at`,
       )
       .run(
         repo.projectId,
@@ -178,6 +185,8 @@ export class CloudDevLoopStore {
         repo.maxConcurrent,
         repo.minRole,
         repo.agentRunsNeedApproval ? 1 : 0,
+        repo.codixingUrl ?? null,
+        repo.codixingToken ?? null,
         repo.linkedBy,
         repo.createdAt,
         repo.updatedAt,
@@ -192,6 +201,28 @@ export class CloudDevLoopStore {
 
   deleteRepo(projectId: string): boolean {
     return this.db.prepare("DELETE FROM dev_repos WHERE project_id = ?").run(projectId).changes > 0;
+  }
+
+  /** Linked repositories of the given projects that have a codixing server configured. */
+  listCodixingRepos(projectIds: string[]): DevRepo[] {
+    if (projectIds.length === 0) return [];
+    return (
+      this.db
+        .prepare("SELECT * FROM dev_repos WHERE codixing_url IS NOT NULL AND project_id IN (SELECT value FROM json_each(?)) ORDER BY project_id")
+        .all(JSON.stringify(projectIds)) as RepoRow[]
+    ).map(repoFromRow);
+  }
+
+  // code intelligence
+
+  /** Records that the blast radius of a pull request head was reported; false when it already was. */
+  claimBlastRadius(projectId: string, number: number, headSha: string, at: string): boolean {
+    return this.db.prepare("INSERT OR IGNORE INTO dev_blast_radius (project_id, number, head_sha, created_at) VALUES (?, ?, ?, ?)").run(projectId, number, headSha, at).changes > 0;
+  }
+
+  /** Forgets a claim whose report could not be produced, so a later event for the same head retries. */
+  releaseBlastRadius(projectId: string, number: number, headSha: string): void {
+    this.db.prepare("DELETE FROM dev_blast_radius WHERE project_id = ? AND number = ? AND head_sha = ?").run(projectId, number, headSha);
   }
 
   // webhook deliveries
@@ -431,9 +462,18 @@ export class CloudDevLoopStore {
       );
       CREATE INDEX IF NOT EXISTS dev_runs_project ON dev_runs (project_id, created_at);
       CREATE INDEX IF NOT EXISTS dev_runs_status ON dev_runs (status);
+      CREATE TABLE IF NOT EXISTS dev_blast_radius (
+        project_id TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        head_sha TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (project_id, number, head_sha)
+      );
     `);
     this.addColumn("dev_repos", "agent_runs_need_approval", "INTEGER NOT NULL DEFAULT 1");
     this.addColumn("dev_runs", "reviewed_by", "TEXT");
+    this.addColumn("dev_repos", "codixing_url", "TEXT");
+    this.addColumn("dev_repos", "codixing_token", "TEXT");
   }
 
   private addColumn(table: string, column: string, definition: string): void {
@@ -456,6 +496,8 @@ function repoFromRow(row: RepoRow): DevRepo {
     maxConcurrent: row.max_concurrent,
     minRole: row.min_role,
     agentRunsNeedApproval: row.agent_runs_need_approval !== 0,
+    ...(row.codixing_url ? { codixingUrl: row.codixing_url } : {}),
+    ...(row.codixing_token ? { codixingToken: row.codixing_token } : {}),
     linkedBy: row.linked_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

@@ -2034,6 +2034,71 @@ GET|DELETE     /api/projects/<id>/runs/<run-id>
 POST           /api/hooks/github/<project-id>   (GitHub webhook, HMAC-signed)
 ```
 
+### Code intelligence (codixing) {id="code-intelligence"}
+
+A linked repository can point at a [codixing](https://github.com/ferax564/codixing)
+server, a code-retrieval engine that indexes one repository: BM25 and vector
+search over code chunks, plus a file dependency graph. It is optional. Without
+it, nothing below happens and every response is unchanged.
+
+**Set it up.** Run one `codixing-server` per repository, next to a clone that
+has a `.codixing/` index (`codixing init`, then `codixing-server --host 0.0.0.0
+--port 3000 /path/to/repo`). For example, deploy it as an app on ezkeel.
+codixing has **no authentication**, so never expose it directly. Keep it on a
+private network or put it behind a proxy that checks a bearer token. Then a
+space owner saves the URL on the project's repository:
+
+```text
+PUT /api/projects/<id>/repo   {codixingUrl: "https://code.internal/shop", codixingToken?: "…"}
+```
+
+The URL must be `http` or `https`, with no credentials, query, or fragment.
+`null` clears it, and clearing the URL also clears the token. The token is sent as
+`Authorization: Bearer …` and is never returned. `GET` shows only
+`codixing: {url, tokenSet}`. Changing the linked `repo` drops the server.
+
+**What it powers.**
+
+- **Pull-request blast radius.** When a pull request is opened, reopened,
+  marked ready, or gets new commits, Noma lists its changed files from GitHub
+  (`GET /repos/<repo>/pulls/<n>/files`, at most 300 files). It then asks
+  codixing for the files that depend on them (`/graph/callers`, depth 2, the
+  first 25 changed files). One reply goes to the linked issue's thread, or to
+  the project channel. It gives the changed-file count, up to 15 impacted
+  files, and up to 10 likely affected tests (paths such as `test/`,
+  `*.test.ts`, `*_test.go`, `test_*.py`, `*Test.java`). It is posted once per
+  head SHA, so GitHub redeliveries do not repeat it.
+- **Code in ⌘K.** The palette also queries the codixing servers of repositories
+  linked from projects you can see. It asks at most 5 servers, in parallel,
+  with a 1.5 s deadline and the `instant` strategy. The hits come back as a
+  separate `code` group in `GET /api/find`: repo, file, lines, signature,
+  snippet, and a GitHub link. Repositories in spaces you cannot read are never
+  queried.
+- **Agent context.** When a hosted agent answers a mention in a project
+  channel, Noma searches the project's codixing server. The search uses the
+  thread's Work issue and the mention text, with a token budget of about 1,500.
+  The results go into the prompt inside
+  `<repository_code … trust="untrusted">`, and the system prompt tells the model
+  that this is reference data, not instructions.
+
+**Limits and safety.** Every codixing response is treated as untrusted. Each
+request has a deadline (`NOMA_CLOUD_CODIXING_TIMEOUT_MS`, default 3000; 1500
+for ⌘K) and a size cap (1 MB for search, 256 KB for the graph). Redirects are
+not followed. The server's address is resolved once and pinned. Results are
+shape-checked, and paths with `..`, absolute paths, or control characters are
+dropped. If a server is down, slow, or returns something malformed, the
+feature it serves is skipped. Webhooks, search, and agent replies carry on
+without it. codixing indexes one working copy (usually the default branch), so
+the blast radius shows dependents as of that index, not as of the pull
+request's head.
+
+| Variable | Meaning |
+|---|---|
+| `NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS` | `1` lets codixing URLs point at private or loopback addresses. This is the usual choice for a sidecar on the same network. It is off by default, which blocks SSRF by space owners. |
+| `NOMA_CLOUD_CODIXING_TIMEOUT_MS` | per-request deadline for codixing (default 3000) |
+| `NOMA_CLOUD_GITHUB_TOKEN` (or `_FILE`) | optional GitHub token for listing pull-request files. Public repositories work without it, at GitHub's anonymous rate limit. |
+| `NOMA_CLOUD_GITHUB_API_URL` | GitHub REST base (default `https://api.github.com`; set it for GitHub Enterprise) |
+
 ## Edit a page
 
 The center of the app has two panes:

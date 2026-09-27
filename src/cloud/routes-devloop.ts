@@ -6,6 +6,7 @@
 import { handleSlackEvent, verifySlackSignature } from "./integrations.js";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isIP } from "node:net";
 import type { CloudAgentIdentity } from "../cloud-platform.js";
 import type { CloudProject, CloudUserRecord } from "../cloud-db.js";
 import type { ChatChannel, ChatMessage } from "../cloud-chat.js";
@@ -13,6 +14,9 @@ import type { DevRepo, DevRun, DevRunKind } from "../cloud-devloop.js";
 import { type AccessContext, type CloudServerConfig, type Principal, randomId, requireAccessRole, requireProjectAccess, requireUser } from "./context.js";
 import { requireAgentsRunning } from "./agent-runner.js";
 import { ownedAgent } from "./routes-knowledge.js";
+import { CodixingError, codixingUrl } from "./codixing.js";
+import { codixingSettingsOf } from "./code-intel.js";
+import { isNonPublicAddress } from "./ai-sources.js";
 import { handleGithubEvent, refInput, refreshRun, requestRun, stopRun } from "./devloop.js";
 import { HttpError, headerValue, readJsonBody, readRawBody, sendJson } from "./http.js";
 import { boundedInteger, numberQuery, optionalString, stringInput, stringPathPart } from "./input.js";
@@ -48,6 +52,7 @@ export async function routeProjectDevLoop(
       const repo = optionalString(input.repo) ?? current?.repo;
       if (!repo || !REPO_RE.test(repo)) throw new HttpError(400, "repo must be a GitHub repository as owner/name");
       const now = config.now().toISOString();
+      const codixing = codixingInput(config, input, current && current.repo === repo ? current : undefined);
       const saved = config.devloop.writeRepo({
         projectId: project.id,
         siteId: project.siteId,
@@ -61,11 +66,12 @@ export async function routeProjectDevLoop(
         maxConcurrent: boundedInteger(input.maxConcurrent, current?.maxConcurrent ?? 2, 1, 20, "maxConcurrent"),
         minRole: input.minRole === undefined ? current?.minRole ?? "editor" : minRoleInput(input.minRole),
         agentRunsNeedApproval: typeof input.agentRunsNeedApproval === "boolean" ? input.agentRunsNeedApproval : current?.agentRunsNeedApproval ?? true,
+        ...codixing,
         linkedBy: current?.linkedBy ?? user.id,
         createdAt: current?.createdAt ?? now,
         updatedAt: now,
       });
-      config.platform.recordAudit(user.id, current ? "repo.updated" : "repo.linked", "site", project.siteId, { projectId: project.id, repo, runsEnabled: saved.runsEnabled, autoPreview: saved.autoPreview, monthlyMinutes: saved.monthlyMinutes }, now);
+      config.platform.recordAudit(user.id, current ? "repo.updated" : "repo.linked", "site", project.siteId, { projectId: project.id, repo, runsEnabled: saved.runsEnabled, autoPreview: saved.autoPreview, monthlyMinutes: saved.monthlyMinutes, codixing: Boolean(saved.codixingUrl) }, now);
       sendJson(res, current ? 200 : 201, repoResponse(config, project, saved, true));
       return;
     }
@@ -264,7 +270,7 @@ function projectChannelInput(config: CloudServerConfig, principal: Principal, pr
 function repoResponse(config: CloudServerConfig, project: CloudProject, repo: DevRepo | undefined, owner: boolean): Record<string, unknown> {
   const runEnvironment = config.runProvider?.name ?? null;
   if (!repo) return { linked: false, runEnvironment, hookPath: `/api/hooks/github/${project.id}` };
-  const { webhookSecret, ...rest } = repo;
+  const { webhookSecret, codixingUrl: codixing, codixingToken, ...rest } = repo;
   const monthStart = new Date(Date.UTC(config.now().getUTCFullYear(), config.now().getUTCMonth(), 1)).toISOString();
   return {
     linked: true,
@@ -272,8 +278,42 @@ function repoResponse(config: CloudServerConfig, project: CloudProject, repo: De
     hookPath: `/api/hooks/github/${project.id}`,
     ...rest,
     ...(owner ? { webhookSecret } : {}),
+    ...(codixing ? { codixing: { url: codixing, tokenSet: Boolean(codixingToken) } } : {}),
     usage: { minutesUsed: config.devloop.minutesUsed(project.id, monthStart), activeRuns: config.devloop.activeRunCount(project.id) },
   };
+}
+
+/**
+ * `codixingUrl` / `codixingToken` from a repo PUT: absent keeps the saved value (for the same repo),
+ * `null` or `""` clears it. Clearing the URL clears the token too.
+ */
+function codixingInput(config: CloudServerConfig, input: Record<string, unknown>, current: DevRepo | undefined): Pick<DevRepo, "codixingUrl" | "codixingToken"> {
+  let url = current?.codixingUrl;
+  let token = current?.codixingToken;
+  if (input.codixingUrl !== undefined) {
+    if (input.codixingUrl === null || input.codixingUrl === "") url = undefined;
+    else if (typeof input.codixingUrl !== "string") throw new HttpError(400, "codixingUrl must be a string or null");
+    else {
+      try {
+        url = codixingUrl(input.codixingUrl);
+      } catch (error) {
+        throw new HttpError(400, error instanceof CodixingError ? error.message : "codixingUrl is not valid");
+      }
+      const host = new URL(url).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+      const local = host === "localhost" || host.endsWith(".localhost") || (isIP(host) !== 0 && isNonPublicAddress(host));
+      if (local && !codixingSettingsOf(config).allowPrivateHosts) {
+        throw new HttpError(400, "codixingUrl points at a private address; set NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS=1 to allow sidecars on a private network");
+      }
+    }
+  }
+  if (input.codixingToken !== undefined) {
+    if (input.codixingToken === null || input.codixingToken === "") token = undefined;
+    else if (typeof input.codixingToken !== "string" || input.codixingToken.length > 500 || !/^[\x21-\x7e]+$/.test(input.codixingToken)) {
+      throw new HttpError(400, "codixingToken must be at most 500 printable characters without spaces");
+    } else token = input.codixingToken;
+  }
+  if (!url) return {};
+  return { codixingUrl: url, ...(token ? { codixingToken: token } : {}) };
 }
 
 function runResponse(config: CloudServerConfig, run: DevRun): Record<string, unknown> {
