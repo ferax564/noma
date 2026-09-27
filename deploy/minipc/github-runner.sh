@@ -27,11 +27,24 @@ fi
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 
-visibility="$(curl -fsS "https://api.github.com/repos/$repo" 2>/dev/null | jq -r '.private // empty' || true)"
-if [[ "$visibility" == "false" ]]; then
-  echo "error: $repo is public; a self-hosted runner would run fork pull requests on this machine" >&2
-  exit 1
-fi
+# Anonymous lookup: 200 means GitHub shows the repo to anyone, so `.private` must be
+# true (read with tostring: jq's `//` would turn `false` into the fallback); 404 means
+# it is not visible anonymously, i.e. private. Anything else stops the script.
+repo_json="$(mktemp)"
+status="$(curl -sS -o "$repo_json" -w '%{http_code}' "https://api.github.com/repos/$repo" 2>/dev/null || echo 000)"
+private="$(jq -r '.private | tostring' "$repo_json" 2>/dev/null || echo unknown)"
+rm -f "$repo_json"
+case "$status:$private" in
+  200:true | 404:*) ;;
+  200:false)
+    echo "error: $repo is public; a self-hosted runner would run fork pull requests on this machine" >&2
+    exit 1 ;;
+  *)
+    if [[ "${RUNNER_ALLOW_UNVERIFIED:-}" != "1" ]]; then
+      echo "error: could not confirm $repo is private (GitHub API answered $status); retry, or set RUNNER_ALLOW_UNVERIFIED=1 if you are sure" >&2
+      exit 1
+    fi ;;
+esac
 
 say "host packages (build tools, jq, gh, Playwright browser libraries)"
 export DEBIAN_FRONTEND=noninteractive
