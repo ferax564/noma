@@ -8,6 +8,7 @@ import type { DevPullRequest, DevRepo, DevRun, DevRunKind } from "../cloud-devlo
 import type { ChatChannel, ChatMessage } from "../cloud-chat.js";
 import { blastRadiusReport } from "./code-intel.js";
 import { type CloudServerConfig, randomId, recordActivity, recordIssueEvent, uniqueId } from "./context.js";
+import { governAgentAction, recordAgentDecision, runKind, runPayload } from "./governance.js";
 import { HttpError } from "./http.js";
 
 /** Branch, tag, or SHA; never starts with `-` so it cannot read as a git option (mirrors ezkeel). */
@@ -56,13 +57,24 @@ export async function requestRun(config: CloudServerConfig, request: RunRequest)
   const id = randomId();
   const now = config.now().toISOString();
   const needsApproval = Boolean(request.agentId && repo.agentRunsNeedApproval);
+  const appName = runAppName(project, request.kind, ref, id);
+  const kind = runKind({ kind: request.kind });
+  governAgentAction(config, {
+    kind,
+    phase: needsApproval ? "propose" : "execute",
+    actorId: actor.id,
+    ...(request.agentId ? { agentId: request.agentId } : {}),
+    siteIds: [project.siteId],
+    payload: runPayload({ kind: request.kind, projectId: project.id, ref, appName }, repo),
+    ...(needsApproval ? {} : { standing: request.agentId ? "the project owner turned off approval for agent runs" : "requested by a person" }),
+  });
   const run = config.devloop.insertRun({
     id,
     projectId: project.id,
     kind: request.kind,
     ref,
     status: needsApproval ? "pending_approval" : "queued",
-    appName: runAppName(project, request.kind, ref, id),
+    appName,
     ...(issue && issue.projectId === project.id ? { issueId: issue.id } : {}),
     ...(request.pullNumber !== undefined ? { pullNumber: request.pullNumber } : {}),
     ...(request.channelId ? { channelId: request.channelId } : {}),
@@ -84,21 +96,42 @@ export async function requestRun(config: CloudServerConfig, request: RunRequest)
 }
 
 /** A person approves or rejects an agent's pending run; the agent's owner cannot approve it. */
-export async function decideRun(config: CloudServerConfig, run: DevRun, reviewer: CloudUserRecord, decision: "approve" | "reject"): Promise<DevRun> {
+export async function decideRun(config: CloudServerConfig, run: DevRun, reviewer: CloudUserRecord, decision: "approve" | "reject", options: { reason?: string; payloadHash?: string } = {}): Promise<DevRun> {
   if (run.status !== "pending_approval") throw new HttpError(409, "Only runs waiting for approval can be decided");
   if (decision === "approve" && run.requestedBy === reviewer.id) throw new HttpError(409, "A different person must approve a run your agent asked for");
   const project = config.store.readProject(run.projectId);
   const repo = project ? config.devloop.readRepo(project.id) : undefined;
   if (!project || !repo) throw new HttpError(404, "Project or repository not found");
   const now = config.now().toISOString();
+  if (decision === "approve") requireRunnable(config, project, repo);
   config.platform.recordAudit(reviewer.id, decision === "approve" ? "run.approved" : "run.rejected", "site", project.siteId, { projectId: project.id, runId: run.id, agentId: run.agentId }, now);
+  recordAgentDecision(config, {
+    subject: { type: "run", id: run.id },
+    kind: runKind(run),
+    decision: decision === "approve" ? "approved" : "rejected",
+    decidedBy: reviewer.id,
+    payload: runPayload(run, repo),
+    ...(options.reason ? { reason: options.reason } : {}),
+    ...(options.payloadHash ? { expectedHash: options.payloadHash } : {}),
+    siteId: project.siteId,
+    ...(run.agentId ? { agentId: run.agentId } : {}),
+    decidedAt: now,
+  });
   if (decision === "reject") {
     const rejected = config.devloop.transitionRun(run.id, ["pending_approval"], { status: "rejected", reviewedBy: reviewer.id, finishedAt: now });
     if (!rejected) throw new HttpError(409, "The run was already decided");
     announce(config, project, reviewer, `🙅 ${reviewer.name} declined the ${run.kind} of \`${run.ref}\``, rejected);
     return rejected;
   }
-  requireRunnable(config, project, repo);
+  governAgentAction(config, {
+    kind: runKind(run),
+    phase: "execute",
+    actorId: reviewer.id,
+    ...(run.agentId ? { agentId: run.agentId } : {}),
+    siteIds: [project.siteId],
+    subject: { type: "run", id: run.id },
+    payload: runPayload(run, repo),
+  });
   const approved = config.devloop.transitionRun(run.id, ["pending_approval"], { status: "queued", reviewedBy: reviewer.id });
   if (!approved) throw new HttpError(409, "The run was already decided");
   const actor = config.store.readUser(run.requestedBy) ?? reviewer;

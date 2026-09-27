@@ -3339,8 +3339,8 @@
     if (filename) {
       const base = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
       const stem = base.replace(/\.noma$/i, "").replace(/^\d+[-_]/, "");
-      const slug = slugify(stem);
-      if (slug && slug !== root.id) aliases.add(slug);
+      const slug2 = slugify(stem);
+      if (slug2 && slug2 !== root.id) aliases.add(slug2);
     }
     const fmAliases = meta.aliases;
     if (Array.isArray(fmAliases)) {
@@ -3824,14 +3824,14 @@
         const section = node;
         const isExplicit = section._idIsExplicit === true;
         if (!isExplicit) {
-          const slug = section.id;
-          if (seenSlugSections.has(slug)) {
+          const slug2 = section.id;
+          if (seenSlugSections.has(slug2)) {
             let n = 2;
-            while (seenSlugSections.has(`${slug}-${n}`)) n++;
-            section.id = `${slug}-${n}`;
+            while (seenSlugSections.has(`${slug2}-${n}`)) n++;
+            section.id = `${slug2}-${n}`;
             seenSlugSections.add(section.id);
           } else {
-            seenSlugSections.add(slug);
+            seenSlugSections.add(slug2);
           }
         }
         while (stack.length > 0 && stack[stack.length - 1].level >= section.level) {
@@ -6212,6 +6212,67 @@ ${content}
     };
     visit(doc.children);
     return out;
+  }
+  function sectionsAsSlides(doc) {
+    const byLevel = /* @__PURE__ */ new Map();
+    const visit = (nodes) => {
+      for (const node of nodes) {
+        if (node.type !== "section") continue;
+        const list = byLevel.get(node.level) ?? [];
+        list.push(node);
+        byLevel.set(node.level, list);
+        visit(node.children);
+      }
+    };
+    visit(doc.children);
+    const preamble = doc.children.filter((child) => child.type !== "section" && child.type !== "frontmatter");
+    const levels = [...byLevel.keys()].sort((a, b) => a - b);
+    const docTitle = typeof doc.meta.title === "string" ? doc.meta.title : void 0;
+    if (levels.length === 0) return preamble.length > 0 ? [{ title: docTitle, body: preamble, layout: "content" }] : [];
+    const level = levels.find((l) => (byLevel.get(l)?.length ?? 0) >= 2) ?? levels[0];
+    const out = [];
+    const top = byLevel.get(levels[0]) ?? [];
+    if (level !== levels[0] && top.length === 1) {
+      const root = top[0];
+      out.push({ section: root, body: [...preamble, ...root.children.filter((child) => child.type !== "section")], layout: "title" });
+    } else if (preamble.length > 0) {
+      out.push({ title: docTitle, body: preamble, layout: "title" });
+    }
+    for (const section of byLevel.get(level) ?? []) {
+      out.push({ section, body: section.children.filter((child) => child.type !== "section"), layout: "content" });
+    }
+    return out;
+  }
+  function presentationSlides(doc, deckId) {
+    const decks = findDecks(doc);
+    const deck = deckId ? decks.find((d) => d.id === deckId) : decks[0];
+    if (deckId && !deck) throw new Error(`No ::deck with id "${deckId}".`);
+    const docTitle = typeof doc.meta.title === "string" ? doc.meta.title : void 0;
+    if (deck) {
+      const title2 = typeof deck.attrs.title === "string" ? deck.attrs.title : docTitle;
+      return { deck, ...title2 ? { title: title2 } : {}, aspect: deckAspect(deck), slides: deckSlides(deck), fromSections: false };
+    }
+    const used = /* @__PURE__ */ new Set();
+    const slides = sectionsAsSlides(doc).map((entry, index) => {
+      let id = entry.section?.id ?? `slide-${index + 1}`;
+      for (let n = 2; used.has(id); n += 1) id = `${entry.section?.id ?? "slide"}-${n}`;
+      used.add(id);
+      const title2 = entry.section?.title ?? entry.title;
+      return {
+        type: "directive",
+        name: "slide",
+        id,
+        attrs: { id, layout: entry.layout, ...title2 ? { title: title2 } : {} },
+        children: entry.body,
+        ...entry.section?.pos ? { pos: entry.section.pos } : {}
+      };
+    });
+    const title = docTitle ?? sectionsTitle(doc);
+    return { ...title ? { title } : {}, aspect: "16:9", slides, fromSections: true };
+  }
+  function sectionsTitle(doc) {
+    const first = doc.children.find((child) => child.type === "section");
+    return first?.title;
   }
 
   // src/components.ts
@@ -10857,6 +10918,329 @@ ${fence}`;
     return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
+  // src/canvas-text-metrics.ts
+  var DEFAULT_FONT_SIZE = 24;
+  var DEFAULT_LINE_HEIGHT = 1.3;
+  function widthFactor(fontFamily) {
+    if (/courier|mono/i.test(fontFamily)) return 0.62;
+    if (/georgia|times|garamond|serif/i.test(fontFamily)) return 0.5;
+    if (/verdana/i.test(fontFamily)) return 0.58;
+    return 0.53;
+  }
+  function estimateTextFit(text, style, frameW, frameH) {
+    const fontSize = positive(style.fontSize, DEFAULT_FONT_SIZE, 800);
+    const lineHeight = positive(style.lineHeight, DEFAULT_LINE_HEIGHT, 5);
+    const padding = positive(style.padding, 0, 400) * 2;
+    const innerWidth = Math.max(1, frameW - padding);
+    const charWidth = fontSize * widthFactor(typeof style.fontFamily === "string" ? style.fontFamily : "");
+    const charsPerLine = Math.max(1, Math.floor(innerWidth / charWidth));
+    let lines = 0;
+    for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+      lines += line.length === 0 ? 1 : Math.max(1, Math.ceil(line.length / charsPerLine));
+    }
+    const estimatedHeight = Math.round(lines * fontSize * lineHeight);
+    const availableHeight = Math.max(1, Math.round(frameH));
+    let suggestedFontSize = fontSize;
+    if (estimatedHeight > availableHeight && fontSize > 8) {
+      suggestedFontSize = Math.max(8, Math.floor(fontSize * (availableHeight / estimatedHeight)));
+    }
+    return { lines, estimatedHeight, availableHeight, overflow: estimatedHeight > availableHeight * 1.02, suggestedFontSize };
+  }
+  function isTextBearing(element) {
+    return (element.type === "text" || element.type === "shape" || element.type === "ellipse") && !element.hidden;
+  }
+  function elementDrawnText(element) {
+    let number = 0;
+    return paragraphsOf(element).map((p) => {
+      number = p.kind === "number" ? number + 1 : 0;
+      const indent = p.kind === "plain" ? "" : "  ".repeat(1 + p.level);
+      return `${indent}${p.kind === "bullet" ? "\u2022 " : p.kind === "number" ? `${number}. ` : ""}${p.text}`;
+    }).join("\n");
+  }
+  function auditCanvasPage(page) {
+    const warnings = [];
+    const pageId = typeof page.id === "string" ? page.id : "";
+    const size = canvasPageSize(page);
+    const elements = Array.isArray(page.elements) ? page.elements : [];
+    for (const element of elements) {
+      if (!element || typeof element !== "object" || element.hidden) continue;
+      const elementId = typeof element.id === "string" ? element.id : "";
+      const label = typeof element.name === "string" && element.name.trim() ? element.name : elementId;
+      const frame = frameOf(element);
+      if (isTextBearing(element)) {
+        const text = elementDrawnText(element);
+        if (text.trim()) {
+          const style = element.style && typeof element.style === "object" ? element.style : {};
+          const fit = estimateTextFit(text, style, frame.w, frame.h);
+          if (fit.overflow) {
+            warnings.push({
+              code: "text_overflow",
+              pageId,
+              elementId,
+              fit,
+              message: `${label} text is estimated to overflow its frame (about ${fit.estimatedHeight}px in ${fit.availableHeight}px; ~${fit.suggestedFontSize}px type would fit). Shorten the text, split the slide, or enlarge the frame.`
+            });
+          }
+        }
+      }
+      if (element.type !== "line" && element.type !== "connector") {
+        const radians = frame.rotation * Math.PI / 180;
+        const width = Math.abs(frame.w * Math.cos(radians)) + Math.abs(frame.h * Math.sin(radians));
+        const height = Math.abs(frame.w * Math.sin(radians)) + Math.abs(frame.h * Math.cos(radians));
+        const cx = frame.x + frame.w / 2;
+        const cy = frame.y + frame.h / 2;
+        if (cx - width / 2 < -0.01 || cy - height / 2 < -0.01 || cx + width / 2 > size.width + 0.01 || cy + height / 2 > size.height + 0.01) {
+          warnings.push({ code: "outside_page", pageId, elementId, message: `${label} extends outside the page.` });
+        }
+      }
+    }
+    return warnings;
+  }
+  function positive(value, fallback, max) {
+    const n = typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+    return Math.min(max, n);
+  }
+
+  // src/renderer-paperdom.ts
+  function buildPaperDom(source, options = {}) {
+    const doc = expandComponents(source, { ...options.components ? { kit: options.components } : {}, wrap: false, dropDefinitions: true });
+    const presentation = presentationSlides(doc, options.deck);
+    const deck = presentation.deck;
+    const size = DECK_ASPECTS[presentation.aspect] ?? { width: 1280, height: 720 };
+    const theme = deckTheme(deck);
+    const now = options.now ?? (typeof doc.meta.date === "string" ? isoDate(doc.meta.date) : void 0) ?? "1970-01-01T00:00:00.000Z";
+    const title = presentation.title ?? "Untitled deck";
+    const specs = presentation.slides.map((slide, index) => {
+      const parts = slideParts(slide);
+      return {
+        slide,
+        id: slide.id ?? `slide-${index + 1}`,
+        title: parts.title,
+        layout: slideLayout(slide),
+        body: parts.body,
+        notes: parts.notes.map(notesText).filter(Boolean).join("\n\n"),
+        hidden: slide.attrs.hidden === true,
+        transition: transitionOf(slide.attrs.transition)
+      };
+    });
+    const used = /* @__PURE__ */ new Set();
+    const sources = [];
+    const pages = specs.map((spec) => {
+      const pageId = uniqueId(spec.id, used);
+      const elements = /* @__PURE__ */ new Map();
+      sources.push({ pageId, slide: spec.slide, elements });
+      const page = {
+        id: pageId,
+        name: spec.title ? inlineToPlain(spec.title) : pageId,
+        size,
+        background: { color: spec.layout === "section" ? theme.accent : theme.background },
+        elements: layoutElements(pageId, spec, size, theme, used, elements)
+      };
+      if (spec.notes) page.notes = spec.notes;
+      if (spec.hidden) page.hidden = true;
+      if (spec.transition !== "none") page.transition = spec.transition;
+      return page;
+    });
+    if (pages.length === 0) {
+      pages.push({ id: uniqueId("slide-1", used), name: title, size, background: { color: theme.background }, elements: [] });
+    }
+    if (pages.every((page) => page.hidden)) delete pages[0].hidden;
+    return {
+      document: {
+        format: "paperdom",
+        version: "0.1",
+        id: deck?.id ?? slug(title),
+        title,
+        revision: 0,
+        pages,
+        plugins: [],
+        metadata: { createdAt: now, updatedAt: now }
+      },
+      pages: sources
+    };
+  }
+  var SAFE_COLOR = /^(#[0-9a-fA-F]{3,8}|[a-z]+)$/;
+  function deckTheme(deck) {
+    const color2 = (key, fallback) => {
+      const value = attrString2(deck, key);
+      return value && SAFE_COLOR.test(value) ? value : fallback;
+    };
+    return {
+      background: color2("background", "#ffffff"),
+      ink: color2("ink", "#1d1c1a"),
+      accent: color2("accent", "#b9522a"),
+      onAccent: "#ffffff",
+      font: "Inter, ui-sans-serif, system-ui, sans-serif"
+    };
+  }
+  function baseStyle(theme, overrides = {}) {
+    return {
+      fill: "transparent",
+      stroke: "transparent",
+      strokeWidth: 0,
+      radius: 0,
+      opacity: 1,
+      color: theme.ink,
+      fontSize: 24,
+      fontWeight: 400,
+      textAlign: "left",
+      fontFamily: theme.font,
+      fontStyle: "normal",
+      underline: false,
+      strike: false,
+      lineHeight: 1.3,
+      letterSpacing: 0,
+      verticalAlign: "top",
+      padding: 0,
+      ...overrides
+    };
+  }
+  function layoutElements(pageId, spec, size, theme, used, provenance) {
+    const { width: W, height: H } = size;
+    const margin = Math.round(W * 0.05);
+    const inner = W - margin * 2;
+    const out = [];
+    let z = 1;
+    const push = (part, element, from = []) => {
+      const id = uniqueId(`${pageId}--${part}`, used);
+      provenance.set(id, from);
+      out.push({ ...element, id, z: z++ });
+    };
+    const titleText = spec.title ? inlineToPlain(spec.title).replace(/\s+/g, " ").trim() : "";
+    const ink = spec.layout === "section" ? theme.onAccent : theme.ink;
+    if (spec.layout === "title" || spec.layout === "section" || spec.layout === "statement" || spec.layout === "quote") {
+      const centered = spec.layout !== "section";
+      const align = centered ? "center" : "left";
+      if (titleText) {
+        push("title", {
+          type: "text",
+          name: "title",
+          frame: { x: margin, y: Math.round(H * 0.3), w: inner, h: Math.round(H * 0.2), rotation: 0 },
+          style: baseStyle(theme, { color: ink, fontSize: spec.layout === "title" ? 56 : 48, fontWeight: 700, textAlign: align, verticalAlign: "bottom" }),
+          content: { text: titleText }
+        });
+      }
+      const paragraphs = spec.body.flatMap(blockParagraphs);
+      if (paragraphs.length > 0) {
+        push("body", textElement("body", paragraphs, { x: margin, y: Math.round(H * 0.54), w: inner, h: Math.round(H * 0.3) }, baseStyle(theme, {
+          color: ink,
+          fontSize: spec.layout === "statement" ? 36 : 26,
+          fontStyle: spec.layout === "quote" ? "italic" : "normal",
+          textAlign: align
+        })), spec.body);
+      }
+      return out;
+    }
+    const top = titleText ? Math.round(H * 0.22) : margin;
+    if (titleText) {
+      push("title", {
+        type: "text",
+        name: "title",
+        frame: { x: margin, y: margin, w: inner, h: Math.round(H * 0.12), rotation: 0 },
+        style: baseStyle(theme, { fontSize: 40, fontWeight: 700, verticalAlign: "bottom" }),
+        content: { text: titleText }
+      });
+    }
+    const bodyHeight = H - top - margin;
+    const columns = spec.layout === "two-column" ? splitColumns(spec.body) : [spec.body];
+    const gap = Math.round(W * 0.03);
+    const colWidth = Math.round((inner - gap * (columns.length - 1)) / columns.length);
+    columns.forEach((blocks, col) => {
+      const x = margin + col * (colWidth + gap);
+      const tables = blocks.filter((b) => b.type === "table");
+      const textBlocks = blocks.filter((b) => b.type !== "table");
+      const paragraphs = textBlocks.flatMap(blockParagraphs);
+      const textShare = tables.length === 0 ? 1 : paragraphs.length === 0 ? 0 : 0.45;
+      const suffix = columns.length > 1 ? `-${col + 1}` : "";
+      if (paragraphs.length > 0) {
+        push(`body${suffix}`, textElement(`body${suffix}`, paragraphs, { x, y: top, w: colWidth, h: Math.max(40, Math.round(bodyHeight * textShare)) }, baseStyle(theme, {
+          fontSize: spec.layout === "media" ? 20 : 24
+        })), textBlocks);
+      }
+      let tableY = top + Math.round(bodyHeight * textShare);
+      const tableHeight = tables.length ? Math.round(bodyHeight * (1 - textShare) / tables.length) : 0;
+      tables.forEach((table, index) => {
+        if (table.type !== "table") return;
+        push(table.id ?? `table${suffix}-${index + 1}`, {
+          type: "table",
+          name: table.id ?? "table",
+          frame: { x, y: tableY, w: colWidth, h: Math.max(40, tableHeight), rotation: 0 },
+          style: baseStyle(theme, { fontSize: 18, stroke: "#cbd5e1", strokeWidth: 1 }),
+          table: {
+            header: true,
+            rows: [table.header, ...table.rows].map((row) => row.map((cell) => inlineToPlain(cell)))
+          }
+        }, [table]);
+        tableY += tableHeight;
+      });
+    });
+    return out;
+  }
+  function textElement(name, paragraphs, box, style) {
+    return {
+      type: "text",
+      name,
+      frame: { ...box, rotation: 0 },
+      style,
+      content: { text: paragraphs.map((p) => p.text).join("\n"), paragraphs }
+    };
+  }
+  function oneLine(text) {
+    return inlineToPlain(text).replace(/\s+/g, " ").trim();
+  }
+  function blockParagraphs(node) {
+    switch (node.type) {
+      case "paragraph":
+      case "quote":
+        return [{ text: oneLine(node.content), kind: "plain" }];
+      case "list":
+        return node.items.map((item) => ({ text: oneLine(item.content), kind: node.ordered ? "number" : "bullet", level: 0 }));
+      case "code":
+        return node.content.split("\n").map((line) => ({ text: line, kind: "plain" }));
+      case "section":
+        return [{ text: oneLine(node.title), kind: "plain" }, ...node.children.flatMap(blockParagraphs)];
+      case "directive":
+        if (node.name === "notes" || node.name === "html" || node.name === "svg" || node.name === "script" || node.name === "canvas") return [];
+        if (node.children.length > 0) return node.children.flatMap(blockParagraphs);
+        return node.body ? node.body.split(/\n{2,}/).map((chunk) => ({ text: oneLine(chunk), kind: "plain" })).filter((p) => p.text) : [];
+      default:
+        return [];
+    }
+  }
+  function splitColumns(body) {
+    const columnDirectives = body.filter((b) => b.type === "directive" && (b.name === "column" || b.name === "card"));
+    if (columnDirectives.length >= 2) return columnDirectives.map((c) => c.children);
+    const grid = body.find((b) => b.type === "directive" && (b.name === "grid" || b.name === "columns"));
+    if (grid && grid.children.length >= 2) {
+      return grid.children.map((c) => c.type === "directive" ? c.children : [c]);
+    }
+    const half = Math.ceil(body.length / 2);
+    return [body.slice(0, half), body.slice(half)];
+  }
+  function notesText(node) {
+    if (node.children.length === 0) return (node.body ?? "").trim();
+    return node.children.flatMap(blockParagraphs).map((p) => p.text).join("\n");
+  }
+  function transitionOf(value) {
+    return value === "fade" || value === "slide" ? value : "none";
+  }
+  function attrString2(node, key) {
+    const value = node?.attrs[key];
+    return typeof value === "string" && value.trim() ? value : void 0;
+  }
+  function isoDate(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00.000Z` : void 0;
+  }
+  function uniqueId(base, used) {
+    let id = base;
+    for (let n = 2; used.has(id); n += 1) id = `${base}-${n}`;
+    used.add(id);
+    return id;
+  }
+  function slug(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "deck";
+  }
+
   // src/validator.ts
   var DEFAULT_STALE_DAYS = 365;
   var PROFILES = {
@@ -11057,6 +11441,42 @@ ${fence}`;
     if (typeof page === "string" && !read.document.pages.some((p) => p.id === page)) {
       diagnostics.push({ severity: "warning", code: "canvas-unknown-page", message: `Canvas "${node.id ?? "?"}" has no page "${page}".`, ...at });
     }
+    for (const shown of canvasPages(read.document, typeof page === "string" ? page : void 0)) {
+      for (const warning of auditCanvasPage(shown)) {
+        if (warning.code !== "text_overflow") continue;
+        diagnostics.push({ severity: "warning", code: "slide-text-overflow", message: `Canvas "${node.id ?? "?"}" page "${warning.pageId}": ${warning.message}`, ...at });
+      }
+    }
+  }
+  function validateSlideTextFit(source, components, diagnostics) {
+    const decks = findDecks(source);
+    decks.forEach((deck, index) => {
+      if (suppressed(deck) || !deck.id && index > 0) return;
+      let built;
+      try {
+        built = buildPaperDom(source, { ...components ? { components } : {}, ...deck.id ? { deck: deck.id } : {} });
+      } catch {
+        return;
+      }
+      for (const pageSource of built.pages) {
+        const slide = pageSource.slide;
+        if (suppressed(slide)) continue;
+        const page = built.document.pages.find((p) => p.id === pageSource.pageId);
+        if (!page) continue;
+        for (const warning of auditCanvasPage(page)) {
+          if (warning.code !== "text_overflow") continue;
+          const part = warning.elementId.startsWith(`${pageSource.pageId}--`) ? warning.elementId.slice(pageSource.pageId.length + 2) : warning.elementId;
+          diagnostics.push({
+            severity: "warning",
+            code: "slide-text-overflow",
+            message: `Slide "${slide.id ?? pageSource.pageId}" ${part}: ${warning.message}`,
+            ...slide.pos ? { pos: slide.pos } : {},
+            ...slide.endLine ? { endLine: slide.endLine } : {},
+            ...slide.id ? { nodeId: slide.id } : {}
+          });
+        }
+      }
+    });
   }
   var MEMORY_TYPES = /* @__PURE__ */ new Set(["user", "feedback", "project", "reference"]);
   var ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
@@ -11669,6 +12089,7 @@ ${fence}`;
       diagnostics.push({ severity: "warning", code: "invalid-style-token-alias", message: `style_tokens: ${error}.` });
     }
     validateDecksAndStyleTokens(doc.children, void 0, diagnostics, resolveStyleTokenAliases(doc.meta.style_tokens, options.styleTokens));
+    validateSlideTextFit(source, options.components, diagnostics);
     diagnostics.push(...componentDiagnostics);
     const ignore = options.ignoreRules;
     if (ignore && ignore.length > 0) {
@@ -11768,6 +12189,7 @@ ${fence}`;
     "slide-unknown-layout",
     "notes-outside-slide",
     "deck-unknown-aspect",
+    "slide-text-overflow",
     "component-invalid-definition",
     "component-duplicate",
     "component-missing-prop",

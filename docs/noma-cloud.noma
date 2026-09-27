@@ -2049,6 +2049,7 @@ what waits on you:
 | Page patch | An agent or colleague proposed block edits on a page you can edit | On the page |
 | AI page | An AI-drafted page in a space you can edit | In the space |
 | Page approval | Someone asked you to approve a page | On the page |
+| Propose-only | An agent asked a person to perform a bright-line action ([agent governance](#agent-governance)) | Here, by a space owner: recorded only, never executed |
 
 Runs asked for by agents wait in `pending_approval` until a person with the
 project's minimum role decides. The agent's owner cannot approve their own
@@ -2077,6 +2078,99 @@ GET            /api/agents/<id>/jobs
 GET            /api/approvals
 POST           /api/approvals/runs/<run-id>        {decision: approve|reject}
 GET|PUT        /api/enterprise/agents              {paused, reason?}   (workspace admins)
+```
+
+## Agent governance {id="agent-governance"}
+
+Every action an agent starts goes through one gate before it is proposed or
+executed. The model is ported from keepop, the owner's read-only-first AI
+operator: a capability registry, one enforcement chokepoint, approvals bound to
+a content hash, and an append-only approval table guarded by SQLite triggers.
+
+**Capability classes.** Each action kind is registered with a class and the
+lowest trust tier that may ask for it. Kinds that are not registered are
+denied by default, including unknown gateway tools.
+
+| Kind | Class | Tier | Runs after |
+|---|---|---|---|
+| `page.read`, `chat.read`, `assignment.read` | read_only | 0 | nothing — reads and dry-run proofs |
+| `page.patch` | approve_to_execute | 1 | a person's approval of this exact patch |
+| `page.create` | approve_to_execute | 1 | a person's approval of this exact AI-drafted page |
+| `comment.post`, `chat.post`, `assignment.update` | approve_to_execute | 1 | the owner's standing grant (capability plus page or channel access) |
+| `run.test` | approve_to_execute | 2 | a person's approval, or the project owner's `agentRunsNeedApproval: false` |
+| `run.deploy` | approve_to_execute | 3 | a person's approval, or the project owner's `agentRunsNeedApproval: false` |
+| `page.delete`, `run.teardown`, `access.change`, `retention.change`, `external.publish`, `repo.change`, `agent.config` | propose_only | 1 | never — a person performs it by hand |
+
+`GET /api/approvals/capabilities` returns the registry.
+
+**Bright lines.** An agent can ask for a propose-only action with the
+`action_propose` gateway tool (`{agentId, siteId, kind, payload, reason}`).
+The proposal appears in the approval queue for the space's editors, and a
+space owner can acknowledge, reject, or ask for a revision
+(`POST /api/approvals/actions/<id>`). Acknowledging records the decision and
+nothing else. The gate refuses to execute a propose-only kind even when an
+approval is on record.
+
+**Hash-bound approvals.** A decision binds to the sha256 of the canonical
+JSON of the payload it covers:
+
+- a page patch: document, base hash, and ops
+- an AI page: space, parent, title, and source hash
+- a run: project, linked repository, ref, and app name
+- a bright-line proposal: kind, space, and payload
+
+The approval queue shows each hash. A reviewer can send it back as
+`payloadHash` when deciding, and a mismatch returns `409 payload_hash_mismatch`.
+At execution the gate recomputes the hash and refuses on any difference, so
+a patch whose ops changed after approval, or a run whose project was relinked
+to another repository, has to be approved again.
+
+**Append-only decision log.** Every approval, rejection, or revision request
+on an agent action is a row in `agent_decisions`:
+
+- who decided, and when
+- the action kind and its capability class
+- the payload hash
+- the reason, the space, and the agent
+
+SQLite triggers abort any `UPDATE` or `DELETE` on the table. A later decision
+supersedes an earlier one, but the earlier row stays. The proposal and run
+tables keep their status columns for the workflow, but only the log
+authorizes execution. On upgrade, proposals that were already approved but
+not yet applied get a `migrated` decision bound to their current payload, so
+they still apply.
+
+The log sits outside every purge path. Trash purge, enterprise retention, and
+chat retention do not touch it. Decision rows hold IDs, hashes, and reasons,
+not page or chat content, so purging a page removes the content while the
+record that someone approved a change stays. If a legal erasure order ever
+reaches decision rows, an operator has to handle it deliberately outside the
+application, since the triggers block in-app deletes.
+
+**Trust tiers.** Each space has an agent trust tier: 0 read-only, 1 propose
+content, 2 run tests, 3 run deploys. Space owners and workspace admins set it
+with `PUT /api/approvals/trust/<site-id> {tier}`; a token needs the `admin`
+scope. Unconfigured spaces are tier 3, which keeps what agents could already
+do. When an action touches more than one space, the lowest tier applies.
+Tiers bind agents, not people: a person's own `/deploy` is not limited by
+them. An agent below the required tier gets
+`403 agent_tier_too_low` with the tier it needs.
+
+**Audit.** Every gate decision writes `agent.gate.allowed` or
+`agent.gate.denied` with the kind, class, phase, agent, tier, payload hash,
+and reason. Every human decision writes `agent.decision.recorded`, and tier
+changes write `agent.trust_changed`. These go to the same audit log that the
+SIEM forwarder ships.
+
+```text
+GET            /api/approvals/capabilities
+GET            /api/approvals/history?siteId=<site-id>
+GET|PUT        /api/approvals/trust/<site-id>      {tier: 0|1|2|3}
+POST           /api/approvals/actions/<id>         {decision: approve|reject|revise, payloadHash?, reason?}
+POST           /api/approvals/runs/<run-id>        {decision: approve|reject, payloadHash?, reason?}
+POST           /api/documents/<id>/patch-proposals/<proposal-id>/review   {decision, payloadHash?, reason?}
+GET            /api/documents/<id>/patch-proposals/<proposal-id>/decisions
+GET            /api/sites/<site-id>/ai/page-proposals/<proposal-id>/decisions
 ```
 
 ## Code, CI, and run environments {id="dev-loop"}

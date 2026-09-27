@@ -5,6 +5,7 @@ import { callRunGatewayTool } from "./routes-devloop.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { walk } from "../ast.js";
 import type { CloudPatchProposal, CloudRole, CloudUserRecord } from "../cloud-db.js";
+import type { AgentActionProposal } from "../cloud-governance.js";
 import type {
   AgentAccessGrant,
   AgentRecipe,
@@ -60,12 +61,15 @@ import { agentChatInbox, callChatGatewayTool } from "./routes-chat.js";
 import { createComment } from "./routes-comments.js";
 import { knowledgeDocuments, ownedAgent, platformInput } from "./routes-knowledge.js";
 import {
+  applyPatchProposal,
   cloudProofRecord,
   createCloudPatchProof,
   patchOpsInput,
   patchReviewDecision,
-  stalePatchProposal,
+  reviewPatchProposal,
 } from "./routes-patch.js";
+import { GATEWAY_TOOL_KINDS, lookupCapability } from "./capabilities.js";
+import { actionProposalPayload, governAgentAction, patchPayload, payloadHash } from "./governance.js";
 import { pageQuery, requestUrl } from "./security.js";
 
 export async function routeAgents(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
@@ -340,6 +344,7 @@ export async function routeAgentGateway(req: IncomingMessage, res: ServerRespons
     ownedAgent(config, user, agentId);
     const documentId = stringInput(input, "documentId");
     requireGatewayAgentDocumentAccess(config, agentId, documentId, "list_ids");
+    gateAgentRead(config, user, agentId, "list_ids", config.store.documentSiteIds(documentId));
     const document = await readDocument(config, documentId);
     const doc = parse(document.source, { filename: `${document.id}.noma` });
     const ids = [...walk(doc)].filter((node) => node.id).map((node) => ({ id: node.id!, aliases: node.aliases ?? [], type: node.type, line: node.pos?.line, endLine: node.endLine }));
@@ -394,11 +399,16 @@ async function callGatewayTool(
   user: CloudUserRecord,
 ): Promise<Record<string, unknown>> {
   const now = config.now().toISOString();
+  if (!GATEWAY_TOOL_KINDS[name]) {
+    const agentId = optionalString(args.agentId);
+    governAgentAction(config, { kind: `gateway.${name}`, phase: "execute", actorId: user.id, ...(agentId ? { agentId } : {}), payload: { tool: name } });
+  }
   if (name === "search" || name === "cited_answer") {
     const agentId = stringInput(args, "agentId");
     ownedAgent(config, user, agentId);
     const query = stringInput(args, "query").slice(0, 1_000);
     const siteId = optionalCloudId(args.siteId, "Site");
+    gateAgentRead(config, user, agentId, name, siteId ? [siteId] : []);
     const documents = knowledgeDocuments(config, user, siteId, agentId);
     if (name === "search") {
       const { results, retrieval } = await config.platform.searchWithRetrieval({ principalId: agentId, query, documents, now, limit: boundedInteger(args.limit, 12, 1, 100, "limit") });
@@ -410,6 +420,7 @@ async function callGatewayTool(
     const agentId = stringInput(args, "agentId");
     ownedAgent(config, user, agentId);
     const siteId = optionalCloudId(args.siteId, "Site");
+    gateAgentRead(config, user, agentId, name, siteId ? [siteId] : []);
     const documents = knowledgeDocuments(config, user, siteId, agentId);
     return {
       documents: documents.map((access) => ({
@@ -425,6 +436,7 @@ async function callGatewayTool(
     ownedAgent(config, user, agentId);
     const documentId = stringInput(args, "documentId");
     requireGatewayAgentDocumentAccess(config, agentId, documentId, "list_ids");
+    gateAgentRead(config, user, agentId, name, config.store.documentSiteIds(documentId));
     const document = await readDocument(config, documentId);
     const doc = parse(document.source, { filename: `${document.id}.noma` });
     return { documentId, versionHash: document.hash, ids: [...walk(doc)].filter((node) => node.id).map((node) => ({ id: node.id!, aliases: node.aliases ?? [], type: node.type, line: node.pos?.line, endLine: node.endLine })) };
@@ -437,6 +449,9 @@ async function callGatewayTool(
     if (grant.role !== "editor") throw new HttpError(403, "Agent editor access is required for patch proposals");
     const document = await readDocument(config, documentId);
     const ops = patchOpsInput(args.ops);
+    const siteIds = config.store.documentSiteIds(documentId);
+    if (name === "proof") gateAgentRead(config, user, agentId, name, siteIds);
+    else governAgentAction(config, { kind: "page.patch", phase: "propose", actorId: user.id, agentId, siteIds, payload: patchPayload({ documentId, documentHash: document.hash, ops }) });
     const proof = createCloudPatchProof(config, document, ops);
     const proofRecord = { ...cloudProofRecord(proof), agentId };
     if (name === "proof" || !proof.canWrite) return { proof: proofRecord, proposed: false };
@@ -462,6 +477,7 @@ async function callGatewayTool(
   }
   if (name === "assignments") {
     const agent = ownedAgent(config, user, stringInput(args, "agentId"));
+    gateAgentRead(config, user, agent.id, name, []);
     return { assignments: listAssignments(config, agent, optionalString(args.status), { limit: boundedInteger(args.limit, 50, 1, 200, "limit"), offset: 0 }) };
   }
   if (name === "reply") {
@@ -473,8 +489,14 @@ async function callGatewayTool(
     return { assignment: assignmentResponse(config, setAssignmentStatus(config, agent, stringInput(args, "assignmentId"), args)) };
   }
   if (name === "chat_inbox" || name === "chat_history" || name === "chat_post") {
-    return await callChatGatewayTool(name, args, config, principal, ownedAgent(config, user, stringInput(args, "agentId")));
+    const agent = ownedAgent(config, user, stringInput(args, "agentId"));
+    if (name !== "chat_post") {
+      const channel = optionalString(args.channelId) ? config.chat.readChannel(optionalString(args.channelId)!) : undefined;
+      gateAgentRead(config, user, agent.id, name, channel?.siteId ? [channel.siteId] : []);
+    }
+    return await callChatGatewayTool(name, args, config, principal, agent);
   }
+  if (name === "action_propose") return proposeBrightLineAction(config, user, args);
   if (name === "run_request") return await callRunGatewayTool(args, config, principal);
   if (name === "review") {
     const documentId = stringInput(args, "documentId");
@@ -483,12 +505,7 @@ async function callGatewayTool(
     requireAccessRole(access, "editor");
     const proposal = config.store.readPatchProposal(stringInput(args, "proposalId"));
     if (!proposal || proposal.documentId !== document.id) throw new HttpError(404, "Patch proposal not found");
-    if (proposal.status !== "pending") throw new HttpError(409, "Only pending proposals can be reviewed");
-    if (proposal.documentHash !== document.hash) throw stalePatchProposal(proposal, document);
-    const decision = patchReviewDecision(args.decision);
-    if (decision === "approved" && proposal.proposedBy === user.id) throw new HttpError(409, "A different collaborator must approve an agent patch");
-    config.store.writePatchProposal({ ...proposal, status: decision, reviewedBy: user.id, reviewedAt: now, updatedAt: now });
-    return { proposal: config.store.readPatchProposal(proposal.id) };
+    return { proposal: reviewPatchProposal(config, user, document, proposal, patchReviewDecision(args.decision), { reason: optionalString(args.reason), payloadHash: optionalString(args.payloadHash) }) };
   }
   if (name === "apply") {
     const documentId = stringInput(args, "documentId");
@@ -496,15 +513,51 @@ async function callGatewayTool(
     const access = requireRecordAccess(config, document, principal, "editor");
     const proposal = config.store.readPatchProposal(stringInput(args, "proposalId"));
     if (!proposal || proposal.documentId !== document.id) throw new HttpError(404, "Patch proposal not found");
-    if (proposal.status !== "approved") throw new HttpError(409, "The proposal must be approved before it can be applied");
-    if (proposal.documentHash !== document.hash) throw stalePatchProposal(proposal, document);
-    const proof = createCloudPatchProof(config, document, proposal.ops as PatchOp[]);
-    if (!proof.canWrite || proof.preHash.sha256 !== proposal.documentHash) throw new HttpError(409, "Patch proof no longer matches the current document", { proof: cloudProofRecord(proof) });
-    const updated = await updateDocument(config, document, { source: proof.postSource }, access);
-    config.store.writePatchProposal({ ...proposal, status: "applied", appliedHash: updated.hash, updatedAt: now });
-    return { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access, config) };
+    const applied = await applyPatchProposal(config, user, document, proposal, access);
+    return { proposal: applied.proposal, document: documentResponse(applied.document, access, config) };
   }
   throw new HttpError(400, `Unknown gateway tool: ${name}`);
+}
+
+function gateAgentRead(config: CloudServerConfig, user: CloudUserRecord, agentId: string, tool: string, siteIds: string[]): void {
+  governAgentAction(config, { kind: GATEWAY_TOOL_KINDS[tool] ?? `gateway.${tool}`, phase: "execute", actorId: user.id, agentId, siteIds, payload: { tool } });
+}
+
+/**
+ * Gateway `action_propose`: an agent asks a person to perform a bright-line (`propose_only`) action.
+ * The proposal lands in the approval queue; the gate refuses to execute it even after approval.
+ */
+function proposeBrightLineAction(config: CloudServerConfig, user: CloudUserRecord, args: Record<string, unknown>): Record<string, unknown> {
+  const agent = ownedAgent(config, user, stringInput(args, "agentId"));
+  if (agent.status !== "active") throw new HttpError(403, "The agent is not active");
+  const siteId = stringInput(args, "siteId");
+  if (!config.platform.listAgentAccess(agent.id).some((grant) => grant.resourceType === "site" && grant.resourceId === siteId)) {
+    throw new HttpError(403, "The agent has no access grant on this space");
+  }
+  const kind = stringInput(args, "kind");
+  const meta = lookupCapability(kind);
+  if (meta && meta.capabilityClass !== "propose_only") throw new HttpError(400, `${kind} has its own tool; action_propose is for propose-only actions`, { code: "not_propose_only" });
+  const payload = optionalRecord(args.payload, "payload") ?? {};
+  if (JSON.stringify(payload).length > 20_000) throw new HttpError(400, "payload is too large");
+  const reason = stringInput(args, "reason").slice(0, 2_000);
+  governAgentAction(config, { kind, phase: "propose", actorId: user.id, agentId: agent.id, siteIds: [siteId], payload: { kind, siteId, payload } });
+  const now = config.now().toISOString();
+  const proposal: AgentActionProposal = {
+    id: uniqueId(config),
+    siteId,
+    agentId: agent.id,
+    kind,
+    payload,
+    payloadHash: payloadHash(actionProposalPayload({ kind, siteId, payload })),
+    reason,
+    proposedBy: user.id,
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+  };
+  const saved = config.governance.insertActionProposal(proposal);
+  config.platform.recordAudit(user.id, "agent.action_proposed", "site", siteId, { proposalId: saved.id, agentId: agent.id, kind, payloadHash: saved.payloadHash }, now);
+  return { proposed: true, proposal: saved, note: "Propose-only action: a person must perform it by hand; approving it never makes an agent run it." };
 }
 
 function listAssignments(config: CloudServerConfig, agent: CloudAgentIdentity, status: string | undefined, page: { limit: number; offset: number }) {
@@ -538,6 +591,15 @@ async function replyToAssignment(config: CloudServerConfig, owner: CloudUserReco
   const assignment = ownedAssignment(config, agent, assignmentId);
   if (!agent.capabilities.includes(AGENT_COMMENT_CAPABILITY)) throw new HttpError(403, `Agent lacks capability: ${AGENT_COMMENT_CAPABILITY}`);
   if (!agentDocumentAccess(config, agent.id, assignment.documentId)) throw new HttpError(403, "The agent can no longer work on this page");
+  governAgentAction(config, {
+    kind: "comment.post",
+    phase: "execute",
+    actorId: owner.id,
+    agentId: agent.id,
+    siteIds: config.store.documentSiteIds(assignment.documentId),
+    payload: { kind: "comment.post", documentId: assignment.documentId, assignmentId: assignment.id, body },
+    standing: "the owner granted the comment capability and page access",
+  });
   const document = await readDocument(config, assignment.documentId);
   const root = assignmentThreadRoot(config, assignment);
   const blockId = !root && assignment.blockId && documentHasBlock(document, assignment.blockId) ? assignment.blockId : undefined;
@@ -548,6 +610,15 @@ async function replyToAssignment(config: CloudServerConfig, owner: CloudUserReco
 
 function setAssignmentStatus(config: CloudServerConfig, agent: CloudAgentIdentity, assignmentId: string, input: Record<string, unknown>) {
   const assignment = ownedAssignment(config, agent, assignmentId);
+  governAgentAction(config, {
+    kind: "assignment.update",
+    phase: "execute",
+    actorId: agent.createdBy,
+    agentId: agent.id,
+    siteIds: config.store.documentSiteIds(assignment.documentId),
+    payload: { kind: "assignment.update", assignmentId: assignment.id, status: input.status ?? null, note: input.note ?? null, proposalId: input.proposalId ?? null },
+    standing: "a person assigned the work",
+  });
   const proposalId = optionalString(input.proposalId);
   if (proposalId) {
     const proposal = config.store.readPatchProposal(proposalId);

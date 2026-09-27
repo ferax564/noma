@@ -26,6 +26,7 @@ import {
   roleRank,
   uniqueId,
 } from "./context.js";
+import { governAgentAction, governanceSummary, pageProposalPayload, patchPayload, recordAgentDecision } from "./governance.js";
 import { HttpError, readJsonBody, sendJson, sha256Hex } from "./http.js";
 import { absoluteUrl, assertCloudId, optionalCloudId, optionalString, stringInput, stringPathPart } from "./input.js";
 import { createDocument, documentResponse } from "./records.js";
@@ -403,6 +404,10 @@ export async function routeSiteAi(req: IncomingMessage, res: ServerResponse, par
     sendJson(res, 200, publicPageProposal(proposal));
     return;
   }
+  if (subaction === "decisions" && method === "GET") {
+    sendJson(res, 200, governanceSummary(config, "page.create", { type: "page_proposal", id: proposal.id }, pageProposalPayload(proposal)));
+    return;
+  }
   if (method !== "POST") throw new HttpError(405, "Method not allowed");
   requireAccessRole(access, "editor");
   const now = config.now().toISOString();
@@ -411,6 +416,18 @@ export async function routeSiteAi(req: IncomingMessage, res: ServerResponse, par
     const input = await readJsonBody(req, config.maxBodyBytes);
     const decision = patchReviewDecision(input.decision);
     if (decision === "approved" && proposal.proposedBy === user.id) throw new HttpError(409, "A different collaborator must approve an AI-drafted page");
+    recordAgentDecision(config, {
+      subject: { type: "page_proposal", id: proposal.id },
+      kind: "page.create",
+      decision,
+      decidedBy: user.id,
+      payload: pageProposalPayload(proposal),
+      ...(optionalString(input.reason) ? { reason: optionalString(input.reason)! } : {}),
+      ...(optionalString(input.payloadHash) ? { expectedHash: optionalString(input.payloadHash)! } : {}),
+      siteId: site.id,
+      agentId: proposal.agentId,
+      decidedAt: now,
+    });
     config.store.writeAiPageProposal({ ...proposal, status: decision, reviewedBy: user.id, reviewedAt: now, updatedAt: now });
     recordActivity(config, user, `ai.page_${decision}`, "site", site.id, { proposalId: proposal.id });
     sendJson(res, 200, publicPageProposal(config.store.readAiPageProposal(proposal.id)!));
@@ -419,6 +436,15 @@ export async function routeSiteAi(req: IncomingMessage, res: ServerResponse, par
   if (subaction === "apply") {
     if (proposal.status !== "approved") throw new HttpError(409, "The page proposal must be approved before it can be applied");
     if (sha256Hex(proposal.source) !== proposal.sourceHash) throw new HttpError(409, "Page proposal source no longer matches its hash");
+    governAgentAction(config, {
+      kind: "page.create",
+      phase: "execute",
+      actorId: user.id,
+      agentId: proposal.agentId,
+      siteIds: [site.id],
+      subject: { type: "page_proposal", id: proposal.id },
+      payload: pageProposalPayload(proposal),
+    });
     const document = await createDocument(config, { title: proposal.title, source: proposal.source }, user, site.title);
     const current = await readSite(config, site.id);
     await attachPageToSite(config, current, document.id, proposal.parentId, access);
@@ -467,6 +493,14 @@ async function draftPage(
     .map((match) => refs.get(`${match[1]}:${match[2]}@${(match[3] ?? "").toLowerCase().slice(0, 12)}`))
     .filter((record): record is KnowledgeRetrievalRecord => Boolean(record))
     .map((record) => ({ documentId: record.documentId, blockId: record.blockId, versionHash: record.versionHash }));
+  governAgentAction(config, {
+    kind: "page.create",
+    phase: "propose",
+    actorId: user.id,
+    agentId: call.agentId,
+    siteIds: [site.id],
+    payload: pageProposalPayload({ siteId: site.id, ...(parentId ? { parentId } : {}), title, source }),
+  });
   const now = config.now().toISOString();
   const proposal: CloudAiPageProposal = {
     id: uniqueId(config),
@@ -529,6 +563,14 @@ export function writeAiPatchProposal(
   ai: Record<string, unknown> & { feature: AiFeature; model: string; agentId: string },
 ): CloudPatchProposal {
   if (ops.length === 0) throw new HttpError(422, "The model did not propose any changes", { code: "ai_no_changes", summary: summary.slice(0, 500) });
+  governAgentAction(config, {
+    kind: "page.patch",
+    phase: "propose",
+    actorId: user.id,
+    agentId: ai.agentId,
+    siteIds: config.store.documentSiteIds(document.id),
+    payload: patchPayload({ documentId: document.id, documentHash: document.hash, ops }),
+  });
   const proof = createCloudPatchProof(config, document, ops);
   const proofRecord = { ...cloudProofRecord(proof), agentId: ai.agentId, ai: { ...ai, generatedAt: config.now().toISOString() } };
   if (!proof.canWrite) throw new HttpError(422, "The AI draft did not pass the patch proof", { code: "ai_proof_failed", proof: proofRecord, ops });
