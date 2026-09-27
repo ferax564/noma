@@ -25,6 +25,7 @@ same `.noma` source.
 | `install.sh` | Install or update: secrets, `.env`, build, start, wait for `/healthz`; `--tailscale` publishes HTTPS on the tailnet |
 | `sync.sh` | Two-way sync of every project in `projects.conf` with its space |
 | `backup.sh` | Online SQLite snapshot + documents/blobs tarball, keeps the newest 14 |
+| `github-runner.sh` | Registers the minipc as a self-hosted GitHub Actions runner for a private repo |
 | `.env.example`, `projects.conf.example` | Templates; the real files are local and ignored by Git |
 
 ## Install
@@ -142,6 +143,34 @@ else. The hooks are authenticated by their own secrets, not by the access token.
 Then link a repository in the project's settings and give GitHub the webhook URL
 `https://noma-hooks.<your-domain>/api/hooks/github/<projectId>` with the secret Noma
 shows.
+
+## GitHub Actions runner for private repositories
+
+GitHub-hosted minutes for private repositories are used up, so CI for the private
+repos (EZKeel, Stratos) runs on the minipc. Their workflows ask for
+`runs-on: [self-hosted, linux, minipc]` unless the repository variable `CI_RUNS_ON`
+overrides it (set it to `"ubuntu-latest"` to go back to hosted runners). Public repos
+(Noma, OrgFlow) stay on GitHub-hosted runners, which are free for public repositories
+and also cover macOS.
+
+```bash
+# per repository: Settings → Actions → Runners → New self-hosted runner → copy the token
+sudo deploy/minipc/github-runner.sh ferax564/ezkeel  <token> 2
+sudo deploy/minipc/github-runner.sh ferax564/Stratos <token> 2
+systemctl list-units 'actions.runner.*'
+```
+
+- Never register it for a public repository: fork pull requests would run their code
+  on this machine. The script refuses repos the GitHub API reports as public.
+- Runners run as `gh-runner` under systemd, in `/srv/gh-runner/<repo>-<n>`. The user is
+  in the `docker` group because the EZKeel tests start containers; that is
+  root-equivalent, which is acceptable only because every job comes from a private repo.
+- The script installs build tools, `jq`, `gh`, and Playwright's browser libraries once;
+  workflows skip `playwright install --with-deps` on self-hosted runners.
+- Jobs use whichever Docker engine owns `/var/run/docker.sock`. With the two-engine
+  problem unresolved, a reboot can move CI containers to the other engine.
+- Upgrade or remove: `cd /srv/gh-runner/<repo>-<n> && sudo ./svc.sh stop && sudo ./svc.sh uninstall`,
+  then `sudo -u gh-runner ./config.sh remove --token <removal-token>`.
 
 ## `/deploy` and `/test` from Chat
 

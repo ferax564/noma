@@ -8,6 +8,7 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Minipc kit: self-hosted GitHub Actions runner (`deploy/minipc/github-runner.sh`).** Registers the home server as a runner for a private repository (systemd, dedicated `gh-runner` user, labels `self-hosted, linux, minipc`, checksum-verified runner download, host packages and Playwright's browser libraries preinstalled). It refuses public repositories, where fork pull requests would run code on the machine.
 - **Dogfooding kit for a home server (`deploy/minipc/`):** Docker Compose + `tailscale serve` deployment of Noma Cloud with an idempotent `install.sh` (secrets, health wait, refuses to start in the wrong Docker engine when two are running), a nightly online `backup.sh` (SQLite backup API + documents and blobs), and `sync.sh`, which keeps one space per project in step with each repository's `wiki/` directory. Wiki edits come back as a `noma-wiki-sync-<project>` branch to merge. Runbook in `deploy/minipc/README.md`.
 - **Project wiki for Noma (`wiki/`):** overview, architecture, roadmap (with the dogfooding plan), operations, and a format cheat sheet, written in `.noma` and synced to the Noma space.
 - **`noma cloud sync --state <file>`:** keeps the sync keys in a sidecar JSON file instead of page frontmatter, so a Git checkout holds only the page sources and keeps its own file names. Deleting a `.noma.conflict` file marks the conflict resolved; the next sync pushes the merge.
