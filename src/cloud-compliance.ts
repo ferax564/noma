@@ -24,7 +24,7 @@ export interface DlpFinding {
   id: string;
   detectors: DlpDetector[];
   outcome: "blocked" | "flagged";
-  resourceType: "chat_message" | "chat_channel" | "document" | "issue";
+  resourceType: "chat_message" | "chat_channel" | "document" | "issue" | "attachment";
   resourceId: string;
   siteId?: string;
   actorId: string;

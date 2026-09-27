@@ -1,4 +1,4 @@
-/** Command palette (Cmd/Ctrl+K): one search box across spaces, pages, Work issues, channels, DMs and messages. */
+/** Command palette (Cmd/Ctrl+K): one search box across spaces, pages, attachments, Work issues, channels, DMs and messages. */
 import { fetchCloudJson } from "./api.js";
 import { openChatAt } from "./chat.js";
 import { commandPalette, commandPaletteButton, commandPaletteInput, commandPaletteResults, workProjectSelect } from "./dom.js";
@@ -10,6 +10,7 @@ import { loadWorkProject, selectWorkIssue } from "./work.js";
 interface FindResponse {
   spaces: Array<{ id: string; title: string; key?: string }>;
   pages: Array<{ id: string; title: string; siteId?: string; excerpt: string }>;
+  attachments?: Array<{ id: string; filename: string; documentId: string; documentTitle: string; siteId?: string; excerpt: string }>;
   issues: Array<{ id: string; key: string; summary: string; status: string; projectId: string; siteId: string }>;
   channels: Array<{ id: string; name: string; siteId: string; visibility: string; topic?: string }>;
   dms: Array<{ id: string; title: string }>;
@@ -104,6 +105,12 @@ function paletteItems(found: FindResponse): PaletteItem[] {
       title: page.title,
       detail: page.excerpt,
       open: () => (page.siteId ? loadSite(page.siteId, page.id) : loadStandaloneDocument(page.id)),
+    })),
+    ...(found.attachments ?? []).map((attachment) => ({
+      group: "Attachments",
+      title: attachment.filename,
+      detail: `${attachment.documentTitle} · ${attachment.excerpt}`,
+      open: () => (attachment.siteId ? loadSite(attachment.siteId, attachment.documentId) : loadStandaloneDocument(attachment.documentId)),
     })),
     ...found.issues.map((issue) => ({
       group: "Issues",
