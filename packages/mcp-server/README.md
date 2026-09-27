@@ -19,6 +19,8 @@ npm install @ferax564/noma-mcp-server
 - `validate_doc` runs the Noma validator.
 - `patch_block` applies one source-preserving patch operation and appends a
   transcript record.
+- `render_slide` returns one deck slide (by slide block ID) as sanitised SVG,
+  plus a PNG image with `png: true` when Puppeteer and Chrome are installed.
 
 ## MCP host configuration
 

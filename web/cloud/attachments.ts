@@ -17,6 +17,9 @@ export interface CloudAttachmentInfo {
   image: boolean;
   reference: string;
   url?: string;
+  /** Signed link to the derived PDF preview of an Office upload. */
+  previewUrl?: string;
+  extraction?: { status: "pending" | "done" | "failed" | "skipped"; textLength: number; error?: string };
   createdAt: string;
   uploadedByName?: string;
 }
@@ -151,6 +154,15 @@ export function renderAttachments(): void {
       open.rel = "noopener noreferrer";
       open.textContent = "Open";
       actions.append(open);
+    }
+    if (attachment.previewUrl) {
+      const preview = document.createElement("a");
+      preview.className = "attachment-open attachment-preview";
+      preview.href = attachment.previewUrl;
+      preview.target = "_blank";
+      preview.rel = "noopener noreferrer";
+      preview.textContent = "Preview (PDF)";
+      actions.append(preview);
     }
     actions.append(
       actionButton("Copy ref", () => void copyText(attachmentSnippet(attachment), "Copied attachment reference"), false, `Copy reference to ${attachment.filename}`),

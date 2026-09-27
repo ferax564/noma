@@ -37,6 +37,12 @@ Use when an agent should regularly check stale sources and update specific targe
 
 [Source →](https://github.com/ferax564/noma/blob/main/examples/templates/agent-refresh.noma)
 :::
+
+:::card{title="Agent-maintained docs repo"}
+Use when a whole repository's docs should be kept current by agents behind proof-on-PR CI. Run `noma init my-docs --template docs-repo`.
+
+[Template repo →](https://github.com/ferax564/noma-docs-template)
+:::
 ::
 
 ## Research memo skeleton

@@ -1372,6 +1372,33 @@ people and agents under one permission model. Five steps, shipped in order:
 
 `docs/direction.noma` mirrors this section.
 
+### 23.23 Noma as the umbrella; the owner's other projects fold in (2026-09-27)
+
+Noma is the product and the brand. People and agents work in it: pages,
+issues, chat, approvals and audit. The owner's other projects fold in as
+layers under it, joined through APIs rather than merged into one codebase:
+
+| Layer | Project | Role |
+| --- | --- | --- |
+| Product | Noma | Wiki, Work, Chat, agents, one approval queue, one audit log |
+| Run environments | ezkeel | The engine behind Noma's deploys and test runs; stays sellable on its own |
+| Governance | keepop → Noma + ezkeel | Capability classes with bright lines, trust tiers, hash-bound append-only approvals. Not a separate product |
+| Code intelligence | codixing | Standalone open source; a per-repo sidecar for PR blast radius, code in ⌘K, and agent context |
+| Document processing | ferrox, officeconvert | Optional sidecars: PDF text and Office previews for attachment search and DLP |
+| Canvas | paperDOM | Upstream pieces ported into the fork: headless slide render, text fit, visual review in proofs |
+| Adoption | noma-docs-template | `noma init --template docs-repo` |
+
+Everything stays optional and off by default: a sidecar that is not configured
+changes nothing. Shared foundations come first (one sign-in and permission
+model, one approval queue, one audit log). The codebases stay separate
+(TypeScript on SQLite, Go on Postgres). The enterprise gaps (PostgreSQL,
+native SAML, multi-process realtime) still come before new surfaces.
+*Shipped (unreleased):* keepop governance in Noma Cloud (`docs/noma-cloud.noma#agent-governance`)
+and in ezkeel's API-key gate, codixing (`#code-intelligence`), attachment text and
+previews, the paperDOM ports (`--to png`, `slide-text-overflow`, visual review in
+proofs, MCP `render_slide`), and `noma init --template docs-repo`.
+`docs/direction.noma` mirrors this section.
+
 ## 24. Shipped Tracker
 
 This section closes the loop between the plan and the code. As §23 items

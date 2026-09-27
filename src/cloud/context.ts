@@ -20,15 +20,18 @@ import type { BlobStore } from "../cloud-blobs.js";
 import type { CloudChatStore } from "../cloud-chat.js";
 import type { CloudAgentOpsStore } from "../cloud-agent-ops.js";
 import type { CloudComplianceStore } from "../cloud-compliance.js";
+import type { CloudGovernanceStore } from "../cloud-governance.js";
 import type { CloudIntegrationsStore } from "../cloud-integrations.js";
 import type { SlackConfig } from "./integrations.js";
 import type { SiemTarget } from "./siem.js";
 import type { CloudDevLoopStore } from "../cloud-devloop.js";
 import type { RunProvider } from "./run-provider.js";
+import type { CodixingSettings } from "./codixing.js";
 import type { LlmProvider } from "../cloud-llm.js";
 import type { CloudKnowledgePlatform } from "../cloud-platform.js";
 import { authBearer, headerValue, HttpError, sha256Hex } from "./http.js";
 import { assertCloudId } from "./input.js";
+import type { AttachmentTextSettings } from "./attachment-text.js";
 import type { OidcClient } from "./oidc.js";
 import { routeNotificationByPreference } from "./mail.js";
 import { resolveSessionUser, resolveTokenUser } from "./security.js";
@@ -71,13 +74,19 @@ export interface CloudServerConfig {
   siem?: SiemTarget;
   /** Hosted and scheduled agents, their job queue, and the workspace agent kill switch. */
   agentOps: CloudAgentOpsStore;
+  /** Agent governance: the append-only decision log, per-space agent trust tiers, and propose-only action proposals. */
+  governance: CloudGovernanceStore;
   /** Where `/deploy` and `/test` runs execute (ezkeel); absent when no run environment is configured. */
   runProvider?: RunProvider;
+  /** Code intelligence (codixing servers linked per repository, GitHub PR file listing); defaults apply when absent. */
+  codixing?: CodixingSettings;
   blobs: BlobStore;
   /** Largest single attachment upload, in bytes. */
   maxAttachmentBytes: number;
   /** Live attachment bytes allowed per space (or per user for pages outside any space). */
   attachmentQuotaBytes: number;
+  /** PDF text extraction (ferrox-server) and Office → PDF previews (officeconvert); absent when neither sidecar is configured. */
+  attachmentText?: AttachmentTextSettings;
   ai: CloudAiConfig;
   /** Called after every successful document write (live-editing rooms merge external changes here). */
   onDocumentWritten?: (record: CloudDocumentRecord) => void;

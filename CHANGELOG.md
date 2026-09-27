@@ -8,6 +8,29 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Agent governance (Noma Cloud; model ported from keepop):**
+  - **One gate for agent actions:** every action kind is classified in one registry (`src/cloud/capabilities.ts`) as `read_only`, `approve_to_execute` or `propose_only`, and enforced at one chokepoint. Unregistered actions and unknown gateway tools are denied.
+  - **Bright lines:** `propose_only` kinds (page delete, run teardown, access, retention, external publishing, repo and agent config) can be proposed with the new `action_propose` gateway tool but never run by an agent, even after approval. A person does them.
+  - **Hash-bound approvals:** patch, AI page, run and bright-line decisions bind to the sha256 of the canonical payload. Execution refuses on mismatch (`409 payload_hash_mismatch`), and reviewers can send the hash they saw.
+  - **Append-only decision log:** `agent_decisions` rejects UPDATE and DELETE through SQLite triggers and is kept out of every purge path. Approved-but-unapplied proposals are migrated on upgrade.
+  - **Trust tiers per space:** 0 read-only, 1 propose content, 2 run tests, 3 run deploys (default 3), via `GET|PUT /api/approvals/trust/:siteId`.
+  - **Audit:** `agent.gate.allowed`, `agent.gate.denied`, `agent.decision.recorded` and `agent.trust_changed` records reach the SIEM export. The approval queue shows capability class, payload hash and decision history (`GET /api/approvals/history`, `/capabilities`).
+- **Code intelligence with codixing (Noma Cloud):**
+  - A linked repository can point at a [codixing](https://github.com/ferax564/codixing) server (`codixingUrl` and optional `codixingToken` on `PUT /api/projects/:id/repo`; owners only, http(s) only, private hosts refused unless `NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS=1`; the token is never returned).
+  - **PR blast radius:** once per head SHA, the linked issue's thread gets the changed files, their dependents (codixing callers, depth 2) and likely affected tests. Best-effort; it never blocks webhook handling. `NOMA_CLOUD_GITHUB_TOKEN` lists files of private PRs.
+  - **Code in ⌘K:** `/api/find` gains a `code` group from the codixing servers of repositories in spaces you can read (parallel, 1.5 s deadline).
+  - **Agent context:** hosted agents replying in a project channel get codixing results for the thread's Work issue as labelled untrusted context.
+- **Attachment text and previews (Noma Cloud):** with `NOMA_CLOUD_PDF_EXTRACT_URL` (ferrox-server) and/or `NOMA_CLOUD_OFFICE_CONVERT_URL` (officeconvert), a background job extracts text from PDF attachments and converts Office files to PDF previews, with per-attachment status and retries. Uploads are never blocked.
+  - Extracted text is searchable in ⌘K (new `attachments` group), `/api/search`, knowledge search and Ask Noma, following page permissions.
+  - DLP scans extracted text (`resourceType: "attachment"`); `block` mode keeps the text out of search.
+  - `GET /api/attachments/:id/preview` serves an Office file's PDF preview with the attachment route's auth and safe headers. Admins get `GET /api/enterprise/attachment-text` and `POST .../run`.
+- **Slides (ported from upstream PaperDOM):**
+  - `noma render <file> --to png --out <dir>` writes one PNG per slide (`NN-<slide-id>.png`) for decks, doc-to-deck and PaperDOM `.json`, with `--slide <id>` and `--scale <n>`. The sanitised slide SVG renders in headless Chromium with JavaScript off and the network blocked.
+  - New `slide-text-overflow` validator warning for text that likely overflows on `::deck` slides and inline `::canvas` pages. The PPTX fidelity report lists it under `warnings`.
+  - `noma proof` adds a Visual Review of changed slides and canvases: before/after SVGs, per-element changes (moved, resized, text changed…) and layout warnings.
+  - MCP server: new `render_slide` tool (slide SVG, plus PNG when a browser is available).
+- **Agent-maintained docs repo:** `noma init <dir> --template docs-repo` scaffolds the [noma-docs-template](https://github.com/ferax564/noma-docs-template): a knowledge base, an `AGENTS.md` contract, a sample patch, and proof-on-PR CI with the Action and CLI pinned to the running version.
+
 - **Minipc kit: self-hosted GitHub Actions runner (`deploy/minipc/github-runner.sh`).** Registers the home server as a runner for a private repository (systemd, dedicated `gh-runner` user, labels `self-hosted, linux, minipc`, checksum-verified runner download, host packages and Playwright's browser libraries preinstalled). It refuses public repositories, where fork pull requests would run code on the machine.
 - **Dogfooding kit for a home server (`deploy/minipc/`):** Docker Compose + `tailscale serve` deployment of Noma Cloud with an idempotent `install.sh` (secrets, health wait, refuses to start in the wrong Docker engine when two are running), a nightly online `backup.sh` (SQLite backup API + documents and blobs), and `sync.sh`, which keeps one space per project in step with each repository's `wiki/` directory. Wiki edits come back as a `noma-wiki-sync-<project>` branch to merge. Runbook in `deploy/minipc/README.md`.
 - **Project wiki for Noma (`wiki/`):** overview, architecture, roadmap (with the dogfooding plan), operations, and a format cheat sheet, written in `.noma` and synced to the Noma space.

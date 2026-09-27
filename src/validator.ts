@@ -1,7 +1,9 @@
 import yaml from "js-yaml";
 import type { Diagnostic, DirectiveNode, DocumentNode, Node } from "./ast.js";
 import { walk } from "./ast.js";
-import { canvasSourceOf, readCanvasDocument } from "./canvas-svg.js";
+import { canvasPages, canvasSourceOf, readCanvasDocument } from "./canvas-svg.js";
+import { auditCanvasPage } from "./canvas-text-metrics.js";
+import { buildPaperDom } from "./renderer-paperdom.js";
 import { computedDomainVars, controlDefaultNumber, formulaText, numericAttr as computedNumericAttr } from "./computed.js";
 import { extractFormulaIdentifiers, parseFormula } from "./formula.js";
 import { extractWikilinks, isBlockReferenceWikilinkTarget, splitDelimitedRow } from "./inline.js";
@@ -9,7 +11,7 @@ import { loadFrontmatterYaml } from "./parser.js";
 import { CHILDREN_SORTS, ISSUE_STATUSES, issueKeyFromNode, issuesRequest } from "./macros.js";
 import { collectTableIdentityStrings } from "./stable-identity.js";
 import { checkComponentUses, componentDefinitionNodes, componentKitFrom, type ComponentKit, resolveComponentKit } from "./components.js";
-import { DECK_ASPECTS, isSlideLayout, SLIDE_LAYOUTS } from "./slides.js";
+import { DECK_ASPECTS, findDecks, isSlideLayout, SLIDE_LAYOUTS } from "./slides.js";
 import { normalizeStyleTokenAliases, parseStyleTokens, resolveStyleTokenAliases, STYLE_TOKENS, type StyleTokenAliases } from "./style-tokens.js";
 
 export interface ValidateOptions {
@@ -267,6 +269,48 @@ function validateCanvas(node: DirectiveNode, diagnostics: Diagnostic[]): void {
   if (typeof page === "string" && !read.document.pages.some((p) => p.id === page)) {
     diagnostics.push({ severity: "warning", code: "canvas-unknown-page", message: `Canvas "${node.id ?? "?"}" has no page "${page}".`, ...at });
   }
+  for (const shown of canvasPages(read.document, typeof page === "string" ? page : undefined)) {
+    for (const warning of auditCanvasPage(shown)) {
+      if (warning.code !== "text_overflow") continue;
+      diagnostics.push({ severity: "warning", code: "slide-text-overflow", message: `Canvas "${node.id ?? "?"}" page "${warning.pageId}": ${warning.message}`, ...at });
+    }
+  }
+}
+
+/**
+ * Estimated text overflow on `::deck` slides, measured on the PaperDOM layout
+ * that `--to paperdom|pptx|png` produce. Documents without a deck are not
+ * checked: section-per-slide presentation is a preview, not authored slides.
+ */
+function validateSlideTextFit(source: DocumentNode, components: ComponentKit | undefined, diagnostics: Diagnostic[]): void {
+  const decks = findDecks(source);
+  decks.forEach((deck, index) => {
+    if (suppressed(deck) || (!deck.id && index > 0)) return;
+    let built: ReturnType<typeof buildPaperDom>;
+    try {
+      built = buildPaperDom(source, { ...(components ? { components } : {}), ...(deck.id ? { deck: deck.id } : {}) });
+    } catch {
+      return;
+    }
+    for (const pageSource of built.pages) {
+      const slide = pageSource.slide;
+      if (suppressed(slide)) continue;
+      const page = built.document.pages.find((p) => p.id === pageSource.pageId);
+      if (!page) continue;
+      for (const warning of auditCanvasPage(page)) {
+        if (warning.code !== "text_overflow") continue;
+        const part = warning.elementId.startsWith(`${pageSource.pageId}--`) ? warning.elementId.slice(pageSource.pageId.length + 2) : warning.elementId;
+        diagnostics.push({
+          severity: "warning",
+          code: "slide-text-overflow",
+          message: `Slide "${slide.id ?? pageSource.pageId}" ${part}: ${warning.message}`,
+          ...(slide.pos ? { pos: slide.pos } : {}),
+          ...(slide.endLine ? { endLine: slide.endLine } : {}),
+          ...(slide.id ? { nodeId: slide.id } : {}),
+        });
+      }
+    }
+  });
 }
 
 const MEMORY_TYPES = new Set(["user", "feedback", "project", "reference"]);
@@ -975,6 +1019,7 @@ export function validate(source: DocumentNode, options: ValidateOptions = {}): D
     diagnostics.push({ severity: "warning", code: "invalid-style-token-alias", message: `style_tokens: ${error}.` });
   }
   validateDecksAndStyleTokens(doc.children, undefined, diagnostics, resolveStyleTokenAliases(doc.meta.style_tokens, options.styleTokens));
+  validateSlideTextFit(source, options.components, diagnostics);
   diagnostics.push(...componentDiagnostics);
 
   const ignore = options.ignoreRules;
@@ -1081,6 +1126,7 @@ const KNOWN_RULES = [
   "slide-unknown-layout",
   "notes-outside-slide",
   "deck-unknown-aspect",
+  "slide-text-overflow",
   "component-invalid-definition",
   "component-duplicate",
   "component-missing-prop",

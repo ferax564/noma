@@ -27,7 +27,8 @@ page was written on 2026-09-27; check `CHANGELOG.md` for anything newer.
 | 2 | Dogfood Noma Cloud on a self-hosted box with one space per project (see Dogfooding below) | starting | this wiki |
 | 3 | Validate the dev loop end to end against a real ezkeel deployment: repo link, PR/CI events, `/deploy`, `/test`, approval of agent-requested runs | merged, untested outside CI (unknown) | `docs/noma-cloud.noma` "Code, CI, and run environments" |
 | 4 | Keep docs in lockstep on release: `package.json`, `docs/spec.noma`, `docs/agent-protocol.noma`, README status, `PLAN.md` §24 | recurring | `CLAUDE.md` "Versioned Locations" |
-| 5 | Scheduled docs freshness report | open issue #32 | GitHub issue #32 |
+| 5 | Try the folded-in projects on the dogfood box: codixing for the NOMA repo, ferrox + officeconvert sidecars, and the per-space agent trust tiers | merged, untested outside CI | `docs/noma-cloud.noma` "Agent governance", "Code intelligence", "Attachment text and previews" |
+| 6 | Scheduled docs freshness report | open issue #32 | GitHub issue #32 |
 
 ## Next {id="nm-roadmap-next"}
 
@@ -46,6 +47,8 @@ leaves open.
 | OIDC logout, group sync, multiple IdPs | Enterprise identity depth | status §5 #7 |
 | Real AWS/EU staging deployment with a smoke test | CloudFormation is validated, never deployed | status §5 #8, `docs/review-2026-09.md` status update |
 | Third-party pentest report | Only the in-repo review pack exists | `docs/enterprise.noma` |
+| UI for a repo's codixing URL and for space trust tiers (API only today); surface ezkeel `approval.pending` in the approval queue | The folded-in features are API-first | `routes-devloop.ts`, `routes-approvals.ts` |
+| PPTX slide masters and animation timing from upstream PaperDOM | Not ported: upstream builds them on the PptxGenJS export path | `src/paperdom-pin.ts` |
 | Webhooks for standalone pages | They fire only for pages inside spaces | `docs/review-2026-09.md` status update |
 
 ## Later {id="nm-roadmap-later"}
@@ -111,6 +114,14 @@ Source: `docs/direction.noma` `collaboration-surface`, `PLAN.md` §23.21.
 `.noma` is the standard; HTML is a projection and a sandboxed escape hatch.
 Per-space style-token vocabularies, sandboxed `::html` widgets in Cloud,
 PaperDOM forked in-repo (2026-09-24). Source: `docs/strategy-2026-09.md` §8.
+::
+
+::decision{id="nm-dec-umbrella" status="accepted" owner="maintainer"}
+Noma is the umbrella product. ezkeel is the engine behind its run
+environments; keepop's governance, codixing, ferrox/officeconvert, upstream
+PaperDOM pieces and the docs-repo template fold in as layers joined through
+APIs, each optional (2026-09-27). Source: `docs/direction.noma`
+`noma-umbrella`, `PLAN.md` §23.23.
 ::
 
 ::decision{id="nm-dec-next-release-version" status="open" owner="maintainer"}

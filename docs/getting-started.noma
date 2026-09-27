@@ -315,6 +315,16 @@ cp examples/templates/agent-refresh.noma my-refresh-pack.noma
 
 The rendered template guide explains when to use each one: [templates.noma](templates.noma).
 
+## Start an agent-maintained docs repo
+
+To give a repository a knowledge base that agents keep current behind proof-before-merge CI, scaffold it:
+
+```bash
+noma init my-docs --template docs-repo
+```
+
+This writes `docs/project.noma`, a sample patch transaction in `patches/example-ops.json`, an `AGENTS.md` contract, and `.github/workflows/noma-ci.yml`. The workflow validates and renders docs on every pull request and, when a pull request adds `patches/proposed-ops.json`, simulates the ops against the base branch, posts the proof as a comment, and fails unless the pull request's document equals the base document with those ops applied. The Action and CLI are pinned to the version that scaffolded the repo. The same starter is published as the [noma-docs-template](https://github.com/ferax564/noma-docs-template) GitHub template.
+
 ## Render to LLM context
 
 ```bash
@@ -672,6 +682,22 @@ npm run noma -- render examples/research-thesis.noma --to pdf --out dist/researc
 Use `--css report.css` to append report-specific CSS to the selected theme and
 `--no-print-background` when the output must avoid filled backgrounds. On first
 install, Puppeteer may download a Chromium build.
+
+## Render slides to PNG
+
+The PNG target writes one image per slide, so an agent that edited a deck can
+look at the result. Files are named `NN-<slide-id>.png` by position and slide
+block ID:
+
+```bash
+npm run noma -- render examples/deck.noma --to png --out dist/deck-png
+npm run noma -- render examples/deck.noma --to png --out dist/deck-png --slide pitch-loop --scale 2
+```
+
+Slides are drawn from the same sanitised SVG as `::canvas`, in Chromium with
+JavaScript disabled and network requests blocked. `noma check` warns with
+`slide-text-overflow` when a slide's text is estimated not to fit its box, and
+`noma proof` shows before/after previews of every slide an edit changes.
 
 ## Write your own
 

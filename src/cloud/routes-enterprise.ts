@@ -5,6 +5,7 @@ import { type CloudServerConfig, type Principal, requireUser, requireWorkspaceOw
 import { DLP_DETECTORS, type DlpDetector } from "../cloud-compliance.js";
 import { HttpError, readJsonBody, sendJson } from "./http.js";
 import { auditNdjson, shipAuditToSiem } from "./siem.js";
+import { runAttachmentExtraction } from "./attachment-text.js";
 import {
   absoluteUrl,
   boundedInteger,
@@ -24,6 +25,15 @@ function siemView(config: CloudServerConfig): Record<string, unknown> {
   const status = config.compliance.siemStatus();
   const latest = config.platform.auditStats(config.now().toISOString()).latestSequence;
   return { configured: Boolean(config.siem), ...(config.siem ? { url: new URL(config.siem.url).origin } : {}), ...status, lag: Math.max(0, latest - status.cursor) };
+}
+
+function attachmentTextView(config: CloudServerConfig): Record<string, unknown> {
+  const settings = config.attachmentText;
+  return {
+    configured: { pdfExtract: Boolean(settings?.pdfExtract), officeConvert: Boolean(settings?.officeConvert) },
+    ...(settings ? { maxInputBytes: settings.maxInputBytes, timeoutMs: settings.timeoutMs } : {}),
+    counts: config.store.attachmentExtractionCounts(),
+  };
 }
 
 function isoParam(value: string, label: string): string {
@@ -154,6 +164,18 @@ export async function routeEnterprise(req: IncomingMessage, res: ServerResponse,
     if (!config.siem) throw new HttpError(409, "No SIEM is configured (set NOMA_CLOUD_SIEM_URL and NOMA_CLOUD_SIEM_TOKEN)", { code: "siem_not_configured" });
     await shipAuditToSiem(config);
     sendJson(res, 200, siemView(config));
+    return;
+  }
+  if (action === "attachment-text" && method === "GET" && !parts[3]) {
+    sendJson(res, 200, attachmentTextView(config));
+    return;
+  }
+  if (action === "attachment-text" && parts[3] === "run" && method === "POST") {
+    if (!config.attachmentText) {
+      throw new HttpError(409, "No attachment sidecar is configured (set NOMA_CLOUD_PDF_EXTRACT_URL and/or NOMA_CLOUD_OFFICE_CONVERT_URL)", { code: "attachment_text_not_configured" });
+    }
+    const pass = await runAttachmentExtraction(config, 25);
+    sendJson(res, 200, { ...attachmentTextView(config), ...(pass ? { pass } : {}) });
     return;
   }
   if (action === "overview" && method === "GET") {

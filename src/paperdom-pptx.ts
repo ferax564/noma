@@ -12,6 +12,7 @@
 import { SHAPE_GEOMETRIES } from "./paperdom-geometry-shapes.js";
 import type { CanvasElement, CanvasPage, ElementStyle, PaperDOMDocument } from "./paperdom-document-model.js";
 import { canvasPageSize, chartSeries, frameOf, paragraphsOf } from "./canvas-svg.js";
+import { auditCanvasPage } from "./canvas-text-metrics.js";
 import { createZip, type ZipEntryInput } from "./zip.js";
 
 export interface PptxFidelityReport {
@@ -22,6 +23,8 @@ export interface PptxFidelityReport {
   approximated: string[];
   /** Left out of the file. */
   unsupported: string[];
+  /** Layout warnings carried into the file as-is: estimated text overflow per slide element. */
+  warnings: string[];
 }
 
 export interface PptxExport {
@@ -48,12 +51,21 @@ const XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 type Rel = { id: string; type: string; target: string };
 type Media = { path: string; ext: string; data: Buffer };
 
+/** Keeps the report (also sent as the Cloud `x-noma-fidelity` header) bounded. */
+const MAX_REPORT_WARNINGS = 20;
+
 class Report {
   supported = new Set<string>();
   approximated = new Set<string>();
   unsupported = new Set<string>();
+  private overflows: string[] = [];
+  overflow(message: string): void {
+    this.overflows.push(message);
+  }
   done(slides: number): PptxFidelityReport {
-    return { slides, supported: [...this.supported].sort(), approximated: [...this.approximated].sort(), unsupported: [...this.unsupported].sort() };
+    const shown = this.overflows.slice(0, MAX_REPORT_WARNINGS);
+    if (this.overflows.length > shown.length) shown.push(`text overflow: ${this.overflows.length - shown.length} more element(s)`);
+    return { slides, supported: [...this.supported].sort(), approximated: [...this.approximated].sort(), unsupported: [...this.unsupported].sort(), warnings: shown };
   }
 }
 
@@ -85,6 +97,9 @@ export function paperDomToPptx(document: PaperDOMDocument, options: PptxOptions 
     if (Array.isArray(page.animations) && page.animations.length) report.unsupported.add("animations: build steps are not exported");
     if (Array.isArray(page.comments) && page.comments.length) report.unsupported.add("slide comments: canvas comments are not exported");
     if (page.masterId) report.approximated.add("masters: master elements are not copied onto slides");
+    for (const warning of auditCanvasPage(page)) {
+      if (warning.code === "text_overflow" && warning.fit) report.overflow(`text overflow: ${warning.pageId}/${warning.elementId} needs ~${warning.fit.estimatedHeight}px in a ${warning.fit.availableHeight}px frame`);
+    }
     slideRels.push(rels);
   });
   const hasNotes = notes.some(Boolean);

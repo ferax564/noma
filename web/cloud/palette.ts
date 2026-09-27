@@ -1,4 +1,4 @@
-/** Command palette (Cmd/Ctrl+K): one search box across spaces, pages, Work issues, channels, DMs and messages. */
+/** Command palette (Cmd/Ctrl+K): one search box across spaces, pages, attachments, Work issues, channels, DMs and messages. */
 import { fetchCloudJson } from "./api.js";
 import { openChatAt } from "./chat.js";
 import { commandPalette, commandPaletteButton, commandPaletteInput, commandPaletteResults, workProjectSelect } from "./dom.js";
@@ -10,10 +10,13 @@ import { loadWorkProject, selectWorkIssue } from "./work.js";
 interface FindResponse {
   spaces: Array<{ id: string; title: string; key?: string }>;
   pages: Array<{ id: string; title: string; siteId?: string; excerpt: string }>;
+  attachments?: Array<{ id: string; filename: string; documentId: string; documentTitle: string; siteId?: string; excerpt: string }>;
   issues: Array<{ id: string; key: string; summary: string; status: string; projectId: string; siteId: string }>;
   channels: Array<{ id: string; name: string; siteId: string; visibility: string; topic?: string }>;
   dms: Array<{ id: string; title: string }>;
   messages: Array<{ id: string; channelId: string; channel: string; threadId?: string; author: string; excerpt: string }>;
+  /** Present only when a visible project links a repository with a codixing server. */
+  code?: Array<{ repo: string; filePath: string; lineStart: number; lineEnd: number; signature: string; snippet: string; url: string }>;
 }
 
 interface PaletteItem {
@@ -105,6 +108,12 @@ function paletteItems(found: FindResponse): PaletteItem[] {
       detail: page.excerpt,
       open: () => (page.siteId ? loadSite(page.siteId, page.id) : loadStandaloneDocument(page.id)),
     })),
+    ...(found.attachments ?? []).map((attachment) => ({
+      group: "Attachments",
+      title: attachment.filename,
+      detail: `${attachment.documentTitle} · ${attachment.excerpt}`,
+      open: () => (attachment.siteId ? loadSite(attachment.siteId, attachment.documentId) : loadStandaloneDocument(attachment.documentId)),
+    })),
     ...found.issues.map((issue) => ({
       group: "Issues",
       title: `${issue.key} ${issue.summary}`,
@@ -132,6 +141,14 @@ function paletteItems(found: FindResponse): PaletteItem[] {
       title: message.excerpt,
       detail: `${message.channel} · ${message.author}`,
       open: () => openChatAt(message.channelId, message.threadId),
+    })),
+    ...(found.code ?? []).map((hit) => ({
+      group: "Code",
+      title: `${hit.filePath}:${hit.lineStart}-${hit.lineEnd}`,
+      detail: `${hit.repo} · ${hit.signature || hit.snippet.split("\n")[0] || ""}`,
+      open: async () => {
+        if (hit.url.startsWith("https://github.com/")) window.open(hit.url, "_blank", "noopener");
+      },
     })),
   ];
 }

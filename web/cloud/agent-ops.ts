@@ -26,8 +26,15 @@ import { state } from "./state.js";
 import type { ChatChannel } from "./types.js";
 import { actionButton, emptyState, errorMessage, formatDate, setPanelStatus } from "./util.js";
 
+interface GovernanceDecision {
+  decision: "approved" | "rejected" | "revision_requested";
+  decidedBy: string;
+  decidedAt: string;
+  payloadHash: string;
+}
+
 interface QueueItem {
-  kind: "run" | "patch" | "page_proposal" | "page_approval";
+  kind: "run" | "patch" | "page_proposal" | "page_approval" | "action";
   id: string;
   title: string;
   detail: string;
@@ -36,6 +43,8 @@ interface QueueItem {
   documentId?: string;
   createdAt: string;
   decidable: boolean;
+  governance?: { actionKind: string; capabilityClass: string; payloadHash: string; history: GovernanceDecision[] };
+  payload?: Record<string, unknown>;
 }
 
 interface KillSwitch {
@@ -69,7 +78,7 @@ interface Schedule {
   lastRunAt?: string;
 }
 
-const kindLabel: Record<QueueItem["kind"], string> = { run: "Run", patch: "Page patch", page_proposal: "AI page", page_approval: "Page approval" };
+const kindLabel: Record<QueueItem["kind"], string> = { run: "Run", patch: "Page patch", page_proposal: "AI page", page_approval: "Page approval", action: "Propose-only" };
 
 let agents: AgentSummary[] = [];
 let channels: ChatChannel[] = [];
@@ -119,21 +128,60 @@ function queueRow(item: QueueItem): HTMLElement {
   meta.textContent = [item.detail, formatDate(item.createdAt)].join(" · ");
   const actions = document.createElement("div");
   actions.className = "dev-run-actions";
+  const hash = item.governance?.payloadHash;
   if (item.kind === "run") {
     actions.append(
-      actionButton("Approve", () => void decideRun(item.id, "approve"), !item.decidable, `Approve ${item.title}`),
-      actionButton("Reject", () => void decideRun(item.id, "reject"), false, `Reject ${item.title}`),
+      actionButton("Approve", () => void decideRun(item.id, "approve", hash), !item.decidable, `Approve ${item.title}`),
+      actionButton("Reject", () => void decideRun(item.id, "reject", hash), false, `Reject ${item.title}`),
     );
     if (!item.decidable) {
       const note = document.createElement("span");
       note.textContent = "Your agent asked — someone else approves";
       actions.append(note);
     }
+  } else if (item.kind === "action") {
+    actions.append(
+      actionButton("Acknowledge", () => void decideAction(item.id, "approve", hash), !item.decidable, `Acknowledge ${item.title} — you perform it by hand`),
+      actionButton("Reject", () => void decideAction(item.id, "reject", hash), !item.decidable, `Reject ${item.title}`),
+    );
   } else {
     actions.append(actionButton("Open", () => void openItem(item), false, `Open ${item.title}`));
   }
-  row.append(title, meta, actions);
+  row.append(title, meta);
+  if (item.governance) row.append(governanceLine(item.governance));
+  if (item.payload) row.append(payloadBlock(item.payload));
+  row.append(actions);
   return row;
+}
+
+function payloadBlock(payload: Record<string, unknown>): HTMLElement {
+  const block = document.createElement("pre");
+  block.className = "approval-payload";
+  block.textContent = JSON.stringify(payload, null, 2);
+  return block;
+}
+
+function governanceLine(governance: NonNullable<QueueItem["governance"]>): HTMLElement {
+  const line = document.createElement("span");
+  line.className = "approval-governance";
+  const last = governance.history.at(-1);
+  line.textContent = [
+    `${governance.actionKind} · ${governance.capabilityClass.replace(/_/g, " ")}`,
+    `sha256 ${governance.payloadHash.slice(0, 12)}`,
+    governance.history.length ? `${governance.history.length} decision${governance.history.length === 1 ? "" : "s"}, last ${last?.decision.replace(/_/g, " ")} ${last ? formatDate(last.decidedAt) : ""}` : "no decisions yet",
+  ].join(" · ");
+  line.title = `Approval binds to payload sha256 ${governance.payloadHash}`;
+  return line;
+}
+
+async function decideAction(proposalId: string, decision: "approve" | "reject", payloadHash: string | undefined): Promise<void> {
+  try {
+    await fetchCloudJson(`/api/approvals/actions/${encodeURIComponent(proposalId)}`, { method: "POST", body: JSON.stringify({ decision, ...(payloadHash ? { payloadHash } : {}) }) });
+    setPanelStatus(approvalQueueStatus, decision === "approve" ? "Acknowledged — agents never run propose-only actions; perform it yourself" : "Rejected the proposal", "ok");
+    await refreshApprovalQueue();
+  } catch (error) {
+    setPanelStatus(approvalQueueStatus, errorMessage(error), "error");
+  }
 }
 
 async function openItem(item: QueueItem): Promise<void> {
@@ -145,9 +193,9 @@ async function openItem(item: QueueItem): Promise<void> {
   }
 }
 
-async function decideRun(runId: string, decision: "approve" | "reject"): Promise<void> {
+async function decideRun(runId: string, decision: "approve" | "reject", payloadHash: string | undefined): Promise<void> {
   try {
-    const run = await fetchCloudJson<{ status: string; ref: string }>(`/api/approvals/runs/${encodeURIComponent(runId)}`, { method: "POST", body: JSON.stringify({ decision }) });
+    const run = await fetchCloudJson<{ status: string; ref: string }>(`/api/approvals/runs/${encodeURIComponent(runId)}`, { method: "POST", body: JSON.stringify({ decision, ...(payloadHash ? { payloadHash } : {}) }) });
     setPanelStatus(approvalQueueStatus, decision === "approve" ? `Approved — ${run.ref} is ${run.status}` : `Rejected ${run.ref}`, "ok");
     await refreshApprovalQueue();
   } catch (error) {

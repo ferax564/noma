@@ -1,7 +1,7 @@
 /** Patch proposals and agent safety proofs (`/api/documents/:id/patch-proposals`). */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
-import type { CloudDocumentRecord, CloudIssue, CloudPatchProposal } from "../cloud-db.js";
+import type { CloudDocumentRecord, CloudIssue, CloudPatchProposal, CloudUserRecord } from "../cloud-db.js";
 import type { PatchOp } from "../patch.js";
 import { createAgentSafetyProof, type AgentSafetyProof } from "../proof.js";
 import {
@@ -16,6 +16,7 @@ import {
   requireUser,
   uniqueId,
 } from "./context.js";
+import { governAgentAction, governanceSummary, patchPayload, patchProposalAgentId, recordAgentDecision } from "./governance.js";
 import { HttpError, readJsonBody, sendJson } from "./http.js";
 import { assertCloudId, optionalString } from "./input.js";
 import { documentResponse, updateDocument } from "./records.js";
@@ -76,44 +77,103 @@ export async function routePatchProposals(
   }
   if (action === "review" && method === "POST") {
     requireAccessRole(access, "editor");
-    if (proposal.status !== "pending") throw new HttpError(409, "Only pending proposals can be reviewed");
-    if (document.hash !== proposal.documentHash) throw stalePatchProposal(proposal, document);
     const input = await readJsonBody(req, config.maxBodyBytes);
     const decision = patchReviewDecision(input.decision);
-    if (decision === "approved" && proposal.proposedBy === user.id) {
-      throw new HttpError(409, "A different collaborator must approve an agent patch");
-    }
-    const now = config.now().toISOString();
-    config.store.writePatchProposal({ ...proposal, status: decision, reviewedBy: user.id, reviewedAt: now, updatedAt: now });
-    recordActivity(config, user, `patch.${decision}`, "document", document.id, { proposalId: proposal.id, issueId: proposal.issueId });
-    if (proposal.issueId) recordIssueEvent(config, user, proposal.issueId, `patch.${decision}`, { proposalId: proposal.id, documentId: document.id });
-    sendJson(res, 200, config.store.readPatchProposal(proposal.id));
+    sendJson(res, 200, reviewPatchProposal(config, user, document, proposal, decision, { reason: optionalString(input.reason), payloadHash: optionalString(input.payloadHash) }));
     return;
   }
   if (action === "apply" && method === "POST") {
     requireAccessRole(access, "editor");
-    if (proposal.status !== "approved") throw new HttpError(409, "The proposal must be approved before it can be applied");
-    if (document.hash !== proposal.documentHash) throw stalePatchProposal(proposal, document);
-    const proof = createCloudPatchProof(config, document, proposal.ops as PatchOp[]);
-    if (!proof.canWrite || proof.preHash.sha256 !== proposal.documentHash) {
-      throw new HttpError(409, "Patch proof no longer matches the current document", { proof: cloudProofRecord(proof) });
-    }
-    const updated = await updateDocument(config, document, { source: proof.postSource }, access);
-    const now = config.now().toISOString();
-    config.store.writePatchProposal({ ...proposal, status: "applied", appliedHash: updated.hash, updatedAt: now });
-    recordActivity(config, user, "patch.applied", "document", document.id, { proposalId: proposal.id, issueId: proposal.issueId, hash: updated.hash });
-    if (proposal.issueId) {
-      recordIssueEvent(config, user, proposal.issueId, "patch.applied", {
-        proposalId: proposal.id,
-        documentId: document.id,
-        beforeHash: proposal.documentHash,
-        afterHash: updated.hash,
-      });
-    }
-    sendJson(res, 200, { proposal: config.store.readPatchProposal(proposal.id), document: documentResponse(updated, access, config) });
+    const { proposal: applied, document: updated } = await applyPatchProposal(config, user, document, proposal, access);
+    sendJson(res, 200, { proposal: applied, document: documentResponse(updated, access, config) });
+    return;
+  }
+  if (action === "decisions" && method === "GET") {
+    sendJson(res, 200, governanceSummary(config, "page.patch", { type: "patch", id: proposal.id }, patchPayload(proposal)));
     return;
   }
   throw new HttpError(404, "Unknown patch proposal route");
+}
+
+/**
+ * Records a person's decision on a pending patch proposal — in the proposal's status and, bound to the
+ * payload hash, in the append-only decision log. Shared by the REST route and the gateway `review` tool.
+ */
+export function reviewPatchProposal(
+  config: CloudServerConfig,
+  user: CloudUserRecord,
+  document: CloudDocumentRecord,
+  proposal: CloudPatchProposal,
+  decision: "approved" | "rejected",
+  options: { reason?: string | undefined; payloadHash?: string | undefined } = {},
+): CloudPatchProposal {
+  if (proposal.status !== "pending") throw new HttpError(409, "Only pending proposals can be reviewed");
+  if (document.hash !== proposal.documentHash) throw stalePatchProposal(proposal, document);
+  if (decision === "approved" && proposal.proposedBy === user.id) {
+    throw new HttpError(409, "A different collaborator must approve an agent patch");
+  }
+  const now = config.now().toISOString();
+  const agentId = patchProposalAgentId(proposal);
+  const siteId = config.store.documentSiteIds(document.id)[0];
+  recordAgentDecision(config, {
+    subject: { type: "patch", id: proposal.id },
+    kind: "page.patch",
+    decision,
+    decidedBy: user.id,
+    payload: patchPayload(proposal),
+    ...(options.reason ? { reason: options.reason } : {}),
+    ...(options.payloadHash ? { expectedHash: options.payloadHash } : {}),
+    ...(siteId ? { siteId } : {}),
+    ...(agentId ? { agentId } : {}),
+    decidedAt: now,
+  });
+  config.store.writePatchProposal({ ...proposal, status: decision, reviewedBy: user.id, reviewedAt: now, updatedAt: now });
+  recordActivity(config, user, `patch.${decision}`, "document", document.id, { proposalId: proposal.id, issueId: proposal.issueId });
+  if (proposal.issueId) recordIssueEvent(config, user, proposal.issueId, `patch.${decision}`, { proposalId: proposal.id, documentId: document.id });
+  return config.store.readPatchProposal(proposal.id)!;
+}
+
+/**
+ * Applies an approved patch proposal through the governance gate: the approval in the decision log
+ * must cover this exact payload (hash-bound), the drafting agent must still meet the space's trust
+ * tier, and the proof must still match the current document. Shared by the REST route and the gateway.
+ */
+export async function applyPatchProposal(
+  config: CloudServerConfig,
+  user: CloudUserRecord,
+  document: CloudDocumentRecord,
+  proposal: CloudPatchProposal,
+  access: AccessContext,
+): Promise<{ proposal: CloudPatchProposal; document: CloudDocumentRecord }> {
+  if (proposal.status !== "approved") throw new HttpError(409, "The proposal must be approved before it can be applied");
+  if (document.hash !== proposal.documentHash) throw stalePatchProposal(proposal, document);
+  const agentId = patchProposalAgentId(proposal);
+  governAgentAction(config, {
+    kind: "page.patch",
+    phase: "execute",
+    actorId: user.id,
+    ...(agentId ? { agentId } : {}),
+    siteIds: config.store.documentSiteIds(document.id),
+    subject: { type: "patch", id: proposal.id },
+    payload: patchPayload(proposal),
+  });
+  const proof = createCloudPatchProof(config, document, proposal.ops as PatchOp[]);
+  if (!proof.canWrite || proof.preHash.sha256 !== proposal.documentHash) {
+    throw new HttpError(409, "Patch proof no longer matches the current document", { proof: cloudProofRecord(proof) });
+  }
+  const updated = await updateDocument(config, document, { source: proof.postSource }, access);
+  const now = config.now().toISOString();
+  config.store.writePatchProposal({ ...proposal, status: "applied", appliedHash: updated.hash, updatedAt: now });
+  recordActivity(config, user, "patch.applied", "document", document.id, { proposalId: proposal.id, issueId: proposal.issueId, hash: updated.hash });
+  if (proposal.issueId) {
+    recordIssueEvent(config, user, proposal.issueId, "patch.applied", {
+      proposalId: proposal.id,
+      documentId: document.id,
+      beforeHash: proposal.documentHash,
+      afterHash: updated.hash,
+    });
+  }
+  return { proposal: config.store.readPatchProposal(proposal.id)!, document: updated };
 }
 
 export function patchOpsInput(value: unknown): PatchOp[] {

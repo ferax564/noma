@@ -30,8 +30,10 @@ import { verifyFixtureDir } from "./verify.js";
 import { diffDocs } from "./diff.js";
 import { collectIdRegistry } from "./ids.js";
 import { writePdfFromHtml, type PdfMarginOptions } from "./pdf.js";
+import { documentSlidePngPages, renderSlidePngs, slidePngPages, type SlidePngPage } from "./slide-png.js";
 import { createAgentSafetyProof, renderProofHtml, renderProofMarkdownSummary } from "./proof.js";
 import { convertMarkdownToNoma } from "./ingest-markdown.js";
+import { docsRepoTemplateFiles } from "./init-docs-repo.js";
 import { NotionImportError, notionOutputFiles, parseNotionBundle, parseNotionExport } from "./notion-import.js";
 import type { RenderLlmOptions } from "./renderer-llm.js";
 import type { DocumentNode } from "./ast.js";
@@ -55,6 +57,7 @@ Usage:
   noma ingest <export.zip> --from notion --out <dir>
                                              Convert a Notion export into a .noma tree
   noma init [dir]                            Create a starter .noma document
+  noma init <dir> --template docs-repo       Scaffold an agent-maintained docs repo (proof-on-PR CI)
   noma ids <file.noma|book.yml>              Print canonical ID and alias registry
   noma prove <file.noma> [opts]              Alias for proof
   noma schema <name>                         Print bundled JSON Schema
@@ -73,18 +76,23 @@ Usage:
   noma --version                             Print the CLI version
 
 Render options:
-  --to <html|slides|llm|json|noma|markdown|md|site|pdf|docx|paperdom|pptx>
+  --to <html|slides|llm|json|noma|markdown|md|site|pdf|docx|paperdom|pptx|png>
                             Target format (default: html). 'site' renders
                             a book manifest as a multi-page HTML site.
                             'pptx' also accepts a PaperDOM canvas .json input
                             and prints a fidelity report to stderr.
+                            'png' writes one PNG per slide into the --out
+                            directory (NN-<slide-id>.png; needs Puppeteer)
+                            and also accepts a PaperDOM canvas .json input.
   --out <path>              Write to file (or directory for --to site)
   --no-standalone           HTML: emit body fragment without <html> wrapper
   --title <text>            Override document title
   --kit <file.noma>         Component kit: ::component definitions available to
                             the document (render, check)
-  --deck <id>               slides/paperdom/pptx: use this ::deck (default: the first;
+  --deck <id>               slides/paperdom/pptx/png: use this ::deck (default: the first;
                             documents without a deck present one slide per section)
+  --slide <id>              png: render only this slide (block ID / canvas page id)
+  --scale <n>               png: device scale factor, 0.25–4 (default: 1)
   --theme <name>            HTML theme: default | dark (default: default)
   --css <path>              Append custom CSS to standalone HTML/site/PDF output
   --no-unsafe               HTML: block ::html / ::svg / ::script escape hatches
@@ -159,6 +167,7 @@ Examples:
   noma schema patch-op
   noma render examples/thesis.noma --to html --out dist/thesis.html
   noma render examples/thesis.noma --to pdf --out dist/thesis.pdf
+  noma render examples/deck.noma --to png --out dist/deck-png [--slide pitch-cover]
   noma render examples/thesis.noma --to docx --out dist/thesis.docx
   noma render examples/thesis.noma --to markdown --out dist/thesis.md
   noma docx-data dist/thesis.docx
@@ -185,6 +194,8 @@ interface CliArgs {
   standalone: boolean;
   title?: string;
   deck?: string;
+  slide?: string;
+  scale?: number;
   kit?: string;
   help: boolean;
   op?: string;
@@ -210,6 +221,7 @@ interface CliArgs {
   profiles: string[];
   addStableIds: boolean;
   from?: string;
+  template?: string;
   math?: "katex" | "none";
   excludeStaleDays?: number;
   llmSelect: string[];
@@ -262,6 +274,12 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--deck") {
       args.deck = argv[++i];
+      i++;
+    } else if (a === "--slide") {
+      args.slide = argv[++i];
+      i++;
+    } else if (a === "--scale") {
+      args.scale = Number(argv[++i]);
       i++;
     } else if (a === "--kit") {
       args.kit = argv[++i];
@@ -365,6 +383,8 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--from") {
       args.from = argv[++i];
+    } else if (a === "--template") {
+      args.template = argv[++i];
       i++;
     } else if (a === "--reason") {
       args.diffReason = argv[++i];
@@ -612,8 +632,11 @@ function llmOptionsFromArgs(args: CliArgs, defaultBudget?: number): RenderLlmOpt
 }
 
 function proofJson(proof: ReturnType<typeof createAgentSafetyProof>): string {
-  const { postSource: _postSource, artifactPreviewHtml: _artifactPreviewHtml, ...body } = proof;
-  return JSON.stringify(body, null, 2);
+  const { postSource: _postSource, artifactPreviewHtml: _artifactPreviewHtml, slideReview, ...body } = proof;
+  const review = slideReview
+    ? { slideReview: { pages: slideReview.pages.map(({ beforeSvg: _before, afterSvg: _after, ...page }) => page) } }
+    : {};
+  return JSON.stringify({ ...body, ...review }, null, 2);
 }
 
 const kitCache = new Map<string, ComponentKit>();
@@ -726,6 +749,27 @@ async function run(argv: string[]): Promise<void> {
 
   const cmd = args.command;
   if (cmd === "init") {
+    if (args.template !== undefined && args.template !== "docs-repo") {
+      process.stderr.write(`noma init: unknown --template ${args.template} (expected docs-repo)\n`);
+      process.exit(2);
+    }
+    if (args.template === "docs-repo") {
+      const targetDir = resolve(args.file ?? "noma-docs");
+      const files = docsRepoTemplateFiles(packageVersion());
+      const existing = Object.keys(files).filter((path) => existsSync(resolve(targetDir, path)));
+      if (existing.length > 0) {
+        process.stderr.write(`error: ${targetDir} already has ${existing.join(", ")}\n`);
+        process.exit(2);
+      }
+      for (const [path, content] of Object.entries(files)) {
+        const target = resolve(targetDir, path);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, content, "utf8");
+        process.stderr.write(`✓ wrote ${target}\n`);
+      }
+      process.stdout.write(`Next: cd ${targetDir} && noma ids docs/project.noma && noma proof docs/project.noma --ops patches/example-ops.json --out proof.html\n`);
+      return;
+    }
     const targetDir = resolve(args.file ?? "noma-starter");
     const targetFile = resolve(targetDir, "demo.noma");
     if (existsSync(targetFile)) {
@@ -1029,6 +1073,18 @@ async function run(argv: string[]): Promise<void> {
     : null;
   const safety = renderSafetyFromArgs(args, manifestForTrust?.trusted_publishing === true);
 
+  if (cmd === "render" && args.to === "png" && /\.json$/i.test(filePath)) {
+    try {
+      const parsed = parsePaperDOMDocument(JSON.parse(readFileSync(filePath, "utf8")));
+      if (!parsed.ok) throw new Error(`Invalid PaperDOM document: ${parsed.error}`);
+      await writeSlidePngs(slidePngPages(parsed.document, args.slide ? { slide: args.slide } : {}), args);
+    } catch (error) {
+      process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.exit(2);
+    }
+    return;
+  }
+
   if (cmd === "render" && args.to === "pptx" && /\.json$/i.test(filePath)) {
     let canvas: PaperDOMDocument;
     try {
@@ -1159,6 +1215,18 @@ async function run(argv: string[]): Promise<void> {
           }
           return;
         }
+        case "png": {
+          try {
+            await writeSlidePngs(
+              documentSlidePngPages(doc, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}), ...(args.slide ? { slide: args.slide } : {}) }),
+              args,
+            );
+          } catch (error) {
+            process.stderr.write(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.exit(2);
+          }
+          return;
+        }
         case "paperdom": {
           try {
             output(`${JSON.stringify(renderPaperDom(doc, { ...kitFromArgs(args), ...(args.deck ? { deck: args.deck } : {}) }), null, 2)}\n`, args.out);
@@ -1258,6 +1326,19 @@ main().catch((error) => {
   process.exit(1);
 });
 
+/** Screenshots slide pages into the `--out` directory and prints one line per file. */
+async function writeSlidePngs(pages: SlidePngPage[], args: CliArgs): Promise<void> {
+  if (!args.out) throw new Error("--to png requires --out <directory>");
+  if (args.scale !== undefined && !Number.isFinite(args.scale)) throw new Error("--scale must be a number");
+  const outDir = resolve(args.out);
+  mkdirSync(outDir, { recursive: true });
+  const rendered = await renderSlidePngs(pages, args.scale !== undefined ? { scale: args.scale } : {});
+  for (const { page, png } of rendered) {
+    writeFileSync(join(outDir, page.fileName), png);
+    process.stderr.write(`✓ wrote ${join(args.out, page.fileName)} (${page.id})\n`);
+  }
+}
+
 /** Writes a canvas as .pptx and prints what PowerPoint could not carry exactly. */
 function writePptx(canvas: PaperDOMDocument, out: string | undefined, title: string | undefined): void {
   if (!out) throw new Error("--to pptx requires --out <file.pptx>");
@@ -1266,4 +1347,5 @@ function writePptx(canvas: PaperDOMDocument, out: string | undefined, title: str
   process.stderr.write(`  ${report.slides} slide${report.slides === 1 ? "" : "s"}; native: ${report.supported.join(", ") || "none"}\n`);
   for (const item of report.approximated) process.stderr.write(`  ~ approximated: ${item}\n`);
   for (const item of report.unsupported) process.stderr.write(`  ! not exported: ${item}\n`);
+  for (const item of report.warnings) process.stderr.write(`  ! ${item}\n`);
 }

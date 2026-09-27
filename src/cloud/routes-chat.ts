@@ -33,6 +33,7 @@ import {
   uniqueId,
   writeNotification,
 } from "./context.js";
+import { governAgentAction } from "./governance.js";
 import { HttpError, readJsonBody, sendJson, sendText, sha256Hex } from "./http.js";
 import { boundedInteger, numberQuery, optionalCloudId, optionalString, stringInput, stringPathPart } from "./input.js";
 import { extractMentions } from "./mentions.js";
@@ -717,6 +718,15 @@ function postMessage(config: CloudServerConfig, context: ChannelContext, input: 
   if (agent) {
     requireChannelWritable(context);
     if (!agentChannelAccess(config, agent.id, context.channel)) throw new HttpError(403, "The agent cannot chat in this channel");
+    governAgentAction(config, {
+      kind: "chat.post",
+      phase: "execute",
+      actorId: context.user.id,
+      agentId: agent.id,
+      siteIds: context.channel.siteId ? [context.channel.siteId] : [],
+      payload: { kind: "chat.post", channelId: context.channel.id, threadId: input.threadId ?? null, body: input.body },
+      standing: "the owner granted the chat capability and channel access",
+    });
   } else requireCanPost(context);
   const files = agent ? [] : shareableFiles(config, context, input.fileIds ?? []);
   const body = files.length > 0 && !input.body.trim() ? files.map((file) => file.filename).join(", ") : messageBodyInput(input.body);

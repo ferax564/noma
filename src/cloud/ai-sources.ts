@@ -77,7 +77,7 @@ function parseSourceUrl(value: string): URL {
   return url;
 }
 
-async function vettedAddress(url: URL, allowPrivateHosts: boolean): Promise<{ address: string; family: number }> {
+export async function vettedAddress(url: URL, allowPrivateHosts: boolean): Promise<{ address: string; family: number }> {
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const answers = isIP(host) ? [{ address: host, family: isIP(host) }] : await lookup(host, { all: true, verbatim: true }).catch(() => {
     throw new SourceFetchError("Source host does not resolve");

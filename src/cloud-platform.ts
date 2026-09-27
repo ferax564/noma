@@ -80,6 +80,19 @@ export interface KnowledgeDocumentAccess {
   document: CloudDocumentRecord;
   role: CloudRole;
   via: "user" | "group" | "agent";
+  /**
+   * Extracted text of the page's attachments: `version` fingerprints it (a change re-indexes the page)
+   * and `load` reads it only when the page is (re)indexed. Each attachment becomes `att:<id>` blocks.
+   */
+  attachmentText?: { version: string; load: () => Array<{ attachmentId: string; filename: string; text: string }> };
+}
+
+/** Attachment text is embedded in chunks of this many characters, at most this many chunks per attachment. */
+const attachmentChunkChars = 1_500;
+const attachmentMaxChunks = 16;
+
+function indexVersion(access: KnowledgeDocumentAccess): string {
+  return access.attachmentText ? `${access.document.hash}+${sha256Hex(access.attachmentText.version).slice(0, 16)}` : access.document.hash;
 }
 
 export interface KnowledgeSearchRequest {
@@ -342,19 +355,21 @@ export class CloudKnowledgePlatform {
       let count = 0;
       let parsed = 0;
       for (const access of documents) {
-        if (!force && this.indexedBlockCache.get(access.document.id)?.versionHash === access.document.hash) continue;
+        const version = indexVersion(access);
+        if (!force && this.indexedBlockCache.get(access.document.id)?.versionHash === version) continue;
         const indexed = this.get<{ versionHash: string }>("rag_document", access.document.id);
-        if (!force && indexed?.versionHash === access.document.hash) continue;
+        if (!force && indexed?.versionHash === version) continue;
         if (parsed >= maxDocuments) continue;
         parsed += 1;
         this.db.prepare("DELETE FROM cloud_platform_records WHERE kind = 'rag_block' AND document_id = ?").run(access.document.id);
         const blocks = indexDocument(access.document, this.listTrust([access.document.id]), now);
+        if (access.attachmentText) blocks.push(...indexAttachmentText(access.document, access.attachmentText.load(), now));
         for (const block of blocks) {
           this.put("rag_block", block.id, block, { documentId: block.documentId, updatedAt: now });
           count += 1;
         }
-        this.put("rag_document", access.document.id, { id: access.document.id, versionHash: access.document.hash, indexedAt: now }, { documentId: access.document.id, updatedAt: now });
-        this.cacheIndexedBlocks(access.document.id, access.document.hash, blocks);
+        this.put("rag_document", access.document.id, { id: access.document.id, versionHash: version, indexedAt: now }, { documentId: access.document.id, updatedAt: now });
+        this.cacheIndexedBlocks(access.document.id, version, blocks);
       }
       return count;
     });
@@ -365,9 +380,11 @@ export class CloudKnowledgePlatform {
   private indexedBlocks(documents: KnowledgeDocumentAccess[]): IndexedBlock[] {
     const blocks: IndexedBlock[] = [];
     const select = this.db.prepare("SELECT data_json FROM cloud_platform_records WHERE kind = 'rag_block' AND document_id = ?");
-    for (const { document } of documents) {
+    for (const access of documents) {
+      const { document } = access;
+      const version = indexVersion(access);
       const cached = this.indexedBlockCache.get(document.id);
-      if (cached?.versionHash === document.hash) {
+      if (cached?.versionHash === version) {
         this.indexedBlockCache.delete(document.id);
         this.indexedBlockCache.set(document.id, cached);
         blocks.push(...cached.blocks);
@@ -379,8 +396,8 @@ export class CloudKnowledgePlatform {
           .map((row) => JSON.parse((row as PlatformRow).data_json) as IndexedBlock)
           .filter((block) => block.versionHash === document.hash),
       );
-      if (this.get<{ versionHash: string }>("rag_document", document.id)?.versionHash === document.hash) {
-        this.cacheIndexedBlocks(document.id, document.hash, loaded);
+      if (this.get<{ versionHash: string }>("rag_document", document.id)?.versionHash === version) {
+        this.cacheIndexedBlocks(document.id, version, loaded);
       }
       blocks.push(...loaded);
     }
@@ -1077,6 +1094,7 @@ export class CloudKnowledgePlatform {
       { operation: "chat_history", method: "GET", path: "/api/channels/:id/messages", permission: "viewer" },
       { operation: "chat_post", method: "POST", path: "/api/channels/:id/messages", permission: "viewer" },
       { operation: "run_request", method: "POST", path: "/api/projects/:id/runs", permission: "editor" },
+      { operation: "action_propose", method: "POST", path: "/api/approvals/actions", permission: "viewer" },
     ];
   }
 
@@ -1426,6 +1444,43 @@ function decodeVector(buffer: Buffer): Float32Array {
 
 function sortIndexedBlocks(blocks: IndexedBlock[]): IndexedBlock[] {
   return [...blocks].sort((left, right) => left.sourceSpan.line - right.sourceSpan.line || left.id.localeCompare(right.id));
+}
+
+/** Retrieval blocks for attachment text: `att:<id>`, content type `attachment`, chunked for embedding. */
+function indexAttachmentText(document: CloudDocumentRecord, attachments: Array<{ attachmentId: string; filename: string; text: string }>, now: string): IndexedBlock[] {
+  const blocks: IndexedBlock[] = [];
+  for (const attachment of attachments) {
+    const blockId = `att:${attachment.attachmentId}`;
+    const trust = trustFromAttrs(document.id, blockId, {}, document, now);
+    for (let chunk = 0; chunk < attachmentMaxChunks && chunk * attachmentChunkChars < attachment.text.length; chunk++) {
+      const exactSource = attachment.text.slice(chunk * attachmentChunkChars, (chunk + 1) * attachmentChunkChars);
+      const searchableText = [attachment.filename, "attachment", exactSource].join("\n");
+      const recordId = sha256Hex(`${document.id}:${document.hash}:${blockId}:${chunk}:${sha256Hex(exactSource)}`).slice(0, 32);
+      blocks.push({
+        id: recordId,
+        kind: "rag_block",
+        recordId,
+        documentId: document.id,
+        documentTitle: document.title,
+        blockId,
+        sourceSpan: { line: 0, endLine: 0, column: chunk + 1 },
+        versionHash: document.hash,
+        contentType: "attachment",
+        title: attachment.filename,
+        exactSource,
+        searchableText,
+        attrs: { filename: attachment.filename },
+        embedding: embed(searchableText),
+        textHash: embeddingTextHash(searchableText),
+        trust,
+        freshness: freshnessFor(trust, document.updatedAt, now),
+        provenance: [`noma:${document.id}@${document.hash}#${blockId}`],
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+      });
+    }
+  }
+  return blocks;
 }
 
 function indexDocument(document: CloudDocumentRecord, trustRecords: KnowledgeTrust[], now: string): IndexedBlock[] {
@@ -1925,7 +1980,7 @@ export interface SemanticCollection {
 }
 
 export interface AgentGatewayCapability {
-  operation: "search" | "cited_answer" | "list_ids" | "llm_export" | "proof" | "proposal" | "review" | "apply" | "webhook" | "assignments" | "reply" | "update_assignment" | "chat_inbox" | "chat_history" | "chat_post" | "run_request";
+  operation: "search" | "cited_answer" | "list_ids" | "llm_export" | "proof" | "proposal" | "review" | "apply" | "webhook" | "assignments" | "reply" | "update_assignment" | "chat_inbox" | "chat_history" | "chat_post" | "run_request" | "action_propose";
   method: "GET" | "POST";
   path: string;
   permission: "viewer" | "editor";

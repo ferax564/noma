@@ -16,8 +16,11 @@ import { CloudIntegrationsStore } from "./cloud-integrations.js";
 import { type SlackConfig, slackConfigFromEnv } from "./cloud/integrations.js";
 import { type SiemTarget, siemTargetFromEnv } from "./cloud/siem.js";
 import { CloudDevLoopStore } from "./cloud-devloop.js";
+import { CloudGovernanceStore } from "./cloud-governance.js";
+import { migrateLegacyApprovals } from "./cloud/governance.js";
 import { routeHooks } from "./cloud/routes-devloop.js";
 import { createRunProviderFromEnv, type RunProvider } from "./cloud/run-provider.js";
+import { type CodixingSettings, DEFAULT_CODIXING_SETTINGS } from "./cloud/codixing.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
 import { createEmbeddingProviderFromEnv, type EmbeddingProvider } from "./cloud-embeddings.js";
 import { createLlmProviderFromEnv, type LlmProvider } from "./cloud-llm.js";
@@ -43,6 +46,7 @@ import { runDueMaintenance, startMaintenanceScheduler } from "./cloud/routes-mai
 import { routeApi } from "./cloud/router.js";
 import { recordPageView } from "./cloud/routes-analytics.js";
 import { runServerQueueTick } from "./cloud/queue.js";
+import { type AttachmentTextSettings, attachmentTextSettingsFromEnv } from "./cloud/attachment-text.js";
 import {
   isCloudAppShell,
   redirectWithCloudAccessCookie,
@@ -123,6 +127,12 @@ export interface NomaCloudServerOptions {
    * content-addressed files under `<storage root>/blobs`) or `s3` (see `createBlobStoreFromEnv`).
    */
   blobStore?: BlobStore;
+  /**
+   * Attachment text extraction and PDF previews via the ferrox-server and officeconvert sidecars.
+   * Defaults to `NOMA_CLOUD_PDF_EXTRACT_URL` / `NOMA_CLOUD_OFFICE_CONVERT_URL` (see
+   * `attachmentTextSettingsFromEnv`); `null` disables it.
+   */
+  attachmentText?: AttachmentTextSettings | null;
   /** Allow Confluence imports from private/loopback hosts (tests, on-prem Data Center). */
   importAllowPrivateHosts?: boolean;
   /** Maximum Confluence import upload size in bytes (default 50 MB). */
@@ -150,6 +160,12 @@ export interface NomaCloudServerOptions {
   siem?: SiemTarget | null;
   /** Slack app for the two-way channel bridge; defaults to `NOMA_CLOUD_SLACK_BOT_TOKEN` + `NOMA_CLOUD_SLACK_SIGNING_SECRET`. `null` disables it. */
   slack?: SlackConfig | null;
+  /**
+   * Code intelligence: codixing servers are linked per repository; these are the server-wide knobs.
+   * Env: `NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS`, `NOMA_CLOUD_CODIXING_TIMEOUT_MS`,
+   * `NOMA_CLOUD_GITHUB_API_URL`, `NOMA_CLOUD_GITHUB_TOKEN` (or `_FILE`).
+   */
+  codixing?: Partial<CodixingSettings>;
   /** How often chat streams read events written by other processes on the same database (ms; default 500, 0 disables). */
   chatTailIntervalMs?: number;
 }
@@ -179,7 +195,7 @@ export interface NomaCloudAiOptions {
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
   const config = createCloudServerConfig(options);
-  const { store, platform, chat, devloop, agentOps, compliance, integrations } = config;
+  const { store, platform, chat, devloop, agentOps, governance, compliance, integrations } = config;
   const stopMaintenance = startMaintenanceScheduler(config);
   if (config.production && config.adminUserIds.length === 0) {
     console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
@@ -212,6 +228,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     chat.close();
     devloop.close();
     agentOps.close();
+    governance.close();
     compliance.close();
     integrations.close();
     platform.close();
@@ -233,6 +250,7 @@ export async function runNomaCloudMaintenanceOnce(options: NomaCloudServerOption
     config.chat.close();
     config.devloop.close();
     config.agentOps.close();
+    config.governance.close();
     config.compliance.close();
     config.integrations.close();
     config.platform.close();
@@ -259,12 +277,15 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const chat = new CloudChatStore(dbPath, options.chatTailIntervalMs === undefined ? {} : { tailIntervalMs: options.chatTailIntervalMs });
   const devloop = new CloudDevLoopStore(dbPath);
   const agentOps = new CloudAgentOpsStore(dbPath);
+  const governance = new CloudGovernanceStore(dbPath);
   const compliance = new CloudComplianceStore(dbPath);
   const integrations = new CloudIntegrationsStore(dbPath);
   const slack = options.slack === null ? undefined : options.slack ?? slackConfigFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const siem = options.siem === null ? undefined : options.siem ?? siemTargetFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const runProvider = options.runProvider === null ? undefined : options.runProvider ?? createRunProviderFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
-  return {
+  const attachmentText =
+    options.attachmentText === null ? undefined : options.attachmentText ?? attachmentTextSettingsFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
+  const config: CloudServerConfig = {
     dataDir,
     usersDir,
     sitesDir,
@@ -290,11 +311,13 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     chat,
     devloop,
     agentOps,
+    governance,
     compliance,
     integrations,
     ...(slack ? { slack } : {}),
     ...(siem ? { siem } : {}),
     ...(runProvider ? { runProvider } : {}),
+    codixing: codixingSettings(options.codixing ?? {}),
     blobs: options.blobStore ?? createBlobStoreFromEnv(storageRoot),
     maxAttachmentBytes: positiveInteger(
       options.maxAttachmentBytes ?? Number(process.env.NOMA_CLOUD_MAX_ATTACHMENT_BYTES ?? 25 * 1024 * 1024),
@@ -304,9 +327,12 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
       options.attachmentQuotaBytes ?? Number(process.env.NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES ?? 1024 * 1024 * 1024),
       "attachmentQuotaBytes",
     ),
+    ...(attachmentText ? { attachmentText } : {}),
     ai: cloudAiConfig(options.ai ?? {}),
     ...(oidcSettings ? { oidc: new OidcClient(oidcSettings, now, options.oidc?.fetch) } : {}),
   };
+  migrateLegacyApprovals(config);
+  return config;
 }
 
 function cloudAiConfig(options: NomaCloudAiOptions): CloudServerConfig["ai"] {
@@ -446,6 +472,18 @@ function s3ServerSideEncryption(raw: string | undefined): S3ServerSideEncryption
   if (normalized === "aes256") return "AES256";
   if (normalized === "aws:kms" || normalized === "kms") return "aws:kms";
   throw new Error('NOMA_CLOUD_S3_SSE must be "AES256", "aws:kms", or "none"');
+}
+
+function codixingSettings(options: Partial<CodixingSettings>): CodixingSettings {
+  const githubToken = options.githubToken ?? envSecret(process.env, "NOMA_CLOUD_GITHUB_TOKEN");
+  const githubApiUrl = options.githubApiUrl ?? (process.env.NOMA_CLOUD_GITHUB_API_URL?.trim() || DEFAULT_CODIXING_SETTINGS.githubApiUrl);
+  if (!/^https?:\/\//.test(githubApiUrl)) throw new Error("NOMA_CLOUD_GITHUB_API_URL must be an http(s) URL");
+  return {
+    allowPrivateHosts: options.allowPrivateHosts ?? enabledEnvironmentFlag("NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS"),
+    timeoutMs: positiveInteger(options.timeoutMs ?? Number(process.env.NOMA_CLOUD_CODIXING_TIMEOUT_MS ?? DEFAULT_CODIXING_SETTINGS.timeoutMs), "codixing.timeoutMs"),
+    githubApiUrl,
+    ...(githubToken ? { githubToken } : {}),
+  };
 }
 
 /** Reads `NAME`, or the file named by `NAME_FILE`; an empty secret file is an error. */

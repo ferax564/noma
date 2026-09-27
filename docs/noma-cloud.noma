@@ -1043,6 +1043,123 @@ web-identity credentials, embed Noma Cloud and pass
 `createNomaCloudServer`. Existing local blobs are not migrated automatically.
 Copy the `blobs/` tree into the bucket under the same prefix before you switch.
 
+### Attachment text and previews {id="attachment-text-previews"}
+
+Uploaded PDFs and Office files can be made searchable, DLP-scanned, and
+previewable in the browser. Two optional sidecars do the work. Both are off
+unless their URL is set, and without them attachments behave as before: only
+the filename is searchable.
+
+- **ferrox-server** (Rust PDF engine) extracts text from PDFs with
+  `POST /api/v1/process`, a PDF body, and `x-ferrox-config: {"op":"extract_text"}`.
+- **officeconvert** (Rust plus headless LibreOffice) turns Office files into
+  PDF with `POST /v1/convert` (multipart field `file`).
+
+| Variable | Meaning |
+|---|---|
+| `NOMA_CLOUD_PDF_EXTRACT_URL` | ferrox-server base URL, for example `http://ferrox:3001`. Enables PDF text extraction. |
+| `NOMA_CLOUD_PDF_EXTRACT_TOKEN` | Bearer token for ferrox-server (its `--auth-token` / `FERROX_AUTH_TOKEN`). Also `_FILE`. |
+| `NOMA_CLOUD_OFFICE_CONVERT_URL` | officeconvert base URL, for example `http://officeconvert:8085`. Enables Office previews. |
+| `NOMA_CLOUD_OFFICE_CONVERT_TOKEN` | Bearer token sent to officeconvert, for a proxy in front of it (officeconvert itself has no auth). Also `_FILE`. |
+| `NOMA_CLOUD_ATTACHMENT_TEXT_TIMEOUT_MS` | Deadline for each sidecar request (default 60000). |
+| `NOMA_CLOUD_ATTACHMENT_TEXT_MAX_INPUT_BYTES` | Largest document sent to a sidecar (default 2000000, just under the stock sidecars' 2 MB request limit). Larger files are skipped. |
+
+**How it runs.** Uploads never wait for a sidecar. The upload returns at once
+and starts a background pass, and the in-process queue picks up anything left
+over. That includes imported attachments and older ones when a sidecar is
+first configured.
+
+- A PDF goes to ferrox for text.
+- A `.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`, `.odp`, `.doc`, `.xls`,
+  `.ppt`, or `.rtf` file goes to officeconvert first. The name must match the
+  sniffed type, so a renamed HTML file is never sent. The PDF it returns is
+  stored as a preview blob and then sent to ferrox for text. HTML and CSV are
+  not converted.
+- Identical bytes are converted and extracted once, and later uploads reuse
+  the result.
+- Each attachment has an `extraction` status: `pending`, `done`, `failed`, or
+  `skipped`. Unreachable sidecars, timeouts, HTTP 5xx, 401, 403, 408, and 429
+  are retried after 1 and then 4 minutes. After three attempts the status is
+  `failed`. Malformed responses fail at once.
+- Files over the input cap are `skipped` with `too_large`.
+
+**Search and retrieval.** The text is stored per attachment, up to 1 MB of
+UTF-8. It is indexed as the attachment's `att:<id>` block. ⌘K search
+(`/api/find`) returns an `attachments` group, and `/api/search` matches it too.
+Knowledge search, Ask Noma, and embeddings see it as `attachment` blocks,
+embedded in chunks of 1,500 characters, up to 16 chunks per file. Results
+follow the page's permissions and restrictions exactly. Anyone who cannot
+read the page does not see its attachments' text. Deleting an attachment
+removes its text from the index.
+
+**DLP.** The text is scanned with the workspace detectors. A match records a
+finding with `resourceType: "attachment"` and the attachment ID, plus a
+`dlp.flagged` or `dlp.blocked` audit event, like message and page findings.
+The file is already stored, so `block` mode cannot refuse it. Instead, the
+text is withheld from search and retrieval (`extraction.dlpWithheld: true`).
+
+**Preview.** `GET /api/attachments/<id>/preview` serves the derived PDF of an
+Office upload. It uses the same access rules as the download route: page
+access, or the attachment's signed URL parameters. It also uses the same
+headers: `application/pdf`, `Content-Disposition: inline`, `nosniff`, and the
+sandboxing CSP. Attachment listings include `previewUrl` (signed) when a
+preview exists, and the Attachments panel shows a **Preview (PDF)** link. PDF
+uploads need no preview, because they already open inline.
+
+**Quota.** A preview counts toward the same storage quota as the upload
+(`NOMA_CLOUD_ATTACHMENT_QUOTA_BYTES`, per space or per user). If storing it
+would exceed the quota, the preview is dropped. The text is still extracted,
+and the status carries `preview_over_quota`. A preview can be no larger than
+`NOMA_CLOUD_MAX_ATTACHMENT_BYTES`. Preview blobs are garbage-collected with
+their attachment when a page is purged.
+
+**Untrusted sidecars.** Every call has a timeout, refuses redirects, and caps
+the response: 8 MB of JSON from ferrox, and the attachment size limit for PDFs
+from officeconvert. The response content type is checked, and a converted
+file must start with `%PDF-`. Text is sanitised before indexing:
+- It is normalised to NFC.
+- Control, zero-width, and bidi-override characters are removed.
+- Whitespace is collapsed.
+- It is cut on a character boundary.
+
+Error messages name only the sidecar and the HTTP status.
+
+Workspace owners can check progress with `GET /api/enterprise/attachment-text`,
+which shows which sidecars are configured and the counts by status. They can
+run a pass on demand with `POST /api/enterprise/attachment-text/run`.
+
+Run both sidecars next to Noma Cloud on a private network:
+
+```yaml
+services:
+  noma:
+    image: noma-cloud:latest
+    environment:
+      NOMA_CLOUD_PDF_EXTRACT_URL: http://ferrox:3001
+      NOMA_CLOUD_PDF_EXTRACT_TOKEN: ${FERROX_TOKEN}
+      NOMA_CLOUD_OFFICE_CONVERT_URL: http://officeconvert:8085
+  ferrox:
+    # Image built from the ferrox repo: cargo build --release -p ferrox-server
+    image: ferrox-server:local
+    command: ["ferrox-server", "--host", "0.0.0.0", "--port", "3001"]
+    environment:
+      FERROX_AUTH_TOKEN: ${FERROX_TOKEN}
+  officeconvert:
+    build: ../officeconvert # its Dockerfile installs libreoffice-nogui
+    environment:
+      OFFICECONVERT_BIND: 0.0.0.0:8085
+```
+
+`ferrox-server` reads its token from `--auth-token` or `FERROX_AUTH_TOKEN`.
+Keep officeconvert off the public network, because it has no authentication
+of its own. The Compose default network is private to these services.
+
+Both sidecars can also run as ezkeel apps (`ezkeel up <repo>`). officeconvert
+ships a Dockerfile with a `/health` check. ezkeel apps are published at
+`<name>.<apps domain>`, so start ferrox-server with a token. Put officeconvert
+behind an authenticating proxy and set `NOMA_CLOUD_OFFICE_CONVERT_TOKEN`, or
+give it a private network route.
+
 ## Page restrictions
 
 Space permissions decide who can reach a page. **Restrictions** can then narrow
@@ -1969,6 +2086,7 @@ what waits on you:
 | Page patch | An agent or colleague proposed block edits on a page you can edit | On the page |
 | AI page | An AI-drafted page in a space you can edit | In the space |
 | Page approval | Someone asked you to approve a page | On the page |
+| Propose-only | An agent asked a person to perform a bright-line action ([agent governance](#agent-governance)) | Here, by a space owner: recorded only, never executed |
 
 Runs asked for by agents wait in `pending_approval` until a person with the
 project's minimum role decides. The agent's owner cannot approve their own
@@ -1997,6 +2115,99 @@ GET            /api/agents/<id>/jobs
 GET            /api/approvals
 POST           /api/approvals/runs/<run-id>        {decision: approve|reject}
 GET|PUT        /api/enterprise/agents              {paused, reason?}   (workspace admins)
+```
+
+## Agent governance {id="agent-governance"}
+
+Every action an agent starts goes through one gate before it is proposed or
+executed. The model is ported from keepop, the owner's read-only-first AI
+operator: a capability registry, one enforcement chokepoint, approvals bound to
+a content hash, and an append-only approval table guarded by SQLite triggers.
+
+**Capability classes.** Each action kind is registered with a class and the
+lowest trust tier that may ask for it. Kinds that are not registered are
+denied by default, including unknown gateway tools.
+
+| Kind | Class | Tier | Runs after |
+|---|---|---|---|
+| `page.read`, `chat.read`, `assignment.read` | read_only | 0 | nothing — reads and dry-run proofs |
+| `page.patch` | approve_to_execute | 1 | a person's approval of this exact patch |
+| `page.create` | approve_to_execute | 1 | a person's approval of this exact AI-drafted page |
+| `comment.post`, `chat.post`, `assignment.update` | approve_to_execute | 1 | the owner's standing grant (capability plus page or channel access) |
+| `run.test` | approve_to_execute | 2 | a person's approval, or the project owner's `agentRunsNeedApproval: false` |
+| `run.deploy` | approve_to_execute | 3 | a person's approval, or the project owner's `agentRunsNeedApproval: false` |
+| `page.delete`, `run.teardown`, `access.change`, `retention.change`, `external.publish`, `repo.change`, `agent.config` | propose_only | 1 | never — a person performs it by hand |
+
+`GET /api/approvals/capabilities` returns the registry.
+
+**Bright lines.** An agent can ask for a propose-only action with the
+`action_propose` gateway tool (`{agentId, siteId, kind, payload, reason}`).
+The proposal appears in the approval queue for the space's editors, and a
+space owner can acknowledge, reject, or ask for a revision
+(`POST /api/approvals/actions/<id>`). Acknowledging records the decision and
+nothing else. The gate refuses to execute a propose-only kind even when an
+approval is on record.
+
+**Hash-bound approvals.** A decision binds to the sha256 of the canonical
+JSON of the payload it covers:
+
+- a page patch: document, base hash, and ops
+- an AI page: space, parent, title, and source hash
+- a run: project, linked repository, ref, and app name
+- a bright-line proposal: kind, space, and payload
+
+The approval queue shows each hash. A reviewer can send it back as
+`payloadHash` when deciding, and a mismatch returns `409 payload_hash_mismatch`.
+At execution the gate recomputes the hash and refuses on any difference, so
+a patch whose ops changed after approval, or a run whose project was relinked
+to another repository, has to be approved again.
+
+**Append-only decision log.** Every approval, rejection, or revision request
+on an agent action is a row in `agent_decisions`:
+
+- who decided, and when
+- the action kind and its capability class
+- the payload hash
+- the reason, the space, and the agent
+
+SQLite triggers abort any `UPDATE` or `DELETE` on the table. A later decision
+supersedes an earlier one, but the earlier row stays. The proposal and run
+tables keep their status columns for the workflow, but only the log
+authorizes execution. On upgrade, proposals that were already approved but
+not yet applied get a `migrated` decision bound to their current payload, so
+they still apply.
+
+The log sits outside every purge path. Trash purge, enterprise retention, and
+chat retention do not touch it. Decision rows hold IDs, hashes, and reasons,
+not page or chat content, so purging a page removes the content while the
+record that someone approved a change stays. If a legal erasure order ever
+reaches decision rows, an operator has to handle it deliberately outside the
+application, since the triggers block in-app deletes.
+
+**Trust tiers.** Each space has an agent trust tier: 0 read-only, 1 propose
+content, 2 run tests, 3 run deploys. Space owners and workspace admins set it
+with `PUT /api/approvals/trust/<site-id> {tier}`; a token needs the `admin`
+scope. Unconfigured spaces are tier 3, which keeps what agents could already
+do. When an action touches more than one space, the lowest tier applies.
+Tiers bind agents, not people: a person's own `/deploy` is not limited by
+them. An agent below the required tier gets
+`403 agent_tier_too_low` with the tier it needs.
+
+**Audit.** Every gate decision writes `agent.gate.allowed` or
+`agent.gate.denied` with the kind, class, phase, agent, tier, payload hash,
+and reason. Every human decision writes `agent.decision.recorded`, and tier
+changes write `agent.trust_changed`. These go to the same audit log that the
+SIEM forwarder ships.
+
+```text
+GET            /api/approvals/capabilities
+GET            /api/approvals/history?siteId=<site-id>
+GET|PUT        /api/approvals/trust/<site-id>      {tier: 0|1|2|3}
+POST           /api/approvals/actions/<id>         {decision: approve|reject|revise, payloadHash?, reason?}
+POST           /api/approvals/runs/<run-id>        {decision: approve|reject, payloadHash?, reason?}
+POST           /api/documents/<id>/patch-proposals/<proposal-id>/review   {decision, payloadHash?, reason?}
+GET            /api/documents/<id>/patch-proposals/<proposal-id>/decisions
+GET            /api/sites/<site-id>/ai/page-proposals/<proposal-id>/decisions
 ```
 
 ## Code, CI, and run environments {id="dev-loop"}
@@ -2070,6 +2281,71 @@ GET|POST       /api/projects/<id>/runs      ?issue=<key> · {kind: deploy|test, 
 GET|DELETE     /api/projects/<id>/runs/<run-id>
 POST           /api/hooks/github/<project-id>   (GitHub webhook, HMAC-signed)
 ```
+
+### Code intelligence (codixing) {id="code-intelligence"}
+
+A linked repository can point at a [codixing](https://github.com/ferax564/codixing)
+server, a code-retrieval engine that indexes one repository: BM25 and vector
+search over code chunks, plus a file dependency graph. It is optional. Without
+it, nothing below happens and every response is unchanged.
+
+**Set it up.** Run one `codixing-server` per repository, next to a clone that
+has a `.codixing/` index (`codixing init`, then `codixing-server --host 0.0.0.0
+--port 3000 /path/to/repo`). For example, deploy it as an app on ezkeel.
+codixing has **no authentication**, so never expose it directly. Keep it on a
+private network or put it behind a proxy that checks a bearer token. Then a
+space owner saves the URL on the project's repository:
+
+```text
+PUT /api/projects/<id>/repo   {codixingUrl: "https://code.internal/shop", codixingToken?: "…"}
+```
+
+The URL must be `http` or `https`, with no credentials, query, or fragment.
+`null` clears it, and clearing the URL also clears the token. The token is sent as
+`Authorization: Bearer …` and is never returned. `GET` shows only
+`codixing: {url, tokenSet}`. Changing the linked `repo` drops the server.
+
+**What it powers.**
+
+- **Pull-request blast radius.** When a pull request is opened, reopened,
+  marked ready, or gets new commits, Noma lists its changed files from GitHub
+  (`GET /repos/<repo>/pulls/<n>/files`, at most 300 files). It then asks
+  codixing for the files that depend on them (`/graph/callers`, depth 2, the
+  first 25 changed files). One reply goes to the linked issue's thread, or to
+  the project channel. It gives the changed-file count, up to 15 impacted
+  files, and up to 10 likely affected tests (paths such as `test/`,
+  `*.test.ts`, `*_test.go`, `test_*.py`, `*Test.java`). It is posted once per
+  head SHA, so GitHub redeliveries do not repeat it.
+- **Code in ⌘K.** The palette also queries the codixing servers of repositories
+  linked from projects you can see. It asks at most 5 servers, in parallel,
+  with a 1.5 s deadline and the `instant` strategy. The hits come back as a
+  separate `code` group in `GET /api/find`: repo, file, lines, signature,
+  snippet, and a GitHub link. Repositories in spaces you cannot read are never
+  queried.
+- **Agent context.** When a hosted agent answers a mention in a project
+  channel, Noma searches the project's codixing server. The search uses the
+  thread's Work issue and the mention text, with a token budget of about 1,500.
+  The results go into the prompt inside
+  `<repository_code … trust="untrusted">`, and the system prompt tells the model
+  that this is reference data, not instructions.
+
+**Limits and safety.** Every codixing response is treated as untrusted. Each
+request has a deadline (`NOMA_CLOUD_CODIXING_TIMEOUT_MS`, default 3000; 1500
+for ⌘K) and a size cap (1 MB for search, 256 KB for the graph). Redirects are
+not followed. The server's address is resolved once and pinned. Results are
+shape-checked, and paths with `..`, absolute paths, or control characters are
+dropped. If a server is down, slow, or returns something malformed, the
+feature it serves is skipped. Webhooks, search, and agent replies carry on
+without it. codixing indexes one working copy (usually the default branch), so
+the blast radius shows dependents as of that index, not as of the pull
+request's head.
+
+| Variable | Meaning |
+|---|---|
+| `NOMA_CLOUD_CODIXING_ALLOW_PRIVATE_HOSTS` | `1` lets codixing URLs point at private or loopback addresses. This is the usual choice for a sidecar on the same network. It is off by default, which blocks SSRF by space owners. |
+| `NOMA_CLOUD_CODIXING_TIMEOUT_MS` | per-request deadline for codixing (default 3000) |
+| `NOMA_CLOUD_GITHUB_TOKEN` (or `_FILE`) | optional GitHub token for listing pull-request files. Public repositories work without it, at GitHub's anonymous rate limit. |
+| `NOMA_CLOUD_GITHUB_API_URL` | GitHub REST base (default `https://api.github.com`; set it for GitHub Enterprise) |
 
 ## Edit a page
 

@@ -119,7 +119,17 @@ runs on ezkeel.
 Scoped agent identities and the MCP/API gateway (`routes-agents.ts`),
 assignments (`agent-assignments.ts`), hosted and scheduled agents
 (`agent-runner.ts`, `routes-agent-ops.ts`), one approval queue
-(`routes-approvals.ts`), workspace kill switch.
+(`routes-approvals.ts`), workspace kill switch. Governance (keepop model):
+one action registry and gate (`capabilities.ts`, `governance.ts`),
+hash-bound approvals, an append-only decision log and per-space trust tiers
+(`cloud-governance.ts`).
+:::
+
+:::card{title="Optional sidecars"}
+Off unless configured. codixing, one server per linked repo
+(`codixing.ts`, `code-intel.ts`): PR blast radius, a Code group in ⌘K, and
+agent context. ferrox-server and officeconvert (`attachment-text.ts`):
+PDF and Office attachment text for search and DLP, plus PDF previews.
 :::
 
 :::card{title="AI, search, compliance"}
@@ -170,7 +180,10 @@ for provenance. Since 2026-09-24 the fork is type-checked and linted like
 the rest of `src/` (maintainer decision 4 in `docs/strategy-2026-09.md` §8).
 It backs `--to paperdom`, `::canvas` (`src/canvas-svg.ts`), `--to pptx`
 (`src/paperdom-pptx.ts`), and canvas → `.noma` sync
-(`src/paperdom-sync.ts`).
+(`src/paperdom-sync.ts`). Ported upstream pieces (listed in
+`PAPERDOM_PORTED_UPSTREAM_FILES`) give `--to png` (`slide-png.ts`), text-fit
+warnings (`canvas-text-metrics.ts`, rule `slide-text-overflow`) and the visual
+review in `noma proof` (`canvas-review.ts`).
 
 ## Public entry points {id="nm-arch-barrels"}
 
