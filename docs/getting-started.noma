@@ -683,6 +683,22 @@ Use `--css report.css` to append report-specific CSS to the selected theme and
 `--no-print-background` when the output must avoid filled backgrounds. On first
 install, Puppeteer may download a Chromium build.
 
+## Render slides to PNG
+
+The PNG target writes one image per slide, so an agent that edited a deck can
+look at the result. Files are named `NN-<slide-id>.png` by position and slide
+block ID:
+
+```bash
+npm run noma -- render examples/deck.noma --to png --out dist/deck-png
+npm run noma -- render examples/deck.noma --to png --out dist/deck-png --slide pitch-loop --scale 2
+```
+
+Slides are drawn from the same sanitised SVG as `::canvas`, in Chromium with
+JavaScript disabled and network requests blocked. `noma check` warns with
+`slide-text-overflow` when a slide's text is estimated not to fit its box, and
+`noma proof` shows before/after previews of every slide an edit changes.
+
 ## Write your own
 
 Create `mydoc.noma`:

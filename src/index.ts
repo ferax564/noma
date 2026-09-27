@@ -23,6 +23,12 @@ export type { CanvasReadResult, CanvasSvgOptions } from "./canvas-svg.js";
 export type { PaperDomPageSource, RenderPaperDomOptions } from "./renderer-paperdom.js";
 export { DECK_ASPECTS, SLIDE_LAYOUTS, deckSlides, findDecks, slideParts } from "./slides.js";
 export type { SlideLayout, SlideParts } from "./slides.js";
+export { documentSlidePngPages, renderSlidePngs, slidePngPages, SlideRenderUnavailableError } from "./slide-png.js";
+export type { SlidePngPage, SlidePngRenderOptions, SlidePngSelection } from "./slide-png.js";
+export { auditCanvasDocument, auditCanvasPage, estimateTextFit } from "./canvas-text-metrics.js";
+export type { CanvasWarning, TextFitEstimate } from "./canvas-text-metrics.js";
+export { describeChange, diffCanvasDocuments, reviewSlideChanges } from "./canvas-review.js";
+export type { CanvasChange, SlideReview, SlideReviewPage } from "./canvas-review.js";
 export { STYLE_TOKENS, STYLE_TOKEN_GROUPS, normalizeStyleTokenAliases, parseStyleTokens, resolveStyleTokenAliases, styleTokenClassNames } from "./style-tokens.js";
 export type { StyleToken, StyleTokenAliases } from "./style-tokens.js";
 export {
