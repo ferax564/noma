@@ -1,0 +1,9 @@
+# One Noma Cloud space per project, fed from the project's wiki/ directory.
+# Copied to projects.conf by install.sh; edit freely (it is not committed).
+#
+# name      KEY   git remote                              branch  wiki dir   space title
+noma        NOMA  git@github.com:ferax564/noma.git        main    wiki       Noma
+ezkeel      EZK   git@github.com:ferax564/ezkeel.git      main    wiki       EZKeel
+stratos     STR   git@github.com:ferax564/Stratos.git     main    wiki       Stratos
+orgflow     ORG   git@github.com:ferax564/OrgFlow.git     main    wiki       OrgFlow
+workspace   HQ    git@github.com:ferax564/ezkeel.git      main    hub        Workspace

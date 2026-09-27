@@ -55,7 +55,23 @@ export interface SyncOptions {
   pull?: boolean;
   push?: boolean;
   dryRun?: boolean;
+  /**
+   * Keep the sync keys in this JSON file instead of each page's frontmatter, so the directory holds
+   * exactly the page sources (a clean Git checkout stays clean until the wiki actually changes a page).
+   * The directory's layout is then Git's: a synced file keeps its path whatever the page is titled, and
+   * only pages that have no local file yet are written at the server's path.
+   */
+  stateFile?: string;
 }
+
+/** Sync keys as stored per file in a `--state` sidecar, keyed by the file's path relative to the directory. */
+export interface SyncStateFile {
+  format: typeof syncStateFormat;
+  siteId: string;
+  files: Record<string, { cloudId: string; cloudHash: string; cloudParent?: string; cloudLabels?: string[]; conflictHash?: string }>;
+}
+
+const syncStateFormat = "noma-cloud-sync-state/1";
 
 const syncKeys = ["cloudId", "cloudHash", "cloudParent", "cloudLabels"] as const;
 const syncKeyPattern = /^(cloudId|cloudHash|cloudParent|cloudLabels):/;
@@ -66,6 +82,67 @@ class CloudApiError extends Error {
   }
 }
 
+type SyncKeys = { id: string; hash: string; parentId?: string; labels: string[] };
+
+/** Where a file's sync keys live: its own frontmatter (default) or a sidecar state file. */
+interface SyncKeyStore {
+  meta(path: string, frontmatter: LocalFile["meta"]): LocalFile["meta"];
+  render(path: string, source: string, keys: SyncKeys): string;
+  forget(path: string): void;
+  /** Remembers the server revision a `.conflict` file was written from, so deleting that file resolves it. */
+  conflict(path: string, serverHash: string): void;
+  save(dir: string): void;
+}
+
+const frontmatterKeyStore: SyncKeyStore = {
+  meta: (_path, frontmatter) => frontmatter,
+  render: (_path, source, keys) => withSyncFrontmatter(source, keys),
+  forget: () => undefined,
+  conflict: () => undefined,
+  save: () => undefined,
+};
+
+function sidecarKeyStore(stateFile: string, siteId: string, dir: string): SyncKeyStore {
+  const path = resolve(stateFile);
+  let state: SyncStateFile = { format: syncStateFormat, siteId, files: {} };
+  if (existsSync(path)) {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<SyncStateFile>;
+    if (parsed.format !== syncStateFormat || typeof parsed.files !== "object" || parsed.files === null) throw new Error(`${stateFile} is not a ${syncStateFormat} file`);
+    if (parsed.siteId !== siteId) throw new Error(`${stateFile} belongs to space ${String(parsed.siteId)}, not ${siteId}`);
+    state = { format: syncStateFormat, siteId, files: parsed.files };
+  }
+  return {
+    meta: (file, frontmatter) => {
+      if (typeof frontmatter.cloudId === "string") return frontmatter;
+      const entry = state.files[file];
+      if (!entry) return {};
+      const { conflictHash, ...keys } = entry;
+      const resolved = conflictHash && !existsSync(join(dir, `${file}.conflict`));
+      return resolved ? { ...keys, cloudHash: conflictHash } : keys;
+    },
+    render: (file, source, keys) => {
+      state.files[file] = { cloudId: keys.id, cloudHash: keys.hash, ...(keys.parentId ? { cloudParent: keys.parentId } : {}), ...(keys.labels.length > 0 ? { cloudLabels: keys.labels } : {}) };
+      return source;
+    },
+    forget: (file) => {
+      delete state.files[file];
+    },
+    conflict: (file, serverHash) => {
+      const entry = state.files[file];
+      if (entry) entry.conflictHash = serverHash;
+    },
+    save: (dir) => {
+      const files = Object.fromEntries(Object.entries(state.files).filter(([file]) => existsSync(join(dir, file))).sort(([a], [b]) => a.localeCompare(b)));
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, `${JSON.stringify({ ...state, files }, null, 2)}\n`, "utf8");
+    },
+  };
+}
+
+function keyStoreFor(options: { siteId: string; dir: string; stateFile?: string }): SyncKeyStore {
+  return options.stateFile ? sidecarKeyStore(options.stateFile, options.siteId, resolve(options.dir)) : frontmatterKeyStore;
+}
+
 /** Minimal authenticated client for the Cloud endpoints the sync needs. */
 export class CloudSyncClient {
   private readonly base: string;
@@ -74,6 +151,14 @@ export class CloudSyncClient {
   constructor(private readonly options: CloudSyncClientOptions) {
     this.base = options.server.replace(/\/+$/, "");
     this.fetchImpl = options.fetch ?? fetch;
+  }
+
+  sites(): Promise<{ sites: Array<{ id: string; title: string; key: string | null; archived?: boolean }> }> {
+    return this.request("GET", "/api/sites");
+  }
+
+  createSite(title: string, key?: string): Promise<{ id: string; title: string; key: string | null }> {
+    return this.request("POST", "/api/sites", { title, documentIds: [], ...(key ? { key } : {}) });
   }
 
   manifest(siteId: string): Promise<SyncManifest> {
@@ -118,19 +203,22 @@ interface LocalFile {
 }
 
 /** Writes every page of the space into `dir` (created if missing), replacing files it already manages. */
-export async function exportSpace(client: CloudSyncClient, options: { siteId: string; dir: string }): Promise<SyncReport> {
+export async function exportSpace(client: CloudSyncClient, options: { siteId: string; dir: string; stateFile?: string }): Promise<SyncReport> {
   const dir = resolve(options.dir);
   mkdirSync(dir, { recursive: true });
+  const keys = keyStoreFor(options);
   const manifest = await client.manifest(options.siteId);
-  const local = indexLocalFiles(dir);
+  const local = indexLocalFiles(dir, keys);
   const actions: SyncAction[] = [];
-  for (const page of manifest.pages) {
-    const existing = local.byId.get(page.id);
+  for (const manifestPage of manifest.pages) {
+    const existing = local.byId.get(manifestPage.id);
+    const page = existing && options.stateFile ? { ...manifestPage, path: existing.path } : manifestPage;
     const document = await client.document(page.id);
-    if (existing && existing.path !== page.path) rmSync(existing.absolutePath);
-    writeManagedFile(dir, page, document.source, document.hash);
+    if (existing && existing.path !== page.path) removeManagedFile(keys, existing);
+    writeManagedFile(keys, dir, page, document.source, document.hash);
     actions.push({ kind: "pulled", path: page.path, documentId: page.id });
   }
+  keys.save(dir);
   return { siteId: options.siteId, dir, dryRun: false, actions, conflicts: 0 };
 }
 
@@ -143,18 +231,21 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
     if (dryRun) throw new Error(`Directory does not exist: ${dir}`);
     mkdirSync(dir, { recursive: true });
   }
+  const keys = keyStoreFor(options);
+  const keepLocalPaths = Boolean(options.stateFile);
   const manifest = await client.manifest(options.siteId);
-  const local = indexLocalFiles(dir);
+  const local = indexLocalFiles(dir, keys);
   const actions: SyncAction[] = [];
   const manifestIds = new Set(manifest.pages.map((page) => page.id));
 
-  for (const page of manifest.pages) {
-    const file = local.byId.get(page.id);
+  for (const manifestPage of manifest.pages) {
+    const file = local.byId.get(manifestPage.id);
+    const page = file && keepLocalPaths ? { ...manifestPage, path: file.path } : manifestPage;
     if (!file) {
       if (!pull) continue;
       if (!dryRun) {
         const document = await client.document(page.id);
-        writeManagedFile(dir, page, document.source, document.hash);
+        writeManagedFile(keys, dir, page, document.source, document.hash);
       }
       actions.push({ kind: "pulled", path: page.path, documentId: page.id });
       continue;
@@ -165,7 +256,7 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
     const remoteChanged = page.hash !== base;
     if (!localChanged && !remoteChanged) {
       if (file.path !== page.path && pull) {
-        if (!dryRun) moveManagedFile(dir, file, page);
+        if (!dryRun) moveManagedFile(keys, dir, file, page);
         actions.push({ kind: "moved", path: page.path, documentId: page.id, detail: `from ${file.path}` });
       } else {
         actions.push({ kind: "unchanged", path: file.path, documentId: page.id });
@@ -174,8 +265,8 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
     }
     if (localChanged && remoteChanged && localHash === page.hash) {
       if (!dryRun) {
-        if (file.path !== page.path) rmSync(file.absolutePath);
-        writeManagedFile(dir, page, file.body, page.hash);
+        if (file.path !== page.path) removeManagedFile(keys, file);
+        writeManagedFile(keys, dir, page, file.body, page.hash);
       }
       actions.push({ kind: "converged", path: page.path, documentId: page.id });
       continue;
@@ -184,8 +275,8 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
       if (!pull) continue;
       if (!dryRun) {
         const document = await client.document(page.id);
-        if (file.path !== page.path) rmSync(file.absolutePath);
-        writeManagedFile(dir, page, document.source, document.hash);
+        if (file.path !== page.path) removeManagedFile(keys, file);
+        writeManagedFile(keys, dir, page, document.source, document.hash);
       }
       actions.push({ kind: "pulled", path: page.path, documentId: page.id });
       continue;
@@ -198,55 +289,72 @@ export async function syncSpace(client: CloudSyncClient, options: SyncOptions): 
       }
       try {
         const updated = await client.updateDocument(page.id, file.body, base);
-        writeManagedFile(dir, { ...page, path: file.path }, file.body, updated.hash);
+        writeManagedFile(keys, dir, { ...page, path: file.path }, file.body, updated.hash);
         actions.push({ kind: "pushed", path: file.path, documentId: page.id });
       } catch (error) {
         if (!(error instanceof CloudApiError) || error.status !== 409) throw error;
-        actions.push(await recordConflict(client, dir, file, page, "server changed during push"));
+        actions.push(await recordConflict(client, keys, dir, file, page, "server changed during push"));
       }
       continue;
     }
-    actions.push(dryRun ? { kind: "conflict", path: file.path, documentId: page.id, detail: "changed locally and on the server" } : await recordConflict(client, dir, file, page, "changed locally and on the server"));
+    actions.push(dryRun ? { kind: "conflict", path: file.path, documentId: page.id, detail: "changed locally and on the server" } : await recordConflict(client, keys, dir, file, page, "changed locally and on the server"));
   }
 
-  for (const file of local.files) {
+  const createdByPath = new Map<string, string>();
+  const parentFirst = [...local.files].sort((a, b) => a.path.split("/").length - b.path.split("/").length || a.path.localeCompare(b.path));
+  for (const file of parentFirst) {
     const cloudId = typeof file.meta.cloudId === "string" ? file.meta.cloudId : undefined;
     if (cloudId) {
       if (!manifestIds.has(cloudId)) actions.push({ kind: "remote_missing", path: file.path, documentId: cloudId, detail: "page was removed, trashed, or is no longer visible" });
       continue;
     }
     if (!push) continue;
-    const parentId = typeof file.meta.cloudParent === "string" ? file.meta.cloudParent : parentFromDirectory(manifest.pages, file.path);
+    const parentId = typeof file.meta.cloudParent === "string" ? file.meta.cloudParent : parentFromDirectory(manifest.pages, local.files, file.path, createdByPath);
     if (dryRun) {
       actions.push({ kind: "created", path: file.path, detail: "new page" });
       continue;
     }
     const created = await client.createPage(options.siteId, file.body, parentId);
-    writeFileSync(file.absolutePath, withSyncFrontmatter(file.body, { id: created.id, hash: created.hash, ...(parentId ? { parentId } : {}), labels: [] }), "utf8");
+    createdByPath.set(file.path, created.id);
+    const content = keys.render(file.path, file.body, { id: created.id, hash: created.hash, ...(parentId ? { parentId } : {}), labels: [] });
+    if (content !== file.content) writeFileSync(file.absolutePath, content, "utf8");
     actions.push({ kind: "created", path: file.path, documentId: created.id });
   }
+
+  if (!dryRun) keys.save(dir);
 
   return { siteId: options.siteId, dir, dryRun, actions, conflicts: actions.filter((action) => action.kind === "conflict").length };
 }
 
-async function recordConflict(client: CloudSyncClient, dir: string, file: LocalFile, page: SyncManifestPage, reason: string): Promise<SyncAction> {
+async function recordConflict(client: CloudSyncClient, keys: SyncKeyStore, dir: string, file: LocalFile, page: SyncManifestPage, reason: string): Promise<SyncAction> {
   const document = await client.document(page.id);
   const conflictPath = `${file.absolutePath}.conflict`;
-  writeFileSync(conflictPath, withSyncFrontmatter(document.source, { id: page.id, hash: document.hash, ...(page.parentId ? { parentId: page.parentId } : {}), labels: page.labels }), "utf8");
+  const conflictSource = keys === frontmatterKeyStore
+    ? withSyncFrontmatter(document.source, { id: page.id, hash: document.hash, ...(page.parentId ? { parentId: page.parentId } : {}), labels: page.labels })
+    : document.source;
+  writeFileSync(conflictPath, conflictSource, "utf8");
+  keys.conflict(file.path, document.hash);
   return { kind: "conflict", path: file.path, documentId: page.id, detail: `${reason}; server version written to ${relative(dir, conflictPath).split(sep).join("/")}` };
 }
 
-function writeManagedFile(dir: string, page: Pick<SyncManifestPage, "id" | "path" | "parentId" | "labels">, source: string, hash: string): void {
+function writeManagedFile(keys: SyncKeyStore, dir: string, page: Pick<SyncManifestPage, "id" | "path" | "parentId" | "labels">, source: string, hash: string): void {
   const target = safeJoin(dir, page.path);
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, withSyncFrontmatter(source, { id: page.id, hash, ...(page.parentId ? { parentId: page.parentId } : {}), labels: page.labels }), "utf8");
+  const content = keys.render(page.path, source, { id: page.id, hash, ...(page.parentId ? { parentId: page.parentId } : {}), labels: page.labels });
+  if (!existsSync(target) || readFileSync(target, "utf8") !== content) writeFileSync(target, content, "utf8");
 }
 
-function moveManagedFile(dir: string, file: LocalFile, page: SyncManifestPage): void {
+function removeManagedFile(keys: SyncKeyStore, file: LocalFile): void {
+  rmSync(file.absolutePath);
+  keys.forget(file.path);
+}
+
+function moveManagedFile(keys: SyncKeyStore, dir: string, file: LocalFile, page: SyncManifestPage): void {
   const target = safeJoin(dir, page.path);
   mkdirSync(dirname(target), { recursive: true });
   renameSync(file.absolutePath, target);
-  writeManagedFile(dir, page, file.body, page.hash);
+  keys.forget(file.path);
+  writeManagedFile(keys, dir, page, file.body, page.hash);
 }
 
 function safeJoin(dir: string, path: string): string {
@@ -256,13 +364,16 @@ function safeJoin(dir: string, path: string): string {
   return target;
 }
 
-function parentFromDirectory(pages: SyncManifestPage[], path: string): string | undefined {
+function parentFromDirectory(pages: SyncManifestPage[], files: LocalFile[], path: string, createdByPath: Map<string, string>): string | undefined {
   const directory = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
   if (!directory) return undefined;
-  return pages.find((page) => page.path === `${directory}.noma`)?.id;
+  const parentPath = `${directory}.noma`;
+  const localParent = files.find((file) => file.path === parentPath)?.meta.cloudId;
+  if (typeof localParent === "string") return localParent;
+  return createdByPath.get(parentPath) ?? pages.find((page) => page.path === parentPath)?.id;
 }
 
-function indexLocalFiles(dir: string): { files: LocalFile[]; byId: Map<string, LocalFile> } {
+function indexLocalFiles(dir: string, keys: SyncKeyStore): { files: LocalFile[]; byId: Map<string, LocalFile> } {
   const files: LocalFile[] = [];
   const walkDir = (current: string): void => {
     for (const entry of readdirSync(current)) {
@@ -273,7 +384,8 @@ function indexLocalFiles(dir: string): { files: LocalFile[]; byId: Map<string, L
       else if (stats.isFile() && entry.endsWith(".noma")) {
         const content = readFileSync(absolutePath, "utf8").replace(/\r\n?/g, "\n");
         const { meta, body } = stripSyncFrontmatter(content);
-        files.push({ absolutePath, path: relative(dir, absolutePath).split(sep).join("/"), content, meta, body });
+        const path = relative(dir, absolutePath).split(sep).join("/");
+        files.push({ absolutePath, path, content, meta: keys.meta(path, meta), body });
       }
     }
   };
@@ -345,6 +457,8 @@ function sha256(value: string): string {
 const cloudHelp = `noma cloud — sync a Noma Cloud space with a directory of .noma files
 
 Usage:
+  noma cloud spaces [--json]                           List the spaces you can see (id, key, title)
+  noma cloud create-space --title <t> [--key <KEY>]    Create a space; with --key, reuse the one that has it
   noma cloud export-space --site <id> --out <dir>      Write every page of the space to <dir>
   noma cloud sync --site <id> --dir <dir> [opts]       Two-way sync (pull, then push local edits)
 
@@ -355,10 +469,15 @@ Options:
   --pull-only           Only write server changes to disk
   --push-only           Only send local changes to the server
   --dry-run             Report what would change without writing anything
+  --state <file>        Keep sync keys in this JSON file instead of page frontmatter,
+                        so a Git checkout holds only the page sources (and keeps its
+                        file names); delete a .conflict file to mark it resolved
   --json                Print the sync report as JSON on stdout
 
 Conflicts (changed locally and on the server) are written as <file>.noma.conflict
-and make the command exit with status 1.`;
+and make the command exit with status 1.
+
+A directory is a page tree: dir/guide.noma is the parent of every page in dir/guide/.`;
 
 /** Entry point for `noma cloud …`; returns the process exit code. */
 export async function runCloudCommand(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -370,13 +489,42 @@ export async function runCloudCommand(argv: string[], env: NodeJS.ProcessEnv = p
   const flags = parseFlags(rest);
   const server = flags.get("server") ?? env.NOMA_CLOUD_URL;
   const token = flags.get("token") ?? env.NOMA_CLOUD_TOKEN;
-  const siteId = flags.get("site");
-  if (!server || !token || !siteId) {
-    process.stderr.write("error: --site, --server (or NOMA_CLOUD_URL), and --token (or NOMA_CLOUD_TOKEN) are required\n");
+  if (!server || !token) {
+    process.stderr.write("error: --server (or NOMA_CLOUD_URL) and --token (or NOMA_CLOUD_TOKEN) are required\n");
     return 2;
   }
   const accessToken = flags.get("access-token") ?? env.NOMA_CLOUD_ACCESS_TOKEN;
   const client = new CloudSyncClient({ server, token, ...(accessToken ? { accessToken } : {}) });
+  if (command === "spaces") {
+    const { sites } = await client.sites();
+    if (flags.has("json")) process.stdout.write(`${JSON.stringify(sites.map(({ id, key, title }) => ({ id, key, title })), null, 2)}\n`);
+    else for (const site of sites) process.stdout.write(`${site.id}\t${site.key ?? ""}\t${site.title}\n`);
+    return 0;
+  }
+  if (command === "create-space") {
+    const title = flags.get("title");
+    if (!title) {
+      process.stderr.write("error: create-space requires --title <title>\n");
+      return 2;
+    }
+    const key = flags.get("key")?.trim().toUpperCase();
+    if (key) {
+      const existing = (await client.sites()).sites.find((site) => site.key === key);
+      if (existing) {
+        process.stdout.write(`${JSON.stringify({ id: existing.id, key: existing.key, title: existing.title, created: false })}\n`);
+        return 0;
+      }
+    }
+    const created = await client.createSite(title, key);
+    process.stdout.write(`${JSON.stringify({ id: created.id, key: created.key, title: created.title, created: true })}\n`);
+    return 0;
+  }
+  const siteId = flags.get("site");
+  if (!siteId) {
+    process.stderr.write("error: --site is required\n");
+    return 2;
+  }
+  const stateFile = flags.get("state");
   let report: SyncReport;
   if (command === "export-space") {
     const out = flags.get("out");
@@ -384,7 +532,7 @@ export async function runCloudCommand(argv: string[], env: NodeJS.ProcessEnv = p
       process.stderr.write("error: export-space requires --out <dir>\n");
       return 2;
     }
-    report = await exportSpace(client, { siteId, dir: out });
+    report = await exportSpace(client, { siteId, dir: out, ...(stateFile ? { stateFile } : {}) });
   } else if (command === "sync") {
     const dir = flags.get("dir");
     if (!dir) {
@@ -395,7 +543,7 @@ export async function runCloudCommand(argv: string[], env: NodeJS.ProcessEnv = p
       process.stderr.write("error: --pull-only and --push-only are exclusive\n");
       return 2;
     }
-    report = await syncSpace(client, { siteId, dir, pull: !flags.has("push-only"), push: !flags.has("pull-only"), dryRun: flags.has("dry-run") });
+    report = await syncSpace(client, { siteId, dir, pull: !flags.has("push-only"), push: !flags.has("pull-only"), dryRun: flags.has("dry-run"), ...(stateFile ? { stateFile } : {}) });
   } else {
     process.stderr.write(`error: unknown cloud command "${command}"\n\n${cloudHelp}\n`);
     return 2;

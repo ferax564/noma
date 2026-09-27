@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import test from "node:test";
 import { CloudSyncClient, exportSpace, runCloudCommand, stripSyncFrontmatter, syncSpace, withSyncFrontmatter } from "../src/cloud-git-sync.js";
 import { createNomaCloudServer } from "../src/cloud-server.js";
@@ -142,6 +142,98 @@ test("a space round-trips through a directory: export, edit, push, pull, create,
     await harness.close();
   }
 });
+
+test("a --state sidecar keeps a Git checkout clean: spaces bootstrap, tree from directories, pull and push", async () => {
+  const harness = await startCloudServer();
+  const repo = await mkdtemp(join(tmpdir(), "noma-git-sync-state-"));
+  const stateFile = join(repo, "..", `${basename(repo)}.state.json`);
+  try {
+    const alice = await createCloudUser(harness.base, "Alice");
+    const env = { NOMA_CLOUD_URL: harness.base, NOMA_CLOUD_TOKEN: alice.token };
+    const created = JSON.parse(await captureStdout(() => runCloudCommand(["create-space", "--title", "Stratos", "--key", "str"], env))) as { id: string; key: string; created: boolean };
+    assert.deepEqual([created.key, created.created], ["STR", true]);
+    const again = JSON.parse(await captureStdout(() => runCloudCommand(["create-space", "--title", "Stratos", "--key", "STR"], env))) as { id: string; created: boolean };
+    assert.deepEqual([again.id, again.created], [created.id, false], "create-space with a known key reuses the space");
+    assert.match(await captureStdout(() => runCloudCommand(["spaces"], env)), new RegExp(`^${created.id}\\tSTR\\tStratos$`, "m"));
+
+    const homeSource = "---\ntitle: STRATOS pit wall\n---\n# STRATOS pit wall\n\nLive pit-wall dashboard.\n";
+    const childSource = "# Stratos architecture\n\nFeed, state, insights.\n";
+    await mkdir(join(repo, "stratos"), { recursive: true });
+    await writeFile(join(repo, "stratos.noma"), homeSource, "utf8");
+    await writeFile(join(repo, "stratos", "architecture.noma"), childSource, "utf8");
+
+    const client = new CloudSyncClient({ server: harness.base, token: alice.token });
+    const first = await syncSpace(client, { siteId: created.id, dir: repo, stateFile });
+    assert.deepEqual(first.actions.map((action) => [action.kind, action.path]), [
+      ["created", "stratos.noma"],
+      ["created", "stratos/architecture.noma"],
+    ]);
+    assert.equal(readFileSync(join(repo, "stratos.noma"), "utf8"), homeSource, "files keep their exact source");
+    assert.equal(readFileSync(join(repo, "stratos", "architecture.noma"), "utf8"), childSource);
+    const state = JSON.parse(readFileSync(stateFile, "utf8")) as { format: string; siteId: string; files: Record<string, { cloudId: string; cloudParent?: string }> };
+    assert.equal(state.format, "noma-cloud-sync-state/1");
+    assert.equal(state.siteId, created.id);
+    const homeId = state.files["stratos.noma"]!.cloudId;
+    assert.equal(state.files["stratos/architecture.noma"]!.cloudParent, homeId, "a directory becomes the children of its sibling page");
+
+    const unchanged = await syncSpace(client, { siteId: created.id, dir: repo, stateFile });
+    assert.ok(unchanged.actions.every((action) => action.kind === "unchanged"));
+
+    const childId = state.files["stratos/architecture.noma"]!.cloudId;
+    const serverChild = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${childId}`, { token: alice.token });
+    await json(`${harness.base}/api/documents/${childId}`, { method: "PUT", token: alice.token, body: { source: childSource.replace("insights", "insights, replay"), expectedHash: serverChild.hash } });
+    await writeFile(join(repo, "stratos.noma"), homeSource.replace("dashboard", "dashboard for race weekends"), "utf8");
+    const both = await syncSpace(client, { siteId: created.id, dir: repo, stateFile });
+    assert.deepEqual(both.actions.filter((action) => action.kind !== "unchanged").map((action) => [action.kind, action.path]), [
+      ["pushed", "stratos.noma"],
+      ["pulled", "stratos/architecture.noma"],
+    ]);
+    assert.equal(readFileSync(join(repo, "stratos", "architecture.noma"), "utf8"), "# Stratos architecture\n\nFeed, state, insights, replay.\n", "a wiki edit lands as a plain source change, at the file's own path");
+    assert.equal(existsSync(join(repo, "stratos", "stratos-architecture.noma")), false, "titles never rename Git files");
+
+    await writeFile(join(repo, "stratos", "roadmap.noma"), "# What comes next\n\nRecord a live session.\n", "utf8");
+    await syncSpace(client, { siteId: created.id, dir: repo, stateFile });
+    const roadmap = (JSON.parse(readFileSync(stateFile, "utf8")) as typeof state).files["stratos/roadmap.noma"]!;
+    assert.equal(roadmap.cloudParent, homeId, "a new page finds its parent by local path, not by the parent's title");
+    assert.match((await json<CloudDocumentResponse>(`${harness.base}/api/documents/${homeId}`, { token: alice.token })).source, /race weekends/);
+
+    const archId = (JSON.parse(readFileSync(stateFile, "utf8")) as typeof state).files["stratos/architecture.noma"]!.cloudId;
+    const archServer = await json<CloudDocumentResponse>(`${harness.base}/api/documents/${archId}`, { token: alice.token });
+    await json(`${harness.base}/api/documents/${archId}`, { method: "PUT", token: alice.token, body: { source: archServer.source.replace("replay", "replay, radio"), expectedHash: archServer.hash } });
+    await writeFile(join(repo, "stratos", "architecture.noma"), archServer.source.replace("replay", "replay, weather"), "utf8");
+    const conflicted = await syncSpace(client, { siteId: created.id, dir: repo, stateFile });
+    assert.equal(conflicted.conflicts, 1);
+    const again2 = await syncSpace(client, { siteId: created.id, dir: repo, stateFile });
+    assert.equal(again2.conflicts, 1, "the conflict stays until the .conflict file is removed");
+    await writeFile(join(repo, "stratos", "architecture.noma"), archServer.source.replace("replay", "replay, radio, weather"), "utf8");
+    await rm(join(repo, "stratos", "architecture.noma.conflict"));
+    const resolved = await syncSpace(client, { siteId: created.id, dir: repo, stateFile });
+    assert.deepEqual(resolved.actions.filter((action) => action.kind !== "unchanged").map((action) => [action.kind, action.path]), [["pushed", "stratos/architecture.noma"]]);
+    assert.match((await json<CloudDocumentResponse>(`${harness.base}/api/documents/${archId}`, { token: alice.token })).source, /replay, radio, weather/);
+
+    const other = await client.createSite("Other");
+    await assert.rejects(syncSpace(client, { siteId: other.id, dir: repo, stateFile }), /belongs to space/);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(stateFile, { force: true });
+    await harness.close();
+  }
+});
+
+async function captureStdout(run: () => Promise<number>): Promise<string> {
+  const chunks: string[] = [];
+  const previous = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    chunks.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    assert.equal(await run(), 0);
+  } finally {
+    process.stdout.write = previous;
+  }
+  return chunks.join("");
+}
 
 async function startCloudServer(): Promise<{ base: string; close: () => Promise<void> }> {
   const root = await mkdtemp(join(tmpdir(), "noma-git-sync-"));

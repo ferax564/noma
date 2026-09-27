@@ -1,0 +1,26 @@
+# Noma Cloud on a single home server (the "minipc"), reachable over Tailscale.
+# Driven by install.sh; see README.md. Publishes on loopback only: `tailscale serve`
+# terminates HTTPS on the tailnet and proxies to it.
+name: noma
+
+services:
+  noma-cloud:
+    build:
+      context: ../..
+    image: noma-cloud:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      NOMA_CLOUD_ACCESS_TOKEN_FILE: /run/noma/access-token
+      NOMA_CLOUD_INVITATION_CODE_FILE: /run/noma/invitation-code
+      NOMA_CLOUD_TRUST_PROXY: "1"
+    ports:
+      - "127.0.0.1:${NOMA_PUBLISH_PORT:-8140}:3000"
+    volumes:
+      - noma-data:/data/noma
+      - ./secrets:/run/noma:ro
+    stop_grace_period: 30s
+
+volumes:
+  noma-data:

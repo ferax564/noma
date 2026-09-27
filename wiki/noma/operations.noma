@@ -1,0 +1,159 @@
+---
+title: Operations
+description: Dev setup, verification gates, the release process, Noma Cloud deploy options, backups, and the environment variables that matter.
+tags: [wiki, operations, runbook, noma]
+---
+
+# Operations {id="nm-ops"}
+
+::summary{id="nm-ops-summary"}
+How to build, verify, release, and run Noma. The authoritative sources are
+`CLAUDE.md` (commands, release flow), `package.json` (scripts),
+`.github/workflows/` (CI gates), `docs/noma-cloud.noma` (Cloud config), and
+`docs/runbooks/cloud-launch.md` (production checklist). This page is the
+short version.
+::
+
+## Dev setup {id="nm-ops-dev-setup"}
+
+Requires Node 20 or newer (`package.json` `engines`). Python 3 is needed
+only for the Python SDK and seed tests. Chromium (via Puppeteer) is needed
+for PDF output and the browser UI tests.
+
+```bash
+npm install
+npx puppeteer browsers install chrome            # PDFs + UI tests
+python3 -m pip install -e 'packages/agent-sdk-py[test]'   # optional
+
+npm run noma -- check examples/research-thesis.noma
+npm run noma -- render examples/agent-plan.noma --to html --out dist/agent-plan.html
+npm run cloud:dev                                 # Cloud from source (tsx)
+```
+
+Run a production-like Cloud locally:
+
+```bash
+npm run build:cloud
+PORT=3000 npm start          # node dist/cloud-server.js
+curl http://localhost:3000/healthz
+```
+
+Then open `http://localhost:3000/cloud.html` (`docs/noma-cloud.noma`, "Run it locally").
+
+## Verification gates {id="nm-ops-gates"}
+
+`CLAUDE.md` says a feature is not done until **all** of these pass:
+
+```bash
+npx tsc --noEmit
+npm test
+npm run build:site
+```
+
+| Gate | Command | Runs in |
+|---|---|---|
+| Typecheck (core) | `npx tsc --noEmit` | `ci.yml`, `pages.yml` |
+| Typecheck (browser) | `npm run typecheck:web` | `ci.yml` |
+| Lint | `npm run lint` | `ci.yml`, `pages.yml` |
+| Unit and integration tests (`test/*.test.ts`, node:test) | `npm test` | `ci.yml`, `pages.yml` |
+| Conformance corpus | `npm run verify:conformance` | `ci.yml`, `pages.yml` |
+| Memory/doc drift | `npm run check:memory` | `ci.yml`, `pages.yml` |
+| Version lockstep | `npm run release -- check` | `ci.yml`, `pages.yml` |
+| Package smoke, agent SDK, MCP, LSP, Python | `smoke:package`, `test:agent-sdk`, `test:mcp`, `test:lsp`, `test:python-sdk`, `test:python-seed` | `ci.yml` |
+| Examples and docs render | `render:examples`, `render:docs` | `ci.yml` |
+| Full site incl. PDFs | `npm run build:site` | `pages.yml` |
+| Everything at once | `npm run test:full` | local, `release.yml` |
+
+::callout{tone="info"}
+Known sandbox failure: `test/cloud-ui.test.ts` asserts no console errors
+and fails where an external font request is blocked by a proxy. It passes
+on CI runners (`docs/status-2026-09-25.md` §6).
+::
+
+`.github/workflows/freshness.yml` runs a scheduled docs staleness check.
+
+## Release process {id="nm-ops-release"}
+
+Bump every versioned location together (`CLAUDE.md` "Versioned Locations"):
+`package.json` (and workspace packages), `docs/spec.noma` frontmatter and
+"(vN)" headings, `docs/agent-protocol.noma` `version:`, a new
+`CHANGELOG.md` heading, the `README.md` status paragraph, and a new
+`PLAN.md` §24 subsection. `npm run release -- check` catches drift.
+
+There are three paths into `.github/workflows/release.yml`; all run the full
+gate before tagging or publishing:
+
+| Path | How | When to use |
+|---|---|---|
+| Merge a release PR | Push to `main` where `package.json`'s version has no `v<version>` tag: the workflow tags, publishes to npm, and creates the GitHub release | Default since v0.19.0; works from Claude Code cloud sessions |
+| Local tag | `git tag vN.N.N && git push origin vN.N.N` after pushing `main` | Manual releases |
+| Manual dispatch | Run `release.yml` with `tag=vN.N.N` | When neither of the above is possible |
+
+Release runs share a concurrency group, so two paths for the same version
+never both tag. After publishing, close shipped issues and verify the npm
+packages, GitHub release, MCP registry descriptor, and GitHub Pages
+(`docs/runbooks/npm-publish.md`, `docs/runbooks/mcp-registry-publish.md`).
+
+GitHub Pages: `pages.yml` builds `dist/` on every push to `main` and
+publishes the docs site.
+
+## Deploying Noma Cloud {id="nm-ops-deploy"}
+
+| Option | What | Reference |
+|---|---|---|
+| Docker image | `Dockerfile`: two-stage `node:20-bookworm-slim`, runs `node dist/cloud-server.js` on port 3000, data under `/data/noma`, `HEALTHCHECK` on `/healthz`, stops on `SIGTERM` | `Dockerfile` |
+| ezkeel | `ezkeel.yaml` (`name: noma-cloud`, `port: 3000`); `npm run deploy:ezkeel:dry-run`, then `npm run deploy:ezkeel`; roll back with `ezkeel rollback noma-cloud` | `docs/runbooks/cloud-launch.md` |
+| Home mini PC (dogfooding) | Self-hosted kit for the one-space-per-project dogfood instance | `deploy/minipc/` (being written; read its README) |
+| AWS/EU reference | CloudFormation template, validated but never deployed | `infra/`, `docs/enterprise.noma` |
+| Static site only | `npm run deploy:hetzner` pushes the built `dist/` to a static host | `scripts/deploy-hetzner.sh` |
+
+Production rules from `docs/runbooks/cloud-launch.md`:
+
+- Serve over HTTPS only. Session and CSRF cookies are `Secure` on every host except `localhost`. Forward `X-Forwarded-Proto: https` from the proxy.
+- Set `NOMA_CLOUD_ADMIN_USER_IDS`. Without it, production `/api/enterprise` routes fail closed with `403 admin_not_configured`.
+- Mount `/data/noma` on persistent storage and watch free space (SQLite, WAL, revisions, audit records grow).
+- Run the 13-step staging smoke test before go-live.
+
+Background work (webhook deliveries, mail outbox, SIEM shipping, Slack
+outbox) runs on an in-process timer; the standalone worker is
+`apps/worker/cloud-queue.ts`.
+
+## Backups {id="nm-ops-backups"}
+
+From `docs/runbooks/cloud-launch.md`, "Backup and restore":
+
+- On ezkeel: `ezkeel backup <app>`.
+- Direct host: use SQLite's online backup, or stop the service first. Never copy only the main database file while a WAL is live.
+- Keep: the SQLite backup, deterministic `.noma` export bundles, the secret files (stored separately), the image digest and Git commit, and the date of the last restore rehearsal.
+- Attachment blobs live under `<storage root>/blobs` unless `NOMA_CLOUD_BLOB_STORE=s3`; back them up with the database.
+- Wiki spaces synced to Git (`noma cloud sync`) have a second copy in each repo's `wiki/` directory, but that does not cover chat, Work, comments, or audit data.
+
+## Environment variables that matter {id="nm-ops-env"}
+
+Full lists are in `docs/noma-cloud.noma`. Prefer `*_FILE` variants for
+secrets.
+
+| Variable | Purpose |
+|---|---|
+| `NODE_ENV`, `PORT` | `production`, `3000` |
+| `NOMA_CLOUD_DATA_DIR`, `NOMA_CLOUD_DB` | Document dir and SQLite path (image defaults under `/data/noma`) |
+| `NOMA_PUBLIC_DIR` | Built static assets (`/app/dist` in the image) |
+| `NOMA_CLOUD_ACCESS_TOKEN_FILE`, `NOMA_CLOUD_INVITATION_CODE_FILE` | The two required production secrets |
+| `NOMA_CLOUD_ADMIN_USER_IDS` | Workspace admins (required in production) |
+| `NOMA_CLOUD_PUBLIC_URL` | Public base URL used in links |
+| `NOMA_CLOUD_TRUST_PROXY` | `1` only behind a proxy that overwrites forwarded headers |
+| `NOMA_CLOUD_OIDC_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET_FILE`, `_REDIRECT_URL` | Native OIDC login |
+| `NOMA_CLOUD_BLOB_STORE` | `s3` for S3-compatible attachment storage |
+| `NOMA_CLOUD_LLM_PROVIDER`, `ANTHROPIC_API_KEY` | Generative AI and hosted agents (`anthropic`, `fake`, `none`) |
+| `NOMA_CLOUD_EMBEDDINGS`, `NOMA_CLOUD_EMBEDDINGS_URL`, `_MODEL`, `_API_KEY_FILE` | Real embeddings for search |
+| `NOMA_CLOUD_EZKEEL_URL`, `NOMA_CLOUD_EZKEEL_TOKEN_FILE` | `/deploy` and `/test` runs on ezkeel |
+| `NOMA_CLOUD_SLACK_BOT_TOKEN`, `NOMA_CLOUD_SLACK_SIGNING_SECRET` | Two-way Slack bridge |
+| `NOMA_CLOUD_SIEM_URL`, `NOMA_CLOUD_SIEM_TOKEN_FILE` | Audit NDJSON forwarding |
+| `NOMA_CLOUD_SMTP_URL`, `NOMA_CLOUD_MAIL_FROM` | Email notifications and digests |
+| `NOMA_CLOUD_URL`, `NOMA_CLOUD_TOKEN` | Client side: `noma cloud export-space` / `noma cloud sync` |
+
+::callout{tone="warning"}
+Never put secret values in this wiki, in a `.noma` page, or in chat. DLP
+(`/api/enterprise/dlp`) catches common token shapes, but it is pattern-based
+and not a guarantee (`docs/enterprise.noma`).
+::

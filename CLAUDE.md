@@ -118,6 +118,8 @@ test/                      node:test suites — parser, patch, validator, roundt
                            ci.yml (PR matrix tests), freshness.yml (scheduled docs staleness check)
 action.yml                 Reusable GitHub Action — validate/render/proof .noma artifacts in CI (strict by default)
 infra/                     AWS/EU CloudFormation reference (eu-central-1, KMS, RDS, S3, Secrets Manager)
+deploy/minipc/             Dogfood deployment — Compose + tailscale serve, install/sync/backup scripts; sync.sh keeps one Cloud space per project in step with each repo's wiki/ (`noma cloud sync --state`)
+wiki/                      Noma's own project wiki (.noma) — synced to the NOMA space; wiki/noma.noma is the home, wiki/noma/*.noma its children
 Dockerfile, ezkeel.yaml    Noma Cloud container build + deployment config
 tsconfig.web.json          Browser typecheck config for web/ (DOM libs, bundler resolution) — `npm run typecheck:web`
 dist/                      Build output (gitignored). GH Pages deploys this.
