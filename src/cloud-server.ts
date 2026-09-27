@@ -16,6 +16,8 @@ import { CloudIntegrationsStore } from "./cloud-integrations.js";
 import { type SlackConfig, slackConfigFromEnv } from "./cloud/integrations.js";
 import { type SiemTarget, siemTargetFromEnv } from "./cloud/siem.js";
 import { CloudDevLoopStore } from "./cloud-devloop.js";
+import { CloudGovernanceStore } from "./cloud-governance.js";
+import { migrateLegacyApprovals } from "./cloud/governance.js";
 import { routeHooks } from "./cloud/routes-devloop.js";
 import { createRunProviderFromEnv, type RunProvider } from "./cloud/run-provider.js";
 import { openNomaCloudDatabase } from "./cloud-db.js";
@@ -179,7 +181,7 @@ export interface NomaCloudAiOptions {
 
 export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Server {
   const config = createCloudServerConfig(options);
-  const { store, platform, chat, devloop, agentOps, compliance, integrations } = config;
+  const { store, platform, chat, devloop, agentOps, governance, compliance, integrations } = config;
   const stopMaintenance = startMaintenanceScheduler(config);
   if (config.production && config.adminUserIds.length === 0) {
     console.warn("noma cloud: NOMA_CLOUD_ADMIN_USER_IDS is not set; enterprise admin routes will return 403 until it is configured");
@@ -212,6 +214,7 @@ export function createNomaCloudServer(options: NomaCloudServerOptions = {}): Ser
     chat.close();
     devloop.close();
     agentOps.close();
+    governance.close();
     compliance.close();
     integrations.close();
     platform.close();
@@ -233,6 +236,7 @@ export async function runNomaCloudMaintenanceOnce(options: NomaCloudServerOption
     config.chat.close();
     config.devloop.close();
     config.agentOps.close();
+    config.governance.close();
     config.compliance.close();
     config.integrations.close();
     config.platform.close();
@@ -259,12 +263,13 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
   const chat = new CloudChatStore(dbPath, options.chatTailIntervalMs === undefined ? {} : { tailIntervalMs: options.chatTailIntervalMs });
   const devloop = new CloudDevLoopStore(dbPath);
   const agentOps = new CloudAgentOpsStore(dbPath);
+  const governance = new CloudGovernanceStore(dbPath);
   const compliance = new CloudComplianceStore(dbPath);
   const integrations = new CloudIntegrationsStore(dbPath);
   const slack = options.slack === null ? undefined : options.slack ?? slackConfigFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const siem = options.siem === null ? undefined : options.siem ?? siemTargetFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
   const runProvider = options.runProvider === null ? undefined : options.runProvider ?? createRunProviderFromEnv(process.env, (path) => readFileSync(resolve(path), "utf8"));
-  return {
+  const config: CloudServerConfig = {
     dataDir,
     usersDir,
     sitesDir,
@@ -290,6 +295,7 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     chat,
     devloop,
     agentOps,
+    governance,
     compliance,
     integrations,
     ...(slack ? { slack } : {}),
@@ -307,6 +313,8 @@ function createCloudServerConfig(options: NomaCloudServerOptions): CloudServerCo
     ai: cloudAiConfig(options.ai ?? {}),
     ...(oidcSettings ? { oidc: new OidcClient(oidcSettings, now, options.oidc?.fetch) } : {}),
   };
+  migrateLegacyApprovals(config);
+  return config;
 }
 
 function cloudAiConfig(options: NomaCloudAiOptions): CloudServerConfig["ai"] {
