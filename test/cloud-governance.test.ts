@@ -63,6 +63,22 @@ test("every registered kind has a class and tier; canonical JSON sorts keys and 
   assert.equal(payloadHash({ b: 1, a: 2 }), payloadHash({ a: 2, b: 1 }));
 });
 
+test("single-shot decisions: the first approve/reject wins across connections, the loser gets 409", async () => {
+  const gate = await gateHarness();
+  const second = new CloudGovernanceStore(gate.dbPath);
+  try {
+    const base = { subject: { type: "run" as const, id: "run-1" }, kind: "run.deploy", decidedBy: "ada", payload: { ref: "main" }, siteId: "s1", agentId: "a1", firstDecisionOnly: true };
+    const approved = recordAgentDecision(gate.config, { ...base, decision: "approved" });
+    const otherProcess = { ...gate.config, governance: second } as CloudServerConfig;
+    assert.throws(() => recordAgentDecision(otherProcess, { ...base, decision: "rejected", decidedBy: "cy" }), denied("already_decided"));
+    assert.deepEqual(gate.governance.listDecisions("run", "run-1").map((entry) => [entry.id, entry.decision]), [[approved.id, "approved"]]);
+    assert.equal(gate.governance.latestDecision("run", "run-1")?.decision, "approved", "the losing rejection never becomes the decision in force");
+  } finally {
+    second.close();
+    await gate.close();
+  }
+});
+
 test("the gate denies unregistered actions by default and audits every decision", async () => {
   const gate = await gateHarness();
   try {
@@ -182,6 +198,7 @@ interface QueueItem {
   id: string;
   decidable: boolean;
   governance?: { actionKind: string; capabilityClass: string; payloadHash: string; history: Array<{ decision: string; payloadHash: string; source: string }> };
+  payload?: Record<string, unknown>;
 }
 
 test("agent patches: hash-bound review, decision history in the queue, tamper refusal, tier refusal, audit", async () => {
@@ -268,6 +285,7 @@ test("bright-line proposals reach the queue for space owners and are never execu
     const adaItem = (await json<{ items: QueueItem[] }>(`${base}/api/approvals`, { token: ada.token })).items.find((entry) => entry.id === proposalId)!;
     assert.deepEqual([adaItem.decidable, adaItem.governance?.capabilityClass], [true, "propose_only"]);
     assert.equal(adaItem.governance?.payloadHash, proposed.result?.proposal.payloadHash);
+    assert.deepEqual(adaItem.payload, { grant: "editor", to: "carol" }, "reviewers see the full payload they are asked to act on");
 
     await json(`${base}/api/approvals/actions/${proposalId}`, { method: "POST", token: bob.token, body: { decision: "approve" }, expectedStatus: 403 });
     const decided = await json<{ executed: boolean; proposal: { status: string }; decision: { capabilityClass: string; decision: string } }>(`${base}/api/approvals/actions/${proposalId}`, {
@@ -277,6 +295,10 @@ test("bright-line proposals reach the queue for space owners and are never execu
     });
     assert.deepEqual([decided.executed, decided.proposal.status, decided.decision.capabilityClass, decided.decision.decision], [false, "approved", "propose_only", "approved"]);
     await json(`${base}/api/approvals/actions/${proposalId}`, { method: "POST", token: ada.token, body: { decision: "reject" }, expectedStatus: 409 });
+
+    await json(`${base}/api/sites/${site.id}/collaborators/${bob.id}`, { method: "DELETE", token: ada.token });
+    const stale = await gatewayCall(base, bob.token, "action_propose", { agentId: agent.id, siteId: site.id, kind: "access.change", payload: { grant: "owner", to: "bob" }, reason: "still here" });
+    assert.equal(stale.status, 403, "a removed owner's agent grant no longer reaches the space's queue");
     assert.equal((await json<{ items: QueueItem[] }>(`${base}/api/approvals`, { token: ada.token })).items.filter((entry) => entry.kind === "action").length, 0);
 
     const history = await json<{ decisions: Array<{ subjectId: string; actionKind: string }> }>(`${base}/api/approvals/history?siteId=${site.id}`, { token: ada.token });

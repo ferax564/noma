@@ -41,6 +41,7 @@ test("noma init --template docs-repo scaffolds a pinned, valid docs repo", () =>
   assert.match(workflow, new RegExp(`uses: ferax564/noma@v${pkg.version.replace(/\./g, "\\.")}`));
   assert.match(workflow, new RegExp(`@ferax564/noma-cli@${pkg.version.replace(/\./g, "\\.")}`));
   assert.doesNotMatch(workflow, /@main|@latest/);
+  assert.match(workflow, /Require the PR document to equal base \+ proposed ops/);
   for (const path of ["AGENTS.md", "README.md", ".gitignore"]) {
     assert.doesNotMatch(readFileSync(join(dir, path), "utf8"), /__NOMA_VERSION__/);
   }

@@ -130,6 +130,22 @@ export class CloudGovernanceStore {
     return this.readDecision(decision.id)!;
   }
 
+  /**
+   * Appends `decision` only when the subject has no approved or rejected decision yet, checked and
+   * written in one `BEGIN IMMEDIATE` transaction so concurrent reviewers (in any process) cannot
+   * both decide. Returns undefined when another decision already won.
+   */
+  appendFirstDecision(decision: Omit<AgentDecision, "seq">): AgentDecision | undefined {
+    return this.db
+      .transaction(() => {
+        const decided = this.db
+          .prepare("SELECT 1 FROM agent_decisions WHERE subject_type = ? AND subject_id = ? AND decision IN ('approved', 'rejected') LIMIT 1")
+          .get(decision.subjectType, decision.subjectId);
+        return decided ? undefined : this.appendDecision(decision);
+      })
+      .immediate();
+  }
+
   readDecision(id: string): AgentDecision | undefined {
     const row = this.db.prepare("SELECT * FROM agent_decisions WHERE id = ?").get(id) as DecisionRow | undefined;
     return row ? decisionFromRow(row) : undefined;

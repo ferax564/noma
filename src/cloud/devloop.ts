@@ -104,7 +104,6 @@ export async function decideRun(config: CloudServerConfig, run: DevRun, reviewer
   if (!project || !repo) throw new HttpError(404, "Project or repository not found");
   const now = config.now().toISOString();
   if (decision === "approve") requireRunnable(config, project, repo);
-  config.platform.recordAudit(reviewer.id, decision === "approve" ? "run.approved" : "run.rejected", "site", project.siteId, { projectId: project.id, runId: run.id, agentId: run.agentId }, now);
   recordAgentDecision(config, {
     subject: { type: "run", id: run.id },
     kind: runKind(run),
@@ -116,7 +115,9 @@ export async function decideRun(config: CloudServerConfig, run: DevRun, reviewer
     siteId: project.siteId,
     ...(run.agentId ? { agentId: run.agentId } : {}),
     decidedAt: now,
+    firstDecisionOnly: true,
   });
+  config.platform.recordAudit(reviewer.id, decision === "approve" ? "run.approved" : "run.rejected", "site", project.siteId, { projectId: project.id, runId: run.id, agentId: run.agentId }, now);
   if (decision === "reject") {
     const rejected = config.devloop.transitionRun(run.id, ["pending_approval"], { status: "rejected", reviewedBy: reviewer.id, finishedAt: now });
     if (!rejected) throw new HttpError(409, "The run was already decided");

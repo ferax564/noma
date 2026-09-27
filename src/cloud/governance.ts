@@ -114,6 +114,8 @@ export interface DecisionInput {
   decidedAt?: string;
   /** The hash the person saw when deciding; a mismatch means the payload changed under them (409). */
   expectedHash?: string;
+  /** Single-shot subjects (runs): refuse with 409 when the subject already has an approved or rejected decision. */
+  firstDecisionOnly?: boolean;
 }
 
 /** Appends a human decision, bound to the payload's hash, to the decision log and the audit log. */
@@ -124,7 +126,7 @@ export function recordAgentDecision(config: CloudServerConfig, input: DecisionIn
   if (input.expectedHash !== undefined && input.expectedHash !== hash) {
     throw new HttpError(409, "The payload changed since you looked at it; review it again", { code: "payload_hash_mismatch", kind: input.kind, payloadHash: hash, expectedHash: input.expectedHash });
   }
-  const decision = config.governance.appendDecision({
+  const entry = {
     id: randomId(),
     subjectType: input.subject.type,
     subjectId: input.subject.id,
@@ -138,7 +140,9 @@ export function recordAgentDecision(config: CloudServerConfig, input: DecisionIn
     ...(input.siteId ? { siteId: input.siteId } : {}),
     ...(input.agentId ? { agentId: input.agentId } : {}),
     source: input.source ?? "decision",
-  });
+  } as const;
+  const decision = input.firstDecisionOnly ? config.governance.appendFirstDecision(entry) : config.governance.appendDecision(entry);
+  if (!decision) throw new HttpError(409, `This ${input.subject.type} was already decided`, { code: "already_decided", kind: input.kind });
   audit(config, input.decidedBy, "agent.decision.recorded", input.siteId ? [input.siteId] : [], {
     decisionId: decision.id,
     kind: decision.actionKind,

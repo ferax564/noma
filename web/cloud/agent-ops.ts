@@ -44,6 +44,7 @@ interface QueueItem {
   createdAt: string;
   decidable: boolean;
   governance?: { actionKind: string; capabilityClass: string; payloadHash: string; history: GovernanceDecision[] };
+  payload?: Record<string, unknown>;
 }
 
 interface KillSwitch {
@@ -148,8 +149,16 @@ function queueRow(item: QueueItem): HTMLElement {
   }
   row.append(title, meta);
   if (item.governance) row.append(governanceLine(item.governance));
+  if (item.payload) row.append(payloadBlock(item.payload));
   row.append(actions);
   return row;
+}
+
+function payloadBlock(payload: Record<string, unknown>): HTMLElement {
+  const block = document.createElement("pre");
+  block.className = "approval-payload";
+  block.textContent = JSON.stringify(payload, null, 2);
+  return block;
 }
 
 function governanceLine(governance: NonNullable<QueueItem["governance"]>): HTMLElement {

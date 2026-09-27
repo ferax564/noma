@@ -38,6 +38,8 @@ interface QueueItem {
   decidable: boolean;
   /** Agent governance: action kind, capability class, bound payload hash, and decision-log history. */
   governance?: Record<string, unknown>;
+  /** Bright-line proposals: the full payload the reviewer is asked to act on (bound by `governance.payloadHash`). */
+  payload?: Record<string, unknown>;
 }
 
 export async function routeApprovals(req: IncomingMessage, res: ServerResponse, parts: string[], config: CloudServerConfig, principal: Principal): Promise<void> {
@@ -244,6 +246,7 @@ function approvalQueue(config: CloudServerConfig, user: NonNullable<Principal["u
       createdAt: proposal.createdAt,
       decidable: role === "owner" && proposal.proposedBy !== user.id,
       governance: governanceSummary(config, proposal.kind, { type: "action", id: proposal.id }, actionProposalPayload(proposal)),
+      payload: proposal.payload,
     });
   }
   return items.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, 200);

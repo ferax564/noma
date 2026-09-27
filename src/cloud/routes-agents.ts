@@ -534,6 +534,7 @@ function proposeBrightLineAction(config: CloudServerConfig, user: CloudUserRecor
   if (!config.platform.listAgentAccess(agent.id).some((grant) => grant.resourceType === "site" && grant.resourceId === siteId)) {
     throw new HttpError(403, "The agent has no access grant on this space");
   }
+  if (!config.store.resourceAccess(user.id, "site", siteId)) throw new HttpError(403, "The agent's owner no longer has access to this space");
   const kind = stringInput(args, "kind");
   const meta = lookupCapability(kind);
   if (meta && meta.capabilityClass !== "propose_only") throw new HttpError(400, `${kind} has its own tool; action_propose is for propose-only actions`, { code: "not_propose_only" });

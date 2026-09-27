@@ -323,7 +323,7 @@ To give a repository a knowledge base that agents keep current behind proof-befo
 noma init my-docs --template docs-repo
 ```
 
-This writes `docs/project.noma`, a sample patch transaction in `patches/example-ops.json`, an `AGENTS.md` contract, and `.github/workflows/noma-ci.yml`. The workflow validates and renders docs on every pull request and, when a pull request adds `patches/proposed-ops.json`, simulates the ops against the base branch and posts the proof as a comment. The Action and CLI are pinned to the version that scaffolded the repo. The same starter is published as the [noma-docs-template](https://github.com/ferax564/noma-docs-template) GitHub template.
+This writes `docs/project.noma`, a sample patch transaction in `patches/example-ops.json`, an `AGENTS.md` contract, and `.github/workflows/noma-ci.yml`. The workflow validates and renders docs on every pull request and, when a pull request adds `patches/proposed-ops.json`, simulates the ops against the base branch, posts the proof as a comment, and fails unless the pull request's document equals the base document with those ops applied. The Action and CLI are pinned to the version that scaffolded the repo. The same starter is published as the [noma-docs-template](https://github.com/ferax564/noma-docs-template) GitHub template.
 
 ## Render to LLM context
 
