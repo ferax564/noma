@@ -1251,14 +1251,14 @@ shared words ("outage playbook" finding a "failover after a disaster" block).
 
 | Variable | Meaning |
 |---|---|
-| `NOMA_CLOUD_EMBEDDINGS` | `local` (default, hash vector), `openai` (any OpenAI-compatible `/v1/embeddings` API: OpenAI, gateways, Ollama, local servers), or `voyage` (Voyage AI) |
-| `NOMA_CLOUD_EMBEDDINGS_MODEL` | Model ID (defaults `text-embedding-3-small` / `voyage-3.5`) |
-| `NOMA_CLOUD_EMBEDDINGS_URL` | Base URL or full `/embeddings` endpoint (for example `http://localhost:11434` for Ollama) |
-| `NOMA_CLOUD_EMBEDDINGS_API_KEY`, `NOMA_CLOUD_EMBEDDINGS_API_KEY_FILE` | Bearer key; Voyage also reads `VOYAGE_API_KEY`, OpenAI `OPENAI_API_KEY`. A keyless `openai` URL is allowed for local servers |
-| `NOMA_CLOUD_EMBEDDINGS_DIMENSIONS` | Optional vector length, sent to models that support shortening and checked on every response |
-| `NOMA_CLOUD_EMBEDDINGS_TIMEOUT_MS`, `NOMA_CLOUD_EMBEDDINGS_MAX_RETRIES`, `NOMA_CLOUD_EMBEDDINGS_BATCH_SIZE` | Per-request timeout (default 30000), retries on 408/409/429/5xx and network errors (default 2), and inputs per request (256 OpenAI, 128 Voyage) |
+| `NOMA_CLOUD_EMBEDDINGS` | `local` (default, hash vector), `openai` (any OpenAI-compatible `/v1/embeddings` API: OpenAI, gateways, Ollama, local servers), `fastembed` (a self-hosted fastembed server, see below), or `voyage` (Voyage AI) |
+| `NOMA_CLOUD_EMBEDDINGS_MODEL` | Model ID (defaults `text-embedding-3-small` / `fastcode-embed` / `voyage-3.5`) |
+| `NOMA_CLOUD_EMBEDDINGS_URL` | Base URL or full `/embeddings` endpoint (for example `http://localhost:11434` for Ollama). Required for `fastembed` |
+| `NOMA_CLOUD_EMBEDDINGS_API_KEY`, `NOMA_CLOUD_EMBEDDINGS_API_KEY_FILE` | Bearer key; Voyage also reads `VOYAGE_API_KEY`, OpenAI `OPENAI_API_KEY`. A keyless `openai` URL is allowed for local servers. Optional for `fastembed` |
+| `NOMA_CLOUD_EMBEDDINGS_DIMENSIONS` | Optional vector length, sent to models that support shortening and checked on every response (never sent to `fastembed`, only checked) |
+| `NOMA_CLOUD_EMBEDDINGS_TIMEOUT_MS`, `NOMA_CLOUD_EMBEDDINGS_MAX_RETRIES`, `NOMA_CLOUD_EMBEDDINGS_BATCH_SIZE` | Per-request timeout (default 30000), retries on 408/409/429/5xx and network errors (default 2), and inputs per request (256 OpenAI, 32 fastembed, 128 Voyage) |
 | `NOMA_CLOUD_EMBEDDINGS_QUERY_TIMEOUT_MS` | Deadline for embedding a search query before falling back (default 2000) |
-| `NOMA_CLOUD_EMBEDDINGS_ZERO_RETENTION` | Operator attestation that the embedding account has zero data retention |
+| `NOMA_CLOUD_EMBEDDINGS_ZERO_RETENTION` | Operator attestation that the embedding account has zero data retention. On by default for `fastembed`; set `0` to turn it off |
 
 Indexing stays synchronous and always stores the hash vector. Provider vectors
 are computed in the background by the queue tick (and by `POST
@@ -1292,6 +1292,51 @@ model. Once an admin saves a policy, its `modelAllowlist` must list the
 embedding model (`voyage-3.5` or `voyage:voyage-3.5`), and
 `requireZeroRetentionModels` requires the zero-retention attestation. Until
 then, no workspace text is sent to the provider, for either backfill or queries.
+
+### Self-hosted embeddings with fastembed {id="fastembed-embeddings"}
+
+For an air-gapped or tailnet-only deployment, run the fastembed server next to
+Noma Cloud. It is a small CPU embedding server (ONNX int8 models behind an
+OpenAI-compatible `POST /v1/embeddings`, with `GET /health` and `GET /ready`
+probes, default port 8080). Workspace text goes only to that server, inside
+your deployment, so the provider counts as zero retention by default.
+
+```bash
+# fastembed host
+python -m src.server --model-dir models/general-int8 --port 8090
+
+# Noma Cloud
+NOMA_CLOUD_EMBEDDINGS=fastembed
+NOMA_CLOUD_EMBEDDINGS_URL=http://fastembed:8090
+NOMA_CLOUD_EMBEDDINGS_MODEL=jina-embeddings-v2-base-en
+# only when a token gate sits in front of fastembed:
+# NOMA_CLOUD_EMBEDDINGS_API_KEY_FILE=/run/noma/fastembed-token
+```
+
+- `NOMA_CLOUD_EMBEDDINGS_URL` is required. Private, loopback, and tailnet
+  addresses are allowed; this URL is operator configuration, not user input.
+- fastembed itself has no authentication. Noma sends `Authorization: Bearer`
+  only when `NOMA_CLOUD_EMBEDDINGS_API_KEY` (or `_FILE`) is set, for a proxy
+  or token gate in front of it. It never falls back to `OPENAI_API_KEY`.
+- fastembed serves one model per process, chosen by `--model-dir`, and ignores
+  the request's `model` and `dimensions`. `NOMA_CLOUD_EMBEDDINGS_MODEL` is a
+  label: it goes into the cache key and the `retrieval` report
+  (`fastembed:<model>`) and is what an enterprise `modelAllowlist` names. The
+  default is `fastcode-embed`, the name fastembed reports for itself. Set it
+  to the model you load, so swapping models re-embeds instead of mixing
+  vectors. The vector length is discovered from responses; set
+  `NOMA_CLOUD_EMBEDDINGS_DIMENSIONS` to have every response checked.
+- A server that is still loading answers 503. Noma retries it, then puts the
+  provider on cooldown and search falls back to lexical plus hash scoring.
+
+**Pick a text model for wiki pages.** fastembed's production model is
+`jina-embeddings-v2-base-code` (int8, 768 dimensions), tuned for code search.
+Wiki pages are prose, so for knowledge search load a general text model
+exported to ONNX int8 the same way (change `model_id` in fastembed's
+`modal/path2_onnx_quantize.py`), for example `jina-embeddings-v2-base-en` (same
+architecture, 768 dimensions) or `bge-small-en-v1.5` (384 dimensions, faster).
+Use the code model only for a space that is mostly source code. Match the int8
+variant to the CPU (`int8_avx2` on x86 servers, `int8_arm64` on Apple silicon).
 
 ## Scoped agents and the shared change inbox
 

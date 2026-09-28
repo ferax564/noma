@@ -172,7 +172,7 @@ export interface NomaCloudServerOptions {
 
 /**
  * Knowledge-search embeddings. Without a provider (or with `NOMA_CLOUD_EMBEDDINGS=local`) retrieval
- * uses the deterministic local hash vector. Env: `NOMA_CLOUD_EMBEDDINGS=local|openai|voyage`,
+ * uses the deterministic local hash vector. Env: `NOMA_CLOUD_EMBEDDINGS=local|openai|fastembed|voyage`,
  * `NOMA_CLOUD_EMBEDDINGS_MODEL`, `NOMA_CLOUD_EMBEDDINGS_URL`, `NOMA_CLOUD_EMBEDDINGS_API_KEY`
  * (or `_FILE`), `NOMA_CLOUD_EMBEDDINGS_DIMENSIONS`, `NOMA_CLOUD_EMBEDDINGS_QUERY_TIMEOUT_MS`.
  */

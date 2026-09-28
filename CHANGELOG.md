@@ -24,6 +24,11 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
   - Extracted text is searchable in ⌘K (new `attachments` group), `/api/search`, knowledge search and Ask Noma, following page permissions.
   - DLP scans extracted text (`resourceType: "attachment"`); `block` mode keeps the text out of search.
   - `GET /api/attachments/:id/preview` serves an Office file's PDF preview with the attachment route's auth and safe headers. Admins get `GET /api/enterprise/attachment-text` and `POST .../run`.
+- **Self-hosted embeddings with fastembed (Noma Cloud):** `NOMA_CLOUD_EMBEDDINGS=fastembed` points knowledge search at a [fastembed](https://github.com/ferax564/fastembed) CPU embedding server (ONNX int8, OpenAI-compatible `/v1/embeddings`), so semantic search works air-gapped.
+  - `NOMA_CLOUD_EMBEDDINGS_URL` is required; private and tailnet hosts are fine. The bearer key (`NOMA_CLOUD_EMBEDDINGS_API_KEY` / `_FILE`) is optional, for a token gate in front, and `OPENAI_API_KEY` is never sent.
+  - The provider is zero retention by default (text stays in the deployment), batches 32 texts per request, never sends `dimensions`, and discovers the vector length from responses. It reports as `fastembed:<model>`; the default label is `fastcode-embed`, fastembed's own name.
+  - fastembed's production model is tuned for code. The docs recommend loading a general text model (`jina-embeddings-v2-base-en` or `bge-small-en-v1.5`) for wiki prose and naming it in `NOMA_CLOUD_EMBEDDINGS_MODEL`.
+  - `CloudKnowledgePlatform.embeddingStatus()` now includes `zeroRetention`.
 - **Slides (ported from upstream PaperDOM):**
   - `noma render <file> --to png --out <dir>` writes one PNG per slide (`NN-<slide-id>.png`) for decks, doc-to-deck and PaperDOM `.json`, with `--slide <id>` and `--scale <n>`. The sanitised slide SVG renders in headless Chromium with JavaScript off and the network blocked.
   - New `slide-text-overflow` validator warning for text that likely overflows on `::deck` slides and inline `::canvas` pages. The PPTX fidelity report lists it under `warnings`.
