@@ -6,6 +6,10 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Restyled the marketing frontend with a bold portfolio-inspired visual system, responsive editorial layouts, tactile cards, and simplified mobile navigation.
+
 ### Added
 
 - **Agent governance (Noma Cloud; model ported from keepop):**
