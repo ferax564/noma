@@ -63,7 +63,7 @@ src/                       TypeScript core — parser, AST, renderers, validator
   cloud-devloop.ts         Dev-loop persistence — linked repos, pull requests, webhook dedupe, deploy/test runs
   cloud-chat.ts            Chat persistence — channels, threaded messages, reactions, mentions, read markers, in-process event bus for SSE
   cloud-blobs.ts           Content-addressed attachment blob store (local disk + dependency-free SigV4 S3 driver)
-  cloud-embeddings.ts      Embedding providers for hybrid search (local hash default, OpenAI-compatible, Voyage)
+  cloud-embeddings.ts      Embedding providers for hybrid search (local hash default, OpenAI-compatible, self-hosted fastembed preset, Voyage)
   cloud-llm.ts             LLM provider layer for Cloud AI (Claude Messages API over fetch, fake provider, pricing)
   cloud-git-sync.ts        `noma cloud spaces|create-space|export-space|sync` — two-way space ↔ .noma directory sync (`--state` sidecar keys; mirrors renames/moves/deletes)
   space-check.ts           `noma check <dir>` — validate a wiki directory as one space (cross-page [[id]] links, duplicate-space-id)

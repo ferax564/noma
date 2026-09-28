@@ -285,7 +285,7 @@ test("backfill upgrades search: a synonym query finds the right block once provi
     const answer = await platform.askWithRetrieval(request);
     assert.equal(answer.retrieval?.semantic, "fake:fake-embedding");
     assert.equal(answer.citations[0]?.blockId, "failover-plan");
-    assert.deepEqual(platform.embeddingStatus(), { provider: "fake:fake-embedding", remote: true, dimensions: 16, cachedVectors: 4 });
+    assert.deepEqual(platform.embeddingStatus(), { provider: "fake:fake-embedding", remote: true, zeroRetention: true, dimensions: 16, cachedVectors: 4 });
   });
 });
 

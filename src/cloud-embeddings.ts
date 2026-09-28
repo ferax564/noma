@@ -20,7 +20,7 @@ export interface EmbeddingRequestOptions {
 }
 
 export interface EmbeddingProvider {
-  /** Stable provider id (`local-hash`, `openai`, `voyage`, `fake`); part of the cache key. */
+  /** Stable provider id (`local-hash`, `openai`, `fastembed`, `voyage`, `fake`); part of the cache key. */
   readonly id: string;
   readonly model: string;
   /** Declared vector length; `undefined` when the model's length is only known from responses. */
@@ -159,7 +159,18 @@ export type VoyageEmbeddingProviderOptions = Omit<HttpEmbeddingOptions, "url" | 
   baseUrl?: string;
 };
 
+export type FastembedEmbeddingProviderOptions = Omit<OpenAiEmbeddingProviderOptions, "baseUrl" | "requestDimensions"> & {
+  /** Base URL of the fastembed server (`http://fastembed:8080`) or its full `/v1/embeddings` endpoint. */
+  baseUrl: string;
+};
+
 export const DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
+/**
+ * fastembed serves one model per process (picked by `--model-dir`) and echoes the request's `model`
+ * back; `fastcode-embed` is the name it reports by default. Set the model label to the model the
+ * server actually loads so a model swap changes the cache key.
+ */
+export const DEFAULT_FASTEMBED_EMBEDDING_MODEL = "fastcode-embed";
 export const DEFAULT_VOYAGE_EMBEDDING_MODEL = "voyage-3.5";
 
 const knownDimensions: Array<[RegExp, number]> = [
@@ -301,7 +312,7 @@ abstract class HttpEmbeddingProvider implements EmbeddingProvider {
 
 /** OpenAI-compatible `/v1/embeddings` (OpenAI, OpenAI-compatible gateways, Ollama, local servers). */
 export class OpenAiCompatibleEmbeddingProvider extends HttpEmbeddingProvider {
-  readonly id = "openai";
+  readonly id: string = "openai";
 
   constructor(options: OpenAiEmbeddingProviderOptions = {}) {
     super({ ...options, model: options.model ?? DEFAULT_OPENAI_EMBEDDING_MODEL, url: embeddingsEndpoint(options.baseUrl ?? "https://api.openai.com") }, 256);
@@ -309,6 +320,29 @@ export class OpenAiCompatibleEmbeddingProvider extends HttpEmbeddingProvider {
 
   protected requestBody(input: string[]): Record<string, unknown> {
     return { model: this.model, input, encoding_format: "float", ...(this.requestDimensions ? { dimensions: this.dimensions } : {}) };
+  }
+}
+
+/**
+ * Self-hosted fastembed server (ONNX int8 CPU embeddings behind an OpenAI-compatible `/v1/embeddings`).
+ * A preset over the OpenAI-compatible provider: the URL is required, the bearer key is optional (sent
+ * only when set, for a token gate in front of the server), `dimensions` is never sent (fastembed
+ * ignores it; a configured value is only checked against responses), batches default to 32 texts,
+ * and the provider counts as zero retention because text stays inside the deployment.
+ */
+export class FastembedEmbeddingProvider extends OpenAiCompatibleEmbeddingProvider {
+  override readonly id: string = "fastembed";
+
+  constructor(options: FastembedEmbeddingProviderOptions) {
+    const { baseUrl, ...rest } = options;
+    super({
+      ...rest,
+      baseUrl,
+      model: options.model ?? DEFAULT_FASTEMBED_EMBEDDING_MODEL,
+      maxBatchSize: options.maxBatchSize ?? 32,
+      zeroRetention: options.zeroRetention !== false,
+      requestDimensions: false,
+    });
   }
 }
 
@@ -426,12 +460,13 @@ function backoffMs(attempt: number): number {
 }
 
 /**
- * Provider from the environment: `NOMA_CLOUD_EMBEDDINGS=local|openai|voyage|fake` (default `local`),
- * `NOMA_CLOUD_EMBEDDINGS_MODEL`, `NOMA_CLOUD_EMBEDDINGS_URL`, `NOMA_CLOUD_EMBEDDINGS_API_KEY` (or
- * `NOMA_CLOUD_EMBEDDINGS_API_KEY_FILE`; Voyage also reads `VOYAGE_API_KEY`, OpenAI `OPENAI_API_KEY`),
+ * Provider from the environment: `NOMA_CLOUD_EMBEDDINGS=local|openai|fastembed|voyage|fake` (default
+ * `local`), `NOMA_CLOUD_EMBEDDINGS_MODEL`, `NOMA_CLOUD_EMBEDDINGS_URL` (required for `fastembed`),
+ * `NOMA_CLOUD_EMBEDDINGS_API_KEY` (or `NOMA_CLOUD_EMBEDDINGS_API_KEY_FILE`; Voyage also reads
+ * `VOYAGE_API_KEY`, OpenAI `OPENAI_API_KEY`; optional for `fastembed`),
  * `NOMA_CLOUD_EMBEDDINGS_DIMENSIONS`, `NOMA_CLOUD_EMBEDDINGS_TIMEOUT_MS`,
  * `NOMA_CLOUD_EMBEDDINGS_MAX_RETRIES`, `NOMA_CLOUD_EMBEDDINGS_BATCH_SIZE`, and
- * `NOMA_CLOUD_EMBEDDINGS_ZERO_RETENTION`.
+ * `NOMA_CLOUD_EMBEDDINGS_ZERO_RETENTION` (default on for `fastembed`, off otherwise).
  */
 export function createEmbeddingProviderFromEnv(env: NodeJS.ProcessEnv = process.env): EmbeddingProvider {
   const kind = env.NOMA_CLOUD_EMBEDDINGS?.trim().toLowerCase() || "local";
@@ -454,12 +489,22 @@ export function createEmbeddingProviderFromEnv(env: NodeJS.ProcessEnv = process.
     if (!apiKey && !url) throw new Error("NOMA_CLOUD_EMBEDDINGS=openai needs NOMA_CLOUD_EMBEDDINGS_API_KEY (or a keyless NOMA_CLOUD_EMBEDDINGS_URL such as Ollama)");
     return new OpenAiCompatibleEmbeddingProvider({ ...common, ...(apiKey ? { apiKey } : {}) });
   }
+  if (kind === "fastembed") {
+    if (!url) throw new Error("NOMA_CLOUD_EMBEDDINGS=fastembed needs NOMA_CLOUD_EMBEDDINGS_URL (the fastembed server, for example http://fastembed:8080)");
+    const apiKey = embeddingApiKey(env);
+    return new FastembedEmbeddingProvider({
+      ...common,
+      baseUrl: url,
+      ...(apiKey ? { apiKey } : {}),
+      zeroRetention: !/^(?:0|false|no)$/i.test(env.NOMA_CLOUD_EMBEDDINGS_ZERO_RETENTION?.trim() ?? ""),
+    });
+  }
   if (kind === "voyage") {
     const apiKey = embeddingApiKey(env) ?? (env.VOYAGE_API_KEY?.trim() || undefined);
     if (!apiKey) throw new Error("NOMA_CLOUD_EMBEDDINGS=voyage needs NOMA_CLOUD_EMBEDDINGS_API_KEY or VOYAGE_API_KEY");
     return new VoyageEmbeddingProvider({ ...common, apiKey });
   }
-  throw new Error(`Unsupported NOMA_CLOUD_EMBEDDINGS: ${kind} (use local, openai, or voyage)`);
+  throw new Error(`Unsupported NOMA_CLOUD_EMBEDDINGS: ${kind} (use local, openai, fastembed, or voyage)`);
 }
 
 function embeddingApiKey(env: NodeJS.ProcessEnv): string | undefined {

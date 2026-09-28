@@ -469,13 +469,14 @@ export class CloudKnowledgePlatform {
   }
 
   /** The configured embedding provider, whether policy or a recent failure blocks it, and its cache size. */
-  embeddingStatus(): { provider: string; remote: boolean; dimensions?: number; blocked?: KnowledgeRetrievalMode["fallback"]; cachedVectors: number } {
+  embeddingStatus(): { provider: string; remote: boolean; zeroRetention: boolean; dimensions?: number; blocked?: KnowledgeRetrievalMode["fallback"]; cachedVectors: number } {
     const provider = this.embeddings;
     const row = this.db.prepare("SELECT COUNT(*) AS count FROM block_embeddings WHERE provider = ? AND model = ?").get(provider.id, provider.model) as { count: number };
     const blocked = provider.id === LOCAL_HASH_PROVIDER_ID ? undefined : this.providerBlock();
     return {
       provider: embeddingLabel(provider),
       remote: provider.remote,
+      zeroRetention: provider.zeroRetention,
       ...(provider.dimensions !== undefined ? { dimensions: provider.dimensions } : {}),
       ...(blocked ? { blocked } : {}),
       cachedVectors: row.count,
