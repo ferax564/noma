@@ -71,7 +71,7 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || needs.detect.outputs.release == 'true') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Resolve release tag
         id: tag
